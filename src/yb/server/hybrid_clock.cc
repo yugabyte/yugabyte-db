@@ -93,12 +93,6 @@ PhysicalClockPtr GetClock(const std::string& name) {
 
 } // namespace
 
-const int HybridClock::kBitsToShift = HybridTime::kBitsForLogicalComponent;
-
-const uint64_t HybridClock::kLogicalBitMask = HybridTime::kLogicalBitMask;
-
-const double HybridClock::kAdjtimexScalingFactor = 65536;
-
 void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
   std::lock_guard<std::mutex> lock(providers_mutex);
   providers.emplace(std::move(name), std::move(provider));
@@ -129,18 +123,6 @@ HybridTime HybridClock::Now() {
   return now;
 }
 
-HybridTime HybridClock::NowLatest() {
-  HybridTime now;
-  uint64_t error;
-
-  NowWithError(&now, &error);
-
-  uint64_t now_latest = GetPhysicalValueMicros(now) + error;
-  uint64_t now_logical = GetLogicalValue(now);
-
-  return HybridTimeFromMicrosecondsAndLogicalValue(now_latest, now_logical);
-}
-
 void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec) {
   DCHECK_EQ(state_, kInitialized) << "Clock not initialized. Must call Init() first.";
 
@@ -153,6 +135,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   // If the current time surpasses the last update just return it
   HybridClockComponents current_components = components_.load(std::memory_order_acquire);
   HybridClockComponents new_components = { now->time_point, 1 };
+
   // Loop over the check in case of concurrent updates making the CAS fail.
   while (now->time_point > current_components.last_usec) {
     if (components_.compare_exchange_weak(current_components, new_components)) {
@@ -187,18 +170,18 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   do {
     new_components.last_usec = current_components.last_usec;
     new_components.logical = current_components.logical + 1;
-    // Loop over the check until the CAS succeeds, in case there's concurrent updates.
+    new_components.HandleLogicalComponentOverflow();
+    // Loop over the check until the CAS succeeds, in case there are concurrent updates.
   } while (!components_.compare_exchange_weak(current_components, new_components));
 
   *max_error_usec = new_components.last_usec - (now->time_point - now->max_error);
+
   // We've already atomically incremented the logical, so subtract 1.
-  auto logical_time = new_components.logical - 1;
   *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(
-      new_components.last_usec, logical_time);
+      new_components.last_usec, new_components.logical).Decremented();
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG(2) << "Current clock is lower than the last one. Returning last read and incrementing"
-        " logical values. Physical Value: " << now->time_point << " usec Logical Value: "
-        << logical_time  << " Error: " << *max_error_usec;
+        " logical values. Hybrid time: " << *hybrid_time << " Error: " << *max_error_usec;
   }
 }
 
@@ -211,6 +194,9 @@ void HybridClock::Update(const HybridTime& to_update) {
   HybridClockComponents new_components = {
     GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
   };
+
+  new_components.HandleLogicalComponentOverflow();
+
   // Keep trying to CAS until it works or until HT has advanced past this update.
   while (current_components < new_components &&
       !components_.compare_exchange_weak(current_components, new_components)) {}
@@ -230,6 +216,21 @@ uint64_t HybridClock::ErrorForMetrics() {
   return error;
 }
 
+void HybridClock::HybridClockComponents::HandleLogicalComponentOverflow() {
+  if (logical > HybridTime::kLogicalBitMask) {
+    static constexpr uint64_t kMaxOverflowValue = 1 << HybridTime::kBitsForLogicalComponent;
+    if (logical > kMaxOverflowValue) {
+      LOG(FATAL) << "Logical component is too high: last_usec=" << last_usec
+                 << "logical=" << logical << ", max allowed is " << kMaxOverflowValue;
+    }
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << "Logical component overflow: "
+        << "last_usec=" << last_usec << ", logical=" << logical;
+
+    last_usec += logical >> HybridTime::kBitsForLogicalComponent;
+    logical &= HybridTime::kLogicalBitMask;
+  }
+}
+
 void HybridClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   METRIC_hybrid_clock_hybrid_time.InstantiateFunctionGauge(
       metric_entity,
@@ -241,22 +242,18 @@ void HybridClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_enti
     ->AutoDetachToLastValue(&metric_detacher_);
 }
 
-string HybridClock::Stringify(HybridTime hybrid_time) {
-  return StringifyHybridTime(hybrid_time);
-}
-
-uint64_t HybridClock::GetLogicalValue(const HybridTime& hybrid_time) {
+LogicalTimeComponent HybridClock::GetLogicalValue(const HybridTime& hybrid_time) {
   return hybrid_time.GetLogicalValue();
 }
 
-uint64_t HybridClock::GetPhysicalValueMicros(const HybridTime& hybrid_time) {
+MicrosTime HybridClock::GetPhysicalValueMicros(const HybridTime& hybrid_time) {
   return hybrid_time.GetPhysicalValueMicros();
 }
 
 uint64_t HybridClock::GetPhysicalValueNanos(const HybridTime& hybrid_time) {
-  // Conversion to nanoseconds here is safe from overflow since 2^kBitsToShift is less than
-  // MonoTime::kNanosecondsPerMicrosecond. Although, we still just check for sanity.
-  uint64_t micros = hybrid_time.value() >> kBitsToShift;
+  // Conversion to nanoseconds here is safe from overflow since 2^kBitsForLogicalComponent is less
+  // than MonoTime::kNanosecondsPerMicrosecond. Although, we still just check for sanity.
+  uint64_t micros = hybrid_time.value() >> HybridTime::kBitsForLogicalComponent;
   CHECK(micros <= std::numeric_limits<uint64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
   return micros * MonoTime::kNanosecondsPerMicrosecond;
 }
@@ -302,12 +299,6 @@ int HybridClock::CompareHybridClocksToDelta(const HybridTime& begin,
   } else {
     return -1;
   }
-}
-
-string HybridClock::StringifyHybridTime(const HybridTime& hybrid_time) {
-  return Substitute("P: $0 usec, L: $1",
-                    GetPhysicalValueMicros(hybrid_time),
-                    GetLogicalValue(hybrid_time));
 }
 
 }  // namespace server

@@ -58,10 +58,6 @@ HybridTime LogicalClock::Peek() {
   return HybridTime(now_.load(std::memory_order_acquire));
 }
 
-HybridTime LogicalClock::NowLatest() {
-  return Now();
-}
-
 void LogicalClock::Update(const HybridTime& to_update) {
   if (to_update.is_valid()) {
     UpdateAtomicMax(&now_, to_update.value());
@@ -84,10 +80,6 @@ void LogicalClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_ent
       metric_entity,
       Bind(&LogicalClock::NowForMetrics, Unretained(this)))
     ->AutoDetachToLastValue(&metric_detacher_);
-}
-
-string LogicalClock::Stringify(HybridTime hybrid_time) {
-  return strings::Substitute("L: $0", hybrid_time.ToUint64());
 }
 
 }  // namespace server

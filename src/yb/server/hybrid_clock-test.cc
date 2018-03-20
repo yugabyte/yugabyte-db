@@ -50,7 +50,7 @@ namespace server {
 class HybridClockTest : public YBTest {
  public:
   HybridClockTest()
-      : clock_(new HybridClock) {
+      : clock_(new HybridClock()) {
   }
 
   void SetUp() override {
@@ -59,6 +59,8 @@ class HybridClockTest : public YBTest {
   }
 
  protected:
+  void RunMultiThreadedTest(int num_reads_per_update);
+
   scoped_refptr<HybridClock> clock_;
 };
 
@@ -121,36 +123,48 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
 
 // Thread which loops polling the clock and updating it slightly
 // into the future.
-void StresserThread(HybridClock* clock, AtomicBool* stop) {
+void StresserThread(HybridClock* clock, AtomicBool* stop, int num_reads_per_update) {
   Random rng(GetRandomSeed32());
-  HybridTime prev(0);;
+  HybridTime prev = HybridTime::kMin;
   while (!stop->Load()) {
-    HybridTime t = clock->Now();
-    ASSERT_GT(t.value(), prev.value());
-    prev = t;
+    HybridTime t;
+    for (int i = 0; i < num_reads_per_update; ++i) {
+      t = clock->Now();
+      ASSERT_GT(t, prev);
+      prev = t;
+    }
 
     // Add a random bit of offset to the clock, and perform an update.
     HybridTime new_ht = HybridClock::AddPhysicalTimeToHybridTime(
         t, MonoDelta::FromMicroseconds(rng.Uniform(10000)));
     clock->Update(new_ht);
+    prev = new_ht;
   }
 }
 
 // Regression test for KUDU-953: if threads are updating and polling the
 // clock concurrently, the clock should still never run backwards.
 TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithUpdates) {
+  RunMultiThreadedTest(1);
+}
+
+TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithOccasionalUpdates) {
+  RunMultiThreadedTest(1000000);
+}
+
+void HybridClockTest::RunMultiThreadedTest(int num_reads_per_update) {
   vector<scoped_refptr<yb::Thread> > threads;
 
   AtomicBool stop(false);
   for (int i = 0; i < 4; i++) {
     scoped_refptr<Thread> thread;
     ASSERT_OK(Thread::Create("test", "stresser",
-                             &StresserThread, clock_.get(), &stop,
+                             &StresserThread, clock_.get(), &stop, num_reads_per_update,
                              &thread));
     threads.push_back(thread);
   }
 
-  SleepFor(MonoDelta::FromSeconds(1));
+  SleepFor(MonoDelta::FromSeconds(10));
   stop.Store(true);
   for (const scoped_refptr<Thread> t : threads) {
     t->Join();

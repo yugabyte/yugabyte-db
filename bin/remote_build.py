@@ -124,6 +124,10 @@ def main():
                         help='skip build, only sync files')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='arguments for yb_build.sh')
 
+    if len(sys.argv) >= 2 and sys.argv[1] in ['ybd', 'yb_build.sh']:
+        # Allow the first argument to be 'ybd' so we can copy and paste a ybd command line directly
+        # after remote_build.py.
+        sys.argv[1:2] = ['--']
     args = parser.parse_args()
 
     if args.host is None and REMOTE_BUILD_HOST_ENV_VAR in os.environ:

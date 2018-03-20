@@ -52,13 +52,12 @@ class Slice;
 class Status;
 namespace server {
 
-// An interface for a clock that can be used to assign timestamps to
-// operations.
+// An interface for a clock that can be used to assign timestamps to operations.
 // Implementations must respect the following assumptions:
 // 1 - Now() must return monotonically increasing numbers
 //     i.e. for any two calls, i.e. Now returns timestamp1 and timestamp2, it must
 //     hold that timestamp1 < timestamp2.
-// 2 - Update() must never set the clock backwards (corollary of 1)
+// 2 - Update() must never set the clock backwards (corollary of 1).
 class Clock : public ClockBase {
  public:
 
@@ -67,10 +66,6 @@ class Clock : public ClockBase {
 
   // Obtains a new transaction timestamp corresponding to the current instant.
   virtual HybridTime Now() = 0;
-
-  // Obtains a new transaction timestamp corresponding to the current instant
-  // plus the max_error.
-  virtual HybridTime NowLatest() = 0;
 
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,
@@ -81,9 +76,6 @@ class Clock : public ClockBase {
 
   // Register the clock metrics in the given entity.
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) = 0;
-
-  // Strigifies the provided timestamp according to this clock's internal format.
-  virtual std::string Stringify(HybridTime hybrid_time) = 0;
 
   virtual ~Clock() {}
 };

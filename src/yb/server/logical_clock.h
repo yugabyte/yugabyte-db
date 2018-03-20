@@ -44,15 +44,14 @@ class MonoDelta;
 class MonoTime;
 namespace server {
 
-// An implementation of Clock that behaves as a plain Lamport Clock.
-// In a single node, single tablet, setting this generates exactly the
-// same Timestamp sequence as the original MvccManager did, but it can be
-// updated to make sure replicas generate new hybrid_times on becoming leader.
-// This can be used as a deterministic hybrid_time generator that has the same
-// consistency properties as a HybridTime clock.
+// An implementation of Clock that behaves as a plain Lamport Clock.  In a single node, single
+// tablet, setting this generates exactly the same Timestamp sequence as the original MvccManager
+// did, but it can be updated to make sure replicas generate new hybrid_times on becoming leader.
+// This can be used as a deterministic hybrid_time generator that has the same consistency
+// properties as a HybridTime clock.
 //
-// The Wait* methods are unavailable in this implementation and will
-// return Status::ServiceUnavailable().
+// The Wait* methods are unavailable in this implementation and will return
+// Status::ServiceUnavailable().
 //
 // NOTE: this class is thread safe.
 class LogicalClock : public Clock {
@@ -65,14 +64,9 @@ class LogicalClock : public Clock {
   // Returns the current value of the clock without incrementing it.
   HybridTime Peek();
 
-  // In the logical clock this call is equivalent to Now();
-  virtual HybridTime NowLatest() override;
-
   virtual void Update(const HybridTime& to_update) override;
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
-
-  virtual std::string Stringify(HybridTime hybrid_time) override;
 
   // Creates a logical clock whose first output value on a Now() call is 'hybrid_time'.
   static LogicalClock* CreateStartingAt(const HybridTime& hybrid_time);

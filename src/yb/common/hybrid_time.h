@@ -62,8 +62,8 @@ class HybridTime {
   // TODO: replace all mentions of this with HybridTimeRepr itself and deprecate val_type.
   using val_type = HybridTimeRepr;
 
-  // Left shifting 12 bits gives us 12 bits for the logical value and should still keep accurate
-  // microseconds time until 2100+
+  // Left-shifting the microseconds timestamp 12 bits gives us 12 bits for the logical value and
+  // should still keep accurate microseconds time until 2100+.
   static constexpr int kBitsForLogicalComponent = 12;
 
   // This mask gives us back the logical bits.
