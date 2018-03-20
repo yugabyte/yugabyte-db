@@ -43,11 +43,13 @@ DECLARE_uint64(redis_max_queued_bytes);
 DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
+DECLARE_bool(enable_backpressure_mode_for_testing);
 DECLARE_int32(redis_max_value_size);
 DECLARE_int32(redis_max_command_size);
 DECLARE_int32(rpc_max_message_size);
 DECLARE_int32(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_int64(max_time_in_queue_ms);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
@@ -713,6 +715,27 @@ TEST_F(TestRedisService, BatchedCommandsInline) {
       __LINE__,
       "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
       "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n");
+}
+
+TEST_F(TestRedisService, TestTimedoutInQueue) {
+  FLAGS_redis_max_batch = 1;
+  FLAGS_enable_backpressure_mode_for_testing = true;
+
+  DoRedisTestOk(__LINE__, {"SET", "foo", "value"});
+  DoRedisTestBulkString(__LINE__, {"GET", "foo"}, "value");
+  DoRedisTestOk(__LINE__, {"SET", "foo", "Test"});
+
+  // All calls past this call should fail.
+  DoRedisTestOk(__LINE__, {"DEBUGSLEEP", yb::ToString(FLAGS_max_time_in_queue_ms)});
+
+  const string expected_message =
+      "The server is overloaded. Call waited in the queue past max_time_in_queue.";
+  DoRedisTestExpectError(__LINE__, {"SET", "foo", "Test"}, expected_message);
+  DoRedisTestExpectError(__LINE__, {"GET", "foo"}, expected_message);
+  DoRedisTestExpectError(__LINE__, {"DEBUGSLEEP", "2000"}, expected_message);
+
+  SyncClient();
+  VerifyCallbacks();
 }
 
 TEST_F(TestRedisService, BatchedCommandsInlinePartial) {

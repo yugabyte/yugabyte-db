@@ -137,6 +137,10 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
 
+MonoDelta InboundCall::GetTimeInQueue() const {
+  return timing_.time_handled.GetDeltaSince(timing_.time_received);
+}
+
 void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
   DCHECK(!timing_.time_completed.Initialized());  // Protect against multiple calls.
   timing_.time_completed = MonoTime::Now();
