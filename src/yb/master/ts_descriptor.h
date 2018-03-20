@@ -215,6 +215,7 @@ class TSDescriptor {
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration);
 
+  mutable simple_spinlock lock_;
  private:
   template <class TProxy>
   CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
@@ -228,8 +229,6 @@ class TSDescriptor {
   CHECKED_STATUS ResolveEndpoint(Endpoint* addr) const;
 
   void DecayRecentReplicaCreationsUnlocked();
-
-  mutable simple_spinlock lock_;
 
   struct TSMetrics {
 
