@@ -47,6 +47,7 @@
 #include "yb/rpc/tasks_pool.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
@@ -54,6 +55,20 @@
 
 using std::shared_ptr;
 using strings::Substitute;
+
+DEFINE_int64(max_time_in_queue_ms, 6000,
+             "Fail calls that get stuck in the queue longer than the specified amount of time "
+                 "(in ms)");
+TAG_FLAG(max_time_in_queue_ms, advanced);
+TAG_FLAG(max_time_in_queue_ms, runtime);
+DEFINE_int64(backpressure_recovery_period_ms, 600000,
+             "Once we hit a backpressure/service-overflow we will consider dropping stale requests "
+             "for this duration (in ms)");
+TAG_FLAG(backpressure_recovery_period_ms, advanced);
+TAG_FLAG(backpressure_recovery_period_ms, runtime);
+DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
+            "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
+            "when we have not had any backpressure in the recent past.");
 
 METRIC_DEFINE_histogram(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
@@ -77,6 +92,8 @@ namespace yb {
 namespace rpc {
 
 namespace {
+
+static constexpr CoarseMonoClock::TimePoint kNone{CoarseMonoClock::TimePoint::min()};
 
 class InboundCallTask final {
  public:
@@ -152,6 +169,7 @@ class ServicePoolImpl {
     const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
     call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
+    last_backpressure_at_.store(CoarseMonoClock::Now(), std::memory_order_release);
   }
 
   void Processed(const InboundCallPtr& call, const Status& status) {
@@ -173,15 +191,17 @@ class ServicePoolImpl {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
 
-    if (PREDICT_FALSE(incoming->ClientTimedOut())) {
-      TRACE_TO(incoming->trace(), "Skipping call since client already timed out");
+    if (PREDICT_FALSE(incoming->ClientTimedOut() || ShouldDropRequestDuringHighLoad(incoming))) {
+      const char* message =
+          (incoming->ClientTimedOut()
+               ? "Call waited in the queue past deadline"
+               : "The server is overloaded. Call waited in the queue past max_time_in_queue.");
+      TRACE_TO(incoming->trace(), message);
       rpcs_timed_out_in_queue_->Increment();
 
       // Respond as a failure, even though the client will probably ignore
       // the response anyway.
-      incoming->RespondFailure(
-          ErrorStatusPB::ERROR_SERVER_TOO_BUSY,
-          STATUS(TimedOut, "Call waited in the queue past client deadline"));
+      incoming->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
 
       return;
     }
@@ -192,11 +212,35 @@ class ServicePoolImpl {
   }
 
  private:
+  bool ShouldDropRequestDuringHighLoad(InboundCallPtr incoming) {
+    auto last_backpressure_at = last_backpressure_at_.load(std::memory_order_acquire);
+
+    // For testing purposes.
+    if (FLAGS_enable_backpressure_mode_for_testing) {
+      last_backpressure_at = CoarseMonoClock::Now();
+    }
+
+    // Test for a sentinel value, to avoid reading the clock.
+    if (last_backpressure_at == kNone) {
+      return false;
+    }
+    auto now = CoarseMonoClock::Now();
+    if (ToMilliseconds(now.time_since_epoch()) <=
+        ToMilliseconds(last_backpressure_at.time_since_epoch()) +
+            FLAGS_backpressure_recovery_period_ms) {
+      last_backpressure_at_.store(kNone, std::memory_order_release);
+      return false;
+    }
+
+    return incoming->GetTimeInQueue().ToMilliseconds() > FLAGS_max_time_in_queue_ms;
+  }
+
   ThreadPool* thread_pool_;
   std::unique_ptr<ServiceIf> service_;
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
+  std::atomic<CoarseMonoClock::TimePoint> last_backpressure_at_{kNone};
 
   std::atomic<bool> closing_ = {false};
   TasksPool<InboundCallTask> tasks_pool_;

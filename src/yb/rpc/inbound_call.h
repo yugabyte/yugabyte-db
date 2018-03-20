@@ -128,6 +128,10 @@ class InboundCall : public RpcCall {
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual MonoTime GetClientDeadline() const = 0;
 
+  // Returns the time spent in the service queue -- from the time the call was received, until
+  // it gets handled.
+  MonoDelta GetTimeInQueue() const;
+
   virtual const std::string& method_name() const = 0;
   virtual const std::string& service_name() const = 0;
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
