@@ -107,7 +107,7 @@ Status PathInstanceMetadataFile::LoadFromDisk() {
     return STATUS(IOError, "Wrong block manager type", pb->block_manager_type());
   }
 
-  uint64_t block_size = VERIFY_RESULT(env_->GetBlockSize(filename_));
+  uint64_t block_size = VERIFY_RESULT(env_->GetBlockSize(DirName(filename_)));
   if (pb->filesystem_block_size_bytes() != block_size) {
     return STATUS(IOError, "Wrong filesystem block size", Substitute(
         "Expected $0 but was $1", pb->filesystem_block_size_bytes(), block_size));
