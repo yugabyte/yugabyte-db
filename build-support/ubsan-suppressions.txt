@@ -64,3 +64,6 @@ alignment:snappy::EmitLiteral
 alignment:snappy::EmitCopyLessThan64
 alignment:snappy::internal::CompressFragment
 alignment:snappy::SnappyDecompressor::DecompressAllTags
+
+# https://goo.gl/AaE3P5
+pointer-overflow:google::*::DumpStackFrameInfo*

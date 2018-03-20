@@ -63,10 +63,6 @@ class HybridClock : public Clock {
   // Obtains the hybrid_time corresponding to the current time.
   virtual HybridTime Now() override;
 
-  // Obtains the hybrid_time corresponding to latest possible current
-  // time.
-  virtual HybridTime NowLatest() override;
-
   // Updates the clock with a hybrid_time originating on another machine.
   virtual void Update(const HybridTime& to_update) override;
 
@@ -78,16 +74,14 @@ class HybridClock : public Clock {
   // LOG(FATAL)'s in that case.
   void NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec);
 
-  virtual std::string Stringify(HybridTime hybrid_time) override;
-
   // Static encoding/decoding methods for hybrid_times. Public mostly
   // for testing/debugging purposes.
 
   // Returns the logical value embedded in 'hybrid_time'
-  static uint64_t GetLogicalValue(const HybridTime& hybrid_time);
+  static LogicalTimeComponent GetLogicalValue(const HybridTime& hybrid_time);
 
   // Returns the physical value embedded in 'hybrid_time', in microseconds.
-  static uint64_t GetPhysicalValueMicros(const HybridTime& hybrid_time);
+  static MicrosTime GetPhysicalValueMicros(const HybridTime& hybrid_time);
 
   // Returns the physical value embedded in 'hybrid_time', in nanoseconds.
   static uint64_t GetPhysicalValueNanos(const HybridTime& hybrid_time);
@@ -110,28 +104,27 @@ class HybridClock : public Clock {
   static int CompareHybridClocksToDelta(const HybridTime& begin, const HybridTime& end,
                                         const MonoDelta& delta);
 
-  // Outputs a string containing the physical and logical values of the hybrid_time,
-  // separated.
-  static std::string StringifyHybridTime(const HybridTime& hybrid_time);
-
   static void RegisterProvider(std::string name, PhysicalClockProvider provider);
 
   const PhysicalClockPtr& TEST_clock() { return clock_; }
 
  private:
-  PhysicalClockPtr clock_;
-
-  // Used to get the hybrid_time for metrics.
-  uint64_t NowForMetrics();
-
-  // Used to get the current error, for metrics.
-  uint64_t ErrorForMetrics();
-
   struct HybridClockComponents {
-    // the last clock read/update, in microseconds.
-    uint64_t last_usec;
-    // the next logical value to be assigned to a hybrid_time
-    uint64_t logical;
+    // The last clock read/update, in microseconds.
+    MicrosTime last_usec = 0;
+
+    // The next logical value to be assigned to a hybrid time.
+    LogicalTimeComponent logical = 0;
+
+    HybridClockComponents() noexcept {}
+
+    HybridClockComponents(MicrosTime last_usec_, LogicalTimeComponent logical_)
+        : last_usec(last_usec_),
+          logical(logical_) {
+    }
+
+    HybridClockComponents(HybridClockComponents&& other) = default;
+    HybridClockComponents(const HybridClockComponents& other) = default;
 
     bool operator< (const HybridClockComponents& o) const {
       return last_usec < o.last_usec || last_usec == o.last_usec && logical < o.logical;
@@ -140,25 +133,23 @@ class HybridClock : public Clock {
     bool operator<= (const HybridClockComponents& o) const {
       return last_usec < o.last_usec || last_usec == o.last_usec && logical <= o.logical;
     }
+
+    void HandleLogicalComponentOverflow();
   };
-  std::atomic<HybridClockComponents> components_{{0, 0}};
-
-  // How many bits to left shift a microseconds clock read. The remainder
-  // of the hybrid_time will be reserved for logical values.
-  static const int kBitsToShift;
-
-  // Mask to extract the pure logical bits.
-  static const uint64_t kLogicalBitMask;
-
-  // The scaling factor used to obtain ppms. From the adjtimex source:
-  // "scale factor used by adjtimex freq param.  1 ppm = 65536"
-  static const double kAdjtimexScalingFactor;
 
   enum State {
     kNotInitialized,
     kInitialized
   };
 
+  // Used to get the hybrid_time for metrics.
+  uint64_t NowForMetrics();
+
+  // Used to get the current error, for metrics.
+  uint64_t ErrorForMetrics();
+
+  PhysicalClockPtr clock_;
+  std::atomic<HybridClockComponents> components_{HybridClockComponents(0, 0)};
   State state_ = kNotInitialized;
 
   // Clock metrics are set to detach to their last value. This means

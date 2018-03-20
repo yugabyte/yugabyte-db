@@ -616,7 +616,7 @@ Status Log::Sync() {
   SCOPED_LATENCY_METRIC(metrics_, sync_latency);
 
   if (!sync_disabled_) {
-    if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
+    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
       Random r(GetCurrentTimeMicros());
       int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
                               GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));

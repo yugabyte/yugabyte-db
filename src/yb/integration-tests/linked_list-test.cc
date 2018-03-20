@@ -686,7 +686,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
   if (is_latest) {
     snapshot_str = "LATEST";
   } else {
-    snapshot_str = server::HybridClock::StringifyHybridTime(HybridTime(snapshot_hybrid_time));
+    snapshot_str = HybridTime(snapshot_hybrid_time).ToString();
   }
 
   client::TableIteratorOptions options;

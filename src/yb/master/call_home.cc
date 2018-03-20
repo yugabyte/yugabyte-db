@@ -25,6 +25,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
+#include "yb/util/logging.h"
 
 static const char* kLowLevel = "low";
 static const char* kMediumLevel = "medium";
@@ -97,11 +98,13 @@ bool CollectorBase::Run(CollectionLevel level) {
       Collect(level);
       return true;
     } else {
-      LOG(INFO) << "Skipping collector " << collector_name()
-                << " because it has a higher collection level than the requested one";
+      YB_LOG_EVERY_N_SECS(INFO, 60)
+          << "Skipping collector " << collector_name()
+          << " because it has a higher collection level than the requested one";
     }
   } else {
-    LOG(INFO) << "Skipping collector " << collector_name() << " because of server type";
+    YB_LOG_EVERY_N_SECS(INFO, 60)
+        << "Skipping collector " << collector_name() << " because of server type";
   }
   return false;
 }
