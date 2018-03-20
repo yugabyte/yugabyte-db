@@ -336,7 +336,7 @@ run_test_on_remote_host() {
     # first "--".
     set +u
     sub_yb_build_args=()
-    extra_args=( --skip-build --host-for-tests "localhost" )
+    extra_args=( --skip-build --host-for-tests "localhost" --no-report )
 
     for arg in "${original_args[@]}"; do
       case $arg in
@@ -351,7 +351,7 @@ run_test_on_remote_host() {
           sub_yb_build_args+=( "$arg" )
       esac
     done
-    sub_yb_build_args+=( "${extra_args[@]}" --no-report )
+    sub_yb_build_args+=( "${extra_args[@]}" )
     set -u
 
     log "Running tests on server '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
