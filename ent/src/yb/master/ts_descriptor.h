@@ -42,6 +42,7 @@ class TSDescriptor : public yb::master::TSDescriptor {
   virtual ~TSDescriptor() {}
 
   const string& GetPlacementUuid() const {
+    std::lock_guard<simple_spinlock> l(lock_);
     return placement_uuid_;
   }
 
