@@ -128,7 +128,7 @@ void Batcher::Abort(const Status& status) {
   if (flush_callback_) {
     l.unlock();
 
-    flush_callback_(status);
+    RunCallback(status);
   }
 }
 
@@ -189,7 +189,15 @@ void Batcher::CheckForFinishedFlush() {
     s = STATUS(IOError, "Some errors occurred");
   }
 
-  flush_callback_(s);
+  RunCallback(s);
+}
+
+void Batcher::RunCallback(const Status& status) {
+  auto runnable = std::make_shared<yb::FunctionRunnable>(
+      [ cb{std::move(flush_callback_)}, status ]() { cb(status); });
+  if (!client_->callback_threadpool() || !client_->callback_threadpool()->Submit(runnable).ok()) {
+    runnable->Run();
+  }
 }
 
 MonoTime Batcher::ComputeDeadlineUnlocked() const {

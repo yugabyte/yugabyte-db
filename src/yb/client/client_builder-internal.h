@@ -68,6 +68,9 @@ class YBClientBuilder::Data {
   // A descriptive name for the client. Useful for embedded ybclients.
   std::string client_name_ = "ybclient";
 
+  // The size of the threadpool to use for calling callbacks.
+  size_t threadpool_size_ = 0;
+
   // Placement information for the client.
   CloudInfoPB cloud_info_pb_;
 

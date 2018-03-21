@@ -97,8 +97,8 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   if (status.ok()) {
     TRACE_TO(trace_, "Transfer finished");
   } else {
-    LOG(WARNING) << "Connection torn down before " << ToString()
-                 << " could send its response: " << status.ToString();
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "Connection torn down before " << ToString()
+                                     << " could send its response: " << status.ToString();
   }
   if (call_processed_listener_) {
     call_processed_listener_(this);
