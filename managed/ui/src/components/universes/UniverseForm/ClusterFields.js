@@ -315,7 +315,7 @@ export default class ClusterFields extends Component {
       } else {
         this.configureUniverseNodeList();
       }
-    } else if (isNonEmptyArray(this.state.regionList) &&
+    } else if (isNonEmptyArray(this.state.regionList) && currentProvider &&
       currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
       this.state.numNodes > this.state.maxNumNodes) {
 
@@ -332,7 +332,9 @@ export default class ClusterFields extends Component {
 
 
   numNodesChangedViaAzList(value) {
+    const {updateFormField, clusterType} = this.props;
     this.setState({nodeSetViaAZList: true, numNodes: value});
+    updateFormField(`${clusterType}.numNodes`, value);
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -569,6 +571,7 @@ export default class ClusterFields extends Component {
       universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
     }
     universeTaskParams.currentClusterType = clusterType;
+    universeTaskParams.userAZSelected = false;
     this.handleUniverseConfigure(universeTaskParams);
   }
 

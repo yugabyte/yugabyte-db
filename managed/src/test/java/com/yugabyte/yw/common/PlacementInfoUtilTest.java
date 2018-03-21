@@ -75,7 +75,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public TestData(Common.CloudType cloud, int replFactor, int numNodes) {
       String customerCode = String.valueOf(customerIdx.nextInt(99999));
       customer = ModelFactory.testCustomer(customerCode,
-                                           String.format("%s@customer.com", customerCode));
+              String.format("%s@customer.com", customerCode));
       provider = ModelFactory.newProvider(customer, cloud);
 
       // Set up base Universe
@@ -124,23 +124,23 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public void setAzUUIDs(Set<NodeDetails> nodes) {
       for (NodeDetails node : nodes) {
         switch (node.cloudInfo.az) {
-        case "az-1":
-        case "az-4":
-        case "az-7":
-        case "az-10":
-          node.azUuid = az1.uuid;
-          break;
-        case "az-2":
-        case "az-5":
-        case "az-8":
-          node.azUuid = az2.uuid;
-          break;
-        case "az-3":
-        case "az-6":
-        case "az-9":
-        default:
-          node.azUuid = az3.uuid;
-          break;
+          case "az-1":
+          case "az-4":
+          case "az-7":
+          case "az-10":
+            node.azUuid = az1.uuid;
+            break;
+          case "az-2":
+          case "az-5":
+          case "az-8":
+            node.azUuid = az2.uuid;
+            break;
+          case "az-3":
+          case "az-6":
+          case "az-9":
+          default:
+            node.azUuid = az3.uuid;
+            break;
         }
       }
     }
@@ -213,7 +213,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         }
       }
       List<Integer> numNodes =
-        new ArrayList<Integer>(PlacementInfoUtil.getAzUuidToNumNodes(nodes).values());
+              new ArrayList<Integer>(PlacementInfoUtil.getAzUuidToNumNodes(nodes).values());
       assertTrue(standardDeviation(numNodes) == 0);
     }
 
@@ -244,10 +244,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   private void changeEachAZsNodesByOne(PlacementInfo placementInfo, boolean isAdd) {
     for (PlacementCloud cloud : placementInfo.cloudList) {
-	  for (PlacementRegion region : cloud.regionList) {
-	    for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-	      PlacementAZ az = region.azList.get(azIdx);
-	      if (isAdd) {
+      for (PlacementRegion region : cloud.regionList) {
+        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+          PlacementAZ az = region.azList.get(azIdx);
+          if (isAdd) {
             az.numNodesInAZ = az.numNodesInAZ + 1;
           } else if (az.numNodesInAZ > 1) {
             az.numNodesInAZ = az.numNodesInAZ - 1;
@@ -260,9 +260,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   void setPerAZCounts(PlacementInfo placementInfo, Collection<NodeDetails> nodeDetailsSet) {
     Map<UUID, Integer> azUuidToNumNodes = PlacementInfoUtil.getAzUuidToNumNodes(nodeDetailsSet);
     for (PlacementCloud cloud : placementInfo.cloudList) {
-	  for (PlacementRegion region : cloud.regionList) {
-	    for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-	      PlacementAZ az = region.azList.get(azIdx);
+      for (PlacementRegion region : cloud.regionList) {
+        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+          PlacementAZ az = region.azList.get(azIdx);
           if (azUuidToNumNodes.containsKey(az.uuid)) {
             az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
           }
@@ -453,7 +453,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(5, t.universe.getMasters().size());
     assertEquals(5, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(10, nodes.size());
- }
+  }
 
   @Test
   public void testReplicationFactorOne() {
@@ -488,7 +488,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     try {
       testData.add(new TestData(Common.CloudType.aws, 7, 3));
     } catch (UnsupportedOperationException e) {
-       assertTrue(e.getMessage().contains("nodes cannot be less than the replication"));
+      assertTrue(e.getMessage().contains("nodes cannot be less than the replication"));
     }
   }
 

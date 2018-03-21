@@ -24,12 +24,19 @@ export default class AZSelectorTable extends Component {
   };
 
   resetAZSelectionConfig = () => {
-    const {universe: {universeConfigTemplate}} = this.props;
+    const {universe: {universeConfigTemplate}, clusterType} = this.props;
     const clusters = _.clone(universeConfigTemplate.data.clusters);
+    let currentTemplate = _.clone(universeConfigTemplate.data, true);
+
     if (isNonEmptyArray(clusters)) {
-      clusters.forEach((cluster) => delete cluster["placementInfo"]);
+      currentTemplate.clusters.forEach(function(cluster, idx){
+        if (cluster.clusterType.toLowerCase() === clusterType) {
+          delete currentTemplate.clusters[idx]["placementInfo"];
+        }
+      });
     }
-    this.props.submitConfigureUniverse({clusters: clusters});
+    currentTemplate.userAZSelected = true;
+    this.props.submitConfigureUniverse(currentTemplate);
   };
 
   handleAZChange(listKey, event) {
@@ -134,6 +141,7 @@ export default class AZSelectorTable extends Component {
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+        newTaskParams.userAZSelected = true;
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {
@@ -182,7 +190,8 @@ export default class AZSelectorTable extends Component {
     if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
       currentClusterNodes =
       universeConfigTemplate.nodeDetailsSet.filter(function (nodeItem) {
-        return nodeItem.clusterUuid === cluster.uuid;
+
+        return nodeItem.clusterUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Running");
       });
     }
 
@@ -246,6 +255,7 @@ export default class AZSelectorTable extends Component {
         groupsArray = sortedGroupArray;
       }
     }
+
     return ({groups: groupsArray,
       uniqueRegions: uniqueRegions.length,
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
