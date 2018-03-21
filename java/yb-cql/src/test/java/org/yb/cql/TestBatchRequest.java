@@ -34,6 +34,7 @@ public class TestBatchRequest extends BaseCQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
+    // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 180;
   }
 

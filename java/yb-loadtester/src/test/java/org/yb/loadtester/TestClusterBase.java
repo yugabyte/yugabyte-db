@@ -105,6 +105,7 @@ public class TestClusterBase extends BaseCQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
+    // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return TEST_TIMEOUT_SEC;
   }
 
