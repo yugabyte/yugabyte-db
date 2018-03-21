@@ -201,6 +201,11 @@ menu:
       identifier: develop-realworld-apps-iot-spark-kafka
       url: /develop/realworld-apps/iot-spark-kafka/
       weight: 583
+    - name: Ecommerce App
+      parent: develop-realworld-apps
+      identifier: develop-realworld-apps-ecommerce-app
+      url: /develop/realworld-apps/ecommerce-app/
+      weight: 584
     - name: Deploy
       identifier: deploy
       url: /deploy/
