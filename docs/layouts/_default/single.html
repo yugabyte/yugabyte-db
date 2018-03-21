@@ -17,17 +17,16 @@
 
 <main class="main">
 	<div class="drawer">
-		{{ partial "drawer" . }}
+		{{ partial "drawer" (dict "context" .) }}
 	</div>
 
 	<article class="article">
 		<div class="wrapper">
-      {{ partial "breadcrumbs" . }}
+			{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
-			<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
+			<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}</h1>
 
 			{{ .TableOfContents }}
-
 			{{ .Content }}
 
 			<!--<aside class="copyright" role="note">

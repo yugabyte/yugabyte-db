@@ -17,20 +17,19 @@
 
 <main class="main">
 	<div class="drawer">
-		{{ partial "drawer" . }}
+		{{ partial "drawer" (dict "context" . "menu" .Site.Menus.latest) }}
 	</div>
 
 	<article class="article">
 		<div class="wrapper">
-      {{ partial "breadcrumbs" . }}
 
-			{{ range where .Site.Pages "Type" "index" }}
+				{{ partial "detect_version" . }}
+
 				<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
 
 				{{ .TableOfContents }}
 
 				{{ .Content }}
-			{{ end }}
 
 			<!--<aside class="copyright" role="note">
 				{{ with .Site.Params.copyright }}

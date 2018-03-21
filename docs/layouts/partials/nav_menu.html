@@ -1,6 +1,5 @@
 {{ $bundle := . }}
 
-{{ if gt (len .menu) 0 }}
   <ul{{ if eq $.level 1 }} id="drawerMenu"{{ end }}>
     {{ range .menu }}
         {{ $.context.Scratch.Set "currentMenuEntry" . }}
@@ -14,4 +13,4 @@
       </li>
     {{ end }}
   </ul>
-{{ end }}
+

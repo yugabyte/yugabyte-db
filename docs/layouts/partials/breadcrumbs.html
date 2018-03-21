@@ -1,18 +1,20 @@
-{{ .Scratch.Set "foundBreadcrumb" 0 }}
-{{ partial "breadcrumb_url_search" (dict "context" . "menu" .Site.Menus.main.ByWeight) }}
-{{ $foundBreadcrumb := (.Scratch.Get "foundBreadcrumb") }}
+{{ with $.context }}
+  {{ .Scratch.Set "foundBreadcrumb" 0 }}
+  {{ partial "breadcrumb_url_search" (dict "context" . "menu" $.menu) }}
+  {{ $foundBreadcrumb := (.Scratch.Get "foundBreadcrumb") }}
 
-<div class="breadcrumbs">
-  <span class="mobile-only">
-    <label class="toggle-button" for="toggle-drawer">
-      Docs
-    </label>
-    <i class="fa fa-angle-right"></i>
-  </span>
+  <div class="breadcrumbs">
+    <span class="mobile-only">
+      <label class="toggle-button" for="toggle-drawer">
+        Docs
+      </label>
+      <i class="fa fa-angle-right"></i>
+    </span>
 
-  {{ if ($foundBreadcrumb) }}
-    {{ if (gt (len $foundBreadcrumb) 1) }}
-      {{ partial "breadcrumb_links" $foundBreadcrumb }}
+    {{ if ($foundBreadcrumb) }}
+      {{ if (gt (len $foundBreadcrumb) 1) }}
+        {{ partial "breadcrumb_links" $foundBreadcrumb }}
+      {{ end }}
     {{ end }}
-  {{ end }}
-</div>
+  </div>
+{{ end }}

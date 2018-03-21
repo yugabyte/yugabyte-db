@@ -1,0 +1,9 @@
+{{ $context := . }}
+{{ $path := split .Dir "/" }}
+{{ $title := (index $path 0) }}
+{{ range $index,$value := .Site.Menus }}
+  {{ if eq $index $title }}
+    {{ $context.Scratch.Set "currentVersionMenu" $value }}
+    {{ $context.Scratch.Set "currentVersionTitle" $index }}
+  {{ end }}
+{{ end }}

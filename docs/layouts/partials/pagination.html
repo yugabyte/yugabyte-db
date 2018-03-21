@@ -1,13 +1,20 @@
+
+{{ partial "pagination_url_search" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
+{{ partial "pagination_get_links" . }}
+
+{{ $PrevLink := .Scratch.Get "neededPrevLink" }}
+{{ $NextLink := .Scratch.Get "neededNextLink" }}
+
 {{ if .IsPage }}
-{{ if .Prev | or .Next }}
+{{ if $PrevLink | or $NextLink }}
 <nav class="pagination" aria-label="Footer">
-  <div class="next">
-  {{ if .Next }}
-      <a href="{{ .Next.Permalink }}" title="{{ .Next.Title }}">
+  {{ if $NextLink }}
+    <div class="next">
+      <a href="{{ $NextLink.URL }}" title="{{ $NextLink.Title }}">
         <div class="page">
           <div class="stretch">
             <div class="title">
-              {{ .Next.Title }}
+              {{ $NextLink.Page.Description }}
             </div>
           </div>
           <div class="button button-next" role="button" aria-label="Next">
@@ -15,54 +22,25 @@
           </div>
         </div>
       </a>
+    </div>
   {{ end }}
-  </div>
 
-  <div class="previous">
-  {{ if .Prev }}
-      <a href="{{ .Prev.Permalink }}" title="{{ .Prev.Title }}">
+  {{ if $PrevLink }}
+    <div class="previous">
+      <a href="{{ $PrevLink.URL }}" title="{{ $PrevLink.Title }}">
         <div class="page">
           <div class="button button-previous" role="button" aria-label="Previous">
             <i class="icon icon-back"></i>
           </div>
           <div class="stretch">
             <div class="title">
-              {{ .Prev.Title }}
+              {{ $PrevLink.Page.Description }}
             </div>
           </div>
         </div>
       </a>
+    </div>
   {{ end }}
-  </div>
-</nav>
-{{ end }}
-{{ end }}
-
-{{ if .IsHome }}
-{{ if gt (len .Site.Pages) 2 }}
-<nav class="pagination" aria-label="Footer">
-  <div class="previous">
-  </div>
-
-  {{ $title := (index (.Site.Pages.ByWeight) 1).Title  }}
-  {{ $permalink := (index (.Site.Pages.ByWeight) 1).Permalink }}
-  <div class="next">
-      <a href="{{ $permalink }}" title="{{ $title }}">
-        <span class="direction">
-          Next
-        </span>
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ $title }}
-            </div>
-          </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
-  </div>
 </nav>
 {{ end }}
 {{ end }}

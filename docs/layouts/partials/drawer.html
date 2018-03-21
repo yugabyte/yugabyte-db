@@ -1,3 +1,4 @@
+{{ with $.context}}
 <h3>
   <a href="{{ $.Site.BaseURL }}">Docs</a>
 </h3>
@@ -24,7 +25,14 @@
 
       <div class="toc">
         {{ partial "search" . }}
-        {{ partial "nav" . }}
+
+        {{ partial "detect_version" . }}
+
+        {{ if $.menu }}
+          {{ partial "nav" (dict "context" . "menu" $.menu) }}
+        {{ else }}
+          {{ partial "nav" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
+        {{ end }}
 
         {{ if isset .Site.Params "author" }}
 
@@ -58,3 +66,4 @@
     </div>
   </div>
 </nav>
+{{ end }}
