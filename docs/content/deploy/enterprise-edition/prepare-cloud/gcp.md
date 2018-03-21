@@ -1,117 +1,71 @@
-## Creating the project
 
-Go to https://console.cloud.google.com/cloud-resource-manager and click on `CREATE PROJECT`.
+## 1. Create a new project (optional)
 
-Give the project a representative name (eg: `yb-testing-1`) and take note of the project ID that
-will be assigned (eg: `yb-testing-1`). Assuming the name was unique enough, the ID will likely be
-exactly the same.
+A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. You would need browse to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
 
-You should see something like:
+Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (eg: `yugabyte-gcp`). You should see a dialog that looks like the screenshot below.
 
-<img src="/images/ee/gcp-setup/project-create.png" style="max-width:600px;" alt="Creating a project" />
+![Creating a GCP project](/images/ee/gcp-setup/project-create.png)
 
-Click `Create` to start the project creation. It should take less than a minute for the project to
-become available. Once it does, click on it in the `Cloud Resource Manager` view to go check it
-out, or directly visit https://console.cloud.google.com/home/dashboard?project=PROJECT_ID, where
-`PROJECT_ID` is the ID from before.
 
-## Setting up a new Service Account
+## 2. Set up a new service account
 
-In order for YugaWare to be able to provision VMs on your behalf, it will require a service
-account, with relevant permissions across your project. You can create one now!
+Yugaware admin console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
 
-First, go to the `IAM & admin` service and visit the `Service accounts` tab.
+Fill the form with the following values:
 
-Assuming you have no service accounts, as this is a brand new project, you should see something
-like this:
+- Service account name is `yugaware` (you can customize the name if needed).
+- Set role to `Project` -> `Owner`.
+- Check the box for `Furnish a new private key`, choose `JSON` option.
 
-![Service Account -- empty view](/images/ee/gcp-setup/service-account-empty-view.png)
-
-Click on the `Create service account` button and fill in the form as follows:
-
-- Give it a relevant name (eg: `yb-testing-service-account-1`).
-- Allow it a strong set of permissions (`Project -> Owner`).
-- Check the box for `Furnish a new private key` in `JSON` format.
-
-Once you are done, you should see something along the lines of:
+Here is a screenshot with the above values in the form, click create once the values are filled in.
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-Click `CREATE` and note the following will happen within a matter of seconds:
+**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugaware Admin Console.
 
-- Your browser would have downloaded the respective JSON format key.
-- You will get a notification in the foreground about this key. Feel free to press `CLOSE` whenever.
 
-![Service Account -- pop up on create](/images/ee/gcp-setup/service-account-popup.png)
+## 3. Creating a firewall rule
 
-- An entry for that service account will appear in the background.
+In order to access Yugaware from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
-![Service Account -- background list entry](/images/ee/gcp-setup/service-account-background.png)
+- Access the Yugaware instance over ssh (port tcp:22)
+- Check, manage and upgrade Yugaware (port tcp:8800)
+- View the Yugaware console ui (port tcp:80)
 
-Note: It is important that you safely store the JSON key as we will need to provide it to the
-Admin Console in order for it to be able to manage your YugaByte GCP environment for you!
+Let us create a firewall entry enabling all of that!
 
-## Creating a Firewall rule
-
-Prepare for deploying YugaWare by enabling a firewall rule so that you will be able to access the
-machine from outside of the GCP environment. You will at minimum need to SSH to it (default tcp:22),
-check and manage its versioning through the Replicated interface (tcp:8800), as well as directly
-access the service itself (tcp:80). Let us create a firewall entry enabling all of that!
-
-Go to `VPC network` service and visit the `Firewall ruels` tab:
+Go to `VPC network` -> `Firewall rules` tab:
 
 ![Firewall -- service entry](/images/ee/gcp-setup/firewall-tab.png)
 
-Since this is a new project, you might see the following, saying `Compute Engine is getting ready`:
-
-![Firewall -- prepare compute engine](/images/ee/gcp-setup/firewall-prepare.png)
-
-If so, give this a minute and then refresh the page if it does not do so automatically. Once
-complete, you should see the default set of firewall rules for your default network, as in:
+**NOTE**: If this is a new project, you might see a message saying `Compute Engine is getting ready`. If so, you would need to wait for a while. Once complete, you should see the default set of firewall rules for your default network, as shown below.
 
 ![Firewall -- fresh list](/images/ee/gcp-setup/firewall-fresh-list.png)
 
-Now, to create the YugaWare firewall rule, click on the `CREATE FIREWALL RULE` button and fill in
-the relevant information, as follows:
+Click on the `CREATE FIREWALL RULE` button and fill in the following.
 
-- Give it a relevant name (eg: `yugaware-firewall-rule`).
-- You can put in some relevant description (eg: `Opening up ports for contacting YugaWare`).
-- Add a tag to the `Target tags` field for later use when creating the VM (eg: `yugaware-server`).
-- Add a rule in `Source IP ranges` for accepting traffic from the world (eg: `0.0.0.0/0`).
-- Add the TCP ports discussed above, to the set allowed set (eg `tcp:22,8800,80`).
+- Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
+- Add a description (eg: `Firewall setup for Yugaware Admin Console`).
+- Add a tag `yugaware-server` to the `Target tags` field. This will be used later when creating instances.
+- Add the appropriate ip addresses to the `Source IP ranges` field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
+- Add the ports `tcp:22,8800,80` to the `Protocol and ports` field.
 
-Finally, you should see something like:
+You should see something like the screenshot below, click `Create` next.
 
 ![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
 
-Click `Create` and give it a couple of seconds to be ready.
 
-## Creating the YugaWare VM itself
+## 4. Provision instance for Yugaware
 
-We're ready to create the VM that will house YugaWare!
+Create an instance to run Yugaware. In order to do so, go to `Compute Engine` -> `VM instances` and click on `Create`. Fill in the following values.
 
-Go to the `Compute Engine` service and visit the `VM instances` tab:
-
-![VM instances -- tab](/images/ee/gcp-setup/vm-tab.png)
-
-Assuming that this is a brand new project with no VMs created, you should see a view such as:
-
-![VM instances -- empty list](/images/ee/gcp-setup/vm-list-empty.png)
-
-Click on `Create` to setup your first VM and fill in the form as follows:
-
-- Give the VM a relevant name (eg: `yugaware-1`).
-- Pick a region/zone that's relevant to your deployment (eg: `us-east1-b`).
-- Change the instance type to a sensible `4vCPU` setup (eg: `n1-standard-4`).
-- Change the boot disk to start up an `Ubuntu 16.04` and increase the boot disk size to `100GB`.
-- Open up the `Management, disks, networking, SSH keys` subcomponent and navigate to the
-`Networking` tab. Add the network tag you created on the firewall setup stage (eg: `yugaware-server`).
-- Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. You can
-follow https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#metadatavalues
-for notes on both how to create a new SSH key pair, as well as the particular expected format for
-this field when creating GCP VMs (eg: `ssh-rsa [KEY_VALUE] [USERNAME]`). This is important, so you
-can custom SSH into this machine through a native `ssh` command instead of requiring the `gcloud`
-command for access.
+- Enter `yugaware-1` as the name.
+- Pick a region/zone (eg: `us-east1-b`).
+- Choose `4 vCPUs` (`n1-standard-4`) as the machine type.
+- Change the boot disk image to `Ubuntu 16.04` and increase the boot disk size to `100GB`.
+- Open the `Management, disks, networking, SSH keys` -> `Networking` tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
+- Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. [Follow these instructions](https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#metadatavalues) to create a new SSH key pair, as well as the expected format for this field (eg: `ssh-rsa [KEY_VALUE] [USERNAME]`). This is important to enable `ssh` access to this machine.
 
 ![VM instances -- filled in create](/images/ee/gcp-setup/vm-create-full.png)
 

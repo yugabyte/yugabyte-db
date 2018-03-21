@@ -1,5 +1,5 @@
 ---
-title: Prepare Cloud Environment
+title: Initial Setup
 weight: 669
 ---
 

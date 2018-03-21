@@ -46,6 +46,27 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 
 YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
 
+- Install replicated.
+```{.sh .copy .separator-dollar}
+$ curl -sSL https://get.replicated.com/docker | sudo bash
+```
+
+
+- Install replicated behind a proxy.
+```{.sh .copy .separator-dollar}
+$ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
+```
+
+- After replicated install completes, make sure it is running
+```{.sh .copy .separator-dollar}
+$ sudo docker ps
+```
+
+You should see an output similar to the following.
+
+![Replicated successfully installed](/images/replicated/replicated-success.png)
+
+- **NOTE**: To uninstall an older version of docker, you can do:
 
 ```{.sh .copy .separator-dollar}
 # uninstall any older versions of docker (ubuntu-based hosts)
@@ -61,23 +82,6 @@ $ sudo yum remove docker \
                 docker-engine
 ```
 
-```{.sh .copy .separator-dollar}
-# install replicated
-$ curl -sSL https://get.replicated.com/docker | sudo bash
-```
-
-```{.sh .copy .separator-dollar}
-# install replicated behind a proxy
-$ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
-```
-
-```{.sh .copy .separator-dollar}
-# after replicated install completes, make sure it is running
-$ sudo docker ps
-```
-You should see an output similar to the following.
-
-![Replicated successfully installed](/images/replicated/replicated-success.png)
 
 Next step is install YugaWare as described in the [section below](/deploy/enterprise-edition/admin-console/#step-2-install-yugaware-via-replicated).
 

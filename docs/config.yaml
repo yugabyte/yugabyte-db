@@ -235,15 +235,15 @@ menu:
       identifier: enterprise-edition
       url: /deploy/enterprise-edition/
       weight: 660
-    - name: Prepare Cloud Environment
+    - name: 1. Initial Setup
       parent: enterprise-edition
       url: /deploy/enterprise-edition/prepare-cloud-environment/
       weight: 669
-    - name: Install Admin Console
+    - name: 2. Install Admin Console
       parent: enterprise-edition
       url: /deploy/enterprise-edition/admin-console/
       weight: 670
-    - name: Configure Cloud Providers
+    - name: 3. Configure Cloud Providers
       parent: enterprise-edition
       url: /deploy/enterprise-edition/configure-cloud-providers/
       weight: 680
