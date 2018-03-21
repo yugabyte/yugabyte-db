@@ -63,11 +63,12 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/net/net_fwd.h"
+#include "yb/util/threadpool.h"
 
 template<class T> class scoped_refptr;
 
@@ -202,6 +203,9 @@ class YBClientBuilder {
 
   // Sets client name to be used for naming the client's messenger/reactors.
   YBClientBuilder& set_client_name(const std::string& name);
+
+  // Sets the size of the threadpool for calling callbacks.
+  YBClientBuilder& set_callback_threadpool_size(size_t size);
 
   // Sets skip master leader resolution.
   // Used in tests, when we do not have real master.
@@ -492,6 +496,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
 
   YBClient();
+
+  ThreadPool* callback_threadpool();
 
   // Owned.
   Data* data_;

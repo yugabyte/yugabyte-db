@@ -42,12 +42,13 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 
@@ -295,6 +296,8 @@ class YBClient::Data {
   // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
   // aid in detecting local tservers.
   TabletServerId uuid_;
+
+  std::unique_ptr<ThreadPool> cb_threadpool_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
