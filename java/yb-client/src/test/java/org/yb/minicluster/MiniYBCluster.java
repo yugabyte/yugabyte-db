@@ -78,8 +78,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
 
-  // We support 127.0.0.1 - 127.0.0.16 on MAC as loopback IPs.
-  private static final int NUM_LOCALHOSTS_ON_MAC_OS_X = 16;
+  // We expect that 127.0.0.1 - 127.0.0.254 might be present on macOS as loopback IPs.
+  private static final int NUM_LOCALHOSTS_ON_MAC_OS_X = 254;
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
@@ -557,7 +557,7 @@ public class MiniYBCluster implements AutoCloseable {
       String fatalDetailsPathPrefix = System.getenv("YB_FATAL_DETAILS_PATH_PREFIX");
       if (fatalDetailsPathPrefix == null) {
         fatalDetailsPathPrefix =
-            TestUtils.getSurefireTestReportPrefix() + "fatal_failure_details";
+            TestUtils.getTestReportFilePrefix() + "fatal_failure_details";
       }
       fatalDetailsPathPrefix += "." + type.shortStr() + "-" + indexForLog + "." + bindIp + "-" +
           "port" + rpcPort;

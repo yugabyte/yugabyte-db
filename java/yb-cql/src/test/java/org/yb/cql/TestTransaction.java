@@ -26,6 +26,7 @@ public class TestTransaction extends BaseCQLTest {
 
   public int getTestMethodTimeoutSec() {
     // Extend timeout for testBasicReadWrite stress test.
+    // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 300;
   }
 
