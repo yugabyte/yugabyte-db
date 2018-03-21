@@ -96,6 +96,8 @@ DEFINE_int32(redis_max_command_size, 253_MB,
 // Maximum value size is 64MB
 DEFINE_int32(redis_max_value_size, 64_MB,
              "Maximum size of the value in redis");
+DEFINE_int32(redis_callbacks_threadpool_size, 64,
+             "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 
@@ -377,6 +379,10 @@ class Block : public std::enable_shared_from_this<Block> {
     explicit BlockCallback(BlockPtr block) : block_(std::move(block)) {}
 
     void operator()(const Status& status) {
+      // Block context owns the arena upon which this block is created.
+      // Done is going to free up block's reference to context. So, unless we ensure that
+      // the context lives beyond the block_.reset() we might get an error while updating the
+      // ref-count for the block_ (in the area of arena owned by the context).
       auto context = block_->context_;
       DCHECK(context != nullptr);
       block_->Done(status);
@@ -862,6 +868,7 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     client_builder.add_master_server_addr(yb_tier_master_addresses_);
     client_builder.set_metric_entity(server_->metric_entity());
     client_builder.set_parent_mem_tracker(server_->mem_tracker());
+    client_builder.set_callback_threadpool_size(FLAGS_redis_callbacks_threadpool_size);
     RETURN_NOT_OK(client_builder.Build(&client_));
 
     // Add proxy to call local tserver if available.

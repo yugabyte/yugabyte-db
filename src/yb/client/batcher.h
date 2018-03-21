@@ -178,6 +178,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
       RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
       const bool allow_local_calls_in_curr_thread);
 
+  // Calls/Schedules flush_callback_ and resets it to free resources.
+  void RunCallback(const Status& s);
+
   // Log an error where an Rpc callback has response count mismatch.
   void AddOpCountMismatchError();
 

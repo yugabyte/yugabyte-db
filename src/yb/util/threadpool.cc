@@ -57,22 +57,6 @@ using strings::Substitute;
 using std::unique_ptr;
 
 ////////////////////////////////////////////////////////
-// FunctionRunnable
-////////////////////////////////////////////////////////
-
-class FunctionRunnable : public Runnable {
- public:
-  explicit FunctionRunnable(std::function<void()> func) : func_(std::move(func)) {}
-
-  void Run() override {
-    func_();
-  }
-
- private:
-  std::function<void()> func_;
-};
-
-////////////////////////////////////////////////////////
 // ThreadPoolBuilder
 ///////////////////////////////////////////////////////
 
@@ -435,6 +419,10 @@ Status ThreadPool::SubmitClosure(const Closure& task) {
 
 Status ThreadPool::SubmitFunc(const std::function<void()>& func) {
   return Submit(std::shared_ptr<Runnable>(new FunctionRunnable(func)));
+}
+
+Status ThreadPool::SubmitFunc(std::function<void()>&& func) {
+  return Submit(std::shared_ptr<Runnable>(new FunctionRunnable(std::move(func))));
 }
 
 Status ThreadPool::Submit(const std::shared_ptr<Runnable>& r) {

@@ -186,14 +186,14 @@ class ThreadPool {
   void Shutdown();
 
   // Submit a function using the yb Closure system.
-  CHECKED_STATUS SubmitClosure(const Closure& task) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SubmitClosure(const Closure& task);
 
   // Submit a function binded using std::bind(&FuncName, args...)
-  CHECKED_STATUS SubmitFunc(const std::function<void()>& func) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SubmitFunc(const std::function<void()>& func);
+  CHECKED_STATUS SubmitFunc(std::function<void()>&& func);
 
   // Submit a Runnable class
-  CHECKED_STATUS Submit(const std::shared_ptr<Runnable>& task)
-      WARN_UNUSED_RESULT;
+  CHECKED_STATUS Submit(const std::shared_ptr<Runnable>& task);
 
   // Wait until all the tasks are completed.
   void Wait();
@@ -429,6 +429,22 @@ class ThreadPoolToken {
   int active_threads_;
 
   DISALLOW_COPY_AND_ASSIGN(ThreadPoolToken);
+};
+
+////////////////////////////////////////////////////////
+// FunctionRunnable
+////////////////////////////////////////////////////////
+
+class FunctionRunnable : public Runnable {
+ public:
+  explicit FunctionRunnable(std::function<void()> func) : func_(std::move(func)) {}
+
+  void Run() override {
+    func_();
+  }
+
+ private:
+  std::function<void()> func_;
 };
 
 } // namespace yb

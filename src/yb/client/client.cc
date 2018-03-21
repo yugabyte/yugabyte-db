@@ -295,6 +295,11 @@ YBClientBuilder& YBClientBuilder::set_client_name(const std::string& name) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_callback_threadpool_size(size_t size) {
+  data_->threadpool_size_ = size;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_tserver_uuid(const TabletServerId& uuid) {
   data_->uuid_ = uuid;
   return *this;
@@ -345,6 +350,13 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
                         "Could not determine local host names");
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
+  if (data_->threadpool_size_ > 0) {
+    ThreadPoolBuilder tpb(data_->client_name_ + "_cb");
+    tpb.set_max_threads(data_->threadpool_size_);
+    std::unique_ptr<ThreadPool> tp;
+    RETURN_NOT_OK_PREPEND(tpb.Build(&tp), "Could not create callback threadpool");
+    c->data_->cb_threadpool_ = std::move(tp);
+  }
 
   client->swap(c);
   return Status::OK();
@@ -357,6 +369,9 @@ YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator
 YBClient::~YBClient() {
   if (data_->meta_cache_) {
     data_->meta_cache_->Shutdown();
+  }
+  if (data_->cb_threadpool_) {
+    data_->cb_threadpool_->Shutdown();
   }
   delete data_;
 }
@@ -688,6 +703,10 @@ Status YBClient::GetTablets(const YBTableName& table_name,
 
 const std::shared_ptr<rpc::Messenger>& YBClient::messenger() const {
   return data_->messenger_;
+}
+
+ThreadPool *YBClient::callback_threadpool() {
+  return data_->cb_threadpool_.get();
 }
 
 void YBClient::LookupTabletByKey(const YBTable* table,
