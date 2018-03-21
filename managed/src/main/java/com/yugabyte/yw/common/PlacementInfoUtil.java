@@ -870,8 +870,9 @@ public class PlacementInfoUtil {
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
 
     PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
-
     Universe universe = Universe.get(taskParams.universeUUID);
+    // TODO filter primary nodes and clear those only
+    Collection<NodeDetails> existingNodes = universe.getNodes();
     // If placementInfo is null then user has chosen to Reset AZ config
     // Hence a new full move configuration is generated
     if (primaryPlacementInfo == null) {
@@ -880,7 +881,6 @@ public class PlacementInfoUtil {
       taskParams.retrievePrimaryCluster().placementInfo = getPlacementInfo(taskParams.retrievePrimaryCluster().userIntent);
       configureDefaultNodeStates(taskParams,universe);
     } else {
-
       // In other operations we need to distinguish between expand and full-move.
       Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.retrievePrimaryCluster().placementInfo);
       Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(universe.getUniverseDetails().nodeDetailsSet);
@@ -900,12 +900,11 @@ public class PlacementInfoUtil {
       if (isSimpleExpand) {
         // If simple expand we can go in the configure using placement info path
         configureNodesUsingPlacementInfo(taskParams, true);
+        // Break execution sequence because there are no nodes to be decomissioned
+        return;
       } else {
         // If not simply create a nodeDetailsSet from the provided placement info.
-        // TODO filter primary nodes and clear those only
-        Collection<NodeDetails> existingNodes = universe.getNodes();
         taskParams.nodeDetailsSet.clear();
-
         int startIndex = getNextIndexToConfigure(existingNodes);
         int iter = 0;
         LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
@@ -930,13 +929,13 @@ public class PlacementInfoUtil {
             }
           }
         }
-        // Add all existing nodes in the ToBeDecimissioned state
-        LOG.info("Decommissioning {} nodes.", existingNodes.size());
-        for (NodeDetails node : existingNodes) {
-          node.state = NodeDetails.NodeState.ToBeDecommissioned;
-          taskParams.nodeDetailsSet.add(node);
-        }
       }
+    }
+    // Add all existing nodes in the ToBeDecimissioned state
+    LOG.info("Decommissioning {} nodes.", existingNodes.size());
+    for (NodeDetails node : existingNodes) {
+      node.state = NodeDetails.NodeState.ToBeDecommissioned;
+      taskParams.nodeDetailsSet.add(node);
     }
   }
 
