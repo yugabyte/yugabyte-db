@@ -75,9 +75,10 @@ export default (store) => {
           <Route path="/tasks/:taskUUID" component={TaskDetail}/>
         </Route>
         <Route path="/metrics" component={Metrics} />
-        <Route path="/config" component={DataCenterConfiguration} />
-        <Route path="/config/:tab" component={DataCenterConfiguration} />
-        <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
+        <Route path="/config" component={DataCenterConfiguration}>
+          <Route path="/config/:tab" component={DataCenterConfiguration} />
+          <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
+        </Route>
         <Route path="/alerts" component={Alerts}/>
         <Route path="/help" component={Help}/>
         <Route path="/profile" component={Profile}/>
