@@ -66,7 +66,8 @@ public class PlacementInfoUtil {
   enum ConfigureNodesMode {
     NEW_CONFIG,                       // Round robin nodes across server chosen AZ placement.
     UPDATE_CONFIG_FROM_USER_INTENT,   // Use numNodes from userIntent with user chosen AZ's.
-    UPDATE_CONFIG_FROM_PLACEMENT_INFO // Use the placementInfo as per user chosen AZ distribution.
+    UPDATE_CONFIG_FROM_PLACEMENT_INFO, // Use the placementInfo as per user chosen AZ distribution.
+    NEW_CONFIG_FROM_PLACEMENT_INFO   // Create a move configuration using placement info
   }
 
   /**
@@ -150,7 +151,6 @@ public class PlacementInfoUtil {
       tempIntent.numNodes = existingIntent.numNodes;
       boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
         taskIntent.numNodes != existingIntent.numNodes;
-
       if (!existingIntentsMatch) {
         return ConfigureNodesMode.NEW_CONFIG;
       }
@@ -306,7 +306,6 @@ public class PlacementInfoUtil {
   public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
                                               Long customerId) {
     Cluster primaryCluster = taskParams.retrievePrimaryCluster();
-
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
       taskParams.nodeDetailsSet = new HashSet<>();
@@ -327,6 +326,15 @@ public class PlacementInfoUtil {
       }
     }
 
+    ConfigureNodesMode mode;
+
+    // If user AZ Selection is made for Edit get a new configuration from placement info
+    if (taskParams.userAZSelected && universe != null) {
+      mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
+      configureNodeStates(taskParams, universe, mode);
+      return;
+    }
+
     if (primaryCluster.placementInfo == null) {
       // This is the first create attempt as there is no placement info, we choose a new placement.
       primaryCluster.placementInfo = getPlacementInfo(primaryCluster.userIntent);
@@ -340,7 +348,6 @@ public class PlacementInfoUtil {
       verifyEditParams(taskParams, universe.getUniverseDetails());
     }
 
-    ConfigureNodesMode mode;
     if (didAffinitizedLeadersChange(universe, taskParams)) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
     } else {
@@ -811,7 +818,6 @@ public class PlacementInfoUtil {
     PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
-
     for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
       PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
       for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
@@ -850,11 +856,96 @@ public class PlacementInfoUtil {
     }
   }
 
+  /**
+   * This method configures nodes for Edit case, with user specified placement info.
+   * It supports the following combinations --
+   * 1. Reset AZ, it result in a full move as new config is generated
+   * 2. Any subsequent operation after a Reset AZ will be a full move since subsequent operations will build on reset
+   * 3. Simple Node Count increase will result in an expand.
+   * 4. Any Shrink scenario will be a full move. This is to prevent inconsistencies in cases where the node which is subtracted
+   * is a master node vs. if it is not a master node which are indistinguishable from an AZ Selector pov.
+   * 5. Multi to Single AZ ops will also be a full move operation since it involves shrinks
+   * @param taskParams
+   */
+  public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
+
+    PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
+
+    Universe universe = Universe.get(taskParams.universeUUID);
+    // If placementInfo is null then user has chosen to Reset AZ config
+    // Hence a new full move configuration is generated
+    if (primaryPlacementInfo == null) {
+      // TODO Filter only nodes of current cluster type and remove those
+      taskParams.nodeDetailsSet.clear();
+      taskParams.retrievePrimaryCluster().placementInfo = getPlacementInfo(taskParams.retrievePrimaryCluster().userIntent);
+      configureDefaultNodeStates(taskParams,universe);
+    } else {
+
+      // In other operations we need to distinguish between expand and full-move.
+      Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.retrievePrimaryCluster().placementInfo);
+      Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(universe.getUniverseDetails().nodeDetailsSet);
+
+      boolean isSimpleExpand = true;
+      for (UUID requiredAZUUID: requiredAZToNodeMap.keySet()) {
+        if (!existingAZToNodeMap.containsKey(requiredAZUUID) || requiredAZToNodeMap.get(requiredAZUUID) < existingAZToNodeMap.get(requiredAZUUID)) {
+          isSimpleExpand = false;
+          break;
+        } else {
+          existingAZToNodeMap.remove(requiredAZUUID);
+        }
+      }
+      if (existingAZToNodeMap.size() > 0) {
+        isSimpleExpand = false;
+      }
+      if (isSimpleExpand) {
+        // If simple expand we can go in the configure using placement info path
+        configureNodesUsingPlacementInfo(taskParams, true);
+      } else {
+        // If not simply create a nodeDetailsSet from the provided placement info.
+        // TODO filter primary nodes and clear those only
+        Collection<NodeDetails> existingNodes = universe.getNodes();
+        taskParams.nodeDetailsSet.clear();
+
+        int startIndex = getNextIndexToConfigure(existingNodes);
+        int iter = 0;
+        LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+        for (int cIdx = 0; cIdx < primaryPlacementInfo.cloudList.size(); cIdx++) {
+          PlacementCloud cloud = primaryPlacementInfo.cloudList.get(cIdx);
+          for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
+            PlacementRegion region = cloud.regionList.get(rIdx);
+            for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+              PlacementAZ az = region.azList.get(azIdx);
+              int numDesired = az.numNodesInAZ;
+
+              int numChange = Math.abs(numDesired);
+              // Add all new nodes in the tbe added state
+              while (numChange > 0) {
+                iter ++;
+                placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
+                NodeDetails nodeDetails =
+                        createNodeDetailsWithPlacementIndex(taskParams, new PlacementIndexes(azIdx, rIdx, cIdx, true), startIndex + iter);
+                taskParams.nodeDetailsSet.add(nodeDetails);
+                numChange--;
+              }
+            }
+          }
+        }
+        // Add all existing nodes in the ToBeDecimissioned state
+        LOG.info("Decommissioning {} nodes.", existingNodes.size());
+        for (NodeDetails node : existingNodes) {
+          node.state = NodeDetails.NodeState.ToBeDecommissioned;
+          taskParams.nodeDetailsSet.add(node);
+        }
+      }
+    }
+  }
+
   private static void configureNodesUsingPlacementInfo(UniverseDefinitionTaskParams taskParams,
                                                        boolean isEditUniverse) {
     PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
     LinkedHashSet<PlacementIndexes> indexes =
       getDeltaPlacementIndices(primaryPlacementInfo, taskParams.nodeDetailsSet);
+
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
     int iter = 0;
@@ -927,7 +1018,6 @@ public class PlacementInfoUtil {
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
     LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, taskParams);
     addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, taskParams, deltaNodesMap);
-
     if (universe != null) {
       Collection<NodeDetails> existingNodes = universe.getNodes();
       LOG.info("Decommissioning {} nodes.", existingNodes.size());
@@ -969,6 +1059,8 @@ public class PlacementInfoUtil {
         configureNodesUsingUserIntent(taskParams, universe != null);
         updatePlacementInfo(taskParams.nodeDetailsSet, primaryCluster.placementInfo);
         break;
+      case NEW_CONFIG_FROM_PLACEMENT_INFO:
+        configureNodeEditUsingPlacementInfo(taskParams);
     }
 
     int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
