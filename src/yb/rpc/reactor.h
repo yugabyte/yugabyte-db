@@ -294,11 +294,6 @@ class Reactor {
   // running. Should be used in DCHECK assertions.
   bool IsCurrentThread() const;
 
-  // Indicates whether the reactor is shutting down.
-  //
-  // This method is thread-safe.
-  bool closing() const;
-
   // Shut down the given connection, removing it from the connection tracking
   // structures of this reactor.
   //

@@ -415,11 +415,6 @@ bool Reactor::IsCurrentThread() const {
   return thread_.get() == yb::Thread::current_thread();
 }
 
-bool Reactor::closing() const {
-  std::lock_guard<simple_spinlock> l(pending_tasks_lock_);
-  return closing_;
-}
-
 void Reactor::RunThread() {
   ThreadRestrictions::SetWaitAllowed(false);
   ThreadRestrictions::SetIOAllowed(false);

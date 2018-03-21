@@ -76,6 +76,12 @@ public class TestUtils {
   private static final long WAIT_FOR_TTL_EXTENSION_MS = 100;
 
   private static String NONBLOCKING_RANDOM_DEVICE = "/dev/urandom";
+
+  private static PrintStream defaultStdOut = System.out;
+  private static PrintStream defaultStdErr = System.err;
+
+  private static final boolean DEFAULT_USE_PER_TEST_LOG_FILES = true;
+
   static {
     long seed = System.nanoTime();
     if (new File(NONBLOCKING_RANDOM_DEVICE).exists()) {
@@ -413,18 +419,22 @@ public class TestUtils {
     }
   }
 
-  public static void printHorizontalLine(PrintStream out) {
+  private static String getHorizontalLine() {
     final StringBuilder horizontalLine = new StringBuilder();
     for (int i = 0; i < 100; ++i) {
       horizontalLine.append("-");
     }
-    out.println(horizontalLine);
+    return horizontalLine.toString();
+  }
+
+  public static String HORIZONTAL_LINE = getHorizontalLine();
+
+  public static void printHorizontalLine(PrintStream out) {
+    out.println(HORIZONTAL_LINE);
   }
 
   public static void printHeading(PrintStream out, String msg) {
-    out.println();
-    printHorizontalLine(out);
-    out.println(msg + "\n");
+    out.println("\n" + HORIZONTAL_LINE + "\n" + msg + "\n" + HORIZONTAL_LINE + "\n");
   }
 
   public static String getClassAndMethodStr(Description description) {
@@ -583,7 +593,7 @@ public class TestUtils {
     }
   }
 
-  public static String getSurefireTestReportPrefix() {
+  public static String getTestReportFilePrefix() {
     Class testClass;
     try {
       testClass = Class.forName(BaseYBTest.getCurrentTestClassName());
@@ -606,16 +616,37 @@ public class TestUtils {
     }
     return new File(
         surefireDir,
-        testClass.getName() + "." + BaseYBTest.getCurrentTestMethodName() + "-output."
+        testClass.getName() + String.format(".%03d.", BaseYBTest.getTestMethodIndex()) +
+            BaseYBTest.getCurrentTestMethodName() + "."
     ).toString();
   }
 
-  public static boolean isEnvVarTrue(String envVarName) {
-    String value = System.getenv(envVarName);
+  public static boolean isStringTrue(String value, boolean defaultValue) {
     if (value == null)
-      return false;
-    value = value.trim();
-    return !value.isEmpty() && !value.equals("0") && !value.equals("no") && !value.equals("false");
+      return defaultValue;
+    value = value.trim().toLowerCase();
+    if (value.isEmpty() || value.equals("auto") || value.equals("default"))
+      return defaultValue;
+    return !value.equals("0") && !value.equals("no") && !value.equals("false");
+  }
+
+  public static boolean isEnvVarTrue(String envVarName, boolean defaultValue) {
+    return isStringTrue(System.getenv(envVarName), defaultValue);
+  }
+
+  public static void resetDefaultStdOutAndErr() {
+    System.setOut(defaultStdOut);
+    System.setErr(defaultStdErr);
+  }
+
+  private static volatile Boolean usePerTestLogFiles = null;
+
+  public static boolean usePerTestLogFiles() {
+    if (usePerTestLogFiles == null) {
+      usePerTestLogFiles = isEnvVarTrue(
+          "YB_JAVA_PER_TEST_LOG_FILES", DEFAULT_USE_PER_TEST_LOG_FILES);
+    }
+    return usePerTestLogFiles.booleanValue();
   }
 
 }

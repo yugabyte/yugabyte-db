@@ -31,6 +31,7 @@ public class TestPagingSelect extends BaseCQLTest {
    * need more time to execute in CentOS debug and asan builds.
    */
   public int getTestMethodTimeoutSec() {
+    // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 300;
   }
 

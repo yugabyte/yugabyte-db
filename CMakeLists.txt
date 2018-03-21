@@ -153,6 +153,7 @@ function(VALIDATE_COMPILER_TYPE)
     endif()
   endif()
 
+  set(USING_SANITIZERS FALSE PARENT_SCOPE)
   if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
     if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
         NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
@@ -164,6 +165,7 @@ function(VALIDATE_COMPILER_TYPE)
               "YB_USE_UBSAN=${YB_USE_UBSAN}")
     endif()
     set(ENV{YB_COMPILER_TYPE} "clang")
+    set(USING_SANITIZERS TRUE PARENT_SCOPE)
   endif()
 
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
@@ -615,6 +617,8 @@ endif()
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
+elseif(NOT "${USING_SANITIZERS}")
+  ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
 endif()
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
@@ -852,7 +856,6 @@ else()
   string(SUBSTRING "${YB_LINK}" 0 1 YB_LINK)
 endif()
 
-message("YB_USE_ASAN=${YB_USE_ASAN}")
 # Clang does not support using ASAN and TSAN simultaneously.
 if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
   message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")

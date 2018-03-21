@@ -14,6 +14,9 @@
  */
 package org.yb;
 
+import org.apache.log4j.Appender;
+import org.apache.log4j.ConsoleAppender;
+import org.apache.log4j.LogManager;
 import org.junit.Rule;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TestRule;
@@ -27,8 +30,7 @@ import org.yb.client.TestUtils;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Enumeration;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -37,8 +39,17 @@ import java.util.concurrent.TimeUnit;
 public class BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
 
+  // Global static variables to keep track of the current test class/method and index (1, 2, 3,
+  // etc.) within the test class. We are assuming that we don't not try to run multiple tests in
+  // parallel in the same JVM.
+
   private static String currentTestClassName;
   private static String currentTestMethodName;
+
+  private static final int UNDEFINED_TEST_METHOD_INDEX = -1;
+
+  // We put "001", "002", etc. in per-test log files.
+  private static int testMethodIndex = UNDEFINED_TEST_METHOD_INDEX;
 
   @Rule
   public final Timeout METHOD_TIMEOUT = new Timeout(
@@ -51,46 +62,101 @@ public class BaseYBTest {
   @Rule
   public final TestRule watcher = new TestWatcher() {
 
-    private Map<String, Long> startTimesMs = new HashMap<>();
+    boolean succeeded;
+    boolean failed;
+    long startTimeMs;
+    Throwable failureException;
 
     private final String descriptionToStr(Description description) {
       return TestUtils.getClassAndMethodStr(description);
     }
 
+    private void switchLogging(Runnable doLogging, Runnable doSwitching) {
+      doLogging.run();
+
+      if (TestUtils.usePerTestLogFiles()) {
+        doSwitching.run();
+
+        // Re-create the "out" appender.
+        org.apache.log4j.Logger rootLogger = LogManager.getRootLogger();
+        Enumeration<Appender> appenders = rootLogger.getAllAppenders();
+        int numAppenders = 0;
+        while (appenders.hasMoreElements()) {
+          Appender appender = appenders.nextElement();
+          if (!appender.getName().equals("out")) {
+            throw new RuntimeException(
+                "Expected to have one appender named 'out' to exist, got " + appender.getName());
+          }
+          numAppenders++;
+        }
+        if (numAppenders != 1) {
+          throw new RuntimeException(
+              "Expected to have one appender named 'out' to exist, got " + numAppenders +
+                  " appenders");
+        }
+        Appender oldOutAppender = LogManager.getRootLogger().getAppender("out");
+        rootLogger.removeAllAppenders();
+
+        Appender appender = new ConsoleAppender(oldOutAppender.getLayout());
+        appender.setName(oldOutAppender.getName());
+        rootLogger.addAppender(appender);
+
+        doLogging.run();
+      }
+    }
+
+    private void resetState() {
+      succeeded = false;
+      failed = false;
+      startTimeMs = 0;
+      failureException = null;
+    }
+
     @Override
     protected void starting(Description description) {
+      if (testMethodIndex == UNDEFINED_TEST_METHOD_INDEX) {
+        testMethodIndex = 1;
+      }
+      resetState();
+      startTimeMs = System.currentTimeMillis();
+
       currentTestClassName = description.getClassName();
       currentTestMethodName = description.getMethodName();
 
-      if (TestUtils.isEnvVarTrue("YB_JAVA_PER_TEST_METHOD_OUTPUT_FILES")) {
-        // An experimental mode with a separate output file for each test method.
-        System.out.flush();
-        System.err.flush();
-        String outputPrefix = TestUtils.getSurefireTestReportPrefix();
-        try {
-          System.setOut(new PrintStream(new FileOutputStream(outputPrefix + "stdout.txt")));
-          System.setErr(new PrintStream(new FileOutputStream(outputPrefix + "stderr.txt")));
-        } catch (IOException ex) {
-          throw new RuntimeException(ex);
-        }
-      }
-
-      // The format of the heading below is important as it is parsed by external test dashboarding
-      // tools.
       String descStr = descriptionToStr(description);
-      TestUtils.printHeading(System.out, "Starting YB Java test: " + descStr);
-      startTimesMs.put(descStr, System.currentTimeMillis());
+
+      switchLogging(
+          () -> {
+            // The format of the heading below is important as it is parsed by external test
+            // dashboarding tools.
+            TestUtils.printHeading(System.out, "Starting YB Java test: " + descStr);
+          },
+          () -> {
+            // Use a separate output file for each test method.
+            String outputPrefix = TestUtils.getTestReportFilePrefix();
+            String stdoutPath = outputPrefix + "stdout.txt";
+            String stderrPath = outputPrefix + "stderr.txt";
+            LOG.info("Writing stdout for test " + descStr + " to " + stdoutPath);
+
+            System.out.flush();
+            System.err.flush();
+            try {
+              System.setOut(new PrintStream(new FileOutputStream(stdoutPath)));
+              System.setErr(new PrintStream(new FileOutputStream(stderrPath)));
+            } catch (IOException ex) {
+              throw new RuntimeException(ex);
+            }
+          });
     }
 
     @Override
     protected void succeeded(Description description) {
-      LOG.info("YB Java test succeeded: " + descriptionToStr(description));
       super.succeeded(description);
     }
 
     @Override
     protected void failed(Throwable e, Description description) {
-      LOG.error("YB Java test failed: " + descriptionToStr(description), e);
+      failureException = e;
       super.failed(e, description);
     }
 
@@ -101,15 +167,30 @@ public class BaseYBTest {
     protected void finished(Description description) {
       // The format of the heading below is important as it is parsed by external test dashboarding
       // tools.
-      String descStr = TestUtils.getClassAndMethodStr(description);
-      Long startTimeMs = startTimesMs.get(descStr);
-      if (startTimeMs == null) {
-        LOG.error("Could not identify start time for test " + descStr + " to compute its duration");
-      } else {
-        double elapsedTimeSec = (System.currentTimeMillis() - startTimeMs) / 1000.0;
-        LOG.info("YB Java test " + descStr + String.format(" took %.2f seconds", elapsedTimeSec));
-      }
-      TestUtils.printHeading(System.out, "Finished YB Java test: " + descStr);
+      final String descStr = descriptionToStr(description);
+      switchLogging(
+          () -> {
+            if (succeeded) {
+              LOG.info("YB Java test succeeded: " + descStr);
+            }
+            if (failed) {
+              LOG.error("YB Java test failed: " + descStr, failureException);
+            }
+            if (startTimeMs == 0) {
+              LOG.error("Could not identify start time for test " + descStr + " to compute its " +
+                  "duration");
+            } else {
+              double elapsedTimeSec = (System.currentTimeMillis() - startTimeMs) / 1000.0;
+              LOG.info("YB Java test " + descStr +
+                  String.format(" took %.2f seconds", elapsedTimeSec));
+            }
+            TestUtils.printHeading(System.out, "Finished YB Java test: " + descStr);
+          },
+          () -> {
+            TestUtils.resetDefaultStdOutAndErr();
+          });
+      resetState();
+      testMethodIndex++;
     }
   };
 
@@ -133,6 +214,13 @@ public class BaseYBTest {
       throw new RuntimeException("Current test method name not known");
     }
     return currentTestMethodName;
+  }
+
+  public static int getTestMethodIndex() {
+    if (testMethodIndex == UNDEFINED_TEST_METHOD_INDEX) {
+      throw new RuntimeException("Test method index within the test class not known");
+    }
+    return testMethodIndex;
   }
 
 }

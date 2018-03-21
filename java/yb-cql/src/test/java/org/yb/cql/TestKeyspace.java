@@ -80,6 +80,7 @@ public class TestKeyspace extends BaseCQLTest {
   }
 
   public int getTestMethodTimeoutSec() {
+    // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 300;
   }
 
