@@ -110,24 +110,24 @@ public class Util {
   }
 
   /**
-   * Returns a map of nodes in the ToBeAdded state in the given nodeDetailsSet
-   * @param taskParams taskParams for the Create/Edit operation
+   * Returns a map of nodes in the ToBeAdded state in the given set of nodes.
+   * @param nodes nodes to examine for the Create/Edit operation
    * @return Map of AZUUID to number of desired nodes in the AZ
    */
-  public static HashMap<UUID, Integer> toBeAddedAzUuidToNumNodes(
-      UniverseDefinitionTaskParams taskParams) {
-    HashMap<UUID, Integer> toBeAddedazUUIDToNumNodes = new HashMap<UUID, Integer>();
-    if (taskParams == null || taskParams.nodeDetailsSet.isEmpty()) {
-      return toBeAddedazUUIDToNumNodes;
+  public static HashMap<UUID, Integer> toBeAddedAzUuidToNumNodes(Collection<NodeDetails> nodes) {
+    HashMap<UUID, Integer> toBeAddedAzUUIDToNumNodes = new HashMap<>();
+    if (nodes == null || nodes.isEmpty()) {
+      return toBeAddedAzUUIDToNumNodes;
+
     }
-    for (NodeDetails currentNode: taskParams.nodeDetailsSet) {
+    for (NodeDetails currentNode: nodes) {
       if (currentNode.state == NodeDetails.NodeState.ToBeAdded) {
         UUID currentAZUUID = currentNode.azUuid;
-        toBeAddedazUUIDToNumNodes.put(currentAZUUID,
-                                      toBeAddedazUUIDToNumNodes.getOrDefault(currentAZUUID,0) + 1);
+        toBeAddedAzUUIDToNumNodes.put(currentAZUUID, toBeAddedAzUUIDToNumNodes.getOrDefault(currentAZUUID, 0) + 1);
+
       }
     }
-    return toBeAddedazUUIDToNumNodes;
+    return toBeAddedAzUUIDToNumNodes;
   }
   
   /**
@@ -200,7 +200,7 @@ public class Util {
 
     Map<UUID, Integer> azToNumStoppedNodesMap = getAZToStoppedNodesCountMap(nodeDetailsSet);
     int numMastersToBeAdded =
-        universe.getUniverseDetails().retrievePrimaryCluster().userIntent.replicationFactor -
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor -
             getNumMasters(nodeDetailsSet);
     int numStoppedMasters = 0;
     for (UUID azUUID : azToNumStoppedNodesMap.keySet()) {
@@ -238,7 +238,7 @@ public class Util {
   public static boolean areMastersUnderReplicated(NodeDetails currentNode,
                                                   Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (universeDetails.retrievePrimaryCluster().userIntent.replicationFactor >
+    if (universeDetails.getPrimaryCluster().userIntent.replicationFactor >
           getNumMasters(universeDetails.nodeDetailsSet) &&
         needMasterQuorumRestore(currentNode, universe.universeUUID)) {
       return true;

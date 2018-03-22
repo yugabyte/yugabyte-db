@@ -98,8 +98,8 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator, numIterations);
-
     return params;
   }
 
@@ -144,6 +144,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
 
     return params;
@@ -240,6 +241,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     for (int i = 0; i < 3; ++i) {
       nextStubbing = nextStubbing.thenReturn(sampleNodeDetails); // return same node 3x
     }
+    decommissioningNode.placementUuid = sampleNodeDetails.placementUuid;
     nextStubbing = nextStubbing.thenReturn(decommissioningNode);
     nextStubbing.thenReturn(null);
 

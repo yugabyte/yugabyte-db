@@ -25,7 +25,7 @@ public class NodeDetails {
   public UUID azUuid;
 
   // The UUID of the cluster that this node belongs to.
-  public UUID clusterUuid;
+  public UUID placementUuid;
 
   // Possible states in which this node can exist.
   public enum NodeState {
@@ -92,7 +92,8 @@ public class NodeDetails {
       .append(", isMaster: ").append(isMaster)
       .append(", isTserver: ").append(isTserver)
       .append(", state: ").append(state)
-      .append(", azUuid: ").append(azUuid);
+      .append(", azUuid: ").append(azUuid)
+      .append(", placementUuid: ").append(placementUuid);
     return sb.toString();
   }
 
@@ -119,6 +120,11 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isRemovable() {
     return state == NodeState.ToBeAdded;
+  }
+  
+  @JsonIgnore
+  public boolean isInPlacement(UUID placementUuid) {
+    return this.placementUuid != null && this.placementUuid.equals(placementUuid);
   }
 
 }

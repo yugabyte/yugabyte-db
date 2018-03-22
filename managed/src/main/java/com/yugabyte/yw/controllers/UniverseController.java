@@ -100,11 +100,17 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      if (checkIfNodeParamsValid(taskParams)) {
-        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
+
+      // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
+      Cluster c = taskParams.currentClusterType.equals("primary") ? 
+          taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);         
+      if (checkIfNodeParamsValid(taskParams, c)) {
+        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
       } else {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + taskParams.retrievePrimaryCluster().userIntent.instanceType);
+        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + 
+            c.userIntent.instanceType);
       }
+      
       return ApiResponse.success(taskParams);
     } catch (Exception e) {
       LOG.error("Unable to Configure Universe for Customer with ID {} Failed with message: {}.",
@@ -127,11 +133,11 @@ public class UniverseController extends AuthenticatedController {
 
       if (taskParams.currentClusterType.equals("primary")) {
         nodesInCluster = taskParams.nodeDetailsSet.stream()
-                .filter(n -> n.clusterUuid.equals(taskParams.retrievePrimaryCluster().uuid))
+                .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
                 .collect(Collectors.toSet());
       } else {
         nodesInCluster = taskParams.nodeDetailsSet.stream()
-                .filter(n -> n.clusterUuid.equals(taskParams.retrieveAsyncClusters().get(0).uuid))
+                .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
                 .collect(Collectors.toSet());
       }
       return ApiResponse.success(UniverseResourceDetails.create(nodesInCluster,
@@ -162,10 +168,12 @@ public class UniverseController extends AuthenticatedController {
     }
     try {
       // Set the provider code.
-      Cluster primaryCluster = taskParams.retrievePrimaryCluster();
-      Provider provider = Provider.find.byId(UUID.fromString(primaryCluster.userIntent.provider));
-      primaryCluster.userIntent.providerType = CloudType.valueOf(provider.code);
-      updatePlacementInfo(taskParams.nodeDetailsSet, primaryCluster.placementInfo);
+      for (Cluster c : taskParams.clusters) {
+        Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
+        c.userIntent.providerType = CloudType.valueOf(provider.code);
+        updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      }
+
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(taskParams, customer.getCustomerId());
@@ -228,7 +236,10 @@ public class UniverseController extends AuthenticatedController {
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
-      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.retrievePrimaryCluster().placementInfo);
+      Cluster primaryCluster = taskParams.getPrimaryCluster();
+
+      updatePlacementInfo(taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
+
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
       UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
@@ -411,7 +422,7 @@ public class UniverseController extends AuthenticatedController {
       // TODO: we need to refactor this to read from cluster
       // instead of top level task param, for now just copy the master flag and tserver flag
       // from primary cluster.
-      Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+      Cluster primaryCluster = taskParams.getPrimaryCluster();
       taskParams.masterGFlags = primaryCluster.userIntent.masterGFlags;
       taskParams.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     } catch (Throwable t) {

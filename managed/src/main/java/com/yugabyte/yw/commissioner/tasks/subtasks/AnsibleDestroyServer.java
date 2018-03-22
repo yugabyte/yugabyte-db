@@ -30,6 +30,13 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
   private void removeNodeFromUniverse(String nodeName) {
+    Universe u = Universe.get(taskParams().universeUUID);
+    if (u.getNode(taskParams().nodeName) == null) {
+      LOG.error("No node in universe with name " + taskParams().nodeName);
+      return;
+    }
+    UserIntent userIntent = u.getUniverseDetails()
+            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -42,8 +49,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
-    UserIntent userIntent = Universe.get(taskParams().universeUUID).getUniverseDetails()
-        .retrievePrimaryCluster().userIntent;
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       // Free up the node.

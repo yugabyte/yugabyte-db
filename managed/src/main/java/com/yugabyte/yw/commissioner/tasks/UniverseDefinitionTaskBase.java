@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -79,8 +80,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.universeUUID = taskParams().universeUUID;
-        Cluster cluster = taskParams().retrievePrimaryCluster();
+        Cluster cluster = taskParams().getPrimaryCluster();
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+        universeDetails.clusters.removeIf(c -> c.clusterType.equals(ClusterType.ASYNC));
+        universeDetails.clusters.addAll(taskParams().getReadOnlyClusters());
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -119,7 +122,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
     String nodePrefix = taskParams().nodePrefix;
     // Pick the univese name from the current in-memory state.
-    String univNewName = taskParams().retrievePrimaryCluster().userIntent.universeName;
+    String univNewName = taskParams().getPrimaryCluster().userIntent.universeName;
     boolean updateNodePrefix = !nodePrefix.contains(univNewName);
     final boolean univNameChanged = !universe.name.equals(univNewName);
 
@@ -171,9 +174,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (universeDetails.retrievePrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+
+    List<Cluster> onPremClusters = universeDetails.clusters.stream()
+            .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
+            .collect(Collectors.toList());
+    for (Cluster onPremCluster : onPremClusters) {
       Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
-      for (NodeDetails node : universeDetails.nodeDetailsSet) {
+      for (NodeDetails node : universeDetails.getNodesInCluster(onPremCluster.uuid)) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
           nodeNames.add(node.nodeName);
@@ -181,7 +188,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       // Update in-memory map.
-      String instanceType = universeDetails.retrievePrimaryCluster().userIntent.instanceType;
+      String instanceType = onPremCluster.userIntent.instanceType;
       Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
       for (NodeDetails node : taskParams().nodeDetailsSet) {
         // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
@@ -201,13 +208,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+
     for (NodeDetails node : nodes) {
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
       // Set the region code.
       params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -238,13 +247,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+
     for (NodeDetails node : nodes) {
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -270,8 +281,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+
     for (NodeDetails node : nodes) {
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -281,6 +293,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
       params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
       // Sets the isMaster field
       params.isMaster = node.isMaster;
       // Set if this node is a master in shell mode.
@@ -302,15 +315,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public SubTaskGroup createGFlagsOverrideTasks(Collection<NodeDetails> nodes,
                                                 ServerType taskType) {
-    // Skip if no extra flags for this type server.
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
-    if (taskType.equals(ServerType.MASTER) && userIntent.masterGFlags.isEmpty() ||
-        taskType.equals(ServerType.TSERVER) && userIntent.tserverGFlags.isEmpty()) {
+    // Skip if no extra flags for MASTER in primary cluster.
+    if (taskType.equals(ServerType.MASTER) &&
+            taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty()) {
+      return null;
+    }
+    // Skip if all clusters have no extra TSERVER flags. (No cluster has an extra TSERVER flag.)
+    if (taskType.equals(ServerType.TSERVER) &&
+            taskParams().clusters.stream().allMatch(c -> c.userIntent.tserverGFlags.isEmpty())) {
       return null;
     }
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
     for (NodeDetails node : nodes) {
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -320,6 +338,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
       params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
       // Add task type
       params.type = UpgradeUniverse.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
@@ -354,6 +373,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The service and the command we want to run.
       params.process = "master";
       params.command = isShell ? "start" : "create";
+      params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
@@ -385,6 +405,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The service and the command we want to run.
       params.process = "tserver";
       params.command = "start";
+      params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
@@ -431,7 +452,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdatePlacementInfo", executor);
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
     params.cloud = userIntent.providerType;
@@ -466,7 +487,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (taskParams().nodePrefix == null) {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
-    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
-    PlacementInfoUtil.verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
+    for (Cluster cluster : taskParams().clusters) {
+      PlacementInfoUtil.verifyNodesAndRF(cluster.userIntent.numNodes,
+              cluster.userIntent.replicationFactor);
+    }
   }
 }

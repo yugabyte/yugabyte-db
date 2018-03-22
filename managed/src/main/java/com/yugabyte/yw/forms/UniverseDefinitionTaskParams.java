@@ -13,10 +13,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -60,7 +62,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public boolean userAZSelected = false;
 
   // The set of nodes that are part of this universe. Should contain nodes in both primary and
-  // async clusters.
+  // readOnly clusters.
   public Set<NodeDetails> nodeDetailsSet = null;
 
   // TODO: Add a version number to prevent stale updates.
@@ -245,18 +247,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * @param nodeName Name of a particular node to remove from the containing nodeDetailsSet.
    */
   public void removeNode(String nodeName) {
-    nodeDetailsSet.removeIf(node -> node.nodeName.equals(nodeName));
+    if (nodeDetailsSet != null) {
+      nodeDetailsSet.removeIf(node -> node.nodeName.equals(nodeName));
+    }
   }
 
-  /**
-   * Add a primary cluster with a new UserIntent and an empty PlacementInfo to the list of clusters
-   * if one does not already exist. Otherwise, simply return the existing primary cluster.
-   *
-   * @return the existing/inserted primary cluster.
-   */
-  public Cluster upsertPrimaryCluster() {
-    return upsertPrimaryCluster(null, null);
-  }
 
   /**
    * Add a primary cluster with the specified UserIntent and PlacementInfo to the list of clusters
@@ -268,10 +263,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * @return the updated/inserted primary cluster.
    */
   public Cluster upsertPrimaryCluster(UserIntent userIntent, PlacementInfo placementInfo) {
-    Cluster primaryCluster = retrievePrimaryCluster();
+    Cluster primaryCluster = getPrimaryCluster();
     if (primaryCluster != null) {
-      primaryCluster.userIntent = (userIntent == null) ? primaryCluster.userIntent : userIntent;
-      primaryCluster.placementInfo = (placementInfo == null) ? primaryCluster.placementInfo : placementInfo;
+      if (userIntent != null) {
+        primaryCluster.userIntent = userIntent;
+      }
+      if (placementInfo != null) {
+        primaryCluster.placementInfo = placementInfo;
+      }
     } else {
       primaryCluster = new Cluster(ClusterType.PRIMARY, (userIntent == null) ? new UserIntent() : userIntent);
       primaryCluster.placementInfo = placementInfo;
@@ -281,11 +280,39 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   /**
+   * Add a cluster with the specified UserIntent, PlacementInfo, and uuid to the list of clusters
+   * if one does not already exist. Otherwise, update the existing cluster with the
+   * specified UserIntent and PlacementInfo.
+   *
+   * @param userIntent UserIntent describing the cluster.
+   * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @return the updated/inserted cluster.
+   */
+  public Cluster upsertCluster(UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
+    Cluster cluster = getClusterByUuid(clusterUuid);
+    if (cluster != null) {
+      if (userIntent != null) {
+        cluster.userIntent = userIntent;
+      }
+      if (placementInfo != null) {
+        cluster.placementInfo = placementInfo;
+      }
+    } else {
+      cluster = new Cluster(ClusterType.ASYNC, (userIntent == null) ? new UserIntent() : userIntent);
+      cluster.placementInfo = placementInfo;
+      clusters.add(cluster);
+    }
+    cluster.setUuid(clusterUuid);
+    return cluster;
+  }
+
+  /**
    * Helper API to retrieve the Primary Cluster in the Universe represented by these Params.
    *
    * @return the Primary Cluster in the Universe represented by these Params or null if none exists.
    */
-  public Cluster retrievePrimaryCluster() {
+  @JsonIgnore
+  public Cluster getPrimaryCluster() {
      List<Cluster> foundClusters = clusters.stream()
          .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
          .collect(Collectors.toList());
@@ -297,11 +324,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   /**
-   * Helper API to retrieve all Async Clusters in the Universe represented by these Params.
+   * Helper API to retrieve all ReadOnly Clusters in the Universe represented by these Params.
    *
-   * @return a list of all Async Clusters in the Universe represented by these Params.
+   * @return a list of all ReadOnly Clusters in the Universe represented by these Params.
    */
-  public List<Cluster> retrieveAsyncClusters() {
+  @JsonIgnore
+  public List<Cluster> getReadOnlyClusters() {
     return clusters.stream()
                    .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
                    .collect(Collectors.toList());
@@ -313,14 +341,28 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * @param uuid UUID of the Cluster to retrieve.
    * @return The Cluster corresponding to the provided UUID or null if none exists.
    */
-  public Cluster retrieveClusterByUuid(UUID uuid) {
+  @JsonIgnore
+  public Cluster getClusterByUuid(UUID uuid) {
     List<Cluster> foundClusters =  clusters.stream()
-        .filter(c -> c.uuid.equals(uuid))
-        .collect(Collectors.toList());
+            .filter(c -> c.uuid.equals(uuid))
+            .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
       throw new RuntimeException("Multiple clusters with uuid " + uuid.toString() +
-          "found in params for universe " + universeUUID.toString());
+              " found in params for universe " + universeUUID.toString());
     }
-    return Iterables.getOnlyElement(foundClusters, retrievePrimaryCluster());
+    return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  /**
+   * Helper API to retrieve nodes that are in a specified cluster.
+   * @param uuid UUID of the cluster that we want nodes from.
+   * @return A Set of NodeDetails that are in the specified cluster.
+   */
+  @JsonIgnore
+  public Set<NodeDetails> getNodesInCluster(UUID uuid) {
+    if (nodeDetailsSet == null) return null;
+    return nodeDetailsSet.stream()
+            .filter(n -> n.isInPlacement(uuid))
+            .collect(Collectors.toSet());
   }
 }

@@ -48,13 +48,14 @@ public class ApiUtils {
         userIntent.accessKeyCode = "yugabyte-default";
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
               idx <= userIntent.replicationFactor);
+          node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
         universeDetails.nodePrefix = nodePrefix;
         universe.setUniverseDetails(universeDetails);
       }
@@ -88,6 +89,7 @@ public class ApiUtils {
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
               setMasters && idx <= userIntent.replicationFactor);
+          node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
