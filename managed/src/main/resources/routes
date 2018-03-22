@@ -48,6 +48,7 @@ PUT     /api/customers/:cUUID                         com.yugabyte.yw.controller
 DELETE  /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
 POST    /api/customers/:cUUID/metrics                 com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/releases                com.yugabyte.yw.controllers.CustomerController.releases(cUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/releases                com.yugabyte.yw.controllers.CustomerController.updateReleases(cUUID: java.util.UUID)
 
 # Access Key API
 GET     /api/customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)

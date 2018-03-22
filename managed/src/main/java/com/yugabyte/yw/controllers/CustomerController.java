@@ -139,6 +139,19 @@ public class CustomerController extends AuthenticatedController {
     return ApiResponse.success(releases.keySet());
   }
 
+  public Result updateReleases(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    releaseManager.loadReleasesToDB();
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("success", true);
+    return ApiResponse.success(responseJson);
+  }
+
   public Result getHostInfo(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
