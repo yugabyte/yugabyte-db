@@ -337,6 +337,10 @@ public class PlacementInfoUtil {
 
     if (primaryCluster.placementInfo == null) {
       // This is the first create attempt as there is no placement info, we choose a new placement.
+      // If user has chosen to reset config in this create attempt we clear the nodeDetailsSet
+      if (universe == null) {
+        taskParams.nodeDetailsSet.clear();
+      }
       primaryCluster.placementInfo = getPlacementInfo(primaryCluster.userIntent);
       LOG.info("Placement created={}.", primaryCluster.placementInfo);
       // Compute the node states that should be configured for this operation.
