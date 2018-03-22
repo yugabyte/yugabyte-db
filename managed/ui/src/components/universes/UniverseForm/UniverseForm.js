@@ -36,7 +36,7 @@ class UniverseForm extends Component {
     this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
     this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
     this.getFormPayload = this.getFormPayload.bind(this);
-    this.configureAsyncCluster = this.configureAsyncCluster.bind(this);
+    this.configureReadOnlyCluster = this.configureReadOnlyCluster.bind(this);
     this.configurePrimaryCluster = this.configurePrimaryCluster.bind(this);
     this.updateFormField = this.updateFormField.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
@@ -51,7 +51,7 @@ class UniverseForm extends Component {
     this.props.dispatch(change("UniverseForm", fieldName, fieldValue));
   }
 
-  configureAsyncCluster = () => {
+  configureReadOnlyCluster = () => {
     this.setState({currentView: 'async'});
   }
 
@@ -221,7 +221,7 @@ class UniverseForm extends Component {
     }
 
     if (this.state.currentView === "primary" && type !== "Edit" && displayPane === "async") {
-      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Next: Configure Read Replica"} onClick={this.configureAsyncCluster}/>;
+      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Next: Configure Read Replica"} onClick={this.configureReadOnlyCluster}/>;
     }
     let submitTextLabel = "";
     if (type === "Create") {
@@ -249,7 +249,7 @@ class UniverseForm extends Component {
       clusterForm = (<PrimaryClusterFields {...clusterProps} isFieldReadOnly={isReadOnly}/>);
     } else {
       // show async cluster if view if async
-      clusterForm = (<AsyncClusterFields {...clusterProps}/>);
+      clusterForm = (<ReadOnlyClusterFields {...clusterProps}/>);
     }
 
     return (
@@ -286,7 +286,7 @@ class PrimaryClusterFields extends Component {
   }
 }
 
-class AsyncClusterFields extends Component {
+class ReadOnlyClusterFields extends Component {
   render() {
     return (
       <Fields names={['async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',

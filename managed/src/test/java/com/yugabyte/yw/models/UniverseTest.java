@@ -326,7 +326,7 @@ public class UniverseTest extends FakeDBApplication {
 
     // Update in-memory user intent so userDetails no longer has null gflags, but json still does
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
-    udtp.retrievePrimaryCluster().userIntent.masterGFlags = new HashMap<>();
+    udtp.getPrimaryCluster().userIntent.masterGFlags = new HashMap<>();
     u.setUniverseDetails(udtp);
 
     // Verify returned json is generated from the non-json userDetails object

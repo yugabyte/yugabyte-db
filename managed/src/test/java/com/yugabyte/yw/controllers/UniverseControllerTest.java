@@ -749,7 +749,7 @@ public class UniverseControllerTest extends WithApplication {
     assertFalse(taskParam.rollingUpgrade);
     assertEquals(taskParam.masterGFlags, ImmutableMap.of("master-flag", "123"));
     assertEquals(taskParam.tserverGFlags, ImmutableMap.of("tserver-flag", "456"));
-    UserIntent primaryClusterIntent = taskParam.retrievePrimaryCluster().userIntent;
+    UserIntent primaryClusterIntent = taskParam.getPrimaryCluster().userIntent;
     assertEquals(primaryClusterIntent.masterGFlags, taskParam.masterGFlags);
     assertEquals(primaryClusterIntent.tserverGFlags, taskParam.tserverGFlags);
   }
@@ -844,8 +844,8 @@ public class UniverseControllerTest extends WithApplication {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
     taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
-    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), taskParams.getPrimaryCluster().uuid);
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
     List<PlacementInfo.PlacementAZ> azList = primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
     assertEquals(azList.size(), 2);
     PlacementInfo.PlacementAZ paz = azList.get(0);
@@ -862,6 +862,81 @@ public class UniverseControllerTest extends WithApplication {
     assertTrue(json.get("nodeDetailsSet").isArray());
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(7, nodeDetailJson.size());
+    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
+  }
+  
+  @Test
+  public void testConfigureCreateWithReadOnlyClusters() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    
+    Region rReadOnly = Region.create(p, "region-readOnly-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(rReadOnly, "az-readOnly-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(rReadOnly, "az-readOnly-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univWithReadOnlyCreate";
+    UUID readOnlyUuid0 = UUID.randomUUID();
+    UUID readOnlyUuid1 = UUID.randomUUID();
+    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
+    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, readOnlyUuid0);
+    taskParams.upsertCluster(getTestUserIntent(rReadOnly, p, i, 5), null, readOnlyUuid1);
+    
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), taskParams.getPrimaryCluster().uuid);
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), readOnlyUuid0);
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), readOnlyUuid1);
+    
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    List<PlacementInfo.PlacementAZ> azList = primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    assertEquals(azList.size(), 2);
+    
+    Cluster readOnlyCluster0 = taskParams.getClusterByUuid(readOnlyUuid0);
+    azList = readOnlyCluster0.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    assertEquals(azList.size(), 2);
+    
+    Cluster readOnlyCluster1 = taskParams.getClusterByUuid(readOnlyUuid1);
+    azList = readOnlyCluster1.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    assertEquals(azList.size(), 2);
+   
+    Map<UUID, Integer> azUUIDToNumNodeMap = getAzUuidToNumNodes(primaryCluster.placementInfo);
+    Map<UUID, Integer> azUUIDToNumNodeMapReadOnly0 = getAzUuidToNumNodes(readOnlyCluster0.placementInfo);
+    Map<UUID, Integer> azUUIDToNumNodeMapReadOnly1 = getAzUuidToNumNodes(readOnlyCluster1.placementInfo);
+    for (Map.Entry<UUID, Integer> entry : azUUIDToNumNodeMapReadOnly0.entrySet()) {
+      UUID uuid = entry.getKey();
+      int numNodes = entry.getValue();
+      if (azUUIDToNumNodeMap.containsKey(uuid)) {
+        int prevNumNodes = azUUIDToNumNodeMap.get(uuid);
+        azUUIDToNumNodeMap.put(uuid, prevNumNodes + numNodes);
+      } else {
+        azUUIDToNumNodeMap.put(uuid, numNodes);
+      }
+    }
+    for (Map.Entry<UUID, Integer> entry : azUUIDToNumNodeMapReadOnly1.entrySet()) {
+      UUID uuid = entry.getKey();
+      int numNodes = entry.getValue();
+      if (azUUIDToNumNodeMap.containsKey(uuid)) {
+        int prevNumNodes = azUUIDToNumNodeMap.get(uuid);
+        azUUIDToNumNodeMap.put(uuid, prevNumNodes + numNodes);
+      } else {
+        azUUIDToNumNodeMap.put(uuid, numNodes);
+      }
+    }
+    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
+
+    String url = "/api/customers/" + customer.uuid + "/universe_configure";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.get("nodeDetailsSet").isArray());
+    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
+    assertEquals(15, nodeDetailJson.size());
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
   }
 
@@ -882,7 +957,7 @@ public class UniverseControllerTest extends WithApplication {
 
     UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
     utd.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
-    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(), utd.getPrimaryCluster().uuid);
     u.setUniverseDetails(utd);
     u.save();
     int totalNumNodesAfterExpand = 0;
@@ -892,7 +967,7 @@ public class UniverseControllerTest extends WithApplication {
       azUuidToNumNodes.put(entry.getKey(), entry.getValue() + 1);
     }
     UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
-    Cluster primaryCluster = editTestUTD.retrievePrimaryCluster();
+    Cluster primaryCluster = editTestUTD.getPrimaryCluster();
     primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
     primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
 
@@ -1005,15 +1080,16 @@ public class UniverseControllerTest extends WithApplication {
     userIntent.instanceType = "type.small";
     taskParams.upsertPrimaryCluster(userIntent, null);
     taskParams.nodeDetailsSet = new HashSet<NodeDetails>();
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
 
-    updateUniverseDefinition(taskParams, customer.getCustomerId());
+    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid);
 
     // Set placement info with number of nodes valid but
     for (int k = 0; k < 5; k++) {
       NodeDetails nd= new NodeDetails();
       nd.state = NodeDetails.NodeState.ToBeAdded;
       nd.azUuid = az1.uuid;
+      nd.placementUuid = primaryCluster.uuid;
       taskParams.nodeDetailsSet.add(nd);
     }
 
@@ -1039,9 +1115,9 @@ public class UniverseControllerTest extends WithApplication {
 
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
 
-    updateUniverseDefinition(taskParams, customer.getCustomerId());
+    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid);
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
@@ -1072,8 +1148,8 @@ public class UniverseControllerTest extends WithApplication {
     userIntent.providerType = CloudType.onprem;
     userIntent.instanceType = "type.small";
     taskParams.upsertPrimaryCluster(userIntent, null);
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
-    updateUniverseDefinition(taskParams, customer.getCustomerId());
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid);
 
     // Set the nodes state to inUse
     int k = 0;
@@ -1097,6 +1173,7 @@ public class UniverseControllerTest extends WithApplication {
       NodeDetails nd= new NodeDetails();
       nd.state = NodeDetails.NodeState.ToBeAdded;
       nd.azUuid = az1.uuid;
+      nd.placementUuid = primaryCluster.uuid;
       taskParams.nodeDetailsSet.add(nd);
     }
 

@@ -37,7 +37,7 @@ public class TableManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse tableCommand(BulkImportParams taskParams) {
 
     Universe universe = Universe.get(taskParams.universeUUID);
-    Cluster primaryCluster = universe.getUniverseDetails().retrievePrimaryCluster();
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
 
     // Grab needed info

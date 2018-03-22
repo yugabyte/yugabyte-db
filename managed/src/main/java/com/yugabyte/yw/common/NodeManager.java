@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -61,14 +62,20 @@ public class NodeManager extends DevopsBase {
   @Inject
   play.Configuration appConfig;
 
+  private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
+    Universe universe = Universe.get(nodeTaskParam.universeUUID);
+    NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+    nodeDetails = nodeDetails != null ? nodeDetails : universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    return universe.getUniverseDetails()
+            .getClusterByUuid(nodeDetails.placementUuid)
+            .userIntent;
+  }
+
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<String>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().code);
-    UserIntent userIntent = Universe.get(nodeTaskParam.universeUUID)
-                                    .getUniverseDetails()
-                                    .retrievePrimaryCluster()
-                                    .userIntent;
+    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
 
     // Right now for docker we grab the network from application conf.
     if (userIntent.providerType.equals(Common.CloudType.docker)) {
@@ -93,16 +100,7 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
-    Cluster primaryCluster = Universe.get(params.universeUUID)
-        .getUniverseDetails()
-        .retrievePrimaryCluster();
-    if (primaryCluster == null) {
-      throw new RuntimeException("Universe missing primary cluster");
-    }
-    UserIntent userIntent = primaryCluster.userIntent;
-    if (userIntent == null) {
-      throw new RuntimeException("Primary cluster missing userIntent");
-    }
+    UserIntent userIntent = getUserIntentFromParams(params);
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
@@ -196,6 +194,7 @@ public class NodeManager extends DevopsBase {
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
         }
+        extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
         // Add in the nodeName during configure.
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         subcommand.add("--extra_gflags");
@@ -226,6 +225,8 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--tags");
             subcommand.add("install-software");
           }
+          subcommand.add("--placement_uuid");
+          subcommand.add(String.valueOf(taskParam.placementUuid));
         }
         break;
       case GFlags:
@@ -245,6 +246,7 @@ public class NodeManager extends DevopsBase {
 
           // Add in the nodeName during configure.
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
+          gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
           gflags.put("metric_node_name", taskParam.nodeName);
 
           subcommand.add("--gflags");
@@ -258,11 +260,7 @@ public class NodeManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
-    UserIntent userIntent = Universe.get(nodeTaskParam.universeUUID)
-                                    .getUniverseDetails()
-                                    .retrievePrimaryCluster()
-                                    .userIntent;
-
+    
     switch (type) {
       case Provision:
       {
@@ -270,6 +268,7 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
+        UserIntent userIntent = getUserIntentFromParams(taskParam);
         Common.CloudType cloudType = userIntent.providerType;
         if (!userIntent.providerType.equals(Common.CloudType.onprem)) {
           commandArgs.add("--instance_type");
@@ -362,7 +361,7 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    commandArgs.add(nodeTaskParam.nodeName);
+    commandArgs.add(nodeTaskParam.nodeName);    
 
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
         commandArgs, getCloudArgs(nodeTaskParam));

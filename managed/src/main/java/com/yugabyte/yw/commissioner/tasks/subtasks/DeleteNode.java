@@ -7,6 +7,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.util.Set;
+
 import static com.yugabyte.yw.common.PlacementInfoUtil.*;
 
 public class DeleteNode extends NodeTaskBase {
@@ -21,16 +25,23 @@ public class DeleteNode extends NodeTaskBase {
         public void run(Universe universe) {
           // If this universe is not being edited, fail the request.
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          Cluster primaryCluster = universeDetails.retrievePrimaryCluster();
+          NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+          if (nodeDetails == null) {
+            throw new RuntimeException("No node in universe with name " + taskParams().nodeName);
+          }
+          Cluster cluster = universeDetails.getClusterByUuid(nodeDetails.placementUuid);
+
           if (isNodeRemovable(taskParams().nodeName, universeDetails.nodeDetailsSet)) {
             // Remove Node from universe node detail set
             removeNodeByName(taskParams().nodeName, universeDetails.nodeDetailsSet);
             // Update Placement Info to reflect new nodeDetailSet
-            updatePlacementInfo(universeDetails.nodeDetailsSet, primaryCluster.placementInfo);
+            Set<NodeDetails> clusterNodes = universeDetails.getNodesInCluster(cluster.uuid);
+            updatePlacementInfo(clusterNodes, cluster.placementInfo);
+
             // Update userIntent to reflect new numNodes
-            primaryCluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
+            cluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
             // If OnPrem Free up the node.
-            if (primaryCluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
+            if (cluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
               NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
               node.inUse = false;
               node.save();

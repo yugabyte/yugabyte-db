@@ -18,7 +18,7 @@ export function getPrimaryCluster(clusters) {
   return null;
 }
 
-export function getAsyncCluster(clusters) {
+export function getReadOnlyCluster(clusters) {
   if (isNonEmptyArray(clusters)) {
     const foundClusters = clusters.filter((cluster) => cluster.clusterType === 'ASYNC');
     if (foundClusters.length === 1) {

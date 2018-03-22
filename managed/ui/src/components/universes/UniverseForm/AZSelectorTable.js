@@ -6,7 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { isNonEmptyArray, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
-import { getPrimaryCluster, getAsyncCluster, getClusterByType } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from '../../../utils/UniverseUtils';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -90,7 +90,7 @@ export default class AZSelectorTable extends Component {
     if (clusterType === "primary") {
       cluster = getPrimaryCluster(universeConfigTemplate.clusters);
     } else {
-      cluster = getAsyncCluster(universeConfigTemplate.clusters);
+      cluster = getReadOnlyCluster(universeConfigTemplate.clusters);
     }
     if ((currentProvider.code !== "onprem" || totalNodesInConfig <= maxNumNodes) &&
         totalNodesInConfig >= minNumNodes && isNonEmptyObject(cluster)) {
@@ -140,6 +140,7 @@ export default class AZSelectorTable extends Component {
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
+        newTaskParams.currentClusterType = clusterType;
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         this.props.submitConfigureUniverse(newTaskParams);
@@ -182,7 +183,7 @@ export default class AZSelectorTable extends Component {
       if (clusterType === "primary") {
         cluster = getPrimaryCluster(universeConfigTemplate.clusters);
       } else {
-        cluster = getAsyncCluster(universeConfigTemplate.clusters);
+        cluster = getReadOnlyCluster(universeConfigTemplate.clusters);
       }
     }
 
@@ -190,8 +191,7 @@ export default class AZSelectorTable extends Component {
     if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
       currentClusterNodes =
       universeConfigTemplate.nodeDetailsSet.filter(function (nodeItem) {
-
-        return nodeItem.clusterUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Running");
+        return nodeItem.placementUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Running");
       });
     }
 

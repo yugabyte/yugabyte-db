@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,15 +52,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // changes the universe name before submitting.
       updateNodeNames();
 
-      UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+      UserIntent userIntent = primaryCluster.userIntent;
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+
       LOG.info("Configure numNodes={}, numMasters={}", userIntent.numNodes,
         userIntent.replicationFactor);
 
       Collection<NodeDetails> nodesToBeRemoved =
-        PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
+        PlacementInfoUtil.getNodesToBeRemoved(primaryNodes);
 
       Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+        PlacementInfoUtil.getNodesToProvision(primaryNodes);
 
       // Set the old nodes' state to to-be-decommissioned.
       if (!nodesToBeRemoved.isEmpty()) {
@@ -93,7 +97,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      newMasters = PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);
+      newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
       // Creates the YB cluster by starting the masters in the shell mode.
       if (!newMasters.isEmpty()) {
@@ -105,8 +109,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(
-        taskParams().nodeDetailsSet);
+      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(primaryNodes);
 
       if (!newTservers.isEmpty()) {
         // Start the tservers in the clusters.
@@ -129,8 +132,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
       }
 
-      Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(
-        taskParams().nodeDetailsSet);
+      Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(primaryNodes);
 
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform

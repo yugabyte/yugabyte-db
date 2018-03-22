@@ -15,7 +15,7 @@ import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import {getPrimaryCluster, getClusterByType} from "../../../utils/UniverseUtils";
+import {getPrimaryCluster, getClusterByType, getReadOnlyCluster} from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -549,26 +549,43 @@ export default class ClusterFields extends Component {
       spotPrice: formValues[clusterType].spotPrice
     };
 
-    if (isNonEmptyObject(formValues.masterGFlags)) {
-      userIntent["masterGFlags"] = formValues.masterGFlags;
+    if (isNonEmptyObject(formValues[clusterType].masterGFlags)) {
+      userIntent["masterGFlags"] = formValues[clusterType].masterGFlags;
     }
-    if (isNonEmptyObject(formValues.tserverGFlags)) {
-      userIntent["tserverGFlags"] = formValues.tserverGFlags;
+    if (isNonEmptyObject(formValues[clusterType].tserverGFlags)) {
+      userIntent["tserverGFlags"] = formValues[clusterType].tserverGFlags;
     }
-    userIntent.assignPublicIP = formValues.assignPublicIP;
 
     this.props.cloud.providers.data.forEach(function (providerItem) {
-      if (providerItem.uuid === userIntent.provider) {
+      if (providerItem.uuid === formValues[clusterType].provider) {
         userIntent.providerType = providerItem.code;
       }
     });
 
-    userIntent.regionList = formValues[clusterType].regionList.map(item => item.value);
-    const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-    if (isDefinedNotNull(primaryCluster)) {
-      primaryCluster.userIntent = userIntent;
+    if (clusterType === "primary") {
+      const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
+      universeTaskParams.currentClusterType = "PRIMARY";
+      if (isDefinedNotNull(primaryCluster)) {
+        primaryCluster.userIntent = userIntent;
+      } else {
+        if (isNonEmptyArray(universeTaskParams.clusters)) {
+          universeTaskParams.clusters.push({clusterType: 'PRIMARY', userIntent: userIntent});
+        } else {
+          universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
+        }
+      }
     } else {
-      universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
+      const asyncCluster = getReadOnlyCluster(universeTaskParams.clusters);
+      universeTaskParams.currentClusterType = "ASYNC";
+      if (isDefinedNotNull(asyncCluster)) {
+        asyncCluster.userIntent = userIntent;
+      } else {
+        if (isNonEmptyArray(universeTaskParams.clusters)) {
+          universeTaskParams.clusters.push({clusterType: 'ASYNC', userIntent: userIntent});
+        } else {
+          universeTaskParams.clusters = [{clusterType: 'ASYNC', userIntent: userIntent}];
+        }
+      }
     }
     universeTaskParams.currentClusterType = clusterType;
     universeTaskParams.userAZSelected = false;
@@ -863,7 +880,17 @@ export default class ClusterFields extends Component {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
-    let azSelectorTable = <span/>;
+    let placementStatus = <span/>;
+    if (self.props.universe.currentPlacementStatus) {
+      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
+    }
+
+    const azSelectorTable = (<div>
+                                <AZSelectorTable {...this.props} clusterType={clusterType}
+                                                  numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+                                                  maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)}/>
+                                  {placementStatus}
+                                </div>);
 
     if (clusterType === "primary") {
       gflagArray =
@@ -885,13 +912,6 @@ export default class ClusterFields extends Component {
         placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
       }
 
-      azSelectorTable =
-        (<div>
-          <AZSelectorTable {...this.props}
-                           numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-                           maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)}/>
-          {placementStatus}
-        </div>);
     }
 
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
