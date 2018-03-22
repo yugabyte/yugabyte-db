@@ -306,7 +306,7 @@ public class TablesController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
       // TODO: undo hardcode to AWS (required right now due to using EMR).
-      Common.CloudType cloudType = universe.getUniverseDetails().retrievePrimaryCluster().userIntent.providerType;
+      Common.CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
       if (cloudType != aws) {
         String errMsg = "Bulk Import is currently only supported for AWS.";
         LOG.error(errMsg);

@@ -63,7 +63,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException("Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
-        if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().retrievePrimaryCluster().userIntent.ybSoftwareVersion)) {
+        if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
           throw new IllegalArgumentException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
       }
@@ -245,7 +245,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
                                                    UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     UserIntent userIntent = Universe.get(taskParams().universeUUID).getUniverseDetails()
-        .retrievePrimaryCluster().userIntent;
+        .getPrimaryCluster().userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.

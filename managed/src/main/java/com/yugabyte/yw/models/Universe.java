@@ -130,7 +130,7 @@ public class Universe extends Model {
     // Set the creation date.
     universe.creationDate = new Date();
     // Set the universe name.
-    universe.name = taskParams.retrievePrimaryCluster().userIntent.universeName;
+    universe.name = taskParams.getPrimaryCluster().userIntent.universeName;
     // Set the customer id.
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
@@ -467,5 +467,15 @@ public class Universe extends Model {
     // Update and return the current version number.
     this.version = newVersion;
     return this.version;
+  }
+
+  /**
+   * Returns the list of nodes in a given cluster in the universe.
+   *
+   * @param placementUuid UUID of the cluster to get nodes from.
+   * @return a collection of nodes in a given cluster in this universe.
+   */
+  public Collection<NodeDetails> getNodesInCluster(UUID placementUuid) {
+    return getUniverseDetails().getNodesInCluster(placementUuid);
   }
 }

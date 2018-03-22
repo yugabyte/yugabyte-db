@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Set;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,8 +38,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
         throw new IllegalStateException("Should not have any masters before create task run.");
       }
-      PlacementInfoUtil.selectMasters(taskParams().nodeDetailsSet,
-                                      taskParams().retrievePrimaryCluster().userIntent.replicationFactor);
+      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+      PlacementInfoUtil.selectMasters(primaryNodes, primaryCluster.userIntent.replicationFactor);
 
       // Update the user intent.
       writeUserIntentToUniverse();
@@ -61,7 +63,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Override master flags if necessary
-      SubTaskGroup subTaskGroup = createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.MASTER);
+      SubTaskGroup subTaskGroup = createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
       if (subTaskGroup != null) {
         subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
       }
@@ -72,8 +74,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Get the new masters from the node list.
-      Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(
-          taskParams().nodeDetailsSet);
+      Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
       // Creates the YB cluster by starting the masters in the create mode.
       createStartMasterTasks(newMasters, false /* isShell */)

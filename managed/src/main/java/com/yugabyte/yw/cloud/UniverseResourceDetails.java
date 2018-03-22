@@ -73,9 +73,8 @@ public class UniverseResourceDetails {
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
-      UserIntent userIntent = params.retrieveClusterByUuid(nodeDetails.clusterUuid).userIntent;
+      UserIntent userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
-
       if (!nodeDetails.isActive()) {
         continue;
       }
@@ -95,8 +94,7 @@ public class UniverseResourceDetails {
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
-      if (userIntent.deviceInfo.ebsType != null &&
-          params.retrievePrimaryCluster().userIntent.providerType.equals(Common.CloudType.aws)) {
+      if (userIntent.deviceInfo.ebsType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
         Integer numVolumes = userIntent.deviceInfo.numVolumes;
         Integer diskIops = userIntent.deviceInfo.diskIops;
         Integer volumeSize = userIntent.deviceInfo.volumeSize;
@@ -144,7 +142,7 @@ public class UniverseResourceDetails {
     }
     for (NodeDetails node : nodes) {
       if (node.isActive()) {
-        UserIntent userIntent = params.retrieveClusterByUuid(node.clusterUuid).userIntent;
+        UserIntent userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
         details.addVolumeCount(userIntent.deviceInfo.numVolumes);
         details.addVolumeSizeGB(userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         details.addAz(node.cloudInfo.az);

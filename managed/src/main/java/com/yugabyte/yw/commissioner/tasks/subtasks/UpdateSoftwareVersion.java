@@ -50,7 +50,7 @@ public class UpdateSoftwareVersion extends AbstractTaskBase {
             throw new RuntimeException("UserUniverse " + taskParams().universeUUID +
                 " is not being edited");
           }
-          universeDetails.retrievePrimaryCluster().userIntent.ybSoftwareVersion = taskParams().softwareVersion;
+          universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = taskParams().softwareVersion;
           universe.setUniverseDetails(universeDetails);
         }
       };

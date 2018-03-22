@@ -121,8 +121,7 @@ public class Customer extends Model {
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(String providerCode) {
     return getUniverses()
-        .stream()
-        .filter(u -> u.getUniverseDetails().retrievePrimaryCluster().userIntent.provider.equals(providerCode))
+        .stream().filter(u -> u.getUniverseDetails().getPrimaryCluster().userIntent.provider.equals(providerCode))
         .collect(Collectors.toSet());
   }
 

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -15,10 +16,12 @@ import org.yb.client.YBClient;
 import org.yb.master.Master;
 
 import com.google.common.net.HostAndPort;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -104,25 +107,9 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       this.numReplicas = numReplicas;
       this.blacklistNodes = blacklistNodes;
     }
-
-    @Override
-    protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-      Universe universe = Universe.get(universeUUID);
-
-      Master.SysClusterConfigEntryPB.Builder configBuilder =
-          Master.SysClusterConfigEntryPB.newBuilder(config);
-
-      // Clear the replication info, as it is no longer valid.
-      Master.ReplicationInfoPB.Builder replicationInfoPB = 
-          configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
-      // Build the live replicas from the replication info.
-      Master.PlacementInfoPB.Builder placementInfoPB =
-          replicationInfoPB.getLiveReplicasBuilder();
-      // Set the replication factor to the number of masters.
-      placementInfoPB.setNumReplicas(numReplicas);
-      LOG.info("Starting modify config with {} masters.", numReplicas);
-      // Create the placement info for the universe.
-      PlacementInfo placementInfo = universe.getUniverseDetails().retrievePrimaryCluster().placementInfo;
+    
+    public void generatePlacementInfoPB(Master.PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
+      PlacementInfo placementInfo = cluster.placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {
@@ -141,13 +128,61 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
             // Set the minimum number of replicas in this PlacementAZ.
             pbb.setMinNumReplicas(placementAz.replicationFactor);
             placementInfoPB.addPlacementBlocks(pbb);
+          }
+        }
+      }
+      placementInfoPB.setNumReplicas(cluster.userIntent.replicationFactor);
+      placementInfoPB.setPlacementUuid(ByteString.copyFromUtf8(cluster.uuid.toString()));
+      placementInfoPB.build();
+    }
+    
+    public void addAffinitizedPlacements(Master.ReplicationInfoPB.Builder replicationInfoPB, 
+                                         PlacementInfo placementInfo) {
+      for (PlacementCloud placementCloud : placementInfo.cloudList) {
+        Provider cloud = Provider.find.byId(placementCloud.uuid);
+        for (PlacementRegion placementRegion : placementCloud.regionList) {
+          Region region = Region.get(placementRegion.uuid);
+          for (PlacementAZ placementAz : placementRegion.azList) {
+            AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
+            // Create the cloud info object.
+            WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
+            ccb.setPlacementCloud(placementCloud.code)
+               .setPlacementRegion(region.code)
+               .setPlacementZone(az.code);
             if (placementAz.isAffinitized) {
               replicationInfoPB.addAffinitizedLeaders(ccb);
             }
           }
         }
       }
-      placementInfoPB.build();
+    }
+
+    @Override
+    protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+      Universe universe = Universe.get(universeUUID);
+
+      Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder(config);
+
+      // Clear the replication info, as it is no longer valid.
+      Master.ReplicationInfoPB.Builder replicationInfoPB = 
+          configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
+      // Build the live replicas from the replication info.
+      Master.PlacementInfoPB.Builder placementInfoPB =
+          replicationInfoPB.getLiveReplicasBuilder();
+      // Set the replication factor to the number of masters.
+      LOG.info("Starting modify config with {} masters.", numReplicas);
+      // Create the placement info for the universe.
+      PlacementInfo placementInfo = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      generatePlacementInfoPB(placementInfoPB, universe.getUniverseDetails().getPrimaryCluster());
+      
+      List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      for (Cluster cluster : readOnlyClusters) {
+        Master.PlacementInfoPB.Builder placementInfoReadPB = replicationInfoPB.addReadReplicasBuilder();
+        generatePlacementInfoPB(placementInfoReadPB, cluster);
+      }
+      
+      addAffinitizedPlacements(replicationInfoPB, placementInfo);
       replicationInfoPB.build();
 
       // Add in any black listed nodes of tablet servers.

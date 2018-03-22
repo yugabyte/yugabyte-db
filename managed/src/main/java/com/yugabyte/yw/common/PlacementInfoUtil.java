@@ -18,9 +18,11 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Joiner;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.joda.time.DateTime;
 
@@ -31,8 +33,9 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -72,20 +75,15 @@ public class PlacementInfoUtil {
 
   /**
    * Method to check whether the affinitized leaders info changed between the old and new
-   * placements for edit universe.
-   * @param universe   Universe to check
-   * @param taskParams User requested task parameters
-   * @return boolean   If an AZ is present in the new placement but not the old or vice versa,
-   *                   returns false.
+   * placements. If an AZ is present in the new placement but not the old or vice versa,
+   * returns false.
+   *
+   * @param oldPlacementInfo Placement for the previous state of the Cluster.
+   * @param newPlacementInfo Desired placement for the Cluster.
+   * @return True if the affinitized leader info has changed and there are no new AZs, else false.
    */
-  private static boolean didAffinitizedLeadersChange(
-      Universe universe,
-      UniverseDefinitionTaskParams taskParams) {
-    if (universe == null) {
-      return false;
-    }
-    PlacementInfo newPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
-    PlacementInfo oldPlacementInfo = universe.getUniverseDetails().retrievePrimaryCluster().placementInfo;
+  private static boolean didAffinitizedLeadersChange(PlacementInfo oldPlacementInfo,
+                                                     PlacementInfo newPlacementInfo) {
 
     // Map between the old placement's AZs and the affinitized leader info.
     HashMap<UUID, Boolean> oldAZMap = new HashMap<UUID, Boolean>();
@@ -102,11 +100,10 @@ public class PlacementInfoUtil {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
           if (!oldAZMap.containsKey(newAZ.uuid)) {
-            // The AZ config has changed, return false.
             return false;
           }
           if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
-            // Affinitized leader info has changed, return true.
+            // affinitized leader info has changed, return true.
             return true;
           }
         }
@@ -114,6 +111,27 @@ public class PlacementInfoUtil {
     }
     // No affinitized leader info has changed, return false.
     return false;
+  }
+
+  /**
+   * Returns the PlacementAZ object with the specified UUID if exists in the provided PlacementInfo,
+   * else null.
+   *
+   * @param placementInfo PlacementInfo object to look through for the desired PlacementAZ.
+   * @param azUUID        UUID of the PlacementAZ to look for.
+   * @return The specified PlacementAZ if it exists, else null.
+   */
+  private static PlacementAZ findPlacementAzByUuid(PlacementInfo placementInfo, UUID azUUID) {
+    for (PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementRegion region : cloud.regionList) {
+        for (PlacementAZ az : region.azList) {
+          if (az.uuid.equals(azUUID)) {
+            return az;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -128,142 +146,125 @@ public class PlacementInfoUtil {
    * In Edit case is that the existing user intent should also be compared to new intent.
    * And for both edit and create, we need to compare previously chosen AZ's against the new
    * placementInfo.
-   * @param universe   True iff it is an edit op, so need to honor existing nodes/tservers.
-   * @param taskParams Current user task and placement info with user proposed AZ distribution.
+   *
+   * @param oldParams   Not null iff it is an edit op, so need to honor existing nodes/tservers.
+   * @param newParams   Current user task and placement info with user proposed AZ distribution.
+   * @param cluster     Cluster to check.
    * @return If the number of nodes only are changed across AZ's in placement or if userIntent
    *         node count only changes, returns that configure mode. Else defaults to new config.
    */
-  private static ConfigureNodesMode getPureExpandOrShrinkMode(
-    Universe universe,
-    UniverseDefinitionTaskParams taskParams) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
-    boolean isEditUniverse = universe != null;
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
-    Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
-      taskParams.nodeDetailsSet;
+  private static ConfigureNodesMode getPureExpandOrShrinkMode(UniverseDefinitionTaskParams oldParams,
+                                                              UniverseDefinitionTaskParams newParams,
+                                                              Cluster cluster) {
+    boolean isEditUniverse = oldParams != null;
+    PlacementInfo newPlacementInfo = cluster.placementInfo;
+    UserIntent newIntent = cluster.userIntent;
+    Collection<NodeDetails> nodeDetailsSet = isEditUniverse ?
+            oldParams.getNodesInCluster(cluster.uuid) :
+            newParams.getNodesInCluster(cluster.uuid);
 
+    // If it's an EditUniverse operation, check if old and new intents are equal.
     if (isEditUniverse) {
-      UserIntent existingIntent = universe.getUniverseDetails().retrievePrimaryCluster().userIntent;
-      UserIntent taskIntent = primaryCluster.userIntent;
-      LOG.info("Comparing task '{}' and existing '{}' intents.",
-        taskIntent, existingIntent);
-      UserIntent tempIntent = taskIntent.clone();
+      UserIntent existingIntent = oldParams.getClusterByUuid(cluster.uuid).userIntent;
+      LOG.info("Comparing task '{}' and existing '{}' intents.", newIntent, existingIntent);
+      UserIntent tempIntent = newIntent.clone();
       tempIntent.numNodes = existingIntent.numNodes;
-      boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
-        taskIntent.numNodes != existingIntent.numNodes;
-      if (!existingIntentsMatch) {
+      if (!tempIntent.equals(existingIntent) || newIntent.numNodes == existingIntent.numNodes) {
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
 
-    boolean atleastOneCountChanged = false;
-
+    // Check if at least one AZ's num nodes count has changed
+    boolean atLeastOneCountChanged = false;
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
-    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
-      boolean targetAZFound = false;
-      for (PlacementCloud cloud : placementInfo.cloudList) {
-        for (PlacementRegion region : cloud.regionList) {
-          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            PlacementAZ az =  region.azList.get(azIdx);
-            if (azUuidToNumNode.getKey().equals(az.uuid)) {
-              targetAZFound = true;
-              int numTservers = findCountActiveTServerOnlyInAZ(nodeDetailsSet,
-                azUuidToNumNode.getKey());
-              int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
-              LOG.info("AZ {} check, azNum={}, azDiff={}, numTservers={}.",
-                az.name, az.numNodesInAZ, azDifference, numTservers);
-              if (azDifference != 0) {
-                atleastOneCountChanged = true;
-              }
-              if (isEditUniverse && azDifference < 0  && -azDifference > numTservers) {
-                return ConfigureNodesMode.NEW_CONFIG;
-              }
-            }
-          }
-        }
+    for (UUID azUuid : azUuidToNumNodes.keySet()) {
+      PlacementAZ az = findPlacementAzByUuid(newPlacementInfo, azUuid);
+      if (az == null) {
+        LOG.info("AZ {} not found in placement, so not pure expand/shrink.", azUuid);
+        return ConfigureNodesMode.NEW_CONFIG;
       }
-      if (!targetAZFound) {
-        LOG.info("AZ {} not found in placement, so not pure expand/shrink.",
-          azUuidToNumNode.getKey());
+      int numTservers = findCountActiveTServerOnlyInAZ(nodeDetailsSet, azUuid);
+      int azDifference = az.numNodesInAZ - azUuidToNumNodes.get(azUuid);
+      LOG.info("AZ {} check, azNum={}, azDiff={}, numTservers={}.", az.name, az.numNodesInAZ,
+              azDifference, numTservers);
+      if (azDifference != 0) {
+        atLeastOneCountChanged = true;
+      }
+      if (isEditUniverse && azDifference < 0  && -azDifference > numTservers) {
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
 
-    int placementCount = getNodeCountInPlacement(primaryCluster.placementInfo);
-    if (universe != null) {
-      LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.",
-        primaryCluster.userIntent.numNodes, placementCount, nodeDetailsSet.size());
-      // The nodeDetailsSet may have modified nodes based on an earlier edit intent, reset it as
-      // we want to start from existing configuration.
-      taskParams.nodeDetailsSet.clear();
-      taskParams.nodeDetailsSet.addAll(nodeDetailsSet);
+    // Log some information about the placement and type of edit/create we're doing.
+    int placementCount = getNodeCountInPlacement(newPlacementInfo);
+    if (isEditUniverse) {
+      LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.", newIntent.numNodes,
+              placementCount, nodeDetailsSet.size());
     } else {
-      LOG.info("Create taskNumNodes={}, placementNumNodes={}.", primaryCluster.userIntent.numNodes,
-        placementCount);
+      LOG.info("Create taskNumNodes={}, placementNumNodes={}.", newIntent.numNodes, placementCount);
     }
 
+    // If we made it this far, then we are in a pure expand/shrink mode. Check if the UserIntent
+    // numNodes matches the sum of nodes in the placement and count changed on the per AZ placement.
+    // Else, number of nodes in the UserIntent should be honored and the perAZ node count ignored.
     ConfigureNodesMode mode = ConfigureNodesMode.NEW_CONFIG;
-
-    if (primaryCluster.userIntent.numNodes == placementCount) {
-      // The user intent numNodes matches the sum of the nodes in the placement, then the
-      // user chose a custom placement across AZ's.
-      if (atleastOneCountChanged) {
-        // The user changed the count for sure on the per AZ placement.
-        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
-      }
-    } else {
-      // numNodes in userIntent is honored, and per AZ node counts will be ignored.
-      // Chosen AZs are honored.
+    if (newIntent.numNodes == placementCount && atLeastOneCountChanged) {
+      mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+    } else if (newIntent.numNodes != placementCount) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
-    }
-
+    } 
     LOG.info("Pure expand/shrink in {} mode.", mode);
     return mode;
   }
 
   // Assumes that there is only single provider across all nodes in a given set.
-  private static UUID getProviderUUID(Collection<NodeDetails> nodes) {
+  private static UUID getProviderUUID(Collection<NodeDetails> nodes, UUID placementUuid) {
     if (nodes == null || nodes.isEmpty()) {
       return null;
     }
-    NodeDetails node = nodes.iterator().next();
-    Provider cloud = AvailabilityZone.find.byId(node.azUuid).region.provider;
-    return cloud.uuid;
+    NodeDetails node = nodes.stream()
+            .filter(n -> n.isInPlacement(placementUuid))
+            .findFirst()
+            .orElse(null);
+    return (node == null) ? null : AvailabilityZone.find.byId(node.azUuid).region.provider.uuid;
   }
 
-  private static Set<UUID> getAllRegionUUIDs(Collection<NodeDetails> nodes) {
-    Set<UUID> nodeRegionSet = new HashSet<UUID>();
-    for (NodeDetails node : nodes) {
-      UUID regionUuid = AvailabilityZone.find.byId(node.azUuid).region.uuid;
-      nodeRegionSet.add(regionUuid);
-    }
+  private static Set<UUID> getAllRegionUUIDs(Collection<NodeDetails> nodes, UUID placementUuid) {
+    Set<UUID> nodeRegionSet = new HashSet<>();
+    nodes.stream()
+            .filter(n -> n.isInPlacement(placementUuid))
+            .forEach(n -> nodeRegionSet.add(AvailabilityZone.find.byId(n.azUuid).region.uuid));
     return nodeRegionSet;
   }
 
-  /* Helper API to check if the list of regions is the same in existing nodes of the placement
+  /**
+   * Helper API to check if the list of regions is the same in existing nodes of the placement
    * and the new userIntent's region list.
-   * @param taskParams The current user proposed task parameters.
+   *
+   * @param cluster The current user proposed cluster.
    * @param nodes The set of nodes used to compare the current region layout.
    * @return true if the provider or region list changed. false if neither changed.
    */
-  private static boolean isProviderOrRegionChange(UniverseDefinitionTaskParams taskParams,
-                                                  Collection<NodeDetails> nodes) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
-    UUID nodeProvider = primaryCluster.placementInfo.cloudList.get(0).uuid;
+  private static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
+    // Initial state. No nodes have been requested, so nothing has changed.
     if (nodes.isEmpty()) {
       return false;
     }
-    UUID intentProvider = getProviderUUID(nodes);
 
+    // Compare Providers.
+    UUID intentProvider = getProviderUUID(nodes, cluster.uuid);
+    UUID nodeProvider = cluster.placementInfo.cloudList.get(0).uuid;
     if (!intentProvider.equals(nodeProvider)) {
-      LOG.info("Provider in intent {} is different from provider in existing nodes {}.",
-        intentProvider, nodeProvider);
+      LOG.info("Provider in intent {} is different from provider in existing nodes {} in cluster {}.",
+              intentProvider, nodeProvider, cluster.uuid);
       return true;
     }
 
-    Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes);
-    Set<UUID> intentRegionSet = new HashSet<UUID>(primaryCluster.userIntent.regionList);
-    LOG.info("nodeRegions {} vs intentRegions {}.", nodeRegionSet, intentRegionSet);
+    // Compare Regions.
+    Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes, cluster.uuid);
+    Set<UUID> intentRegionSet = new HashSet<>(cluster.userIntent.regionList);
+    LOG.info("Intended Regions {} vs existing Regions {} in cluster {}.", 
+             intentRegionSet, nodeRegionSet, cluster.uuid);
     return !intentRegionSet.equals(nodeRegionSet);
   }
 
@@ -280,7 +281,7 @@ public class PlacementInfoUtil {
   }
 
   // Helper API to catch duplicated node names in the given set of nodes.
-  public static void ensureUniqueNodeNames(Collection<NodeDetails> nodes) {
+  public static void ensureUniqueNodeNames(Collection<NodeDetails> nodes) throws RuntimeException {
     boolean foundDups = false;
     Set<String> nodeNames = new HashSet<String>();
 
@@ -304,15 +305,18 @@ public class PlacementInfoUtil {
    * @param customerId : Current customer's id.
    */
   public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
-                                              Long customerId) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+                                              Long customerId,
+                                              UUID placementUuid) {
+
+    Cluster cluster = taskParams.getClusterByUuid(placementUuid);
+
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
       taskParams.nodeDetailsSet = new HashSet<>();
     }
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = Util.getNodePrefix(customerId, primaryCluster.userIntent.universeName);
+    taskParams.nodePrefix = Util.getNodePrefix(customerId, cluster.userIntent.universeName);
 
     Universe universe = null;
     if (taskParams.universeUUID == null) {
@@ -322,82 +326,82 @@ public class PlacementInfoUtil {
         universe = Universe.get(taskParams.universeUUID);
       } catch (Exception e) {
         LOG.info("Universe with UUID {} not found, configuring new universe.",
-          taskParams.universeUUID);
+                taskParams.universeUUID);
       }
     }
-
     ConfigureNodesMode mode;
-
-    // If user AZ Selection is made for Edit get a new configuration from placement info
-    if (taskParams.userAZSelected && universe != null) {
-      mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
-      configureNodeStates(taskParams, universe, mode);
-      return;
-    }
-
-    if (primaryCluster.placementInfo == null) {
-      // This is the first create attempt as there is no placement info, we choose a new placement.
-      // If user has chosen to reset config in this create attempt we clear the nodeDetailsSet
+    boolean isEditUniverse = universe != null;
+    // If no placement info, then this is the first create attempt, so choose a new placement.
+    if (cluster.placementInfo == null) {
       if (universe == null) {
-        taskParams.nodeDetailsSet.clear();
+        taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       }
-      primaryCluster.placementInfo = getPlacementInfo(primaryCluster.userIntent);
-      LOG.info("Placement created={}.", primaryCluster.placementInfo);
-      // Compute the node states that should be configured for this operation.
-      configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG);
+      cluster.placementInfo = getPlacementInfo(cluster.userIntent);
+      LOG.info("Placement created={}.", cluster.placementInfo);
+      configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
       return;
     }
 
-    if (universe != null) {
-      verifyEditParams(taskParams, universe.getUniverseDetails());
+    // Verify the provided edit parameters if in edit case and get the mode.
+    Cluster oldCluster;
+    LOG.info("Placement={}, nodes={}.", cluster.placementInfo, taskParams.nodeDetailsSet.size());
+    if (isEditUniverse) {
+      // If user AZ Selection is made for Edit get a new configuration from placement info
+      if (taskParams.userAZSelected && universe != null) {
+        mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
+        configureNodeStates(taskParams, universe, mode, cluster);
+        return;
+      }
+      oldCluster = universe.getUniverseDetails().getPrimaryCluster();
+      verifyEditParams(oldCluster, cluster);
+
+      if (didAffinitizedLeadersChange(oldCluster.placementInfo, cluster.placementInfo)) {
+        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+      } else {
+        mode = getPureExpandOrShrinkMode(universe.getUniverseDetails(), taskParams, cluster);
+        taskParams.nodeDetailsSet.clear();
+        taskParams.nodeDetailsSet.addAll(universe.getNodes());
+      }
+    } else {
+      mode = getPureExpandOrShrinkMode(null, taskParams, cluster);
     }
 
-    if (didAffinitizedLeadersChange(universe, taskParams)) {
-      mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
-    } else {
-      mode = getPureExpandOrShrinkMode(universe, taskParams);
-    }
-    LOG.info("Placement={}, nodes={}, current mode={}.", primaryCluster.placementInfo,
-             taskParams.nodeDetailsSet.size(), mode);
+    // If not a pure expand/shrink, we will pick a new set of nodes. If the provider or region list
+    // changed, we will pick a new placement (i.e full move, create universe).
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
-      // Not a pure expand or shrink.
-      boolean providerOrRegionListChanged =
-        isProviderOrRegionChange(taskParams,
-            universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
-      if (providerOrRegionListChanged) {
-        // If the provider or region list changed, we pick a new placement.
-        // This could be for a edit (full move) or create universe.
-        primaryCluster.placementInfo = getPlacementInfo(primaryCluster.userIntent);
+      if (isProviderOrRegionChange(cluster, isEditUniverse ? universe.getNodes() : taskParams.nodeDetailsSet)) {
         LOG.info("Provider or region changed, getting new placement info for full move.");
+        cluster.placementInfo = getPlacementInfo(cluster.userIntent);
       } else {
         LOG.info("Performing full move with existing placement info.");
       }
-
-      // Clear the nodes as it we will pick a new set of nodes.
-      taskParams.nodeDetailsSet.clear();
+      taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
     }
 
     // Compute the node states that should be configured for this operation.
-    configureNodeStates(taskParams, universe, mode);
+    configureNodeStates(taskParams, universe, mode, cluster);
 
     LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
-    ensureUniqueNodeNames(taskParams.nodeDetailsSet);
-    LOG.info("Placement info:{}.", primaryCluster.placementInfo);
+    ensureUniqueNodeNames(taskParams.nodeDetailsSet.stream().filter(n -> n.isInPlacement(placementUuid)).
+        collect(Collectors.toSet()));
+    LOG.info("Placement info:{}.", cluster.placementInfo);
   }
 
   /**
    * Method checks if enough nodes have been configured to satiate the userIntent for an OnPrem configuration
-   * @param taskParams
+   * @param taskParams Universe task params.
+   * @param cluster Cluster to be checked.
    * @return True if provider type is not OnPrem or if enough nodes have been configured for intent, false otherwise
    */
-  public static boolean checkIfNodeParamsValid(UniverseDefinitionTaskParams taskParams) {
-    if (taskParams.retrievePrimaryCluster().userIntent.providerType != CloudType.onprem) {
+  public static boolean checkIfNodeParamsValid(UniverseDefinitionTaskParams taskParams, Cluster cluster) {
+    if (cluster.userIntent.providerType != CloudType.onprem) {
       return true;
     }
-    UserIntent userIntent = taskParams.retrievePrimaryCluster().userIntent;
+    UserIntent userIntent = cluster.userIntent;
     String instanceType = userIntent.instanceType;
+    Set<NodeDetails> clusterNodes = taskParams.getNodesInCluster(cluster.uuid);
     // If NodeDetailsSet is null, do a high level check whether number of nodes in given config is present
-    if (taskParams.nodeDetailsSet == null || taskParams.nodeDetailsSet.isEmpty()) {
+    if (clusterNodes == null || clusterNodes.isEmpty()) {
       int totalNodesConfiguredInRegionList = 0;
       // Check if number of nodes in the user intent is greater than number of nodes configured for given instance type
       for (UUID regionUUID: userIntent.regionList) {
@@ -411,13 +415,13 @@ public class PlacementInfoUtil {
       }
     } else {
       // If NodeDetailsSet is non-empty verify that the node/az combo is valid
-      for (Map.Entry<UUID, Integer> entry : toBeAddedAzUuidToNumNodes(taskParams).entrySet()) {
+      for (Map.Entry<UUID, Integer> entry : toBeAddedAzUuidToNumNodes(clusterNodes).entrySet()) {
         UUID azUUID = entry.getKey();
         int numNodesToBeAdded = entry.getValue().intValue();
         if (numNodesToBeAdded > NodeInstance.listByZone(azUUID, instanceType).size()) {
           LOG.error("Not enough nodes configured for given AZ/Instance type combo, " +
-              "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
-            azUUID, instanceType);
+                          "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
+                  azUUID, instanceType);
           return false;
         }
       }
@@ -465,8 +469,8 @@ public class PlacementInfoUtil {
 
     for (NodeDetails node : nodeDetailsSet) {
       if (node.state == NodeDetails.NodeState.ToBeDecommissioned &&
-        (serverType == ServerType.MASTER && node.isMaster ||
-          serverType == ServerType.TSERVER && node.isTserver)) {
+              (serverType == ServerType.MASTER && node.isMaster ||
+                      serverType == ServerType.TSERVER && node.isTserver)) {
         servers.add(node);
       }
     }
@@ -503,9 +507,9 @@ public class PlacementInfoUtil {
     Set<NodeDetails> nodesToProvision = new HashSet<NodeDetails>();
     for (NodeDetails node : nodeDetailsSet) {
       if (node.state == NodeDetails.NodeState.ToBeAdded &&
-        (serverType == ServerType.EITHER ||
-          serverType == ServerType.MASTER && node.isMaster ||
-          serverType == ServerType.TSERVER && node.isTserver)) {
+              (serverType == ServerType.EITHER ||
+                      serverType == ServerType.MASTER && node.isMaster ||
+                      serverType == ServerType.TSERVER && node.isTserver)) {
         nodesToProvision.add(node);
       }
     }
@@ -556,45 +560,44 @@ public class PlacementInfoUtil {
   /**
    * Verify that the planned changes for an Edit Universe operation are allowed.
    *
-   * @param taskParams      The current task parameters.
-   * @param universeDetails The current universes' details.
+   * @param oldCluster    The current (soon to be old) version of a cluster.
+   * @param newCluster    The intended next version of the same cluster.
    */
-  private static void verifyEditParams(UniverseDefinitionTaskParams taskParams,
-                                       UniverseDefinitionTaskParams universeDetails) {
-    Cluster oldPrimaryCluster = universeDetails.retrievePrimaryCluster();
-    Cluster newPrimaryCluster = taskParams.retrievePrimaryCluster();
-    UserIntent existingIntent = oldPrimaryCluster.userIntent;
-    UserIntent userIntent = newPrimaryCluster.userIntent;
+  private static void verifyEditParams(Cluster oldCluster, Cluster newCluster) {
+    UserIntent existingIntent = oldCluster.userIntent;
+    UserIntent userIntent = newCluster.userIntent;
+    LOG.info("old intent: {}", existingIntent.toString());
+    LOG.info("new intent: {}", userIntent.toString());
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
-        isSamePlacement(oldPrimaryCluster.placementInfo, newPrimaryCluster.placementInfo)) {
+        isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
-        "modified for editing the universe.");
+              "modified for editing the universe.");
     }
 
     // Rule out some of the universe changes that we do not allow (they can be enabled as needed).
     if (existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error("Replication factor cannot be changed from {} to {}",
-        existingIntent.replicationFactor, userIntent.replicationFactor);
+              existingIntent.replicationFactor, userIntent.replicationFactor);
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
     }
 
     if (!existingIntent.universeName.equals(userIntent.universeName)) {
       LOG.error("universeName cannot be changed from {} to {}",
-        existingIntent.universeName, userIntent.universeName);
+              existingIntent.universeName, userIntent.universeName);
       throw new UnsupportedOperationException("Universe name cannot be modified.");
     }
 
     if (!existingIntent.provider.equals(userIntent.provider)) {
       LOG.error("Provider cannot be changed from {} to {}",
-        existingIntent.provider, userIntent.provider);
+              existingIntent.provider, userIntent.provider);
       throw new UnsupportedOperationException("Provider cannot be modified.");
     }
 
     if (existingIntent.providerType != userIntent.providerType) {
       LOG.error("Provider type cannot be changed from {} to {}",
-        existingIntent.providerType, userIntent.providerType);
+              existingIntent.providerType, userIntent.providerType);
       throw new UnsupportedOperationException("providerType cannot be modified.");
     }
 
@@ -603,16 +606,22 @@ public class PlacementInfoUtil {
 
   // Helper API to verify number of nodes and replication factor requirements.
   public static void verifyNodesAndRF(int numNodes, int replicationFactor) {
-    // We only support a replication factor of 1,3,5,7. TODO: Make the log output based on the list.
+
+    // We only support a replication factor of 1,3,5,7.
     if (!supportedRFs.contains(replicationFactor)) {
-      throw new UnsupportedOperationException("Replication factor " + replicationFactor +
-        " not allowed, must be one of 1,3,5 or 7.");
+      String errMsg = String.format("Replication factor %d not allowed, must be one of %s.",
+              replicationFactor, Joiner.on(',').join(supportedRFs));
+      LOG.error(errMsg);
+      throw new UnsupportedOperationException(errMsg);
     }
 
+    // If not a fresh create, must have at least as many nodes as the replication factor.
     if (numNodes > 0 && numNodes < replicationFactor) {
-      LOG.error("Number of nodes {} cannot be below the replication factor of {}.",
-        numNodes, replicationFactor);
-      throw new UnsupportedOperationException("Number of nodes cannot be less than the replication factor.");
+
+      String errMsg = String.format("Number of nodes %d cannot be less than the replication factor %d.",
+              numNodes, replicationFactor);
+      LOG.error(errMsg);
+      throw new UnsupportedOperationException(errMsg);
     }
   }
 
@@ -674,14 +683,13 @@ public class PlacementInfoUtil {
   // Create the ordered (by increasing node count per AZ) list of placement indices in the
   // given placement info.
   private static LinkedHashSet<PlacementIndexes> findPlacementsOfAZUuid(Map<UUID, Integer> azUuids,
-                                                                        UniverseDefinitionTaskParams taskParams) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+                                                                        Cluster cluster) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
-    CloudType cloudType = primaryCluster.userIntent.providerType;
-    String instanceType = primaryCluster.userIntent.instanceType;
+    CloudType cloudType = cluster.userIntent.providerType;
+    String instanceType = cluster.userIntent.instanceType;
     for (UUID targetAZUuid : azUuids.keySet()) {
       int cIdx = 0;
-      for (PlacementCloud cloud : primaryCluster.placementInfo.cloudList) {
+      for (PlacementCloud cloud : cluster.placementInfo.cloudList) {
         int rIdx = 0;
         for (PlacementRegion region : cloud.regionList) {
           int aIdx = 0;
@@ -715,19 +723,18 @@ public class PlacementInfoUtil {
   // to get number of nodes in current index
   private static int getNumNodesInAZInPlacement(LinkedHashSet<PlacementIndexes> indexes, PlacementIndexes index) {
     return (int) indexes.stream().filter(currentIndex -> (currentIndex.cloudIdx == index.cloudIdx
-      && currentIndex.azIdx == index.azIdx && currentIndex.regionIdx == index.regionIdx)).count();
+            && currentIndex.azIdx == index.azIdx && currentIndex.regionIdx == index.regionIdx)).count();
   }
 
   private static LinkedHashSet<PlacementIndexes> getBasePlacement(int numNodes,
-                                                                  UniverseDefinitionTaskParams taskParams) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+                                                                  Cluster cluster) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
-    CloudType cloudType = primaryCluster.userIntent.providerType;
-    String instanceType = primaryCluster.userIntent.instanceType;
+    CloudType cloudType = cluster.userIntent.providerType;
+    String instanceType = cluster.userIntent.instanceType;
     int count = 0;
     while (count < numNodes) {
       int cIdx = 0;
-      for (PlacementCloud cloud : primaryCluster.placementInfo.cloudList) {
+      for (PlacementCloud cloud : cluster.placementInfo.cloudList) {
         int rIdx = 0;
         for (PlacementRegion region : cloud.regionList) {
           for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
@@ -819,9 +826,10 @@ public class PlacementInfoUtil {
    * @return set of indexes in which to provision the nodes.
    */
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
-    PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
+          PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
+
     for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
       PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
       for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
@@ -829,7 +837,7 @@ public class PlacementInfoUtil {
         for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
           PlacementAZ az = region.azList.get(azIdx);
           int numDesired = az.numNodesInAZ;
-          int numPresent = azUuidToNumNodes.get(az.uuid);
+          int numPresent = azUuidToNumNodes.containsKey(az.uuid) ? azUuidToNumNodes.get(az.uuid) : 0;
           LOG.info("AZ {} : Desired {}, present {}.", az.name, numDesired, numPresent);
           int numChange = Math.abs(numDesired - numPresent);
           while (numChange > 0) {
@@ -872,8 +880,7 @@ public class PlacementInfoUtil {
    * @param taskParams
    */
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
-
-    PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
+    PlacementInfo primaryPlacementInfo = taskParams.getPrimaryCluster().placementInfo;
     Universe universe = Universe.get(taskParams.universeUUID);
     // TODO filter primary nodes and clear those only
     Collection<NodeDetails> existingNodes = universe.getNodes();
@@ -882,11 +889,12 @@ public class PlacementInfoUtil {
     if (primaryPlacementInfo == null) {
       // TODO Filter only nodes of current cluster type and remove those
       taskParams.nodeDetailsSet.clear();
-      taskParams.retrievePrimaryCluster().placementInfo = getPlacementInfo(taskParams.retrievePrimaryCluster().userIntent);
-      configureDefaultNodeStates(taskParams,universe);
+      taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(taskParams.getPrimaryCluster().userIntent);
+      configureDefaultNodeStates(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet, 
+                                 taskParams.nodePrefix, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
-      Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.retrievePrimaryCluster().placementInfo);
+      Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.getPrimaryCluster().placementInfo);
       Map<UUID, Integer> existingAZToNodeMap = getAzUuidToNumNodes(universe.getUniverseDetails().nodeDetailsSet);
 
       boolean isSimpleExpand = true;
@@ -903,7 +911,8 @@ public class PlacementInfoUtil {
       }
       if (isSimpleExpand) {
         // If simple expand we can go in the configure using placement info path
-        configureNodesUsingPlacementInfo(taskParams, true);
+        configureNodesUsingPlacementInfo(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet, 
+                                         taskParams.nodePrefix, true);
         // Break execution sequence because there are no nodes to be decomissioned
         return;
       } else {
@@ -926,7 +935,9 @@ public class PlacementInfoUtil {
                 iter ++;
                 placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
                 NodeDetails nodeDetails =
-                        createNodeDetailsWithPlacementIndex(taskParams, new PlacementIndexes(azIdx, rIdx, cIdx, true), startIndex + iter);
+                        createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(), 
+                            taskParams.nodePrefix, new PlacementIndexes(azIdx, rIdx, cIdx, true),
+                            startIndex + iter);
                 taskParams.nodeDetailsSet.add(nodeDetails);
                 numChange--;
               }
@@ -943,28 +954,28 @@ public class PlacementInfoUtil {
     }
   }
 
-  private static void configureNodesUsingPlacementInfo(UniverseDefinitionTaskParams taskParams,
+  private static void configureNodesUsingPlacementInfo(Cluster cluster,
+                                                       Collection<NodeDetails> nodes,
+                                                       String nodePrefix,
                                                        boolean isEditUniverse) {
-    PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
     LinkedHashSet<PlacementIndexes> indexes =
-      getDeltaPlacementIndices(primaryPlacementInfo, taskParams.nodeDetailsSet);
-
+            getDeltaPlacementIndices(cluster.placementInfo, nodes);
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
-    int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
+    int startIndex = getNextIndexToConfigure(nodes);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
       if (index.action == Action.ADD) {
         NodeDetails nodeDetails =
-          createNodeDetailsWithPlacementIndex(taskParams, index, startIndex + iter);
+                createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, startIndex + iter);
         deltaNodesSet.add(nodeDetails);
       } else if (index.action == Action.REMOVE) {
-        PlacementCloud placementCloud = primaryPlacementInfo.cloudList.get(index.cloudIdx);
+        PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
         PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
         PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
         if (isEditUniverse) {
-          decommissionNodeInAZ(taskParams.nodeDetailsSet, placementAZ.uuid);
+          decommissionNodeInAZ(nodes, placementAZ.uuid);
         } else {
-          removeNodeInAZ(taskParams.nodeDetailsSet, placementAZ.uuid);
+          removeNodeInAZ(nodes, placementAZ.uuid);
         }
         if (placementAZ.numNodesInAZ > 0) {
           placementAZ.numNodesInAZ--;
@@ -972,23 +983,28 @@ public class PlacementInfoUtil {
       }
       iter++;
     }
-    taskParams.nodeDetailsSet.addAll(deltaNodesSet);
+    nodes.addAll(deltaNodesSet);
   }
 
-  private static void configureNodesUsingUserIntent(UniverseDefinitionTaskParams taskParams,
+  private static void configureNodesUsingUserIntent(Cluster cluster,
+                                                    Collection<NodeDetails> nodeDetailsSet,
+                                                    String nodePrefix,
                                                     boolean isEditUniverse) {
-    UserIntent primaryUserIntent = taskParams.retrievePrimaryCluster().userIntent;
-    int numDeltaNodes = primaryUserIntent.numNodes - taskParams.nodeDetailsSet.size();
+    UserIntent userIntent = cluster.userIntent;
+    Set<NodeDetails> nodesInCluster = nodeDetailsSet.stream()
+            .filter(n -> n.placementUuid.equals(cluster.uuid))
+            .collect(Collectors.toSet());
+    int numDeltaNodes = userIntent.numNodes - nodesInCluster.size();
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
-    LOG.info("Nodes comparing userIntent={} and taskParams={}.",
-      primaryUserIntent.numNodes, taskParams.nodeDetailsSet.size());
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes, nodesInCluster.size());
     if (numDeltaNodes < 0) {
-      Iterator<NodeDetails> nodeIter = taskParams.nodeDetailsSet.iterator();
+      // Desired action is to remove nodes from a given cluster.
+      Iterator<NodeDetails> nodeIter = nodeDetailsSet.iterator();
       int deleteCounter = 0;
       while (nodeIter.hasNext()) {
         NodeDetails currentNode = nodeIter.next();
-        if (currentNode.isMaster) {
+        if (currentNode.isMaster || !currentNode.placementUuid.equals(cluster.uuid)) {
           continue;
         }
         if (isEditUniverse) {
@@ -999,38 +1015,45 @@ public class PlacementInfoUtil {
         } else {
           nodeIter.remove();
         }
-        deleteCounter ++;
+        deleteCounter++;
         if (deleteCounter == -numDeltaNodes) {
           break;
         }
       }
     } else {
+      // Desired action is to add nodes.
       LinkedHashSet<PlacementIndexes> indexes =
-        findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams);
-      int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
-      addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, taskParams, deltaNodesMap);
+              findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), cluster);
+      int startIndex = getNextIndexToConfigure(nodeDetailsSet);
+      addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, cluster, nodeDetailsSet, nodePrefix, deltaNodesMap);
     }
   }
 
-  private static void configureDefaultNodeStates(UniverseDefinitionTaskParams taskParams,
+  private static void configureDefaultNodeStates(Cluster cluster,
+                                                 Collection<NodeDetails> nodeDetailsSet,
+                                                 String nodePrefix,
                                                  Universe universe) {
-    UserIntent primaryUserIntent = taskParams.retrievePrimaryCluster().userIntent;
+    UserIntent userIntent = cluster.userIntent;
     int startIndex = universe != null ? getNextIndexToConfigure(universe.getNodes()) : 1;
-    int numNodes = primaryUserIntent.numNodes;
-    int numMastersToChoose =  primaryUserIntent.replicationFactor;
-    Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
-    LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, taskParams);
-    addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, taskParams, deltaNodesMap);
+    int numNodes = userIntent.numNodes;
+    int numMastersToChoose =  userIntent.replicationFactor;
+    Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
+    LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, cluster);
+    addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, cluster, nodeDetailsSet, nodePrefix, deltaNodesMap);
+
+    // Full move.
     if (universe != null) {
-      Collection<NodeDetails> existingNodes = universe.getNodes();
+      Collection<NodeDetails> existingNodes = universe.getNodesInCluster(cluster.uuid);
       LOG.info("Decommissioning {} nodes.", existingNodes.size());
       for (NodeDetails node : existingNodes) {
         node.state = NodeDetails.NodeState.ToBeDecommissioned;
-        taskParams.nodeDetailsSet.add(node);
+        nodeDetailsSet.add(node);
       }
 
       // Select the masters for this cluster based on subnets.
-      selectMasters(deltaNodesMap, numMastersToChoose);
+      if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+        selectMasters(deltaNodesMap, numMastersToChoose);
+      }
     }
   }
 
@@ -1045,32 +1068,35 @@ public class PlacementInfoUtil {
    */
   private static void configureNodeStates(UniverseDefinitionTaskParams taskParams,
                                           Universe universe,
-                                          PlacementInfoUtil.ConfigureNodesMode mode) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+                                          PlacementInfoUtil.ConfigureNodesMode mode,
+                                          Cluster cluster) {
     switch (mode) {
       case NEW_CONFIG:
         // This case covers create universe and full move edit.
-        configureDefaultNodeStates(taskParams, universe);
+        configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix, universe);
         break;
       case UPDATE_CONFIG_FROM_PLACEMENT_INFO:
         // The case where there are custom expand/shrink in the placement info.
-        configureNodesUsingPlacementInfo(taskParams, universe != null);
+        configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix, universe != null);
         break;
       case UPDATE_CONFIG_FROM_USER_INTENT:
         // Case where userIntent numNodes has to be favored - as it is different from the
         // sum of all per AZ node counts).
-        configureNodesUsingUserIntent(taskParams, universe != null);
-        updatePlacementInfo(taskParams.nodeDetailsSet, primaryCluster.placementInfo);
+        configureNodesUsingUserIntent(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix, universe != null);
+        updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
         break;
       case NEW_CONFIG_FROM_PLACEMENT_INFO:
         configureNodeEditUsingPlacementInfo(taskParams);
     }
 
-    int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
-      getNumMasters(taskParams.nodeDetailsSet);
-    if (numMastersToChoose > 0 && universe != null) {
-      LOG.info("Selecting {} masters.", numMastersToChoose);
-      selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
+    // Choose new Masters if this is the Primary cluster and we need more Masters.
+    if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+      Set<NodeDetails> primaryNodes = taskParams.getNodesInCluster(cluster.uuid);
+      int numMastersToChoose = cluster.userIntent.replicationFactor - getNumMasters(primaryNodes);
+      if (numMastersToChoose > 0 && universe != null) {
+        LOG.info("Selecting {} masters.", numMastersToChoose);
+        selectMasters(primaryNodes, numMastersToChoose);
+      }
     }
   }
 
@@ -1085,7 +1111,7 @@ public class PlacementInfoUtil {
     NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, targetAZUuid);
     if (nodeDetails == null) {
       LOG.error("Could not find an active node running tservers only in AZ {}. All nodes: {}.",
-        targetAZUuid, nodes);
+              targetAZUuid, nodes);
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
       nodeDetails.state = NodeDetails.NodeState.ToBeDecommissioned;
@@ -1095,22 +1121,24 @@ public class PlacementInfoUtil {
 
   /**
    * Method takes a placementIndex and returns a NodeDetail object for it in order to add a node.
-   * @param taskParams The current user task parameters.
-   * @param index      The placement index combination.
-   * @param nodeIdx    node index to be used in node name.
-   * @return a node details object.
+   *
+   * @param cluster     The current cluster.
+   * @param nodePrefix  The prefix for the name of the node.
+   * @param index       The placement index combination.
+   * @param nodeIdx     Node index to be used in node name.
+   * @return a NodeDetails object.
    */
-  private static NodeDetails createNodeDetailsWithPlacementIndex(UniverseDefinitionTaskParams taskParams,
+  private static NodeDetails createNodeDetailsWithPlacementIndex(Cluster cluster,
+                                                                 String nodePrefix,
                                                                  PlacementIndexes index,
                                                                  int nodeIdx) {
-    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
     NodeDetails nodeDetails = new NodeDetails();
     // Create a temporary node name. These are fixed once the operation is actually run.
-    nodeDetails.nodeName = taskParams.nodePrefix + "-fake-n" + nodeIdx;
+    nodeDetails.nodeName = nodePrefix + "-fake-n" + nodeIdx;
     // Set the cluster.
-    nodeDetails.clusterUuid = primaryCluster.uuid;
+    nodeDetails.placementUuid = cluster.uuid;
     // Set the cloud.
-    PlacementCloud placementCloud = primaryCluster.placementInfo.cloudList.get(index.cloudIdx);
+    PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
     nodeDetails.cloudInfo = new CloudSpecificInfo();
     nodeDetails.cloudInfo.cloud = placementCloud.code;
     // Set the region.
@@ -1121,7 +1149,7 @@ public class PlacementInfoUtil {
     nodeDetails.azUuid = placementAZ.uuid;
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
-    nodeDetails.cloudInfo.instance_type = primaryCluster.userIntent.instanceType;
+    nodeDetails.cloudInfo.instance_type = cluster.userIntent.instanceType;
     // Set the tablet server role to true.
     nodeDetails.isTserver = true;
     // Set the node id.
@@ -1129,17 +1157,19 @@ public class PlacementInfoUtil {
     // We are ready to add this node.
     nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
     LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
-      nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
+            nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
     return nodeDetails;
   }
 
   /**
-   * Construct a delta node set and add all those nodes to TaskParams.
+   * Construct a delta node set and add all those nodes to the Universe's set of nodes.
    */
   private static void addNodeDetailSetToTaskParams(LinkedHashSet<PlacementIndexes> indexes,
                                                    int startIndex,
                                                    int numDeltaNodes,
-                                                   UniverseDefinitionTaskParams taskParams,
+                                                   Cluster cluster,
+                                                   Collection<NodeDetails> nodeDetailsSet,
+                                                   String nodePrefix,
                                                    Map<String, NodeDetails> deltaNodesMap) {
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     // Create the names and known properties of all the nodes to be created.
@@ -1152,11 +1182,11 @@ public class PlacementInfoUtil {
         iter = indexes.iterator();
         index = iter.next();
       }
-      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(taskParams, index, nodeIdx);
+      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, nodeIdx);
       deltaNodesSet.add(nodeDetails);
       deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
     }
-    taskParams.nodeDetailsSet.addAll(deltaNodesSet);
+    nodeDetailsSet.addAll(deltaNodesSet);
   }
 
   public static void selectMasters(Collection<NodeDetails> nodes, int numMastersToChoose) {
@@ -1187,7 +1217,7 @@ public class PlacementInfoUtil {
       nodeSet.add(entry.getKey());
     }
     LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
-      subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
+            subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
     // Choose the masters such that we have one master per subnet if there are enough subnets.
     int numMastersChosen = 0;
     if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
@@ -1218,7 +1248,7 @@ public class PlacementInfoUtil {
         }
         node.isMaster = true;
         LOG.info("Chose node {} as a master from subnet {}.",
-          node.nodeName, node.cloudInfo.subnet_id);
+                node.nodeName, node.cloudInfo.subnet_id);
         numMastersChosen++;
         if (numMastersChosen == numMasters) {
           break;
@@ -1226,7 +1256,7 @@ public class PlacementInfoUtil {
       }
       if (numMastersChosen < numMasters) {
         throw new IllegalStateException("Could not pick " + numMasters + " masters, got only " +
-          numMastersChosen + ". Nodes info. " + nodesMap);
+                numMastersChosen + ". Nodes info. " + nodesMap);
       }
     }
   }
@@ -1263,7 +1293,7 @@ public class PlacementInfoUtil {
       return true;
     }
     if (Region.get(regionList.get(0)).zones != null &&
-      Region.get(regionList.get(0)).zones.size() > 1) {
+            Region.get(regionList.get(0)).zones.size() > 1) {
       return true;
     }
     return false;
@@ -1277,9 +1307,9 @@ public class PlacementInfoUtil {
 
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
-      !userIntent.regionList.contains(userIntent.preferredRegion)) {
+            !userIntent.regionList.contains(userIntent.preferredRegion)) {
       throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-        " not in user region list.");
+              " not in user region list.");
     }
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
@@ -1288,7 +1318,7 @@ public class PlacementInfoUtil {
     if (useSingleAZ) {
       // Select an AZ in the required region.
       List<AvailabilityZone> azList =
-        AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
+              AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
       if (azList.isEmpty()) {
         throw new RuntimeException("No AZ found for region: " + userIntent.regionList.get(0));
       }
@@ -1329,8 +1359,8 @@ public class PlacementInfoUtil {
 
           // Pick one AZ from the other region.
           UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
-            userIntent.regionList.get(1) :
-            userIntent.regionList.get(0);
+                  userIntent.regionList.get(1) :
+                  userIntent.regionList.get(0);
           selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
         } else if (userIntent.regionList.size() == 3) {
           // If the user has specified three regions, pick one AZ from each region.
@@ -1339,8 +1369,8 @@ public class PlacementInfoUtil {
           }
         } else {
           throw new RuntimeException("Unsupported placement, num regions " +
-            userIntent.regionList.size() + " is more than replication factor of " +
-            userIntent.replicationFactor);
+                  userIntent.regionList.size() + " is more than replication factor of " +
+                  userIntent.replicationFactor);
         }
       }
     }
@@ -1357,7 +1387,7 @@ public class PlacementInfoUtil {
     List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
     if (azList.size() < numZones) {
       throw new RuntimeException("Need at least " + numZones + " zones but found only " +
-        azList.size() + " for region " + region.name);
+              azList.size() + " for region " + region.name);
     }
     Collections.shuffle(azList);
     // Pick as many AZs as required.
@@ -1381,6 +1411,7 @@ public class PlacementInfoUtil {
     AvailabilityZone az = AvailabilityZone.find.byId(zone);
     Region region = az.region;
     Provider cloud = region.provider;
+    LOG.debug("provider: {}", cloud);
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud = null;
     for (PlacementCloud pCloud : placementInfo.cloudList) {
@@ -1509,9 +1540,9 @@ public class PlacementInfoUtil {
     }
 
     return Json.newObject()
-      .put("tserver_alive", tserverAlive)
-      .put("master_alive", masterAlive)
-      .put("node_status", nodeDetails.state.toString());
+            .put("tserver_alive", tserverAlive)
+            .put("master_alive", masterAlive)
+            .put("node_status", nodeDetails.state.toString());
   }
 
   /**
@@ -1529,9 +1560,9 @@ public class PlacementInfoUtil {
       for (NodeDetails nodeDetails : universe.getNodes()) {
         nodeDetails.state = NodeDetails.NodeState.Unreachable;
         ObjectNode result = Json.newObject()
-          .put("tserver_alive", false)
-          .put("master_alive", false)
-          .put("node_status", nodeDetails.state.toString());
+                .put("tserver_alive", false)
+                .put("master_alive", false)
+                .put("node_status", nodeDetails.state.toString());
         response.put(nodeDetails.nodeName, result);
       }
     } else {

@@ -103,7 +103,7 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add(pkPath);
     cmd.add("--instance_count");
     if (bulkImportParams.instanceCount == 0) {
-      cmd.add(Integer.toString(uniParams.retrievePrimaryCluster().userIntent.numNodes * 8));
+      cmd.add(Integer.toString(uniParams.getPrimaryCluster().userIntent.numNodes * 8));
     } else {
       cmd.add(Integer.toString(bulkImportParams.instanceCount));
     }
@@ -138,7 +138,7 @@ public class TableManagerTest extends FakeDBApplication {
     BulkImportParams bulkImportParams = new BulkImportParams();
     UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
     buildValidParams(bulkImportParams, uniTaskParams);
-    UserIntent userIntent = uniTaskParams.retrievePrimaryCluster().userIntent;
+    UserIntent userIntent = uniTaskParams.getPrimaryCluster().userIntent;
     testUniverse.setUniverseDetails(uniTaskParams);
     testUniverse = Universe.saveDetails(testUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
@@ -157,7 +157,7 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.instanceCount = 5;
     UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
     buildValidParams(bulkImportParams, uniTaskParams);
-    UserIntent userIntent = uniTaskParams.retrievePrimaryCluster().userIntent;
+    UserIntent userIntent = uniTaskParams.getPrimaryCluster().userIntent;
     testUniverse.setUniverseDetails(uniTaskParams);
     testUniverse = Universe.saveDetails(testUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
