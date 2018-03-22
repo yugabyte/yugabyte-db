@@ -63,7 +63,11 @@ class Scheduler {
 
   template<class F>
   ScheduledTaskId Schedule(const F& f, std::chrono::steady_clock::duration delay) {
-    auto time = std::chrono::steady_clock::now() + delay;
+    return Schedule(f, std::chrono::steady_clock::now() + delay);
+  }
+
+  template<class F>
+  ScheduledTaskId Schedule(const F& f, std::chrono::steady_clock::time_point time) {
     auto id = NextId();
     DoSchedule(std::make_shared<ScheduledTask<F>>(id, time, f));
     return id;

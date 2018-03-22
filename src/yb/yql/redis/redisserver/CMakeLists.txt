@@ -38,6 +38,7 @@ ADD_YB_LIBRARY(redis_service_proto
 #########################################
 
 set(REDISSERVER_SRCS
+  redis_commands.cc
   redis_encoding.cc
   redis_rpc.cc
   redis_server.cc
