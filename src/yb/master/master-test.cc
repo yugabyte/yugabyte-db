@@ -275,8 +275,8 @@ TEST_F(MasterTest, TestCallHome) {
   FLAGS_callhome_url = Substitute("http://$0/callhome", ToString(addr));
 
   std::unordered_map<string, vector<string>> collection_levels;
-  collection_levels["low"] = {"cluster_uuid", "node_uuid", "server_type", "timestamp", "tables",
-                              "masters", "tservers", "tablets", "gflags"};
+  collection_levels["low"] = {"cluster_uuid", "node_uuid", "server_type", "version_info",
+                              "timestamp", "tables", "masters", "tservers", "tablets", "gflags"};
   auto& medium = collection_levels["medium"];
   medium = collection_levels["low"];
   medium.push_back("metrics");

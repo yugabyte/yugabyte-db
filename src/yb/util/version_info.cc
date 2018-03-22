@@ -32,17 +32,19 @@
 
 #include "yb/util/version_info.h"
 
+#include <atomic>
 #include <fstream>
 #include <string>
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/istreamwrapper.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
-#include "yb/util/version_info.pb.h"
 
 DEFINE_string(version_file_json_path, "",
               "Path to directory containing JSON file with version info.");
@@ -54,31 +56,31 @@ namespace yb {
 const char* kVersionJsonFileName = "version_metadata.json";
 
 std::once_flag VersionInfo::init_once_;
-std::atomic<VersionInfoPB*> VersionInfo::version_data_ = { nullptr };
+std::shared_ptr<const VersionData> VersionInfo::version_data_ = nullptr;
 
 string VersionInfo::GetGitHash() {
-  auto* data = GetVersionData();
+  auto data = GetVersionData();
 
-  string ret = data->git_hash();
-  if (!data->build_clean_repo()) {
+  string ret = data->pb.git_hash();
+  if (!data->pb.build_clean_repo()) {
     ret += "-dirty";
   }
   return ret;
 }
 
 string VersionInfo::GetShortVersionString() {
-  auto* data = GetVersionData();
+  auto data = GetVersionData();
 
   return strings::Substitute("version $0 build $1 revision $2 build_type $3 built at $4",
-                             data->version_number(),
-                             data->build_number(),
-                             data->git_hash(),
-                             data->build_type(),
-                             data->build_timestamp());
+                             data->pb.version_number(),
+                             data->pb.build_number(),
+                             data->pb.git_hash(),
+                             data->pb.build_type(),
+                             data->pb.build_timestamp());
 }
 
 string VersionInfo::GetAllVersionInfo() {
-  auto* data = GetVersionData();
+  auto data = GetVersionData();
 
   string ret = strings::Substitute(
       "version $0\n"
@@ -86,15 +88,15 @@ string VersionInfo::GetAllVersionInfo() {
       "revision $2\n"
       "build_type $3\n"
       "built by $4 at $5 on $6",
-      data->version_number(),
-      data->build_number(),
+      data->pb.version_number(),
+      data->pb.build_number(),
       GetGitHash(),
-      data->build_type(),
-      data->build_username(),
-      data->build_timestamp(),
-      data->build_hostname());
-  if (data->build_id().size() > 0) {
-    strings::SubstituteAndAppend(&ret, "\nbuild id $0", data->build_id());
+      data->pb.build_type(),
+      data->pb.build_username(),
+      data->pb.build_timestamp(),
+      data->pb.build_hostname());
+  if (data->pb.build_id().size() > 0) {
+    strings::SubstituteAndAppend(&ret, "\nbuild id $0", data->pb.build_id());
   }
 #ifdef ADDRESS_SANITIZER
   ret += "\nASAN enabled";
@@ -105,12 +107,16 @@ string VersionInfo::GetAllVersionInfo() {
   return ret;
 }
 
+string VersionInfo::GetAllVersionInfoJson() {
+  return std::atomic_load_explicit(&version_data_, std::memory_order_acquire)->json;
+}
+
 void VersionInfo::GetVersionInfoPB(VersionInfoPB* pb) {
-  pb->CopyFrom(*GetVersionData());
+  pb->CopyFrom(GetVersionData()->pb);
 }
 
 Status VersionInfo::ReadVersionDataFromFile() {
-  SCHECK(version_data_.load(std::memory_order_acquire) == nullptr,
+  SCHECK(std::atomic_load_explicit(&version_data_, std::memory_order_acquire) == nullptr,
          IllegalState, "Cannot reload version data from file...");
 
   std::string version_file_path = FLAGS_version_file_json_path;
@@ -130,17 +136,23 @@ Status VersionInfo::ReadVersionDataFromFile() {
          IllegalState, strings::Substitute("Failed to parse json. Error: $0 ",
             rapidjson::GetParseError_En(d.GetParseError())));
 
-  std::unique_ptr<VersionInfoPB> pb(new VersionInfoPB);
+  auto version_data = std::make_shared<VersionData>();
+
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  d.Accept(writer);
+
+  version_data->json = buffer.GetString();
 
   const std::map<std::string, std::string*> keys_and_outputs = {
-    { "git_hash", pb->mutable_git_hash() },
-    { "build_hostname", pb->mutable_build_hostname() },
-    { "build_timestamp", pb->mutable_build_timestamp() },
-    { "build_username", pb->mutable_build_username() },
-    { "build_id", pb->mutable_build_id() },
-    { "build_type", pb->mutable_build_type() },
-    { "version_number", pb->mutable_version_number() },
-    { "build_number", pb->mutable_build_number() }
+    { "git_hash", version_data->pb.mutable_git_hash() },
+    { "build_hostname", version_data->pb.mutable_build_hostname() },
+    { "build_timestamp", version_data->pb.mutable_build_timestamp() },
+    { "build_username", version_data->pb.mutable_build_username() },
+    { "build_id", version_data->pb.mutable_build_id() },
+    { "build_type", version_data->pb.mutable_build_type() },
+    { "version_number", version_data->pb.mutable_version_number() },
+    { "build_number", version_data->pb.mutable_build_number() }
   };
 
   for (const auto& entry : keys_and_outputs) {
@@ -163,10 +175,12 @@ Status VersionInfo::ReadVersionDataFromFile() {
                   strings::Substitute("Key $0 is of invalid type $1",
                                       "build_clean_repo", d["build_clean_repo"].GetType()));
   } else {
-    pb->set_build_clean_repo(d["build_clean_repo"] == "true");
+    version_data->pb.set_build_clean_repo(d["build_clean_repo"] == "true");
   }
 
-  version_data_.store(pb.release(), std::memory_order_release);
+  std::atomic_store_explicit(&version_data_,
+                             static_cast<std::shared_ptr<const VersionData>>(version_data),
+                             std::memory_order_release);
   return Status::OK();
 }
 
@@ -176,9 +190,9 @@ Status VersionInfo::Init() {
   return status;
 }
 
-VersionInfoPB* VersionInfo::GetVersionData() {
+std::shared_ptr<const VersionData> VersionInfo::GetVersionData() {
   CHECK_OK(Init());
-  return version_data_.load(std::memory_order_acquire);
+  return std::atomic_load_explicit(&version_data_, std::memory_order_acquire);
 }
 
 void VersionInfo::InitInternal(Status* status_dest) {
