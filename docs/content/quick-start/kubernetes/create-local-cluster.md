@@ -86,7 +86,7 @@ Now, you can view the [yb-master-0 Admin UI](/admin/yb-master/#admin-ui) is avai
 
 ### 5.1 Overview and Master status
 
-The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is set to 1 because of the `system_redis.redis` table we previously created to turn on the Redis API. YugaByte DB version is also shown for your reference. 
+The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-kubernetes.png)
 

@@ -32,7 +32,7 @@ The [yb-master-n1 Admin UI](/admin/yb-master/#admin-ui) is available at http://l
 
 ### 3.1 Overview and Master status
 
-The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is set to 1 because of the `system_redis.redis` table that `yb-docker-ctl` auto-creates in order to turn on YugaByte Redis service. YugaByte DB version number is also shown for your reference. 
+The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 3 and `Num Nodes (TServers)` as 3. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version number is also shown for your reference. 
 
 ![master-home](/images/admin/master-home-docker.png)
 
