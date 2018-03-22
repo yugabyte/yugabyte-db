@@ -183,11 +183,6 @@ class UniverseForm extends Component {
     const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
       getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, fetchNodeInstanceList,
       resetSuggestedSpotPrice, location: {search}} = this.props;
-    // TODO Remove this barrier once async feature committed to mainline
-    let displayPane = "primary";
-    if (search === "?new") {
-      displayPane = "async";
-    }
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>
@@ -197,11 +192,9 @@ class UniverseForm extends Component {
           <FlexShrink className={this.state.currentView === "primary" ? 'stepper-cell active-stepper-cell' : 'stepper-cell'}>
             1. Primary Cluster
           </FlexShrink>
-          {displayPane === "async" ?
-            <FlexShrink className={this.state.currentView === "primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
-              2. Read Replica
-            </FlexShrink> : <span/>
-          }
+          <FlexShrink className={this.state.currentView === "primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
+            2. Read Replica
+          </FlexShrink>
         </FlexContainer>
       </h2>);
 
@@ -216,11 +209,11 @@ class UniverseForm extends Component {
     let asyncReplicaBtn = <span/>;
     let isReadOnly = false;
 
-    if (this.state.currentView === "async" && type !== "Edit" && displayPane === "async") {
+    if (this.state.currentView === "async" && type !== "Edit") {
       primaryReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Previous"} onClick={this.configurePrimaryCluster}/>;
     }
 
-    if (this.state.currentView === "primary" && type !== "Edit" && displayPane === "async") {
+    if (this.state.currentView === "primary" && type !== "Edit") {
       asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Next: Configure Read Replica"} onClick={this.configureReadOnlyCluster}/>;
     }
     let submitTextLabel = "";
