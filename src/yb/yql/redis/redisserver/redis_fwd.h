@@ -28,6 +28,8 @@ namespace redisserver {
 using RedisClientCommand = boost::container::small_vector<Slice, 8>;
 using RedisClientBatch = boost::container::small_vector<RedisClientCommand, 16>;
 
+class RedisInboundCall;
+
 } // namespace redisserver
 } // namespace yb
 
