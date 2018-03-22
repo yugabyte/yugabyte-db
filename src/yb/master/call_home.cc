@@ -25,7 +25,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
-#include "yb/util/logging.h"
+#include "yb/util/version_info.h"
 
 static const char* kLowLevel = "low";
 static const char* kMediumLevel = "medium";
@@ -98,13 +98,11 @@ bool CollectorBase::Run(CollectionLevel level) {
       Collect(level);
       return true;
     } else {
-      YB_LOG_EVERY_N_SECS(INFO, 60)
-          << "Skipping collector " << collector_name()
-          << " because it has a higher collection level than the requested one";
+      LOG(INFO) << "Skipping collector " << collector_name()
+                << " because it has a higher collection level than the requested one";
     }
   } else {
-    YB_LOG_EVERY_N_SECS(INFO, 60)
-        << "Skipping collector " << collector_name() << " because of server type";
+    LOG(INFO) << "Skipping collector " << collector_name() << " because of server type";
   }
   return false;
 }
@@ -140,6 +138,7 @@ class BasicCollector : public CollectorBase {
         }
         AppendPairToJson("node_uuid", master()->fs_manager()->uuid(), &json_);
         AppendPairToJson("server_type", "master", &json_);
+        json_ += ",\"version_info\":" + VersionInfo::GetAllVersionInfoJson();
         break;
       }
       case ServerType::TSERVER: {
