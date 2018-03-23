@@ -14,7 +14,6 @@ package org.yb.cql;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 
@@ -40,10 +39,10 @@ public class TestBatchRequest extends BaseCQLTest {
 
   @Test
   public void testPreparedStatement() throws Exception {
-    // Setup table.
+    LOG.info("Setup table.");
     setupTable("t", 0 /* num_rows */);
 
-    // Test batch of prepared statements.
+    LOG.info("Test batch of prepared statements.");
     PreparedStatement stmt = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
                                              "VALUES (?, ?, ?, ?, ?, ?);");
     BatchStatement batch = new BatchStatement();
@@ -69,10 +68,10 @@ public class TestBatchRequest extends BaseCQLTest {
 
   @Test
   public void testSimpleStatement() throws Exception {
-    // Setup table.
+    LOG.info("Setup table.");
     setupTable("t", 0 /* num_rows */);
 
-    // Test batch of regular statements.
+    LOG.info("Test batch of regular statements.");
     BatchStatement batch = new BatchStatement();
     for (int i = 1; i <= 10; i++) {
       batch.add(new SimpleStatement(String.format("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
@@ -96,10 +95,10 @@ public class TestBatchRequest extends BaseCQLTest {
 
   @Test
   public void testMixedStatements() throws Exception {
-    // Setup table.
+    LOG.info("Setup table.");
     setupTable("t", 0 /* num_rows */);
 
-    // Test batch of mixed statements.
+    LOG.info("Test batch of mixed statements.");
     PreparedStatement ins1 = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
                                              "VALUES (?, ?, ?, ?, ?, ?);");
     PreparedStatement ins2 = session.prepare("INSERT INTO t (h1, h2, r1, r2) " +
@@ -135,10 +134,10 @@ public class TestBatchRequest extends BaseCQLTest {
 
   @Test
   public void testInvalidStatement() throws Exception {
-    // Setup table.
+    LOG.info("Setup table.");
     setupTable("t", 0 /* num_rows */);
 
-    // Test mix of valid and invalid statements. Expect error.
+    LOG.info("Test mix of valid and invalid statements. Expect error.");
     BatchStatement batch = new BatchStatement();
     batch.add(new SimpleStatement("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
                                   "VALUES (1, 'h1', 1, 'r1', 1, 'v1');"));
@@ -146,21 +145,21 @@ public class TestBatchRequest extends BaseCQLTest {
                                   "VALUES (1, 'h1', 1, 'v1');"));
     runInvalidStmt(batch);
 
-    // Batch statement guarantees either all statements are executed or none is.
-    // Should return no rows.
-    // TODO: add test for batch writes across hash keys.
+    LOG.info("Batch statement guarantees either all statements are executed or none is.");
+    LOG.info("Should return no rows.");
+    LOG.info("TODO: add test for batch writes across hash keys.");
     assertQuery("SELECT * from t", "");
   }
 
   @Test
   public void testHashKeyBatch() throws Exception {
-    // Setup table.
+    LOG.info("Setup table.");
     setupTable("t", 0 /* num_rows */);
 
-    // Get the initial metrics.
+    LOG.info("Get the initial metrics.");
     Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
 
-    // Test batch of prepared statements.
+    LOG.info("Test batch of prepared statements.");
     PreparedStatement stmt = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
                                              "VALUES (?, ?, ?, ?, ?, ?);");
     BatchStatement batch = new BatchStatement();
@@ -174,14 +173,17 @@ public class TestBatchRequest extends BaseCQLTest {
     }
     session.execute(batch);
 
-    // Check the metrics again.
+    LOG.info("Check the metrics again.");
     IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
 
-    // Verify writes are batched by the hash keyes. So the total writes should equal just the no.
-    // of hash keys, not no. of rows inserted.
-    assertEquals(NUM_HASH_KEYS, totalMetrics.localWriteCount + totalMetrics.remoteWriteCount);
+    LOG.info("Verify writes are batched by the hash keys. So the total writes should equal just ");
+    LOG.info("the number of hash keys, not number of rows inserted.");
+    LOG.info("localWriteCount=" + totalMetrics.localWriteCount);
+    LOG.info("remoteWriteCount=" + totalMetrics.remoteWriteCount);
+    assertEquals(miniCluster.getNumShardsPerTserver(),
+                 totalMetrics.localWriteCount + totalMetrics.remoteWriteCount);
 
-    // Verify the rows are inserted.
+    LOG.info("Verify the rows are inserted.");
     assertQuery("SELECT * FROM t",
                 new HashSet<String>(Arrays.asList("Row[1, h1, 1, r1, 1, v1]",
                                                   "Row[1, h1, 2, r2, 2, v2]",
@@ -203,8 +205,8 @@ public class TestBatchRequest extends BaseCQLTest {
   @Test
   public void testRecreateTable1() throws Exception {
 
-    // Test executing batch statements with recreated tables to verify metadata cache is flushed to
-    // handle new table definition.
+    LOG.info("Test executing batch statements with recreated tables to verify metadata cache is");
+    LOG.info("flushed to handle new table definition.");
     for (int t = 0; t < 3; t++) {
 
       // Create test table.
@@ -459,10 +461,10 @@ public class TestBatchRequest extends BaseCQLTest {
   @Test
   public void testReadWriteSameRow() throws Exception {
 
-    // Create test table.
+    LOG.info("Create test table.");
     session.execute("CREATE TABLE test_batch (h INT, r TEXT, v INT, PRIMARY KEY ((h), r));");
 
-    // Test writing to the same row twice.
+    LOG.info("Test writing to the same row twice.");
     BatchStatement batch = new BatchStatement();
     batch.add(new SimpleStatement("INSERT INTO test_batch (h, r, v) VALUES (1, 'r1', 11);"));
     batch.add(new SimpleStatement("INSERT INTO test_batch (h, r, v) VALUES (1, 'r2', 12);"));
@@ -470,21 +472,21 @@ public class TestBatchRequest extends BaseCQLTest {
     session.execute(batch);
 
 
-    // Create test table with counter.
+    LOG.info("Create test table with counter.");
     session.execute("CREATE TABLE test_counter (h INT, r TEXT, c COUNTER, PRIMARY KEY ((h), r));");
 
-    // Test reading and writing different rows are allowed in the same batch.
+    LOG.info("Test reading and writing different rows are allowed in the same batch.");
     batch.clear();
     batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
     batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r2';"));
     session.execute(batch);
 
-    // Verify the rows are inserted.
+    LOG.info("Verify the rows are inserted.");
     assertQuery("SELECT * FROM test_counter",
                 new HashSet<String>(Arrays.asList("Row[1, r1, 1]",
                                                   "Row[1, r2, 1]")));
 
-    // Test reading and writing the same rows (new and existing).
+    LOG.info("Test reading and writing the same rows (new and existing).");
     batch.clear();
     batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 2 WHERE h = 1 and r = 'r1';"));
     batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 3 WHERE h = 1 and r = 'r1';"));
@@ -495,7 +497,7 @@ public class TestBatchRequest extends BaseCQLTest {
     batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 8 WHERE h = 1 and r = 'r3';"));
     session.execute(batch);
 
-    // Verify the counter columns are updated properly.
+    LOG.info("Verify the counter columns are updated properly.");
     assertQuery("SELECT * FROM test_counter",
                 new HashSet<String>(Arrays.asList("Row[1, r1, 11]",
                                                   "Row[1, r2, 12]",

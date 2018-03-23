@@ -46,7 +46,7 @@ Options:
     Skip all kinds of build (C++, Java)
   --skip-java-build, --skip-java, --sjb, --sj
     Do not package and install java source code.
-  --java-tests, run-java-tests, --jt, --rjt
+  --java-tests, run-java-tests
     Run the java unit tests when build is enabled.
   --static
     Force a static build.
@@ -110,7 +110,7 @@ Options:
     third-party code multiple times.
   --mvn-opts <maven_options>
     Specify additional Maven options for Java build/tests.
-  --java-only
+  --java-only, --jo
     Only build Java code
   --ninja
     Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
@@ -135,6 +135,9 @@ Options:
     Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
   --sanitizer-verbosity
     Use the given verbosity value for clang sanitizers. The default is 0.
+  --test-parallelism, --tp N
+    When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
+    --parallelism argument of repeat_unit_test.sh.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -158,6 +161,7 @@ set_cxx_test_name() {
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
   cxx_test_name=$1
+  running_any_tests=true
   build_java=false
 }
 
@@ -170,6 +174,7 @@ set_java_test_name() {
   if [[ -n $java_test_name ]]; then
     fatal "Only one Java test name can be specified (found '$java_test_name' and '$1')."
   fi
+  running_any_tests=true
   java_test_name=$1
 }
 
@@ -324,11 +329,16 @@ run_ctest() {
   )
 }
 
-run_test_on_remote_host() {
+run_tests_remotely() {
+  ran_tests_remotely=false
+  if ! "$running_any_tests"; then
+    # Nothing to run remotely.
+    return
+  fi
   if [[ -n ${YB_HOST_FOR_RUNNING_TESTS:-} && \
         $YB_HOST_FOR_RUNNING_TESTS != "localhost" && \
         $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
-        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
+        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]] ; then
     capture_sec_timestamp "remote_tests_start"
     log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
 
@@ -359,8 +369,7 @@ run_test_on_remote_host() {
       "${sub_yb_build_args[@]}"
 
     capture_sec_timestamp "remote_tests_end"
-    print_report
-    exit
+    ran_tests_remotely=true
   fi
 }
 
@@ -391,6 +400,9 @@ run_cxx_test() {
       set +u
       repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
       set -u
+      if [[ -n ${test_parallelism:-} ]]; then
+        repeat_unit_test_extra_args+=( --parallelism "$test_parallelism" )
+      fi
       if "$verbose"; then
         repeat_unit_test_extra_args+=( --verbose )
       fi
@@ -420,13 +432,13 @@ run_java_test() {
     fi
   done
 
+  local IFS=$'\n'
   if [[ -z $module_name ]]; then
     # Could not find the test source assuming we are given the complete package. Let's assume we
     # only have the class name.
     module_name=""
     for module_dir in "$YB_SRC_ROOT"/java/*; do
       if [[ -d $module_dir ]]; then
-        local IFS=$'\n'
         local module_test_src_root="$module_dir/src/test"
         if [[ -d $module_test_src_root && -n $(
                 find "$module_test_src_root" \( -name "$java_test_class.java" -or \
@@ -489,6 +501,8 @@ cmake_extra_args=""
 predefined_build_root=""
 java_test_name=""
 show_report=true
+running_any_tests=false
+
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
@@ -545,7 +559,7 @@ while [[ $# -gt 0 ]]; do
     --skip-java-build|--skip-java|--sjb|--sj)
       build_java=false
     ;;
-    --run-java-tests|--java-tests|--jt|--rjt)
+    --run-java-tests|--java-tests)
       run_java_tests=true
     ;;
     --with-assembly)
@@ -578,6 +592,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --ctest)
       should_run_ctest=true
+      running_any_tests=true
     ;;
     --ctest-args)
       should_run_ctest=true
@@ -618,7 +633,7 @@ while [[ $# -gt 0 ]]; do
     --skip-cxx-build|--scb)
       build_cxx=false
     ;;
-    --java-only)
+    --java-only|--jo)
       build_cxx=false
       java_only=true
     ;;
@@ -746,6 +761,12 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-report)
       show_report=false
+    ;;
+    --tp|--test-parallelism)
+      test_parallelism=$2
+      validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
+        "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
+      shift
     ;;
     *)
       echo "Invalid option: '$1'" >&2
@@ -948,20 +969,6 @@ if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build
 fi
 
-run_test_on_remote_host
-
-if [[ -n $cxx_test_name ]]; then
-  capture_sec_timestamp cxx_test_start
-  run_cxx_test
-  capture_sec_timestamp cxx_test_end
-fi
-
-if "$should_run_ctest"; then
-  capture_sec_timestamp ctest_start
-  run_ctest
-  capture_sec_timestamp ctest_end
-fi
-
 # Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then
   # We'll need this for running Java tests.
@@ -983,8 +990,24 @@ if "$build_java"; then
   log "Java build finished, total time information above."
 fi
 
-if [[ -n $java_test_name ]]; then
-  run_java_test
+run_tests_remotely
+
+if ! "$ran_tests_remotely"; then
+  if [[ -n $cxx_test_name ]]; then
+    capture_sec_timestamp cxx_test_start
+    run_cxx_test
+    capture_sec_timestamp cxx_test_end
+  fi
+
+  if [[ -n $java_test_name ]]; then
+    run_java_test
+  fi
+
+  if "$should_run_ctest"; then
+    capture_sec_timestamp ctest_start
+    run_ctest
+    capture_sec_timestamp ctest_end
+  fi
 fi
 
 print_report

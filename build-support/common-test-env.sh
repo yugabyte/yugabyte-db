@@ -80,6 +80,10 @@ readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/n/jenkins/build_stats"
 # https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
 readonly SANITIZER_COMMON_OPTIONS=""
 
+declare -i -r MIN_REPEATED_TEST_PARALLELISM=1
+declare -i -r MAX_REPEATED_TEST_PARALLELISM=100
+declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM=4
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -1273,6 +1277,50 @@ fix_cxx_test_name() {
       ;;
     esac
   fi
+}
+
+run_java_test() {
+  expect_num_args 2 "$@"
+  local module_name=$1
+  local test_class=$2
+  if [[ -z ${BUILD_ROOT:-} ]]; then
+    fatal "Running Java tests requires that BUILD_ROOT be set"
+  fi
+  set_mvn_parameters
+  set_sanitizer_runtime_options
+  mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
+
+  # This can't include $YB_TEST_INVOCATION_ID -- previously, when we did that, it looked like some
+  # Maven processes were killed, although it is not clear why, because they should have already
+  # completed by the time we start looking for $YB_TEST_INVOCATION_ID in test names and killing
+  # processes.
+  local surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
+
+  cd "$YB_SRC_ROOT/java"
+  # We specify tempDir to use a separate temporary directory for each test.
+  # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
+  mvn_options=(
+    "${mvn_common_options[@]}"
+
+    -Dtest="$test_class"
+    --projects "$module_name"
+    -DtempDir="$surefire_rel_tmp_dir"
+    -DskipAssembly
+    -Dmaven.javadoc.skip
+  )
+
+  if is_jenkins || \
+     [[ $YB_MVN_SETTINGS_PATH != "$HOME/.m2/settings.xml" ]] || \
+     [[ -f $YB_MVN_SETTINGS_PATH ]]; then
+    mvn_options+=( --settings "$YB_MVN_SETTINGS_PATH" )
+  fi
+
+  if is_jenkins; then
+    # When running on Jenkins we'd like to see more debug output.
+    mvn_options+=( -X )
+  fi
+
+  ( set -x; mvn "${mvn_options[@]}" surefire:test )
 }
 
 # -------------------------------------------------------------------------------------------------

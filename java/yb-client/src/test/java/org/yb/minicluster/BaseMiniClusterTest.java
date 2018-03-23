@@ -45,10 +45,14 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static final int NUM_MASTERS =
       Integer.getInteger(NUM_MASTERS_PROP, DEFAULT_NUM_MASTERS);
 
-  /** This is used as the default timeout when calling YB Java client's async API. */
+  /**
+   * This is used as the default timeout when calling YB Java client's async API.
+   */
   protected static final int DEFAULT_SLEEP = 50000;
 
-  /** A mini-cluster shared between invocations of multiple test methods. */
+  /**
+   * A mini-cluster shared between invocations of multiple test methods.
+   */
   protected static MiniYBCluster miniCluster;
 
   protected static List<String> masterArgs = null;
@@ -57,6 +61,11 @@ public class BaseMiniClusterTest extends BaseYBTest {
   // Comma separate describing the master addresses and ports.
   protected static String masterAddresses;
   protected static List<HostAndPort> masterHostPorts;
+
+  // Subclasses can override this to set the number of shards per tablet server.
+  protected int overridableNumShardsPerTServer() {
+    return MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER;
+  }
 
   /**
    * This makes sure that the mini cluster is up and running before each test. A test might opt to
@@ -107,6 +116,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .testClassName(getClass().getName())
                       .masterArgs(masterArgs)
                       .tserverArgs(tserverArgs)
+                      .numShardsPerTServer(overridableNumShardsPerTServer())
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();

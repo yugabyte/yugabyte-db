@@ -125,12 +125,9 @@ public class MiniYBCluster implements AutoCloseable {
   private AtomicInteger nextMasterIndex = new AtomicInteger(0);
   private AtomicInteger nextTServerIndex = new AtomicInteger(0);
 
-  private static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
-  private static int numShardsPerTserver = DEFAULT_NUM_SHARDS_PER_TSERVER;
+  public static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
 
-  public static void setNumShardsPerTserver(int numShards) {
-    numShardsPerTserver = numShards;
-  }
+  private int numShardsPerTserver = DEFAULT_NUM_SHARDS_PER_TSERVER;
 
   /**
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
@@ -147,9 +144,11 @@ public class MiniYBCluster implements AutoCloseable {
                 int defaultTimeoutMs,
                 List<String> masterArgs,
                 List<List<String>> tserverArgs,
+                int numShardsPerTserver,
                 String testClassName) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
+    this.numShardsPerTserver = numShardsPerTserver;
 
     startCluster(numMasters, numTservers, masterArgs, tserverArgs);
 
