@@ -712,6 +712,13 @@ set_mvn_parameters() {
     fi
   fi
   export MVN_SETTINGS_PATH
+
+  mvn_common_options=(
+    --batch-mode
+    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
+    -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
+    -DbinDir="$BUILD_ROOT/bin"
+  )
 }
 
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
@@ -728,11 +735,7 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  local mvn_opts=(
-    --batch-mode
-    -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
-    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
-  )
+  local mvn_opts=( "${mvn_common_options[@]}" )
   if [[ -f $YB_MVN_SETTINGS_PATH  ]]; then
     mvn_opts+=(
       --settings "$YB_MVN_SETTINGS_PATH"
@@ -1562,6 +1565,21 @@ handle_build_root_from_current_dir() {
   done
 
   fatal "Working directory of the compiler '$PWD' is not within a valid YugaByte build root."
+}
+
+validate_numeric_arg_range() {
+  expect_num_args 4 "$@"
+  local arg_name=$1
+  local arg_value=$2
+  local -r -i min_value=$3
+  local -r -i max_value=$4
+  if [[ ! $arg_value =~ ^[0-9]+$ ]]; then
+    fatal "Invalid numeric argument value for --$arg_name: '$arg_value'"
+  fi
+  if [[ $arg_value -lt $min_value || $arg_value -gt $max_value ]]; then
+    fatal "Value out of range for --$arg_name: $arg_value, must be between $min_value and" \
+          "$max_value."
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

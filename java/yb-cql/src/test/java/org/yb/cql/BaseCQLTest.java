@@ -51,6 +51,9 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -234,19 +237,23 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected void afterBaseCQLTestTearDown() throws Exception {
   }
 
-  protected void createTable(String test_table, String column_type) throws Exception {
-    LOG.info("CREATE TABLE " + test_table);
+  protected void createTable(String tableName, String columnType) throws Exception {
+    final long startTimeMs = System.currentTimeMillis();
+    LOG.info("CREATE TABLE " + tableName);
     String create_stmt = String.format("CREATE TABLE %s " +
                     " (h1 int, h2 %2$s, " +
                     " r1 int, r2 %2$s, " +
                     " v1 int, v2 %2$s, " +
                     " primary key((h1, h2), r1, r2));",
-            test_table, column_type);
+            tableName, columnType);
     session.execute(create_stmt);
+    long elapsedTimeMs = System.currentTimeMillis() - startTimeMs;
+    LOG.info("Table creation took " + elapsedTimeMs + " for table " + tableName +
+        " with column type " + columnType);
   }
 
   protected void createTable(String tableName) throws Exception {
-     createTable(tableName, "varchar");
+    createTable(tableName, "varchar");
   }
 
   public void setupTable(String tableName, int numRows) throws Exception {
@@ -259,30 +266,66 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
     LOG.info("INSERT INTO TABLE " + tableName);
     final long startTimeMs = System.currentTimeMillis();
-    long lastLogTimeMs = startTimeMs;
-    final int LOG_EVERY_MS = 15 * 1000;
+    final AtomicLong lastLogTimeMs = new AtomicLong(startTimeMs);
+    final int LOG_EVERY_MS = 5 * 1000;
     // INSERT: A valid statement with a column list.
     final PreparedStatement preparedStmt = session.prepare(
         "INSERT INTO " + tableName + "(h1, h2, r1, r2, v1, v2) VALUES(" +
             "?, ?, ?, ?, ?, ?);");
-    for (int idx = 0; idx < numRows; idx++) {
-      session.execute(preparedStmt.bind(
-          idx, "h" + idx, idx + 100, "r" + (idx + 100), idx + 1000, "v" + (idx + 1000)));
-      if (idx % 10 == 0) {
-        long currentTimeMs = System.currentTimeMillis();
-        if (currentTimeMs - lastLogTimeMs > LOG_EVERY_MS) {
-          // If we have to do this, we're probably running pretty slowly.
-          LOG.info("Inserted " + (idx + 1) + " rows out of " + numRows + " (" +
-              String.format("%.2f", (idx + 1) * 1000.0 / (currentTimeMs - startTimeMs)) +
-              " rows/second on average)."
-          );
-        }
-      }
+
+    final int numThreads = 4;
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+    final AtomicInteger currentRowIndex = new AtomicInteger();
+    final AtomicInteger numInsertedRows = new AtomicInteger();
+    List<Future<Void>> futures = new ArrayList<>();
+    for (int i = 0; i < numThreads; ++i) {
+      Callable<Void> task =
+          () -> {
+            int idx;
+            while ((idx = currentRowIndex.get()) < numRows) {
+              if (!currentRowIndex.compareAndSet(idx, idx + 1)) {
+                // Not using incrementAndGet because we don't want currentRowIndex to become higher
+                // than numRows.
+                continue;
+              }
+              session.execute(preparedStmt.bind(
+                  idx, "h" + idx, idx + 100, "r" + (idx + 100), idx + 1000, "v" + (idx + 1000)));
+              numInsertedRows.incrementAndGet();
+              if (idx % 10 == 0) {
+                long currentTimeMs;
+                long currentLastLogTimeMs;
+                while ((currentTimeMs = System.currentTimeMillis()) -
+                       (currentLastLogTimeMs = lastLogTimeMs.get()) > LOG_EVERY_MS) {
+                  if (!lastLogTimeMs.compareAndSet(currentLastLogTimeMs, currentTimeMs)) {
+                    // Someone updated lastLogTimeMs concurrently.
+                    continue;
+                  }
+                  final int numRowsInsertedSoFar = numInsertedRows.get();
+                  LOG.info("Inserted " + numRowsInsertedSoFar + " rows out of " + numRows + " (" +
+                      String.format(
+                          "%.2f", numRowsInsertedSoFar * 1000.0 / (currentTimeMs - startTimeMs)) +
+                      " rows/second on average)."
+                  );
+                }
+              }
+            }
+            return null;
+          };
+      futures.add(executor.submit(task));
     }
 
+    // Wait for all writer threads to complete.
+    for (Future<Void> future : futures) {
+      future.get();
+    }
+    executor.shutdown();
+    executor.awaitTermination(10, TimeUnit.SECONDS);
+
     final long totalTimeMs = System.currentTimeMillis() - startTimeMs;
-    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED: inserted " + numRows +
-             "(" + totalTimeMs + " ms, " +
+    assertEquals(numRows, currentRowIndex.get());
+    assertEquals(numRows, numInsertedRows.get());
+    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED: inserted " + numInsertedRows.get() +
+             " rows (total time: " + totalTimeMs + " ms, " +
              String.format("%.2f", numRows * 1000.0 / totalTimeMs) + " rows/sec)");
   }
 
