@@ -14,6 +14,8 @@
 #
 """Base script to run yugabyte processes locally.
 
+We will aim to maintain https://docs.yugabyte.com/admin/yb-ctl/ as public facing documentation!
+
 Example use cases:
 
 Creating a cluster with default settings
