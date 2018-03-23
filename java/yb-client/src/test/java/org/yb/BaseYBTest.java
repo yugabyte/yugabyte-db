@@ -63,7 +63,6 @@ public class BaseYBTest {
   public final TestRule watcher = new TestWatcher() {
 
     boolean succeeded;
-    boolean failed;
     long startTimeMs;
     Throwable failureException;
 
@@ -107,7 +106,6 @@ public class BaseYBTest {
 
     private void resetState() {
       succeeded = false;
-      failed = false;
       startTimeMs = 0;
       failureException = null;
     }
@@ -152,6 +150,7 @@ public class BaseYBTest {
     @Override
     protected void succeeded(Description description) {
       super.succeeded(description);
+      succeeded = true;
     }
 
     @Override
@@ -173,7 +172,7 @@ public class BaseYBTest {
             if (succeeded) {
               LOG.info("YB Java test succeeded: " + descStr);
             }
-            if (failed) {
+            if (failureException != null) {
               LOG.error("YB Java test failed: " + descStr, failureException);
             }
             if (startTimeMs == 0) {

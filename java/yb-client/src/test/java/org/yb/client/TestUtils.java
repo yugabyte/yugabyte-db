@@ -616,8 +616,7 @@ public class TestUtils {
     }
     return new File(
         surefireDir,
-        testClass.getName() + String.format(".%03d.", BaseYBTest.getTestMethodIndex()) +
-            BaseYBTest.getCurrentTestMethodName() + "."
+        testClass.getName() + "."  + BaseYBTest.getCurrentTestMethodName() + "."
     ).toString();
   }
 

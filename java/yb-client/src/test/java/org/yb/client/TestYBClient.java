@@ -37,11 +37,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.junit.After;
 import org.junit.Before;
@@ -202,8 +198,13 @@ public class TestYBClient extends BaseYBClientTest {
     int numBefore = listResp.getMasters().size();
     LeaderStepDownResponse resp = syncClient.masterLeaderStepDown();
     assertFalse(resp.hasError());
-    // Sleep to give time for re-election completion. TODO: Add api for election completion.
+    // We might have failed due to election taking too long in this instance: https://goo.gl/xYmZDb.
     Thread.sleep(6000);
+    TestUtils.waitFor(
+        () -> {
+          return syncClient.getLeaderMasterUUID() != null;
+        }, 20000);
+
     String newLeaderUuid = syncClient.getLeaderMasterUUID();
     assertNotNull(newLeaderUuid);
     listResp = syncClient.listMasters();

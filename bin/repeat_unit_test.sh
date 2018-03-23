@@ -76,7 +76,7 @@ fi
 positional_args=()
 more_test_args=""
 log_dir=""
-declare -i parallelism=4
+declare -i parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM
 declare -i iteration=0
 declare -i num_iter=1000
 keep_all_logs=false
@@ -106,6 +106,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     -p|--parallelism)
       parallelism=$2
+      validate_numeric_arg_range "parallelism" "$parallelism" \
+        "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
       shift
     ;;
     --log-dir)

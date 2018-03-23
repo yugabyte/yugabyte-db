@@ -81,7 +81,7 @@ public class TestKeyspace extends BaseCQLTest {
 
   public int getTestMethodTimeoutSec() {
     // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
-    return 300;
+    return 350;
   }
 
   // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
@@ -97,24 +97,25 @@ public class TestKeyspace extends BaseCQLTest {
     final String tableName = "test_table";
 
     createKeyspace(keyspaceName);
-    useKeyspace(keyspaceName);
+    try {
+      useKeyspace(keyspaceName);
 
-    for (int i = 0; i < 5; ++i) {
-      final int numRows = TestUtils.isTSAN() ? 1000 : 10000;
-      LOG.info("Create a big table '" + tableName + "' with " + numRows +
-          " rows (isTSAN=" + TestUtils.isTSAN() + ", build type=" + TestUtils.getBuildType() + ")");
+      for (int i = 0; i < 4; ++i) {
+        final int numRows = TestUtils.isTSAN() ? 1000 : 7500;
+        LOG.info("Create a big table '" + tableName + "' with " + numRows +
+            " rows (isTSAN=" + TestUtils.isTSAN() + ", build type=" + TestUtils.getBuildType() +
+            "). Iteration: " + i);
 
-      super.setupTable(tableName, numRows);
-      dropTable(tableName);
-
-      // Check results of dropTable() just first a few times.
-      // Then only call Create+Drop as quick as it's possible.
-      if (i < 3) {
+        try {
+          super.setupTable(tableName, numRows);
+        } finally {
+          dropTable(tableName);
+        }
         assertNoTable(tableName);
       }
+    } finally {
+      dropKeyspace(keyspaceName);
     }
-
-    dropKeyspace(keyspaceName);
     LOG.info("--- TEST CQL: CREATE & DROP TABLE TIMEOUTS - End");
   }
 
