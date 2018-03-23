@@ -134,7 +134,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   }
 
   void SetUp() override {
