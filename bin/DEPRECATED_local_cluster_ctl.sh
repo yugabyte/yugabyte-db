@@ -447,6 +447,24 @@ output_separator() {
   echo
 }
 
+# Print out deprecation warning on every single command, to notify people aggresively to shift away
+# scripts!
+echo -en "\033[0;31m"
+cat <<EOF
+****************************************************************************************************
+WARNING! This script is now deprecated! Please move your workflows to using 'bin/yb-ctl' instead!
+
+Important notable changes:
+- make sure you destroy old clusters first, before migrating to creating new ones with yb-ctl
+- you will no longer rev up port numbers (7001-7003), but instead rev up IPs: 127.0.0.(1-3)
+- you no longer need new diffs for custom flags, just use --tserver_flags/--master_flags
+- yb-ctl is the same script the community will use for local testing
+
+We will aim to maintain https://docs.yugabyte.com/admin/yb-ctl/ as public facing documentation!
+****************************************************************************************************
+EOF
+echo -e "\033[0m"
+
 cmd=""
 num_masters=3
 num_tservers=3
