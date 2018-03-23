@@ -129,8 +129,6 @@ class MasterTest : public YBTest {
     // but we have no tablet servers. Typically this would be disallowed.
     FLAGS_catalog_manager_check_ts_count_for_create_table = false;
 
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
-
     // Start master with the create flag on.
     mini_master_.reset(
         new MiniMaster(Env::Default(), GetTestPath("Master"),

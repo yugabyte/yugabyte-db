@@ -128,7 +128,6 @@ using server::ClockPtr;
 using strings::Substitute;
 
 static const int kConsensusRpcTimeoutForTests = 50;
-static const int kConsensusMaxMissedLeader = 6;
 
 static const int kTestRowKey = 1234;
 static const int kTestRowIntVal = 5678;
@@ -146,7 +145,6 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void SetUp() override {
     TabletServerIntegrationTestBase::SetUp();
     FLAGS_consensus_rpc_timeout_ms = kConsensusRpcTimeoutForTests;
-    FLAGS_leader_failure_max_missed_heartbeat_periods = kConsensusMaxMissedLeader;
   }
 
   void ScanReplica(TabletServerServiceProxy* replica_proxy,

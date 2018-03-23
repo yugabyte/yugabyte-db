@@ -90,7 +90,6 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void SetUp() override {
     TabletServerTestBase::SetUp();
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   }
 
   void AddExtraFlags(const std::string& flags_str, std::vector<std::string>* flags) {
