@@ -7,8 +7,12 @@ An hypothetical, or virtual, index is an index that doesn't really exists, and
 thus doesn't cost CPU, disk or any resource to create.  They're useful to know
 if specific indexes can increase performance for problematic queries, since
 you can know if PostgreSQL will use these indexes or not without having to
-spend resources to create them.  For more information on this extension usage,
-you can see [this blog
+spend resources to create them.
+
+For more thorough informations, pease consult the [oficial
+documentation](https://hypopg.readthedocs.io).
+
+For other general informations, you can also consult [this blog
 post](https://rjuju.github.io/postgresql/2015/07/02/how-about-hypothetical-indexes.html).
 
 Installation
@@ -23,7 +27,7 @@ Installation
 Usage
 -----
 
-NOTE: The hypothetical indexes are contained in a single backend. Therefeore,
+NOTE: The hypothetical indexes are contained in a single backend. Therefore,
 if you add multiple hypothetical indexes, concurrent connexions doing
 EXPLAIN won't be bothered by your hypothetical indexes.
 
