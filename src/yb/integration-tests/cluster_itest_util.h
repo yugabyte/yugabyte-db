@@ -106,6 +106,8 @@ typedef std::unordered_multimap<std::string, TServerDetails*> TabletReplicaMap;
 typedef std::unordered_map<TabletServerId, std::unique_ptr<TServerDetails>> TabletServerMap;
 typedef std::unordered_map<TabletServerId, TServerDetails*> TabletServerMapUnowned;
 
+YB_STRONGLY_TYPED_BOOL(MustBeCommitted);
+
 // Returns possibly the simplest imaginable schema, with a single int key column.
 client::YBSchema SimpleIntKeyYBSchema();
 
@@ -146,23 +148,31 @@ TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& table
 //
 // If actual_index is not nullptr, the index that the servers have agreed on is written to
 // actual_index. If the servers fail to agree, it is set to zero.
+//
+// If must_be_committed is true, we require committed OpIds to also be the same across all servers
+// and be the same as last received OpIds. This will make sure all followers know that all entries
+// they received are committed, and we can actually read those entries from the followers.
+// One place where this makes a difference is LinkedListTest.TestLoadWhileOneServerDownAndVerify.
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const TabletId& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index = nullptr);
+                             int64_t* actual_index = nullptr,
+                             MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMapUnowned& tablet_servers,
                              const TabletId& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index = nullptr);
+                             int64_t* actual_index = nullptr,
+                             MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const vector<TServerDetails*>& tablet_servers,
                              const string& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index = nullptr);
+                             int64_t* actual_index = nullptr,
+                             MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 // Wait until all specified replicas have logged at least the given index.
 // Unlike WaitForServersToAgree(), the servers do not actually have to converge
