@@ -225,8 +225,10 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--tags");
             subcommand.add("install-software");
           }
-          subcommand.add("--placement_uuid");
-          subcommand.add(String.valueOf(taskParam.placementUuid));
+          Map<String, String> gflags = new HashMap<>();
+          gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
+          subcommand.add("--extra_gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
         }
         break;
       case GFlags:
