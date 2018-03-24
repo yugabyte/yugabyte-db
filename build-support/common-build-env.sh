@@ -1338,8 +1338,6 @@ run_python_doctest() {
 
   local IFS=$'\n'
   local file_list=$( git ls-files '*.py' )
-  #local IFS=$'\n'
-  #local python_files=( $( find "$YB_SRC_ROOT/python" -name "*.py" -type f ) )
 
   local python_file
   for python_file in $file_list; do
