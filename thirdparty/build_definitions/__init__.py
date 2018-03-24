@@ -12,12 +12,17 @@
 # under the License.
 #
 
-import importlib
 import os
+import sys
+
+BUILD_DEFINITIONS_DIR = os.path.realpath(os.path.dirname(__file__))
+print BUILD_DEFINITIONS_DIR
+sys.path = filter(lambda p: os.path.realpath(p) != BUILD_DEFINITIONS_DIR, sys.path)
+
+import importlib
 import pkgutil
 import platform
 import shutil
-import sys
 import subprocess
 import traceback
 
