@@ -316,7 +316,7 @@ public class PlacementInfoUtil {
     }
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = Util.getNodePrefix(customerId, cluster.userIntent.universeName);
+    taskParams.nodePrefix = Util.getNodePrefix(customerId, taskParams.getPrimaryCluster().userIntent.universeName);
 
     Universe universe = null;
     if (taskParams.universeUUID == null) {
@@ -332,10 +332,8 @@ public class PlacementInfoUtil {
     ConfigureNodesMode mode;
     boolean isEditUniverse = universe != null;
     // If no placement info, then this is the first create attempt, so choose a new placement.
-    if (cluster.placementInfo == null) {
-      if (universe == null) {
-        taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
-      }
+    if (cluster.placementInfo == null && universe == null) {
+      taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo = getPlacementInfo(cluster.userIntent);
       LOG.info("Placement created={}.", cluster.placementInfo);
       configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
@@ -882,13 +880,17 @@ public class PlacementInfoUtil {
   public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
     PlacementInfo primaryPlacementInfo = taskParams.getPrimaryCluster().placementInfo;
     Universe universe = Universe.get(taskParams.universeUUID);
-    // TODO filter primary nodes and clear those only
-    Collection<NodeDetails> existingNodes = universe.getNodes();
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    Collection<NodeDetails> existingNodes = universe.getNodesInCluster(primaryCluster.uuid);
+
     // If placementInfo is null then user has chosen to Reset AZ config
     // Hence a new full move configuration is generated
     if (primaryPlacementInfo == null) {
-      // TODO Filter only nodes of current cluster type and remove those
-      taskParams.nodeDetailsSet.clear();
+      // Remove primary cluster nodes which will be added back in ToBeDecommissioned state
+      taskParams.nodeDetailsSet.removeIf((NodeDetails nd) -> {
+        return (nd.placementUuid.equals(primaryCluster.uuid));
+      });
+
       taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(taskParams.getPrimaryCluster().userIntent);
       configureDefaultNodeStates(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet, 
                                  taskParams.nodePrefix, universe);
