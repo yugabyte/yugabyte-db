@@ -18,7 +18,14 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
-cd "$1"
+work_dir=$1
+
+cd "$work_dir"
+if [[ $? -ne 0 ]]; then
+  echo "Failed to set current directory to '$work_dir'" >&2
+  exit 1
+fi
+
 if [[ -n ${2:-} ]]; then
   export PATH=$2
 fi

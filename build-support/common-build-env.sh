@@ -1365,14 +1365,19 @@ activate_virtualenv() {
     fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
           "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
   fi
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]]; then
+    log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
+    rm -rf "$virtualenv_dir"
+    unset YB_RECREATE_VIRTUALENV
+  fi
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
-    pip install virtualenv --user
+    pip2 install virtualenv --user
     (
       set -x
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
   set +u
@@ -1381,7 +1386,7 @@ activate_virtualenv() {
   unset PYTHONPATH
   set -u
   export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
-  pip install -r "$YB_SRC_ROOT/requirements.txt"
+  pip2 install -r "$YB_SRC_ROOT/requirements.txt"
 }
 
 read_file_and_trim() {
