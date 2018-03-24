@@ -1455,6 +1455,8 @@ pid_t ExternalDaemon::pid() const {
 void ExternalDaemon::Shutdown() {
   if (!process_) return;
 
+  LOG_WITH_PREFIX(INFO) << "Starting Shutdown()";
+
   // Before we kill the process, store the addresses. If we're told to start again we'll reuse
   // these.
   bound_rpc_ = bound_rpc_hostport();
@@ -1624,6 +1626,10 @@ Status ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
   return STATUS(NotFound, msg);
 }
 
+string ExternalDaemon::LogPrefix() {
+  return Format("{ daemon_id: $0 bound_rpc: $1 } ", daemon_id_, bound_rpc_);
+}
+
 //------------------------------------------------------------
 // ScopedResumeExternalDaemon
 //------------------------------------------------------------
@@ -1674,6 +1680,7 @@ Status ExternalMaster::Start(bool shell_mode) {
 }
 
 Status ExternalMaster::Restart() {
+  LOG_WITH_PREFIX(INFO) << "Restart()";
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
     Shutdown();
@@ -1772,6 +1779,7 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
 }
 
 Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+  LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
     Shutdown();

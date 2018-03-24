@@ -446,6 +446,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
                         const char* value_field,
                         int64_t* value) const;
 
+  std::string LogPrefix();
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();

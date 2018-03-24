@@ -45,6 +45,7 @@
 // either zero or one times, and no link_to refers to a missing key.
 
 #include <functional>
+#include <set>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -99,6 +100,7 @@ using yb::client::YBSchema;
 using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::itest::TServerDetails;
+using yb::itest::MustBeCommitted;
 
 using namespace std::placeholders;
 
@@ -1059,33 +1061,49 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   FLAGS_num_tablets = 1;
   ASSERT_NO_FATALS(BuildAndStart());
 
-  // Load the data with one of the three servers down.
+  LOG(INFO) << "Load the data with one of the three servers down.";
   cluster_->tablet_server(0)->Shutdown();
 
   int64_t written = 0;
   ASSERT_OK(tester_->LoadLinkedList(MonoDelta::FromSeconds(FLAGS_seconds_to_run),
                                            FLAGS_num_snapshots,
                                            &written));
-
-  // Start back up the server that missed all of the data being loaded. It should be
-  // able to stream the data back from the other server which is still up.
+  LOG(INFO) << "Start back up the server that missed all of the data being loaded. It should be"
+            << "able to stream the data back from the other server which is still up.";
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
-  // We'll give the tablets 5 seconds to start up regardless of how long we
-  // inserted for. This prevents flakiness in TSAN builds in particular.
   const int kBaseTimeToWaitSecs = 5;
+  LOG(INFO) << "We'll give the tablets " << kBaseTimeToWaitSecs << " seconds to start up "
+            << "regardless of how long we inserted for. This prevents flakiness in TSAN builds "
+            << "in particular.";
   const int kWaitTime = FLAGS_seconds_to_run + kBaseTimeToWaitSecs;
-  const string tablet_id = tablet_replicas_.begin()->first;
-  ASSERT_NO_FATALS(WaitForServersToAgree(
-                            MonoDelta::FromSeconds(kWaitTime),
-                            tablet_servers_,
-                            tablet_id,
-                            written / FLAGS_num_chains));
+
+  set<TabletId> converged_tablets;
+  for (const auto& tablet_replica_entry : tablet_replicas_) {
+    const TabletId& tablet_id = tablet_replica_entry.first;
+    if (converged_tablets.count(tablet_id)) {
+      continue;
+    }
+    converged_tablets.insert(tablet_id);
+    LOG(INFO) << "Waiting for replicas of tablet " << tablet_id << " to agree";
+    ASSERT_NO_FATALS(WaitForServersToAgree(
+        MonoDelta::FromSeconds(kWaitTime),
+        tablet_servers_,
+        tablet_id,
+        // TODO: not sure if this number makes sense. At best this is a lower bound on the Raft
+        // index.
+        written / FLAGS_num_chains,
+        /* actual_index */ nullptr,
+        // In addition to all replicas having all entries in the log, we require that followers
+        // know that all entries are committed.
+        MustBeCommitted::kTrue));
+  }
 
   ASSERT_ALL_REPLICAS_AGREE(written);
 
   cluster_->tablet_server(1)->Shutdown();
   cluster_->tablet_server(2)->Shutdown();
+
   // We can't force reads to go to the leader, because with two out of the three servers down there
   // won't be a leader.
   ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ false));
