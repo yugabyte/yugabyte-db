@@ -276,8 +276,10 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add(gflagsJson);
           }
         } else {
-          expectedCommand.add("--placement_uuid");
-          expectedCommand.add(String.valueOf(params.placementUuid));
+          expectedCommand.add("--extra_gflags");
+          Map<String, String> gflags1 = new HashMap<>(configureParams.gflags);
+          gflags1.put("placement_uuid", String.valueOf(params.placementUuid));
+          expectedCommand.add(Json.stringify(Json.toJson(gflags1)));
         }
         break;
       case Destroy:
