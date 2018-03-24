@@ -315,7 +315,7 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
-time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only
+time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote
 
 # Only enable test core dumps for certain build types.
 if [[ $BUILD_TYPE != "asan" ]]; then
