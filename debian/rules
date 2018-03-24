@@ -1,0 +1,28 @@
+#!/usr/bin/make -f
+
+PKGVER = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
+EXCLUDE = --exclude-vcs --exclude=debian
+
+include /usr/share/postgresql-common/pgxs_debian_control.mk
+
+override_dh_auto_build:
+	# do nothing
+
+override_dh_auto_test:
+	# nothing to do here, upstream tests used, see debian/tests/*
+
+override_dh_auto_install:
+	# build all supported versions
+	+pg_buildext loop postgresql-%v-hypopg
+
+override_dh_installdocs:
+	dh_installdocs --all CONTRIBUTORS.md README.md
+	rm -rvf debian/*/usr/share/doc/postgresql-doc-*
+
+override_dh_installchangelogs:
+	dh_installchangelogs CHANGELOG.md upstream
+
+orig: debian/control clean
+	cd .. && tar czf hypopg_$(PKGVER).orig.tar.gz $(EXCLUDE) hypopg-$(PKGVER)
+%:
+	dh $@

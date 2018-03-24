@@ -1,0 +1,19 @@
+Source: hypopg
+Section: database
+Priority: optional
+Maintainer: Julien Rouhaud <rjuju123@gmail.com>
+Standards-Version: 4.1.3
+Build-Depends: debhelper (>=9~), postgresql-server-dev-all (>= 141~)
+Homepage: https://hypopg.readthedocs.io/
+Vcs-Browser: https://github.com/hypopg/hypopg
+Vcs-Git: https://github.com/hypopg/hypopg.git
+
+Package: postgresql-PGVERSION-hypopg
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION
+Description: PostgreSQL extension adding support for hypothetical indexes.
+ An hypothetical, or virtual, index is an index that doesn't really exists, and
+ thus doesn't cost CPU, disk or any resource to create.  They're useful to know
+ if specific indexes can increase performance for problematic queries, since
+ you can know if PostgreSQL will use these indexes or not without having to
+ spend resources to create them.

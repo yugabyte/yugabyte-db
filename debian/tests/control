@@ -1,0 +1,3 @@
+Depends: @, postgresql-server-dev-all, postgresql-contrib-9.3, postgresql-contrib-9.4, postgresql-contrib-9.5, postgresql-contrib-9.6, postgresql-contrib-10
+Tests: installcheck
+Restrictions: allow-stderr
