@@ -168,6 +168,10 @@ set_common_test_paths
 export YB_DISABLE_LATEST_SYMLINK=1
 remove_latest_symlink
 
+if is_jenkins; then
+  log "Running on Jenkins, will re-create the Python virtualenv"
+  YB_RECREATE_VIRTUALENV=1
+fi
 run_python_tests
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
