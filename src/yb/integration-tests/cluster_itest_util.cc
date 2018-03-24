@@ -208,44 +208,72 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const string& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index) {
+                             int64_t* actual_index,
+                             MustBeCommitted must_be_committed) {
   return WaitForServersToAgree(timeout,
                                TServerDetailsVector(tablet_servers),
                                tablet_id,
                                minimum_index,
-                               actual_index);
+                               actual_index,
+                               must_be_committed);
 }
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMapUnowned& tablet_servers,
                              const TabletId& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index) {
-  return WaitForServersToAgree(timeout,
-                               TServerDetailsVector(tablet_servers),
-                               tablet_id,
-                               minimum_index,
-                               actual_index);
+                             int64_t* actual_index,
+                             MustBeCommitted must_be_committed) {
+  return WaitForServersToAgree(
+      timeout, TServerDetailsVector(tablet_servers), tablet_id, minimum_index, actual_index,
+      must_be_committed);
 }
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const vector<TServerDetails*>& servers,
                              const string& tablet_id,
                              int64_t minimum_index,
-                             int64_t* actual_index) {
+                             int64_t* actual_index,
+                             MustBeCommitted must_be_committed) {
   auto deadline = CoarseMonoClock::Now() + timeout;
   if (actual_index != nullptr) {
     *actual_index = 0;
   }
 
-  for (int i = 1; CoarseMonoClock::Now() < deadline; i++) {
+  vector<OpIdType> opid_types{consensus::OpIdType::RECEIVED_OPID};
+  if (must_be_committed) {
+    // In this mode we require that last received and committed op ids from all servers converge
+    // on the same value.
+    opid_types.push_back(consensus::OpIdType::COMMITTED_OPID);
+  }
+
+  Status last_non_ok_status;
+  vector<OpId> received_ids;
+  vector<OpId> committed_ids;
+
+  for (int attempt = 1; CoarseMonoClock::Now() < deadline; attempt++) {
     vector<OpId> ids;
-    Status s = GetLastOpIdForEachReplica(tablet_id, servers, consensus::RECEIVED_OPID, timeout,
-                                         &ids);
+
+    Status s;
+    for (auto opid_type : opid_types) {
+      vector<OpId> ids_of_this_type;
+      s = GetLastOpIdForEachReplica(tablet_id, servers, opid_type, timeout, &ids_of_this_type);
+      if (opid_type == consensus::OpIdType::RECEIVED_OPID) {
+        received_ids = ids_of_this_type;
+      } else {
+        committed_ids = ids_of_this_type;
+      }
+      if (s.ok()) {
+        std::copy(ids_of_this_type.begin(), ids_of_this_type.end(), std::back_inserter(ids));
+      } else {
+        break;
+      }
+    }
+
     if (s.ok()) {
+      int64_t cur_index = kInvalidOpIdIndex;
       bool any_behind = false;
       bool any_disagree = false;
-      int64_t cur_index = kInvalidOpIdIndex;
       for (const OpId& id : ids) {
         if (cur_index == kInvalidOpIdIndex) {
           cur_index = id.index();
@@ -268,13 +296,17 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       }
     } else {
       LOG(WARNING) << "Got error getting last opid for each replica: " << s.ToString();
+      last_non_ok_status = s;
     }
 
     LOG(INFO) << "Not converged past " << minimum_index << " yet: " << ids;
-    SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
+    SleepFor(MonoDelta::FromMilliseconds(min(attempt * 100, 1000)));
   }
-  return STATUS(TimedOut, Substitute("Index $0 not available on all replicas after $1. ",
-                                              minimum_index, timeout.ToString()));
+  return STATUS_FORMAT(
+      TimedOut,
+      "All replicas of tablet $0 could not converge on an index of at least $1 after $2. "
+      "must_be_committed=$3. Latest received ids: $3, committed ids: $4",
+      tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
 }
 
 // Wait until all specified replicas have logged the given index.
