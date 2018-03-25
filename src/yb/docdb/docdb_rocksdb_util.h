@@ -64,6 +64,7 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
 void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter);
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
+KeyBytes AppendEncodedDocHt(const Slice& key, const Slice& encoded_doc_ht);
 
 // A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
 // times to avoid invalidating iterator state. In debug mode it also allows printing detailed

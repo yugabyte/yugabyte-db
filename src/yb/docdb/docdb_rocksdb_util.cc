@@ -198,6 +198,15 @@ KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   return KeyBytes(key, Slice(buf, end));
 }
 
+KeyBytes AppendEncodedDocHt(const Slice& key, const Slice& encoded_doc_ht) {
+  KeyBytes key_bytes;
+  key_bytes.Reserve(key.size() + 1 + encoded_doc_ht.size());
+  key_bytes.AppendRawBytes(key);
+  key_bytes.AppendValueType(ValueType::kHybridTime);
+  key_bytes.AppendRawBytes(encoded_doc_ht);
+  return key_bytes;
+}
+
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
   SeekForward(AppendDocHt(key, DocHybridTime::kMin), iter);
 }
