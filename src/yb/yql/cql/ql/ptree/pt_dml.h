@@ -321,6 +321,29 @@ class PTDmlStmt : public PTCollection {
     return non_pk_only_indexes_;
   }
 
+  // For inter-statement dependency analysis -
+  // Does this DML modify the hash or primary key?
+  bool ModifiesHashKey() const {
+    return modifies_hash_key_;
+  }
+  bool ModifiesPrimaryKey() const {
+    return modifies_primary_key_;
+  }
+  // Does this DML read from the hash or primary key?
+  bool ReadsHashKey(const bool has_usertimestamp) const {
+    // A DML reads from the hash key if it reads a static column, or it modifies the hash key and
+    // has a user-defined timestamp (which DocDB will require a read-modify-write by the timestamp).
+    return !static_column_refs_.empty() || modifies_hash_key_ && has_usertimestamp;
+  }
+  bool ReadsPrimaryKey(const bool has_usertimestamp) const {
+    // A DML reads from the primary key if there is a IF clause (TODO differentiate the case where
+    // the IF clause references static columns only) or otherwise reads a non-static column (e.g.
+    // counter update), or it modifies the primary key and has a user-defined timestamp (which
+    // DocDB will require a read-modify-write by the timestamp).
+    return if_clause_ != nullptr || !column_refs_.empty() ||
+        modifies_primary_key_ && has_usertimestamp;
+  }
+
  protected:
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
@@ -339,6 +362,9 @@ class PTDmlStmt : public PTCollection {
 
   // Semantic-analyzing the bind variables for hash columns.
   CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
+
+  // Semantic-analyzing statement for inter-statement dependency.
+  CHECKED_STATUS AnalyzeInterDependency(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
@@ -396,6 +422,11 @@ class PTDmlStmt : public PTCollection {
   // corresponding tables, and the set of indexes that do not.
   MCUnorderedMap<TableId, std::shared_ptr<client::YBTable>> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
+
+  // For inter-dependency analysis of DMLs in a batch/transaction: does this DML modify the hash
+  // hash or primary key?
+  bool modifies_hash_key_ = false;
+  bool modifies_primary_key_ = false;
 
   static const PTExpr::SharedPtr kNullPointerRef;
 };

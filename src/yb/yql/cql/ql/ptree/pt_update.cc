@@ -150,6 +150,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
 
+  // Analyze for inter-statement dependency.
+  RETURN_NOT_OK(AnalyzeInterDependency(sem_context));
+
   return Status::OK();
 }
 

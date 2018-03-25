@@ -35,6 +35,8 @@
 #include <memory>
 #include <string>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/read_hybrid_time.h"
@@ -245,13 +247,17 @@ class YBqlWriteOp : public YBqlOp {
 
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  // Hash and equal functions to define a set of non-overlapped write operations.
-  struct Hash {
-    size_t operator() (const std::shared_ptr<YBqlWriteOp>& op) const;
+  // Hash and equal functions to define a set of write operations that do not overlap by their
+  // hash (or primary) keys.
+  struct HashKeyComparator {
+    virtual ~HashKeyComparator() {}
+    virtual size_t operator() (const YBqlWriteOpPtr& op) const;
+    virtual bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const;
   };
-  struct Overlap {
-    bool operator() (const std::shared_ptr<YBqlWriteOp>& op1,
-                     const std::shared_ptr<YBqlWriteOp>& op2) const;
+  struct PrimaryKeyComparator : HashKeyComparator {
+    virtual ~PrimaryKeyComparator() {}
+    size_t operator() (const YBqlWriteOpPtr& op) const override;
+    bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const override;
   };
 
  protected:
