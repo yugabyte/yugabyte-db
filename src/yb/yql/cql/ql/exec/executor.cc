@@ -984,7 +984,8 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 bool Executor::FlushAsync() {
-  batched_write_ops_.clear();
+  batched_writes_by_primary_key_.clear();
+  batched_writes_by_hash_key_.clear();
   return ql_env_->FlushAsync(&flush_async_cb_);
 }
 
@@ -1012,10 +1013,12 @@ void Executor::FlushAsyncDone(const Status &s) {
       const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
       for (auto itr = exec_contexts_.begin(); itr != exec_contexts_.end();) {
         ExecContext& exec_context = *itr;
+        const TreeNode *tnode = exec_context.tnode();
         if (exec_context.op() != nullptr) {
           // Apply any operation that has been deferred but can be applied now.
           if (exec_context.IsOperationDeferred()) {
-            if (!DeferOperation(std::static_pointer_cast<YBqlWriteOp>(exec_context.op()))) {
+            if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
+                                std::static_pointer_cast<YBqlWriteOp>(exec_context.op()))) {
               ss = exec_context.Apply();
               if (!ss.ok()) {
                 break;
@@ -1027,7 +1030,7 @@ void Executor::FlushAsyncDone(const Status &s) {
             // completed but exclude the time to commit the transaction if any.
             if (ql_metrics_ != nullptr) {
               const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
-              switch (exec_context.tnode()->opcode()) {
+              switch (tnode->opcode()) {
                 case TreeNodeOpcode::kPTSelectStmt:
                   ql_metrics_->ql_select_->Increment(delta_usec);
                   break;
@@ -1239,7 +1242,7 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
       }
     }
     exec_contexts_.emplace_back(parent, tnode);
-    RETURN_NOT_OK(exec_contexts_.back().Apply(index_op, DeferOperation(index_op)));
+    RETURN_NOT_OK(exec_contexts_.back().Apply(index_op, DeferOperation(tnode, index_op)));
   }
 
   return Status::OK();
@@ -1247,23 +1250,32 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
 
 //--------------------------------------------------------------------------------------------------
 
-bool Executor::DeferOperation(const YBqlWriteOpPtr& op) {
+bool Executor::DeferOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
   // Defer the given write operation if 2 conditions are met:
-  // 1) It fails to be added to batched_write_ops_ because the primary / hash key overlaps with that
-  //    of a prior write operation in the current write batch (see YBqlWriteOp::Overlap), and
-  // 2) It requires a read. We need to defer this latter overlapping write operation that requires
+  // 1) It fails to be added to batched_writes_ because the primary / hash key collides with that
+  //    of a prior write operation in the current write batch, and
+  // 2) It requires a read. We need to defer this latter colliding write operation that requires
   //    a read because currently we cannot read the results of a prior write operation to the same
   //    primary / hash key until the prior write batch has been applied in tserver. We need to defer
   //    the operation to the next batch.
-  // If the latter write operation overlaps with the prior one but does not require a read, it is
+  // If the latter write operation collides with the prior one but does not require a read, it is
   // okay to apply in the same batch. Our semantics allows the latter write operation to overwrite
   // the prior one.
-  return (!batched_write_ops_.insert(op).second &&
-          RequireRead(op->request(), op->table()->InternalSchema()));
+  const bool has_usertimestamp = op->request().has_user_timestamp_usec();
+  const bool defer =
+      tnode->ReadsPrimaryKey(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0 ||
+      tnode->ReadsHashKey(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0;
+
+  if (!defer) {
+    if (tnode->ModifiesPrimaryKey()) batched_writes_by_primary_key_.insert(op);
+    if (tnode->ModifiesHashKey()) batched_writes_by_hash_key_.insert(op);
+  }
+
+  return defer;
 }
 
 Status Executor::ApplyOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
-  RETURN_NOT_OK(exec_context().Apply(op, DeferOperation(op)));
+  RETURN_NOT_OK(exec_context().Apply(op, DeferOperation(tnode, op)));
 
   return UpdateIndexes(tnode, op->mutable_request());
 }
@@ -1394,7 +1406,8 @@ void Executor::StatementExecuted(const Status& s) {
 
 void Executor::Reset() {
   exec_contexts_.clear();
-  batched_write_ops_.clear();
+  batched_writes_by_primary_key_.clear();
+  batched_writes_by_hash_key_.clear();
   result_ = nullptr;
   cb_.Reset();
   ql_env_->Reset();

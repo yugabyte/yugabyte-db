@@ -277,7 +277,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
-  bool DeferOperation(const client::YBqlWriteOpPtr& op);
+  bool DeferOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
   CHECKED_STATUS ApplyOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
 
   //------------------------------------------------------------------------------------------------
@@ -295,10 +295,16 @@ class Executor : public QLExprExecutor {
   // execution.
   std::list<ExecContext> exec_contexts_;
 
-  // Set of write operations that have been applied.
+  // Set of write operations that have been applied (separated by their primary keys).
   std::unordered_set<client::YBqlWriteOpPtr,
-                     client::YBqlWriteOp::Hash,
-                     client::YBqlWriteOp::Overlap> batched_write_ops_;
+                     client::YBqlWriteOp::PrimaryKeyComparator,
+                     client::YBqlWriteOp::PrimaryKeyComparator> batched_writes_by_primary_key_;
+
+  // Set of write operations referencing a static column that have been applied (separated by their
+  // hash keys).
+  std::unordered_set<client::YBqlWriteOpPtr,
+                     client::YBqlWriteOp::HashKeyComparator,
+                     client::YBqlWriteOp::HashKeyComparator> batched_writes_by_hash_key_;
 
   // Execution result.
   ExecutedResult::SharedPtr result_;
