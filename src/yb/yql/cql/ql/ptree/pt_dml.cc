@@ -224,6 +224,28 @@ CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
   return Status::OK();
 }
 
+CHECKED_STATUS PTDmlStmt::AnalyzeInterDependency(SemContext *sem_context) {
+  // A DML modifies the hash key if it modifies a static column. It will potentially affect another
+  // DML reading from the static column.
+  if (column_args_ != nullptr) {
+    for (const auto& arg : *column_args_) {
+      if (arg.IsInitialized() && arg.desc()->is_static()) {
+        modifies_hash_key_ = true;
+        break;
+      }
+    }
+  }
+  // A DML modifies the primary key if the key contains a non-hash column, i.e. not something like
+  // INSERT INTO t (hash_col, static_col) VALUES (...);
+  for (const auto& op : key_where_ops_) {
+    if (!op.desc()->is_hash()) {
+      modifies_primary_key_ = true;
+      break;
+    }
+  }
+  return Status::OK();
+}
+
 // Are we writing to static columns only, i.e. no range columns or non-static columns.
 bool PTDmlStmt::StaticColumnArgsOnly() const {
   if (column_args_->empty() && subscripted_col_args_->empty()) {

@@ -199,30 +199,26 @@ uint16_t YBqlWriteOp::GetHashCode() const {
   return ql_write_request_->hash_code();
 }
 
-size_t YBqlWriteOp::Hash::operator() (const shared_ptr<YBqlWriteOp>& op) const {
-  return op->GetHashCode();
-}
+// YBqlWriteOp::HashHash/Equal ---------------------------------------------------------------
+size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
+  size_t hash = 0;
 
-namespace {
+  // Hash the table id.
+  boost::hash_combine(hash, op->table()->id());
 
-bool WriteStaticColumns(const YBTable* table, const QLWriteRequestPB& request) {
-  const auto& schema = table->InternalSchema();
-  for (const auto& col : request.column_values()) {
-    auto column = schema.column_by_id(ColumnId(col.column_id()));
-    CHECK_OK(column);
-    if (column->is_static()) {
-      return true;
-    }
+  // Hash the hash key.
+  string key;
+  for (const auto& value : op->request().hashed_column_values()) {
+    AppendToKey(value.value(), &key);
   }
-  return false;
+  boost::hash_combine(hash, key);
+
+  return hash;
 }
 
-} // namespace
-
-bool YBqlWriteOp::Overlap::operator() (const shared_ptr<YBqlWriteOp>& op1,
-                                       const shared_ptr<YBqlWriteOp>& op2) const {
-  // Check if two write ops overlap that they apply to the same hash/primary key in the same table.
-  // TODO: do more fine-grained checks to see if the columns they write overlap or not.
+bool YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op1,
+                                                 const YBqlWriteOpPtr& op2) const {
+  // Check if two write ops overlap that they apply to the same hash key in the same table.
   if (op1->table() != op2->table() && op1->table()->id() != op2->table()->id()) {
     return false;
   }
@@ -237,9 +233,32 @@ bool YBqlWriteOp::Overlap::operator() (const shared_ptr<YBqlWriteOp>& op1,
     if (req1.hashed_column_values()[i].value() != req2.hashed_column_values()[i].value())
       return false;
   }
-  if (WriteStaticColumns(op1->table(), req1) && WriteStaticColumns(op2->table(), req2)) {
-    return true;
+  return true;
+}
+
+// YBqlWriteOp::PrimaryHash/Equal ---------------------------------------------------------------
+size_t YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
+  size_t hash = YBqlWriteOp::HashKeyComparator::operator()(op);
+
+  // Hash the range key also.
+  string key;
+  for (const auto& value : op->request().range_column_values()) {
+    AppendToKey(value.value(), &key);
   }
+  boost::hash_combine(hash, key);
+
+  return hash;
+}
+
+bool YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op1,
+                                                    const YBqlWriteOpPtr& op2) const {
+  if (!YBqlWriteOp::HashKeyComparator::operator()(op1, op2)) {
+    return false;
+  }
+
+  // Check if two write ops overlap that they apply to the range key also.
+  const QLWriteRequestPB& req1 = op1->request();
+  const QLWriteRequestPB& req2 = op2->request();
   if (req1.range_column_values_size() != req2.range_column_values_size()) {
     return false;
   }
