@@ -263,7 +263,7 @@ void IntentAwareIterator::SeekForward(const Slice& key) {
     return;
   }
 
-  auto key_bytes = AppendDocHt(key, DocHybridTime(read_time_.global_limit, kMaxWriteId));
+  auto key_bytes = AppendEncodedDocHt(key, encoded_read_time_global_limit_);
   SeekForwardRegular(key_bytes);
   if (intent_iter_ && status_.ok()) {
     status_ = SetIntentUpperbound();
@@ -554,8 +554,7 @@ Status IntentAwareIterator::FindLastWriteTime(
   }
 
   {
-    SeekForwardRegular(AppendDocHt(
-        key_without_ht, DocHybridTime(read_time_.global_limit, kMaxWriteId)));
+    SeekForwardRegular(AppendEncodedDocHt(key_without_ht, encoded_read_time_global_limit_));
     RETURN_NOT_OK(status_);
   }
 
