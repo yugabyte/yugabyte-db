@@ -121,4 +121,15 @@ public class AppConfig {
   public long runTimeSeconds = -1;
 
   public String localDc;
+
+  // Used by CassandraPersonalization workload.
+
+  // Number of stores.
+  public int numStores = 1;
+
+  // Number of new coupons per customer in each load.
+  public int numNewCouponsPerCustomer = 150;
+
+  // Maximum number of coupons per customer.
+  public int maxCouponsPerCustomer = 3000;
 }

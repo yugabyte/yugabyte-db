@@ -51,6 +51,7 @@ public class CmdLineOpts {
     CassandraStockTicker,
     CassandraTimeseries,
     CassandraUserId,
+    CassandraPersonalization,
     CassandraSparkWordCount,
     CassandraSparkKeyValueCopy,
     RedisKeyValue,
@@ -146,6 +147,30 @@ public class CmdLineOpts {
         }
       }
       LOG.info("CassandraBatchKeyValue batch size : " + AppBase.appConfig.cassandraBatchSize);
+    }
+    if (appName == AppName.CassandraPersonalization) {
+      if (commandLine.hasOption("num_stores")) {
+        AppBase.appConfig.numStores = Integer.parseInt(commandLine.getOptionValue("num_stores"));
+      }
+      LOG.info("CassandraPersonalization number of stores : " + AppBase.appConfig.numStores);
+      if (commandLine.hasOption("num_new_coupons_per_customer")) {
+        AppBase.appConfig.numNewCouponsPerCustomer =
+          Integer.parseInt(commandLine.getOptionValue("num_new_coupons_per_customer"));
+      }
+      LOG.info("CassandraPersonalization number of new coupons per costomer : " +
+               AppBase.appConfig.numNewCouponsPerCustomer);
+      if (commandLine.hasOption("max_coupons_per_customer")) {
+        AppBase.appConfig.maxCouponsPerCustomer =
+          Integer.parseInt(commandLine.getOptionValue("max_coupons_per_customer"));
+      }
+      if (AppBase.appConfig.numNewCouponsPerCustomer >
+          AppBase.appConfig.maxCouponsPerCustomer) {
+        LOG.fatal(
+            "The number of new coupons cannot exceed the maximum number of coupons per customer");
+        System.exit(-1);
+      }
+      LOG.info("CassandraPersonalization maximum number of coupons per costomer : " +
+               AppBase.appConfig.maxCouponsPerCustomer);
     }
     if (appName == AppName.RedisPipelinedKeyValue ||
         appName == AppName.RedisHashPipelined) {
@@ -493,6 +518,14 @@ public class CmdLineOpts {
 
     options.addOption("wordcount_output_table", true,
                       "[CassandraSparkWordCount] Output table to write wordcounts to.");
+
+    // Options for CassandraPersonalization app.
+    options.addOption("num_stores", true,
+                      "[CassandraPersonalization] Number of stores.");
+    options.addOption("num_new_coupons_per_customer", true,
+                      "[CassandraPersonalization] Number of new coupons per customer.");
+    options.addOption("max_coupons_per_customer", true,
+                      "[CassandraPersonalization] Maximum number of coupons per customer.");
 
     // Options for CassandraSparkKeyValueCopy app.
     options.addOption("keyvaluecopy_input_table", true,
