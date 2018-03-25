@@ -42,6 +42,8 @@ typedef struct
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
 
+	List		*filter_tables;		/* filter out tables */
+
 	/*
 	 * LSN pointing to the end of commit record + 1 (txn->end_lsn)
 	 * It is useful for tools that wants a position to restart from.
@@ -51,6 +53,14 @@ typedef struct
 	uint64		nr_changes;			/* # of passes in pg_decode_change() */
 									/* FIXME replace with txn->nentries */
 } JsonDecodingData;
+
+typedef struct FilterTable
+{
+	char	*schemaname;
+	char	*tablename;
+	bool	allschemas;				/* true means any schema */
+	bool	alltables;				/* true means any table */
+} FilterTable;
 
 /* These must be available to pg_dlsym() */
 static void pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is_init);
@@ -68,6 +78,9 @@ static void pg_decode_message(LogicalDecodingContext *ctx,
 					bool transactional, const char *prefix,
 					Size content_size, const char *content);
 #endif
+
+static bool parse_table_identifier(List *qualified_tables, char separator, List **filter_tables);
+static bool string_to_FilterTable(char *rawstring, char separator, List **filter_tables);
 
 void
 _PG_init(void)
@@ -118,6 +131,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->write_in_chunks = false;
 	data->include_lsn = false;
 	data->include_not_null = false;
+	data->filter_tables = NIL;
 
 	data->nr_changes = 0;
 
@@ -261,6 +275,27 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "filter-tables") == 0)
+		{
+			char	*rawstr;
+
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "filter-tables argument is null");
+				data->filter_tables = NIL;
+			}
+
+			rawstr = pstrdup(strVal(elem->arg));
+			if (!string_to_FilterTable(rawstr, ',', &data->filter_tables))
+			{
+				pfree(rawstr);
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+			}
+			pfree(rawstr);
 		}
 		else
 		{
@@ -861,6 +896,33 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			Assert(false);
 	}
 
+	/* Filter tables, if available */
+	if (list_length(data->filter_tables) > 0)
+	{
+		ListCell	*lc;
+		char		*schemaname;
+		char		*tablename;
+
+		schemaname = get_namespace_name(class_form->relnamespace);
+		tablename = NameStr(class_form->relname);
+
+		foreach(lc, data->filter_tables)
+		{
+			FilterTable	*t = lfirst(lc);
+
+			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+			{
+				if (t->alltables || strcmp(t->tablename, tablename) == 0)
+				{
+					elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
+								((t->allschemas) ? "*" : t->schemaname),
+								((t->alltables) ? "*" : t->tablename));
+					return;
+				}
+			}
+		}
+	}
+
 	/* Change counter */
 	data->nr_changes++;
 
@@ -1113,3 +1175,145 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		OutputPluginWrite(ctx, true);
 }
 #endif
+
+static bool
+parse_table_identifier(List *qualified_tables, char separator, List **filter_tables)
+{
+	ListCell	*lc;
+
+	foreach(lc, qualified_tables)
+	{
+		char		*str = lfirst(lc);
+		char		*startp;
+		char		*nextp;
+		int			len;
+		FilterTable	*t = palloc0(sizeof(FilterTable));
+
+		/*
+		 * Detect a special character that means all schemas. There could be a
+		 * schema named "*" thus this test should be before we remove the
+		 * escape character.
+		 */
+		if (str[0] == '*' || str[1] == '.')
+			t->allschemas = true;
+		else
+			t->allschemas = false;
+
+		startp = nextp = str;
+		while (*nextp && *nextp != separator)
+		{
+			/* remove escape character */
+			if (*nextp == '\\')
+				memmove(nextp, nextp + 1, strlen(nextp));
+			nextp++;
+		}
+		len = nextp - startp;
+
+		/* if separator was not found, schema was not informed */
+		if (*nextp == '\0')
+		{
+			pfree(t);
+			return false;
+		}
+		else
+		{
+			/* schema name */
+			t->schemaname = (char *) palloc0((len + 1) * sizeof(char));
+			strncpy(t->schemaname, startp, len);
+
+			nextp++;			/* jump separator */
+			startp = nextp;		/* start new identifier (table name) */
+
+			/*
+			 * Detect a special character that means all tables. There could be
+			 * a table named "*" thus this test should be before that we remove
+			 * the escape character.
+			 */
+			if (startp[0] == '*' && startp[1] == '\0')
+				t->alltables = true;
+			else
+				t->alltables = false;
+
+			while (*nextp)
+			{
+				/* remove escape character */
+				if (*nextp == '\\')
+					memmove(nextp, nextp + 1, strlen(nextp));
+				nextp++;
+			}
+			len = nextp - startp;
+
+			/* table name */
+			t->tablename = (char *) palloc0((len + 1) * sizeof(char));
+			strncpy(t->tablename, startp, len);
+		}
+
+		*filter_tables = lappend(*filter_tables, t);
+	}
+
+	return true;
+}
+
+static bool
+string_to_FilterTable(char *rawstring, char separator, List **filter_tables)
+{
+	char	   *nextp;
+	bool		done = false;
+	List	   *qualified_tables = NIL;
+
+	nextp = rawstring;
+
+	while (isspace(*nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new identifier. */
+	do
+	{
+		char	   *curname;
+		char	   *endp;
+
+		curname = nextp;
+		while (*nextp && *nextp != separator && !isspace(*nextp))
+		{
+			if (*nextp == '\\')
+				nextp++;	/* ignore next character because of escape */
+			nextp++;
+		}
+		endp = nextp;
+		if (curname == nextp)
+			return false;	/* empty unquoted name not allowed */
+
+		while (isspace(*nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == separator)
+		{
+			nextp++;
+			while (isspace(*nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Now safe to overwrite separator with a null */
+		*endp = '\0';
+
+		/*
+		 * Finished isolating current name --- add it to list
+		 */
+		qualified_tables = lappend(qualified_tables, curname);
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
+
+	if (!parse_table_identifier(qualified_tables, '.', filter_tables))
+		return false;
+
+	return true;
+}
