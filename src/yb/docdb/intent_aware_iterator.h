@@ -192,6 +192,8 @@ class IntentAwareIterator {
   CHECKED_STATUS SetIntentUpperbound();
 
   const ReadHybridTime read_time_;
+  const string encoded_read_time_local_limit_;
+  const string encoded_read_time_global_limit_;
   const TransactionOperationContextOpt txn_op_context_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   std::unique_ptr<rocksdb::Iterator> iter_;
