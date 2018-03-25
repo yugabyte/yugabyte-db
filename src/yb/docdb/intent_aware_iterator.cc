@@ -209,6 +209,10 @@ IntentAwareIterator::IntentAwareIterator(
     const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
     : read_time_(read_time),
+      encoded_read_time_local_limit_(
+          DocHybridTime(read_time_.local_limit, kMaxWriteId).EncodedInDocDbFormat()),
+      encoded_read_time_global_limit_(
+          DocHybridTime(read_time_.global_limit, kMaxWriteId).EncodedInDocDbFormat()),
       txn_op_context_(txn_op_context),
       transaction_status_cache_(
           txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time) {
@@ -612,31 +616,28 @@ void IntentAwareIterator::SkipFutureRecords() {
       iter_valid_ = false;
       return;
     }
-    DocHybridTime doc_ht;
-    auto decode_status = doc_ht.DecodeFromEnd(iter_->key());
+    Slice encoded_doc_ht = iter_->key();
+    int doc_ht_size = 0;
+    auto decode_status = DocHybridTime::CheckAndGetEncodedSize(encoded_doc_ht, &doc_ht_size);
     if (!decode_status.ok()) {
       LOG(ERROR) << "Decode doc ht from key failed: " << decode_status
                  << ", key: " << iter_->key().ToDebugHexString();
       status_ = std::move(decode_status);
       return;
     }
+    encoded_doc_ht.remove_prefix(encoded_doc_ht.size() - doc_ht_size);
     auto value = iter_->value();
     auto value_type = static_cast<ValueType>(value[0]);
     if (value_type == ValueType::kHybridTime) {
       // Value came from a transaction, we could try to filter it by original intent time.
-      DocHybridTime intent_doc_ht;
-      value.consume_byte();
-      decode_status = intent_doc_ht.DecodeFrom(&value);
-      if (!decode_status.ok()) {
-        status_ = std::move(decode_status);
-        return;
-      }
-      if (intent_doc_ht.hybrid_time() <= read_time_.local_limit &&
-          doc_ht.hybrid_time() <= read_time_.global_limit) {
+      Slice encoded_intent_doc_ht = value;
+      encoded_intent_doc_ht.consume_byte();
+      if (encoded_intent_doc_ht.compare(Slice(encoded_read_time_local_limit_)) > 0 &&
+          encoded_doc_ht.compare(Slice(encoded_read_time_global_limit_)) > 0) {
         iter_valid_ = true;
         return;
       }
-    } else if (doc_ht.hybrid_time() <= read_time_.local_limit) {
+    } else if (encoded_doc_ht.compare(Slice(encoded_read_time_local_limit_)) > 0) {
       iter_valid_ = true;
       return;
     }
