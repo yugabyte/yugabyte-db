@@ -7,3 +7,4 @@ People who contributed to hypopg:
   * Andrew Kane
   * Rob Stolarz
   * Jeremy Finzel
+  * Christoph Berg
