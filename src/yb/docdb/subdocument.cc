@@ -166,6 +166,14 @@ Status SubDocument::ConvertToRedisSortedSet() {
   return Status::OK();
 }
 
+Status SubDocument::NumChildren(size_t *num_children) {
+  if (!has_valid_object_container()) {
+    return STATUS(IllegalState, "Not a valid object container");
+  }
+  *num_children = object_container().size();
+  return Status::OK();
+}
+
 SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
   if (!has_valid_object_container()) {
     return nullptr;

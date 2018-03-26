@@ -545,6 +545,27 @@ CHECKED_STATUS ParseIndexBound(const Slice& slice, RedisIndexBoundPB* bound_pb) 
   return Status::OK();
 }
 
+CHECKED_STATUS ParseTsLastN(YBRedisReadOp* op, const RedisClientCommand& args) {
+  // TSLastN is basically TSRangeByTime -INF, INF with a limit on number of entries. Note that
+  // there is a subtle difference here since TSRangeByTime iterates on entries from highest to
+  // lowest and hence we end up returning the highest N entries. This operation is more like
+  // TSRevRangeByTime -INF, INF with a limit (Note that TSRevRangeByTime is not implemented).
+  op->mutable_request()->set_allocated_get_collection_range_request(
+      new RedisCollectionGetRangeRequestPB());
+  op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME);
+  const auto& key = args[1];
+  auto limit = ParseInt32(args[2], "limit");
+  RETURN_NOT_OK(limit);
+  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  op->mutable_request()->set_range_request_limit(*limit);
+  op->mutable_request()->mutable_subkey_range()->mutable_lower_bound()->set_infinity_type
+      (RedisSubKeyBoundPB_InfinityType_NEGATIVE);
+  op->mutable_request()->mutable_subkey_range()->mutable_upper_bound()->set_infinity_type
+      (RedisSubKeyBoundPB_InfinityType_POSITIVE);
+  return Status::OK();
+}
+
 CHECKED_STATUS ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_collection_range_request(
       new RedisCollectionGetRangeRequestPB());

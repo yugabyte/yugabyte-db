@@ -1271,6 +1271,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
+        data.limit = request_.range_request_limit();
         RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesGeneric, data,
             ValueType::kRedisTS, request_, &response_,
             /* add_keys */ true, /* add_values */ true, /* reverse */ true));

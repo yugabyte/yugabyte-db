@@ -24,10 +24,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import redis.clients.jedis.*;
 
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertNull;
+import static junit.framework.TestCase.*;
 
 public class TestYBJedis extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
@@ -275,7 +272,7 @@ public class TestYBJedis extends BaseJedisTest {
     try {
       List<String> values = jedis_client.tsrangeByTime("k0", "foo", "bar");
     } catch (Exception e) {
-      assertEquals("ERR TSRANGEBYTIME: foo is not a valid number", e.getMessage());
+      assertTrue(e.getMessage().contains("ERR TSRANGEBYTIME: foo is not a valid number"));
       return;
     }
     // We shouldn't reach here.
@@ -307,5 +304,41 @@ public class TestYBJedis extends BaseJedisTest {
     assertNull(jedis_client.get("k1"));
     assertEquals("OK", jedis_client.set("k1", "v2", "NX", "EX", 5));
     assertEquals("v2", jedis_client.get("k1"));
+  }
+
+  @Test
+  public void TestTSLastN() throws Exception {
+    Map<Long, String> ts = new HashMap<>();
+    ts.put(-50L, "v1");
+    ts.put(-40L, "v2");
+    ts.put(-30L, "v3");
+    ts.put(-20L, "v4");
+    ts.put(-10L, "v5");
+    ts.put(10L, "v6");
+    ts.put(20L, "v7");
+    ts.put(30L, "v8");
+    ts.put(40L, "v9");
+    ts.put(50L, "v10");
+    assertEquals("OK", jedis_client.tsadd("ts_key", ts));
+    assertEquals(
+        Arrays.asList("10", "v6", "20", "v7", "30", "v8", "40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 5));
+    assertEquals(
+        Arrays.asList("20", "v7", "30", "v8", "40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 4));
+    assertEquals(
+        Arrays.asList("30", "v8", "40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 3));
+    assertEquals(
+        Arrays.asList("40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 2));
+    assertEquals(
+        Arrays.asList("-50", "v1", "-40", "v2", "-30", "v3", "-20", "v4", "-10", "v5", "10", "v6",
+            "20", "v7", "30", "v8", "40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 10));
+    assertEquals(
+        Arrays.asList("-50", "v1", "-40", "v2", "-30", "v3", "-20", "v4", "-10", "v5", "10", "v6",
+            "20", "v7", "30", "v8", "40", "v9", "50", "v10"),
+        jedis_client.tsLastN("ts_key", 20));
   }
 }
