@@ -41,6 +41,15 @@ export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
 
+export const ADD_CUSTOMER_CONFIG = 'ADD_CUSTOMER_CONFIG';
+export const ADD_CUSTOMER_CONFIG_RESPONSE = 'ADD_CUSTOMER_CONFIG_RESPONSE';
+
+export const DELETE_CUSTOMER_CONFIG = 'DELETE_CUSTOMER_CONFIG';
+export const DELETE_CUSTOMER_CONFIG_RESPONSE = 'DELETE_CUSTOMER_CONFIG_RESPONSE';
+
+export const FETCH_CUSTOMER_CONFIGS = 'FETCH_CUSTOMER_CONFIGS';
+export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE';
+
 export function validateToken(tokenFromStorage) {
   const cUUID = localStorage.getItem("customer_id");
   const auth_token = localStorage.getItem("customer_token");
@@ -204,6 +213,54 @@ export function fetchYugaWareVersion() {
 export function fetchYugaWareVersionResponse(response) {
   return {
     type: FETCH_YUGAWARE_VERSION_RESPONSE,
+    payload: response
+  };
+}
+
+export function addCustomerConfig(config) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/configs`, config);
+  return {
+    type: ADD_CUSTOMER_CONFIG,
+    payload: request
+  };
+}
+
+export function addCustomerConfigResponse(response) {
+  return {
+    type: ADD_CUSTOMER_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteCustomerConfig(configUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/configs/${configUUID}`);
+  return {
+    type: DELETE_CUSTOMER_CONFIG,
+    payload: request
+  };
+}
+
+export function deleteCustomerConfigResponse(response) {
+  return {
+    type: DELETE_CUSTOMER_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchCustomerConfigs() {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/configs`);
+  return {
+    type: FETCH_CUSTOMER_CONFIGS,
+    payload: request
+  };
+}
+
+export function fetchCustomerConfigsResponse(response) {
+  return {
+    type: FETCH_CUSTOMER_CONFIGS_RESPONSE,
     payload: response
   };
 }

@@ -27,3 +27,6 @@ export { default as ProviderConfiguration} from './PublicCloud/ProviderConfigura
 export { default as ProviderConfigurationContainer } from './PublicCloud/ProviderConfigurationContainer';
 export { default as AWSProviderInitView } from './PublicCloud/views/AWSProviderInitView';
 export { default as GCPProviderInitView } from './PublicCloud/views/GCPProviderInitView';
+
+export { default as StorageConfiguration } from './Storage/StorageConfiguration';
+export { default as StorageConfigurationContainer } from './Storage/StorageConfigurationContainer';
