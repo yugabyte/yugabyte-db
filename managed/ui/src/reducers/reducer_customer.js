@@ -5,7 +5,9 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE, FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS,
          FETCH_SOFTWARE_VERSIONS, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
          FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
-         UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE } from '../actions/customers';
+         UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE, ADD_CUSTOMER_CONFIG,
+         ADD_CUSTOMER_CONFIG_RESPONSE, FETCH_CUSTOMER_CONFIGS, FETCH_CUSTOMER_CONFIGS_RESPONSE,
+         DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE } from '../actions/customers';
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
@@ -20,7 +22,10 @@ const INITIAL_STATE = {
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
-  profile: getInitialState({})
+  profile: getInitialState({}),
+  addConfig: getInitialState({}),
+  configs: getInitialState([]),
+  deleteConfig: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -73,6 +78,18 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "yugawareVersion", {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:
       return setPromiseResponse(state, "yugawareVersion", action);
+    case ADD_CUSTOMER_CONFIG:
+      return setLoadingState(state, "addConfig", {});
+    case ADD_CUSTOMER_CONFIG_RESPONSE:
+      return setPromiseResponse(state, "addConfig", action);
+    case FETCH_CUSTOMER_CONFIGS:
+      return setLoadingState(state, "configs", []);
+    case FETCH_CUSTOMER_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, "configs", action);
+    case DELETE_CUSTOMER_CONFIG:
+      return setLoadingState(state, "deleteConfig", {});
+    case DELETE_CUSTOMER_CONFIG_RESPONSE:
+      return setPromiseResponse(state, "deleteConfig", action);
     default:
       return state;
   }
