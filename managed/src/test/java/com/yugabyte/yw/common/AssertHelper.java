@@ -42,9 +42,9 @@ public class AssertHelper {
     JsonNode targetNode = json.path(key);
     assertFalse(targetNode.isMissingNode());
     if (targetNode.isObject()) {
-      assertEquals(targetNode.toString(), value);
+      assertEquals(value, targetNode.toString());
     } else {
-      assertEquals(targetNode.asText(), value);
+      assertEquals(value, targetNode.asText());
     }
   }
 
