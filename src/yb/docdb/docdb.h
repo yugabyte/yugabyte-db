@@ -345,6 +345,8 @@ struct GetSubDocumentData {
   // Represent bounds on the first and last ranks to be considered.
   const IndexBound* low_index = &IndexBound::Empty();
   const IndexBound* high_index = &IndexBound::Empty();
+  // Maximum number of children to add for this subdocument (0 means no limit).
+  int32_t limit = 0;
 
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
@@ -355,6 +357,7 @@ struct GetSubDocumentData {
     result.high_subkey = high_subkey;
     result.low_index = low_index;
     result.high_index = high_index;
+    result.limit = limit;
     return result;
   }
 

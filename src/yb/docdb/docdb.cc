@@ -563,6 +563,12 @@ CHECKED_STATUS BuildSubDocument(
     }
 
     SubDocument* current = data.result;
+    size_t num_children;
+    RETURN_NOT_OK(current->NumChildren(&num_children));
+    if (data.limit != 0 && num_children >= data.limit) {
+      // We have processed enough records.
+      return Status::OK();
+    }
 
     Slice temp = key;
     temp.remove_prefix(data.subdocument_key.size());
