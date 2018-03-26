@@ -199,7 +199,7 @@ void ThreadPool::StartBGThreads() {
 // Set the thread name to aid debugging
 #if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
 #if __GLIBC_PREREQ(2, 12)
-    char name_buf[16];
+    char name_buf[36];
     snprintf(name_buf, sizeof name_buf, "rocksdb:%s:bg%" ROCKSDB_PRIszt,
              GetThreadPriority() == Env::Priority::HIGH ? "high" : "low", bgthreads_.size());
     name_buf[sizeof name_buf - 1] = '\0';

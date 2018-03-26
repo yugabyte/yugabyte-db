@@ -352,7 +352,10 @@ void DisableCoreDumps() {
   // thus speeding up the crash.
   int f = open("/proc/self/coredump_filter", O_WRONLY);
   if (f >= 0) {
-    write(f, "00000000", 8);
+    auto ret = write(f, "00000000", 8);
+    if (ret != 8) {
+      LOG(WARNING) << "Error writing to /proc/self/coredump_filter: " << strerror(errno);
+    }
     close(f);
   }
 }
