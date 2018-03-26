@@ -435,15 +435,15 @@ CHECKED_STATUS GetAndPopulateResponseValues(
 
   // Validate and populate response.
   response->set_allocated_array_response(new RedisArrayPB());
-  if (!data.doc_found) {
-    response->set_code(RedisResponsePB_RedisStatusCode_NIL);
-    return Status::OK();
+  if (!(*data.doc_found)) {
+      response->set_code(RedisResponsePB_RedisStatusCode_NIL);
+      return Status::OK();
   }
 
   if (VerifyTypeAndSetCode(expected_type, data.result->value_type(), response)) {
-    RETURN_NOT_OK(PopulateResponseFrom(data.result->object_container(),
-                                       add_response_values,
-                                       response, add_keys, add_values, reverse));
+      RETURN_NOT_OK(PopulateResponseFrom(data.result->object_container(),
+                                         add_response_values,
+                                         response, add_keys, add_values, reverse));
   }
   return Status::OK();
 }
@@ -1158,6 +1158,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
       break;
     }
     default: {
+      data.count_only = !(add_keys || add_values);
       RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
           SeekFwdSuffices::kFalse));
       if (add_keys || add_values) {
@@ -1165,6 +1166,9 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
       }
       if (!doc_found) {
         response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+        if (data.count_only) {
+          response_.set_int_response(0);
+        }
         return Status::OK();
       }
       if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
@@ -1173,7 +1177,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
                                              &response_, add_keys, add_values));
         } else {
           response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-          response_.set_int_response(doc.object_container().size());
+          response_.set_int_response(data.record_count);
         }
       }
       break;
@@ -1471,6 +1475,8 @@ Status RedisReadOperation::ExecuteGet() {
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, true, false);
     case RedisGetRequestPB_GetRequestType_SCARD:
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, false, false);
+    case RedisGetRequestPB_GetRequestType_TSCARD:
+      return ExecuteHGetAllLikeCommands(ValueType::kRedisTS, false, false);
     case RedisGetRequestPB_GetRequestType_ZCARD:
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSortedSet, false, false);
     case RedisGetRequestPB_GetRequestType_UNKNOWN: {

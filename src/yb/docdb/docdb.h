@@ -347,6 +347,10 @@ struct GetSubDocumentData {
   const IndexBound* high_index = &IndexBound::Empty();
   // Maximum number of children to add for this subdocument (0 means no limit).
   int32_t limit = 0;
+  // Only store a count of the number of records found, but don't store the records themselves.
+  bool count_only = false;
+  // Stores the count of records found, if count_only option is set.
+  mutable size_t record_count = 0;
 
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {

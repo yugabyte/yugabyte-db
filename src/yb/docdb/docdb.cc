@@ -570,16 +570,21 @@ CHECKED_STATUS BuildSubDocument(
       return Status::OK();
     }
 
-    Slice temp = key;
-    temp.remove_prefix(data.subdocument_key.size());
-    for (;;) {
-      PrimitiveValue child;
-      RETURN_NOT_OK(child.DecodeFromKey(&temp));
-      if (temp.empty()) {
-        current->SetChild(child, std::move(descendant));
-        break;
+    if (data.count_only) {
+      // We need to only count the records that we found.
+      data.record_count++;
+    } else {
+      Slice temp = key;
+      temp.remove_prefix(data.subdocument_key.size());
+      for (;;) {
+        PrimitiveValue child;
+        RETURN_NOT_OK(child.DecodeFromKey(&temp));
+        if (temp.empty()) {
+          current->SetChild(child, std::move(descendant));
+          break;
+        }
+        current = current->GetOrAddChild(child).first;
       }
-      current = current->GetOrAddChild(child).first;
     }
   }
 
