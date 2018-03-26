@@ -376,9 +376,11 @@ class PrimitiveValue {
 
  protected:
 
+  static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
+
   // Column attributes
-  int64_t ttl_seconds_;
-  int64_t write_time_;
+  int64_t ttl_seconds_ = -1;
+  int64_t write_time_ = kUninitializedWriteTime;
 
   ValueType type_;
 

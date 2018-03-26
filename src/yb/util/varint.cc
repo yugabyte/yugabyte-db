@@ -373,9 +373,9 @@ Status VarInt::DecodeFromComparable(
   i = j;
   // Construct a binary number with the rest of the bits.
   for (j = i; j < *num_decoded_bytes * 8; j++) {
-    bool val;
-    RETURN_NOT_OK(get_bit(j, slice, !is_positive_, &val));
-    digits_.push_back(val ? 1 : 0);
+    bool v = true;
+    RETURN_NOT_OK(get_bit(j, slice, !is_positive_, &v));
+    digits_.push_back(v ? 1 : 0);
   }
   // Go from big endian to little endian.
   std::reverse(digits_.begin(), digits_.end());
