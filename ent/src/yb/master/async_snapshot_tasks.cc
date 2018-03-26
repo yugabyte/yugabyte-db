@@ -63,19 +63,19 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       case TabletServerErrorPB::TABLET_NOT_FOUND:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
                      << tablet_->ToString() << " no further retry: " << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
                      << tablet_->ToString() << ": " << status.ToString();
     }
   } else {
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     VLOG(1) << "TS " << permanent_uuid() << ": snapshot complete on tablet "
             << tablet_->ToString();
   }
 
-  if (state() == kStateComplete) {
+  if (state() == MonitoredTaskState::kComplete) {
     bool handled = false;
     switch (operation_) {
       case tserver::TabletSnapshotOpRequestPB::CREATE: {
