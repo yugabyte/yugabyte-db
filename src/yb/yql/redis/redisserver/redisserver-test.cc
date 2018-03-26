@@ -1529,6 +1529,7 @@ TEST_F(TestRedisService, TestSortedSets) {
       {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
       {30.000001}, {"v8"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 9);
+  DoRedisTestInt(__LINE__, {"ZCARD", "does_not_exist"}, 0);
 
   // Test NX/XX/CH option for multi.
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "NX", "0", "v8", "40", "v9"}, 1);
@@ -1652,6 +1653,55 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
+TEST_F(TestRedisService, TestTsCard) {
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "-50", "v1",
+      "-40", "v2",
+      "-30", "v3",
+      "-20", "v4",
+      "-10", "v5",
+      "10", "v6",
+      "20", "v7",
+      "30", "v8",
+      "40", "v9",
+      "50", "v10",
+  });
+
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key1",
+      "10", "v6",
+      "20", "v7",
+      "30", "v8",
+      "40", "v9",
+      "50", "v10",
+  });
+
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key2", "10", "v6"});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key2", "11", "v7", "EXPIRE_IN", "10"});
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"TSCARD", "ts_key"}, 10);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TSCARD", "ts_key1"}, 5);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TSCARD", "ts_key2"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TSCARD", "invalid_key"}, 0);
+  SyncClient();
+
+  // After TTL expiry.
+  std::this_thread::sleep_for(std::chrono::seconds(11));
+  DoRedisTestInt(__LINE__, {"TSCARD", "ts_key2"}, 1);
+
+  // Test errors.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
+      "1", "v3", "1", "v4", "1", "v5"}, 6);
+  DoRedisTestExpectError(__LINE__, {"TSCARD" , "z_multi"}); // incorrect type.
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestTsLastN) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
@@ -1686,7 +1736,7 @@ TEST_F(TestRedisService, TestTsLastN) {
   DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "3.0"});
   DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "999999999999"}); // out of bounds.
   DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "-999999999999"}); // out of bounds.
-  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "randomkey", "10"}); // invalid key.
+  DoRedisTestNull(__LINE__, {"TSLASTN" , "randomkey", "10"}); // invalid key.
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
       "1", "v3", "1", "v4", "1", "v5"}, 6);
   DoRedisTestExpectError(__LINE__, {"TSLASTN" , "z_multi", "10"}); // incorrect type.
@@ -2076,6 +2126,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestArray(__LINE__, {"HVALS", "map_key"},
       {"v3", "v2", "41", "12", "19", "14"});
   DoRedisTestInt(__LINE__, {"HLEN", "map_key"}, 6);
+  DoRedisTestInt(__LINE__, {"HLEN", "does_not_exist"}, 0);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey1"}, 1);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey2"}, 1);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey3"}, 0);
@@ -2120,6 +2171,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val1", "val2", "val3"});
   DoRedisTestInt(__LINE__, {"SCARD", "set1"}, 3);
+  DoRedisTestInt(__LINE__, {"SCARD", "does_not_exist"}, 0);
   DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val1"}, 1);
   DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val2"}, 1);
   DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val3"}, 1);
