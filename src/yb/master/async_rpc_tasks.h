@@ -115,9 +115,9 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  State AbortAndReturnPrevState() override;
+  MonitoredTaskState AbortAndReturnPrevState() override;
 
-  State state() const override {
+  MonitoredTaskState state() const override {
     return state_.load();
   }
 
@@ -133,7 +133,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Handle the response from the RPC request. On success, MarkSuccess() must
   // be called to mutate the state_ variable. If retry is desired, then
   // no state change is made. Retries will automatically be attempted as long
-  // as the state is kStateRunning and deadline_ has not yet passed.
+  // as the state is MonitoredTaskState::kRunning and deadline_ has not yet passed.
   virtual void HandleResponse(int attempt) = 0;
 
   // Return the id of the tablet that is the subject of the async request.
@@ -143,12 +143,19 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Overridable log prefix with reasonable default.
   std::string LogPrefix() const {
-    return strings::Substitute("$0 (task=$1, state=$2): ",
-                               description(), this, MonitoredTask::state(state()));
+    return strings::Substitute("$0 (task=$1, state=$2): ", description(), this, ToString(state()));
   }
 
-  bool PerformStateTransition(State expected, State new_state) {
+  bool PerformStateTransition(MonitoredTaskState expected, MonitoredTaskState new_state)
+      WARN_UNUSED_RESULT {
     return state_.compare_exchange_strong(expected, new_state);
+  }
+
+  void TransitionToTerminalState(MonitoredTaskState expected, MonitoredTaskState terminal_state);
+
+  static bool IsStateTerminal(MonitoredTaskState state) {
+    return state == MonitoredTaskState::kComplete || state == MonitoredTaskState::kFailed ||
+           state == MonitoredTaskState::kAborted;
   }
 
   void AbortTask();
@@ -207,7 +214,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   void AbortIfScheduled();
 
   // Use state() and MarkX() accessors.
-  std::atomic<State> state_;
+  std::atomic<MonitoredTaskState> state_;
 };
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,

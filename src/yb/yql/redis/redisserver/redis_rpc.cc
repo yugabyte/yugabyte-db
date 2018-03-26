@@ -81,7 +81,7 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
   size_t begin_of_batch = 0;
   size_t end_of_batch = begin_of_batch;
   // Try to parse all received commands to a single RedisInboundCall.
-  for(;;) {
+  for (;;) {
     auto end_of_command = VERIFY_RESULT(parser.NextCommand());
     if (end_of_command == 0) {
       break;
@@ -172,7 +172,7 @@ Status RedisInboundCall::ParseFrom(
     parser.SetArgs(&client_batch_[i]);
     end_of_command = VERIFY_RESULT(parser.NextCommand());
     DCHECK_NE(0, client_batch_[i].size());
-    if (client_batch_[i].empty()) { // Should not be there
+    if (client_batch_[i].empty()) { // Should not be there.
       return STATUS(Corruption, "Empty command");
     }
     if (!end_of_command) {
@@ -229,7 +229,6 @@ bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
     return true;
   }
 
-  // RedisClientBatch client_batch_
   rpc::RedisCallDetailsPB* redis_details = resp->mutable_redis_details();
   for (RedisClientCommand command : client_batch_) {
     string query = "";
@@ -256,7 +255,7 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
     //    1) Parsing error: The command is malformed (eg. too few arguments "SET a")
     //    2) Server error: Request to server failed due to reasons not related to the command
     //    3) Execution error: The command ran into problem during execution (eg. WrongType errors,
-    //          HSET on a key that isn't a hash)
+    //       HSET on a key that isn't a hash).
 
     if (redis_response.code() == RedisResponsePB_RedisStatusCode_PARSING_ERROR) {
       out = SerializeError(error_message, out);
