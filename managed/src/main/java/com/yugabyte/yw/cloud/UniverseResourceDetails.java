@@ -72,8 +72,11 @@ public class UniverseResourceDetails {
     // Calculate price
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
+    UserIntent userIntent = params.getPrimaryCluster().userIntent;
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
-      UserIntent userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
+      if (nodeDetails.placementUuid != null) {
+        userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
+      }
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
       if (!nodeDetails.isActive()) {
         continue;
@@ -85,7 +88,7 @@ public class UniverseResourceDetails {
         hourlyPrice += userIntent.spotPrice;
       } else {
         PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
-                                                          userIntent.instanceType);
+                userIntent.instanceType);
         if (instancePrice == null) {
           continue;
         }
@@ -140,17 +143,20 @@ public class UniverseResourceDetails {
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
     }
+    UserIntent userIntent = params.getPrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       if (node.isActive()) {
-        UserIntent userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
+        if (node.placementUuid != null) {
+          userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
+        }
         details.addVolumeCount(userIntent.deviceInfo.numVolumes);
         details.addVolumeSizeGB(userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         details.addAz(node.cloudInfo.az);
         InstanceType instanceType = InstanceType.get(userIntent.providerType,
-            node.cloudInfo.instance_type);
+                node.cloudInfo.instance_type);
         if (instanceType == null) {
           LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +
-              " for provider " + userIntent.providerType);
+                  " for provider " + userIntent.providerType);
         } else {
           details.addMemSizeGB(instanceType.memSizeGB);
           details.addNumCores(instanceType.numCores);
