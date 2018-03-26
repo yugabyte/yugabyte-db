@@ -494,9 +494,9 @@ class YBControl:
         for upgrade in [False, True]:
             name_suffix = '_rolling_{0}'.format("upgrade" if upgrade else "restart")
             if upgrade:
-                hint = "Restarts the {0} in a rolling manner."
-            else:
                 hint = "Upgrades the {0} to the newly copied TAR in a rolling manner."
+            else:
+                hint = "Restarts the {0} in a rolling manner."
             for service in self.all_services:
                 self.__add_command_ex(service + 's' + name_suffix,
                                       lambda s=service, u=upgrade: self.roll_servers([s], u),
