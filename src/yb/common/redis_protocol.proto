@@ -192,6 +192,7 @@ message RedisGetRequestPB {
     SCARD = 13;
     ZCARD = 15;
     TSGET = 14;
+    TSCARD = 16;
     UNKNOWN = 99;
   }
 

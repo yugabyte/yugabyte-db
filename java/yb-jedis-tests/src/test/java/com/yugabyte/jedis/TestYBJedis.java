@@ -24,7 +24,12 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import redis.clients.jedis.*;
 
-import static junit.framework.TestCase.*;
+import static junit.framework.TestCase.assertEquals;
+import static junit.framework.TestCase.assertFalse;
+import static junit.framework.TestCase.assertNotNull;
+import static junit.framework.TestCase.assertNull;
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.fail;
 
 public class TestYBJedis extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
@@ -340,5 +345,53 @@ public class TestYBJedis extends BaseJedisTest {
         Arrays.asList("-50", "v1", "-40", "v2", "-30", "v3", "-20", "v4", "-10", "v5", "10", "v6",
             "20", "v7", "30", "v8", "40", "v9", "50", "v10"),
         jedis_client.tsLastN("ts_key", 20));
+  }
+
+  @Test
+  public void TestTSCard() throws Exception {
+    Map<Long, String> ts1 = new HashMap<>();
+    ts1.put(-50L, "v1");
+    ts1.put(-40L, "v2");
+    ts1.put(-30L, "v3");
+    ts1.put(-20L, "v4");
+    ts1.put(-10L, "v5");
+    ts1.put(10L, "v6");
+    ts1.put(20L, "v7");
+    ts1.put(30L, "v8");
+    ts1.put(40L, "v9");
+    ts1.put(50L, "v10");
+    assertEquals("OK", jedis_client.tsadd("ts_key", ts1));
+
+    Map<Long, String> ts2 = new HashMap<>();
+    ts2.put(10L, "v6");
+    ts2.put(20L, "v7");
+    ts2.put(30L, "v8");
+    ts2.put(40L, "v9");
+    ts2.put(50L, "v10");
+    assertEquals("OK", jedis_client.tsadd("ts_key1", ts2));
+
+    Map<Long, String> ts3 = new HashMap<>();
+    ts3.put(10L, "v6");
+    assertEquals("OK", jedis_client.tsadd("ts_key2", ts3));
+    ts3.clear();
+    ts3.put(11L, "v7");
+    assertEquals("OK", jedis_client.tsadd("ts_key2", ts3, "EXPIRE_IN", 10));
+
+    assertEquals(10L, jedis_client.tscard("ts_key").longValue());
+    assertEquals(5L, jedis_client.tscard("ts_key1").longValue());
+    assertEquals(2L, jedis_client.tscard("ts_key2").longValue());
+    assertEquals(0L, jedis_client.tscard("non_existent_key").longValue());
+
+    Thread.sleep(11000);
+    assertEquals(1L, jedis_client.tscard("ts_key2").longValue());
+    assertEquals(1L, jedis_client.zadd("zset", 10, "v1").longValue());
+
+    try {
+      // Invalid key.
+      jedis_client.tscard("zset");
+      fail("Did not fail!");
+    } catch (Exception e) {
+      LOG.info("Expected exception", e);
+    }
   }
 }

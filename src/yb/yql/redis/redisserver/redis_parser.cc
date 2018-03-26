@@ -545,6 +545,10 @@ CHECKED_STATUS ParseIndexBound(const Slice& slice, RedisIndexBoundPB* bound_pb) 
   return Status::OK();
 }
 
+CHECKED_STATUS ParseTsCard(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_TSCARD);
+}
+
 CHECKED_STATUS ParseTsLastN(YBRedisReadOp* op, const RedisClientCommand& args) {
   // TSLastN is basically TSRangeByTime -INF, INF with a limit on number of entries. Note that
   // there is a subtle difference here since TSRangeByTime iterates on entries from highest to
