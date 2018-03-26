@@ -119,6 +119,9 @@ class SubDocument : public PrimitiveValue {
   //         exist or this subdocument is not an object.
   SubDocument* GetChild(const PrimitiveValue& key);
 
+  // Returns the number of children for this subdocument.
+  CHECKED_STATUS NumChildren(size_t *num_children);
+
   const SubDocument* GetChild(const PrimitiveValue& key) const;
 
   // Returns the child of this object at the given subkey, or default-constructs one if it does not

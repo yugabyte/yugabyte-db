@@ -1683,6 +1683,48 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
+TEST_F(TestRedisService, TestTsLastN) {
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "-50", "v1",
+      "-40", "v2",
+      "-30", "v3",
+      "-20", "v4",
+      "-10", "v5",
+      "10", "v6",
+      "20", "v7",
+      "30", "v8",
+      "40", "v9",
+      "50", "v10",
+  });
+
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "5"},
+                   {"10", "v6", "20", "v7", "30", "v8", "40", "v9", "50", "v10"});
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "4"},
+                   {"20", "v7", "30", "v8", "40", "v9", "50", "v10"});
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "3"},
+                   {"30", "v8", "40", "v9", "50", "v10"});
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "2"},
+                   {"40", "v9", "50", "v10"});
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "10"},
+                   {"-50", "v1", "-40", "v2", "-30", "v3", "-20", "v4", "-10", "v5", "10", "v6",
+                       "20", "v7", "30", "v8", "40", "v9", "50", "v10"});
+  DoRedisTestArray(__LINE__, {"TSLASTN", "ts_key", "20"},
+                   {"-50", "v1", "-40", "v2", "-30", "v3", "-20", "v4", "-10", "v5", "10", "v6",
+                       "20", "v7", "30", "v8", "40", "v9", "50", "v10"});
+
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "abc"});
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "3.0"});
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "999999999999"}); // out of bounds.
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "ts_key", "-999999999999"}); // out of bounds.
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "randomkey", "10"}); // invalid key.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
+      "1", "v3", "1", "v4", "1", "v5"}, 6);
+  DoRedisTestExpectError(__LINE__, {"TSLASTN" , "z_multi", "10"}); // incorrect type.
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestTsRangeByTime) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
