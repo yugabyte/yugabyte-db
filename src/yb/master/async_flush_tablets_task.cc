@@ -67,18 +67,18 @@ void AsyncFlushTablets::HandleResponse(int attempt) {
         LOG(WARNING) << "TS " << permanent_uuid() << ": flush tablets failed because tablet "
                      << resp_.failed_tablet_id() << " was not found. "
                      << "No further retry: " << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": flush tablets failed: "
                      << status.ToString();
     }
   } else {
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     VLOG(1) << "TS " << permanent_uuid() << ": flush tablets complete";
   }
 
-  if (state() == kStateComplete) {
+  if (state() == MonitoredTaskState::kComplete) {
     // TODO: this class should not know CatalogManager API,
     //       remove circular dependency between classes.
     master_->flush_manager()->HandleFlushTabletsResponse(

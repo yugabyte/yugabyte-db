@@ -118,7 +118,7 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
     start_ts_(MonoTime::Now()),
     attempt_(0),
     reactor_task_id_(kUnscheduledTaskId),
-    state_(kStateWaiting) {
+    state_(MonitoredTaskState::kWaiting) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
 }
@@ -126,14 +126,19 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
-  CHECK_EQ(state(), kStateWaiting);
+  DCHECK(state() == MonitoredTaskState::kWaiting || state() == MonitoredTaskState::kAborted);
+
   const Status s = ResetTSProxy();
   if (!s.ok()) {
-    if (PerformStateTransition(kStateWaiting, kStateFailed)) {
+    if (PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kFailed)) {
       UnregisterAsyncTask();  // May delete this.
       return s.CloneAndPrepend("Failed to reset TS proxy");
+    } else if (state() == MonitoredTaskState::kAborted) {
+      UnregisterAsyncTask();  // May delete this.
+      return STATUS(IllegalState, "Unable to run task because it has been aborted");
+
     } else {
-      LOG_WITH_PREFIX(FATAL) << "Failed to change task to kStateFailed state";
+      LOG_WITH_PREFIX(FATAL) << "Failed to change task to MonitoredTaskState::kFailed state";
     }
   } else {
     rpc_.Reset();
@@ -145,8 +150,15 @@ Status RetryingTSRpcTask::Run() {
   const MonoTime& deadline = MonoTime::Earliest(timeout, deadline_);
   rpc_.set_deadline(deadline);
 
-  if (!PerformStateTransition(kStateWaiting, kStateRunning)) {
-    LOG_WITH_PREFIX(FATAL) << "Task transition kStateWaiting -> kStateRunning failed";
+  if (!PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kRunning)) {
+    if (state() == MonitoredTaskState::kAborted) {
+      UnregisterAsyncTask();  // May delete this.
+      return STATUS(Aborted, "Unable to run task because it has been aborted");
+    } else {
+      LOG_WITH_PREFIX(DFATAL) <<
+          "Task transition MonitoredTaskState::kWaiting -> MonitoredTaskState::kRunning failed";
+      return STATUS_FORMAT(IllegalState, "Task in invalid state $0", state());
+    }
   }
   if (!SendRequest(++attempt_)) {
     if (!RescheduleWithBackoffDelay()) {
@@ -158,12 +170,11 @@ Status RetryingTSRpcTask::Run() {
 
 // Abort this task and return its value before it was successfully aborted. If the task entered
 // a different terminal state before we were able to abort it, return that state.
-RetryingTSRpcTask::State RetryingTSRpcTask::AbortAndReturnPrevState() {
+MonitoredTaskState RetryingTSRpcTask::AbortAndReturnPrevState() {
   auto prev_state = state();
-  while (prev_state == MonitoredTask::kStateRunning ||
-         prev_state == MonitoredTask::kStateWaiting) {
+  while (!IsStateTerminal(prev_state)) {
     auto expected = prev_state;
-    if (state_.compare_exchange_strong(expected, kStateAborted)) {
+    if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
       AbortIfScheduled();
       return prev_state;
     }
@@ -173,9 +184,7 @@ RetryingTSRpcTask::State RetryingTSRpcTask::AbortAndReturnPrevState() {
 }
 
 void RetryingTSRpcTask::AbortTask() {
-  if (PerformStateTransition(kStateRunning, kStateAborted)) {
-    AbortIfScheduled();
-  }
+  AbortAndReturnPrevState();
 }
 
 void RetryingTSRpcTask::RpcCallback() {
@@ -194,7 +203,7 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                  << type_name() << " RPC failed for tablet "
                  << tablet_id() << ": " << rpc_.status().ToString();
-  } else if (state() != kStateAborted) {
+  } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
 
@@ -207,8 +216,9 @@ void RetryingTSRpcTask::DoRpcCallback() {
 }
 
 bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
-  if (state() != kStateRunning) {
-    if (state() != kStateComplete) {
+  auto task_state = state();
+  if (task_state != MonitoredTaskState::kRunning) {
+    if (task_state != MonitoredTaskState::kComplete) {
       LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
     }
     return false;
@@ -217,8 +227,8 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   if (RetryLimitTaskType() && attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
     LOG(WARNING) << "Reached maximum number of retries ("
                  << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description()
-                 << ", task=" << this << " state=" << MonitoredTask::state(state());
-    PerformStateTransition(kStateRunning, kStateFailed);
+                 << ", task=" << this << " state=" << state();
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
     return false;
   }
 
@@ -240,24 +250,29 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
 
   if (delay_millis <= 0) {
     LOG_WITH_PREFIX(WARNING) << "Request timed out";
-    PerformStateTransition(kStateRunning, kStateFailed);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
   } else {
     MonoTime new_start_time = now;
     new_start_time.AddDelta(MonoDelta::FromMilliseconds(delay_millis));
     LOG(INFO) << "Scheduling retry of " << description() << ", state="
-              << MonitoredTask::state(state()) << " with a delay of " << delay_millis
+              << state() << " with a delay of " << delay_millis
               << "ms (attempt = " << attempt_ << ")...";
 
-    if (!PerformStateTransition(kStateRunning, kStateScheduling)) {
-      LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as kStateScheduling";
+    if (!PerformStateTransition(MonitoredTaskState::kRunning, MonitoredTaskState::kScheduling)) {
+      LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";
       return false;
     }
     reactor_task_id_ = master_->messenger()->ScheduleOnReactor(
         std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
         MonoDelta::FromMilliseconds(delay_millis), master_->messenger());
 
-    if (!PerformStateTransition(kStateScheduling, kStateWaiting)) {
-      LOG_WITH_PREFIX(FATAL) << "Unable to mark task as kStateWaiting";
+    if (!PerformStateTransition(MonitoredTaskState::kScheduling, MonitoredTaskState::kWaiting)) {
+      // The only valid reason for state not being MonitoredTaskState is because the task got
+      // aborted.
+      if (state() != MonitoredTaskState::kAborted) {
+        LOG_WITH_PREFIX(FATAL) << "Unable to mark task as MonitoredTaskState::kWaiting";
+      }
+      return false;
     }
     return true;
   }
@@ -265,24 +280,23 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
 }
 
 void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
-  if (state() == kStateAborted) {
-    LOG_WITH_PREFIX(INFO) << "Async tablet task was aborted";
-    UnregisterAsyncTask();   // May delete this.
+  if (state() == MonitoredTaskState::kAborted) {
+    UnregisterAsyncTask();  // May delete this.
     return;
   }
 
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Async tablet task failed or was cancelled: "
                              << status.ToString();
-    if (status.IsAborted() && state() == kStateWaiting) {
-      PerformStateTransition(kStateWaiting, kStateAborted);
+    if (status.IsAborted()) {
+      AbortTask();
     }
-    UnregisterAsyncTask();   // May delete this.
+    UnregisterAsyncTask();  // May delete this.
     return;
   }
 
   string desc = description();  // Save in case we need to log after deletion.
-  Status s = Run();             // May delete this.
+  Status s = Run();  // May delete this.
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Async tablet task failed: " << s.ToString();
   }
@@ -290,8 +304,8 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
 
 void RetryingTSRpcTask::UnregisterAsyncTask() {
   auto s = state();
-  if (s != kStateAborted && s != kStateComplete && s != kStateFailed) {
-    LOG_WITH_PREFIX(FATAL) << "Invalid task state " << MonitoredTask::state(s);
+  if (!IsStateTerminal(s)) {
+    LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
   }
   end_ts_ = MonoTime::Now();
   if (table_ != nullptr) {
@@ -300,8 +314,9 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
 }
 
 void RetryingTSRpcTask::AbortIfScheduled() {
-  if (reactor_task_id_ != kUnscheduledTaskId) {
-    master_->messenger()->AbortOnReactor(reactor_task_id_);
+  auto reactor_task_id = reactor_task_id_.load(std::memory_order_acquire);
+  if (reactor_task_id != kUnscheduledTaskId) {
+    master_->messenger()->AbortOnReactor(reactor_task_id);
   }
 }
 
@@ -321,6 +336,19 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   consensus_proxy_.swap(consensus_proxy);
 
   return Status::OK();
+}
+
+void RetryingTSRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
+                                                  MonitoredTaskState terminal_state) {
+  if (!PerformStateTransition(expected, terminal_state)) {
+    if (terminal_state != MonitoredTaskState::kAborted && state() == MonitoredTaskState::kAborted) {
+      LOG_WITH_PREFIX(WARNING) << "Unable to perform transition " << expected << " -> "
+                               << terminal_state << ". Task has been aborted";
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "State transition " << expected << " -> "
+                              << terminal_state << " failed. Current task is in an invalid state";
+    }
+  }
 }
 
 // ============================================================================
@@ -351,14 +379,14 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
 
 void AsyncCreateReplica::HandleResponse(int attempt) {
   if (!resp_.has_error()) {
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
   } else {
     Status s = StatusFromPB(resp_.error().status());
     if (s.IsAlreadyPresent()) {
       LOG(INFO) << "CreateTablet RPC for tablet " << tablet_id_
                 << " on TS " << permanent_uuid_ << " returned already present: "
                 << s.ToString();
-      PerformStateTransition(kStateRunning, kStateComplete);
+      TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     } else {
       LOG(WARNING) << "CreateTablet RPC for tablet " << tablet_id_
                    << " on TS " << permanent_uuid_ << " failed: " << s.ToString();
@@ -389,19 +417,19 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
         LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                      << " because the tablet was not found. No further retry: "
                      << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         delete_done = true;
         break;
       case TabletServerErrorPB::CAS_FAILED:
         LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                      << " due to a CAS failure. No further retry: " << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         delete_done = true;
         break;
       case TabletServerErrorPB::WRONG_SERVER_UUID:
         LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                      << " due to a incorrect UUID. No further retry: " << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         delete_done = true;
         break;
       default:
@@ -418,7 +446,7 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
       LOG(WARNING) << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
                    << " did not belong to a known table, but was successfully deleted";
     }
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     delete_done = true;
     VLOG(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
   }
@@ -484,7 +512,7 @@ void AsyncAlterTable::HandleResponse(int attempt) {
       case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
         LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
                      << tablet_->ToString() << " no further retry: " << status.ToString();
-        PerformStateTransition(kStateRunning, kStateComplete);
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
@@ -492,13 +520,13 @@ void AsyncAlterTable::HandleResponse(int attempt) {
         break;
     }
   } else {
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     VLOG(1) << "TS " << permanent_uuid() << ": alter complete on tablet " << tablet_->ToString();
   }
 
   server::UpdateClock(resp_, master_->clock());
 
-  if (state() == kStateComplete) {
+  if (state() == MonitoredTaskState::kComplete) {
     // TODO: proper error handling here.
     CHECK_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
         tablet_.get(), schema_version_));
@@ -555,7 +583,7 @@ TabletServerId AsyncCopartitionTable::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
-// TODO(sagnik): modify this to fill al relevant fields for the AsyncCopartition request
+// TODO(sagnik): modify this to fill all relevant fields for the AsyncCopartition request.
 bool AsyncCopartitionTable::SendRequest(int attempt) {
 
   tserver::CopartitionTableRequestPB req;
@@ -571,7 +599,7 @@ bool AsyncCopartitionTable::SendRequest(int attempt) {
   return true;
 }
 
-// TODO(sagnik): modify this to handle the AsyncCopartition Response and retry fail as necessary
+// TODO(sagnik): modify this to handle the AsyncCopartition Response and retry fail as necessary.
 void AsyncCopartitionTable::HandleResponse(int attempt) {
   LOG(INFO) << "master can't handle server responses yet";
 }
@@ -610,7 +638,7 @@ void AsyncTruncate::HandleResponse(int attempt) {
                  << ": " << s.ToString();
   } else {
     VLOG(1) << "TS " << permanent_uuid() << ": truncate complete on tablet " << tablet_id();
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
   }
 
   server::UpdateClock(resp_, master_->clock());
@@ -701,7 +729,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
 
 void AsyncChangeConfigTask::HandleResponse(int attempt) {
   if (!resp_.has_error()) {
-    PerformStateTransition(kStateRunning, kStateComplete);
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
     LOG_WITH_PREFIX(INFO) << Substitute(
         "Change config succeeded on leader TS $0 for tablet $1 with type $2 for replica $3",
         permanent_uuid(), tablet_->tablet_id(), type_name(), change_config_ts_uuid_);
@@ -718,7 +746,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();
-      PerformStateTransition(kStateRunning, kStateFailed);
+      TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
       break;
     default:
       LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed on leader " << permanent_uuid()
@@ -854,7 +882,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
     return;
   }
 
-  PerformStateTransition(kStateRunning, kStateComplete);
+  TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
   const bool stepdown_failed = stepdown_resp_.error().status().code() != AppStatusPB::OK;
   LOG(INFO) << Format("Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
                       "error=$3, failed=$4, should_remove=$5 for tablet $6.",

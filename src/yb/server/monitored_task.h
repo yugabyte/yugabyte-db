@@ -36,47 +36,30 @@
 #include <string>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 namespace yb {
+
+YB_DEFINE_ENUM(MonitoredTaskState,
+  (kWaiting)    // RPC not issued, or is waiting to be retried.
+  (kRunning)    // RPC has been issued.
+  (kComplete)   // RPC completed successfully.
+  (kFailed)     // RPC completed with failure.
+  (kAborted)    // RPC was aborted before it completed.
+  (kScheduling) // RPC is being scheduled.
+);
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
   virtual ~MonitoredTask() {}
 
-  enum State {
-    kStateWaiting,  // RPC not issued, or is waiting to be retried.
-    kStateRunning,  // RPC has been issued.
-    kStateComplete,
-    kStateFailed,
-    kStateAborted,
-    kStateScheduling,
-  };
-
-  static string state(State state) {
-    switch (state) {
-    case MonitoredTask::kStateWaiting:
-      return "Waiting";
-    case MonitoredTask::kStateRunning:
-      return "Running";
-    case MonitoredTask::kStateComplete:
-      return "Complete";
-    case MonitoredTask::kStateFailed:
-      return "Failed";
-    case MonitoredTask::kStateAborted:
-      return "Aborted";
-    case MonitoredTask::kStateScheduling:
-      return "Scheduling";
-    }
-    return "UNKNOWN_STATE";
-  }
-
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  virtual State AbortAndReturnPrevState() = 0;
+  virtual MonitoredTaskState AbortAndReturnPrevState() = 0;
 
-  // Task State
-  virtual State state() const = 0;
+  // Task State.
+  virtual MonitoredTaskState state() const = 0;
 
   enum Type {
     ASYNC_CREATE_REPLICA,
@@ -94,16 +77,16 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   virtual Type type() const = 0;
 
-  // Task Type Identifier
+  // Task Type Identifier.
   virtual std::string type_name() const = 0;
 
-  // Task description
+  // Task description.
   virtual std::string description() const = 0;
 
-  // Task start time, may be !Initialized()
+  // Task start time, may be !Initialized().
   virtual MonoTime start_timestamp() const = 0;
 
-  // Task completion time, may be !Initialized()
+  // Task completion time, may be !Initialized().
   virtual MonoTime completion_timestamp() const = 0;
 };
 

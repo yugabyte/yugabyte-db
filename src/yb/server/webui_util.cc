@@ -66,7 +66,6 @@ void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& t
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
   for (const auto& task : tasks) {
-    string state = MonitoredTask::state(task->state());
 
     double running_secs = 0;
     if (task->completion_timestamp().Initialized()) {
@@ -80,7 +79,7 @@ void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& t
     *output << Substitute(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td></tr>\n",
         EscapeForHtmlToString(task->type_name()),
-        EscapeForHtmlToString(state),
+        EscapeForHtmlToString(ToString(task->state())),
         EscapeForHtmlToString(HumanReadableElapsedTime::ToShortString(running_secs)),
         EscapeForHtmlToString(task->description()));
   }
