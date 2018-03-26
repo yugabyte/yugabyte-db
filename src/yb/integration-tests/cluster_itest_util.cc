@@ -181,7 +181,7 @@ Status GetLastOpIdForReplica(const std::string& tablet_id,
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers) {
   vector<TServerDetails*> result;
   result.reserve(tablet_servers.size());
-  for(auto& pair : tablet_servers) {
+  for (auto& pair : tablet_servers) {
     result.push_back(pair.second.get());
   }
   return result;
@@ -190,7 +190,7 @@ vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_serve
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers) {
   vector<TServerDetails*> result;
   result.reserve(tablet_servers.size());
-  for(auto& pair : tablet_servers) {
+  for (auto& pair : tablet_servers) {
     result.push_back(pair.second);
   }
   return result;
@@ -198,7 +198,7 @@ vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& table
 
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers) {
   TabletServerMapUnowned result;
-  for(auto& pair : tablet_servers) {
+  for (auto& pair : tablet_servers) {
     result.emplace(pair.first, pair.second.get());
   }
   return result;

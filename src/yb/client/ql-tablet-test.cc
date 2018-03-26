@@ -195,7 +195,6 @@ class QLTabletTest : public QLDmlTestBase {
         tserver->server()->messenger(), endpoint);
 
     auto condition = [&]() -> Result<bool> {
-      // int total_rows = 0;
       for (int i = begin; i != end; ++i) {
         bool found = false;
         for (const auto& tablet : tablets) {
@@ -455,7 +454,7 @@ TEST_F(QLTabletTest, LeaderLease) {
 
   auto old_lease_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
   SetAtomicFlag(60 * 1000, &FLAGS_leader_lease_duration_ms);
-  // Wait for lease to sync
+  // Wait for lease to sync.
   std::this_thread::sleep_for(2ms * old_lease_ms);
 
   LOG(INFO) << "Step down";
@@ -548,7 +547,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   for (size_t t = 0; t != kTotalThreads; ++t) {
     threads.emplace_back([this, &idx, &table] {
       auto session = CreateSession();
-      for(;;) {
+      for (;;) {
         int32_t i = idx++;
         if (i >= kTotalRows) {
           break;
@@ -601,7 +600,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
           down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier).op_id().index);
     }
 
-    // Allow several entries for non write ops
+    // Allow several entries for non write ops.
     ASSERT_GE(max_index, op_id.index - 5);
     ASSERT_LE(min_index, 5);
   }
