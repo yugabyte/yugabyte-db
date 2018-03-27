@@ -1,7 +1,7 @@
 Changelog
 =========
 
-WIP version 1.1.1:
+2018-03-20 version 1.1.1:
 ------------------
 
   **Bug fixes**:
