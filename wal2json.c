@@ -43,6 +43,7 @@ typedef struct
 	bool		write_in_chunks;	/* write in chunks? */
 
 	List		*filter_tables;		/* filter out tables */
+	List		*add_tables;		/* add only these tables */
 
 	/*
 	 * LSN pointing to the end of commit record + 1 (txn->end_lsn)
@@ -54,13 +55,13 @@ typedef struct
 									/* FIXME replace with txn->nentries */
 } JsonDecodingData;
 
-typedef struct FilterTable
+typedef struct SelectTable
 {
 	char	*schemaname;
 	char	*tablename;
 	bool	allschemas;				/* true means any schema */
 	bool	alltables;				/* true means any table */
-} FilterTable;
+} SelectTable;
 
 /* These must be available to pg_dlsym() */
 static void pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is_init);
@@ -79,8 +80,8 @@ static void pg_decode_message(LogicalDecodingContext *ctx,
 					Size content_size, const char *content);
 #endif
 
-static bool parse_table_identifier(List *qualified_tables, char separator, List **filter_tables);
-static bool string_to_FilterTable(char *rawstring, char separator, List **filter_tables);
+static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
+static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
 
 void
 _PG_init(void)
@@ -109,6 +110,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 {
 	ListCell	*option;
 	JsonDecodingData *data;
+	SelectTable	*t;
 
 	data = palloc0(sizeof(JsonDecodingData));
 	data->context = AllocSetContextCreate(TopMemoryContext,
@@ -132,6 +134,12 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_lsn = false;
 	data->include_not_null = false;
 	data->filter_tables = NIL;
+
+	/* add all tables in all schemas by default */
+	t = palloc0(sizeof(SelectTable));
+	t->allschemas = true;
+	t->alltables = true;
+	data->add_tables = lappend(data->add_tables, t);
 
 	data->nr_changes = 0;
 
@@ -287,7 +295,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 			}
 
 			rawstr = pstrdup(strVal(elem->arg));
-			if (!string_to_FilterTable(rawstr, ',', &data->filter_tables))
+			if (!string_to_SelectTable(rawstr, ',', &data->filter_tables))
 			{
 				pfree(rawstr);
 				ereport(ERROR,
@@ -296,6 +304,36 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 							 strVal(elem->arg), elem->defname)));
 			}
 			pfree(rawstr);
+		}
+		else if (strcmp(elem->defname, "add-tables") == 0)
+		{
+			char	*rawstr;
+
+			/*
+			 * If this parameter is specified, remove 'all tables in all
+			 * schemas' value from list.
+			 */
+			list_free_deep(data->add_tables);
+			data->add_tables = NIL;
+
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "add-tables argument is null");
+				data->add_tables = NIL;
+			}
+			else
+			{
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!string_to_SelectTable(rawstr, ',', &data->add_tables))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
+				pfree(rawstr);
+			}
 		}
 		else
 		{
@@ -819,6 +857,9 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	Relation	indexrel;
 	TupleDesc	indexdesc;
 
+	char		*schemaname;
+	char		*tablename;
+
 	AssertVariableIsOfType(&pg_decode_change, LogicalDecodeChangeCB);
 
 	data = ctx->output_plugin_private;
@@ -827,6 +868,10 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
+
+	/* schema and table names are used for select tables */
+	schemaname = get_namespace_name(class_form->relnamespace);
+	tablename = NameStr(class_form->relname);
 
 	if (data->write_in_chunks)
 		OutputPluginPrepareWrite(ctx, true);
@@ -900,15 +945,10 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (list_length(data->filter_tables) > 0)
 	{
 		ListCell	*lc;
-		char		*schemaname;
-		char		*tablename;
-
-		schemaname = get_namespace_name(class_form->relnamespace);
-		tablename = NameStr(class_form->relname);
 
 		foreach(lc, data->filter_tables)
 		{
-			FilterTable	*t = lfirst(lc);
+			SelectTable	*t = lfirst(lc);
 
 			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
 			{
@@ -921,6 +961,34 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				}
 			}
 		}
+	}
+
+	/* Add tables */
+	if (list_length(data->add_tables) > 0)
+	{
+		ListCell	*lc;
+		bool		skip = true;
+
+		/* all tables in all schemas are added by default */
+		foreach(lc, data->add_tables)
+		{
+			SelectTable	*t = lfirst(lc);
+
+			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+			{
+				if (t->alltables || strcmp(t->tablename, tablename) == 0)
+				{
+					elog(DEBUG2, "\"%s\".\"%s\" was added",
+								((t->allschemas) ? "*" : t->schemaname),
+								((t->alltables) ? "*" : t->tablename));
+					skip = false;
+				}
+			}
+		}
+
+		/* table was not found */
+		if (skip)
+			return;
 	}
 
 	/* Change counter */
@@ -1177,7 +1245,7 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #endif
 
 static bool
-parse_table_identifier(List *qualified_tables, char separator, List **filter_tables)
+parse_table_identifier(List *qualified_tables, char separator, List **select_tables)
 {
 	ListCell	*lc;
 
@@ -1187,7 +1255,7 @@ parse_table_identifier(List *qualified_tables, char separator, List **filter_tab
 		char		*startp;
 		char		*nextp;
 		int			len;
-		FilterTable	*t = palloc0(sizeof(FilterTable));
+		SelectTable	*t = palloc0(sizeof(SelectTable));
 
 		/*
 		 * Detect a special character that means all schemas. There could be a
@@ -1248,14 +1316,14 @@ parse_table_identifier(List *qualified_tables, char separator, List **filter_tab
 			strncpy(t->tablename, startp, len);
 		}
 
-		*filter_tables = lappend(*filter_tables, t);
+		*select_tables = lappend(*select_tables, t);
 	}
 
 	return true;
 }
 
 static bool
-string_to_FilterTable(char *rawstring, char separator, List **filter_tables)
+string_to_SelectTable(char *rawstring, char separator, List **select_tables)
 {
 	char	   *nextp;
 	bool		done = false;
@@ -1274,6 +1342,7 @@ string_to_FilterTable(char *rawstring, char separator, List **filter_tables)
 	{
 		char	   *curname;
 		char	   *endp;
+		char	   *qname;
 
 		curname = nextp;
 		while (*nextp && *nextp != separator && !isspace(*nextp))
@@ -1307,13 +1376,16 @@ string_to_FilterTable(char *rawstring, char separator, List **filter_tables)
 		/*
 		 * Finished isolating current name --- add it to list
 		 */
-		qualified_tables = lappend(qualified_tables, curname);
+		qname = pstrdup(curname);
+		qualified_tables = lappend(qualified_tables, qname);
 
 		/* Loop back if we didn't reach end of string */
 	} while (!done);
 
-	if (!parse_table_identifier(qualified_tables, '.', filter_tables))
+	if (!parse_table_identifier(qualified_tables, '.', select_tables))
 		return false;
+
+	list_free_deep(qualified_tables);
 
 	return true;
 }
