@@ -67,11 +67,11 @@ public class AppConfig {
   public long numUniqueKeysToWrite;
 
   // Used for RedisHash workloads. The number of subkeys that we want per key.
-  public int numSubkeysPerKey = 1;
-  public int numSubkeysPerWrite = 1;
-  public int numSubkeysPerRead = 1;
-  public double keyUpdateFreqZipfExponent = 0;
-  public double subkeyUpdateFreqZipfExponent = 0;
+  public int numSubkeysPerKey = 100;
+  public int numSubkeysPerWrite = 10;
+  public int numSubkeysPerRead = 10;
+  public double keyUpdateFreqZipfExponent = 1.0;
+  public double subkeyUpdateFreqZipfExponent = 1.0;
   public double valueSizeZipfExponent = 0;
   public int maxValueSize = 64 * 1024; // 64K
 
