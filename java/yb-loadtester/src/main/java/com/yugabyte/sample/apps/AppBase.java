@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -32,6 +33,7 @@ import org.apache.log4j.Logger;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
@@ -390,6 +392,21 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   @Override
   public void appendMessage(StringBuilder sb) {
     sb.append("Uptime: " + (System.currentTimeMillis() - workloadStartTime) + " ms | ");
+  }
+
+  /**
+   * Report exception.
+   *
+   * @param e  the exception
+   */
+  public void reportException(Exception e) {
+    LOG.info("Caught Exception: ", e);
+    if (e instanceof NoHostAvailableException) {
+      NoHostAvailableException ne = (NoHostAvailableException)e;
+      for (Map.Entry<InetSocketAddress,Throwable> entry : ne.getErrors().entrySet()) {
+        LOG.info("Exception encountered at host " + entry.getKey() + ": ", entry.getValue());
+      }
+    }
   }
 
   /**

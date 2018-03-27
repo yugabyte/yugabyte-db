@@ -38,8 +38,10 @@ public class LogUtil {
       Logger.getRootLogger().addAppender(console);
       Logger.getRootLogger().setLevel(Level.DEBUG);
     } else {
-      // If not verbose, only YB sample app INFO logs go to console.
+      // If not verbose, allow YB sample app and driver INFO logs go to console.
       Logger.getLogger("com.yugabyte.sample").addAppender(console);
+      Logger.getLogger("com.yugabyte.driver").addAppender(console);
+      Logger.getLogger("com.datastax.driver").addAppender(console);
       Logger.getRootLogger().setLevel(Level.ERROR);
     }
   }
