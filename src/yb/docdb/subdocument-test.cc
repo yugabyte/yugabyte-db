@@ -137,7 +137,7 @@ TEST(SubDocumentTest, TestCopyMove) {
   // Try Copies.
   SubDocument s1(ValueType::kObject);
   s1.SetTtl(1000);
-  s1.SetWritetime(1000);
+  s1.SetWriteTime(1000);
   SubDocument s2 = s1;
   ASSERT_EQ(s1, s2);
   ASSERT_EQ(s1.GetTtl(), s2.GetTtl());

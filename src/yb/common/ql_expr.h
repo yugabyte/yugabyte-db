@@ -26,12 +26,16 @@ namespace yb {
 // we use the clauses in protobuf to evaluate, we will maintain the column values in QLValuePB
 // also to avoid conversion to and from QLValue.
 struct QLTableColumn {
+  static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
+
   QLValuePB value;
   int64_t ttl_seconds;
-  int64_t write_time;
+  int64_t write_time = kUninitializedWriteTime;
 
   std::string ToString() const {
-    return Format("{ value: $0 ttl_seconds: $1 write_time: $2 }", value, ttl_seconds, write_time);
+    return Format("{ value: $0 ttl_seconds: $1 write_time: $2 }", value, ttl_seconds,
+                  write_time == kUninitializedWriteTime ? "kUninitializedWriteTime":
+                                                          std::to_string(write_time));
   }
 };
 

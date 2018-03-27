@@ -503,10 +503,10 @@ CHECKED_STATUS BuildSubDocument(
 
         // Choose the user supplied timestamp if present.
         const UserTimeMicros user_timestamp = doc_value.user_timestamp();
-        doc_value.mutable_primitive_value()->SetWritetime(
+        doc_value.mutable_primitive_value()->SetWriteTime(
             user_timestamp == Value::kInvalidUserTimestamp
-                ? write_time.hybrid_time().GetPhysicalValueMicros()
-                : doc_value.user_timestamp());
+            ? write_time.hybrid_time().GetPhysicalValueMicros()
+            : doc_value.user_timestamp());
         if (!data.high_index->CanInclude(current_values_observed)) {
           iter->SeekOutOfSubDoc(key);
           return Status::OK();

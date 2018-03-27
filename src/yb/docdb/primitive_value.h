@@ -361,7 +361,12 @@ class PrimitiveValue {
     return ttl_seconds_;
   }
 
+  bool IsWriteTimeSet() const {
+    return write_time_ != kUninitializedWriteTime;
+  }
+
   int64_t GetWriteTime() const {
+    DCHECK_NE(kUninitializedWriteTime, write_time_);
     return write_time_;
   }
 
@@ -369,7 +374,7 @@ class PrimitiveValue {
     ttl_seconds_ = ttl_seconds;
   }
 
-  void SetWritetime(const int64_t write_time) {
+  void SetWriteTime(const int64_t write_time) {
     write_time_ = write_time;
   }
   typedef std::vector<PrimitiveValue> FrozenContainer;
@@ -378,7 +383,7 @@ class PrimitiveValue {
 
   static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
 
-  // Column attributes
+  // Column attributes.
   int64_t ttl_seconds_ = -1;
   int64_t write_time_ = kUninitializedWriteTime;
 

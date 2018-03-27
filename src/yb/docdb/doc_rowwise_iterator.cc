@@ -87,7 +87,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   RETURN_NOT_OK(doc_spec.upper_bound(&upper_doc_key));
   VLOG(4) << "DocKey Bounds " << lower_doc_key.ToString() << ", " << upper_doc_key.ToString();
 
-  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+  // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   const bool is_fixed_point_get = !lower_doc_key.empty() &&
       upper_doc_key.HashedComponentsEqual(lower_doc_key);
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
@@ -308,7 +308,9 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
       QLTableColumn& column = table_row->AllocColumn(column_id);
       SubDocument::ToQLValuePB(*column_value, ql_type, &column.value);
       column.ttl_seconds = column_value->GetTtl();
-      column.write_time = column_value->GetWriteTime();
+      if (column_value->IsWriteTimeSet()) {
+        column.write_time = column_value->GetWriteTime();
+      }
     }
   }
   row_ready_ = false;
