@@ -300,9 +300,9 @@ SELECT * FROM check_test(
     'partitions_are( hidden tab, parts, desc )',
     'hi',
     '    Missing partitions:
-        not_hidden_part3
+        "hide.hidden_part1"
         "hide.hidden_part2"
-        "hide.hidden_part1"'
+        not_hidden_part3'
 );
 
 -- Should not work for unpartitioned but inherited table

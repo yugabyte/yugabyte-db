@@ -7,8 +7,12 @@ Revision history for pgTAP
 * Added the "Secrets of the pgTAP Mavens" section of the documentation.
   Contributions wanted!
 * Fixed `pg_version_num()` to always return the value of `server_version_num`
-  on PostreSQL 8.3 and higher, thus fixing a test failure on 10.1. Thanks to
+  on PostgreSQL 8.3 and higher, thus fixing a test failure on 10.1. Thanks to
   Christoph Berg for the report (#148)!
+* Changed the diagnostic output of extra and missing values from the `*_are()`
+  functions to sort the extra and missing values. Fixes a test failure on
+  PostgreSQL 10, and generally makes the diagnostics more deterministic and
+  easier to read and. Thanks to Michael Glaesemann for the report (#158)!
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------

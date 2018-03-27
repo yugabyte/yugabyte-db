@@ -4330,14 +4330,14 @@ BEGIN
         res = FALSE;
         msg := E'\n' || diag(
             '    Extra ' || what || E':\n        '
-            ||  _ident_array_to_string( extras, E'\n        ' )
+            ||  _ident_array_to_sorted_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
             '    Missing ' || what || E':\n        '
-            ||  _ident_array_to_string( missing, E'\n        ' )
+            ||  _ident_array_to_sorted_string( missing, E'\n        ' )
         );
     END IF;
 
@@ -7783,14 +7783,14 @@ BEGIN
         res = FALSE;
         msg := E'\n' || diag(
             '    Extra ' || what || E':\n        '
-            ||  array_to_string( extras, E'\n        ' )
+            ||  _array_to_sorted_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
             '    Missing ' || what || E':\n        '
-            ||  array_to_string( missing, E'\n        ' )
+            ||  _array_to_sorted_string( missing, E'\n        ' )
         );
     END IF;
 
@@ -10020,3 +10020,21 @@ RETURNS TEXT AS $$
         'Table ' || quote_ident($1) || ' should have the correct partitions'
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _ident_array_to_sorted_string( name[], text )
+RETURNS text AS $$
+    SELECT array_to_string(ARRAY(
+        SELECT quote_ident($1[i])
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+         ORDER BY $1[i]
+    ), $2);
+$$ LANGUAGE SQL immutable;
+
+CREATE OR REPLACE FUNCTION _array_to_sorted_string( name[], text )
+RETURNS text AS $$
+    SELECT array_to_string(ARRAY(
+        SELECT $1[i]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+         ORDER BY $1[i]
+    ), $2);
+$$ LANGUAGE SQL immutable;
