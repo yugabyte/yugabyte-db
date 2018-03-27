@@ -66,7 +66,7 @@ SELECT COUNT(*) AS NB
 FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 1)');
 
 -- Index size estimation
-SELECT pg_size_pretty(hypopg_relation_size(indexrelid))
+SELECT hypopg_relation_size(indexrelid) = current_setting('block_size')::bigint AS one_block
 FROM hypopg()
 ORDER BY indexrelid;
 

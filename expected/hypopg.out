@@ -95,14 +95,14 @@ FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 1)'
 ERROR:  value 1 out of bounds for option "fillfactor"
 DETAIL:  Valid values are between "10" and "100".
 -- Index size estimation
-SELECT pg_size_pretty(hypopg_relation_size(indexrelid))
+SELECT hypopg_relation_size(indexrelid) = current_setting('block_size')::bigint AS one_block
 FROM hypopg()
 ORDER BY indexrelid;
- pg_size_pretty 
-----------------
- 2544 kB
- 8192 bytes
- 4120 kB
+ one_block 
+-----------
+ f
+ t
+ f
 (3 rows)
 
 -- locally disable hypoopg
