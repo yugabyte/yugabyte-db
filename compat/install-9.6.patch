@@ -1,10 +1,9 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -9890,133 +9890,3 @@
-         'Table ' || quote_ident($1) || ' should not be partitioned'
+@@ -9891,136 +9891,6 @@
      );
  $$ LANGUAGE sql;
--
+ 
 --- _partof( child_schema, child_table, parent_schema, parent_table )
 -CREATE OR REPLACE FUNCTION _partof ( NAME, NAME, NAME, NAME )
 -RETURNS BOOLEAN AS $$
@@ -134,3 +133,7 @@
 -        'Table ' || quote_ident($1) || ' should have the correct partitions'
 -    );
 -$$ LANGUAGE SQL;
+-
+ CREATE OR REPLACE FUNCTION _ident_array_to_sorted_string( name[], text )
+ RETURNS text AS $$
+     SELECT array_to_string(ARRAY(
