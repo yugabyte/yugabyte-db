@@ -77,18 +77,17 @@ Parameters
 Examples
 ========
 
-There are two ways to obtain the changes (JSON objects) from **wal2json** plugin: (i) calling functions via SQL or (ii) pg_recvlogical.
+There are two ways to obtain the changes (JSON objects) from **wal2json** plugin: calling functions via SQL or pg_recvlogical.
 
 pg_recvlogical
 --------------
 
 Besides the configuration above, it is necessary to configure a replication connection to use pg_recvlogical.
 
-First, add an entry at pg_hba.conf:
+First, add a replication connection rule at pg_hba.conf:
 
 ```
 local    replication     myuser                     trust
-host     replication     myuser     10.1.2.3/32     trust
 ```
 
 Also, set max_wal_senders at postgresql.conf:
@@ -103,7 +102,7 @@ You are ready to try wal2json. In one terminal:
 
 ```
 $ pg_recvlogical -d postgres --slot test_slot --create-slot -P wal2json
-$ pg_recvlogical -d postgres --slot test_slot --start -o pretty-print=1 -o write-in-chunks=0 -f -
+$ pg_recvlogical -d postgres --slot test_slot --start -o pretty-print=1 -f -
 ```
 
 In another terminal:
@@ -124,7 +123,7 @@ INSERT INTO table_without_pk (b, c) VALUES(2.34, 'Tapir');
 UPDATE table_without_pk SET c = 'Anta' WHERE c = 'Tapir';
 COMMIT;
 
-$ psql -At -f /tmp/example1.sql
+$ psql -At -f /tmp/example1.sql postgres
 CREATE TABLE
 CREATE TABLE
 BEGIN
@@ -149,7 +148,6 @@ The output in the first terminal is:
 	]
 }
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
-CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, associated LSN 0/126E5F70
 {
 	"change": [
 		{
@@ -157,24 +155,24 @@ CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, a
 			"schema": "public",
 			"table": "table_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [1, "Backup and Restore", "2015-08-27 16:46:35.818038"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [1, "Backup and Restore", "2018-03-27 11:58:28.988414"]
 		}
 		,{
 			"kind": "insert",
 			"schema": "public",
 			"table": "table_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [2, "Tuning", "2015-08-27 16:46:35.818038"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [2, "Tuning", "2018-03-27 11:58:28.988414"]
 		}
 		,{
 			"kind": "insert",
 			"schema": "public",
 			"table": "table_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [3, "Replication", "2015-08-27 16:46:35.818038"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [3, "Replication", "2018-03-27 11:58:28.988414"]
 		}
 		,{
 			"kind": "delete",
@@ -182,8 +180,8 @@ CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, a
 			"table": "table_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
-				"keytypes": ["int4", "timestamp"],
-				"keyvalues": [1, "2015-08-27 16:46:35.818038"]
+				"keytypes": ["integer", "timestamp without time zone"],
+				"keyvalues": [1, "2018-03-27 11:58:28.988414"]
 			}
 		}
 		,{
@@ -192,8 +190,8 @@ CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, a
 			"table": "table_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
-				"keytypes": ["int4", "timestamp"],
-				"keyvalues": [2, "2015-08-27 16:46:35.818038"]
+				"keytypes": ["integer", "timestamp without time zone"],
+				"keyvalues": [2, "2018-03-27 11:58:28.988414"]
 			}
 		}
 		,{
@@ -201,7 +199,7 @@ CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, a
 			"schema": "public",
 			"table": "table_without_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "numeric", "text"],
+			"columntypes": ["integer", "numeric(5,2)", "text"],
 			"columnvalues": [1, 2.34, "Tapir"]
 		}
 	]
@@ -220,30 +218,30 @@ SQL functions
 
 ```
 $ cat /tmp/example2.sql
-CREATE TABLE table_with_pk (a SERIAL, b VARCHAR(30), c TIMESTAMP NOT NULL, PRIMARY KEY(a, c));
-CREATE TABLE table_without_pk (a SERIAL, b NUMERIC(5,2), c TEXT);
+CREATE TABLE table2_with_pk (a SERIAL, b VARCHAR(30), c TIMESTAMP NOT NULL, PRIMARY KEY(a, c));
+CREATE TABLE table2_without_pk (a SERIAL, b NUMERIC(5,2), c TEXT);
 
 SELECT 'init' FROM pg_create_logical_replication_slot('test_slot', 'wal2json');
 
 BEGIN;
-INSERT INTO table_with_pk (b, c) VALUES('Backup and Restore', now());
-INSERT INTO table_with_pk (b, c) VALUES('Tuning', now());
-INSERT INTO table_with_pk (b, c) VALUES('Replication', now());
-DELETE FROM table_with_pk WHERE a < 3;
+INSERT INTO table2_with_pk (b, c) VALUES('Backup and Restore', now());
+INSERT INTO table2_with_pk (b, c) VALUES('Tuning', now());
+INSERT INTO table2_with_pk (b, c) VALUES('Replication', now());
+DELETE FROM table2_with_pk WHERE a < 3;
 
-INSERT INTO table_without_pk (b, c) VALUES(2.34, 'Tapir');
+INSERT INTO table2_without_pk (b, c) VALUES(2.34, 'Tapir');
 -- it is not added to stream because there isn't a pk or a replica identity
-UPDATE table_without_pk SET c = 'Anta' WHERE c = 'Tapir';
+UPDATE table2_without_pk SET c = 'Anta' WHERE c = 'Tapir';
 COMMIT;
 
-SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'pretty-print', '1', 'write-in-chunks', '0');
+SELECT data FROM pg_logical_slot_get_changes('test_slot', NULL, NULL, 'pretty-print', '1');
 SELECT 'stop' FROM pg_drop_replication_slot('test_slot');
 ```
 
 The script above produces the output below:
 
 ```
-$ psql -At -f /tmp/example2.sql
+$ psql -At -f /tmp/example2.sql postgres
 CREATE TABLE
 CREATE TABLE
 init
@@ -255,60 +253,59 @@ DELETE 2
 INSERT 0 1
 UPDATE 1
 COMMIT
-psql:/tmp/example2.sql:17: WARNING:  table "table_without_pk" without primary key or replica identity is nothing
-CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, associated LSN 0/12713E40
+psql:/tmp/example2.sql:17: WARNING:  table "table2_without_pk" without primary key or replica identity is nothing
 {
 	"change": [
 		{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table2_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [1, "Backup and Restore", "2015-08-27 16:49:37.218511"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [1, "Backup and Restore", "2018-03-27 12:05:29.914496"]
 		}
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table2_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [2, "Tuning", "2015-08-27 16:49:37.218511"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [2, "Tuning", "2018-03-27 12:05:29.914496"]
 		}
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table2_with_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "varchar", "timestamp"],
-			"columnvalues": [3, "Replication", "2015-08-27 16:49:37.218511"]
+			"columntypes": ["integer", "character varying(30)", "timestamp without time zone"],
+			"columnvalues": [3, "Replication", "2018-03-27 12:05:29.914496"]
 		}
 		,{
 			"kind": "delete",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table2_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
-				"keytypes": ["int4", "timestamp"],
-				"keyvalues": [1, "2015-08-27 16:49:37.218511"]
+				"keytypes": ["integer", "timestamp without time zone"],
+				"keyvalues": [1, "2018-03-27 12:05:29.914496"]
 			}
 		}
 		,{
 			"kind": "delete",
 			"schema": "public",
-			"table": "table_with_pk",
+			"table": "table2_with_pk",
 			"oldkeys": {
 				"keynames": ["a", "c"],
-				"keytypes": ["int4", "timestamp"],
-				"keyvalues": [2, "2015-08-27 16:49:37.218511"]
+				"keytypes": ["integer", "timestamp without time zone"],
+				"keyvalues": [2, "2018-03-27 12:05:29.914496"]
 			}
 		}
 		,{
 			"kind": "insert",
 			"schema": "public",
-			"table": "table_without_pk",
+			"table": "table2_without_pk",
 			"columnnames": ["a", "b", "c"],
-			"columntypes": ["int4", "numeric", "text"],
+			"columntypes": ["integer", "numeric(5,2)", "text"],
 			"columnvalues": [1, 2.34, "Tapir"]
 		}
 	]
