@@ -90,7 +90,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
-    assertNotNull(node.get("uuid"));
+    assertNotNull(node.get("config_uuid"));
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
   }
 
