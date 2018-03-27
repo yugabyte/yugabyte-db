@@ -350,17 +350,28 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   mock_proxy->set_update_response(initial_resp);
 
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 1);
+  LOG(INFO) << "Initial SignalRequest";
   ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kAlwaysSend));
+  LOG(INFO) << "Initial SignalRequest done";
 
   // Now wait for the message to be replicated, this should succeed since the local (leader) peer
   // always acks and the follower also acked this time.
   WaitForMajorityReplicatedIndex(1);
+  LOG(INFO) << "Message replicated, setting error response";
 
   // Set up the peer to respond with an error.
   ConsensusResponsePB error_resp;
   error_resp.mutable_error()->set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
   StatusToPB(STATUS(NotFound, "fake error"), error_resp.mutable_error()->mutable_status());
   mock_proxy->set_update_response(error_resp);
+
+  // Up to this point we might have sent a lot of updates: we get the response from the fake peer
+  // that it accepted our entry, we consider it replicated, and we are trying to tell the fake peer
+  // about that, but it replies with the same canned response without bumping up the committed
+  // index. We can keep spinning in this loop for a few hundred times until we replace the response
+  // with an error. At the end of the test we should just consider the UpdateAsync calls made after
+  // this point.
+  int initial_update_count = mock_proxy->update_count();
 
   // Add a bunch of messages to the queue.
   for (int i = 2; i <= 100; i++) {
@@ -371,11 +382,13 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
     std::this_thread::sleep_for(i == 2 ? 100ms : 2ms);
   }
 
+  LOG(INFO) << EXPR_VALUE_FOR_LOG(mock_proxy->update_count());
+  LOG(INFO) << EXPR_VALUE_FOR_LOG(initial_update_count);
   // Check that we didn't attempt to send one UpdateConsensus call per
   // Write. 100 writes might have taken a second or two, though, so it's
   // OK to have called UpdateConsensus() a few times due to regularly
   // scheduled heartbeats.
-  ASSERT_LT(mock_proxy->update_count(), 5);
+  ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
 }
 
 }  // namespace consensus
