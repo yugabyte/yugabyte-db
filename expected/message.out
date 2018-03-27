@@ -19,37 +19,55 @@ SELECT 'msg2' FROM pg_logical_emit_message(false, 'wal2json', 'this is "another"
  msg2
 (1 row)
 
-BEGIN;
-SELECT 'msg3' FROM pg_logical_emit_message(true, 'wal2json', 'this message will not be printed');
+SELECT 'msg3' FROM pg_logical_emit_message(false, 'wal2json', E'\\x31320033003435'::bytea);
  ?column? 
 ----------
  msg3
 (1 row)
 
-SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed even if the transaction is rollbacked');
+SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', E'\\xC0FFEE00C0FFEE'::bytea);
  ?column? 
 ----------
  msg4
 (1 row)
 
-ROLLBACK;
-BEGIN;
-SELECT 'msg5' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #1');
+SELECT 'msg5' FROM pg_logical_emit_message(false, 'wal2json', E'\\x01020300101112'::bytea);
  ?column? 
 ----------
  msg5
 (1 row)
 
-SELECT 'msg6' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed before message #1');
+BEGIN;
+SELECT 'msg6' FROM pg_logical_emit_message(true, 'wal2json', 'this message will not be printed');
  ?column? 
 ----------
  msg6
 (1 row)
 
-SELECT 'msg7' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #2');
+SELECT 'msg7' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed even if the transaction is rollbacked');
  ?column? 
 ----------
  msg7
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT 'msg8' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #1');
+ ?column? 
+----------
+ msg8
+(1 row)
+
+SELECT 'msg9' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed before message #1');
+ ?column? 
+----------
+ msg9
+(1 row)
+
+SELECT 'msg10' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #2');
+ ?column? 
+----------
+ msg10
 (1 row)
 
 COMMIT;
@@ -62,7 +80,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                          "kind": "message",                                                             +
                          "transactional": true,                                                         +
                          "prefix": "wal2json",                                                          +
-                         "content": "this is a\ message"                                                +
+                         "content": "this is a\\ message"                                               +
                  }                                                                                      +
          ]                                                                                              +
  }
@@ -72,7 +90,37 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                          "kind": "message",                                                             +
                          "transactional": false,                                                        +
                          "prefix": "wal2json",                                                          +
-                         "content": "this is "another" message"                                         +
+                         "content": "this is \"another\" message"                                       +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": "12"                                                                +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": ""                                                                  +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": "\u0001\u0002\u0003"                                                +
                  }                                                                                      +
          ]                                                                                              +
  }
@@ -112,7 +160,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                  }                                                                                      +
          ]                                                                                              +
  }
-(5 rows)
+(8 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

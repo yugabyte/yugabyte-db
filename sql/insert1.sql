@@ -65,6 +65,14 @@ p	tsvector,
 UNIQUE(g, n)
 );
 
+CREATE SCHEMA "test ""schema";
+
+CREATE TABLE "test ""schema"."test "" with 'quotes'" (
+    id            serial primary key,
+    "col spaces"  int,
+    "col""quotes" int
+);
+
 SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
 
 -- INSERT
@@ -72,6 +80,7 @@ BEGIN;
 INSERT INTO table_with_pk (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
 INSERT INTO table_without_pk (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
 INSERT INTO table_with_unique (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
+INSERT INTO "test ""schema"."test "" with 'quotes'" VALUES (1, 2, 3);
 COMMIT;
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');

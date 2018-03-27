@@ -18,47 +18,47 @@ INSERT INTO xpto (b, c, d) VALUES(NULL, 'null', '-inf');
 INSERT INTO xpto (b, c, d) VALUES(TRUE, E'valid: '' " \\ / \b \f \n \r \t \u207F \u967F invalid: \\g \\k end', 123.456);
 COMMIT;
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
-                                                           data                                                           
---------------------------------------------------------------------------------------------------------------------------
- {                                                                                                                       +
-         "change": [                                                                                                     +
-         ]                                                                                                               +
+                                                          data                                                           
+-------------------------------------------------------------------------------------------------------------------------
+ {                                                                                                                      +
+         "change": [                                                                                                    +
+         ]                                                                                                              +
  }
- {                                                                                                                       +
-         "change": [                                                                                                     +
-                 {                                                                                                       +
-                         "kind": "insert",                                                                               +
-                         "schema": "public",                                                                             +
-                         "table": "xpto",                                                                                +
-                         "columnnames": ["a", "b", "c", "d"],                                                            +
-                         "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
-                         "columnvalues": [1, true, "test1", null]                                                        +
-                 }                                                                                                       +
-                 ,{                                                                                                      +
-                         "kind": "insert",                                                                               +
-                         "schema": "public",                                                                             +
-                         "table": "xpto",                                                                                +
-                         "columnnames": ["a", "b", "c", "d"],                                                            +
-                         "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
-                         "columnvalues": [2, false, "test2", null]                                                       +
-                 }                                                                                                       +
-                 ,{                                                                                                      +
-                         "kind": "insert",                                                                               +
-                         "schema": "public",                                                                             +
-                         "table": "xpto",                                                                                +
-                         "columnnames": ["a", "b", "c", "d"],                                                            +
-                         "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
-                         "columnvalues": [3, null, "null", null]                                                         +
-                 }                                                                                                       +
-                 ,{                                                                                                      +
-                         "kind": "insert",                                                                               +
-                         "schema": "public",                                                                             +
-                         "table": "xpto",                                                                                +
-                         "columnnames": ["a", "b", "c", "d"],                                                            +
-                         "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
-                         "columnvalues": [4, true, "valid: ' \" \\ \/ \b \f \n \r \t ⁿ 陿 invalid: \\g \\k end", 123.456]+
-                 }                                                                                                       +
-         ]                                                                                                               +
+ {                                                                                                                      +
+         "change": [                                                                                                    +
+                 {                                                                                                      +
+                         "kind": "insert",                                                                              +
+                         "schema": "public",                                                                            +
+                         "table": "xpto",                                                                               +
+                         "columnnames": ["a", "b", "c", "d"],                                                           +
+                         "columntypes": ["int4", "bool", "varchar", "float4"],                                          +
+                         "columnvalues": [1, true, "test1", null]                                                       +
+                 }                                                                                                      +
+                 ,{                                                                                                     +
+                         "kind": "insert",                                                                              +
+                         "schema": "public",                                                                            +
+                         "table": "xpto",                                                                               +
+                         "columnnames": ["a", "b", "c", "d"],                                                           +
+                         "columntypes": ["int4", "bool", "varchar", "float4"],                                          +
+                         "columnvalues": [2, false, "test2", null]                                                      +
+                 }                                                                                                      +
+                 ,{                                                                                                     +
+                         "kind": "insert",                                                                              +
+                         "schema": "public",                                                                            +
+                         "table": "xpto",                                                                               +
+                         "columnnames": ["a", "b", "c", "d"],                                                           +
+                         "columntypes": ["int4", "bool", "varchar", "float4"],                                          +
+                         "columnvalues": [3, null, "null", null]                                                        +
+                 }                                                                                                      +
+                 ,{                                                                                                     +
+                         "kind": "insert",                                                                              +
+                         "schema": "public",                                                                            +
+                         "table": "xpto",                                                                               +
+                         "columnnames": ["a", "b", "c", "d"],                                                           +
+                         "columntypes": ["int4", "bool", "varchar", "float4"],                                          +
+                         "columnvalues": [4, true, "valid: ' \" \\ / \b \f \n \r \t ⁿ 陿 invalid: \\g \\k end", 123.456]+
+                 }                                                                                                      +
+         ]                                                                                                              +
  }
 (2 rows)
 
