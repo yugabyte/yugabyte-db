@@ -90,17 +90,16 @@ public class IOPSThread extends Thread {
           numConsecutiveExceptions = 0;
         } catch (RuntimeException e) {
           numExceptions++;
-          if (printAllExceptions) {
-            LOG.info("Caught Exception: ", e);
-          }
           if (numConsecutiveExceptions++ % 10 == 0) {
-            LOG.info("Caught Exception ", e);
+            app.reportException(e);
             // Reset state only for redis workload. CQL workloads will hit 'InvalidQueryException'
             // with prepared statements if reset and the same statement is re-executed.
             if (!app.getRedisServerInUse().isEmpty()) {
               LOG.warn("Resetting clients for redis: " + app.getRedisServerInUse());
               app.resetClients();
             }
+          } else if (printAllExceptions) {
+            app.reportException(e);
           }
           if (numConsecutiveExceptions > 500) {
             LOG.error("Had more than " + numConsecutiveExceptions
