@@ -343,6 +343,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public Cluster getClusterByUuid(UUID uuid) {
+    if (uuid == null) {
+      return getPrimaryCluster();
+    }
     List<Cluster> foundClusters =  clusters.stream()
             .filter(c -> c.uuid.equals(uuid))
             .collect(Collectors.toList());
