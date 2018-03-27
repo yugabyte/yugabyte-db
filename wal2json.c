@@ -39,7 +39,7 @@ typedef struct
 	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
 	bool		include_not_null;	/* include not-null constraints */
-	bool        include_unchanged_toast;  /* include unchanged TOAST field values in output */
+	bool		include_unchanged_toast;	/* include unchanged TOAST field values in output */
 
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
@@ -287,6 +287,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
 		}
+		else if (strcmp(elem->defname, "include-unchanged-toast") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "include-unchanged-toast is null");
+				data->include_unchanged_toast = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_unchanged_toast))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
 		else if (strcmp(elem->defname, "filter-tables") == 0)
 		{
 			char	*rawstr;
@@ -337,19 +350,6 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				}
 				pfree(rawstr);
 			}
-		}
-		else if (strcmp(elem->defname, "include-unchanged-toast") == 0)
-		{
-			if (elem->arg == NULL)
-			{
-				elog(LOG, "include-unchanged-toast is null");
-				data->include_unchanged_toast = true;
-			}
-			else if (!parse_bool(strVal(elem->arg), &data->include_unchanged_toast))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
-							 strVal(elem->arg), elem->defname)));
 		}
 		else
 		{
@@ -613,10 +613,10 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		if (isnull && replident)
 			continue;
 
-		if (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval) && !(data->include_unchanged_toast))
+		if (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval) && !data->include_unchanged_toast)
 		{
-			/* With include-unchanged-toast=0, unchanged TOAST Datum do not need to be output */
-			elog(DEBUG1, "column \"%s\" has an unchanged TOAST - excluding", NameStr(attr->attname));
+			/* TOAST value is not returned if include-unchanged-toast is specified */
+			elog(DEBUG2, "column \"%s\" has an unchanged TOAST - excluding", NameStr(attr->attname));
 			continue;
 		}
 
