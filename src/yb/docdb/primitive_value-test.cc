@@ -87,7 +87,7 @@ void CompareSlices(
 
 void TestCopy(PrimitiveValue&& v1, int64_t ttl, int64_t write_time) {
   v1.SetTtl(ttl);
-  v1.SetWritetime(write_time);
+  v1.SetWriteTime(write_time);
   // Uses copy constructor.
   PrimitiveValue v2 = v1;
   ASSERT_EQ(v1, v2);
@@ -104,7 +104,7 @@ void TestCopy(PrimitiveValue&& v1, int64_t ttl, int64_t write_time) {
 
 void TestMove(PrimitiveValue&& v1, int64_t ttl, int64_t write_time) {
   v1.SetTtl(ttl);
-  v1.SetWritetime(write_time);
+  v1.SetWriteTime(write_time);
   PrimitiveValue vtemp = v1;
   // Uses move constructor.
   PrimitiveValue v2 = std::move(v1);

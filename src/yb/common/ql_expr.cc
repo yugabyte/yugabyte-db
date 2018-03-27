@@ -368,6 +368,7 @@ CHECKED_STATUS QLTableRow::GetWriteTime(ColumnIdRep col_id, int64_t *write_time)
     // Not exists.
     return STATUS(InternalError, "Column unexpectedly not found in cache");
   }
+  DCHECK_NE(QLTableColumn::kUninitializedWriteTime, col_iter->second.write_time);
   *write_time = col_iter->second.write_time;
   return Status::OK();
 }
