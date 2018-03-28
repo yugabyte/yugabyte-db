@@ -26,8 +26,7 @@ export default class AZSelectorTable extends Component {
   resetAZSelectionConfig = () => {
     const {universe: {universeConfigTemplate}, clusterType} = this.props;
     const clusters = _.clone(universeConfigTemplate.data.clusters);
-    let currentTemplate = _.clone(universeConfigTemplate.data, true);
-
+    const currentTemplate = _.clone(universeConfigTemplate.data, true);
     if (isNonEmptyArray(clusters)) {
       currentTemplate.clusters.forEach(function(cluster, idx){
         if (cluster.clusterType.toLowerCase() === clusterType) {
