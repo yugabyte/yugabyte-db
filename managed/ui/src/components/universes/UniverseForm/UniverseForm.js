@@ -182,7 +182,7 @@ class UniverseForm extends Component {
   render() {
     const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
       getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, fetchNodeInstanceList,
-      resetSuggestedSpotPrice, location: {search}} = this.props;
+      resetSuggestedSpotPrice} = this.props;
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>

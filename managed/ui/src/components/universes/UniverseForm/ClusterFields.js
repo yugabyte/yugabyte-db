@@ -885,12 +885,13 @@ export default class ClusterFields extends Component {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
 
-    const azSelectorTable = (<div>
-                                <AZSelectorTable {...this.props} clusterType={clusterType}
-                                                  numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-                                                  maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)}/>
-                                  {placementStatus}
-                                </div>);
+    const azSelectorTable = (
+      <div>
+        <AZSelectorTable {...this.props} clusterType={clusterType}
+          numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+          maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)}/>
+        {placementStatus}
+      </div>);
 
     if (clusterType === "primary") {
       gflagArray =
@@ -905,13 +906,6 @@ export default class ClusterFields extends Component {
             <FieldArray component={GFlagArrayComponent} name={`${clusterType}.tserverGFlags`} flagType="tserver" operationType="Create" isReadOnly={isFieldReadOnly}/>
           </Col>
         </Row>);
-
-
-      let placementStatus = <span/>;
-      if (self.props.universe.currentPlacementStatus) {
-        placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
-      }
-
     }
 
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
