@@ -39,7 +39,6 @@
 #include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
-#include "yb/rocksdb/version.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -93,9 +92,6 @@ class ColumnFamilyHandle {
   // Note that this function is not supported in RocksDBLite.
   virtual Status GetDescriptor(ColumnFamilyDescriptor* desc) = 0;
 };
-
-static const int kMajorVersion = __ROCKSDB_MAJOR__;
-static const int kMinorVersion = __ROCKSDB_MINOR__;
 
 // A range of keys
 struct Range {

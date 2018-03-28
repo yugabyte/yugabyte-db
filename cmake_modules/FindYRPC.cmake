@@ -112,7 +112,7 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
 
     GET_PROTOBUF_GENERATION_TARGET_NAME("${PROTO_REL_TO_YB_SRC_ROOT}" TGT_NAME)
     add_custom_target(${TGT_NAME}
-      DEPENDS "${SERVICE_CC}" "${SERVICE_H}"
+      DEPENDS "${SERVICE_CC}" "${SERVICE_H}" protoc-gen-insertions
       "${PROXY_CC}" "${PROXY_H}"
       "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
     add_dependencies(gen_proto ${TGT_NAME})

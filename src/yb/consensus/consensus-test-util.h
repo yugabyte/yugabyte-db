@@ -212,12 +212,13 @@ class DelayablePeerProxy : public TestPeerProxy {
   }
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override {
     RegisterCallback(kUpdate, callback);
     return proxy_->UpdateAsync(
-        request, response, controller,
+        request, trigger_mode, response, controller,
         std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, kUpdate));
   }
 
@@ -246,8 +247,7 @@ class DelayablePeerProxy : public TestPeerProxy {
 class MockedPeerProxy : public TestPeerProxy {
  public:
   explicit MockedPeerProxy(ThreadPool* pool)
-  : TestPeerProxy(pool),
-    update_count_(0) {
+      : TestPeerProxy(pool) {
   }
 
   virtual void set_update_response(const ConsensusResponsePB& update_response) {
@@ -266,11 +266,16 @@ class MockedPeerProxy : public TestPeerProxy {
   }
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override {
     {
       std::lock_guard<simple_spinlock> l(lock_);
+      switch (trigger_mode) {
+        case RequestTriggerMode::kNonEmptyOnly: non_empty_only_update_count_++; break;
+        case RequestTriggerMode::kAlwaysSend: forced_update_count_++; break;
+      }
       update_count_++;
       *response = update_response_;
     }
@@ -291,8 +296,24 @@ class MockedPeerProxy : public TestPeerProxy {
     return update_count_;
   }
 
+  // Return the number of times that UpdateAsync() has been for requestes triggered with
+  // RequestTriggerMode::kNonEmptyOnly.
+  int non_empty_only_update_count() const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return non_empty_only_update_count_;
+  }
+
+  // Return the number of times that UpdateAsync() has been for requestes triggered with
+  // RequestTriggerMode::kAlwaysSend.
+  int forced_update_count() const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return forced_update_count_;
+  }
+
  protected:
-  int update_count_;
+  int update_count_ = 0;
+  int forced_update_count_ = 0;
+  int non_empty_only_update_count_ = 0;
 
   ConsensusResponsePB update_response_;
   VoteResponsePB vote_response_;
@@ -309,6 +330,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
   }
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override {
@@ -444,6 +466,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
         miss_comm_(false) {}
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override {

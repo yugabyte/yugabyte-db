@@ -43,7 +43,13 @@ import sha
 import subprocess
 import sys
 import time
+import pipes
 from time import strftime, localtime
+
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
+
+
+from yb.common_util import is_yugabyte_git_repo_dir  # noqa
 
 
 def main():
@@ -68,15 +74,44 @@ def main():
         git_hash = args.git_hash
         clean_repo = "true"
     else:
+        # No command line git hash, find it in the local git repository.
+
+        # Handle the "external build" directory case, in which the code is located in e.g.
+        # ~/code/yugabyte, and the build directories are inside ~/code/yugabyte__build.
+        current_dir = os.getcwd()
+        git_repo_dir = None
+        while current_dir != '/':
+            subdir_candidates = [current_dir]
+            if current_dir.endswith('__build'):
+                subdir_candidates.append(current_dir[:-7])
+                if subdir_candidates[-1].endswith('/'):
+                    subdir_candidates = subdir_candidates[:-1]
+
+            for git_subdir_candidate in subdir_candidates:
+                git_dir_candidate = os.path.join(current_dir, git_subdir_candidate)
+                if is_yugabyte_git_repo_dir(git_dir_candidate):
+                    git_repo_dir = git_dir_candidate
+                    break
+            if git_repo_dir:
+                break
+            current_dir = os.path.dirname(current_dir)
+        if git_repo_dir:
+            logging.info("Found git repository root: %s", git_repo_dir)
+        else:
+            git_repo_dir = os.getcwd()
+            logging.warn("Could not find git repository root by walking up from %s", git_repo_dir)
+
         try:
-            # No command line git hash, find it in the local git repository.
-            git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
+            git_work_dir_quoted = pipes.quote(git_repo_dir)
+            git_hash = subprocess.check_output('cd {} && git rev-parse HEAD'.format(
+                git_work_dir_quoted), shell=True).strip()
             clean_repo = subprocess.call(
-                "git diff --quiet && git diff --cached --quiet", shell=True) == 0
+                "cd {} && git diff --quiet && git diff --cached --quiet".format(
+                    git_work_dir_quoted),
+                shell=True) == 0
             clean_repo = str(clean_repo).lower()
         except Exception, e:
-            # If the git commands failed, we're probably building outside of a git
-            # repository.
+            # If the git commands failed, we're probably building outside of a git repository.
             logging.info("Build appears to be outside of a git repository... " +
                          "continuing without repository information.")
             git_hash = "non-git-build"
