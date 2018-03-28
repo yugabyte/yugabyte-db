@@ -32,7 +32,9 @@ namespace pgserver {
 
 class PgServer : public server::RpcAndWebServerBase {
  public:
-  static const uint16_t kDefaultPort = 5432;
+  // TODO(neil) Postgres default port number is 5432. We use 5433 for now to avoid conflicts.
+  // Once we figure out the right approach, we'll have to update this code.
+  static const uint16_t kDefaultPort = 5433;
   static const uint16_t kDefaultWebPort = 13000;
 
   // Construct server.
