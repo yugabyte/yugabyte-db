@@ -138,6 +138,8 @@ Options:
   --test-parallelism, --tp N
     When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
     --parallelism argument of repeat_unit_test.sh.
+  --remove-successful-test-logs
+    Remove logs after a successful test run.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -556,6 +558,9 @@ while [[ $# -gt 0 ]]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
+    --zapcc)
+      YB_COMPILER_TYPE="zapcc"
+    ;;
     --skip-java-build|--skip-java|--sjb|--sj)
       build_java=false
     ;;
@@ -767,6 +772,9 @@ while [[ $# -gt 0 ]]; do
       validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
         "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
       shift
+    ;;
+    --remove-successful-test-logs)
+      export YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT=1
     ;;
     *)
       echo "Invalid option: '$1'" >&2

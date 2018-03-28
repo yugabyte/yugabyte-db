@@ -87,7 +87,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/version.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -127,8 +126,6 @@ DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
 namespace rocksdb {
 
 const char kDefaultColumnFamilyName[] = "default";
-
-void DumpRocksDBBuildVersion(Logger* log);
 
 struct DBImpl::WriteContext {
   boost::container::small_vector<std::unique_ptr<SuperVersion>, 8> superversions_to_free_;
@@ -331,7 +328,6 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       new ColumnFamilyMemTablesImpl(versions_->GetColumnFamilySet()));
 
   if (FLAGS_dump_dbimpl_info) {
-    DumpRocksDBBuildVersion(db_options_.info_log.get());
     DumpDBFileSummary(db_options_, dbname_);
     db_options_.Dump(db_options_.info_log.get());
     DumpSupportInfo(db_options_.info_log.get());
@@ -6098,17 +6094,6 @@ void DBImpl::EraseThreadStatusCfInfo(
 void DBImpl::EraseThreadStatusDbInfo() const {
 }
 #endif  // ROCKSDB_USING_THREAD_STATUS
-
-//
-// A global method that can dump out the build version
-void DumpRocksDBBuildVersion(Logger* log) {
-#if !defined(IOS_CROSS_COMPILE)
-  // if we compile with Xcode, we don't run build_detect_vesion, so we don't
-  // generate util/build_version.cc
-  RHEADER(log, "RocksDB version: %d.%d.%d\n", ROCKSDB_MAJOR, ROCKSDB_MINOR,
-      ROCKSDB_PATCH);
-#endif
-}
 
 #ifndef ROCKSDB_LITE
 SequenceNumber DBImpl::GetEarliestMemTableSequenceNumber(SuperVersion* sv,

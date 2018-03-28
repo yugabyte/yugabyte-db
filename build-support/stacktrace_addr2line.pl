@@ -120,7 +120,9 @@ while (defined(my $input = <ARGV>)) {
     $library_offsets_sorted = 0;
   }
 
-  if ($input =~ /^(?:\[([a-z]+)-\d+\])?\s+\@\s+(0x[[:xdigit:]]{6,})(?:\s+(\S+))?/) {
+  if ($input =~ /^(?:\[([a-z]+)-\d+\])?\s+\@\s+(0x[[:xdigit:]]{6,})(?:\s+(\S+))?/ &&
+      # Don't try to symbolize lines that already have a line number.
+      $input !~ /[.](c|cc|cxx|h|hpp):\d+\)$/) {
     my $minicluster_daemon_prefix = $1;
     my $addr = $2;
     my $lookup_func_name = (!defined $3);

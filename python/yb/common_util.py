@@ -103,3 +103,10 @@ def get_bool_env_var(env_var_name):
         return False
 
     return value.lower() in ['1', 't', 'true', 'y', 'yes']
+
+
+def is_yugabyte_git_repo_dir(d):
+    for subdir in ['.git', 'src', 'java', 'bin', 'build-support']:
+        if not os.path.exists(os.path.join(d, subdir)):
+            return False
+    return True

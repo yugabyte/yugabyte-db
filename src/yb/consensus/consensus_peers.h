@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -161,6 +162,11 @@ class Peer {
       Consensus* consensus,
       std::unique_ptr<Peer>* peer);
 
+  uint64_t failed_attempts() {
+    std::lock_guard<simple_spinlock> l(peer_lock_);
+    return failed_attempts_;
+  }
+
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
@@ -201,7 +207,7 @@ class Peer {
   gscoped_ptr<PeerProxy> proxy_;
 
   PeerMessageQueue* queue_;
-  uint64_t failed_attempts_;
+  uint64_t failed_attempts_ = 0;
 
   // The latest consensus update request and response.
   ConsensusRequestPB request_;
@@ -240,7 +246,7 @@ class Peer {
   // Lock that protects Peer state changes, initialization, etc.  Must not try to acquire sem_ while
   // holding peer_lock_.
   mutable simple_spinlock peer_lock_;
-  State state_;
+  std::atomic<State> state_;
   Consensus* consensus_ = nullptr;
 };
 
@@ -251,6 +257,7 @@ class PeerProxy {
 
   // Sends a request, asynchronously, to a remote peer.
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) = 0;
@@ -305,6 +312,7 @@ class RpcPeerProxy : public PeerProxy {
                gscoped_ptr<ConsensusServiceProxy> consensus_proxy);
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
+                           RequestTriggerMode trigger_mode,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override;

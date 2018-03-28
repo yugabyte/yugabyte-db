@@ -143,7 +143,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSGetCommand() throws Exception {
+  public void testTSGetCommand() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
 
@@ -152,13 +152,13 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSRemCommandInvalid() throws Exception {
+  public void testTSRemCommandInvalid() throws Exception {
     // Redis table is empty, but tsrem shouldn't throw any errors.
     assertEquals("OK", jedis_client.tsrem("k0", 0));
   }
 
   @Test
-  public void TestTSRemCommandOne() throws Exception {
+  public void testTSRemCommandOne() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
 
@@ -171,7 +171,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSRemCommandMultiple() throws Exception {
+  public void testTSRemCommandMultiple() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
 
@@ -194,7 +194,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSRangeByTimeLong() throws Exception {
+  public void testTSRangeByTimeLong() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
     // Number of values to insert.
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
@@ -224,7 +224,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSRangeByTimeString() throws Exception {
+  public void testTSRangeByTimeString() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
 
@@ -267,7 +267,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestTSRangeByTimeInvalidString() throws Exception {
+  public void testTSRangeByTimeInvalidString() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
 
@@ -283,7 +283,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestPool() throws Exception {
+  public void testPool() throws Exception {
     final List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
     InetSocketAddress address = redisContactPoints.get(0);
     JedisPoolConfig config = new JedisPoolConfig();
@@ -298,7 +298,7 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
-  public void TestNX() throws Exception {
+  public void testNX() throws Exception {
     assertEquals("OK", jedis_client.set("k1", "v1", "NX", "EX", 5));
     assertEquals("v1", jedis_client.get("k1"));
     Thread.sleep(10000);
