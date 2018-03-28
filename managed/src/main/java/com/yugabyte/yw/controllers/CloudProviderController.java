@@ -252,10 +252,11 @@ public class CloudProviderController extends AuthenticatedController {
     if (taskParams.regionList.isEmpty()) {
       CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
       JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
-      // TODO: validate this is an array!
-      ArrayNode regionListArray = (ArrayNode) regionInfo;
-      for (JsonNode region : regionListArray) {
-        taskParams.regionList.add(region.asText());
+      if (regionInfo instanceof ArrayNode) {
+        ArrayNode regionListArray = (ArrayNode) regionInfo;
+        for (JsonNode region : regionListArray) {
+          taskParams.regionList.add(region.asText());
+        }
       }
     }
     taskParams.hostVpcRegion = hostVpcRegion;
