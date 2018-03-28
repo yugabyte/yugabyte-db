@@ -13,8 +13,7 @@ namespace yb {
 //--------------------------------------------------------------------------------------------------
 
 QLRSRowDesc::QLRSRowDesc(const QLRSRowDescPB& desc_pb) {
-  int count = desc_pb.rscol_descs().size();
-  rscol_descs_.reserve(count);
+  rscol_descs_.reserve(desc_pb.rscol_descs().size());
   for (auto rscol_desc_pb : desc_pb.rscol_descs()) {
     rscol_descs_.emplace_back(rscol_desc_pb.name(),
                               QLType::FromQLTypePB(rscol_desc_pb.ql_type()));
@@ -35,9 +34,7 @@ QLRSRow::~QLRSRow() {
 CHECKED_STATUS QLRSRow::CQLSerialize(const QLClient& client,
                                      const QLRSRowDesc& rsrow_desc,
                                      faststring* buffer) const {
-  int count = rsrow_desc.rscol_count();
-  DCHECK_EQ(count, rscol_count()) << "Wrong count of fields in result set";
-
+  DCHECK_EQ(rsrow_desc.rscol_count(), rscol_count()) << "Wrong count of fields in result set";
   int idx = 0;
   for (auto rscol_desc : rsrow_desc.rscol_descs()) {
     rscols_[idx].Serialize(rscol_desc.ql_type(), client, buffer);
