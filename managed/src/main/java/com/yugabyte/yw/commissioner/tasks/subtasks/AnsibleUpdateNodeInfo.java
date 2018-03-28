@@ -55,6 +55,10 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
         Iterator<Entry<String, JsonNode>> iter = jsonNode.fields();
         while (iter.hasNext()) {
           Entry<String, JsonNode> entry = iter.next();
+          // Skip null values
+          if (entry.getValue().asText() == null) {
+            continue;
+          }
           Field field;
           try {
             LOG.info("Node {}: setting field {} to value {}.",
