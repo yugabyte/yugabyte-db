@@ -123,6 +123,9 @@ public class AppConfig {
   // For example, if we only need to drop a table, or any such DDL/non-CRUD op.
   public boolean skipWorkload = false;
 
+  // The application name we are running.
+  public String appName = "";
+
   // Run time for workload. Negative values means no limit.
   public long runTimeSeconds = -1;
 
