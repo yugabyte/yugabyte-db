@@ -93,6 +93,8 @@ public class CmdLineOpts {
     appClass = getAppClass(appName);
     LOG.info("App: " + appClass.getSimpleName());
 
+    AppBase.appConfig.appName = appClass.getSimpleName();
+
     if (commandLine.hasOption("skip_workload")) {
       AppBase.appConfig.skipWorkload = true;
       // For now, drop table is the only op that is permitted without workload.
@@ -312,6 +314,10 @@ public class CmdLineOpts {
 
   public boolean skipWorkload() {
     return AppBase.appConfig.skipWorkload;
+  }
+
+  public String appName() {
+    return AppBase.appConfig.appName;
   }
 
   private static Class<? extends AppBase> getAppClass(AppName workloadType)

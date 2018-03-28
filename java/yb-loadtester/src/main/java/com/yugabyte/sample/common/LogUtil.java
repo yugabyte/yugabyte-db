@@ -42,7 +42,7 @@ public class LogUtil {
       Logger.getLogger("com.yugabyte.sample").addAppender(console);
       Logger.getLogger("com.yugabyte.driver").addAppender(console);
       Logger.getLogger("com.datastax.driver").addAppender(console);
-      Logger.getRootLogger().setLevel(Level.ERROR);
+      Logger.getRootLogger().setLevel(Level.WARN);
     }
   }
 }
