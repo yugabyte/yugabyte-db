@@ -71,6 +71,9 @@ public class Main {
     Logger.getLogger("com.yugabyte.sample").setLevel(Level.INFO);
   }
 
+  // Number of keys to insert before a pure read setup step.
+  public static final int NUM_PURE_READ_SETUP_KEYS = 100000;
+
   public Main(CmdLineOpts cmdLineOpts) {
     this.cmdLineOpts = cmdLineOpts;
     // Do not enable metrics in app if it is a read-only workload or if it for dropping a table.
@@ -199,11 +202,11 @@ public class Main {
     }
 
     long actualNumToWrite = AppBase.appConfig.numKeysToWrite;
-    LOG.info("Setup step for pure reads.");
-
-    AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numUniqueKeysToWrite;
+    AppBase.appConfig.numKeysToWrite = NUM_PURE_READ_SETUP_KEYS;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
-    for (int idx = 0; idx < 100; idx++) {
+    int num_writers = cmdLineOpts.appName().startsWith("Cassandra") ? 16 : 100;
+    LOG.info("Using " + num_writers + " writer threads for pure read setup.");
+    for (int idx = 0; idx < num_writers; idx++) {
       writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false),
                                       IOType.Write, app.appConfig.printAllExceptions));
     }
