@@ -89,7 +89,7 @@ spec:
         imagePullPolicy: Always
         command:
           - "/home/yugabyte/bin/yb-master"
-          - "--fs_data_dirs=/mnt/data0"
+          - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
           - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
           - "--master_replication_factor=3"
         ports:
@@ -109,12 +109,17 @@ spec:
 #          periodSeconds: 10
 
         volumeMounts:
-        - name: datadir
-          mountPath: /mnt/data0
+        - name: datadir0
+          mountPath: /mnt/disk0
+        - name: datadir1
+          mountPath: /mnt/disk1
       volumes:
-      - name: datadir
+      - name: datadir0
         hostPath:
           path: "/mnt/disks/ssd0"
+      - name: datadir1
+        hostPath:
+          path: "/mnt/disks/ssd1"
       nodeSelector:
         cloud.google.com/gke-local-ssd: "true"
   updateStrategy:
