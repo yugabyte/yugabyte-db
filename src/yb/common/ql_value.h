@@ -45,8 +45,8 @@ class QLValue {
 
   // Constructors & destructors.
   QLValue() { }
-  explicit QLValue(const QLValuePB& pb) { pb_ = pb; }
-  explicit QLValue(QLValuePB&& pb) { pb_ = std::move(pb); }
+  explicit QLValue(const QLValuePB& pb) : pb_(pb) { }
+  explicit QLValue(QLValuePB&& pb) : pb_(std::move(pb)) { }
   virtual ~QLValue();
 
   //-----------------------------------------------------------------------------------------

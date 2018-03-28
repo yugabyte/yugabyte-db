@@ -64,6 +64,7 @@ class QLRSRowDesc {
 class QLRSRow {
  public:
   explicit QLRSRow(int32_t rscol_count);
+  QLRSRow(QLRSRow&& other) : rscols_(std::move(other.rscols_)) { }
   virtual ~QLRSRow();
 
   const std::vector<QLValue>& rscols() const {
