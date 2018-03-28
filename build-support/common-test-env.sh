@@ -565,8 +565,11 @@ analyze_existing_core_file() {
   set +e
   (
     set -x
-    echo "$debugger_input" | "${debugger_cmd[@]}" 2>&1 | \
-      egrep -v "^\[New LWP [0-9]+\]$" | tee -a "$append_output_to"
+    echo "$debugger_input" |
+      "${debugger_cmd[@]}" 2>&1 |
+      egrep -v "^\[New LWP [0-9]+\]$" |
+      "$YB_SRC_ROOT"/build-support/dedup_thread_stacks.py |
+      tee -a "$append_output_to"
   ) >&2
   set -e
   echo >&2
@@ -1282,7 +1285,10 @@ fix_cxx_test_name() {
 run_java_test() {
   expect_num_args 2 "$@"
   local module_name=$1
-  local test_class=$2
+  local test_class_and_maybe_method=${2%.java}
+  local test_method_name=${test_class_and_maybe_method##*#}
+  local test_class=${test_class_and_maybe_method%#*}
+
   if [[ -z ${BUILD_ROOT:-} ]]; then
     fatal "Running Java tests requires that BUILD_ROOT be set"
   fi
@@ -1301,8 +1307,7 @@ run_java_test() {
   # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
   mvn_options=(
     "${mvn_common_options[@]}"
-
-    -Dtest="$test_class"
+    -Dtest="$test_class_and_maybe_method"
     --projects "$module_name"
     -DtempDir="$surefire_rel_tmp_dir"
     -DskipAssembly
@@ -1320,7 +1325,32 @@ run_java_test() {
     mvn_options+=( -X )
   fi
 
+  local surefire_reports_dir=$YB_SRC_ROOT/java/$module_name/target/surefire-reports
+  local log_files_path_prefix=$surefire_reports_dir/$test_class
+  local test_log_path=$log_files_path_prefix-output.txt
+  local junit_xml_path=$surefire_reports_dir/TEST-$test_class.xml
+
+  log "Test log path: $test_log_path"
+  log
+
   ( set -x; mvn "${mvn_options[@]}" surefire:test )
+
+  if is_jenkins || [[ ${YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT:-} == "1" ]]; then
+    # If the test is successful, all expected files exist, and no failures are found in the JUnit
+    # test XML, delete the test log files to save disk space in the Jenkins archive.
+    if [[ -f $test_log_path && -f $junit_xml_path ]] && \
+       ! egrep "YB Java test failed" \
+         "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt >/dev/null && \
+       ! egrep "(errors|failures)=\"?[1-9][0-9]*\"?" "$junit_xml_path" >/dev/null; then
+      log "Removing $test_log_path and related per-test-method logs: test succeeded."
+      (
+        set -x
+        rm -f "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt
+      )
+    else
+      log "Not removing $test_log_path and related per-test-method logs: some tests failed."
+    fi
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

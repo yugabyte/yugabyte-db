@@ -33,7 +33,6 @@
 #include <unordered_map>
 
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/version.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/util/slice.h"
 #include "yb/util/result.h"

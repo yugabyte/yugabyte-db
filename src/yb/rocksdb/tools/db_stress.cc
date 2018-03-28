@@ -1907,8 +1907,6 @@ class StressTest {
   }
 
   void PrintEnv() const {
-    fprintf(stdout, "RocksDB version           : %d.%d\n", kMajorVersion,
-            kMinorVersion);
     fprintf(stdout, "Column families           : %d\n", FLAGS_column_families);
     if (!FLAGS_test_batches_snapshots) {
       fprintf(stdout, "Clear CFs one in          : %d\n",

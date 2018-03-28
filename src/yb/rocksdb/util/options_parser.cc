@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
-
 #include "yb/rocksdb/util/options_parser.h"
 
 #include <cmath>
@@ -33,8 +31,8 @@
 #include "yb/rocksdb/util/options_helper.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
-
 #include "yb/rocksdb/port/port.h"
+#include "yb/util/version_info.h"
 
 namespace rocksdb {
 
@@ -66,9 +64,7 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
   writable->Append(option_file_header + "[" +
                    opt_section_titles[kOptionSectionVersion] +
                    "]\n"
-                   "  rocksdb_version=" +
-                   ToString(ROCKSDB_MAJOR) + "." + ToString(ROCKSDB_MINOR) +
-                   "." + ToString(ROCKSDB_PATCH) + "\n");
+                   "  yugabyte_version=" + yb::VersionInfo::GetShortVersionString() + "\n");
   writable->Append("  options_file_version=" +
                    ToString(ROCKSDB_OPTION_FILE_MAJOR) + "." +
                    ToString(ROCKSDB_OPTION_FILE_MINOR) + "\n");
@@ -820,5 +816,3 @@ Status RocksDBOptionsParser::VerifyTableFactory(
   return Status::OK();
 }
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

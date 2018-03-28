@@ -1727,9 +1727,6 @@ class Benchmark {
 #endif
 
   void PrintEnvironment() {
-    fprintf(stderr, "LevelDB:    version %d.%d\n",
-            kMajorVersion, kMinorVersion);
-
 #if defined(__linux)
     time_t now = time(nullptr);
     char buf[52];

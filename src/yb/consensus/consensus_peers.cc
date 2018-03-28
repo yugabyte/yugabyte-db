@@ -115,7 +115,6 @@ Peer::Peer(
       peer_pb_(peer_pb),
       proxy_(proxy.Pass()),
       queue_(queue),
-      failed_attempts_(0),
       sem_(1),
       heartbeater_(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
@@ -142,6 +141,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   if (!sem_.TryAcquire()) {
     return Status::OK();
   }
+
   {
     std::lock_guard<simple_spinlock> l(peer_lock_);
 
@@ -265,7 +265,8 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
   controller_.Reset();
 
-  proxy_->UpdateAsync(&request_, &response_, &controller_, std::bind(&Peer::ProcessResponse, this));
+  proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
+                      std::bind(&Peer::ProcessResponse, this));
 }
 
 void Peer::ProcessResponse() {
@@ -323,15 +324,12 @@ void Peer::ProcessResponse() {
 }
 
 void Peer::DoProcessResponse() {
+  DCHECK_EQ(0, sem_.GetValue());
   failed_attempts_ = 0;
-
-  bool more_pending;
+  bool more_pending = false;
   queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);
 
-  // We're OK to read the state_ without a lock here -- if we get a race,
-  // the worst thing that could happen is that we'll make one more request before
-  // noticing a close.
-  if (more_pending && ANNOTATE_UNPROTECTED_READ(state_) != kPeerClosed) {
+  if (more_pending && state_.load(std::memory_order_acquire) != kPeerClosed) {
     SendNextRequest(RequestTriggerMode::kAlwaysSend);
   } else {
     sem_.Release();
@@ -363,6 +361,7 @@ void Peer::ProcessRemoteBootstrapResponse() {
 }
 
 void Peer::ProcessResponseError(const Status& status) {
+  DCHECK_EQ(0, sem_.GetValue());
   failed_attempts_++;
   LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't send request to peer " << peer_pb_.permanent_uuid()
       << " for tablet " << tablet_id_
@@ -410,6 +409,7 @@ RpcPeerProxy::RpcPeerProxy(gscoped_ptr<HostPort> hostport,
 }
 
 void RpcPeerProxy::UpdateAsync(const ConsensusRequestPB* request,
+                               RequestTriggerMode trigger_mode,
                                ConsensusResponsePB* response,
                                rpc::RpcController* controller,
                                const rpc::ResponseCallback& callback) {
