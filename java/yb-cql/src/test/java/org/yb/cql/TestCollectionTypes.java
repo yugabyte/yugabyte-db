@@ -71,24 +71,27 @@ public class TestCollectionTypes extends BaseCQLTest {
     //------------------------------------------------------------------------------------------
     // Testing Valid Create Table Statements
     //------------------------------------------------------------------------------------------
-    String tableNameBase = "test_coll_types_create_table_";
-    for (String tp : validKeyTypes) {
-      createCollectionTable(tableNameBase + tp, tp, tp);
-      Thread.sleep(1000);
-      dropTable(tableNameBase + tp);
-    }
 
-    for (String tp : nonKeyTypes) {
-      createCollectionTable(tableNameBase + tp, "int", tp);
-      Thread.sleep(1000);
-      dropTable(tableNameBase + tp);
+    // Create a table testing all valid key/value collection type parameters.
+    StringBuilder sb = new StringBuilder();
+    String collTemplate = "vm_%2$s map<%1$s, %2$s>, vs_%2$s set<%1$s>, vl_%2$s list<%2$s>, ";
+
+    sb.append("CREATE TABLE test_coll_types_create_valid_table (h int, r int, ");
+    for (String tp : validKeyTypes) {
+      sb.append(String.format(collTemplate, tp, tp));
     }
+    for (String tp : nonKeyTypes) {
+      // Non-key types only allowed as values, so we use 'int' for the keys.
+      sb.append(String.format(collTemplate, "int", tp));
+    }
+    sb.append("PRIMARY KEY (h, r))");
+    session.execute(sb.toString());
 
     //------------------------------------------------------------------------------------------
     // Testing Invalid Create Table Statements
     //------------------------------------------------------------------------------------------
 
-    String invTableNameBase = "test_coll_types_create_inv_table_";
+    String invTableNameBase = "test_coll_types_create_invalid_table";
     // checking that non-key types are not allowed as set elems or map keys
     for (String tp : nonKeyTypes) {
       runInvalidStmt(createTableStmt(invTableNameBase + tp, tp, "int"));
