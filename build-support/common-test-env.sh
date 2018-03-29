@@ -1300,6 +1300,7 @@ run_java_test() {
   # Maven processes were killed, although it is not clear why, because they should have already
   # completed by the time we start looking for $YB_TEST_INVOCATION_ID in test names and killing
   # processes.
+  local timestamp=$( get_timestamp_for_filenames )
   local surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
   cd "$YB_SRC_ROOT/java"
