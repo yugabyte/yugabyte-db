@@ -51,7 +51,7 @@ Add a node to make it a 4 node cluster.
 $ ./bin/yb-ctl add_node
 ```
 
-- Creating a 5 node cluster with replciation factor 5.
+- Creating a 5 node cluster with replication factor 5.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create --rf 5
@@ -141,7 +141,7 @@ $ ./bin/yb-ctl add_node --tserver_flags "log_inject_latency=false,log_segment_si
 To add a node with custom master flags:
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
+$ ./bin/yb-ctl add_node --master --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
 ```
 
 ### Restarting a cluster
@@ -157,13 +157,13 @@ $ ./bin/yb-ctl restart
 Restarting with cloud, region and zone flags:
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
 ```
 
 Restarting with custom flags:
 
 ```{.sh .copy .seperator-dollar}
-$ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
+$ ./bin/yb-ctl restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
 
 ### Restarting a node
