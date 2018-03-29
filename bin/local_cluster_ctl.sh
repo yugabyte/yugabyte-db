@@ -550,7 +550,7 @@ tserver_rpc_port=8100
 redis_rpc_port=6379
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
-pgsql_rpc_port=5432
+pgsql_rpc_port=5433
 
 common_params=" --version_file_json_path $build_root --callhome_enabled=false"
 
