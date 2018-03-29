@@ -40,7 +40,7 @@ $ USE_PGXS=1 make install
 Windows
 -------
 
-There are several ways to build wal2json on Windows. If you are build PostgreSQL too, you can put wal2json directory inside contrib, change the contrib Makefile (variable SUBDIRS) and build it following the [Installation from Source Code on Windows](http://www.postgresql.org/docs/current/static/install-windows.html) instructions. However, if you already have PostgreSQL installed, it is also possible to compile **wal2json** out of the tree. Edit wal2json.vcxproj file and change `c:\postgres\pg103` to the PostgreSQL prefix directory. The next step is to open this project file in MS Visual Studio and compile it. Final step is to copy `wal2json.dll` to the `pg_config --pkglibdir` directory.
+There are several ways to build **wal2json** on Windows. If you are build PostgreSQL too, you can put **wal2json** directory inside contrib, change the contrib Makefile (variable SUBDIRS) and build it following the [Installation from Source Code on Windows](http://www.postgresql.org/docs/current/static/install-windows.html) instructions. However, if you already have PostgreSQL installed, it is also possible to compile **wal2json** out of the tree. Edit `wal2json.vcxproj` file and change `c:\postgres\pg103` to the PostgreSQL prefix directory. The next step is to open this project file in MS Visual Studio and compile it. Final step is to copy `wal2json.dll` to the `pg_config --pkglibdir` directory.
 
 Configuration
 =============
@@ -98,7 +98,7 @@ max_wal_senders = 1
 
 A restart is necessary if you changed max_wal_senders.
 
-You are ready to try wal2json. In one terminal:
+You are ready to try **wal2json**. In one terminal:
 
 ```
 $ pg_recvlogical -d postgres --slot test_slot --create-slot -P wal2json
