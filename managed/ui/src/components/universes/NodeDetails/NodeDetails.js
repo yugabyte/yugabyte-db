@@ -127,6 +127,9 @@ export default class NodeDetails extends Component {
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
         return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
+      } else if (row.cloudInfo.cloud === "gcp") {
+        const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
+        return <a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
       } else {
         return cell;
       }
