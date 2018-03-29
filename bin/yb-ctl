@@ -148,7 +148,7 @@ class ClusterOptions:
                     "cql_http": 12000,
                     "cql_rpc": 9042,
                     "pgsql_http": 13000,
-                    "pgsql_rpc": 5432
+                    "pgsql_rpc": 5433
                 }
         }
 

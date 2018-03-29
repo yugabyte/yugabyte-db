@@ -484,8 +484,15 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-files-o yb-dashboard-icon' aria-hidden='true'></i>",
                           "Replication Factor ");
+  int num_replicas = 0;
+  s = master_->catalog_manager()->GetReplicationFactor(&num_replicas);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to determine Replication factor.");
+    LOG(WARNING) << s.ToString();
+    *output << "<h1>" << s.ToString() << "</h1>\n";
+  }
   (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
-                          master_->opts().GetMasterAddresses().get()->size(),
+                          num_replicas,
                           "/cluster-config",
                           "See full config &raquo;");
   (*output) << "  </tr>\n";
