@@ -1531,6 +1531,13 @@ detect_os() {
   fi
 }
 
+# Assigns a random "test invocation id" that allows to kill stuck processes corresponding to this
+# instance of a particular test or the whole test suite.
+set_test_invocation_id() {
+  local timestamp=$( get_timestamp_for_filenames )
+  export YB_TEST_INVOCATION_ID=test_invocation_${timestamp}_${RANDOM}_${RANDOM}_$$
+}
+
 # Kills any processes that have YB_TEST_INVOCATION_ID in their command line. Sets
 # killed_stuck_processes=true in case that happens.
 kill_stuck_processes() {
