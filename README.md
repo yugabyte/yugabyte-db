@@ -7,7 +7,8 @@
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
 
-A cloud-native database for building mission-critical applications. This repository contains the Community Edition of the YugaByte Database.
+A cloud-native database for building mission-critical applications. This repository contains the
+Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
@@ -40,9 +41,13 @@ In terms of data model and APIs, YugaByte supports the following on top of a com
 
 **Note**: You can run your Apache Spark applications on YugaByte DB
 
-YugaByte DB is driver compatible with Apache Cassandra CQL and Redis - you can run existing applications written using existing open-source client drivers.
+YugaByte DB is driver compatible with Apache Cassandra CQL and Redis - you can run existing
+applications written using existing open-source client drivers.
 
-The distributed transactions feature is supported in the core data platform. The work to expose this as strongly consistent secondary indexes, multi-table/row ACID operations and SQL support is actively in progress. You can follow the progress of these features in our [community forum](https://forum.yugabyte.com/).
+The distributed transactions feature is supported in the core data platform. The work to expose this
+as strongly consistent secondary indexes, multi-table/row ACID operations and SQL support is
+actively in progress. You can follow the progress of these features in our [community
+forum](https://forum.yugabyte.com/).
 
 ## Getting Started
 
@@ -57,14 +62,18 @@ Cannot find what you are looking for? Have a question? We love to hear from you 
 
 ## Developing Apps
 
-Here is a tutorial on implementing a simple Hello World application for YugaByte CQL and Redis in different languages:
+Here is a tutorial on implementing a simple Hello World application for YugaByte CQL and Redis in
+different languages:
 * [Java](https://docs.yugabyte.com/develop/client-drivers/java/) using Maven
 * [NodeJS](https://docs.yugabyte.com/develop/client-drivers/nodejs/)
 * [Python](https://docs.yugabyte.com/develop/client-drivers/python/)
 
-We are constantly adding documentation on how to build apps using the client drivers in various languages, as well as the ecosystem integrations we support. Please see [our app-development docs](https://docs.yugabyte.com/develop/) for the latest information.
+We are constantly adding documentation on how to build apps using the client drivers in various
+languages, as well as the ecosystem integrations we support. Please see [our app-development
+docs](https://docs.yugabyte.com/develop/) for the latest information.
 
-Once again, please post your questions or comments to our [community forum](https://forum.yugabyte.com) if you need something.
+Once again, please post your questions or comments to our [community
+forum](https://forum.yugabyte.com) if you need something.
 
 ## Building YugaByte code
 
@@ -98,7 +107,7 @@ not contain any unnecessary packages that would interfere with the build.
 
 ```
 git clone git@github.com:linuxbrew/brew.git ~/.linuxbrew-yb-build
-~/.linuxbrew-yb-build/bin/brew install autoconf automake boost flex gcc libtool
+~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven
 ```
 
 We don't need to add `~/.linuxbrew-yb-build/bin` to PATH. The build scripts will automatically
@@ -115,8 +124,8 @@ Install [Homebrew](https://brew.sh/):
 
 Install the following packages using Homebrew:
 ```
-brew install autoconf automake bash bison boost ccache cmake coreutils flex gnu-tar libtool \
-             pkg-config pstree wget zlib
+brew install autoconf automake bash bison ccache cmake coreutils flex gnu-tar libtool \
+             pkg-config pstree wget zlib maven
 ```
 
 Also YugaByte build scripts rely on Bash 4. Make sure that `which bash` outputs

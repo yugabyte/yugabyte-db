@@ -600,12 +600,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
 
     if [[ $YB_BUILD_JAVA == "1" ]]; then
       pushd "$YB_SRC_ROOT/java"
+      set_test_invocation_id
       log "Running Java tests in a non-distributed way"
       if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
         EXIT_STATUS=1
         FAILURES+=$'Java tests failed\n'
       fi
       log "Finished running Java tests (see timing information above)"
+      kill_stuck_processes
       popd
     fi
   fi

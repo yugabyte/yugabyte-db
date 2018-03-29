@@ -68,10 +68,7 @@ fi
 # Create group-writable files by default. Useful in an NFS environment.
 umask 0002
 
-# This will be part of the command line of all mini-cluster daemons, so we can later kill any
-# of them that remain.
-timestamp=$( get_timestamp_for_filenames )
-export YB_TEST_INVOCATION_ID=${timestamp}_${RANDOM}_${RANDOM}_$$
+set_test_invocation_id
 trap cleanup EXIT
 
 set_common_test_paths
