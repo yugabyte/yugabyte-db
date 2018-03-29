@@ -27,7 +27,7 @@
 PG_MODULE_MAGIC;
 
 extern void		_PG_init(void);
-extern void		_PG_output_plugin_init(OutputPluginCallbacks *cb);
+extern void	PGDLLEXPORT	_PG_output_plugin_init(OutputPluginCallbacks *cb);
 
 typedef struct
 {
