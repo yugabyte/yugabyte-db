@@ -90,14 +90,13 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
-    assertNotNull(node.get("config_uuid"));
+    assertNotNull(node.get("configUUID"));
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
   }
 
   @Test
   public void testListCustomeWithData() {
-    JsonNode formData = Json.parse("{\"name\": \"Test\", \"type\": \"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
-    CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+    ModelFactory.createS3StorageConfig(defaultCustomer);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url,
         defaultCustomer.createAuthToken());
@@ -116,8 +115,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteValidCustomerConfig() {
-    JsonNode formData = Json.parse("{\"name\": \"Test\", \"type\": \"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
-    UUID configUUID = CustomerConfig.createWithFormData(defaultCustomer.uuid, formData).config_uuid;
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
         defaultCustomer.createAuthToken());
@@ -128,9 +126,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInvalidCustomerConfig() {
-    JsonNode formData = Json.parse("{\"name\": \"Test\", \"type\": \"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
     Customer customer = ModelFactory.testCustomer("nc", "new@customer.com");
-    UUID configUUID = CustomerConfig.createWithFormData(customer.uuid, formData).config_uuid;
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result = FakeApiHelper.doRequestWithAuthToken("DELETE", url,
         defaultCustomer.createAuthToken());

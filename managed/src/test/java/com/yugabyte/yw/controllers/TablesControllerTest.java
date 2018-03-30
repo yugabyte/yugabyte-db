@@ -3,11 +3,15 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -15,6 +19,8 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -38,13 +44,18 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -435,6 +446,72 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
+  }
+
+  @Test
+  public void testCreateBackupWithInvalidParams() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + UUID.randomUUID() + "/create_backup";
+    ObjectNode bodyJson = Json.newObject();
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, customer.createAuthToken(), bodyJson);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertEquals(BAD_REQUEST, result.status());
+    assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
+    assertErrorNodeValue(resultJson, "keyspace", "This field is required");
+    assertErrorNodeValue(resultJson, "tableName", "This field is required");
+    assertErrorNodeValue(resultJson, "actionType", "This field is required");
+  }
+  @Test
+  public void testCreateBackupWithInvalidStorageConfig() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + UUID.randomUUID() + "/create_backup";
+    ObjectNode bodyJson = Json.newObject();
+    UUID randomUUID = UUID.randomUUID();
+    bodyJson.put("keyspace", "foo");
+    bodyJson.put("tableName", "bar");
+    bodyJson.put("actionType", "CREATE");
+    bodyJson.put("storageConfigUUID", randomUUID.toString());
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, customer.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Invalid StorageConfig UUID: " + randomUUID);
+  }
+
+  @Test
+  public void testCreateBackupWithValidParams() {
+    Customer customer = ModelFactory.testCustomer();
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    UUID tableUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + tableUUID + "/create_backup";
+    ObjectNode bodyJson = Json.newObject();
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer);
+    bodyJson.put("keyspace", "foo");
+    bodyJson.put("tableName", "bar");
+    bodyJson.put("actionType", "CREATE");
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
+    ArgumentCaptor<BackupTableParams> taskParams =  ArgumentCaptor.forClass(BackupTableParams.class);;
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, customer.createAuthToken(), bodyJson);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.BackupTable, taskType.getValue());
+    String storageRegex = "s3://foo/univ-" + universe.universeUUID + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+";
+    assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
+    Backup backup = Backup.get(customer.uuid, ct.getTargetUUID());
+    assertNotNull(backup);
+    assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
   }
 
   @Test

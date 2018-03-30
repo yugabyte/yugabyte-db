@@ -14,6 +14,7 @@ import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
+import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import play.data.validation.Constraints;
 
 @Entity
@@ -29,7 +30,10 @@ public class CustomerTask extends Model {
     Provider,
 
     @EnumValue("Node")
-    Node;
+    Node,
+
+    @EnumValue("Backup")
+    Backup
   }
 
   public enum TaskType {
@@ -155,5 +159,9 @@ public class CustomerTask extends Model {
     sb.append(targetType.name());
     sb.append(" : " + targetName);
     return sb.toString();
+  }
+
+  public static CustomerTask findByTaskUUID(UUID taskUUID) {
+    return find.where().eq("task_uuid", taskUUID).findUnique();
   }
 }
