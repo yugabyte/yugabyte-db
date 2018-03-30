@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -23,7 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.TableManager.BULK_LOAD_SCRIPT;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.Mockito.times;
@@ -66,20 +70,14 @@ public class TableManagerTest extends FakeDBApplication {
     return regionUUIDs;
   }
 
-  private void buildValidParams(BulkImportParams bulkImportParams,
-                                UniverseDefinitionTaskParams uniParams) {
-    // Set up accessKey
+  private void setupUniverse() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
     if (AccessKey.get(testProvider.uuid, keyCode) == null) {
       AccessKey.create(testProvider.uuid, keyCode, keyInfo);
     }
 
-    bulkImportParams.tableName = "mock_table";
-    bulkImportParams.keyspace = "mock_ks";
-    bulkImportParams.s3Bucket = "s3://foo.bar.com/bulkload";
-    bulkImportParams.universeUUID = testUniverse.universeUUID;
-
+    UniverseDefinitionTaskParams uniParams = new UniverseDefinitionTaskParams();
     uniParams.nodePrefix = "yb-1-" + testUniverse.name;
     UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.accessKeyCode = keyCode;
@@ -88,22 +86,49 @@ public class TableManagerTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
     uniParams.upsertPrimaryCluster(userIntent, null);
+    testUniverse.setUniverseDetails(uniParams);
+    testUniverse = Universe.saveDetails(testUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(userIntent, uniParams.nodePrefix));
   }
 
-  private List<String> getExpectedCommmand(BulkImportParams bulkImportParams,
-                                           UniverseDefinitionTaskParams uniParams) {
+  private BulkImportParams getBulkImportParams() {
+    BulkImportParams bulkImportParams = new BulkImportParams();
+    bulkImportParams.tableName = "mock_table";
+    bulkImportParams.keyspace = "mock_ks";
+    bulkImportParams.s3Bucket = "s3://foo.bar.com/bulkload";
+    bulkImportParams.universeUUID = testUniverse.universeUUID;
+    return bulkImportParams;
+  }
+
+  private BackupTableParams getBackupTableParams(BackupTableParams.ActionType actionType) {
+    BackupTableParams backupTableParams = new BackupTableParams();
+    backupTableParams.tableUUID = UUID.randomUUID();
+    backupTableParams.tableName = "mock_table";
+    backupTableParams.keyspace = "mock_ks";
+    backupTableParams.actionType = actionType;
+    backupTableParams.universeUUID = testUniverse.universeUUID;
+    return backupTableParams;
+  }
+
+  private List<String> getExpectedBulkImportCommmand(BulkImportParams bulkImportParams) {
     List<String> cmd = new LinkedList<>();
     // bin/py_wrapper bin/yb_bulk_load.py, --key_path, /path/to/private.key, --instance_count, 24,
     // --universe, Universe-1, --release, /yb/release.tar.gz,
     // --masters, host-n1:7100,host-n2:7100,host-n3:7100, --table, mock_table, --keyspace, mock_ks,
     // --s3bucket, s3://foo.bar.com/bulkload
     cmd.add(PY_WRAPPER);
-    cmd.add(BULK_LOAD_SCRIPT);
+    cmd.add(BULK_IMPORT.getScript());
+    cmd.add("--masters");
+    cmd.add(testUniverse.getMasterAddresses());
+    cmd.add("--table");
+    cmd.add(bulkImportParams.tableName);
+    cmd.add("--keyspace");
+    cmd.add(bulkImportParams.keyspace);
     cmd.add("--key_path");
     cmd.add(pkPath);
     cmd.add("--instance_count");
     if (bulkImportParams.instanceCount == 0) {
-      cmd.add(Integer.toString(uniParams.getPrimaryCluster().userIntent.numNodes * 8));
+      cmd.add(Integer.toString(testUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes * 8));
     } else {
       cmd.add(Integer.toString(bulkImportParams.instanceCount));
     }
@@ -111,14 +136,34 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add("yb-1-" + testUniverse.name);
     cmd.add("--release");
     cmd.add("/yb/release.tar.gz");
+    cmd.add("--s3bucket");
+    cmd.add(bulkImportParams.s3Bucket);
+    return cmd;
+  }
+
+  private List<String> getExpectedBackupTableCommand(BackupTableParams backupTableParams) {
+    AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+
+    List<String> cmd = new LinkedList<>();
+    cmd.add(PY_WRAPPER);
+    cmd.add(BACKUP.getScript());
     cmd.add("--masters");
     cmd.add(testUniverse.getMasterAddresses());
     cmd.add("--table");
-    cmd.add(bulkImportParams.tableName);
+    cmd.add(backupTableParams.tableName);
     cmd.add("--keyspace");
-    cmd.add(bulkImportParams.keyspace);
+    cmd.add(backupTableParams.keyspace);
+    if (accessKey.getKeyInfo().sshUser != null) {
+      cmd.add("--ssh_user");
+      cmd.add(accessKey.getKeyInfo().sshUser);
+    }
+    cmd.add("--ssh_key_path");
+    cmd.add(pkPath);
     cmd.add("--s3bucket");
-    cmd.add(bulkImportParams.s3Bucket);
+    cmd.add(backupTableParams.storageLocation);
+    cmd.add("--table_uuid");
+    cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
+    cmd.add(backupTableParams.actionType.name().toLowerCase());
     return cmd;
   }
 
@@ -131,42 +176,62 @@ public class TableManagerTest extends FakeDBApplication {
     testCustomer.save();
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
+    setupUniverse();
   }
 
   @Test
-  public void testTableCommandWithDefaultInstanceCount() {
-    BulkImportParams bulkImportParams = new BulkImportParams();
-    UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
-    buildValidParams(bulkImportParams, uniTaskParams);
-    UserIntent userIntent = uniTaskParams.getPrimaryCluster().userIntent;
-    testUniverse.setUniverseDetails(uniTaskParams);
-    testUniverse = Universe.saveDetails(testUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
-
-    List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
+  public void testBulkImportWithDefaultInstanceCount() {
+    BulkImportParams bulkImportParams = getBulkImportParams();
+    UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
     Map<String, String> expectedEnvVars = testProvider.getConfig();
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
-    tableManager.tableCommand(bulkImportParams);
+    tableManager.bulkImport(bulkImportParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
   @Test
-  public void testTableCommandWithSpecificInstanceCount() {
-    BulkImportParams bulkImportParams = new BulkImportParams();
+  public void testBulkImportWithSpecificInstanceCount() {
+    BulkImportParams bulkImportParams = getBulkImportParams();
     bulkImportParams.instanceCount = 5;
-    UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
-    buildValidParams(bulkImportParams, uniTaskParams);
-    UserIntent userIntent = uniTaskParams.getPrimaryCluster().userIntent;
-    testUniverse.setUniverseDetails(uniTaskParams);
-    testUniverse = Universe.saveDetails(testUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
-
-    List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
+    UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
     Map<String, String> expectedEnvVars = testProvider.getConfig();
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
-    tableManager.tableCommand(bulkImportParams);
+    tableManager.bulkImport(bulkImportParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testCreateBackup() {
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testCreateBackupWithSSHUser() {
+    AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+    keyInfo.sshUser = "foo";
+    accessKey.setKeyInfo(keyInfo);
+    accessKey.save();
+
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 }

@@ -4,80 +4,122 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 
 @Singleton
 public class TableManager extends DevopsBase {
   private static final int EMR_MULTIPLE = 8;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
-  static final String BULK_LOAD_SCRIPT = "bin/yb_bulk_load.py";
+
+  public enum CommandSubType {
+    BACKUP,
+
+    BULK_IMPORT;
+
+    public String getScript() {
+      switch (this) {
+        case BACKUP:
+          return "bin/yb_backup.py";
+        case BULK_IMPORT:
+          return "bin/yb_bulk_load.py";
+      }
+      return null;
+    }
+  }
 
   @Inject
   ReleaseManager releaseManager;
 
-  @Override
-  protected String getCommandType() {
-    return YB_CLOUD_COMMAND_TYPE;
-  }
-
-  @Override
-  protected String getBaseCommand() {
-    return BULK_LOAD_SCRIPT;
-  }
-
-  public ShellProcessHandler.ShellResponse tableCommand(BulkImportParams taskParams) {
-
+  public ShellProcessHandler.ShellResponse runCommand(CommandSubType subType,
+                                                      TableManagerParams taskParams) {
     Universe universe = Universe.get(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
-
-    // Grab needed info
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
-    String ybServerPackage = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
-    if (taskParams.instanceCount == 0) {
-      taskParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
-    }
-
-    // Construct bulk import command
     List<String> commandArgs = new ArrayList<>();
+    Map<String, String> extraVars = new HashMap<>();
+
     commandArgs.add(PY_WRAPPER);
-    commandArgs.add(getBaseCommand());
-    commandArgs.add("--key_path");
-    commandArgs.add((accessKey == null) ? "yugabyte-default" : accessKey.getKeyInfo().privateKey);
-    commandArgs.add("--instance_count");
-    commandArgs.add(Integer.toString(taskParams.instanceCount));
-    commandArgs.add("--universe");
-    commandArgs.add(universe.getUniverseDetails().nodePrefix);
-    commandArgs.add("--release");
-    commandArgs.add(ybServerPackage);
+    commandArgs.add(subType.getScript());
     commandArgs.add("--masters");
     commandArgs.add(universe.getMasterAddresses());
     commandArgs.add("--table");
     commandArgs.add(taskParams.tableName);
     commandArgs.add("--keyspace");
     commandArgs.add(taskParams.keyspace);
-    commandArgs.add("--s3bucket");
-    commandArgs.add(taskParams.s3Bucket);
 
-    // Grab necessary environment variables
-    Map<String, String> extraVars = region.provider.getConfig();
-    extraVars.put("AWS_DEFAULT_REGION", region.code);
+    switch (subType) {
+      case BACKUP:
+        BackupTableParams backupTableParams = (BackupTableParams) taskParams;
+        Customer customer = Customer.find.where().idEq(universe.customerId).findUnique();
+        CustomerConfig customerConfig = CustomerConfig.get(customer.uuid,
+                                                           backupTableParams.storageConfigUUID);
 
-    // Execute bulk import command (only valid for AWS right now)
-    // TODO: move to opscli
+        if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
+          commandArgs.add("--ssh_user");
+          commandArgs.add(accessKey.getKeyInfo().sshUser);
+        }
+
+        commandArgs.add("--ssh_key_path");
+        commandArgs.add(accessKey.getKeyInfo().privateKey);
+        commandArgs.add("--s3bucket");
+        commandArgs.add(backupTableParams.storageLocation);
+        commandArgs.add("--table_uuid");
+        commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
+
+        commandArgs.add(backupTableParams.actionType.name().toLowerCase());
+        extraVars = customerConfig.dataAsMap();
+
+        break;
+      case BULK_IMPORT:
+        BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
+        String ybServerPackage = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+        if (bulkImportParams.instanceCount == 0) {
+          bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
+        }
+        commandArgs.add("--key_path");
+        commandArgs.add(accessKey.getKeyInfo().privateKey);
+        commandArgs.add("--instance_count");
+        commandArgs.add(Integer.toString(bulkImportParams.instanceCount));
+        commandArgs.add("--universe");
+        commandArgs.add(universe.getUniverseDetails().nodePrefix);
+        commandArgs.add("--release");
+        commandArgs.add(ybServerPackage);
+        commandArgs.add("--s3bucket");
+        commandArgs.add(bulkImportParams.s3Bucket);
+
+        extraVars = region.provider.getConfig();
+        extraVars.put("AWS_DEFAULT_REGION", region.code);
+
+        break;
+    }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
+  }
+
+  @Override
+  protected String getCommandType() {
+    return YB_CLOUD_COMMAND_TYPE;
+  }
+
+  public ShellProcessHandler.ShellResponse bulkImport(BulkImportParams taskParams) {
+    return runCommand(BULK_IMPORT, taskParams);
+  }
+
+  public ShellProcessHandler.ShellResponse createBackup(BackupTableParams taskParams) {
+    return runCommand(BACKUP, taskParams);
   }
 }

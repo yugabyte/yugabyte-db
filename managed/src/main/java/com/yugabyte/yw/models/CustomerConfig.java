@@ -6,8 +6,8 @@ import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.annotation.EnumValue;
 import com.avaje.ebean.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +46,7 @@ public class CustomerConfig extends Model {
   }
 
   @Id
-  public UUID config_uuid;
+  public UUID configUUID;
 
   @Column(nullable = false)
   public UUID customerUUID;
@@ -64,6 +64,10 @@ public class CustomerConfig extends Model {
   public JsonNode data;
 
   public static final Find<UUID, CustomerConfig> find = new Find<UUID, CustomerConfig>(){};
+
+  public Map<String, String> dataAsMap() {
+    return new ObjectMapper().convertValue(data, Map.class);
+  }
 
   public JsonNode getData() {
     // MASK any sensitive data.

@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import play.libs.Json;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -75,5 +78,11 @@ public class ModelFactory {
     params.nodeDetailsSet = new HashSet<>();
     params.upsertPrimaryCluster(userIntent, null);
     return Universe.create(params, customerId);
+  }
+
+  public static CustomerConfig createS3StorageConfig(Customer customer) {
+    JsonNode formData = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
+        "{\"S3_BUCKET\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 }
