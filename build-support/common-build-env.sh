@@ -1375,7 +1375,7 @@ activate_virtualenv() {
       set -x
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
   set +u
