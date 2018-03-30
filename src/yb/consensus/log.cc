@@ -67,8 +67,8 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
-using namespace yb::size_literals;
-using namespace std::literals;
+using namespace yb::size_literals;  // NOLINT.
+using namespace std::literals;  // NOLINT.
 
 // Log retention configuration.
 // -----------------------------
@@ -97,12 +97,12 @@ DEFINE_int32(group_commit_queue_size_bytes, 4_MB,
 TAG_FLAG(group_commit_queue_size_bytes, advanced);
 
 // Flags for controlling kernel watchdog limits.
-DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 100,
+DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
              "If calling consensus log callback(s) take longer than this, the kernel watchdog "
              "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, runtime);
 TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, advanced);
-DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 500,
+DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 1000,
              "If consensus log append takes longer than this, the kernel watchdog "
              "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, runtime);
