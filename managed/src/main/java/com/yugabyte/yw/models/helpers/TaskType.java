@@ -95,7 +95,9 @@ public enum TaskType {
 
   CloudRegionSetup("subtasks.cloud.CloudRegionSetup"),
 
-  CloudSetup("subtasks.cloud.CloudSetup");
+  CloudSetup("subtasks.cloud.CloudSetup"),
+
+  BackupTable("subtasks.BackupTable");
 
   private String relativeClassPath;
 

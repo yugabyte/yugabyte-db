@@ -82,7 +82,10 @@ public class UserTaskDetails {
     StoppingNodeProcesses,
 
     // Deleting Table
-    DeletingTable
+    DeletingTable,
+
+    // Creating Table Backup
+    CreatingTableBackup
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -180,6 +183,10 @@ public class UserTaskDetails {
       case DeletingTable:
         title = "Deleting Table";
         description = "Delete an existing table from a universe";
+        break;
+      case CreatingTableBackup:
+        title = "Creating Table Backup";
+        description = "Creating backup for a table.";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

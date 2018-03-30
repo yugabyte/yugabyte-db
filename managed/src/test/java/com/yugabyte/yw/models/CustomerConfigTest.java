@@ -3,11 +3,14 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
+
+import java.util.Map;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
@@ -58,7 +61,7 @@ public class CustomerConfigTest extends FakeDBApplication {
   @Test
   public void testGetValidID() {
     CustomerConfig cc = createData(defaultCustomer);
-    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.config_uuid);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
     assertNotNull(fc);
   }
 
@@ -66,7 +69,15 @@ public class CustomerConfigTest extends FakeDBApplication {
   public void testGetInvalidID() {
     Customer newCustomer = ModelFactory.testCustomer("nc", "new@customer.com");
     CustomerConfig cc = createData(newCustomer);
-    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.config_uuid);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
     assertNull(fc);
+  }
+
+  @Test
+  public void testDataAsMap() {
+    CustomerConfig cc = createData(defaultCustomer);
+    Map<String, String> data = cc.dataAsMap();
+    assertEquals(1, data.size());
+    assertEquals(ImmutableMap.of("foo", "bar"), data);
   }
 }

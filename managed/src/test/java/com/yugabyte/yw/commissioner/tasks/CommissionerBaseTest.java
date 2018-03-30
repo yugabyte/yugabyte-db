@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -35,6 +36,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected GCPInitializer mockGCPInitializer;
   protected YBClientService mockYBClient;
   protected NodeManager mockNodeManager;
+  protected TableManager mockTableManager;
   protected CloudQueryHelper mockCloudQueryHelper;
 
   Customer defaultCustomer;
@@ -58,6 +60,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockYBClient = mock(YBClientService.class);
     mockNodeManager = mock(NodeManager.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
+    mockTableManager = mock(TableManager.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -69,6 +72,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(YBClientService.class).toInstance(mockYBClient))
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
         .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+        .overrides(bind(TableManager.class).toInstance(mockTableManager))
         .build();
   }
 

@@ -8,12 +8,10 @@ import java.util.UUID;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -280,6 +278,53 @@ public class TablesController extends AuthenticatedController {
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
+  }
+
+  public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      String errMsg = "Invalid Customer UUID: " + customerUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    Universe universe = Universe.get(universeUUID);
+    if (universe == null) {
+      String errMsg = "Invalid Universe UUID: " + universeUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
+        .bindFromRequest();
+
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    BackupTableParams taskParams = formData.get();
+    CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
+    if (storageConfig == null) {
+      String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    taskParams.universeUUID = universeUUID;
+    taskParams.tableUUID = tableUUID;
+    Backup backup = Backup.create(customerUUID, taskParams);
+
+    UUID taskUUID = commissioner.submit(TaskType.BackupTable, taskParams);
+    LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
+        tableUUID, taskParams.tableName, taskUUID);
+
+    CustomerTask.create(customer,
+        backup.backupUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Create,
+        taskParams.tableName);
+    LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
+        tableUUID, taskParams.keyspace, taskParams.tableName);
+
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
+    return ApiResponse.success(resultNode);
   }
 
   /**
