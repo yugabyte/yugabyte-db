@@ -74,8 +74,9 @@ export default class ClusterFields extends Component {
   }
 
   componentWillMount() {
-    const {formValues, clusterType, updateFormField} = this.props;
-    if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion)) {
+    const {formValues, clusterType, updateFormField, type} = this.props;
+    // Set default software version in case of create
+    if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion) && type !== "Edit") {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
       updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
     }
