@@ -168,6 +168,13 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_error_message(error_message);
         break;
       }
+      case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::PGSQL_WRITE: {
+        PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
+        resp->set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+        resp->set_error_message(error_message);
+        break;
+      }
       default:
         LOG(FATAL) << "Unsupported operation " << yb_op->type();
         break;
@@ -269,6 +276,8 @@ WriteRpc::WriteRpc(
     switch (op->yb_op->type()) {
       case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::REDIS_WRITE: {
         CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
@@ -283,23 +292,28 @@ WriteRpc::WriteRpc(
         << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
 
 #endif
+    // Move write request PB into tserver write request PB for performance.
+    // Will restore in ProcessResponseFromTserver.
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
         CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-        // Move Redis write request PB into tserver write request PB for performance. Will restore
-        // in ProcessResponseFromTserver.
         auto* redis_op = down_cast<YBRedisWriteOp*>(op->yb_op.get());
         req_.add_redis_write_batch()->Swap(redis_op->mutable_request());
         break;
       }
       case YBOperation::Type::QL_WRITE: {
         CHECK_EQ(table()->table_type(), YBTableType::YQL_TABLE_TYPE);
-        // Move QL write request PB into tserver write request PB for performance. Will restore
-        // in ProcessResponseFromTserver.
         auto* ql_op = down_cast<YBqlWriteOp*>(op->yb_op.get());
         req_.add_ql_write_batch()->Swap(ql_op->mutable_request());
         break;
       }
+      case YBOperation::Type::PGSQL_WRITE: {
+        CHECK_EQ(table()->table_type(), YBTableType::PGSQL_TABLE_TYPE);
+        auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(op->yb_op.get());
+        req_.add_pgsql_write_batch()->Swap(pgsql_op->mutable_request());
+        break;
+      }
+      case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_READ:
         LOG(FATAL) << "Not a write operation " << op->yb_op->type();
@@ -359,6 +373,7 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
 
   size_t redis_idx = 0;
   size_t ql_idx = 0;
+  size_t pgsql_idx = 0;
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
@@ -394,7 +409,27 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
         ql_idx++;
         break;
       }
-
+      case YBOperation::Type::PGSQL_WRITE: {
+        if (pgsql_idx >= resp_.pgsql_response_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        // Restore QL write request PB and extract response.
+        auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(yb_op);
+        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_write_batch(pgsql_idx));
+        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
+        const auto& pgsql_response = pgsql_op->response();
+        if (pgsql_response.has_rows_data_sidecar()) {
+          Slice rows_data;
+          CHECK_OK(retrier().controller().GetSidecar(
+              pgsql_response.rows_data_sidecar(), &rows_data));
+          down_cast<YBPgsqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
+              util::to_char_ptr(rows_data.data()), rows_data.size());
+        }
+        pgsql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_READ:
         LOG(FATAL) << "Not a write operation " << op->yb_op->type();
@@ -403,12 +438,15 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   }
 
   if (redis_idx != resp_.redis_response_batch().size() ||
-      ql_idx != resp_.ql_response_batch().size()) {
+      ql_idx != resp_.ql_response_batch().size() ||
+      pgsql_idx != resp_.pgsql_response_batch().size()) {
     LOG(ERROR) << Substitute("Write response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
-                             "$2 QL requests sent, $3 responses received.",
+                             "$2 Apache CQL requests sent, $3 responses received. "
+                             "$4 PostgreSQL requests sent, $5 responses received.",
                              redis_idx, resp_.redis_response_batch().size(),
-                             ql_idx, resp_.ql_response_batch().size());
+                             ql_idx, resp_.ql_response_batch().size(),
+                             pgsql_idx, resp_.pgsql_response_batch().size());
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Write response count mismatch"));
   }
@@ -443,6 +481,16 @@ ReadRpc::ReadRpc(
         }
         break;
       }
+      case YBOperation::Type::PGSQL_READ: {
+        CHECK_EQ(table()->table_type(), YBTableType::PGSQL_TABLE_TYPE);
+        auto* pgsql_op = down_cast<YBPgsqlReadOp*>(op->yb_op.get());
+        req_.add_pgsql_batch()->Swap(pgsql_op->mutable_request());
+        if (pgsql_op->read_time()) {
+          pgsql_op->read_time().AddToPB(&req_);
+        }
+        break;
+      }
+      case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();
@@ -497,6 +545,7 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   size_t redis_idx = 0;
   size_t ql_idx = 0;
+  size_t pgsql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -531,6 +580,27 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
         ql_idx++;
         break;
       }
+      case YBOperation::Type::PGSQL_READ: {
+        if (pgsql_idx >= resp_.pgsql_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        // Restore PGSQL read request PB and extract response.
+        auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
+        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_batch(pgsql_idx));
+        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
+        const auto& pgsql_response = pgsql_op->response();
+        if (pgsql_response.has_rows_data_sidecar()) {
+          Slice rows_data;
+          CHECK_OK(retrier().controller().GetSidecar(
+              pgsql_response.rows_data_sidecar(), &rows_data));
+          down_cast<YBPgsqlReadOp*>(yb_op)->mutable_rows_data()->assign(
+              util::to_char_ptr(rows_data.data()), rows_data.size());
+        }
+        pgsql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();
@@ -539,12 +609,15 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
   }
 
   if (redis_idx != resp_.redis_batch().size() ||
-      ql_idx != resp_.ql_batch().size()) {
+      ql_idx != resp_.ql_batch().size() ||
+      pgsql_idx != resp_.pgsql_batch().size()) {
     LOG(ERROR) << Substitute("Read response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
-                             "$2 QL requests sent, $3 responses received.",
+                             "$2 QL requests sent, $3 responses received. "
+                             "$4 QL requests sent, $5 responses received.",
                              redis_idx, resp_.redis_batch().size(),
-                             ql_idx, resp_.ql_batch().size());
+                             ql_idx, resp_.ql_batch().size(),
+                             pgsql_idx, resp_.pgsql_batch().size());
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Read response count mismatch"));
   }

@@ -14,6 +14,7 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
+#include "yb/yql/pgsql/ybpostgres/pg_send.h"
 
 namespace yb {
 namespace tablet {
@@ -65,6 +66,54 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
                                        rsrow_desc,
                                        &result->rows_data));
   TRACE("Done Serialize");
+  return Status::OK();
+}
+
+CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
+    const ReadHybridTime& read_time,
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const TransactionOperationContextOpt& txn_op_context,
+    PgsqlReadRequestResult* result) {
+
+  docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
+
+  // Form a schema of columns that are referenced by this query.
+  const Schema &schema = SchemaRef();
+  Schema query_schema;
+  const PgsqlColumnRefsPB& column_pbs = pgsql_read_request.column_refs();
+  vector<ColumnId> column_refs;
+  for (int32_t id : column_pbs.ids()) {
+    column_refs.emplace_back(id);
+  }
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
+
+  PgsqlRSRowDesc rsrow_desc(pgsql_read_request.rsrow_desc());
+  PgsqlResultSet resultset;
+  TRACE("Start Execute");
+  const Status s = doc_op.Execute(QLStorage(), schema, query_schema, read_time, &resultset,
+                                  &result->restart_read_ht);
+  TRACE("Done Execute");
+  if (!s.ok()) {
+    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    result->response.set_error_message(s.message().cdata(), s.message().size());
+    return Status::OK();
+  }
+  result->response.Swap(&doc_op.response());
+
+  RETURN_NOT_OK(CreatePagingStateForRead(
+      pgsql_read_request, resultset.rsrow_count(), &result->response));
+
+  // TODO(neil) The clients' request should indicate what encoding method should be used. When
+  // multi-shard is used to process more complicated queries, proxy-server might prefer a different
+  // encoding. For now, we'll call PgsqlSerialize() without checking encoding method.
+  result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+
+  TRACE("Start Serialize");
+  pgapi::PGSend sender;
+  sender.WriteTupleDesc(rsrow_desc, &result->rows_data);
+  sender.WriteTuples(resultset, rsrow_desc, &result->rows_data);
+  TRACE("Done Serialize");
+
   return Status::OK();
 }
 

@@ -64,6 +64,43 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
 
 // ------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS InitKeyColumnPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+    const Schema &schema,
+    size_t start_idx,
+    vector<PrimitiveValue> *components) {
+  size_t column_idx = start_idx;
+  for (const auto& column_value : column_values) {
+    if (!schema.is_key_column(column_idx)) {
+      auto status = STATUS_FORMAT(
+          Corruption, "Column at $0 is not key column in $1", column_idx, schema.ToString());
+      LOG(DFATAL) << status;
+      return status;
+    }
+
+    if (column_value.has_value() && !IsNull(column_value.value())) {
+      components->push_back(PrimitiveValue::FromQLValuePB(
+          column_value.value(), schema.column(column_idx).sorting_type()));
+    } else {
+      // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
+      // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
+      // require a read from a table.
+      //
+      // Use regular executor for now.
+      QLExprExecutor executor;
+      QLValue result;
+      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result));
+
+      components->push_back(PrimitiveValue::FromQLValuePB(
+          result.value(), schema.column(column_idx).sorting_type()));
+    }
+    column_idx++;
+  }
+  return Status::OK();
+}
+
+// ------------------------------------------------------------------------------------------------
+
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(rocksdb_.get());
 }

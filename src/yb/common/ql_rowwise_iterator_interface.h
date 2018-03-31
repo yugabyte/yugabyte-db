@@ -15,43 +15,24 @@
 #define YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
 
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_resultset.h"
 #include "yb/common/ql_scanspec.h"
 
 namespace yb {
 namespace common {
 
-class QLRowwiseIteratorIf {
+class YQLRowwiseIteratorIf {
  public:
-  virtual ~QLRowwiseIteratorIf() {}
+  typedef std::unique_ptr<common::YQLRowwiseIteratorIf> UniPtr;
+  virtual ~YQLRowwiseIteratorIf() {}
 
-  CHECKED_STATUS virtual Init() = 0;
-
-  // Init QL read scan.
-  virtual CHECKED_STATUS Init(const QLScanSpec& spec) = 0;
-
-  // Is the next row column to read a static column?
-  virtual bool IsNextStaticColumn() const = 0;
-
+  //------------------------------------------------------------------------------------------------
+  // Pure virtual API methods.
+  //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
   virtual bool HasNext() const = 0;
 
-  // Read next row using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) {
-    return DoNextRow(projection, table_row);
-  }
-
-  CHECKED_STATUS NextRow(QLTableRow* table_row) {
-    return DoNextRow(schema(), table_row);
-  }
-
   // Skip the current row.
   virtual void SkipRow() = 0;
-
-  // Checks whether we have processed enough rows for a page and sets the appropriate paging
-  // state in the response object.
-  virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                   QLResponsePB* response) const = 0;
 
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
@@ -60,6 +41,40 @@ class QLRowwiseIteratorIf {
   virtual std::string ToString() const = 0;
 
   virtual const Schema& schema() const = 0;
+
+  //------------------------------------------------------------------------------------------------
+  // Virtual API methods.
+  // These methods are not applied to virtual/system table.
+  //------------------------------------------------------------------------------------------------
+
+  // Apache Cassandra Only: CQL supports static columns while all other intefaces do not.
+  // Is the next row column to read a static column?
+  virtual bool IsNextStaticColumn() const {
+    return false;
+  }
+
+  // Checks whether we have processed enough rows for a page and sets the appropriate paging
+  // state in the response object.
+  virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                                   QLResponsePB* response) const {
+    return Status::OK();
+  }
+  virtual CHECKED_STATUS SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
+                                                   PgsqlResponsePB* response) const {
+    return Status::OK();
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Common API methods.
+  //------------------------------------------------------------------------------------------------
+  // Read next row using the specified projection.
+  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) {
+    return DoNextRow(projection, table_row);
+  }
+
+  CHECKED_STATUS NextRow(QLTableRow* table_row) {
+    return DoNextRow(schema(), table_row);
+  }
 
  private:
   virtual CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;

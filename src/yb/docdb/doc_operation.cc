@@ -11,21 +11,25 @@
 // under the License.
 //
 
+#include "yb/docdb/doc_operation.h"
+
 #include "yb/common/partition.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/stol_utils.h"
@@ -34,7 +38,6 @@
 DECLARE_bool(trace_docdb_calls);
 
 using strings::Substitute;
-using yb::bfql::TSOpcode;
 
 DEFINE_bool(emulate_redis_responses,
     true,
@@ -50,7 +53,12 @@ using std::set;
 using std::list;
 using std::make_shared;
 using std::unique_ptr;
+using std::make_unique;
 using strings::Substitute;
+
+//--------------------------------------------------------------------------------------------------
+// Redis support.
+//--------------------------------------------------------------------------------------------------
 
 void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
   paths->push_back(DocPath::DocPathFromRedisKey(request_.key_value().hash_code(),
@@ -1558,6 +1566,9 @@ const RedisResponsePB& RedisReadOperation::response() {
   return response_;
 }
 
+//--------------------------------------------------------------------------------------------------
+// CQL support.
+//--------------------------------------------------------------------------------------------------
 namespace {
 
 // Append dummy entries in schema to table_row
@@ -1855,6 +1866,8 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 }
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
+  using yb::bfql::TSOpcode;
+
   bool should_apply = true;
   QLTableRow current_row;
   if (request_.has_if_expr()) {
@@ -2274,7 +2287,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
   return Status::OK();
 }
 
-Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
+Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
                                 const Schema& query_schema,
@@ -2298,15 +2311,14 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   const bool read_static_columns = !static_projection.columns().empty();
   const bool read_distinct_columns = request_.distinct();
 
-  std::unique_ptr<common::QLRowwiseIteratorIf> iter;
+  std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
   std::unique_ptr<common::QLScanSpec> spec, static_row_spec;
   ReadHybridTime req_read_time;
-  RETURN_NOT_OK(ql_storage.BuildQLScanSpec(
+  RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec, &req_read_time));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
-                                       req_read_time, &iter));
-  RETURN_NOT_OK(iter->Init(*spec));
+                                       req_read_time, *spec, &iter));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
@@ -2319,10 +2331,9 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   // row to fetch are not included in the first iterator and we need to fetch them with a separate
   // spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
-    std::unique_ptr<common::QLRowwiseIteratorIf> static_row_iter;
+    std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(request_, static_projection, schema, txn_op_context_,
-                                         req_read_time, &static_row_iter));
-    RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
+                                         req_read_time, *static_row_spec, &static_row_iter));
     if (static_row_iter->HasNext()) {
       RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
     }
@@ -2477,8 +2488,295 @@ CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLS
       }
     }
   }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Pgsql support.
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PgsqlDocOperation::CreateProjections(const Schema& schema,
+                                                    const PgsqlColumnRefsPB& column_refs,
+                                                    Schema* column_projection) {
+  // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
+  // more efficient scan in the iterator.
+  set<ColumnId> regular_columns;
+
+  // Add regular columns.
+  for (int32_t id : column_refs.ids()) {
+    const ColumnId column_id(id);
+    if (!schema.is_key_column(column_id)) {
+      regular_columns.insert(column_id);
+    }
+  }
+
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(
+      vector<ColumnId>(regular_columns.begin(), regular_columns.end()),
+      column_projection));
 
   return Status::OK();
 }
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
+  // Initialize operation inputs.
+  request_.Swap(request);
+  response_ = response;
+
+  // Init DocDB keys using partition and range values.
+  // - Collect partition and range values into hashed_components and range_components.
+  // - Setup the keys.
+  vector<PrimitiveValue> hashed_components;
+  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
+                                             schema_,
+                                             0,
+                                             &hashed_components));
+
+  // We only need the hash key if the range key is not specified.
+  if (request_.range_column_values().size() == 0) {
+    hashed_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components);
+    hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
+  }
+
+  vector<PrimitiveValue> range_components;
+  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
+                                             schema_,
+                                             schema_.num_hash_key_columns(),
+                                             &range_components));
+  range_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components, range_components);
+  range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
+  switch (request_.stmt_type()) {
+    case PgsqlWriteRequestPB::PGSQL_INSERT:
+      return ApplyInsert(data);
+
+    case PgsqlWriteRequestPB::PGSQL_UPDATE:
+      return ApplyUpdate(data);
+
+    case PgsqlWriteRequestPB::PGSQL_DELETE:
+      return ApplyDelete(data);
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
+  QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
+  if (RequireReadSnapshot()) {
+    RETURN_NOT_OK(ReadColumns(data, table_row));
+  }
+
+  const MonoDelta ttl = Value::kMaxTtl;
+  const UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
+
+  // Add the appropriate liveness column.
+  if (range_doc_path_ != nullptr) {
+    const DocPath sub_path(range_doc_path_->encoded_doc_key(),
+                           PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+    const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
+    RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(sub_path, value, request_.stmt_id()));
+  }
+
+  for (const auto& column_value : request_.column_values()) {
+    // Get the column.
+    if (!column_value.has_column_id()) {
+      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                           column_value.DebugString());
+    }
+    const ColumnId column_id(column_value.column_id());
+    auto column = schema_.column_by_id(column_id);
+    RETURN_NOT_OK(column);
+
+    // Check column-write operator.
+    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+      << "Illegal write instruction";
+
+    // Evaluate column value.
+    QLValue expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+    const SubDocument sub_doc =
+        SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+
+    // Inserting into specified column.
+    DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, sub_doc, request_.stmt_id(), ttl, user_timestamp));
+  }
+
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
+                                                const QLTableRow::SharedPtr& table_row) {
+  // Create projections to scan docdb.
+  Schema column_projection;
+  RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &column_projection));
+
+  // Filter the columns using primary key.
+  if (range_doc_key_ != nullptr) {
+    DocPgsqlScanSpec spec(column_projection, request_.stmt_id(), *range_doc_key_);
+    DocRowwiseIterator iterator(column_projection,
+                                schema_,
+                                txn_op_context_,
+                                data.doc_write_batch->rocksdb(),
+                                data.read_time);
+    RETURN_NOT_OK(iterator.Init(spec));
+    if (iterator.HasNext()) {
+      RETURN_NOT_OK(iterator.NextRow(table_row.get()));
+    } else {
+      table_row->Clear();
+    }
+    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+  }
+
+  return Status::OK();
+}
+
+void PgsqlWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
+  if (hashed_doc_path_ != nullptr) {
+    paths->push_back(*hashed_doc_path_);
+  }
+  if (range_doc_path_ != nullptr) {
+    paths->push_back(*range_doc_path_);
+  }
+  // When this write operation requires a read, it requires a read snapshot so paths will be locked
+  // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
+  // isolation so that they will serialize but do not conflict with one another.
+  //
+  // Currently, only keys that are being written are locked, no lock is taken on read at the
+  // snapshot isolation level.
+  *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
+                                 : IsolationLevel::SERIALIZABLE_ISOLATION;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+                                           const Schema& schema,
+                                           const Schema& query_schema,
+                                           const ReadHybridTime& read_time,
+                                           PgsqlResultSet *resultset,
+                                           HybridTime *restart_read_ht) {
+  size_t row_count_limit = std::numeric_limits<std::size_t>::max();
+  if (request_.has_limit()) {
+    if (request_.limit() == 0) {
+      return Status::OK();
+    }
+    row_count_limit = request_.limit();
+  }
+
+  // Create the projection of regular columns selected by the row block plus any referenced in
+  // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
+  // projection only to scan sub-documents. The query schema is used to select only referenced
+  // columns and key columns.
+  Schema projection;
+  RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(), &projection));
+
+  // Construct scan specification and iterator.
+  common::YQLRowwiseIteratorIf::UniPtr iter;
+  common::PgsqlScanSpec::UniPtr spec;
+  ReadHybridTime req_read_time;
+  RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(request_, read_time, schema, &spec, &req_read_time));
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
+                                       req_read_time, *spec, &iter));
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Initialized iterator");
+  }
+
+  // Fetching data.
+  int match_count = 0;
+  QLTableRow::SharedPtr selected_row = make_shared<QLTableRow>();
+  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+    // The filtering process runs in the following order.
+    // <hash_code><hash_components><range_components><regular_column_id> -> value;
+    selected_row->Clear();
+    RETURN_NOT_OK(iter->NextRow(projection, selected_row.get()));
+
+    // Match the row with the where condition before adding to the row block.
+    bool is_match = true;
+    if (request_.has_where_expr()) {
+      QLValue match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), selected_row, &match));
+      is_match = match.bool_value();
+    }
+    if (is_match) {
+      match_count++;
+      if (request_.is_aggregate()) {
+        RETURN_NOT_OK(EvalAggregate(selected_row));
+      } else {
+        RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
+      }
+    }
+  }
+
+  if (request_.is_aggregate() && match_count > 0) {
+    RETURN_NOT_OK(PopulateAggregate(selected_row, resultset));
+  }
+
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Fetched $0 rows.", resultset->rsrow_count());
+  }
+  *restart_read_ht = iter->RestartReadHt();
+
+  if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
+    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
+                                                     PgsqlResultSet *resultset) {
+  int column_count = request_.selected_exprs().size();
+  PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
+
+  int rscol_index = 0;
+  for (const PgsqlExpressionPB& expr : request_.selected_exprs()) {
+    RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
+    rscol_index++;
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
+  if (aggr_result_.empty()) {
+    int column_count = request_.selected_exprs().size();
+    aggr_result_.resize(column_count);
+  }
+
+  int aggr_index = 0;
+  for (const PgsqlExpressionPB& expr : request_.selected_exprs()) {
+    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
+    aggr_index++;
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
+                                                     PgsqlResultSet *resultset) {
+  int column_count = request_.selected_exprs().size();
+  PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
+  for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
+    *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];
+  }
+  return Status::OK();
+}
+
 }  // namespace docdb
 }  // namespace yb

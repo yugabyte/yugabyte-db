@@ -21,15 +21,6 @@ YQLVTableIterator::YQLVTableIterator(std::unique_ptr<QLRowBlock> vtable)
       vtable_index_(0) {
 }
 
-Status YQLVTableIterator::Init() {
-  return STATUS(NotSupported, "YQLVTableIterator::Init(ScanSpec*) not supported!");
-}
-
-Status YQLVTableIterator::Init(const common::QLScanSpec& spec) {
-  // As of 04/17, we don't use the scanspec for simplicity.
-  return Status::OK();
-}
-
 Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
   if (vtable_index_ >= vtable_->row_count()) {
     return STATUS(NotFound, "No more rows left!");
@@ -49,12 +40,6 @@ void YQLVTableIterator::SkipRow() {
   if (vtable_index_ < vtable_->row_count()) {
     vtable_index_++;
   }
-}
-
-CHECKED_STATUS YQLVTableIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                            QLResponsePB* response) const {
-  // We don't support paging in virtual tables.
-  return Status::OK();
 }
 
 bool YQLVTableIterator::HasNext() const {

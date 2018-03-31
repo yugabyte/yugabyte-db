@@ -28,7 +28,7 @@ const Schema& SystemTablet::SchemaRef() const {
   return schema_;
 }
 
-const common::QLStorageIf& SystemTablet::QLStorage() const {
+const common::YQLStorageIf& SystemTablet::QLStorage() const {
   return *yql_virtual_table_;
 }
 

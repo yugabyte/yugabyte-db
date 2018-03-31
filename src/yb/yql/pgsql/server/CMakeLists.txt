@@ -44,7 +44,7 @@ set(PGSERVER_SRCS
 
 add_library(yb-pgsql ${PGSERVER_SRCS})
 target_link_libraries(yb-pgsql
-#                     pgsql-processor
+                      pgsql-processor
                       pgsql-util
                       protobuf
                       log

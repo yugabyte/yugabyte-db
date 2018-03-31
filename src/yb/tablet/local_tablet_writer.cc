@@ -32,8 +32,7 @@ class AutoIncrementingCounter {
 
 } // namespace
 
-LocalTabletWriter::LocalTabletWriter(Tablet* tablet)
-  : tablet_(tablet) {
+LocalTabletWriter::LocalTabletWriter(Tablet* tablet) : tablet_(tablet) {
 }
 
 // Perform a write against the local tablet.

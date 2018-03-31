@@ -243,6 +243,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch = nullptr);
 
+  //------------------------------------------------------------------------------------------------
+  // Redis Request Processing.
   // Takes a Redis WriteRequestPB as input with its redis_write_batch.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
   // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
@@ -258,6 +260,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
+  //------------------------------------------------------------------------------------------------
+  // CQL Request Processing.
   CHECKED_STATUS HandleQLReadRequest(
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
@@ -271,6 +275,21 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromQLWriteBatch(const WriteOperationData& data);
 
+  //------------------------------------------------------------------------------------------------
+  // Postgres Request Processing.
+  CHECKED_STATUS HandlePgsqlReadRequest(
+      const ReadHybridTime& read_time,
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      PgsqlReadRequestResult* result) override;
+
+  CHECKED_STATUS CreatePagingStateForRead(
+      const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
+      PgsqlResponsePB* response) const override;
+
+  CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data);
+
+  //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
   CHECKED_STATUS CreateCheckpoint(const std::string& dir,
@@ -279,10 +298,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  Result<std::unique_ptr<common::QLRowwiseIteratorIf>> NewRowIterator(
+  Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema &projection,
       const boost::optional<TransactionId>& transaction_id) const;
 
+  //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode);
 
@@ -372,7 +392,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return metadata_->schema();
   }
 
-  const common::QLStorageIf& QLStorage() const override {
+  const common::YQLStorageIf& QLStorage() const override {
     return *ql_storage_;
   }
 
@@ -547,7 +567,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // RocksDB database for key-value tables.
   std::unique_ptr<rocksdb::DB> rocksdb_;
 
-  std::unique_ptr<common::QLStorageIf> ql_storage_;
+  std::unique_ptr<common::YQLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;

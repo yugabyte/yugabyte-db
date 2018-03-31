@@ -76,10 +76,17 @@ class YBTable;
 class YBOperation {
  public:
   enum Type {
+    // Redis opcodes.
     REDIS_WRITE = 4,
     REDIS_READ = 5,
+
+    // CQL opcodes.
     QL_WRITE = 6,
     QL_READ = 7,
+
+    // Postgresql opcodes.
+    PGSQL_WRITE = 8,
+    PGSQL_READ = 9,
   };
   virtual ~YBOperation();
 
@@ -113,6 +120,10 @@ class YBOperation {
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
+
+//--------------------------------------------------------------------------------------------------
+// YBRedis Operators.
+//--------------------------------------------------------------------------------------------------
 
 class YBRedisOp : public YBOperation {
  public:
@@ -201,6 +212,10 @@ class YBRedisReadOp : public YBRedisOp {
   friend class YBTable;
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
 };
+
+//--------------------------------------------------------------------------------------------------
+// YBCql Operators.
+//--------------------------------------------------------------------------------------------------
 
 class YBqlOp : public YBOperation {
  public:
@@ -323,6 +338,119 @@ class YBqlReadOp : public YBqlOp {
 
 std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
   const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs);
+
+//--------------------------------------------------------------------------------------------------
+// YB Postgresql Operators.
+//--------------------------------------------------------------------------------------------------
+
+class YBPgsqlOp : public YBOperation {
+ public:
+  explicit YBPgsqlOp(const std::shared_ptr<YBTable>& table);
+  virtual ~YBPgsqlOp();
+
+  const PgsqlResponsePB& response() const { return *response_; }
+
+  PgsqlResponsePB* mutable_response() { return response_.get(); }
+
+  std::string&& rows_data() { return std::move(rows_data_); }
+
+  std::string* mutable_rows_data() { return &rows_data_; }
+
+  // Set the hash key in the partial row of this PGSQL operation.
+  virtual void SetHashCode(uint16_t hash_code) override = 0;
+
+  bool succeeded() override { return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK; }
+
+ protected:
+  std::unique_ptr<PgsqlResponsePB> response_;
+  std::string rows_data_;
+};
+
+class YBPgsqlWriteOp : public YBPgsqlOp {
+ public:
+  explicit YBPgsqlWriteOp(const std::shared_ptr<YBTable>& table);
+  virtual ~YBPgsqlWriteOp();
+
+  // Note: to avoid memory copy, this PgsqlWriteRequestPB is moved into tserver WriteRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see WriteRpc's constructor).
+  const PgsqlWriteRequestPB& request() const { return *write_request_; }
+
+  PgsqlWriteRequestPB* mutable_request() { return write_request_.get(); }
+
+  std::string ToString() const override;
+
+  bool read_only() override { return false; };
+
+  virtual void SetHashCode(uint16_t hash_code) override;
+
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+
+ protected:
+  virtual Type type() const override {
+    return PGSQL_WRITE;
+  }
+
+ private:
+  friend class YBTable;
+  static YBPgsqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
+  static YBPgsqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
+  static YBPgsqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<PgsqlWriteRequestPB> write_request_;
+};
+
+class YBPgsqlReadOp : public YBPgsqlOp {
+ public:
+  virtual ~YBPgsqlReadOp();
+
+  static YBPgsqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
+
+  // Note: to avoid memory copy, this PgsqlReadRequestPB is moved into tserver ReadRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see ReadRpc's constructor).
+  const PgsqlReadRequestPB& request() const { return *read_request_; }
+
+  PgsqlReadRequestPB* mutable_request() { return read_request_.get(); }
+
+  virtual std::string ToString() const override;
+
+  virtual bool read_only() override { return true; };
+
+  virtual void SetHashCode(uint16_t hash_code) override;
+
+  // Returns the partition key of the read request if it exists.
+  // Also sets the hash_code and max_hash_code in the request.
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+
+  const YBConsistencyLevel yb_consistency_level() {
+    return yb_consistency_level_;
+  }
+
+  void set_yb_consistency_level(const YBConsistencyLevel yb_consistency_level) {
+    yb_consistency_level_ = yb_consistency_level;
+  }
+
+  std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
+  Result<QLRowBlock> MakeRowBlock() const;
+
+  const ReadHybridTime& read_time() const { return read_time_; }
+  void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
+
+  static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
+      const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
+
+ protected:
+  virtual Type type() const override {
+    return PGSQL_READ;
+  }
+
+ private:
+  friend class YBTable;
+  explicit YBPgsqlReadOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<PgsqlReadRequestPB> read_request_;
+  YBConsistencyLevel yb_consistency_level_;
+  ReadHybridTime read_time_;
+};
 
 }  // namespace client
 }  // namespace yb

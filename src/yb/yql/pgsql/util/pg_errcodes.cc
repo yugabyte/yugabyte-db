@@ -102,6 +102,8 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::TYPE_NOT_FOUND, "Type Not Found" },
   { ErrorCode::INVALID_TYPE_DEFINITION, "Invalid Type Definition" },
   { ErrorCode::RESTART_REQUIRED, "Restart Required" },
+  { ErrorCode::DATABASE_ALREADY_EXISTS, "Database Already Exists" },
+  { ErrorCode::DATABASE_NOT_FOUND, "Database Not Found" },
 };
 
 ErrorCode GetErrorCode(const Status& s) {

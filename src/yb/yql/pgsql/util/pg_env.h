@@ -64,7 +64,14 @@ class PgEnv {
   }
 
   //------------------------------------------------------------------------------------------------
+  // API for database operations.
+  virtual CHECKED_STATUS CreateDatabase(const std::string& db_name);
+  virtual CHECKED_STATUS DeleteDatabase(const std::string& db_name);
+  virtual Result<bool> ConnectDatabase(const std::string& db_name);
+
+  //------------------------------------------------------------------------------------------------
   // API for schema operations.
+  // TODO(neil) Schema should be a sub-database that have some specialized property.
   virtual CHECKED_STATUS CreateSchema(const std::string& schema_name);
   virtual CHECKED_STATUS DeleteSchema(const std::string& schema_name);
 

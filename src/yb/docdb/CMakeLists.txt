@@ -37,6 +37,7 @@ set(DOCDB_SRCS
     doc_key.cc
     doc_kv_util.cc
     doc_operation.cc
+    doc_pgsql_scanspec.cc
     doc_ql_scanspec.cc
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
@@ -60,7 +61,8 @@ set(DOCDB_DEPS
     yb_rocksutil
     yb_common
     docdb_proto
-    server_common)
+    server_common
+    pgsql-ybpostgres)
 
 ADD_YB_LIBRARY(yb_docdb
                SRCS ${DOCDB_SRCS}

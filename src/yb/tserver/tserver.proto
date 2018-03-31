@@ -39,6 +39,7 @@ import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/common/redis_protocol.proto";
 import "yb/common/ql_protocol.proto";
+import "yb/common/pgsql_protocol.proto";
 import "yb/tablet/tablet.proto";
 import "yb/docdb/docdb.proto";
 
@@ -156,6 +157,9 @@ message WriteRequestPB {
   // A batch of QL operations.
   repeated QLWriteRequestPB ql_write_batch = 10;
 
+  // A batch of Pgsql operations (Although batching is not yet supported).
+  repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
+
   // Contains information about the cross shard transaction
   optional TransactionMetadataPB transaction_meta = 11;
 
@@ -197,6 +201,9 @@ message WriteResponsePB {
 
   // A batch of QL responses.
   repeated QLResponsePB ql_response_batch = 9;
+
+  // A batch of QL responses.
+  repeated PgsqlResponsePB pgsql_response_batch = 12;
 
   // The hybrid_time chosen by the server for this write.
   // TODO KUDU-611 propagate hybrid_times with server signature.
@@ -241,6 +248,8 @@ message ReadRequestPB {
 
   repeated QLReadRequestPB ql_batch = 4;
 
+  repeated PgsqlReadRequestPB pgsql_batch = 10;
+
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 3 [default = true];
@@ -262,6 +271,8 @@ message ReadResponsePB {
   repeated RedisResponsePB redis_batch = 1;
 
   repeated QLResponsePB ql_batch = 4;
+
+  repeated PgsqlResponsePB pgsql_batch = 8;
 
   // The hybrid_time chosen by the server for this read.
   optional fixed64 hybrid_time = 2;

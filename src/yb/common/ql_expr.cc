@@ -7,14 +7,12 @@
 
 namespace yb {
 
-using yb::bfql::TSOpcode;
-
-TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_expr) const {
+bfql::TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_expr) const {
   // "kSubDocInsert" instructs the tablet server to insert a new value or replace an existing value.
   if (ql_expr.has_tscall()) {
-    return static_cast<TSOpcode>(ql_expr.tscall().opcode());
+    return static_cast<bfql::TSOpcode>(ql_expr.tscall().opcode());
   }
-  return TSOpcode::kScalarInsert;
+  return bfql::TSOpcode::kScalarInsert;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -319,6 +317,100 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
 
 #undef QL_EVALUATE_RELATIONAL_OP
 #undef QL_EVALUATE_BETWEEN
+}
+
+//--------------------------------------------------------------------------------------------------
+
+bfpg::TSOpcode QLExprExecutor::GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) const {
+  // "kSubDocInsert" instructs the tablet server to insert a new value or replace an existing value.
+  if (ql_expr.has_tscall()) {
+    return static_cast<bfpg::TSOpcode>(ql_expr.tscall().opcode());
+  }
+  return bfpg::TSOpcode::kScalarInsert;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
+                                        const QLTableRow::SharedPtrConst& table_row,
+                                        QLValue *result) {
+  switch (ql_expr.expr_case()) {
+    case PgsqlExpressionPB::ExprCase::kValue:
+      *result = ql_expr.value();
+      break;
+
+    case PgsqlExpressionPB::ExprCase::kColumnId:
+      if (table_row == nullptr) {
+        result->SetNull();
+      } else {
+        RETURN_NOT_OK(table_row->ReadColumn(ql_expr.column_id(), result));
+      }
+      break;
+
+    case PgsqlExpressionPB::ExprCase::kBfcall:
+      return EvalBFCall(ql_expr.bfcall(), table_row, result);
+
+    case PgsqlExpressionPB::ExprCase::kTscall:
+      return EvalTSCall(ql_expr.tscall(), table_row, result);
+
+    case PgsqlExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+    case PgsqlExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
+    case PgsqlExpressionPB::ExprCase::kAliasId: FALLTHROUGH_INTENDED;
+    case PgsqlExpressionPB::ExprCase::EXPR_NOT_SET:
+      result->SetNull();
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
+                                             const QLTableRow::SharedPtrConst& table_row,
+                                             QLValue *result) {
+  if (ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall) {
+    return ReadTSCallValue(ql_expr.tscall(), table_row, result);
+  } else {
+    return EvalExpr(ql_expr, table_row, result);
+  }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
+                                          const QLTableRow::SharedPtrConst& table_row,
+                                          QLValue *result) {
+  // TODO(neil)
+  // - Use TSOpode for collection expression if only TabletServer can execute.
+  // OR
+  // - Introduce BuiltinOperator in addition to builtin function. Use builtin operators for all
+  //   special operations including collection operations. That way, we don't need special cases.
+
+  // First, evaluate the arguments.
+  vector<QLValue> args(bfcall.operands().size());
+  int arg_index = 0;
+  for (auto operand : bfcall.operands()) {
+    RETURN_NOT_OK(EvalExpr(operand, table_row, &args[arg_index]));
+    arg_index++;
+  }
+
+  // Now, execute the builtin call associated with the given opcode.
+  return PgsqlBfunc::Exec(static_cast<bfpg::BFOpcode>(bfcall.opcode()), &args, result);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
+                                          const QLTableRow::SharedPtrConst& table_row,
+                                          QLValue *result) {
+  result->SetNull();
+  return STATUS(RuntimeError, "Only tablet server can execute this operator");
+}
+
+CHECKED_STATUS QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
+                                               const QLTableRow::SharedPtrConst& table_row,
+                                               QLValue *result) {
+  result->SetNull();
+  return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
 
 //--------------------------------------------------------------------------------------------------

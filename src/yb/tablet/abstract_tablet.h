@@ -29,23 +29,33 @@ struct QLReadRequestResult {
   HybridTime restart_read_ht;
 };
 
+struct PgsqlReadRequestResult {
+  PgsqlResponsePB response;
+  faststring rows_data;
+  HybridTime restart_read_ht;
+};
+
 class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
   virtual const Schema& SchemaRef() const = 0;
 
-  virtual const common::QLStorageIf& QLStorage() const = 0;
+  virtual const common::YQLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 
   virtual const std::string& tablet_id() const = 0;
 
+  //------------------------------------------------------------------------------------------------
+  // Redis support.
   virtual CHECKED_STATUS HandleRedisReadRequest(
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
 
+  //------------------------------------------------------------------------------------------------
+  // CQL support.
   virtual CHECKED_STATUS HandleQLReadRequest(
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
@@ -80,6 +90,24 @@ class AbstractTablet {
       const TransactionOperationContextOpt& txn_op_context,
       QLReadRequestResult* result);
 
+
+  //------------------------------------------------------------------------------------------------
+  // PGSQL support.
+ public:
+  virtual CHECKED_STATUS HandlePgsqlReadRequest(
+      const ReadHybridTime& read_time,
+      const PgsqlReadRequestPB& ql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      PgsqlReadRequestResult* result) = 0;
+
+  virtual CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+                                                  const size_t row_count,
+                                                  PgsqlResponsePB* response) const = 0;
+
+  CHECKED_STATUS HandlePgsqlReadRequest(const ReadHybridTime& read_time,
+                                        const PgsqlReadRequestPB& pgsql_read_request,
+                                        const TransactionOperationContextOpt& txn_op_context,
+                                        PgsqlReadRequestResult* result);
  private:
   virtual HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const = 0;

@@ -32,6 +32,9 @@
 
 using yb::operator"" _MB;
 
+DEFINE_bool(neil_crash_it, false, "Crashing flag");
+DEFINE_bool(neil_test_pgsql, false, "PGSQL test flag");
+
 // Maximumum value size is 64MB
 DEFINE_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");

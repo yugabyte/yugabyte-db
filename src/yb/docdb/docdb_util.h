@@ -33,6 +33,12 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
     const Schema &schema, size_t column_idx, const size_t column_count,
     vector<PrimitiveValue> *components);
 
+CHECKED_STATUS InitKeyColumnPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+    const Schema &schema,
+    size_t start_idx,
+    vector<PrimitiveValue> *components);
+
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
 // compacting the history until a certain point. This is used in the builk load tool. This is also
 // convenient base class for GTest test classes, because it exposes member functions such as

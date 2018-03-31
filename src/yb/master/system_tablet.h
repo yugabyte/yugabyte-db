@@ -31,7 +31,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const Schema& SchemaRef() const override;
 
-  const common::QLStorageIf& QLStorage() const override;
+  const common::YQLStorageIf& QLStorage() const override;
 
   TableType table_type() const override;
 
@@ -54,6 +54,20 @@ class SystemTablet : public tablet::AbstractTablet {
   CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                           const size_t row_count,
                                           QLResponsePB* response) const override;
+
+  CHECKED_STATUS HandlePgsqlReadRequest(
+      const ReadHybridTime& read_time,
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      tablet::PgsqlReadRequestResult* result) override {
+    return STATUS(NotSupported, "Postgres system table is not yet supported");
+  }
+
+  CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+                                          const size_t row_count,
+                                          PgsqlResponsePB* response) const override {
+    return STATUS(NotSupported, "Postgres system table is not yet supported");
+  }
 
   const TableName& GetTableName() const;
  private:

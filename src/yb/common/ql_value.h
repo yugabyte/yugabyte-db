@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"

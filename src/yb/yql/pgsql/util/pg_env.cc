@@ -52,6 +52,20 @@ PgEnv::~PgEnv() {}
 
 //--------------------------------------------------------------------------------------------------
 
+Status PgEnv::CreateDatabase(const std::string& db_name) {
+  return client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL);
+}
+
+Status PgEnv::DeleteDatabase(const string& db_name) {
+  return client_->DeleteNamespace(db_name, YQL_DATABASE_PGSQL);
+}
+
+Result<bool> PgEnv::ConnectDatabase(const string& db_name) {
+  return client_->NamespaceExists(db_name, YQL_DATABASE_PGSQL);
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status PgEnv::CreateSchema(const std::string& schema_name) {
   return client_->CreateNamespace(schema_name);
 }

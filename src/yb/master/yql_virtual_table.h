@@ -25,11 +25,20 @@ namespace yb {
 namespace master {
 
 // A YQL virtual table which is based on in memory data.
-class YQLVirtualTable : public common::QLStorageIf {
+class YQLVirtualTable : public common::YQLStorageIf {
  public:
   explicit YQLVirtualTable(const TableName& table_name,
                            const Master* const master,
                            const Schema& schema);
+
+  // Access methods.
+  const Schema& schema() const { return schema_; }
+
+  const TableName& table_name() const { return table_name_; }
+
+  //------------------------------------------------------------------------------------------------
+  // CQL Support.
+  //------------------------------------------------------------------------------------------------
 
   // Retrieves all the data for the yql virtual table in form of a QLRowBlock. This data is then
   // used by the iterator.
@@ -41,19 +50,41 @@ class YQLVirtualTable : public common::QLStorageIf {
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
                              const ReadHybridTime& read_time,
-                             std::unique_ptr<common::QLRowwiseIteratorIf>* iter) const override;
+                             const common::QLScanSpec& spec,
+                             std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
 
-  CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
-                                 const ReadHybridTime& read_time,
-                                 const Schema& schema,
-                                 bool include_static_columns,
-                                 const Schema& static_projection,
-                                 std::unique_ptr<common::QLScanSpec>* spec,
-                                 std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                 ReadHybridTime* req_read_time) const override;
-  const Schema& schema() const { return schema_; }
+  CHECKED_STATUS BuildYQLScanSpec(const QLReadRequestPB& request,
+                                  const ReadHybridTime& read_time,
+                                  const Schema& schema,
+                                  bool include_static_columns,
+                                  const Schema& static_projection,
+                                  std::unique_ptr<common::QLScanSpec>* spec,
+                                  std::unique_ptr<common::QLScanSpec>* static_row_spec,
+                                  ReadHybridTime* req_read_time) const override;
 
-  const TableName& table_name() const { return table_name_; }
+  //------------------------------------------------------------------------------------------------
+  // PGSQL Support.
+  //------------------------------------------------------------------------------------------------
+
+  virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const ReadHybridTime& read_time,
+                                     const common::PgsqlScanSpec& spec,
+                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+    LOG(FATAL) << "Postgresql system tables are not yet implemented";
+    return Status::OK();
+  }
+
+  virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
+                                          const ReadHybridTime& read_time,
+                                          const Schema& schema,
+                                          common::PgsqlScanSpec::UniPtr* spec,
+                                          ReadHybridTime* req_read_time) const override {
+    LOG(FATAL) << "Postgresql system tables are not yet implemented";
+    return Status::OK();
+  }
 
  protected:
   // Finds the given column name in the schema and updates the specified column in the given row

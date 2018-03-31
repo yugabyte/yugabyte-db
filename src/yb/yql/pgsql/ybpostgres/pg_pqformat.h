@@ -32,7 +32,7 @@
 #ifndef YB_YQL_PGSQL_YBPOSTGRES_PG_PQFORMAT_H_
 #define YB_YQL_PGSQL_YBPOSTGRES_PG_PQFORMAT_H_
 
-#include "yb/yql/pgsql/ybpostgres/pgdefs.h"
+#include "yb/yql/pgsql/ybpostgres/pg_defs.h"
 #include "yb/yql/pgsql/ybpostgres/pg_stringinfo.h"
 
 namespace yb {
@@ -58,8 +58,7 @@ class PGPqFormatter {
   void pq_beginmessage(char msgtype);
   void pq_sendbyte(int byt);
   void pq_sendbytes(const char *data, int datalen);
-  void pq_sendcountedtext(const char *str, int slen,
-                                   bool countincludesself);
+  void pq_sendcountedtext(const char *str, int slen, bool countincludesself);
   void pq_sendtext(const char *str, int slen);
   void pq_sendstring(const char *str);
   void pq_send_ascii_string(const char *str);
