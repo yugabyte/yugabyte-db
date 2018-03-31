@@ -59,6 +59,7 @@ set(MASTER_SRCS
   async_rpc_tasks.cc
   call_home.cc
   catalog_manager.cc
+  catalog_manager_util.cc
   cluster_balance.cc
   flush_manager.cc
   master.cc
