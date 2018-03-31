@@ -77,6 +77,21 @@ ADD_YB_LIBRARY(ql_protocol_proto
   DEPS ${QL_PROTOCOL_PROTO_LIBS}
   NONLINK_DEPS ${QL_PROTOCOL_PROTO_TGTS})
 
+PROTOBUF_GENERATE_CPP(PGSQL_PROTOCOL_PROTO_SRCS
+                      PGSQL_PROTOCOL_PROTO_HDRS
+                      PGSQL_PROTOCOL_PROTO_TGTS
+                      SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+                      BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+                      PROTO_FILES pgsql_protocol.proto)
+set(PGSQL_PROTOCOL_PROTO_LIBS
+    yb_common_proto
+    ql_protocol_proto
+    protobuf)
+ADD_YB_LIBRARY(pgsql_protocol_proto
+               SRCS ${PGSQL_PROTOCOL_PROTO_SRCS}
+               DEPS ${PGSQL_PROTOCOL_PROTO_LIBS}
+               NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
+
 set(COMMON_SRCS
   id_mapping.cc
   key_encoder.cc
@@ -98,7 +113,8 @@ set(COMMON_SRCS
   ql_rowblock.cc
   ql_resultset.cc
   ql_expr.cc
-  flags.cc)
+  flags.cc
+  pgsql_resultset.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.
@@ -112,6 +128,7 @@ set(COMMON_LIBS
   wire_protocol_proto
   redis_protocol_proto
   ql_protocol_proto
+  pgsql_protocol_proto
   yb_util
   yb_bfql
   gutil)

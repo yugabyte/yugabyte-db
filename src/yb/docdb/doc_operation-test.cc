@@ -524,7 +524,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
   ASSERT_OK(DisableCompactions());
 
   ColumnSchema hash_column("k", INT32, false, true);
-  ColumnSchema range_column("r", INT32, false, false, false, false, schema_type);
+  ColumnSchema range_column("r", INT32, false, false, false, false, 1, schema_type);
   ColumnSchema value_column("v", INT32, false, false);
   auto columns = { hash_column, range_column, value_column };
   Schema schema(columns, CreateColumnIds(columns.size()), 2);

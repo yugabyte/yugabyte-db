@@ -131,6 +131,12 @@ class WriteOperationState : public OperationState {
     return &ql_write_ops_;
   }
 
+  // Returns PGSQL write operations.
+  // TODO(neil) These ops must report number of rows that was updated, deleted, or inserted.
+  std::vector<std::unique_ptr<docdb::PgsqlWriteOperation>>* pgsql_write_ops() {
+    return &pgsql_write_ops_;
+  }
+
   // Moves the given lock batch into this object so it can be unlocked when the operation is
   // complete.
   void ReplaceDocDBLocks(LockBatch&& docdb_locks) {
@@ -164,6 +170,10 @@ class WriteOperationState : public OperationState {
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
   std::vector<std::unique_ptr<docdb::QLWriteOperation>> ql_write_ops_;
+
+  // The PGSQL write operations that return rowblocks that need to be returned as RPC sidecars
+  // after the transaction completes.
+  std::vector<std::unique_ptr<docdb::PgsqlWriteOperation>> pgsql_write_ops_;
 
   // Store the ids that have been locked for DocDB transaction. They need to be released on commit
   // or if an error happens.

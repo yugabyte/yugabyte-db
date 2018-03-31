@@ -1526,24 +1526,32 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   // TODO (ENG-1860) The referenced namespace and types retrieved/checked above could be deleted
   // some time between this point and table creation below.
-
   Schema schema = client_schema.CopyWithColumnIds();
-
-  // Create partitions.
-  PartitionSchema partition_schema;
-  vector<Partition> partitions;
 
   if (schema.table_properties().HasCopartitionTableId()) {
     return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
   }
 
-  if (req.table_type() == REDIS_TABLE_TYPE) {
-    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
-  } else if (schema.num_hash_key_columns() > 0 ||
-             req.partition_schema().hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA) {
-    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  // If hashing scheme is not specified by protobuf request, table_type and hash_key are used to
+  // determine which hashing scheme should be used.
+  if (!req.partition_schema().has_hash_schema()) {
+    if (req.table_type() == REDIS_TABLE_TYPE) {
+      req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+    } else if (schema.num_hash_key_columns() > 0) {
+      req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+    }
+
+    // TODO(neil) Need to fix the tests that don't define hash_schema and don't have hash column.
+    // Even though we only support REDIS, CQL, and PGSQL schema, we don't raise error for undefined
+    // schema due to testing issue.  Once we fix the tests, error can be raised here.
+    //
+    // else {
+    //   Status s = STATUS(InvalidArgument, "Unknown table type or unknown partitioning method");
+    //   return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    // }
   }
 
+  // Calculate number of tablets to be used.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   int num_live_tservers = ts_descs.size();
@@ -1554,8 +1562,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     num_tablets = num_live_tservers * FLAGS_yb_num_shards_per_tserver;
   }
 
+  // Create partitions.
+  PartitionSchema partition_schema;
+  vector<Partition> partitions;
   s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
   switch (partition_schema.hash_schema()) {
+    case YBHashSchema::kPgsqlHash:
+      // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
+      // For now, let's not doing anything. Just borrow the multi column hash.
+      FALLTHROUGH_INTENDED;
     case YBHashSchema::kMultiColumnHash: {
       // Use the given number of tablets to create partitions and ignore the other schema options
       // in the request.
@@ -1563,7 +1578,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       break;
     }
     case YBHashSchema::kRedisHash: {
-          RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
           kRedisClusterSlots));
       break;
     }
@@ -3289,6 +3304,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
+    if (req->has_database_type()) {
+      metadata->set_database_type(req->database_type());
+    }
 
     // Add the namespace to the in-memory map for the assignment.
     namespace_ids_map_[ns->id()] = ns;
@@ -3328,6 +3346,14 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+
+  // Check for PostgreSQL database.
+  if (ns->database_type() == YQL_DATABASE_PGSQL) {
+    if (!req->has_database_type() || req->database_type() != YQL_DATABASE_PGSQL) {
+      Status s = STATUS(NotFound, "PostgreSQL database not found", ns->name());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+  }
 
   TRACE("Locking namespace");
   auto l = ns->LockForWrite();
@@ -3402,12 +3428,19 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
 
-      RETURN_NOT_OK(CheckOnline());
+  RETURN_NOT_OK(CheckOnline());
 
   boost::shared_lock<LockType> l(lock_);
 
   for (const NamespaceInfoMap::value_type& entry : namespace_names_map_) {
     auto ltm = entry.second->LockForRead();
+
+    if (entry.second->database_type() == YQL_DATABASE_PGSQL) {
+      if (!req->has_database_type() || req->database_type() != YQL_DATABASE_PGSQL) {
+        // Not a match as we do not allow UNDEFINED database type for PGSQL.
+        continue;
+      }
+    }
 
     NamespaceIdentifierPB *ns = resp->add_namespaces();
     ns->set_id(entry.second->id());
@@ -5771,6 +5804,12 @@ NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)
 const NamespaceName& NamespaceInfo::name() const {
   auto l = LockForRead();
   return l->data().pb.name();
+}
+
+YQLDatabase NamespaceInfo::database_type() const {
+  auto l = LockForRead();
+  return l->data().pb.has_database_type() ? l->data().pb.database_type()
+                                          : YQL_DATABASE_UNDEFINED;
 }
 
 std::string NamespaceInfo::ToString() const {

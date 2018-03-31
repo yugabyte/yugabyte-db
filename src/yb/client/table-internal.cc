@@ -64,6 +64,9 @@ static Status PBToClientTableType(
     case TableType::REDIS_TABLE_TYPE:
       *client_table_type = YBTableType::REDIS_TABLE_TYPE;
       return Status::OK();
+    case TableType::PGSQL_TABLE_TYPE:
+      *client_table_type = YBTableType::PGSQL_TABLE_TYPE;
+      return Status::OK();
     default:
       *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
       return STATUS(InvalidArgument, strings::Substitute(

@@ -22,21 +22,11 @@ namespace yb {
 namespace master {
 
 // An iterator over a YQLVirtualTable.
-class YQLVTableIterator : public common::QLRowwiseIteratorIf {
+class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
  public:
   explicit YQLVTableIterator(const std::unique_ptr<QLRowBlock> vtable);
 
-  CHECKED_STATUS Init() override;
-
-  CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
-
-  // Virtual table does not contain any static column.
-  bool IsNextStaticColumn() const override { return false; }
-
   void SkipRow() override;
-
-  CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                           QLResponsePB* response) const override;
 
   bool HasNext() const override;
 
@@ -47,6 +37,7 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
   HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
 
   virtual ~YQLVTableIterator();
+
  private:
   CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;
 

@@ -324,6 +324,7 @@ function(add_executable name)
   if (NOT "${YB_EXECUTABLE_FILTER_RE}" STREQUAL "" AND
       NOT ${YB_ADDING_TEST_EXECUTABLE} AND
       NOT "${name}" STREQUAL "bfql_codegen" AND
+      NOT "${name}" STREQUAL "bfpg_codegen" AND
       NOT "${name}" STREQUAL "run-with-timeout" AND
       NOT "${name}" STREQUAL "protoc-gen-insertions" AND
       NOT "${name}" STREQUAL "protoc-gen-yrpc")
@@ -1639,6 +1640,7 @@ add_subdirectory(src/yb/fs)
 add_subdirectory(src/yb/server)
 add_subdirectory(src/yb/tablet)
 add_subdirectory(src/yb/util/bfql)
+add_subdirectory(src/yb/util/bfpg)
 add_subdirectory(src/yb/rpc)
 add_subdirectory(src/yb/tserver)
 add_subdirectory(src/yb/consensus)

@@ -141,6 +141,9 @@ message NamespaceIdentifierPB {
 
   // The namespace name to fetch info.
   optional string name = 2;
+
+  // Database type.
+  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
 message TableIdentifierPB {
@@ -333,6 +336,9 @@ message SysNamespaceEntryPB {
 
   // Namespace name
   optional bytes name = 1;
+
+  // Namespace/Database type
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -951,9 +957,14 @@ message IsLoadBalancedResponsePB {
 // ============================================================================
 //  Namespace  (default namespace = ANY placement)
 // ============================================================================
+// Database type is added to metadata entries such that PGSQL clients cannot delete or connect to
+// CQL database_type and vice versa.
 message CreateNamespaceRequestPB {
   // Namespace name
   optional string name = 1;
+
+  // Database type
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
 message CreateNamespaceResponsePB {
@@ -963,8 +974,13 @@ message CreateNamespaceResponsePB {
   optional bytes id = 2;
 }
 
+// Database type is added to metadata entries such that PGSQL clients cannot delete or connect to
+// CQL database_type and vice versa.
 message DeleteNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
+
+  // Database type
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 // Fails if the namespace is NOT empty
 
@@ -988,6 +1004,7 @@ message GrantPermissionResponsePB {
 }
 
 message ListNamespacesRequestPB {
+  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
 message ListNamespacesResponsePB {

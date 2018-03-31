@@ -49,7 +49,9 @@ namespace client {
 using std::shared_ptr;
 using std::unique_ptr;
 
-// YBOperation --------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------
+// YBOperation
+//--------------------------------------------------------------------------------------------------
 
 YBOperation::YBOperation(const shared_ptr<YBTable>& table)
   : table_(table) {
@@ -61,7 +63,9 @@ void YBOperation::SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet)
   tablet_ = tablet;
 }
 
-// YBRedisOp ----------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------
+// YBRedisOp
+//--------------------------------------------------------------------------------------------------
 
 YBRedisOp::YBRedisOp(const shared_ptr<YBTable>& table)
     : YBOperation(table) {
@@ -139,8 +143,14 @@ Status YBRedisReadOp::GetPartitionKey(std::string *partition_key) const {
   return table_->partition_schema().EncodeRedisKey(slice, partition_key);
 }
 
-// YBqlOp -----------------------------------------------------------------
-  YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
+//--------------------------------------------------------------------------------------------------
+// YBCql Operators
+// - These ops should be prefixed with YBCql instead of YBql.
+// - The prefixes "ql" or "QL" are used for common entities of all languages and not just CQL.
+// - The name will be clean up later.
+//--------------------------------------------------------------------------------------------------
+
+YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
       : YBOperation(table) , ql_response_(new QLResponsePB()) {
 }
 
@@ -374,6 +384,168 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
 }
 
 Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
+  Schema schema(MakeColumnSchemasFromRequest(), 0);
+  QLRowBlock result(schema);
+  Slice data(rows_data_);
+  if (!data.empty()) {
+    RETURN_NOT_OK(result.Deserialize(request().client(), &data));
+  }
+  return result;
+}
+
+//--------------------------------------------------------------------------------------------------
+// YBPgsql Operators
+//--------------------------------------------------------------------------------------------------
+
+YBPgsqlOp::YBPgsqlOp(const shared_ptr<YBTable>& table)
+      : YBOperation(table) , response_(new PgsqlResponsePB()) {
+}
+
+YBPgsqlOp::~YBPgsqlOp() {
+}
+
+//--------------------------------------------------------------------------------------------------
+// YBPgsqlWriteOp
+
+YBPgsqlWriteOp::YBPgsqlWriteOp(const shared_ptr<YBTable>& table)
+    : YBPgsqlOp(table), write_request_(new PgsqlWriteRequestPB()) {
+}
+
+YBPgsqlWriteOp::~YBPgsqlWriteOp() {}
+
+static YBPgsqlWriteOp *NewYBPgsqlWriteOp(const shared_ptr<YBTable>& table,
+                                         PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
+  YBPgsqlWriteOp *op = new YBPgsqlWriteOp(table);
+  PgsqlWriteRequestPB *req = op->mutable_request();
+  req->set_stmt_type(stmt_type);
+  req->set_client(YQL_CLIENT_PGSQL);
+  req->set_schema_version(table->schema().version());
+
+  return op;
+}
+
+YBPgsqlWriteOp *YBPgsqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_INSERT);
+}
+
+YBPgsqlWriteOp *YBPgsqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_UPDATE);
+}
+
+YBPgsqlWriteOp *YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_DELETE);
+}
+
+std::string YBPgsqlWriteOp::ToString() const {
+  return "PGSQL_WRITE " + write_request_->ShortDebugString();
+}
+
+Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
+  return table_->partition_schema().EncodeKey(write_request_->partition_column_values(),
+                                              partition_key);
+}
+
+void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
+  write_request_->set_hash_code(hash_code);
+}
+
+//--------------------------------------------------------------------------------------------------
+// YBPgsqlReadOp
+
+YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table)
+    : YBPgsqlOp(table),
+      read_request_(new PgsqlReadRequestPB()),
+      yb_consistency_level_(YBConsistencyLevel::STRONG) {
+}
+
+YBPgsqlReadOp::~YBPgsqlReadOp() {}
+
+YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
+  YBPgsqlReadOp *op = new YBPgsqlReadOp(table);
+  PgsqlReadRequestPB *req = op->mutable_request();
+  req->set_client(YQL_CLIENT_PGSQL);
+  req->set_schema_version(table->schema().version());
+
+  return op;
+}
+
+std::string YBPgsqlReadOp::ToString() const {
+  return "PGSQL_READ " + read_request_->DebugString();
+}
+
+void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
+  read_request_->set_hash_code(hash_code);
+}
+
+Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
+  if (!read_request_->hashed_column_values().empty()) {
+    // If hashed columns are set, use them to compute the exact key and set the bounds
+    RETURN_NOT_OK(table_->partition_schema().EncodeKey(read_request_->hashed_column_values(),
+        partition_key));
+
+    // TODO(neil) We borrow "EncodeMultiColumnHashValue" for now. For postgresql, this encoding
+    // is up to us to choose whatever that make sense.
+    //
+    // Make sure given key is not smaller than lower bound (if any)
+    if (read_request_->has_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(read_request_->hash_code());
+      auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      if (*partition_key < lower_bound) *partition_key = std::move(lower_bound);
+    }
+
+    // Make sure given key is not bigger than upper bound (if any)
+    if (read_request_->has_max_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(read_request_->max_hash_code());
+      auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
+    }
+
+    // Set both bounds to equal partition key now, because this is a point get
+    uint16 hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    read_request_->set_hash_code(hash_code);
+    read_request_->set_max_hash_code(hash_code);
+  } else {
+    // Otherwise, set the partition key to the hash_code (lower bound of the token range).
+    if (read_request_->has_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(read_request_->hash_code());
+      *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+    } else {
+      // Default to empty key, this will start a scan from the beginning.
+      partition_key->clear();
+    }
+  }
+
+  // If this is a continued query use the partition key from the paging state
+  // If paging state is there, set hash_code = paging state. This is only supported for forward
+  // scans.
+  if (read_request_->has_paging_state() &&
+      read_request_->paging_state().has_next_partition_key() &&
+      !read_request_->paging_state().next_partition_key().empty()) {
+    *partition_key = read_request_->paging_state().next_partition_key();
+    read_request_->set_hash_code(
+        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+  }
+
+  return Status::OK();
+}
+
+std::vector<ColumnSchema> YBPgsqlReadOp::MakeColumnSchemasFromColDesc(
+  const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs) {
+  std::vector<ColumnSchema> column_schemas;
+  column_schemas.reserve(rscol_descs.size());
+  for (const auto& rscol_desc : rscol_descs) {
+    column_schemas.emplace_back(rscol_desc.name(), QLType::FromQLTypePB(rscol_desc.ql_type()));
+  }
+  return column_schemas;
+}
+
+std::vector<ColumnSchema> YBPgsqlReadOp::MakeColumnSchemasFromRequest() const {
+  // Tests don't have access to the QL internal statement object, so they have to use rsrow
+  // descriptor from the read request.
+  return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
+}
+
+Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
   Schema schema(MakeColumnSchemasFromRequest(), 0);
   QLRowBlock result(schema);
   Slice data(rows_data_);

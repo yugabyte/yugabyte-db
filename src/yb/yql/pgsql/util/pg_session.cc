@@ -43,7 +43,7 @@ static MonoDelta kSessionTimeout = 60s;
 PgSession::PgSession(const PgEnv::SharedPtr& pg_env,
                      const StringInfo& postgres_packet,
                      ProtocolVersion protocol)
-    : session_(pg_env->NewSession()) {
+    : pg_env_(pg_env), session_(pg_env->NewSession()) {
   session_->SetTimeout(kSessionTimeout);
   Status s = session_->SetFlushMode(YBSession::AUTO_FLUSH_SYNC);
   CHECK(s.ok());
@@ -56,13 +56,20 @@ PgSession::PgSession(const PgEnv::SharedPtr& pg_env,
     // Postgresql object pgsend_ is used to serializ data into rpc message.
     pgsend_.set_protocol_version(protocol);
   }
+
+  // Check if the given database exist.
+  const string& database_name = pgport_.database_name();
+  if (!database_name.empty()) {
+    Result<bool> has_db = pg_env_->ConnectDatabase(database_name);
+    if (has_db.ok() && has_db.get()) {
+      current_database_ = database_name;
+    }
+  }
 }
 
-#ifdef PGSQL_COMPILER_WAS_LANDED
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return session_->Apply(std::move(op));
 }
-#endif
 
 }  // namespace pgsql
 }  // namespace yb

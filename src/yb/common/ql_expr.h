@@ -140,6 +140,9 @@ class QLExprExecutor {
   QLExprExecutor() { }
   virtual ~QLExprExecutor() { }
 
+  //------------------------------------------------------------------------------------------------
+  // CQL Support.
+
   // Get TServer opcode.
   yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr) const;
 
@@ -178,6 +181,36 @@ class QLExprExecutor {
   virtual CHECKED_STATUS EvalCondition(const QLConditionPB& condition,
                                        const QLTableRow& table_row,
                                        QLValue *result);
+
+  //------------------------------------------------------------------------------------------------
+  // PGSQL Support.
+
+  // Get TServer opcode.
+  yb::bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) const;
+
+  // Evaluate the given QLExpressionPB.
+  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+                          const QLTableRow::SharedPtrConst& table_row,
+                          QLValue *result);
+
+  // Read evaluated value from an expression. This is only useful for aggregate function.
+  CHECKED_STATUS ReadExprValue(const PgsqlExpressionPB& ql_expr,
+                               const QLTableRow::SharedPtrConst& table_row,
+                               QLValue *result);
+
+  // Evaluate call to regular builtin operator.
+  virtual CHECKED_STATUS EvalBFCall(const PgsqlBCallPB& ql_expr,
+                                    const QLTableRow::SharedPtrConst& table_row,
+                                    QLValue *result);
+
+  // Evaluate call to tablet-server builtin operator.
+  virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
+                                    const QLTableRow::SharedPtrConst& table_row,
+                                    QLValue *result);
+
+  virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
+                                         const QLTableRow::SharedPtrConst& table_row,
+                                         QLValue *result);
 };
 
 } // namespace yb

@@ -114,6 +114,8 @@ enum class ErrorCode : int64_t {
   TYPE_NOT_FOUND = -311,
   INVALID_TYPE_DEFINITION = -312,
   RESTART_REQUIRED = -313,
+  DATABASE_ALREADY_EXISTS = -314,
+  DATABASE_NOT_FOUND = -315,
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.

@@ -82,7 +82,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/tserver/service_util.h"
 
-using namespace std::literals;
+using namespace std::literals;  // NOLINT
 
 DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
              "The default size for batches of scan results");
@@ -726,7 +726,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  bool has_operations = req->ql_write_batch_size() != 0 || req->redis_write_batch_size() != 0;
+  bool has_operations = (req->ql_write_batch_size() != 0 ||
+                         req->redis_write_batch_size() != 0 ||
+                         req->pgsql_write_batch_size());
   if (!has_operations && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
@@ -742,7 +744,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   operation_state->set_completion_callback(
       std::make_unique<WriteOperationCompletionCallback>(
           context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
-
   auto status = tablet_peer->SubmitWrite(std::move(operation_state));
 
   // Check that we could submit the write
@@ -1027,6 +1028,28 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
             RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
         result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
         resp->add_ql_batch()->Swap(&result.response);
+      }
+      return ReadHybridTime();
+    }
+    case TableType::PGSQL_TABLE_TYPE: {
+      ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req);
+      for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
+        tablet::PgsqlReadRequestResult result;
+        TRACE("Start HandlePgsqlReadRequest");
+        RETURN_NOT_OK(tablet->HandlePgsqlReadRequest(
+            read_tx.read_time(), pgsql_read_req, req->transaction(), &result));
+        TRACE("Done HandlePgsqlReadRequest");
+        if (result.restart_read_ht.is_valid()) {
+          VLOG(1) << "Restart read required at: " << result.restart_read_ht;
+          read_time.read = result.restart_read_ht;
+          read_time.local_limit = safe_ht_to_read;
+          return read_time;
+        }
+        int rows_data_sidecar_idx = 0;
+        RETURN_NOT_OK(context->AddRpcSidecar(
+            RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
+        result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+        resp->add_pgsql_batch()->Swap(&result.response);
       }
       return ReadHybridTime();
     }

@@ -121,6 +121,8 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+
 CHECKED_STATUS DocExprExecutor::EvalCount(QLValue *aggr_count) {
   if (aggr_count->IsNull()) {
     aggr_count->set_int64_value(1);
@@ -181,6 +183,8 @@ CHECKED_STATUS DocExprExecutor::EvalMin(const QLValue& val, QLValue *aggr_min) {
   }
   return Status::OK();
 }
+
+//--------------------------------------------------------------------------------------------------
 
 }  // namespace docdb
 }  // namespace yb

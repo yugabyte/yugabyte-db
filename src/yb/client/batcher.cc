@@ -250,20 +250,35 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   in_flight_op->yb_op = yb_op;
   in_flight_op->state = InFlightOpState::kLookingUpTablet;
 
-  if (yb_op->type() == YBOperation::Type::QL_READ) {
+  switch (yb_op->type()) {
+  case YBOperation::Type::QL_READ:
     if (!in_flight_op->partition_key.empty()) {
       down_cast<YBqlOp *>(yb_op.get())->SetHashCode(
         PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
     }
-  } else if (yb_op->type() == YBOperation::Type::QL_WRITE) {
+    break;
+  case YBOperation::Type::QL_WRITE:
     down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
       PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
-  } else if (yb_op->type() == YBOperation::Type::REDIS_READ) {
+    break;
+  case YBOperation::Type::REDIS_READ:
     down_cast<YBRedisReadOp*>(yb_op.get())->SetHashCode(
       PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
-  } else if (yb_op->type() == YBOperation::Type::REDIS_WRITE) {
+    break;
+  case YBOperation::Type::REDIS_WRITE:
     down_cast<YBRedisWriteOp*>(yb_op.get())->SetHashCode(
       PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+    break;
+  case YBOperation::Type::PGSQL_READ:
+    if (!in_flight_op->partition_key.empty()) {
+      down_cast<YBPgsqlOp *>(yb_op.get())->SetHashCode(
+        PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+    }
+    break;
+  case YBOperation::Type::PGSQL_WRITE:
+    down_cast<YBPgsqlOp*>(yb_op.get())->SetHashCode(
+      PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+    break;
   }
 
   AddInFlightOp(in_flight_op);

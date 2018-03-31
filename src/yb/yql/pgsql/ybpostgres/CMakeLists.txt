@@ -17,14 +17,17 @@ include_directories(postgres/src/include)
 add_library(ybpostgres_libpq
             pg_pqcomm.cc
             pg_pqformat.cc
-            pg_stringinfo.cc)
+            pg_stringinfo.cc
+            pg_tuple.cc
+            pg_type.cc)
 target_link_libraries(ybpostgres_libpq
-                      yb_util)
+                      yb_util
+                      yb_common)
 
 add_library(pgsql-ybpostgres
-            pginstr.cc
-            pgport.cc
-            pgrecv.cc
-            pgsend.cc)
+            pg_instr.cc
+            pg_port.cc
+            pg_recv.cc
+            pg_send.cc)
 target_link_libraries(pgsql-ybpostgres
                       ybpostgres_libpq)

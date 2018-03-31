@@ -104,9 +104,9 @@ Result<size_t> PgConnectionContext::ProcessCalls(const rpc::ConnectionPtr& conne
       // Analyze the command to extract the SQL statement.
       RETURN_NOT_OK(pgrecv_.ReadInstr(postgres_command, &pginstr));
     }
-
     // Queue the command.
     RETURN_NOT_OK(HandleInboundCall(connection, command_bytes, pginstr));
+    consumed += command_bytes;
   }
   return consumed;
 }
@@ -126,6 +126,41 @@ CHECKED_STATUS PgConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& 
 }
 
 //--------------------------------------------------------------------------------------------------
+
+pgsql::PgSession::SharedPtr PgConnectionContext::pg_session() const {
+  return pg_session_;
+}
+
+const pgapi::PGSend& PgConnectionContext::pgsend() const {
+  CHECK(pg_session_) << "BUG: Session is not yet intialized by the startup process";
+  return pg_session_->pgsend();
+}
+
+const pgapi::PGPort& PgConnectionContext::pgport() const {
+  CHECK(pg_session_) << "BUG: Session is not yet intialized by the startup process";
+  return pg_session_->pgport();
+}
+
+const string& PgConnectionContext::current_database() const {
+  CHECK(pg_session_) << "BUG: Session is not yet intialized by the startup process";
+  return pg_session_->current_database();
+}
+
+void PgConnectionContext::EndPgSession() {
+  if (pg_session_) {
+    // Reset the current database so that all processes that are associated with this session will
+    // be terminated appropriately.
+    pg_session_->reset_current_database();
+
+    // Remove the session from this connection.
+    pg_session_ = nullptr;
+  }
+}
+
+void PgConnectionContext::set_pg_session(const PgSession::SharedPtr& pg_session) {
+  CHECK(pg_session_ == nullptr) << "BUG: Previous session is not yet terminated";
+  pg_session_ = pg_session;
+}
 
 CHECKED_STATUS PgConnectionContext::ProcessStartupPacket(const rpc::ConnectionPtr& connection,
                                                          const StringInfo& postgres_packet,
@@ -181,13 +216,6 @@ CHECKED_STATUS PgConnectionContext::ProcessStartupPacket(const rpc::ConnectionPt
   return Status::OK();
 }
 
-CHECKED_STATUS PgConnectionContext::CreateSession(const PgEnv::SharedPtr& pg_env,
-                                                  const StringInfo& postgres_packet,
-                                                  ProtocolVersion protocol) {
-  pg_session_ = make_shared<PgSession>(pg_env, postgres_packet, protocol);
-  return Status::OK();
-}
-
 //--------------------------------------------------------------------------------------------------
 // Class PgInboundCall.
 //--------------------------------------------------------------------------------------------------
@@ -215,28 +243,60 @@ PgInboundCall::PgInboundCall(rpc::ConnectionPtr conn,
 //--------------------------------------------------------------------------------------------------
 CHECKED_STATUS PgInboundCall::ProcessStartupPacket(const PgEnv::SharedPtr& pg_env,
                                                    const StringInfo& startup_packet,
-                                                   ProtocolVersion proto) {
+                                                   ProtocolVersion protocol) {
+  bool is_first_session = pg_session() == nullptr;
+
   // Create a session for this connection.
-  RETURN_NOT_OK(conn_context_->CreateSession(pg_env, startup_packet, proto));
+  PgSession::SharedPtr new_session = make_shared<PgSession>(pg_env, startup_packet, protocol);
+  if (is_first_session) {
+    conn_context_->set_pg_session(new_session);
+  }
+
+  // TODO(neil) We suppose to move on to authentication request here.
+  // Write a dummy authentication request as we accept all clients for now.
+  StringInfo auth_msg;
+  conn_context_->pgsend().WriteAuthRpcCommand(conn_context_->pgport(), &auth_msg);
+  string rpcmsg = auth_msg->data;
+
+  // Write "Z" message to instruct the client that server is IDLE and ready to accept requests.
+  // Check database existence and report appropriate status.
+  if (new_session->current_database().empty()) {
+    if (is_first_session) {
+      // Fake a 'Z' message so that the client does not end the connection immediately.
+      // This behavior is different from original PostgreSQL which would terminate connection
+      // immediately if the initial database is not specified.
+      StringInfo zmsg;
+      conn_context_->pgsend().WriteRpcStatus('T', &zmsg);
+      rpcmsg += zmsg->data;
+    }
+
+    StringInfo errmsg;
+    conn_context_->pgsend().WriteErrorMessage(
+        -1,
+        Substitute("Database '$0' does not exist", conn_context_->pgport().database_name()),
+        &errmsg);
+    rpcmsg += errmsg->data;
+
+  } else {
+    // Database is valid. Connection request is sucessful.
+    if (conn_context_->current_database() != new_session->current_database()) {
+      VLOG(3) << Substitute("Switch database from '$0' to '$1'",
+                            conn_context_->current_database(),
+                            new_session->current_database());
+      conn_context_->EndPgSession();
+      conn_context_->set_pg_session(new_session);
+    }
+
+    StringInfo zmsg;
+    conn_context_->pgsend().WriteRpcStatus('I', &zmsg);
+    rpcmsg += zmsg->data;
+  }
 
   // Open the server for accepting query requests.
   conn_context_->set_state(rpc::RpcConnectionPB::OPEN);
 
-  // Write a dummy authentication request as we accept all clients for now.
-  StringInfo auth_msg;
-  conn_context_->pgsend().WriteAuthRpcCommand(conn_context_->pgport(), &auth_msg);
-
-  // TODO(neil) We suppose to move on to authentication here.  Skip it for now.
-  // Write "Z" message to instruct the client that server is idle and ready to accept requests.
-  StringInfo zmsg;
-  StringInfo zpacket = pgapi::makeStringInfo(static_cast<int>('Z'));
-  pgapi::appendStringInfoChar(zpacket, 'I');
-  conn_context_->pgsend().WriteRpcCommand(zpacket, 0, &zmsg);
-
   // Send away the auth_msg and zmsg to instruct clients server is ready.
-  string rpcmsg = auth_msg->data + zmsg->data;
   Respond(rpcmsg, true);
-
   return Status::OK();
 }
 
@@ -273,8 +333,22 @@ void PgInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code
   Respond(pg_msg->data, false);
 }
 
+void PgInboundCall::RespondSuccess(const string& exec_status, const string& exec_result) {
+  // Write status message.
+  StringInfo pg_msg;
+  conn_context_->pgsend().WriteSuccessMessage(exec_status, &pg_msg);
+
+  if (!exec_result.empty()) {
+    // Send back both result and status messages.
+    Respond(exec_result + pg_msg->data, true);
+  } else {
+    // Send back status messages.
+    Respond(pg_msg->data, true);
+  }
+}
+
 void PgInboundCall::RespondSuccess(const string& msg) {
-  // Write error message.
+  // Write status message.
   StringInfo pg_msg;
   conn_context_->pgsend().WriteSuccessMessage(msg, &pg_msg);
   Respond(pg_msg->data, true);

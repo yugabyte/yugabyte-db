@@ -17,9 +17,9 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_with_queue.h"
-#include "yb/yql/pgsql/ybpostgres/pgport.h"
-#include "yb/yql/pgsql/ybpostgres/pgrecv.h"
-#include "yb/yql/pgsql/ybpostgres/pgsend.h"
+#include "yb/yql/pgsql/ybpostgres/pg_port.h"
+#include "yb/yql/pgsql/ybpostgres/pg_recv.h"
+#include "yb/yql/pgsql/ybpostgres/pg_send.h"
 
 #include "yb/yql/pgsql/util/pg_session.h"
 
@@ -91,17 +91,19 @@ class PgConnectionContext : public rpc::ConnectionContextWithQueue {
     return pgrecv_;
   }
 
-  const pgsql::PgSession::SharedPtr& pg_session() const {
-    return pg_session_;
-  }
+  //------------------------------------------------------------------------------------------------
+  // Session operators.
+  pgsql::PgSession::SharedPtr pg_session() const;
 
-  const pgapi::PGSend& pgsend() const {
-    return pg_session_->pgsend();
-  }
+  void set_pg_session(const pgsql::PgSession::SharedPtr& pg_session);
 
-  const pgapi::PGPort& pgport() const {
-    return pg_session_->pgport();
-  }
+  void EndPgSession();
+
+  const string& current_database() const;
+
+  const pgapi::PGSend& pgsend() const;
+
+  const pgapi::PGPort& pgport() const;
 
  private:
   //------------------------------------------------------------------------------------------------
@@ -133,7 +135,9 @@ class PgInboundCall : public rpc::QueueableInboundCall {
   // Recording errors.
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
 
-  void RespondSuccess(const string& msg);
+  // Send execution result and status back to client.
+  void RespondSuccess(const string& exec_status, const string& exec_result);
+  void RespondSuccess(const string& exec_status);
 
   // All respond with end with these functions.
   void Respond(const Slice& msg, bool succeeded = true);
@@ -157,7 +161,7 @@ class PgInboundCall : public rpc::QueueableInboundCall {
     return executed_;
   }
 
-  const pgsql::PgSession::SharedPtr& pg_session() {
+  pgsql::PgSession::SharedPtr pg_session() {
     return conn_context_->pg_session();
   }
 

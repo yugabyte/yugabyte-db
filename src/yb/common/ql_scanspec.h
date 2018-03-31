@@ -26,6 +26,30 @@
 namespace yb {
 namespace common {
 
+//--------------------------------------------------------------------------------------------------
+// YQL Scanspec.
+// This class represents all scan specifications.
+//--------------------------------------------------------------------------------------------------
+class YQLScanSpec {
+ public:
+  explicit YQLScanSpec(QLClient client_type) : client_type_(client_type) {
+  }
+
+  virtual ~YQLScanSpec() {
+  }
+
+  QLClient client_type() const {
+    return client_type_;
+  }
+
+ private:
+  const QLClient client_type_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// CQL Support.
+//--------------------------------------------------------------------------------------------------
+
 // A class to determine the lower/upper-bound range components of a QL scan from its WHERE
 // condition.
 class QLScanRange {
@@ -60,7 +84,7 @@ class QLScanRange {
 
 // A scan specification for a QL scan. It may be used to scan either a specified doc key
 // or a hash key + optional WHERE condition clause.
-class QLScanSpec {
+class QLScanSpec : public YQLScanSpec {
  public:
   explicit QLScanSpec(QLExprExecutor::SharedPtr executor = nullptr);
 
@@ -83,6 +107,20 @@ class QLScanSpec {
   const QLConditionPB* condition_;
   const bool is_forward_scan_;
   QLExprExecutor::SharedPtr executor_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// PostgreSQL Support.
+//--------------------------------------------------------------------------------------------------
+class PgsqlScanSpec : public YQLScanSpec {
+ public:
+  typedef std::unique_ptr<common::PgsqlScanSpec> UniPtr;
+
+  explicit PgsqlScanSpec(QLClient client_type) : YQLScanSpec(client_type) {
+  }
+
+  virtual ~PgsqlScanSpec() {
+  }
 };
 
 } // namespace common

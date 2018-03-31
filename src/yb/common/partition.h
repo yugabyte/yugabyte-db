@@ -40,6 +40,7 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/ref_counted.h"
@@ -54,7 +55,8 @@ class TypeInfo;
 
 enum YBHashSchema {
   kMultiColumnHash = 1, // YQL default hashing.
-  kRedisHash = 2 // Redis default hashing.
+  kRedisHash = 2, // Redis default hashing.
+  kPgsqlHash = 3 // PGSQL default hashing.
 };
 
 // A Partition describes the set of rows that a Tablet is responsible for
@@ -171,7 +173,10 @@ class PartitionSchema {
   CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<QLExpressionPB>& hash_values,
                            std::string* buf) const WARN_UNUSED_RESULT;
 
-      // Appends the row's encoded partition key into the provided buffer.
+  CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& hash_values,
+                           std::string* buf) const WARN_UNUSED_RESULT;
+
+  // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
   CHECKED_STATUS EncodeKey(const YBPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
 

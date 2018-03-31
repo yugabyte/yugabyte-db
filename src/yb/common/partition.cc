@@ -152,6 +152,11 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
       VLOG(3) << "Using redis hash schema for partitioning";
       partition_schema->hash_schema_ = YBHashSchema::kRedisHash;
       return Status::OK();
+
+    case PartitionSchemaPB::PGSQL_HASH_SCHEMA:
+      VLOG(3) << "Using pgsql hash schema for partitioning";
+      partition_schema->hash_schema_ = YBHashSchema::kPgsqlHash;
+      return Status::OK();
   }
 
   for (const PartitionSchemaPB_HashBucketSchemaPB& hash_bucket_pb : pb.hash_bucket_schemas()) {
@@ -194,6 +199,9 @@ void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
       break;
     case YBHashSchema::kRedisHash:
       pb->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+      break;
+    case YBHashSchema::kPgsqlHash:
+      pb->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
       break;
   }
 
@@ -254,7 +262,39 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       *buf = EncodeMultiColumnHashValue(hash_value);
       return Status::OK();
     }
+    case YBHashSchema::kPgsqlHash:
+      DLOG(FATAL) << "Illegal code path. PGSQL hash cannot be computed from CQL expression";
+      break;
     case YBHashSchema::kRedisHash:
+      DLOG(FATAL) << "Illegal code path. REDIS hash cannot be computed from CQL expression";
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
+}
+
+Status PartitionSchema::EncodeKey(const RepeatedPtrField<PgsqlExpressionPB>& hash_col_values,
+                                  string* buf) const {
+
+  switch (hash_schema_) {
+    case YBHashSchema::kPgsqlHash: {
+      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
+      // For now, let's not doing anything. Just borrow code from multi column hashing style.
+      string tmp;
+      for (const auto &col_expr_pb : hash_col_values) {
+        AppendToKey(col_expr_pb.value(), &tmp);
+      }
+      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
+      *buf = EncodeMultiColumnHashValue(hash_value);
+      return Status::OK();
+    }
+
+    case YBHashSchema::kMultiColumnHash:
+      DLOG(FATAL) << "Illegal code path. CQL hash cannot be computed from PGSQL expression";
+      break;
+
+    case YBHashSchema::kRedisHash:
+      DLOG(FATAL) << "Illegal code path. REDIS hash cannot be computed from PGSQL expression";
       break;
   }
 
@@ -264,6 +304,10 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
 Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
 
   switch (hash_schema_) {
+    case YBHashSchema::kPgsqlHash:
+      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
+      // For now, let's not doing anything. Just borrow code from multi column hashing style.
+      FALLTHROUGH_INTENDED;
     case YBHashSchema::kMultiColumnHash:
       return EncodeColumns(row, buf);
     case YBHashSchema::kRedisHash:
@@ -285,6 +329,10 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
   switch (hash_schema_) {
     case YBHashSchema::kRedisHash:
       LOG(FATAL) << "Invalid hash schema kRedisHash passed to EncodeKey";
+    case YBHashSchema::kPgsqlHash:
+      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
+      // For now, let's not doing anything. Just borrow code from multi column hashing style.
+      FALLTHROUGH_INTENDED;
     case YBHashSchema::kMultiColumnHash:
       return EncodeColumns(row, buf);
   }
@@ -501,6 +549,10 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
 
   string partition_key;
   switch (hash_schema_) {
+    case YBHashSchema::kPgsqlHash:
+      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
+      // For now, let's not doing anything. Just borrow code from multi column hashing style.
+      FALLTHROUGH_INTENDED;
     case YBHashSchema::kMultiColumnHash:
       RETURN_NOT_OK(EncodeColumns(row, &partition_key));
       break;
@@ -611,6 +663,8 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
       }
       return s;
     }
+    case YBHashSchema::kPgsqlHash:
+      return "Pgsql Hash";
   }
 
   if (!partition.hash_buckets().empty()) {
@@ -770,6 +824,8 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
       } else {
         return Substitute("hash_code: $0", DecodeMultiColumnHashValue(key));
       }
+    case YBHashSchema::kPgsqlHash:
+      return "Pgsql Hash";
   }
 
   if (!hash_bucket_schemas_.empty()) {
@@ -827,6 +883,8 @@ string PartitionSchema::DebugString(const Schema& schema) const {
       component_types.push_back(component);
       break;
     }
+    case YBHashSchema::kPgsqlHash:
+      return "Pgsql Hash Partition";
   }
 
   if (!hash_bucket_schemas_.empty()) {
