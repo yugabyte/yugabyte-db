@@ -21,6 +21,7 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/test_util.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance_mocked.h"
 
 namespace yb {
@@ -63,6 +64,28 @@ void NewReplica(
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
+}
+
+const string default_cloud = "aws";
+const string default_region = "us-west-1";
+
+std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
+  NodeInstancePB node;
+  node.set_permanent_uuid(uuid);
+
+  TSRegistrationPB reg;
+  // Fake host:port combo, with uuid as host, for ease of testing.
+  auto hp = reg.mutable_common()->add_rpc_addresses();
+  hp->set_host(uuid);
+  // Same cloud info as cluster config, with modifyable AZ.
+  auto ci = reg.mutable_common()->mutable_cloud_info();
+  ci->set_placement_cloud(default_cloud);
+  ci->set_placement_region(default_region);
+  ci->set_placement_zone(az);
+
+  std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
+  CHECK_OK(ts->Register(node, reg));
+  return ts;
 }
 
 template<class ClusterLoadBalancerMockedClass>
@@ -730,25 +753,6 @@ class TestLoadBalancerBase {
     }
   }
 
-  std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
-    NodeInstancePB node;
-    node.set_permanent_uuid(uuid);
-
-    TSRegistrationPB reg;
-    // Fake host:port combo, with uuid as host, for ease of testing.
-    auto hp = reg.mutable_common()->add_rpc_addresses();
-    hp->set_host(uuid);
-    // Same cloud info as cluster config, with modifyable AZ.
-    auto ci = reg.mutable_common()->mutable_cloud_info();
-    ci->set_placement_cloud(default_cloud);
-    ci->set_placement_region(default_region);
-    ci->set_placement_zone(az);
-
-    std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
-    CHECK_OK(ts->Register(node, reg));
-    return ts;
-  }
-
   void SetupClusterConfig(bool multi_az) {
     PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
     placement_info->set_num_replicas(kNumReplicas);
@@ -874,9 +878,6 @@ class TestLoadBalancerBase {
   vector<TabletId>& pending_add_replica_tasks_;
   vector<TabletId>& pending_remove_replica_tasks_;
   vector<TabletId>& pending_stepdown_leader_tasks_;
-
-  const string default_cloud = "aws";
-  const string default_region = "us-west-1";
 };
 
 } // namespace master

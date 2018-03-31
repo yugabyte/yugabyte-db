@@ -79,6 +79,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
@@ -5281,7 +5282,6 @@ Status CatalogManager::GetReplicationFactor(int* num_replicas) {
 
 Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                       IsLoadBalancedResponsePB* resp) {
-  vector<double> load;
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
 
@@ -5292,14 +5292,8 @@ Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
   }
 
-  for (const auto ts_desc : ts_descs) {
-    load.push_back(ts_desc->num_live_replicas());
-  }
-  double std_dev = yb::standard_deviation(load);
-  LOG(INFO) << "Load standard deviation is " << std_dev << " for "
-            << ts_descs.size() << " tservers.";
-  if (std_dev >= 2.0) {
-    Status s = STATUS(IllegalState, Substitute("Load not balanced: deviation=$0.", std_dev));
+  Status s = CatalogManagerUtil::IsLoadBalanced(ts_descs);
+  if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
   }
 

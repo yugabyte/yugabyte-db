@@ -130,5 +130,99 @@ TEST(TestLoadBalancerCommunity, TestLoadBalancerAlgorithm) {
   lb->TestAlgorithm();
 }
 
+TEST(TestCatalogManager, TestLoadCountMultiAZ) {
+  std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
+  std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");
+  std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "c");
+  std::shared_ptr<TSDescriptor> ts3 = SetupTS("3333", "a");
+  std::shared_ptr<TSDescriptor> ts4 = SetupTS("4444", "a");
+  ts0->set_num_live_replicas(6);
+  ts1->set_num_live_replicas(17);
+  ts2->set_num_live_replicas(19);
+  ts3->set_num_live_replicas(6);
+  ts4->set_num_live_replicas(6);
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3, ts4};
+
+  ZoneToDescMap zone_to_ts;
+  ASSERT_OK(CatalogManagerUtil::GetPerZoneTSDesc(ts_descs, &zone_to_ts));
+  ASSERT_EQ(3, zone_to_ts.size());
+  ASSERT_EQ(3, zone_to_ts.find("aws:us-west-1:a")->second.size());
+  ASSERT_EQ(1, zone_to_ts.find("aws:us-west-1:b")->second.size());
+  ASSERT_EQ(1, zone_to_ts.find("aws:us-west-1:c")->second.size());
+
+  ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+TEST(TestCatalogManager, TestLoadCountSingleAZ) {
+  std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
+  std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "a");
+  std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "a");
+  std::shared_ptr<TSDescriptor> ts3 = SetupTS("3333", "a");
+  std::shared_ptr<TSDescriptor> ts4 = SetupTS("4444", "a");
+  ts0->set_num_live_replicas(4);
+  ts1->set_num_live_replicas(5);
+  ts2->set_num_live_replicas(6);
+  ts3->set_num_live_replicas(5);
+  ts4->set_num_live_replicas(4);
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3, ts4};
+
+  ZoneToDescMap zone_to_ts;
+  ASSERT_OK(CatalogManagerUtil::GetPerZoneTSDesc(ts_descs, &zone_to_ts));
+  ASSERT_EQ(1, zone_to_ts.size());
+  ASSERT_EQ(5, zone_to_ts.find("aws:us-west-1:a")->second.size());
+
+  ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+TEST(TestCatalogManager, TestLoadNotBalanced) {
+  std::shared_ptr <TSDescriptor> ts0 = SetupTS("0000", "a");
+  std::shared_ptr <TSDescriptor> ts1 = SetupTS("1111", "a");
+  std::shared_ptr <TSDescriptor> ts2 = SetupTS("2222", "c");
+  ts0->set_num_live_replicas(4);
+  ts1->set_num_live_replicas(50);
+  ts2->set_num_live_replicas(16);
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2};
+
+  ASSERT_NOK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+TEST(TestCatalogManager, TestLoadBalancedRFgtAZ) {
+  std::shared_ptr <TSDescriptor> ts0 = SetupTS("0000", "a");
+  std::shared_ptr <TSDescriptor> ts1 = SetupTS("1111", "b");
+  std::shared_ptr <TSDescriptor> ts2 = SetupTS("2222", "b");
+  ts0->set_num_live_replicas(8);
+  ts1->set_num_live_replicas(8);
+  ts2->set_num_live_replicas(8);
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2};
+
+  ZoneToDescMap zone_to_ts;
+  ASSERT_OK(CatalogManagerUtil::GetPerZoneTSDesc(ts_descs, &zone_to_ts));
+  ASSERT_EQ(2, zone_to_ts.size());
+  ASSERT_EQ(1, zone_to_ts.find("aws:us-west-1:a")->second.size());
+  ASSERT_EQ(2, zone_to_ts.find("aws:us-west-1:b")->second.size());
+
+  ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+TEST(TestCatalogManager, TestLoadBalancedPerAZ) {
+  std::shared_ptr <TSDescriptor> ts0 = SetupTS("0000", "a");
+  std::shared_ptr <TSDescriptor> ts1 = SetupTS("1111", "b");
+  std::shared_ptr <TSDescriptor> ts2 = SetupTS("2222", "b");
+  std::shared_ptr <TSDescriptor> ts3 = SetupTS("3333", "b");
+  ts0->set_num_live_replicas(32);
+  ts1->set_num_live_replicas(22);
+  ts2->set_num_live_replicas(21);
+  ts3->set_num_live_replicas(21);
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3};
+
+  ZoneToDescMap zone_to_ts;
+  ASSERT_OK(CatalogManagerUtil::GetPerZoneTSDesc(ts_descs, &zone_to_ts));
+  ASSERT_EQ(2, zone_to_ts.size());
+  ASSERT_EQ(1, zone_to_ts.find("aws:us-west-1:a")->second.size());
+  ASSERT_EQ(3, zone_to_ts.find("aws:us-west-1:b")->second.size());
+
+  ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
 } // namespace master
 } // namespace yb
