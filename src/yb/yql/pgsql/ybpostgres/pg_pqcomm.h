@@ -39,7 +39,7 @@
 #include <arpa/inet.h>
 #include <cstdint>
 
-#include "yb/yql/pgsql/ybpostgres/pgdefs.h"
+#include "yb/yql/pgsql/ybpostgres/pg_defs.h"
 #include "yb/yql/pgsql/ybpostgres/pg_stringinfo.h"
 #include "yb/util/net/socket.h"
 

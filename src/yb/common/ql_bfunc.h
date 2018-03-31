@@ -31,9 +31,12 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/util/bfql/bfql.h"
+#include "yb/util/bfpg/bfpg.h"
 
 namespace yb {
 
+//--------------------------------------------------------------------------------------------------
+// CQL support
 // QLBfunc defines a set of static functions to execute OP_BFUNC in QLValue expression tree.
 // NOTE:
 // - OP_BFUNC is not yet defined or generated.
@@ -54,6 +57,24 @@ class QLBfunc {
                      std::vector<QLValue> *params,
                      QLValue *result);
 };
+
+//--------------------------------------------------------------------------------------------------
+// PGSQL support
+class PgsqlBfunc {
+ public:
+  static Status Exec(bfpg::BFOpcode opcode,
+                     const std::vector<std::shared_ptr<QLValue>>& params,
+                     const std::shared_ptr<QLValue>& result);
+
+  static Status Exec(bfpg::BFOpcode opcode,
+                     const std::vector<QLValue*>& params,
+                     QLValue *result);
+
+  static Status Exec(bfpg::BFOpcode opcode,
+                     std::vector<QLValue> *params,
+                     QLValue *result);
+};
+
 
 } // namespace yb
 

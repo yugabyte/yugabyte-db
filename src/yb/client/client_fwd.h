@@ -40,6 +40,10 @@ typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
 class YBqlWriteOp;
 typedef std::shared_ptr<YBqlWriteOp> YBqlWriteOpPtr;
 
+class YBPgsqlOp;
+class YBPgsqlReadOp;
+class YBPgsqlWriteOp;
+
 class YBRedisOp;
 class YBRedisReadOp;
 class YBRedisWriteOp;

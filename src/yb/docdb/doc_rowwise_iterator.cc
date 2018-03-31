@@ -117,7 +117,62 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
 
   if (is_forward_scan_) {
     if (has_bound_key_) {
-       db_iter_->Seek(lower_doc_key);
+      db_iter_->Seek(lower_doc_key);
+    }
+  } else {
+    if (has_bound_key_) {
+      db_iter_->PrevDocKey(upper_doc_key);
+    } else {
+      db_iter_->SeekToLastDocKey();
+    }
+  }
+
+  return Status::OK();
+}
+
+Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
+  const DocPgsqlScanSpec& doc_spec = dynamic_cast<const DocPgsqlScanSpec&>(spec);
+  is_forward_scan_ = doc_spec.is_forward_scan();
+
+  VLOG(4) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
+
+  DocKey lower_doc_key;
+  DocKey upper_doc_key;
+  RETURN_NOT_OK(doc_spec.lower_bound(&lower_doc_key));
+  RETURN_NOT_OK(doc_spec.upper_bound(&upper_doc_key));
+  VLOG(4) << "DocKey Bounds " << lower_doc_key.ToString() << ", " << upper_doc_key.ToString();
+
+  // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+  const bool is_fixed_point_get = !lower_doc_key.empty() &&
+      upper_doc_key.HashedComponentsEqual(lower_doc_key);
+  const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
+      BloomFilterMode::DONT_USE_BLOOM_FILTER;
+
+  const KeyBytes row_key_encoded = lower_doc_key.Encode();
+  const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
+
+  db_iter_ = CreateIntentAwareIterator(
+      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, read_time_,
+      doc_spec.CreateFileFilter());
+
+  db_iter_->Seek(row_key_encoded);
+  row_ready_ = false;
+
+  if (is_forward_scan_) {
+    has_bound_key_ = !upper_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = upper_doc_key;
+    }
+  } else {
+    has_bound_key_ = !lower_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = lower_doc_key;
+    }
+  }
+
+  if (is_forward_scan_) {
+    if (has_bound_key_) {
+      db_iter_->Seek(lower_doc_key);
     }
   } else {
     if (has_bound_key_) {

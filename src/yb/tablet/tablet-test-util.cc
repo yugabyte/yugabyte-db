@@ -70,7 +70,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    common::QLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    common::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
   out->clear();
   Schema schema = iter->schema();
   int fetched = 0;
@@ -90,16 +90,6 @@ Status IterateToStringList(
     out->push_back(std::move(p.second));
   }
   return Status::OK();
-}
-
-// Take an un-initialized iterator, Init() it, and iterate through all of its rows.
-// The resulting string contains a line per entry.
-std::string InitAndDumpIterator(common::QLRowwiseIteratorIf* iter) {
-  CHECK_OK(iter->Init());
-
-  vector<string> out;
-  CHECK_OK(IterateToStringList(iter, &out));
-  return JoinStrings(out, "\n");
 }
 
 // Dump all of the rows of the tablet into the given vector.

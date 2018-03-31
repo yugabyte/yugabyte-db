@@ -32,7 +32,8 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
     const ReadHybridTime& read_time,
-    std::unique_ptr<common::QLRowwiseIteratorIf>* iter)
+    const common::QLScanSpec& spec,
+    std::unique_ptr<common::YQLRowwiseIteratorIf>* iter)
     const {
   std::unique_ptr<QLRowBlock> vtable;
   RETURN_NOT_OK(RetrieveData(request, &vtable));
@@ -59,7 +60,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVirtualTable::BuildQLScanSpec(
+CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
     const QLReadRequestPB& request,
     const ReadHybridTime& read_time,
     const Schema& schema,

@@ -23,26 +23,46 @@
 namespace yb {
 namespace docdb {
 
-// Implementation of QLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
-class QLRocksDBStorage : public common::QLStorageIf {
+// Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
+class QLRocksDBStorage : public common::YQLStorageIf {
  public:
   explicit QLRocksDBStorage(rocksdb::DB *rocksdb);
 
+  //------------------------------------------------------------------------------------------------
+  // CQL Support.
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
                              const ReadHybridTime& read_time,
-                             std::unique_ptr<common::QLRowwiseIteratorIf> *iter) const override;
+                             const common::QLScanSpec& spec,
+                             std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const override;
 
-  CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
-                                 const ReadHybridTime& read_time,
-                                 const Schema& schema,
-                                 bool include_static_columns,
-                                 const Schema& static_projection,
-                                 std::unique_ptr<common::QLScanSpec>* spec,
-                                 std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                 ReadHybridTime* req_read_time) const override;
+  CHECKED_STATUS BuildYQLScanSpec(const QLReadRequestPB& request,
+                                  const ReadHybridTime& read_time,
+                                  const Schema& schema,
+                                  bool include_static_columns,
+                                  const Schema& static_projection,
+                                  std::unique_ptr<common::QLScanSpec>* spec,
+                                  std::unique_ptr<common::QLScanSpec>* static_row_spec,
+                                  ReadHybridTime* req_read_time) const override;
+
+  //------------------------------------------------------------------------------------------------
+  // PGSQL Support.
+  virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const ReadHybridTime& read_time,
+                                     const common::PgsqlScanSpec& spec,
+                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const override;
+
+  virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
+                                          const ReadHybridTime& read_time,
+                                          const Schema& schema,
+                                          common::PgsqlScanSpec::UniPtr* spec,
+                                          ReadHybridTime* req_read_time) const override;
+
  private:
   rocksdb::DB *const rocksdb_;
 };

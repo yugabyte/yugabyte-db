@@ -460,6 +460,10 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   const NamespaceName& name() const {
     return pb.name();
   }
+
+  YQLDatabase database_type() const {
+    return pb.has_database_type() ? pb.database_type() : YQL_DATABASE_UNDEFINED;
+  }
 };
 
 // The information about a namespace.
@@ -474,6 +478,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   virtual const std::string& id() const override { return namespace_id_; }
 
   const NamespaceName& name() const;
+
+  YQLDatabase database_type() const;
 
   std::string ToString() const override;
 

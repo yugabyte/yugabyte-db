@@ -135,7 +135,8 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   bool nullable = data_->has_nullable ? data_->nullable : true;
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
-                        data_->static_column, data_->is_counter, data_->sorting_type);
+                        data_->static_column, data_->is_counter, data_->order,
+                        data_->sorting_type);
 
   return Status::OK();
 }
@@ -318,8 +319,9 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_hash_key,
                                bool is_static,
                                bool is_counter,
+                               int32_t order,
                                ColumnSchema::SortingType sorting_type) {
-  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter,
+  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, order,
                           sorting_type);
 }
 
@@ -381,6 +383,10 @@ ColumnSchema::SortingType YBColumnSchema::sorting_type() const {
 
 bool YBColumnSchema::is_counter() const {
   return DCHECK_NOTNULL(col_)->is_counter();
+}
+
+int32_t YBColumnSchema::order() const {
+  return DCHECK_NOTNULL(col_)->order();
 }
 
 ////////////////////////////////////////////////////////////
@@ -469,7 +475,7 @@ const TableProperties& YBSchema::table_properties() const {
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
   return YBColumnSchema(col.name(), col.type(), col.is_nullable(), col.is_hash_key(),
-                        col.is_static(), col.is_counter(), col.sorting_type());
+                        col.is_static(), col.is_counter(), col.order(), col.sorting_type());
 }
 
 YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {

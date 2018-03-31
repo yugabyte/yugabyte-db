@@ -20,31 +20,55 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace common {
 
 // An interface to support various different storage backends for a QL table.
-class QLStorageIf {
+class YQLStorageIf {
  public:
-  virtual ~QLStorageIf() {}
+  typedef std::unique_ptr<YQLStorageIf> UniPtr;
+  typedef std::shared_ptr<YQLStorageIf> SharedPtr;
 
+  virtual ~YQLStorageIf() {}
+
+  //------------------------------------------------------------------------------------------------
+  // CQL Support.
   virtual CHECKED_STATUS GetIterator(
       const QLReadRequestPB& request,
       const Schema& projection,
       const Schema& schema,
       const TransactionOperationContextOpt& txn_op_context,
       const ReadHybridTime& read_time,
-      std::unique_ptr<QLRowwiseIteratorIf>* iter) const = 0;
+      const QLScanSpec& spec,
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
-                                         const ReadHybridTime& read_time,
-                                         const Schema& schema,
-                                         bool include_static_columns,
-                                         const Schema& static_projection,
-                                         std::unique_ptr<common::QLScanSpec>* spec,
-                                         std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                         ReadHybridTime* req_read_time) const = 0;
+  virtual CHECKED_STATUS BuildYQLScanSpec(const QLReadRequestPB& request,
+                                          const ReadHybridTime& read_time,
+                                          const Schema& schema,
+                                          bool include_static_columns,
+                                          const Schema& static_projection,
+                                          std::unique_ptr<common::QLScanSpec>* spec,
+                                          std::unique_ptr<common::QLScanSpec>* static_row_spec,
+                                          ReadHybridTime* req_read_time) const = 0;
+
+  //------------------------------------------------------------------------------------------------
+  // PGSQL Support.
+  virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const ReadHybridTime& read_time,
+                                     const PgsqlScanSpec& spec,
+                                     YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+
+  // PostgreSQL allow expression as scan-value, so we must pass an executor to the expressions.
+  virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
+                                          const ReadHybridTime& read_time,
+                                          const Schema& schema,
+                                          PgsqlScanSpec::UniPtr* spec,
+                                          ReadHybridTime* req_read_time) const = 0;
 };
 
 }  // namespace common

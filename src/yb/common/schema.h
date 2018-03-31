@@ -203,6 +203,7 @@ class ColumnSchema {
                bool is_hash_key = false,
                bool is_static = false,
                bool is_counter = false,
+               int32_t order = 0,
                SortingType sorting_type = SortingType::kNotSpecified)
       : name_(std::move(name)),
         type_(type),
@@ -210,6 +211,7 @@ class ColumnSchema {
         is_hash_key_(is_hash_key),
         is_static_(is_static),
         is_counter_(is_counter),
+        order_(order),
         sorting_type_(sorting_type) {
   }
 
@@ -220,9 +222,11 @@ class ColumnSchema {
                bool is_hash_key = false,
                bool is_static = false,
                bool is_counter = false,
+               int32_t order = 0,
                SortingType sorting_type = SortingType::kNotSpecified)
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     sorting_type) { }
+                     order, sorting_type) {
+  }
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -246,6 +250,10 @@ class ColumnSchema {
 
   bool is_counter() const {
     return is_counter_;
+  }
+
+  int32_t order() const {
+    return order_;
   }
 
   SortingType sorting_type() const {
@@ -339,6 +347,7 @@ class ColumnSchema {
   bool is_hash_key_;
   bool is_static_;
   bool is_counter_;
+  int32_t order_;
   SortingType sorting_type_;
 };
 
@@ -1100,7 +1109,7 @@ class SchemaBuilder {
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
   CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<QLType>& type) {
-    return AddColumn(name, type, false, false, false, false,
+    return AddColumn(name, type, false, false, false, false, 0,
                      ColumnSchema::SortingType::kNotSpecified);
   }
 
@@ -1110,7 +1119,7 @@ class SchemaBuilder {
   }
 
   CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<QLType>& type) {
-    return AddColumn(name, type, true, false, false, false,
+    return AddColumn(name, type, true, false, false, false, 0,
                      ColumnSchema::SortingType::kNotSpecified);
   }
 
@@ -1125,6 +1134,7 @@ class SchemaBuilder {
                            bool is_hash_key,
                            bool is_static,
                            bool is_counter,
+                           int32_t order,
                            yb::ColumnSchema::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1134,9 +1144,10 @@ class SchemaBuilder {
                            bool is_hash_key,
                            bool is_static,
                            bool is_counter,
+                           int32_t order,
                            yb::ColumnSchema::SortingType sorting_type) {
     return AddColumn(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     sorting_type);
+                     order, sorting_type);
   }
 
   CHECKED_STATUS RemoveColumn(const string& name);

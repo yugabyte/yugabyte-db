@@ -106,11 +106,7 @@ class YBTabletTest : public YBTest {
 };
 
 CHECKED_STATUS IterateToStringList(
-    common::QLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
-
-// Take an un-initialized iterator, Init() it, and iterate through all of its rows.
-// The resulting string contains a line per entry.
-std::string InitAndDumpIterator(common::QLRowwiseIteratorIf* iter);
+    common::YQLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
 
 // Dump all of the rows of the tablet into the given vector.
 CHECKED_STATUS DumpTablet(

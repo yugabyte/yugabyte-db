@@ -162,6 +162,7 @@ class YBColumnSchema {
                  bool is_hash_key = false,
                  bool is_static = false,
                  bool is_counter = false,
+                 int32_t order = 0,
                  ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
@@ -179,6 +180,7 @@ class YBColumnSchema {
   bool is_nullable() const;
   bool is_static() const;
   bool is_counter() const;
+  int32_t order() const;
   yb::ColumnSchema::SortingType sorting_type() const;
 
  private:

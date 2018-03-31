@@ -18,11 +18,11 @@ option java_package = "org.yb";
 
 import "yb/common/common.proto";
 
-// This is an internal protocol for communicating QL operations from a YB client to a tserver.
-//
-// Reference:
-// Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
-// Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
+//--------------------------------------------------------------------------------------------------
+// YQL support.
+// The following section is common for all query language.
+// This section should be moved to a different file.
+//--------------------------------------------------------------------------------------------------
 
 // A QL value
 message QLValuePB {
@@ -53,6 +53,15 @@ message QLValuePB {
     bytes jsonb_value = 20;
   }
 }
+
+//--------------------------------------------------------------------------------------------------
+// CQL support.
+// This is an internal protocol for communicating QL operations from a YB client to a tserver.
+//
+// Reference:
+// Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
+// Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
+//--------------------------------------------------------------------------------------------------
 
 // Sequence of values used to represent Lists and Sets (and later Tuples)
 message QLSeqValuePB {
@@ -151,11 +160,6 @@ message QLConditionPB {
 message QLBCallPB {
   optional int32 opcode = 1;
   repeated QLExpressionPB operands = 2;
-}
-
-// Client type: only CQL client is supported currently
-enum QLClient {
-  YQL_CLIENT_CQL = 1;
 }
 
 // Paging state for continuing a read request.

@@ -115,6 +115,7 @@ class TabletInvoker;
 enum YBTableType {
   YQL_TABLE_TYPE = 2,
   REDIS_TABLE_TYPE = 3,
+  PGSQL_TABLE_TYPE = 4,
   UNKNOWN_TABLE_TYPE = -1
 };
 
@@ -294,14 +295,21 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Namespace related methods.
 
   // Create a new namespace with the given name.
-  CHECKED_STATUS CreateNamespace(const std::string& namespace_name);
+  // TODO(neil) When database_type is undefined, backend will not check error on database type.
+  // Except for testing we should use proper database_types for all creations.
+  CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
+                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
-  CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name);
+  // TODO(neil) When database_type is undefined, backend will not check error on database type.
+  // Except for testing we should use proper database_types for all creations.
+  CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name,
+                                            YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
   // Delete namespace with the given name.
-  CHECKED_STATUS DeleteNamespace(const std::string& namespace_name);
+  CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
+                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
   // Grant permission with given arguments.
   CHECKED_STATUS GrantPermission(const PermissionType& permission,
@@ -311,11 +319,15 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                  const std::string& role_name);
   // List all namespace names.
   // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces);
+  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
+    return ListNamespaces(YQL_DATABASE_UNDEFINED, namespaces);
+  }
+  CHECKED_STATUS ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces);
 
   // Check if the namespace given by 'namespace_name' exists.
   // Result value is set only on success.
-  Result<bool> NamespaceExists(const std::string& namespace_name);
+  Result<bool> NamespaceExists(const std::string& namespace_name,
+                               YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
 
   // Authentication and Authorization
@@ -684,6 +696,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
 
+  //------------------------------------------------------------------------------------------------
+  // Access functions.
+
   const YBTableName& name() const;
 
   YBTableType table_type() const;
@@ -693,13 +708,16 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // name, the ID will distinguish the old table from the new.
   const std::string& id() const;
 
+  YBClient* client() const;
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
+  const PartitionSchema& partition_schema() const;
 
   const IndexMap& index_map() const;
-
   bool IsIndex() const;
 
+  //------------------------------------------------------------------------------------------------
+  // CQL support
   // Create a new QL operation for this table.
   YBqlWriteOp* NewQLWrite();
   YBqlWriteOp* NewQLInsert();
@@ -709,14 +727,21 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   YBqlReadOp* NewQLRead();
   YBqlReadOp* NewQLSelect();
 
-  YBClient* client() const;
-
-  const PartitionSchema& partition_schema() const;
-
   // Finds partition start for specified partition_key.
   // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
   const std::string& FindPartitionStart(
       const std::string& partition_key, size_t group_by = 1) const;
+
+  //------------------------------------------------------------------------------------------------
+  // Postgres support
+  // Create a new QL operation for this table.
+  YBPgsqlWriteOp* NewPgsqlWrite();
+  YBPgsqlWriteOp* NewPgsqlInsert();
+  YBPgsqlWriteOp* NewPgsqlUpdate();
+  YBPgsqlWriteOp* NewPgsqlDelete();
+
+  YBPgsqlReadOp* NewPgsqlRead();
+  YBPgsqlReadOp* NewPgsqlSelect();
 
  private:
   struct Info;

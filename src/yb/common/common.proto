@@ -43,6 +43,24 @@ package yb;
 
 option java_package = "org.yb";
 
+// Client type.
+enum QLClient {
+  YQL_CLIENT_CQL = 1;
+  YQL_CLIENT_PGSQL = 2;
+  YQL_CLIENT_REDIS = 3;
+}
+
+// Client type.
+enum YQLDatabase {
+  YQL_DATABASE_UNDEFINED = 1;
+  YQL_DATABASE_CQL = 2;
+  YQL_DATABASE_PGSQL = 3; // Pgsql database
+  YQL_DATABASE_REDIS = 4;
+
+  // Pgsql Schema. Its name should be qualified name <database>.<schema>
+  // YQL_DATABASE_PGSQL_SUBDB = 4;
+}
+
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
 // be changed once the types are implemented and released.
 enum DataType {
@@ -88,6 +106,7 @@ enum TableType {
 
   YQL_TABLE_TYPE = 2;
   REDIS_TABLE_TYPE = 3;
+  PGSQL_TABLE_TYPE = 4;
 
   DEFAULT_TABLE_TYPE = 2;
 }
@@ -157,6 +176,7 @@ message ColumnSchemaPB {
   optional bool is_nullable = 6 [default = false];
   optional bool is_static = 7 [default = false];
   optional bool is_counter = 8 [default = false];
+  optional int32 order = 12 [default = 0];
   optional uint32 sorting_type = 9 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
@@ -258,6 +278,7 @@ message PartitionSchemaPB {
   enum HashSchema {
     MULTI_COLUMN_HASH_SCHEMA = 1;
     REDIS_HASH_SCHEMA = 2;
+    PGSQL_HASH_SCHEMA = 3;
   }
 
   optional HashSchema hash_schema = 3;

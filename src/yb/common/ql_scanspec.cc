@@ -288,13 +288,17 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
 
 //-------------------------------------- QL scan spec ---------------------------------------
 
-QLScanSpec::QLScanSpec(QLExprExecutor::SharedPtr executor) : QLScanSpec(nullptr, true, executor) {
+QLScanSpec::QLScanSpec(QLExprExecutor::SharedPtr executor)
+    : QLScanSpec(nullptr, true, executor) {
 }
 
 QLScanSpec::QLScanSpec(const QLConditionPB* condition,
                        const bool is_forward_scan,
                        QLExprExecutor::SharedPtr executor)
-    : condition_(condition), is_forward_scan_(is_forward_scan), executor_(executor) {
+    : YQLScanSpec(YQL_CLIENT_CQL),
+      condition_(condition),
+      is_forward_scan_(is_forward_scan),
+      executor_(executor) {
   if (executor_ == nullptr) {
     executor_ = std::make_shared<QLExprExecutor>();
   }

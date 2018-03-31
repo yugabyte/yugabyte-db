@@ -207,6 +207,8 @@ static TableType ClientToPBTableType(YBTableType table_type) {
       return TableType::YQL_TABLE_TYPE;
     case YBTableType::REDIS_TABLE_TYPE:
       return TableType::REDIS_TABLE_TYPE;
+    case YBTableType::PGSQL_TABLE_TYPE:
+      return TableType::PGSQL_TABLE_TYPE;
     default:
       LOG(FATAL) << "Unknown value for YBTableType: " << table_type;
       // Returns a dummy value to avoid compilation warning.
@@ -445,32 +447,43 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::CreateNamespace(const std::string& namespace_name) {
+Status YBClient::CreateNamespace(const std::string& namespace_name, YQLDatabase database_type) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
+  if (database_type != YQL_DATABASE_UNDEFINED) {
+    req.set_database_type(database_type);
+  }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
 }
 
-Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name) {
+Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
+                                            YQLDatabase database_type) {
   Result<bool> namespace_exists = NamespaceExists(namespace_name);
   RETURN_NOT_OK(namespace_exists);
   return namespace_exists.get() ? Status::OK()
-                                : CreateNamespace(namespace_name);
+                                : CreateNamespace(namespace_name, database_type);
 }
 
-Status YBClient::DeleteNamespace(const std::string& namespace_name) {
+Status YBClient::DeleteNamespace(const std::string& namespace_name,
+                                 YQLDatabase database_type) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
+  if (database_type != YQL_DATABASE_UNDEFINED) {
+    req.set_database_type(database_type);
+  }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
 }
 
-Status YBClient::ListNamespaces(std::vector<std::string>* namespaces) {
+Status YBClient::ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
+  if (database_type != YQL_DATABASE_UNDEFINED) {
+    req.set_database_type(database_type);
+  }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
 
   CHECK_NOTNULL(namespaces);
@@ -504,9 +517,10 @@ CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
   return Status::OK();
 }
 
-Result<bool> YBClient::NamespaceExists(const std::string& namespace_name) {
+Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
+                                       YQLDatabase database_type) {
   std::vector<std::string> namespaces;
-  RETURN_NOT_OK(ListNamespaces(&namespaces));
+  RETURN_NOT_OK(ListNamespaces(database_type, &namespaces));
 
   for (const string& name : namespaces) {
     if (name == namespace_name) {
@@ -1011,6 +1025,21 @@ YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
+  switch (hash_schema) {
+    case YBHashSchema::kMultiColumnHash:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+      break;
+    case YBHashSchema::kRedisHash:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+      break;
+    case YBHashSchema::kPgsqlHash:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
+      break;
+  }
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
   data_->num_tablets_ = count;
   return *this;
@@ -1138,9 +1167,6 @@ Status YBTableCreator::Create() {
                         "Invalid schema");
 
   // Check if partition schema is to multi column hash value.
-  int32_t num_hash_keys = data_->schema_->num_hash_key_columns();
-  DCHECK(num_hash_keys > 0 ||
-         data_->partition_schema_.hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
   if (!data_->split_rows_.empty()) {
     return STATUS(InvalidArgument,
                   "Split rows cannot be used with schema that contains hash key columns");
@@ -1215,6 +1241,8 @@ YBTable::~YBTable() {
   delete data_;
 }
 
+//--------------------------------------------------------------------------------------------------
+
 const YBTableName& YBTable::name() const {
   return data_->info_.table_name;
 }
@@ -1225,6 +1253,10 @@ YBTableType YBTable::table_type() const {
 
 const string& YBTable::id() const {
   return data_->info_.table_id;
+}
+
+YBClient* YBTable::client() const {
+  return data_->client_.get();
 }
 
 const YBSchema& YBTable::schema() const {
@@ -1242,6 +1274,12 @@ const IndexMap& YBTable::index_map() const {
 bool YBTable::IsIndex() const {
   return !data_->info_.indexed_table_id.empty();
 }
+
+const PartitionSchema& YBTable::partition_schema() const {
+  return data_->info_.partition_schema;
+}
+
+//--------------------------------------------------------------------------------------------------
 
 YBqlWriteOp* YBTable::NewQLWrite() {
   return new YBqlWriteOp(shared_from_this());
@@ -1267,14 +1305,6 @@ YBqlReadOp* YBTable::NewQLRead() {
   return new YBqlReadOp(shared_from_this());
 }
 
-YBClient* YBTable::client() const {
-  return data_->client_.get();
-}
-
-const PartitionSchema& YBTable::partition_schema() const {
-  return data_->info_.partition_schema;
-}
-
 const std::string& YBTable::FindPartitionStart(
     const std::string& partition_key, size_t group_by) const {
   auto it = std::lower_bound(data_->partitions_.begin(), data_->partitions_.end(), partition_key);
@@ -1289,6 +1319,31 @@ const std::string& YBTable::FindPartitionStart(
   return data_->partitions_[idx];
 }
 
+//--------------------------------------------------------------------------------------------------
+
+YBPgsqlWriteOp* YBTable::NewPgsqlWrite() {
+  return new YBPgsqlWriteOp(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlInsert() {
+  return YBPgsqlWriteOp::NewInsert(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlUpdate() {
+  return YBPgsqlWriteOp::NewUpdate(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlDelete() {
+  return YBPgsqlWriteOp::NewDelete(shared_from_this());
+}
+
+YBPgsqlReadOp* YBTable::NewPgsqlSelect() {
+  return YBPgsqlReadOp::NewSelect(shared_from_this());
+}
+
+YBPgsqlReadOp* YBTable::NewPgsqlRead() {
+  return new YBPgsqlReadOp(shared_from_this());
+}
 
 ////////////////////////////////////////////////////////////
 // Error

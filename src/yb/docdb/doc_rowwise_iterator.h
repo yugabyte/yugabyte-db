@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
@@ -36,7 +37,7 @@ namespace docdb {
 class IntentAwareIterator;
 
 // An SQL-mapped-to-document-DB iterator.
-class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
+class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
@@ -57,7 +58,12 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
   virtual ~DocRowwiseIterator();
 
-  CHECKED_STATUS Init() override;
+  // Init scan iterator.
+  CHECKED_STATUS Init();
+
+  // Init QL read scan.
+  CHECKED_STATUS Init(const common::QLScanSpec& spec);
+  CHECKED_STATUS Init(const common::PgsqlScanSpec& spec);
 
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
@@ -70,9 +76,6 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
     // Note: this is the schema only for the columns in the projection, not all columns.
     return projection_;
   }
-
-  // Init QL read scan.
-  CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
 
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;

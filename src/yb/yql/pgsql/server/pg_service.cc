@@ -13,12 +13,10 @@
 
 #include "yb/yql/pgsql/server/pg_service.h"
 #include "yb/yql/pgsql/server/pg_rpc.h"
-#include "yb/yql/pgsql/ybpostgres/pgsend.h"
-#include "yb/yql/pgsql/ybpostgres/pginstr.h"
 
-#ifdef PGSQL_COMPILER_WAS_LANDED
 #include "yb/yql/pgsql/processor/pg_processor.h"
-#endif
+#include "yb/yql/pgsql/ybpostgres/pg_send.h"
+#include "yb/yql/pgsql/ybpostgres/pg_instr.h"
 
 DEFINE_int32(pgsql_rpc_timeout_secs, 5,
              "The number of reactor threads to be used for processing ybclient "
@@ -40,9 +38,7 @@ using pgapi::PGInstrStartup;
 using pgapi::StringInfo;
 
 using pgsql::PgEnv;
-#ifdef PGSQL_COMPILER_WAS_LANDED
 using pgsql::PgProcessor;
-#endif
 
 //--------------------------------------------------------------------------------------------------
 PgServiceImpl::PgServiceImpl(PgServer* server, const PgServerOptions& opts)
@@ -86,16 +82,15 @@ void PgServiceImpl::Handle(yb::rpc::InboundCallPtr call_ptr) {
   //   client a busy status. The clients will not send requests until they received an IDLE status.
   //
   // - For now, keep the following code until supported features are tested.
-#ifdef PGSQL_COMPILER_WAS_LANDED
   string exec_status;
+  string exec_output;
   PgProcessor::SharedPtr processor = make_shared<PgProcessor>(pg_env_);
-  Status s = processor->Process(pgcall->pg_session(), instr, &exec_status);
+  Status s = processor->Process(pgcall->pg_session(), instr, &exec_status, &exec_output);
   if (PREDICT_TRUE(s.ok())) {
-    pgcall->RespondSuccess(exec_status);
+    pgcall->RespondSuccess(exec_status, exec_output);
   } else {
     pgcall->RespondFailure(rpc::ErrorStatusPB::ERROR_APPLICATION, s);
   }
-#endif
 }
 
 const std::shared_ptr<client::YBClient>& PgServiceImpl::client() const {

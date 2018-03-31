@@ -28,23 +28,11 @@
 
 #include "yb/yql/pgsql/util/pg_env.h"
 #include "yb/yql/pgsql/ybpostgres/pg_pqcomm.h"
-#include "yb/yql/pgsql/ybpostgres/pgsend.h"
-#include "yb/yql/pgsql/ybpostgres/pgport.h"
+#include "yb/yql/pgsql/ybpostgres/pg_send.h"
+#include "yb/yql/pgsql/ybpostgres/pg_port.h"
 
 namespace yb {
 namespace pgsql {
-
-// TODO(neil) To avoid merging, I place this here, but these states are defined by Postgresql, so
-// they can be moved to "ybpostgres" directory when necessary.
-enum class PgSessionState : int {
-  STATE_UNDEFINED = 0,
-  STATE_IDLE,
-  STATE_RUNNING,
-  STATE_IDLEINTRANSACTION,
-  STATE_FASTPATH,
-  STATE_IDLEINTRANSACTION_ABORTED,
-  STATE_DISABLED
-};
 
 // TODO(neil) When combining RPC and Compiler diffs, replace all 3 pgport, pgsend, and pgrecv in
 // PgConnectionContext with PgSession.
@@ -62,9 +50,7 @@ class PgSession {
 
   //------------------------------------------------------------------------------------------------
   // API for read & write operations.
-#ifdef PGSQL_COMPILER_WAS_LANDED
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
-#endif
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -77,6 +63,12 @@ class PgSession {
   }
 
   // Access functions for current schema.
+  // TODO(neil) Per Mikhail, need to do the following.
+  // - Don't support SCHEMA. Error should be raised here.
+  // - Treat PG DATABASE the same as CQL's keyspace. Will redo this work for DATABASE.
+  // - This work can be done quickly, so get the DocDB working first, then go back to this.
+  //   For now, just accept SCHEMA 'test'.
+  //
   // TODO(neil) Need to double check these code later.
   // - This code in CQL processor has a lock. CQL comment: It can be accessed by mutiple calls in
   //   parallel so they need to be thread-safe for shared reads / exclusive writes.
@@ -84,14 +76,23 @@ class PgSession {
   // - Currently, for each session, server executes the client requests sequentially, so the
   //   the following mutex is not necessary. I don't think we're capable of parallel-processing
   //   multiple statements within one session.
-  string current_schema() const {
-    return current_schema_;
+  //
+  // TODO(neil) MUST ADD A LOCK FOR ACCESSING CURRENT DATABASE BECAUSE WE USE THIS VARIABLE AS
+  // INDICATOR FOR ALIVE OR DEAD SESSIONS.
+  const string& current_database() const {
+    return current_database_;
   }
-  void set_current_schema(const std::string& schema) {
-    current_schema_ = schema;
+  void set_current_database(const std::string& database) {
+    current_database_ = database;
+  }
+  void reset_current_database() {
+    current_database_ = "";
   }
 
  private:
+  // The environment this session belongs to.
+  PgEnv::SharedPtr pg_env_;
+
   // Caching the information of the connection that is associated with this ClientSession which can
   // include some or all of the following.
   // - application name (psql)
@@ -111,6 +112,12 @@ class PgSession {
   // - Postgresql version: This is not Yugabyte version. Currently, our code is equivalent with
   //   postgresql 10.1.
   // - See "struct bkend" in file "postgresql::src/backend/.../postmaster.c" for info on pid & key.
+  //
+  // TODO(neil) pid_, key_, state_, and is_superuser should be used for connection status.
+  //   int pid_ = 0;
+  //   int key_ = 0;
+  //   PgSessionState state_ = PgSessionState::STATE_IDLE;
+  //   bool is_superuser_ = false;
   string char_encoding_ = "UTF8";
   string version_ = "10.1";
   string time_zone_;
@@ -118,8 +125,8 @@ class PgSession {
   // YBSession to execute operations.
   std::shared_ptr<client::YBSession> session_;
 
-  // Current schema.
-  std::string current_schema_ = "test";
+  // Current database.
+  std::string current_database_;
 };
 
 }  // namespace pgsql

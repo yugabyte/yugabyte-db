@@ -27,6 +27,9 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_resultset.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
@@ -62,6 +65,9 @@ class DocOperation {
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 
+//--------------------------------------------------------------------------------------------------
+// Redis support.
+//--------------------------------------------------------------------------------------------------
 // Redis value data with attached type of this value.
 // Used internally by RedisWriteOperation.
 struct RedisValue {
@@ -152,6 +158,9 @@ class RedisReadOperation {
   std::unique_ptr<IntentAwareIterator> iterator_;
 };
 
+//--------------------------------------------------------------------------------------------------
+// CQL support.
+//--------------------------------------------------------------------------------------------------
 class QLWriteOperation : public DocOperation, public DocExprExecutor {
  public:
   QLWriteOperation(const Schema& schema,
@@ -247,7 +256,7 @@ class QLReadOperation : public DocExprExecutor {
       const TransactionOperationContextOpt& txn_op_context)
       : request_(request), txn_op_context_(txn_op_context) {}
 
-  CHECKED_STATUS Execute(const common::QLStorageIf& ql_storage,
+  CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& query_schema,
@@ -271,6 +280,115 @@ class QLReadOperation : public DocExprExecutor {
   const QLReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;
   QLResponsePB response_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// PGSQL support.
+//--------------------------------------------------------------------------------------------------
+class PgsqlDocOperation : public DocOperation, public DocExprExecutor {
+ public:
+  CHECKED_STATUS CreateProjections(const Schema& schema,
+                                   const PgsqlColumnRefsPB& column_refs,
+                                   Schema* column_projection);
+};
+
+class PgsqlWriteOperation : public PgsqlDocOperation {
+ public:
+  PgsqlWriteOperation(const Schema& schema,
+                      const TransactionOperationContextOpt& txn_op_context)
+      : schema_(schema),
+        txn_op_context_(txn_op_context) {
+  }
+
+  // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
+  CHECKED_STATUS Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response);
+  bool RequireReadSnapshot() const override { return request_.has_column_refs(); }
+  const PgsqlWriteRequestPB& request() const { return request_; }
+  PgsqlResponsePB* response() const { return response_; }
+
+  // Execute write.
+  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
+
+ private:
+  // Insert, update, and delete operations.
+  CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
+
+  // Reading current row before operating on it.
+  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
+                             const QLTableRow::SharedPtr& table_row);
+
+  // Reading path to operate on.
+  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
+
+  //------------------------------------------------------------------------------------------------
+  // Context.
+  const Schema& schema_;
+  const TransactionOperationContextOpt txn_op_context_;
+
+  // Input arguments.
+  PgsqlWriteRequestPB request_;
+  PgsqlResponsePB* response_ = nullptr;
+
+  // TODO(neil) Output arguments.
+  // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
+
+  // State variables.
+  // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a
+  // static column being written.
+  std::shared_ptr<DocKey> hashed_doc_key_;
+  std::shared_ptr<DocPath> hashed_doc_path_;
+
+  // Doc key and doc path for primary key (i.e. with range columns). Present when there is a
+  // non-static column being written or when writing the primary key alone (i.e. range columns are
+  // present or table does not have range columns).
+  std::shared_ptr<DocKey> range_doc_key_;
+  std::shared_ptr<DocPath> range_doc_path_;
+};
+
+class PgsqlReadOperation : public PgsqlDocOperation {
+ public:
+  // Construct and access methods.
+  PgsqlReadOperation(const PgsqlReadRequestPB& request,
+                     const TransactionOperationContextOpt& txn_op_context)
+      : request_(request), txn_op_context_(txn_op_context) {
+  }
+
+  bool RequireReadSnapshot() const override { return request_.has_column_refs(); }
+  const PgsqlReadRequestPB& request() const { return request_; }
+  PgsqlResponsePB& response() { return response_; }
+
+  // Execute read operations.
+  CHECKED_STATUS Apply(const DocOperationApplyData& data) override {
+    LOG(FATAL) << "This should not be callled for read operations";
+    return Status::OK();
+  }
+
+  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override {
+    LOG(FATAL) << "This lock should not be applied as writing while reading is not yet allowed";
+  }
+
+  CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
+                         const Schema& schema,
+                         const Schema& query_schema,
+                         const ReadHybridTime& read_time,
+                         PgsqlResultSet *result_set,
+                         HybridTime *restart_read_ht);
+
+ private:
+  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
+                                   PgsqlResultSet *result_set);
+
+  CHECKED_STATUS EvalAggregate(const QLTableRow::SharedPtr& table_row);
+
+  CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row,
+                                   PgsqlResultSet *resultset);
+
+  //------------------------------------------------------------------------------------------------
+  const PgsqlReadRequestPB& request_;
+  const TransactionOperationContextOpt txn_op_context_;
+  PgsqlResponsePB response_;
 };
 
 }  // namespace docdb

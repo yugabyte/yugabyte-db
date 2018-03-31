@@ -132,7 +132,7 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 using std::unique_ptr;
-using namespace std::literals;
+using namespace std::literals;  // NOLINT
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
@@ -147,6 +147,7 @@ using yb::docdb::KeyBytes;
 using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
 using yb::docdb::QLWriteOperation;
+using yb::docdb::PgsqlWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
@@ -365,6 +366,7 @@ Status Tablet::Open() {
   CHECK(schema()->has_column_ids());
 
   switch (table_type_) {
+    case TableType::PGSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       RETURN_NOT_OK(OpenKeyValueTablet());
@@ -464,7 +466,7 @@ void Tablet::Shutdown() {
   state_ = kShutdown;
 }
 
-Result<std::unique_ptr<common::QLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection, const boost::optional<TransactionId>& transaction_id) const {
   if (state_ != kOpen) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
@@ -630,6 +632,8 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
 
 } // namespace
 
+//--------------------------------------------------------------------------------------------------
+// Redis Request Processing.
 Status Tablet::KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
@@ -670,6 +674,8 @@ Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+// CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
@@ -810,6 +816,100 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+// PGSQL Request Processing.
+Status Tablet::HandlePgsqlReadRequest(
+    const ReadHybridTime& read_time,
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const TransactionMetadataPB& transaction_metadata,
+    PgsqlReadRequestResult* result) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+  // TODO(neil) Work on metrics for PGSQL.
+  // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
+
+  if (metadata()->schema_version() != pgsql_read_request.schema_version()) {
+    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    return Status::OK();
+  }
+
+  Result<TransactionOperationContextOpt> txn_op_ctx =
+      CreateTransactionOperationContext(transaction_metadata);
+  RETURN_NOT_OK(txn_op_ctx);
+  return AbstractTablet::HandlePgsqlReadRequest(
+      read_time, pgsql_read_request, *txn_op_ctx, result);
+}
+
+CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+                                                const size_t row_count,
+                                                PgsqlResponsePB* response) const {
+  // If there is no hash column in the read request, this is a full-table query. And if there is no
+  // paging state in the response, we are done reading from the current tablet. In this case, we
+  // should return the exclusive end partition key of this tablet if not empty which is the start
+  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
+  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
+  // Otherwise, leave the paging state empty which means we are completely done reading for the
+  // whole SELECT statement.
+  if (pgsql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
+      (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
+          pgsql_read_request.return_paging_state())) {
+    const string& next_partition_key = metadata_->partition().partition_key_end();
+    if (!next_partition_key.empty()) {
+      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+    }
+  }
+
+  // If there is a paging state, update the total number of rows read so far.
+  if (response->has_paging_state()) {
+    response->mutable_paging_state()->set_total_num_rows_read(
+        pgsql_read_request.paging_state().total_num_rows_read() + row_count);
+  }
+  return Status::OK();
+}
+
+Status Tablet::KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+  docdb::DocOperations doc_ops;
+  WriteRequestPB batch_request;
+
+  SetupKeyValueBatch(data.write_request(), &batch_request);
+  auto* pgsql_write_batch = batch_request.mutable_pgsql_write_batch();
+
+  doc_ops.reserve(pgsql_write_batch->size());
+
+  Result<TransactionOperationContextOpt> txn_op_ctx =
+      CreateTransactionOperationContext(data.write_request()->write_batch().transaction());
+  RETURN_NOT_OK(txn_op_ctx);
+  for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
+    PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
+    PgsqlResponsePB* resp = data.operation_state->response()->add_pgsql_response_batch();
+    if (metadata_->schema_version() != req->schema_version()) {
+      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    } else {
+      const auto& schema = metadata_->schema();
+      auto write_op = std::make_unique<PgsqlWriteOperation>(schema, *txn_op_ctx);
+      RETURN_NOT_OK(write_op->Init(req, resp));
+      doc_ops.emplace_back(std::move(write_op));
+    }
+  }
+  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
+  if (data.restart_read_ht->is_valid()) {
+    return Status::OK();
+  }
+  for (size_t i = 0; i < doc_ops.size(); i++) {
+    PgsqlWriteOperation* pgsql_write_op = down_cast<PgsqlWriteOperation*>(doc_ops[i].get());
+    // We'll need to return the number of updated, deleted, or inserted rows by each operations.
+    doc_ops[i].release();
+    data.operation_state->pgsql_write_ops()
+                        ->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
+  }
+
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status Tablet::AcquireLocksAndPerformDocOperations(
     WriteOperationState *state, HybridTime* restart_read_ht) {
   LockBatch locks_held;
@@ -830,6 +930,14 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
     case TableType::YQL_TABLE_TYPE: {
       CHECK_GT(key_value_write_request->ql_write_batch_size(), 0);
       RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
+      if (restart_read_ht->is_valid()) {
+        return Status::OK();
+      }
+      invalid_table_type = false;
+      break;
+    }
+    case TableType::PGSQL_TABLE_TYPE: {
+      RETURN_NOT_OK(KeyValueBatchFromPgsqlWriteBatch(data));
       if (restart_read_ht->is_valid()) {
         return Status::OK();
       }
@@ -1067,7 +1175,8 @@ Result<yb::OpId> Tablet::MaxPersistentOpId() const {
 
 Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {
-    case TableType::YQL_TABLE_TYPE:
+    case TableType::PGSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       DocDBDebugDump(lines);
       return Status::OK();

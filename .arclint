@@ -1,5 +1,5 @@
 {
-  "exclude":"(\\.l$|Makefile$|src/yb/common/ql_type.h$|src/yb/yql/cql/ql/kwlist.h$)",
+  "exclude":"(\\.l$|Makefile$|src/yb/common/ql_type.h$)",
   "linters": {
     "text": {
       "type": "text",
@@ -20,7 +20,7 @@
     },
     "googleccplint": {
       "type": "googlecpplint",
-      "exclude": "(src/yb/yql/cql/ql/kwlist.h)",
+      "exclude": "(src/yb/yql/cql/ql/kwlist.h|src/yb/yql/pgsql/syn/pg_kwlist.h)",
       "include": [
         "(\\.cpp$)",
         "(\\.cc$)",

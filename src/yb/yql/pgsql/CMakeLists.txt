@@ -14,6 +14,25 @@
 # RPC service / connection.
 add_subdirectory(server)
 
+# Entry for all proxy processing tasks.
+add_subdirectory(processor)
+
+# Syntax analysis.
+add_subdirectory(syn)
+
+# Semantic analysis.
+add_subdirectory(sem)
+add_subdirectory(ptree)
+
+# Code definition
+add_subdirectory(proto)
+
+# Code generation.
+add_subdirectory(pbgen)
+
+# Code execution.
+add_subdirectory(pbexec)
+
 #utility
 add_subdirectory(util)
 add_subdirectory(ybpostgres)

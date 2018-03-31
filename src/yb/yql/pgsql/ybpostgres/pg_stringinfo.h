@@ -36,7 +36,7 @@
 #ifndef YB_YQL_PGSQL_YBPOSTGRES_PG_STRINGINFO_H_
 #define YB_YQL_PGSQL_YBPOSTGRES_PG_STRINGINFO_H_
 
-#include "yb/yql/pgsql/ybpostgres/pgdefs.h"
+#include "yb/yql/pgsql/ybpostgres/pg_defs.h"
 
 namespace yb {
 namespace pgapi {
