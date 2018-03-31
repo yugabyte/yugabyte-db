@@ -53,9 +53,11 @@
 DEFINE_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
 
-DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction"
-    "threads. It allows splitting small vs large compactions.");
+DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction "
+             "threads. It allows splitting small vs. large compactions.");
 
+DEFINE_bool(enable_ondisk_compression, true,
+            "Determines whether SSTable compression is enabled or not.");
 
 namespace rocksdb {
 
@@ -110,7 +112,8 @@ ColumnFamilyOptions::ColumnFamilyOptions()
       max_write_buffer_number(2),
       min_write_buffer_number_to_merge(1),
       max_write_buffer_number_to_maintain(0),
-      compression(Snappy_Supported() ? kSnappyCompression : kNoCompression),
+      compression(Snappy_Supported() && FLAGS_enable_ondisk_compression ?
+                  kSnappyCompression : kNoCompression),
       prefix_extractor(nullptr),
       num_levels(7),
       level0_file_num_compaction_trigger(4),
