@@ -232,7 +232,7 @@ class CQLRequest : public CQLMessage {
       std::unique_ptr<CQLRequest>* request, std::unique_ptr<CQLResponse>* error_response);
 
   static StreamId ParseStreamId(const Slice& mesg) {
-    return static_cast<StreamId>(NetworkByteOrder::Load16(&mesg[kHeaderPosStreamId]));
+    return static_cast<StreamId>(NetworkByteOrder::Load16(mesg.data() + kHeaderPosStreamId));
   }
 
   virtual ~CQLRequest();

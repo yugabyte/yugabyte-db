@@ -328,8 +328,8 @@ bool IsAllZeros(const Slice& s) {
   // Walk a pointer through the slice instead of using s[i]
   // since this is way faster in debug mode builds. We also do some
   // manual unrolling for the same purpose.
-  const uint8_t* p = &s[0];
-  int rem = s.size();
+  const uint8_t* p = s.data();
+  size_t rem = s.size();
 
   while (rem >= 8) {
     if (UNALIGNED_LOAD64(p) != 0) return false;
@@ -573,7 +573,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
     for (int off_in_chunk = 0;
          off_in_chunk < chunk.size() - kEntryHeaderSize;
          off_in_chunk++) {
-      Slice potential_header = Slice(&chunk[off_in_chunk], kEntryHeaderSize);
+      Slice potential_header = Slice(chunk.data() + off_in_chunk, kEntryHeaderSize);
 
       EntryHeader header;
       if (DecodeEntryHeader(potential_header, &header).ok()) {
@@ -648,12 +648,12 @@ Status ReadableLogSegment::ReadEntryHeader(int64_t *offset, EntryHeader* header)
 
 Status ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* header) {
   DCHECK_EQ(kEntryHeaderSize, data.size());
-  header->msg_length = DecodeFixed32(&data[0]);
-  header->msg_crc    = DecodeFixed32(&data[4]);
-  header->header_crc = DecodeFixed32(&data[8]);
+  header->msg_length = DecodeFixed32(data.data());
+  header->msg_crc    = DecodeFixed32(data.data() + 4);
+  header->header_crc = DecodeFixed32(data.data() + 8);
 
   // Verify the header.
-  uint32_t computed_crc = crc::Crc32c(&data[0], 8);
+  uint32_t computed_crc = crc::Crc32c(data.data(), 8);
   if (computed_crc != header->header_crc) {
     return STATUS_FORMAT(
         Corruption, "Invalid checksum in log entry head header: found=$0, computed=$1",
@@ -790,7 +790,7 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   InlineEncodeFixed32(&header_buf[0], len);
 
   // Then the CRC of the message.
-  uint32_t msg_crc = crc::Crc32c(&data[0], data.size());
+  uint32_t msg_crc = crc::Crc32c(data.data(), data.size());
   InlineEncodeFixed32(&header_buf[4], msg_crc);
 
   // Then the CRC of the header

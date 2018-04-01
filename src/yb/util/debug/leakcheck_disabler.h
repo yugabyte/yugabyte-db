@@ -55,6 +55,15 @@ class ScopedLeakCheckDisabler {
   DISALLOW_COPY_AND_ASSIGN(ScopedLeakCheckDisabler);
 };
 
+#if defined(__has_feature)
+  #if __has_feature(address_sanitizer)
+    #define DISABLE_ASAN __attribute__((no_sanitize("address")))
+  #endif
+#endif
+#ifndef DISABLE_ASAN
+#define DISABLE_ASAN
+#endif
+
 } // namespace debug
 } // namespace yb
 
