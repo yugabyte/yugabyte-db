@@ -60,110 +60,96 @@ struct SliceParts;
 class Slice {
  public:
   // Create an empty slice.
-  Slice() : data_(reinterpret_cast<const uint8_t *>("")),
-            size_(0) { }
+  Slice() : begin_(util::to_uchar_ptr("")), end_(begin_) { }
 
   // Create a slice that refers to d[0,n-1].
-  Slice(const uint8_t* d, size_t n) : data_(d), size_(n) { }
+  Slice(const uint8_t* d, size_t n) : begin_(d), end_(d + n) {}
+  // Create a slice that refers to d[0,n-1].
+  Slice(const char* d, size_t n) : Slice(util::to_uchar_ptr(d), n) {}
 
   // Create a slice that refers to [begin, end).
-  Slice(const uint8_t* begin, const uint8_t* end) : data_(begin), size_(end - begin) {
+  Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {
     CHECK_LE(begin, end);
   }
 
   Slice(const char* begin, const char* end)
       : Slice(util::to_uchar_ptr(begin), util::to_uchar_ptr(end)) {}
 
-  // Create a slice that refers to d[0,n-1].
-  Slice(const char* d, size_t n) :
-    data_(reinterpret_cast<const uint8_t *>(d)),
-    size_(n) { }
-
   // Create a slice that refers to the contents of "s"
   template <class CharTraits, class Allocator>
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
-      : data_(util::to_uchar_ptr(s.data())),
-        size_(s.size()) { }
+      : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
 
   // Create a slice that refers to s[0,strlen(s)-1]
-  Slice(const char* s) : // NOLINT(runtime/explicit)
-    data_(reinterpret_cast<const uint8_t *>(s)),
-    size_(strlen(s)) { }
+  Slice(const char* s) // NOLINT(runtime/explicit)
+      : Slice(util::to_uchar_ptr(s), strlen(s)) {}
 
 #ifdef YB_HEADERS_USE_RICH_SLICE
   // Create a slice that refers to the contents of the faststring.
   // Note that further appends to the faststring may invalidate this slice.
   Slice(const faststring &s) // NOLINT(runtime/explicit)
-    : data_(s.data()),
-      size_(s.size()) {
-  }
+      : Slice(s.data(), s.size()) {}
 
   Slice(const StringPiece& s) // NOLINT(runtime/explicit)
-    : data_(reinterpret_cast<const uint8_t*>(s.data())),
-      size_(s.size()) {
-  }
+      : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
 #endif
 
   // Create a single slice from SliceParts using buf as storage.
   // buf must exist as long as the returned Slice exists.
   Slice(const SliceParts& parts, std::string* buf);
 
-  const char* cdata() const { return reinterpret_cast<const char*>(data_); }
+  const char* cdata() const { return util::to_char_ptr(begin_); }
 
   // Return a pointer to the beginning of the referenced data
-  const uint8_t* data() const { return data_; }
+  const uint8_t* data() const { return begin_; }
 
   // Return a mutable pointer to the beginning of the referenced data.
-  uint8_t *mutable_data() { return const_cast<uint8_t *>(data_); }
+  uint8_t *mutable_data() { return const_cast<uint8_t*>(begin_); }
 
-  const uint8_t* end() const { return data_ + size_; }
+  const uint8_t* end() const { return end_; }
 
-  const char* cend() const { return reinterpret_cast<const char*>(end()); }
+  const char* cend() const { return util::to_char_ptr(end_); }
 
   // Return the length (in bytes) of the referenced data
-  size_t size() const { return size_; }
+  size_t size() const { return end_ - begin_; }
 
   // Return true iff the length of the referenced data is zero
-  bool empty() const { return size_ == 0; }
+  bool empty() const { return begin_ == end_; }
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
-  const uint8_t &operator[](size_t n) const {
+  uint8_t operator[](size_t n) const {
     assert(n < size());
-    return data_[n];
+    return begin_[n];
   }
 
   // Change this slice to refer to an empty array
   void clear() {
-    data_ = reinterpret_cast<const uint8_t *>("");
-    size_ = 0;
+    begin_ = util::to_uchar_ptr("");
+    end_ = begin_;
   }
 
   // Drop the first "n" bytes from this slice.
   void remove_prefix(size_t n) {
     assert(n <= size());
-    data_ += n;
-    size_ -= n;
+    begin_ += n;
   }
 
   // Drop the last "n" bytes from this slice.
   void remove_suffix(size_t n) {
     assert(n <= size());
-    size_ -= n;
+    end_ -= n;
   }
 
   // Truncate the slice to "n" bytes
   void truncate(size_t n) {
     assert(n <= size());
-    size_ = n;
+    end_ = begin_ + n;
   }
 
   char consume_byte() {
-    assert(size_ > 0);
-    char c = *data_;
-    ++data_;
-    --size_;
-    return c;
+    assert(end_ > begin_);
+    return *begin_++;
   }
 
   // Checks that this slice has size() = 'expected_size' and returns
@@ -199,15 +185,16 @@ class Slice {
   }
 
   bool starts_with(const uint8_t* data, size_t size) const {
-    return (size_ >= size) && MemEqual(data_, data, size);
+    return (this->size() >= size) && MemEqual(begin_, data, size);
   }
 
   bool starts_with(const char* data, size_t size) const {
-    return (size_ >= size) && MemEqual(data_, data, size);
+    return (this->size() >= size) && MemEqual(begin_, data, size);
   }
 
   bool ends_with(const Slice& x) const {
-    return (size_ >= x.size_) && MemEqual(data_ + size_ - x.size_, x.data_, x.size_);
+    size_t xsize = x.size();
+    return (size() >= xsize) && MemEqual(end_ - xsize, x.begin_, xsize);
   }
 
   // Comparator struct, useful for ordered collections (like STL maps).
@@ -226,9 +213,11 @@ class Slice {
   // Relocates this slice's data into 'd' provided this isn't already the
   // case. It is assumed that 'd' is large enough to fit the data.
   void relocate(uint8_t* d) {
-    if (data_ != d) {
-      memcpy(d, data_, size_);
-      data_ = d;
+    if (begin_ != d) {
+      size_t size = end_ - begin_;
+      memcpy(d, begin_, size);
+      begin_ = d;
+      end_ = d + size;
     }
   }
 
@@ -251,8 +240,8 @@ class Slice {
 #endif
   }
 
-  const uint8_t* data_;
-  size_t size_;
+  const uint8_t* begin_;
+  const uint8_t* end_;
 
   // Intentionally copyable
 };
@@ -285,17 +274,19 @@ inline std::ostream& operator<<(std::ostream& o, const Slice& s) {
 }
 
 inline int Slice::compare(const Slice& b) const {
-  const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
-  int r = MemCompare(data_, b.data_, min_len);
+  auto my_size = size();
+  auto b_size = b.size();
+  const size_t min_len = std::min(my_size, b_size);
+  int r = MemCompare(begin_, b.begin_, min_len);
   if (r == 0) {
-    if (size_ < b.size_) r = -1;
-    else if (size_ > b.size_) r = +1;
+    if (my_size < b_size) { return -1; }
+    if (my_size > b_size) { return 1; }
   }
   return r;
 }
 
 inline int Slice::compare_prefix(const Slice& b) const {
-  return Slice(data_, std::min(size_, b.size_)).compare(b);
+  return Slice(begin_, std::min(size(), b.size())).compare(b);
 }
 
 inline size_t Slice::hash() const noexcept {
@@ -303,7 +294,7 @@ inline size_t Slice::hash() const noexcept {
   constexpr uint64_t kFnvPrime = 1099511628211ULL;
   size_t result = kFnvOffset;
   const uint8_t* e = end();
-  for (const uint8_t* i = data_; i != e; ++i) {
+  for (const uint8_t* i = begin_; i != e; ++i) {
     result = (result * kFnvPrime) ^ *i;
   }
   return result;
@@ -311,9 +302,9 @@ inline size_t Slice::hash() const noexcept {
 
 inline size_t Slice::difference_offset(const Slice& b) const {
   size_t off = 0;
-  const size_t len = (size_ < b.size_) ? size_ : b.size_;
+  const size_t len = std::min(size(), b.size());
   for (; off < len; off++) {
-    if (data_[off] != b.data_[off]) break;
+    if (begin_[off] != b.begin_[off]) break;
   }
   return off;
 }

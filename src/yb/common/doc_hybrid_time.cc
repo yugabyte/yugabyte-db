@@ -88,22 +88,17 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t previous_size = slice->size();
   {
     // Currently we just ignore the generation number as it should always be 0.
-    int64_t ht_generation_number;
-    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &ht_generation_number));
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice));
+    int64_t decoded_micros =
+        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
-    int64_t decoded_micros = 0;
-    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_micros));
-    decoded_micros += kYugaByteMicrosecondEpoch;
-
-    int64_t decoded_logical = 0;
-    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_logical));
+    int64_t decoded_logical = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
     hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
   }
 
-  int64_t decoded_shifted_write_id = 0;
   const auto ptr_before_decoding_write_id = slice->data();
-  RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_shifted_write_id));
+  int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
   if (decoded_shifted_write_id < 0) {
     return STATUS_SUBSTITUTE(

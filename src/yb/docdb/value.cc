@@ -50,12 +50,7 @@ CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
   if (DecodeType(ValueType::kTtl, kMaxTtl, slice, ttl)) {
-    int64_t val;
-    int decoded_size;
-    RETURN_NOT_OK(yb::util::FastDecodeSignedVarInt(slice->data(), slice->size(),
-                                                   &val, &decoded_size));
-    slice->remove_prefix(decoded_size);
-    *ttl = MonoDelta::FromMilliseconds(val);
+    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarInt(slice)));
   }
   return Status::OK();
 }
