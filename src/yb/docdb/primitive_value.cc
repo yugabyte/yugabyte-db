@@ -734,17 +734,13 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: {
       // Decode varint
-      int num_bytes_in_encoded_varint = 0;  // TODO: switch to size_t;
       {
-        int64_t column_id_as_int64 = 0;
         ColumnId dummy_column_id;
         ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        RETURN_NOT_OK(FastDecodeSignedVarInt(slice->data(), slice->size(), &column_id_as_int64 ,
-                                             &num_bytes_in_encoded_varint));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(slice));
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 
-      slice->remove_prefix(num_bytes_in_encoded_varint);
       type_ref = value_type;
       return Status::OK();
     }

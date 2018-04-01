@@ -43,7 +43,7 @@ void CheckEncoding(int64_t v) {
   ASSERT_EQ(correct_encoded.size(), encoded_size);
   ASSERT_EQ(correct_encoded, string(to_char_ptr(buf), encoded_size));
   int64_t decoded = 0;
-  int decoded_size = 0;
+  size_t decoded_size = 0;
   ASSERT_OK(FastDecodeSignedVarInt(correct_encoded, &decoded, &decoded_size));
   ASSERT_EQ(v, decoded);
   ASSERT_EQ(decoded_size, correct_encoded.size());
@@ -52,7 +52,7 @@ void CheckEncoding(int64_t v) {
     // Provide a way to generate examples for checking value validity during decoding. These could
     // be copied and pasted into TestDecodeIncorrectValues.
     int64_t unused_decoded_value ATTRIBUTE_UNUSED;
-    int unused_decoded_size ATTRIBUTE_UNUSED;
+    size_t unused_decoded_size ATTRIBUTE_UNUSED;
 
     constexpr bool kGenerateInvalidDecodingExamples = false;
     if (kGenerateInvalidDecodingExamples &&
@@ -120,19 +120,27 @@ TEST(FastVarintTest, TestEncodeDecode) {
 }
 
 template<class T>
-std::vector<T> GenerateRandomValues() {
+std::vector<T> GenerateRandomValues(size_t values_per_length = NonTsanVsTsan(500000, 1000)) {
   std::mt19937_64 rng(123456);
-  const int kMaxLength = 62;
-  const int kValuesPerLength = 500000;
+  constexpr size_t kMinLength = 1;
+  constexpr size_t kMaxLength = 63;
   std::vector<T> values;
-  values.reserve(kMaxLength * kValuesPerLength);
-  for (int i = 1; i <= kMaxLength; ++i) {
-    uint64_t max_value = (1ull << i) - 1;
-    std::uniform_int_distribution<T> distribution(0, max_value);
-    for (int j = 0; j < kValuesPerLength; ++j) {
-      values.push_back(distribution(rng));
+  values.reserve((kMaxLength - kMinLength + 1) * values_per_length);
+  uint64_t min_value = kMinLength == 1 ? 0 : 1ULL << (kMinLength - 1);
+  std::uniform_int_distribution<int> bool_dist(0, 1);
+  for (int i = kMinLength; i <= kMaxLength; ++i) {
+    uint64_t max_value = min_value ? min_value * 2 - 1 : 1;
+    std::uniform_int_distribution<T> distribution(min_value, max_value);
+    for (size_t j = values_per_length; j-- != 0;) {
+      if (std::is_signed<T>::value && bool_dist(rng)) {
+        values.push_back(-distribution(rng));
+      } else {
+        values.push_back(distribution(rng));
+      }
     }
+    min_value = max_value + 1;
   }
+  std::shuffle(values.begin(), values.end(), rng);
   return values;
 }
 
@@ -315,7 +323,7 @@ const std::vector<std::string>& IncorrectValues() {
 
 TEST(FastVarIntTest, TestDecodeIncorrectValues) {
   int64_t v;
-  int n;
+  size_t n;
   const auto& incorrect_values = IncorrectValues();
   for (const auto& value : incorrect_values) {
     ASSERT_NOK(FastDecodeSignedVarInt(value, &v, &n))
@@ -400,6 +408,56 @@ TEST(FastVarIntTest, EncodeUnsignedPerformance) {
   std::clock_t end_time = std::clock();
   LOG(INFO) << std::fixed << std::setprecision(2) << "CPU time used: "
             << 1000.0 * (end_time - start_time) / CLOCKS_PER_SEC << " ms\n";
+}
+
+template <class T>
+void TestDecodeDescendingSignedPerformance() {
+  auto values = GenerateRandomValues<T>();
+
+  std::vector<char> buf(kMaxVarIntBufferSize * values.size());
+  std::vector<char*> bounds;
+  bounds.reserve(values.size());
+  char* pos = buf.data();
+  for (auto value : values) {
+    pos = FastEncodeDescendingSignedVarInt(value, pos);
+    bounds.push_back(pos);
+  }
+  LOG(INFO) << "Start measure";
+  std::clock_t start_time = std::clock();
+  for (int i = 0; i != 25; ++i) {
+    auto prev = buf.data();
+    for (auto cur : bounds) {
+      Slice slice(prev, cur);
+      int64_t value;
+      ASSERT_OK_FAST(FastDecodeDescendingSignedVarInt(&slice, &value));
+      prev = cur;
+    }
+  }
+  std::clock_t end_time = std::clock();
+  LOG(INFO) << std::fixed << std::setprecision(2) << "CPU time used: "
+            << 1000.0 * (end_time - start_time) / CLOCKS_PER_SEC << " ms\n";
+}
+
+TEST(FastVarIntTest, DecodeDescendingSignedPerformance) {
+  TestDecodeDescendingSignedPerformance<int64_t>();
+}
+
+TEST(FastVarIntTest, DecodeDescendingSignedPerformancePositiveValues) {
+  TestDecodeDescendingSignedPerformance<uint64_t>();
+}
+
+TEST(FastVarIntTest, DecodeDescendingSignedCheck) {
+  auto values = GenerateRandomValues<int64_t>(500);
+
+  char buffer[kMaxVarIntBufferSize];
+  for (auto value : values) {
+    SCOPED_TRACE(Format("Value: $0", value));
+    auto end = FastEncodeDescendingSignedVarInt(value, buffer);
+    Slice slice(buffer, end);
+    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarInt(&slice));
+    ASSERT_TRUE(slice.empty());
+    ASSERT_EQ(value, decoded_value);
+  }
 }
 
 }  // namespace util

@@ -223,7 +223,7 @@ bool CQLRequest::ParseRequest(
   }
 
   size_t body_size = mesg.size() - kMessageHeaderLength;
-  const uint8_t* body_data = (body_size > 0) ? &mesg[kMessageHeaderLength] : to_uchar_ptr("");
+  const uint8_t* body_data = body_size > 0 ? mesg.data() + kMessageHeaderLength : to_uchar_ptr("");
   unique_ptr<uint8_t[]> buffer;
 
   // If the message body is compressed, uncompress it.

@@ -26,9 +26,9 @@ Status SplitArgsImpl(const Slice& line, Out* out_vector) {
   out_vector->clear();
 
   // Points to the current position we are looking at.
-  const char* current_position = reinterpret_cast<const char *>(line.data());
+  const char* current_position = line.cdata();
   // Points to the end.
-  const char* ptr_end = current_position + line.size();
+  const char* ptr_end = line.cend();
 
   while (current_position != ptr_end) {
     // Skip blanks.

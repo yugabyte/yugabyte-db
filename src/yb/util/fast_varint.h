@@ -33,18 +33,20 @@ void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size);
 std::string FastEncodeSignedVarIntToStr(int64_t v);
 void FastAppendSignedVarIntToStr(int64_t, std::string* dest);
 
+// Consumes decoded part of the slice.
+Result<int64_t> FastDecodeSignedVarInt(Slice* slice);
 CHECKED_STATUS FastDecodeSignedVarInt(const uint8_t* src,
-                                      int src_size,
+                                      size_t src_size,
                                       int64_t* v,
-                                      int* decoded_size);
+                                      size_t* decoded_size);
 
 // The same as FastDecodeSignedVarInt but takes a regular char pointer.
 inline CHECKED_STATUS FastDecodeSignedVarInt(
-    const char* src, int src_size, int64_t* v, int* decoded_size) {
+    const char* src, size_t src_size, int64_t* v, size_t* decoded_size) {
   return FastDecodeSignedVarInt(yb::util::to_uchar_ptr(src), src_size, v, decoded_size);
 }
 
-CHECKED_STATUS FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, int* decoded_size);
+CHECKED_STATUS FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, size_t* decoded_size);
 
 // Encoding a "descending VarInt" is simply decoding -v as a VarInt.
 inline char* FastEncodeDescendingSignedVarInt(int64_t v, char *buf) {
@@ -60,7 +62,8 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 }
 
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
-CHECKED_STATUS FastDecodeDescendingSignedVarInt(yb::Slice *slice, int64_t *dest);
+CHECKED_STATUS FastDecodeDescendingSignedVarInt(Slice *slice, int64_t *dest);
+Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice);
 
 size_t UnsignedVarIntLength(uint64_t v);
 void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size);

@@ -14,6 +14,7 @@
 #include "yb/util/fast_varint.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
 
@@ -24,26 +25,18 @@ namespace util {
 
 namespace {
 
-struct VarIntSizeTable {
-  char varint_size[256];
-
-  VarIntSizeTable() {
-    for (int i = 0; i < 256; ++i) {
-      int n_high_bits = 0;
-      int tmp = i;
-      while (tmp & 0x80) {
-        tmp <<= 1;
-        n_high_bits++;
-      }
-      varint_size[i] = n_high_bits;
-    }
+std::array<uint8_t, 0x100> MakeUnsignedVarIntSize() {
+  std::array<uint8_t, 0x100> result;
+  for (int i = 0; i < 0x100; ++i) {
+    // clz does not work when argument is zero, so we shift value and put 1 at the end.
+    result[i] = __builtin_clz((i << 1) ^ 0x1ff) - 23 + 1;
   }
+  return result;
+}
 
-};
+auto kUnsignedVarIntSize = MakeUnsignedVarIntSize();
 
-static const VarIntSizeTable kVarIntSizeTable;
-
-inline Status NotEnoughEncodedBytes(int decoded_varint_size, int bytes_provided) {
+Status NotEnoughEncodedBytes(size_t decoded_varint_size, size_t bytes_provided) {
   return STATUS_SUBSTITUTE(
       Corruption,
       "Decoded VarInt size as $0 but only $1 bytes provided",
@@ -156,112 +149,105 @@ std::string FastEncodeSignedVarIntToStr(int64_t v) {
   return s;
 }
 
-Status FastDecodeSignedVarInt(const uint8_t* src, int src_size, int64_t* v, int* decoded_size) {
-  uint8_t buf[16];
+// Array of mask for decoding signed var int. Used to extract valuable bits from source.
+// It is faster than calculating mask on the fly.
+const uint64_t kVarIntMasks[] = {
+                        0, // unused
+                  0x3fULL,
+                0x1fffULL,
+               0xfffffULL,
+             0x7ffffffULL,
+           0x3ffffffffULL,
+         0x1ffffffffffULL,
+        0xffffffffffffULL,
+      0x7fffffffffffffULL,
+    0x3fffffffffffffffULL,
+    0xffffffffffffffffULL,
+};
+
+Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(const uint8_t* src, size_t src_size) {
+  typedef std::pair<int64_t, size_t> ResultType;
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
   }
 
-  const uint8_t* const orig_src = src;
-
-  bool negative;
-  int n_bytes;
-  uint8_t first_byte = static_cast<uint8_t>(src[0]);
-  if (first_byte & 0x80) {
-    negative = false;
-
-    n_bytes = kVarIntSizeTable.varint_size[first_byte];
-    if (src_size < n_bytes) {
-      return NotEnoughEncodedBytes(n_bytes, src_size);
-    }
-    if (n_bytes == 1) {
-      // Fast path for single-byte decoding.
-      *v = first_byte & 0x3f;
-      *decoded_size = 1;
-      return Status::OK();
-    }
-  } else {
-    negative = true;
-    first_byte = ~first_byte;
-    n_bytes = kVarIntSizeTable.varint_size[first_byte];
-    if (src_size < n_bytes) {
-      return NotEnoughEncodedBytes(n_bytes, src_size);
-    }
-    if (n_bytes == 1) {
-      // Fast path for one byte: take 6 lower bits of the inverted byte, that will give us the
-      // decoded positive value, then negate it to get the result.
-      *v = -(first_byte & 0x3f);
-      *decoded_size = 1;
-      return Status::OK();
-    }
-
-    // We know we have at least two bytes now. Copy them to the negated buffer. We'll copy the rest
-    // later as we figure out the real encoded size (could be 9 or 10 bytes, but the value of n
-    // is min(8, encoded_size) at this point).
-    buf[0] = first_byte;
-    buf[1] = ~orig_src[1];
-    src = buf;
+  uint16_t header = src[0] << 8 | (src_size > 1 ? src[1] : 0);
+  // When value is positive then negative = 0, otherwise it is 0xffffffffffffffff.
+  uint64_t negative = -static_cast<uint64_t>((header & 0x8000) == 0);
+  header ^= negative;
+  // We need to count ones, so invert the header. 0x7fff - mask when we count them.
+  // 0x20 used to put one after end of range where we are interested in them.
+  //
+  // For example:
+  // A positive number with a three-byte representation.
+  // header                    : 1110???? ????????  (binary)
+  // (~header & 0x7fff) & 0x20 : 0001???? ??1?????
+  // Number of leading zeros   : 19 (considering the __builtin_clz argument is a 32-bit integer).
+  // n_bytes                   : 3
+  //
+  // A negative number with a 10-byte representation.
+  // header                    : 01111111 11??????  (binary)
+  // (~header & 0x7fff) & 0x20 : 00000000 001?????
+  // Number of leading zeros   : 26
+  // n_bytes                   : 10
+  //
+  // Argument of __builtin_clz is always unsigned int.
+  size_t n_bytes = __builtin_clz(~header & 0x7fff | 0x20) - 16;
+  if (src_size < n_bytes) {
+    return NotEnoughEncodedBytes(n_bytes, src_size);
   }
-
-  uint64_t result = 0;
-  int i = 0;
-  if (n_bytes == 8) {
-    if (src[1] & 0x80) {
-      if (src[1] & 0x40) {
-        n_bytes = 10;
-        result = src[1] & 0x1f;
-        i = 2;
-      } else {
-        n_bytes = 9;
-        result = src[1] & 0x3f;
-        i = 2;
-      }
-      // For encoded size of 9 and 10 we have to do the length check again, because the previously
-      // we only checked that we have at least 8 bytes.
-      if (src_size < n_bytes) {
-        return NotEnoughEncodedBytes(n_bytes, src_size);
-      }
-    } else {
-      i = 1;
-    }
-  } else {
-    result = src[0] & ((1 << (7 - n_bytes)) - 1);
-    i = 1;
+  auto mask = kVarIntMasks[n_bytes];
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+  uint64_t temp = 0;
+  for (const uint8_t* i = std::max(src - 8 + n_bytes, src); i != src + n_bytes; ++i) {
+    temp = (temp << 8) | *i;
   }
+  return ResultType(((temp & mask) | (~mask & negative)) - negative, n_bytes);
+#else
+  // We are interested in range [src, src+n_bytes), so we use 64bit number that ends at src+n_bytes.
+  // Then we use mask to drop header and bytes out of range.
+  // Suppose we have negative number -a (where a > 0). Then at this point we would have ~a & mask.
+  // To get -a, we should fill it with zeros to 64bits: "| (~mask & negative)".
+  // And add one: "- negative".
+  // In case of non negative number, negative == 0.
+  // So number will be unchanged by those manipulations.
+  return ResultType(
+        ((__builtin_bswap64(*reinterpret_cast<const uint64_t*>(src - 8 + n_bytes)) & mask) |
+            (~mask & negative)) - negative,
+        n_bytes);
+#endif
+}
 
-  if (negative) {
-    // In this case src is already pointing to the local buffer. Copy negated bytes into our local
-    // buffer so we can decode them using the same logic as for positive VarInts.
-    memcpy(buf, orig_src, n_bytes);
-    for (int i = 0; i < n_bytes; ++i) {
-      buf[i] = ~buf[i];
-    }
-  }
-
-  for (; i < n_bytes; ++i) {
-    result = (result << 8) | static_cast<uint8_t>(src[i]);
-  }
-
-  int64_t signed_result = static_cast<int64_t>(result);
-  if (negative && signed_result != std::numeric_limits<int64_t>::min()) {
-    signed_result = -signed_result;
-  }
-
-  *v = signed_result;
-  *decoded_size = n_bytes;
+Status FastDecodeSignedVarInt(
+    const uint8_t* src, size_t src_size, int64_t* v, size_t* decoded_size) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(src, src_size));
+  *v = temp.first;
+  *decoded_size = temp.second;
   return Status::OK();
 }
 
-Status FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, int* decoded_size) {
-  return FastDecodeSignedVarInt(to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
+Result<int64_t> FastDecodeSignedVarInt(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+  slice->remove_prefix(temp.second);
+  return temp.first;
+}
+
+Status FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, size_t* decoded_size) {
+  return FastDecodeSignedVarInt(
+      util::to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
 }
 
 Status FastDecodeDescendingSignedVarInt(yb::Slice *slice, int64_t *dest) {
-  int decoded_size = 0;
-  RETURN_NOT_OK(FastDecodeSignedVarInt(slice->data(), slice->size(), dest, &decoded_size));
-  *dest = -*dest;
-  slice->remove_prefix(decoded_size);
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+  *dest = -temp.first;
+  slice->remove_prefix(temp.second);
   return Status::OK();
+}
+
+Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+  slice->remove_prefix(temp.second);
+  return -temp.first;
 }
 
 size_t UnsignedVarIntLength(uint64_t v) {
@@ -308,7 +294,7 @@ CHECKED_STATUS FastDecodeUnsignedVarInt(
   }
 
   uint8_t first_byte = src[0];
-  size_t n_bytes = kVarIntSizeTable.varint_size[first_byte] + 1;
+  size_t n_bytes = kUnsignedVarIntSize[first_byte];
   if (src_size < n_bytes) {
     return NotEnoughEncodedBytes(n_bytes, src_size);
   }
