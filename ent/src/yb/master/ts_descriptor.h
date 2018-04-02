@@ -41,7 +41,7 @@ class TSDescriptor : public yb::master::TSDescriptor {
   explicit TSDescriptor(const std::string& perm_id) : super(perm_id) {}
   virtual ~TSDescriptor() {}
 
-  const string& GetPlacementUuid() const {
+  std::string GetPlacementUuid() const {
     std::lock_guard<simple_spinlock> l(lock_);
     return placement_uuid_;
   }
@@ -51,7 +51,7 @@ class TSDescriptor : public yb::master::TSDescriptor {
                                   const TSRegistrationPB& registration) override;
 
  private:
-  string placement_uuid_;
+  std::string placement_uuid_;
 };
 
 } // namespace enterprise
