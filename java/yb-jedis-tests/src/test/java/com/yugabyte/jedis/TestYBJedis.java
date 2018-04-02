@@ -301,8 +301,11 @@ public class TestYBJedis extends BaseJedisTest {
   public void testNX() throws Exception {
     assertEquals("OK", jedis_client.set("k1", "v1", "NX", "EX", 5));
     assertEquals("v1", jedis_client.get("k1"));
-    Thread.sleep(10000);
-    assertEquals("OK", jedis_client.set("k1", "v1", "NX", "EX", 5));
-    assertEquals("v1", jedis_client.get("k1"));
+    Thread.sleep(1000);
+    assertNull(jedis_client.set("k1", "v1", "NX", "EX", 5));
+    Thread.sleep(9000);
+    assertNull(jedis_client.get("k1"));
+    assertEquals("OK", jedis_client.set("k1", "v2", "NX", "EX", 5));
+    assertEquals("v2", jedis_client.get("k1"));
   }
 }
