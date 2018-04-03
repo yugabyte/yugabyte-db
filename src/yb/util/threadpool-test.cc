@@ -273,7 +273,7 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   MonoDelta idle_timeout = MonoDelta::FromMilliseconds(1);
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
-      .set_min_threads(1).set_max_threads(4)
+      .set_min_threads(1).set_max_threads(4).set_max_queue_size(1)
       .set_idle_timeout(idle_timeout).Build(&thread_pool));
   // There is 1 thread to start with.
   ASSERT_EQ(1, thread_pool->num_threads_);
@@ -289,6 +289,9 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   ASSERT_EQ(4, thread_pool->num_threads_);
   // The 5th piece of work gets queued.
   ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  ASSERT_EQ(4, thread_pool->num_threads_);
+  // The 6th piece of work gets rejected.
+  ASSERT_NOK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->num_threads_);
   // Finish all work
   latch.CountDown();
@@ -317,6 +320,33 @@ TEST_F(TestThreadPool, TestMaxQueueSize) {
   latch.CountDown();
   thread_pool->Wait();
   thread_pool->Shutdown();
+}
+
+void TestQueueSizeZero(int max_threads) {
+  gscoped_ptr<ThreadPool> thread_pool;
+  ASSERT_OK(ThreadPoolBuilder("test")
+                .set_min_threads(0).set_max_threads(max_threads)
+                .set_max_queue_size(0).Build(&thread_pool));
+
+  CountDownLatch latch(1);
+  for (int i = 0; i < max_threads; i++) {
+    ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  }
+  Status s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
+  ASSERT_TRUE(s.IsServiceUnavailable()) << "Expected failure due to queue blowout:" << s.ToString();
+  latch.CountDown();
+  thread_pool->Wait();
+  thread_pool->Shutdown();
+}
+
+TEST_F(TestThreadPool, TestMaxQueueZero) {
+  TestQueueSizeZero(1);
+  TestQueueSizeZero(5);
+}
+
+
+TEST_F(TestThreadPool, TestMaxQueueZeroNoThreads) {
+  TestQueueSizeZero(0);
 }
 
 // Test that setting a promise from another thread yields
