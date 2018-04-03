@@ -26,7 +26,7 @@ namespace rpc {
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
   explicit YBConnectionContext(
-      const MemTrackerPtr& read_buffer_tracker,
+      GrowableBufferAllocator* allocator,
       const MemTrackerPtr& call_tracker);
   ~YBConnectionContext();
 

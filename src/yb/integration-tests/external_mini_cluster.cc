@@ -59,6 +59,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
@@ -75,6 +76,7 @@
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;  // NOLINT
+using namespace yb::size_literals;
 
 using std::atomic;
 using std::lock_guard;
@@ -129,6 +131,9 @@ DEFINE_string(external_daemon_heap_profile_prefix, "",
 DEFINE_bool(external_daemon_safe_shutdown, false,
             "Shutdown external daemons using SIGTERM first. Disabled by default to avoid "
             "interfering with kill-testing.");
+
+DECLARE_int64(outbound_rpc_block_size);
+DECLARE_int64(outbound_rpc_memory_limit);
 
 namespace yb {
 
@@ -212,7 +217,9 @@ Status ExternalMiniCluster::Start() {
 
   rpc::MessengerBuilder builder("minicluster-messenger");
   builder.set_num_reactors(1);
-  builder.connection_context_factory()->SetParentMemTracker(
+  builder.CreateConnectionContextFactory<rpc::YBConnectionContext>(
+      GetAtomicFlag(&FLAGS_outbound_rpc_block_size),
+      GetAtomicFlag(&FLAGS_outbound_rpc_memory_limit),
       MemTracker::FindOrCreateTracker("minicluster"));
   RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
                         "Failed to start Messenger for minicluster");

@@ -29,8 +29,6 @@ RedisServerOptions::RedisServerOptions() {
   server_type = "tserver";
   rpc_opts.default_port = RedisServer::kDefaultPort;
   rpc_opts.connection_keepalive_time_ms = FLAGS_redis_rpc_keepalive_time_ms;
-  connection_context_factory =
-      std::make_shared<rpc::ConnectionContextFactoryImpl<RedisConnectionContext>>();
 }
 
 } // namespace redisserver

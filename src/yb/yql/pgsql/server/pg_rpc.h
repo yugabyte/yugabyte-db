@@ -29,7 +29,7 @@ namespace pgserver {
 class PgConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
   PgConnectionContext(
-      const MemTrackerPtr& read_buffer_tracker,
+      rpc::GrowableBufferAllocator* allocator,
       const MemTrackerPtr& call_tracker);
   virtual ~PgConnectionContext();
 

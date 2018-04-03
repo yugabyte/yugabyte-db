@@ -13,15 +13,22 @@
 
 #include "yb/rpc/connection_context.h"
 
+#include "yb/rpc/growable_buffer.h"
+
 #include "yb/util/mem_tracker.h"
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {
 
-void ConnectionContextFactory::SetParentMemTracker(
-    const std::shared_ptr<MemTracker>& parent_mem_tracker) {
-  read_buffer_tracker_ = MemTracker::FindOrCreateTracker("Read Buffer", parent_mem_tracker);
-  call_tracker_ = MemTracker::FindOrCreateTracker("Call", parent_mem_tracker);
+ConnectionContextFactory::ConnectionContextFactory(
+    size_t block_size, size_t memory_limit,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker)
+    : allocator_(new GrowableBufferAllocator(
+          block_size, memory_limit,
+          MemTracker::FindOrCreateTracker("Read Buffer", parent_mem_tracker))),
+      parent_tracker_(parent_mem_tracker),
+      call_tracker_(MemTracker::FindOrCreateTracker("Call", parent_mem_tracker)) {
 }
 
 } // namespace rpc

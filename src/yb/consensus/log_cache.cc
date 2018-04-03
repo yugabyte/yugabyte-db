@@ -121,8 +121,6 @@ LogCache::~LogCache() {
   cache_.clear();
 
   tracker_->UnregisterFromParent();
-  // Unregister the log cache root only if all the log caches are gone (nobody else owns it).
-  parent_tracker_->UnregisterFromParentIfNoChildren();
 }
 
 void LogCache::Init(const OpId& preceding_op) {

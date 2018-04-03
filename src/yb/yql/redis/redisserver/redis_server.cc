@@ -13,26 +13,34 @@
 
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/yql/redis/redisserver/redis_rpc.h"
 #include "yb/yql/redis/redisserver/redis_service.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/size_literals.h"
+
 using yb::rpc::ServiceIf;
+using namespace yb::size_literals;
 
 DEFINE_int32(redis_svc_queue_length, 5000,
              "RPC queue length for redis service");
 TAG_FLAG(redis_svc_queue_length, advanced);
 
+DEFINE_int64(redis_rpc_block_size, 1_MB, "Redis RPC block size");
+DEFINE_int64(redis_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
+
 namespace yb {
 namespace redisserver {
 
 RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
-    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"),
+    : RpcAndWebServerBase(
+          "RedisServer", opts, "yb.redisserver",
+          std::make_shared<rpc::ConnectionContextFactoryImpl<RedisConnectionContext>>(
+              FLAGS_redis_rpc_block_size, FLAGS_redis_rpc_memory_limit,
+              MemTracker::CreateTracker("Redis", tserver ? tserver->mem_tracker() : nullptr))),
       opts_(opts),
-      tserver_(tserver),
-      mem_tracker_(
-          MemTracker::CreateTracker("Redis", tserver ? tserver->mem_tracker() : nullptr)) {
-  opts.connection_context_factory->SetParentMemTracker(mem_tracker_);
+      tserver_(tserver) {
 }
 
 Status RedisServer::Start() {

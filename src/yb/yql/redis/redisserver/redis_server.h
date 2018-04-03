@@ -44,7 +44,6 @@ class RedisServer : public server::RpcAndWebServerBase {
  private:
   RedisServerOptions opts_;
   const tserver::TabletServer* const tserver_;
-  MemTrackerPtr mem_tracker_;
 
   DISALLOW_COPY_AND_ASSIGN(RedisServer);
 };

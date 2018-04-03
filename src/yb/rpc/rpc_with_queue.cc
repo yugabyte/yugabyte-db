@@ -24,11 +24,11 @@ namespace yb {
 namespace rpc {
 
 ConnectionContextWithQueue::ConnectionContextWithQueue(
+    rpc::GrowableBufferAllocator* allocator,
     size_t max_concurrent_calls,
-    size_t max_queued_bytes,
-    const std::shared_ptr<yb::MemTracker>& mem_tracker)
-    : max_concurrent_calls_(max_concurrent_calls), max_queued_bytes_(max_queued_bytes),
-      mem_tracker_(mem_tracker) {
+    size_t max_queued_bytes)
+    : ConnectionContextBase(allocator),
+      max_concurrent_calls_(max_concurrent_calls), max_queued_bytes_(max_queued_bytes) {
 }
 
 ConnectionContextWithQueue::~ConnectionContextWithQueue() {

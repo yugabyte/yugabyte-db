@@ -477,7 +477,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   const string expected_uuid = leader->instance_id.permanent_uuid();
 
   rpc::MessengerBuilder builder("test builder");
-  builder.set_num_reactors(1).use_default_mem_tracker();
+  builder.set_num_reactors(1);
   auto messenger = ASSERT_RESULT(builder.Build());
 
   // Set a decent timeout for allowing the masters to find eachother.
@@ -2308,7 +2308,9 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
 
   // Very low memory limit to ease testing.
-  ts_flags.push_back(Format("--memory_limit_hard_bytes=$0", 16_MB));
+  ts_flags.push_back(Format("--inbound_rpc_block_size=$0", 64_KB));
+  ts_flags.push_back(Format("--outbound_rpc_block_size=$0", 64_KB));
+  ts_flags.push_back(Format("--memory_limit_hard_bytes=$0", 25_MB));
 
   // Don't let transaction memory tracking get in the way.
   ts_flags.push_back("--tablet_operation_memory_limit_mb=-1");

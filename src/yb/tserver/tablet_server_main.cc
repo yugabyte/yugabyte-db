@@ -189,8 +189,6 @@ static int TabletServerMain(int argc, char** argv) {
         (tablet_server_options->dump_info_path.empty()
              ? ""
              : tablet_server_options->dump_info_path + "-cql");
-    cql_server_options.connection_context_factory->SetParentMemTracker(
-        MemTracker::CreateTracker("CQL", server.mem_tracker()));
     boost::asio::io_service io;
     cql_server.reset(new CQLServer(cql_server_options, &io, &server));
     LOG(INFO) << "Starting CQL server...";

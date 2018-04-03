@@ -81,8 +81,7 @@ void TabletServerTestBase::SetUp() {
 
   key_schema_ = schema_.CreateKeyProjection();
 
-  client_messenger_ = ASSERT_RESULT(
-      rpc::MessengerBuilder("Client").use_default_mem_tracker().Build());
+  client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
 }
 
 void TabletServerTestBase::StartTabletServer() {

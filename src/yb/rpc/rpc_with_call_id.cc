@@ -22,10 +22,8 @@
 namespace yb {
 namespace rpc {
 
-ConnectionContextWithCallId::ConnectionContextWithCallId(
-    const std::shared_ptr<yb::MemTracker>& mem_tracker)
-    : mem_tracker_(mem_tracker) {
-  DCHECK(mem_tracker);
+ConnectionContextWithCallId::ConnectionContextWithCallId(GrowableBufferAllocator* allocator)
+    : ConnectionContextBase(allocator) {
 }
 
 void ConnectionContextWithCallId::DumpPB(const DumpRunningRpcsRequestPB& req,

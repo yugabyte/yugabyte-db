@@ -55,7 +55,6 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-DEFINE_uint64(rpc_initial_buffer_size, 4096, "Initial buffer size used for RPC calls");
 DEFINE_uint64(rpc_connection_timeout_ms, 15000, "Timeout for RPC connection operations");
 
 METRIC_DEFINE_histogram(
@@ -79,8 +78,7 @@ Connection::Connection(Reactor* reactor,
       remote_(remote),
       direction_(direction),
       last_activity_time_(CoarseMonoClock::Now()),
-      read_buffer_(
-          FLAGS_rpc_initial_buffer_size, context->BufferLimit(), context->GetMemTracker()),
+      read_buffer_(&context->Allocator(), context->BufferLimit()),
       context_(std::move(context)) {
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
@@ -398,7 +396,7 @@ Result<bool> Connection::TryProcessCalls() {
     return false;
   }
 
-  rpc::ReadBufferFull read_buffer_full(read_buffer_.size() == read_buffer_.limit());
+  rpc::ReadBufferFull read_buffer_full(read_buffer_.full());
   auto consumed = context_->ProcessCalls(
       shared_from_this(), read_buffer_.AppendedVecs(), read_buffer_full);
   if (PREDICT_FALSE(!consumed.ok())) {

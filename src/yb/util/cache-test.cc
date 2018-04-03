@@ -33,12 +33,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <memory>
+#include <vector>
+
 #include <glog/logging.h>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include <memory>
 
-#include <vector>
 #include "yb/util/cache.h"
 #include "yb/util/coding.h"
 #include "yb/util/mem_tracker.h"
@@ -93,7 +94,7 @@ class CacheTest : public YBTest,
 
     cache_.reset(NewLRUCache(GetParam(), kCacheSize, "cache_test"));
 
-    MemTracker::FindTracker("cache_test-sharded_lru_cache", &mem_tracker_);
+    mem_tracker_ = MemTracker::FindTracker("cache_test-sharded_lru_cache");
     // Since nvm cache does not have memtracker due to the use of
     // tcmalloc for this we only check for it in the DRAM case.
     if (GetParam() == DRAM_CACHE) {

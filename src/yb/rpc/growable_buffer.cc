@@ -16,27 +16,117 @@
 #include "yb/rpc/growable_buffer.h"
 
 #include <iostream>
+#include <unordered_set>
 
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/object_pool.h"
 
-using strings::Substitute;
+using namespace std::placeholders;
 
 namespace yb {
 namespace rpc {
 
-GrowableBuffer::GrowableBuffer(size_t initial, size_t limit, const MemTrackerPtr& mem_tracker)
-    : buffer_(static_cast<uint8_t*>(malloc(initial))),
-      limit_(limit),
-      capacity_(initial) {
-  if (mem_tracker) {
-    consumption_ = ScopedTrackedConsumption(mem_tracker, initial);
+class GrowableBufferAllocator::Impl {
+ public:
+  Impl(size_t block_size, size_t memory_limit,
+       const MemTrackerPtr& mem_tracker)
+      : block_size_(block_size), blocks_limit_(memory_limit / block_size),
+        used_tracker_(MemTracker::FindOrCreateTracker("Used", mem_tracker)),
+        allocated_tracker_(MemTracker::FindOrCreateTracker("Allocated", mem_tracker)),
+        pool_(50) {
   }
+
+  ~Impl() {
+    GC();
+  }
+
+  uint8_t* Allocate(bool forced) {
+    uint8_t* result = nullptr;
+    if (!pool_.pop(result)) {
+      if (allocated_blocks_.fetch_add(1, std::memory_order_acq_rel) >= blocks_limit_ && !forced) {
+        allocated_blocks_.fetch_sub(1, std::memory_order_release);
+        return nullptr;
+      }
+      allocated_tracker_->Consume(block_size_);
+      result = static_cast<uint8_t*>(malloc(block_size_));
+    }
+    used_tracker_->Consume(block_size_);
+    allocated_tracker_->Release(block_size_);
+    return result;
+  }
+
+  void Free(uint8_t* buffer) {
+    if (!buffer) {
+      return;
+    }
+    allocated_tracker_->Consume(block_size_);
+    if (!pool_.push(buffer)) {
+      allocated_tracker_->Release(block_size_);
+      allocated_blocks_.fetch_sub(1, std::memory_order_relaxed);
+      free(buffer);
+    }
+    used_tracker_->Release(block_size_);
+  }
+
+  size_t block_size() const {
+    return block_size_;
+  }
+
+ private:
+  void GC() {
+    uint8_t* buffer = nullptr;
+    while (pool_.pop(buffer)) {
+      free(buffer);
+      allocated_tracker_->Release(block_size_);
+    }
+  }
+
+  const size_t block_size_;
+  const size_t blocks_limit_;
+  std::atomic<size_t> allocated_blocks_{0};
+  MemTrackerPtr used_tracker_;
+  MemTrackerPtr allocated_tracker_;
+  boost::lockfree::stack<uint8_t*> pool_;
+};
+
+GrowableBufferAllocator::GrowableBufferAllocator(size_t block_size, size_t memory_limit,
+                                                 const MemTrackerPtr& mem_tracker)
+    : impl_(new Impl(block_size, memory_limit, mem_tracker)) {
+}
+
+GrowableBufferAllocator::~GrowableBufferAllocator() {
+}
+
+size_t GrowableBufferAllocator::block_size() const {
+  return impl_->block_size();
+}
+
+uint8_t* GrowableBufferAllocator::Allocate(bool forced) {
+  return impl_->Allocate(forced);
+}
+
+void GrowableBufferAllocator::Free(uint8_t* buffer) {
+  impl_->Free(buffer);
+}
+
+namespace {
+
+constexpr size_t kDefaultBuffersCapacity = 8;
+
+}
+
+GrowableBuffer::GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit)
+    : allocator_(*allocator),
+      block_size_(allocator->block_size()),
+      limit_(limit),
+      buffers_(kDefaultBuffersCapacity) {
+  buffers_.push_back(BufferPtr(allocator_.Allocate(true), GrowableBufferDeleter(&allocator_)));
 }
 
 void GrowableBuffer::DumpTo(std::ostream& out) const {
-  out << "size: " << size_ << ", capacity: " << capacity_ << ", limit: " << limit_;
+  out << "size: " << size_ << ", limit: " << limit_;
 }
 
 void GrowableBuffer::Consume(size_t count) {
@@ -44,132 +134,86 @@ void GrowableBuffer::Consume(size_t count) {
     LOG(DFATAL) << "Consume more bytes than contained: " << size_ << " vs " << count;
   }
   if (count) {
-    pos_ = (pos_ + count) % capacity_;
+    pos_ += count;
+    while (pos_ >= block_size_) {
+      pos_ -= block_size_;
+      auto buffer = std::move(buffers_.front());
+      buffers_.pop_front();
+      // Reuse buffer if only one left.
+      if (buffers_.size() < 2) {
+        buffers_.push_back(std::move(buffer));
+      }
+    }
     size_ -= count;
   }
 }
 
 void GrowableBuffer::Swap(GrowableBuffer* rhs) {
   DCHECK_EQ(limit_, rhs->limit_);
+  DCHECK_EQ(block_size_, rhs->block_size_);
+  DCHECK_EQ(&allocator_, &rhs->allocator_);
 
-  buffer_.swap(rhs->buffer_);
+  buffers_.swap(rhs->buffers_);
   consumption_.Swap(&rhs->consumption_);
-  std::swap(capacity_, rhs->capacity_);
   std::swap(size_, rhs->size_);
   std::swap(pos_, rhs->pos_);
 }
 
-Status GrowableBuffer::Reshape(size_t new_capacity) {
-  DCHECK_LE(new_capacity, limit_);
-  if (new_capacity != capacity_) {
-    std::unique_ptr<uint8_t, FreeDeleter> new_buffer(static_cast<uint8_t*>(malloc(new_capacity)));
-    if (!new_buffer) {
-      return STATUS_FORMAT(RuntimeError,
-                           "Failed to change buffer size from $0 to $1 bytes",
-                           capacity_, new_capacity);
-    }
+IoVecs GrowableBuffer::IoVecsForRange(size_t begin, size_t end) {
+  DCHECK_LE(begin, end);
 
-    auto vecs = AppendedVecs();
-    auto* out = new_buffer.get();
-    for (const auto& vec : vecs) {
-      memcpy(out, vec.iov_base, vec.iov_len);
-      out += vec.iov_len;
-    }
-
-    buffer_ = std::move(new_buffer);
-    pos_ = 0;
-    capacity_ = new_capacity;
-    if (consumption_) {
-      consumption_.Reset(new_capacity);
-    }
+  auto it = buffers_.begin();
+  while (begin >= block_size_) {
+    ++it;
+    begin -= block_size_;
+    end -= block_size_;
   }
-  return Status::OK();
+  IoVecs result;
+  while (end > block_size_) {
+    result.push_back({ it->get() + begin, block_size_ - begin });
+    begin = 0;
+    end -= block_size_;
+    ++it;
+  }
+  result.push_back({ it->get() + begin, end - begin });
+  return result;
 }
 
 // Returns currently read data.
 IoVecs GrowableBuffer::AppendedVecs() {
-  IoVecs result;
-  auto end = pos_ + size_;
-  if (end <= capacity_) {
-    result.push_back({ buffer_.get() + pos_, size_ });
-  } else {
-    result.push_back({ buffer_.get() + pos_, capacity_ - pos_ });
-    result.push_back({ buffer_.get(), end - capacity_ });
-  }
-  return result;
+  return IoVecsForRange(pos_, pos_ + size_);
 }
 
 Result<IoVecs> GrowableBuffer::PrepareAppend() {
-  if (size_ * 2 > capacity_) {
-    const size_t new_capacity = std::min(limit_, capacity_ * 2);
-    if (size_ == new_capacity) {
+  DCHECK_LT(pos_, block_size_);
+
+  // Check if we have too small capacity left.
+  if (pos_ + size_ * 2 >= block_size_ && capacity_left() * 2 < block_size_) {
+    if (buffers_.size() == buffers_.capacity()) {
+      buffers_.set_capacity(buffers_.capacity() * 2);
+    }
+    BufferPtr new_buffer;
+    if (buffers_.size() * block_size_ < limit_) {
+      // We need at least 2 buffers for normal functioning.
+      // Because with one buffer we could reach situation when our command limit is just several
+      // bytes.
+      new_buffer = BufferPtr(
+          allocator_.Allocate(buffers_.size() < 2), GrowableBufferDeleter(&allocator_));
+    }
+    if (new_buffer) {
+      buffers_.push_back(std::move(new_buffer));
+    } else if (capacity_left() == 0) {
       return STATUS_FORMAT(
           Busy, "Prepare read when buffer already full, size: $0, limit: $1", size_, limit_);
     }
-    RETURN_NOT_OK(Reshape(new_capacity));
   }
 
-  IoVecs result;
-  auto begin = pos_ + size_;
-  if (begin < capacity_) {
-    result.push_back({ buffer_.get() + begin, capacity_ - begin });
-    if (pos_ > 0) {
-      result.push_back({ buffer_.get(), pos_ });
-    }
-  } else {
-    begin -= capacity_;
-    result.push_back({ buffer_.get() + begin, pos_ - begin });
-  }
-
-  return result;
-}
-
-Status GrowableBuffer::EnsureFreeSpace(size_t len) {
-  const size_t expected = size_ + len;
-  if (expected > limit_ || expected < size_) {
-    return STATUS(RuntimeError,
-        Substitute(
-            "Failed to ensure capacity for $1 more bytes: $0 (current size) + $1 > $2 (limit)",
-            size_,
-            len,
-            limit_));
-  }
-  if (expected > capacity_) {
-    size_t new_capacity = capacity_ * 2;
-    while (new_capacity < expected) {
-      new_capacity *= 2;
-    }
-    return Reshape(std::min(limit_, new_capacity));
-  }
-  return Status::OK();
-}
-
-Status GrowableBuffer::AppendData(const uint8_t* data, size_t len) {
-  auto status = EnsureFreeSpace(len);
-  if (!status.ok()) {
-    return status;
-  }
-  auto begin = pos_ + size_;
-  size_ += len;
-  if (begin < capacity_) {
-    size_t size = std::min(capacity_ - begin, len);
-    memcpy(buffer_.get() + begin, data, size);
-    data += size;
-    len -= size;
-    begin = 0;
-  } else {
-    begin -= capacity_;
-  }
-  if (len) {
-    memcpy(buffer_.get() + begin, data, len);
-  }
-
-  return Status::OK();
+  return IoVecsForRange(pos_ + size_, buffers_.size() * block_size_);
 }
 
 void GrowableBuffer::DataAppended(size_t len) {
-  if (size_ + len > capacity_) {
-    LOG(DFATAL) << "Data appended over capacity: " << size_ << " + " << len << " > " << capacity_;
+  if (len > capacity_left()) {
+    LOG(DFATAL) << "Data appended over capacity: " << len << " > " << capacity_left();
   }
   size_ += len;
 }

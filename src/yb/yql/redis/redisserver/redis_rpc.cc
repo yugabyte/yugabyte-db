@@ -56,11 +56,10 @@ namespace yb {
 namespace redisserver {
 
 RedisConnectionContext::RedisConnectionContext(
-    const MemTrackerPtr& read_buffer_tracker,
+    rpc::GrowableBufferAllocator* allocator,
     const MemTrackerPtr& call_tracker)
     : ConnectionContextWithQueue(
-          FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes,
-          read_buffer_tracker),
+          allocator, FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes),
       call_mem_tracker_(call_tracker) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
@@ -79,33 +78,33 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
   }
   RedisParser& parser = *parser_;
   size_t begin_of_batch = 0;
-  size_t end_of_batch = begin_of_batch;
   // Try to parse all received commands to a single RedisInboundCall.
   for (;;) {
     auto end_of_command = VERIFY_RESULT(parser.NextCommand());
     if (end_of_command == 0) {
       break;
     }
-    end_of_batch = end_of_command;
+    end_of_batch_ = end_of_command;
     if (++commands_in_batch_ >= FLAGS_redis_max_batch) {
       std::vector<char> call_data;
-      IoVecsToBuffer(data, begin_of_batch, end_of_batch, &call_data);
+      IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
       RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
-      begin_of_batch = end_of_batch;
+      begin_of_batch = end_of_batch_;
       commands_in_batch_ = 0;
     }
   }
   // Create call for rest of commands.
   // Do not form new call if we are in a middle of command.
   // It means that soon we should receive remaining data for this command and could wait.
-  if (commands_in_batch_ > 0 && (end_of_batch == IoVecsFullSize(data) || read_buffer_full)) {
+  if (commands_in_batch_ > 0 && (end_of_batch_ == IoVecsFullSize(data) || read_buffer_full)) {
     std::vector<char> call_data;
-    IoVecsToBuffer(data, begin_of_batch, end_of_batch, &call_data);
+    IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
     RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
-    begin_of_batch = end_of_batch;
+    begin_of_batch = end_of_batch_;
     commands_in_batch_ = 0;
   }
   parser.Consume(begin_of_batch);
+  end_of_batch_ -= begin_of_batch;
   return begin_of_batch;
 }
 
@@ -164,8 +163,9 @@ Status RedisInboundCall::ParseFrom(
   client_batch_.resize(commands);
   responses_.resize(commands);
   ready_.reserve(commands);
-  for (size_t i = 0; i != commands; ++i)
+  for (size_t i = 0; i != commands; ++i) {
     ready_.emplace_back(0);
+  }
   RedisParser parser(IoVecs(1, iovec{request_data_.data(), request_data_.size()}));
   size_t end_of_command = 0;
   for (size_t i = 0; i != commands; ++i) {

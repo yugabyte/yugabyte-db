@@ -15,19 +15,30 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/size_literals.h"
 
+#include "yb/yql/pgsql/server/pg_rpc.h"
 #include "yb/yql/pgsql/server/pg_service.h"
 
 using yb::rpc::ServiceIf;
+using namespace yb::size_literals;
 
 DEFINE_int32(pgsql_service_queue_length, 1000, "RPC queue length for PostgreSQL service");
 TAG_FLAG(pgsql_service_queue_length, advanced);
+
+DEFINE_int64(pg_rpc_block_size, 1_MB, "Redis RPC block size");
+DEFINE_int64(pg_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
 
 namespace yb {
 namespace pgserver {
 
 PgServer::PgServer(const PgServerOptions& opts, const tserver::TabletServer* const tserver)
-    : RpcAndWebServerBase("PgServer", opts, "yb.pgserver"), opts_(opts), tserver_(tserver) {
+    : RpcAndWebServerBase(
+          "PgServer", opts, "yb.pgserver",
+          std::make_shared<rpc::ConnectionContextFactoryImpl<PgConnectionContext>>(
+              FLAGS_pg_rpc_block_size, FLAGS_pg_rpc_memory_limit,
+              MemTracker::CreateTracker("PG", tserver ? tserver->mem_tracker() : nullptr))),
+      opts_(opts), tserver_(tserver) {
 }
 
 Status PgServer::Start() {

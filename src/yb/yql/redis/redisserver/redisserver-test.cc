@@ -41,7 +41,7 @@ DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
 DECLARE_uint64(redis_max_read_buffer_size);
 DECLARE_uint64(redis_max_queued_bytes);
-DECLARE_uint64(rpc_initial_buffer_size);
+DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
 DECLARE_int32(redis_max_value_size);
@@ -431,7 +431,6 @@ void TestRedisService::StartServer() {
 
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
-  opts.connection_context_factory->UseDefaultParentMemTracker();
 
   server_.reset(new RedisServer(opts, nullptr /* tserver */));
   LOG(INFO) << "Starting redis server...";
@@ -633,7 +632,7 @@ class TestRedisServiceReceiveBufferOverflow : public TestRedisService {
 
     FLAGS_redis_max_concurrent_commands = 1;
     FLAGS_redis_max_batch = 1;
-    FLAGS_rpc_initial_buffer_size = 128;
+    // TODO FLAGS_rpc_initial_buffer_size = 128;
     redis_max_read_buffer_size_changer_.Init(128, &redis_max_read_buffer_size_);
     FLAGS_redis_max_queued_bytes = 0;
     TestRedisService::SetUp();
@@ -663,21 +662,17 @@ TEST_F_EX(TestRedisService, ReceiveBufferOverflow, TestRedisServiceReceiveBuffer
 
 class TestTooBigCommand : public TestRedisService {
   void SetUp() override {
-    saver_.emplace();
-
-    FLAGS_rpc_initial_buffer_size = 128;
-    redis_max_read_buffer_size_changer_.Init(128, &redis_max_read_buffer_size_);
+    FLAGS_redis_rpc_block_size = 32;
+    redis_max_read_buffer_size_changer_.Init(1024, &redis_max_read_buffer_size_);
     TestRedisService::SetUp();
   }
 
   void TearDown() override {
     TestRedisService::TearDown();
     redis_max_read_buffer_size_changer_.Reset();
-    saver_.reset();
   }
 
  private:
-  boost::optional<google::FlagSaver> saver_;
   ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
 };
 
@@ -686,7 +681,8 @@ TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
   SendCommandAndExpectResponse(
       __LINE__, Format("SET key1 $0\r\nSET key2 $0\r\n", small_key), "+OK\r\n+OK\r\n");
   std::string big_key(FLAGS_redis_max_read_buffer_size, 'X');
-  auto status = SendCommandAndGetResponse(Format("SET key $0\r\n", big_key), 1);
+  std::string key_suffix(FLAGS_redis_rpc_block_size, 'Y');
+  auto status = SendCommandAndGetResponse(Format("SET key$0 $1\r\n", key_suffix, big_key), 1);
   ASSERT_TRUE(status.IsNetworkError()) << "Status: " << status;
 }
 

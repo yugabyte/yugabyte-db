@@ -30,6 +30,8 @@ namespace rpc {
 typedef std::function<void()> IdleListener;
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
+class GrowableBufferAllocator;
+
 // ConnectionContext class is used by connection for doing protocol
 // specific logic.
 class ConnectionContext {
@@ -58,7 +60,7 @@ class ConnectionContext {
   // The reading buffer will never be larger than this limit.
   virtual size_t BufferLimit() = 0;
 
-  virtual const std::shared_ptr<MemTracker>& GetMemTracker() = 0;
+  virtual GrowableBufferAllocator& Allocator() = 0;
 
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
@@ -71,28 +73,54 @@ class ConnectionContext {
   virtual RpcConnectionPB::StateType State() = 0;
 };
 
+class ConnectionContextBase : public ConnectionContext {
+ public:
+  explicit ConnectionContextBase(GrowableBufferAllocator* allocator)
+      : allocator_(allocator) {
+  }
+
+  GrowableBufferAllocator& Allocator() override {
+    return *allocator_;
+  }
+
+ private:
+  GrowableBufferAllocator* allocator_;
+};
+
 class ConnectionContextFactory {
  public:
+  ConnectionContextFactory(
+      size_t block_size, size_t memory_limit,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker);
+
   virtual std::unique_ptr<ConnectionContext> Create() = 0;
 
-  void SetParentMemTracker(const std::shared_ptr<MemTracker>& parent_mem_tracker);
+  GrowableBufferAllocator& allocator() {
+    return *allocator_;
+  }
 
-  void UseDefaultParentMemTracker() {
-    SetParentMemTracker(nullptr);
+  const std::shared_ptr<MemTracker>& parent_tracker() {
+    return parent_tracker_;
   }
 
  protected:
   ~ConnectionContextFactory() {}
 
-  std::shared_ptr<MemTracker> read_buffer_tracker_;
+  std::unique_ptr<GrowableBufferAllocator> allocator_;
+  std::shared_ptr<MemTracker> parent_tracker_;
   std::shared_ptr<MemTracker> call_tracker_;
 };
 
 template <class ContextType>
 class ConnectionContextFactoryImpl : public ConnectionContextFactory {
  public:
+  ConnectionContextFactoryImpl(
+      size_t block_size, size_t memory_limit,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr)
+      : ConnectionContextFactory(block_size, memory_limit, parent_mem_tracker) {}
+
   std::unique_ptr<ConnectionContext> Create() override {
-    return std::make_unique<ContextType>(read_buffer_tracker_, call_tracker_);
+    return std::make_unique<ContextType>(allocator_.get(), call_tracker_);
   }
 
   virtual ~ConnectionContextFactoryImpl() {}

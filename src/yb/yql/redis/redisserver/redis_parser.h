@@ -46,7 +46,6 @@ class RedisParser {
  public:
   explicit RedisParser(const IoVecs& source)
       : source_(source), full_size_(IoVecsFullSize(source)) {
-    DCHECK_LE(source.size(), 2);
   }
 
   void SetArgs(boost::container::small_vector_base<Slice>* args) {
@@ -108,14 +107,9 @@ class RedisParser {
 
   // Returns pointer to byte with specified offset in all iovecs of source_.
   // Pointer byte is valid, the end of valid range should be determined separately if required.
-  const char* offset_to_pointer(size_t offset) const {
-      // We assume that there are at most 2 blocks of data.
-    if (offset < source_[0].iov_len) {
-      return IoVecBegin(source_[0]) + offset;
-    } else {
-      return IoVecBegin(source_[1]) + offset - source_[0].iov_len;
-    }
-  }
+  const char* offset_to_pointer(size_t offset) const;
+
+  std::pair<size_t, size_t> offset_to_idx_and_local_offset(size_t offset) const;
 
   char char_at_offset(size_t offset) const {
     return *offset_to_pointer(offset);

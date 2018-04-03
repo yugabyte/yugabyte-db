@@ -66,11 +66,14 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
+
 using std::string;
 using std::shared_ptr;
 using strings::Substitute;
@@ -81,6 +84,11 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
              "will disconnect the client. Setting flag to 0 disables this clean up.");
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
+
+DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
+DEFINE_int64(inbound_rpc_memory_limit, 2_GB, "Inbound RPC memory limit");
+DEFINE_int64(outbound_rpc_block_size, 1_MB, "Outbound RPC block size");
+DEFINE_int64(outbound_rpc_memory_limit, 2_GB, "Outbound RPC memory limit");
 
 namespace yb {
 namespace rpc {
@@ -98,7 +106,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
       num_reactors_(4),
       coarse_timer_granularity_(100ms),
       connection_context_factory_(
-          std::make_shared<rpc::ConnectionContextFactoryImpl<YBConnectionContext>>()) {
+          std::make_shared<rpc::ConnectionContextFactoryImpl<YBConnectionContext>>(
+              FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit)) {
 }
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
@@ -121,11 +130,6 @@ MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(
 MessengerBuilder &MessengerBuilder::set_metric_entity(
     const scoped_refptr<MetricEntity>& metric_entity) {
   metric_entity_ = metric_entity;
-  return *this;
-}
-
-MessengerBuilder &MessengerBuilder::use_default_mem_tracker() {
-  connection_context_factory_->UseDefaultParentMemTracker();
   return *this;
 }
 
