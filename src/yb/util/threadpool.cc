@@ -90,13 +90,13 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_min_threads(int min_threads) {
 }
 
 ThreadPoolBuilder& ThreadPoolBuilder::set_max_threads(int max_threads) {
-  CHECK_GT(max_threads, 0);
+  CHECK_GE(max_threads, 0);
   max_threads_ = max_threads;
   return *this;
 }
 
 ThreadPoolBuilder& ThreadPoolBuilder::set_max_queue_size(int max_queue_size) {
-  CHECK_GT(max_queue_size, 0);
+  CHECK_GE(max_queue_size, 0);
   max_queue_size_ = max_queue_size;
   return *this;
 }
