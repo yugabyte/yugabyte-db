@@ -174,8 +174,7 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
   *output << "  <tr><th>Id</th><th>Parent</th><th>Limit</th><th>Current Consumption</th>"
       "<th>Peak consumption</th></tr>\n";
 
-  vector<shared_ptr<MemTracker> > trackers;
-  MemTracker::ListTrackers(&trackers);
+  vector<shared_ptr<MemTracker> > trackers = MemTracker::ListTrackers();
   for (const shared_ptr<MemTracker>& tracker : trackers) {
     string parent = tracker->parent() == nullptr ? "none" : tracker->parent()->id();
     string limit_str = tracker->limit() == -1 ? "none" :

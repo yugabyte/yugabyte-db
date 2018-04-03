@@ -106,32 +106,31 @@ namespace {
 // Disambiguates between servers when in a minicluster.
 AtomicInt<int32_t> mem_tracker_id_counter(-1);
 
-shared_ptr<MemTracker> CreateMemTrackerForServer() {
+} // anonymous namespace
+
+std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   int32_t id = mem_tracker_id_counter.Increment();
   string id_str = "server";
   if (id != 0) {
     StrAppend(&id_str, " ", id);
   }
-  return shared_ptr<MemTracker>(MemTracker::CreateTracker(id_str));
+  return MemTracker::CreateTracker(id_str);
 }
 
-} // anonymous namespace
-
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
-                             const string& metric_namespace)
+                             const string& metric_namespace,
+                             rpc::ConnectionContextFactoryPtr connection_context_factory)
     : name_(std::move(name)),
-      mem_tracker_(CreateMemTrackerForServer()),
+      mem_tracker_(connection_context_factory->parent_tracker()),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
       rpc_server_(new RpcServer(name_, options.rpc_opts)),
       is_first_run_(false),
-      connection_context_factory_(options.connection_context_factory),
+      connection_context_factory_(std::move(connection_context_factory)),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
-  connection_context_factory_->SetParentMemTracker(
-      MemTracker::CreateTracker("RPC Inbound", mem_tracker_));
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
@@ -183,7 +182,7 @@ Status RpcServerBase::Init() {
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
   builder.set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
-  builder.use_connection_context_factory(connection_context_factory_);
+  builder.UseConnectionContextFactory(connection_context_factory_);
   RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_));
@@ -323,9 +322,11 @@ void RpcServerBase::Shutdown() {
   rpc_server_->Shutdown();
 }
 
-RpcAndWebServerBase::RpcAndWebServerBase(string name, const ServerBaseOptions& options,
-                                         const string& metric_namespace)
-    : RpcServerBase(name, options, metric_namespace),
+RpcAndWebServerBase::RpcAndWebServerBase(
+    std::string name, const ServerBaseOptions& options,
+    const std::string& metric_namespace,
+    rpc::ConnectionContextFactoryPtr connection_context_factory)
+    : RpcServerBase(name, options, metric_namespace, std::move(connection_context_factory)),
       web_server_(new Webserver(options.webserver_opts, name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;

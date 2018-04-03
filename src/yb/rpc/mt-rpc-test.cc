@@ -179,7 +179,6 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   MessengerBuilder bld("messenger1");
   bld.set_num_reactors(kMaxConcurrency);
   bld.set_metric_entity(metric_entity());
-  bld.use_default_mem_tracker();
   auto server_messenger = ASSERT_RESULT(bld.Build());
 
   Endpoint server_addr;

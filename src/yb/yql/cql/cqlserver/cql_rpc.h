@@ -34,7 +34,9 @@ class CQLServiceImpl;
 class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
                              public rpc::BinaryCallParserListener {
  public:
-  CQLConnectionContext(const MemTrackerPtr& read_buffer_tracker, const MemTrackerPtr& call_tracker);
+  CQLConnectionContext(
+      rpc::GrowableBufferAllocator* allocator,
+      const MemTrackerPtr& call_tracker);
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
               rpc::RpcConnectionPB* resp) override;
 

@@ -18,7 +18,7 @@
 #include <iosfwd>
 #include <memory>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include <boost/circular_buffer.hpp>
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status.h"
@@ -31,6 +31,41 @@ class MemTracker;
 
 namespace rpc {
 
+// Allocates blocks for GrowableBuffer, shared between multiple GrowableBuffers.
+// Each allocated block has fixed size - block_size.
+// blocks_limits - max number of blocks that could be allocated in non forced mode.
+class GrowableBufferAllocator {
+ public:
+  GrowableBufferAllocator(size_t block_size, size_t blocks_limit,
+                          const MemTrackerPtr& mem_tracker);
+  ~GrowableBufferAllocator();
+
+  size_t block_size() const;
+
+  // forced - ignore blocks_limit, used when growable buffer does not have at least 2 allocated
+  // blocks.
+  uint8_t* Allocate(bool forced);
+  void Free(uint8_t* buffer);
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+// Used in conjuction with std::unique_ptr to return buffer to allocator.
+class GrowableBufferDeleter {
+ public:
+  GrowableBufferDeleter() : allocator_(nullptr) {}
+  explicit GrowableBufferDeleter(GrowableBufferAllocator* allocator) : allocator_(allocator) {}
+
+  void operator()(uint8_t* buffer) const {
+    allocator_->Free(buffer);
+  }
+
+ private:
+  GrowableBufferAllocator* allocator_;
+};
+
 // Convenience circular buffer for receiving bytes.
 // Major features:
 //   Limit allocated bytes.
@@ -38,13 +73,14 @@ namespace rpc {
 //   Consume read data.
 class GrowableBuffer {
  public:
-  explicit GrowableBuffer(size_t initial, size_t limit,
-                          const MemTrackerPtr& mem_tracker);
+  explicit GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit);
 
   inline bool empty() const { return size_ == 0; }
   inline size_t size() const { return size_; }
-  inline size_t capacity_left() const { return capacity_ - size_; }
+  inline size_t capacity_left() const { return buffers_.size() * block_size_ - size_ - pos_; }
   inline size_t limit() const { return limit_; }
+
+  bool full() const { return pos_ + size_ >= limit_; }
 
   void Swap(GrowableBuffer* rhs);
   // Reset buffer size to zero. Like with std::vector Clean does not deallocate any memory.
@@ -71,29 +107,22 @@ class GrowableBuffer {
   // Mark next `len` bytes as used.
   void DataAppended(size_t len);
 
-  // Ensures that there are at least `len` of unused bytes.
-  CHECKED_STATUS EnsureFreeSpace(size_t len);
-
-  // Copies the given data to the end of the buffer, resizing it up to the configured limit.
-  CHECKED_STATUS AppendData(const uint8_t* data, size_t len);
-  inline CHECKED_STATUS AppendData(const faststring& input) {
-    return AppendData(input.data(), input.size());
-  }
-  inline CHECKED_STATUS AppendData(const Slice& slice) {
-    return AppendData(slice.data(), slice.size());
-  }
  private:
-  CHECKED_STATUS Reshape(size_t new_capacity);
+  IoVecs IoVecsForRange(size_t begin, size_t end);
 
-  // Contained data
-  std::unique_ptr<uint8_t, FreeDeleter> buffer_;
+  typedef std::unique_ptr<uint8_t, GrowableBufferDeleter> BufferPtr;
+
+  GrowableBufferAllocator& allocator_;
+
+  const size_t block_size_;
+
   ScopedTrackedConsumption consumption_;
 
   // Max capacity for this buffer
   const size_t limit_;
 
-  // Current capacity, i.e. allocated bytes
-  size_t capacity_;
+  // Contained data
+  boost::circular_buffer<BufferPtr> buffers_;
 
   // Current start position of used bytes.
   size_t pos_ = 0;

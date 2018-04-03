@@ -269,7 +269,7 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // Sanitized tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.
-  const int64_t kMinRejections = RegularBuildVsSanitizers(100, 20);
+  const int64_t kMinRejections = RegularBuildVsSanitizers(40, 15);
 
   const MonoDelta kMaxWaitTime = MonoDelta::FromSeconds(60);
 

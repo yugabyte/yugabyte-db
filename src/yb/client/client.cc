@@ -137,6 +137,9 @@ DEFINE_test_flag(int32, yb_num_total_tablets, 0,
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int64(outbound_rpc_block_size);
+DECLARE_int64(outbound_rpc_memory_limit);
+
 namespace yb {
 namespace client {
 
@@ -316,7 +319,8 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   MessengerBuilder builder(data_->client_name_);
   builder.set_num_reactors(data_->num_reactors_);
   builder.set_metric_entity(data_->metric_entity_);
-  builder.connection_context_factory()->SetParentMemTracker(
+  builder.CreateConnectionContextFactory<rpc::YBConnectionContext>(
+      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker("RPC Outbound", data_->parent_mem_tracker_));
   RETURN_NOT_OK(builder.Build().MoveTo(&c->data_->messenger_));
 

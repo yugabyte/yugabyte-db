@@ -119,7 +119,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
                      .Build(&client_));
 
     messenger_ = ASSERT_RESULT(
-        MessengerBuilder("stress-test-msgr").set_num_reactors(1).use_default_mem_tracker().Build());
+        MessengerBuilder("stress-test-msgr").set_num_reactors(1).Build());
     master_proxy_.reset(new MasterServiceProxy(messenger_,
                                                cluster_->mini_master()->bound_rpc_addr()));
     ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), messenger_, &ts_map_));

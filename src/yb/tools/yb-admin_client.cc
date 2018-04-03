@@ -128,7 +128,7 @@ Status ClusterAdminClient::Init() {
     .default_admin_operation_timeout(timeout_)
     .Build(&yb_client_));
 
-  messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").use_default_mem_tracker().Build());
+  messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
 
   // Find the leader master's socket info to set up the proxy
   RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock_));

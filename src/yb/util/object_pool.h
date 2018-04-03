@@ -190,9 +190,10 @@ template <class T>
 class ThreadSafeObjectPool {
  public:
   typedef std::function<T*()> Factory;
+  typedef std::function<void(T*)> Deleter;
 
-  explicit ThreadSafeObjectPool(Factory factory)
-      : factory_(std::move(factory)) {
+  explicit ThreadSafeObjectPool(Factory factory, Deleter deleter = std::default_delete<T>())
+      : factory_(std::move(factory)), deleter_(std::move(deleter)) {
     auto num_cpus = base::NumCPUs();
     pools_.reserve(num_cpus);
     while (pools_.size() != num_cpus) {
@@ -204,7 +205,7 @@ class ThreadSafeObjectPool {
     T* object;
     for (auto& pool : pools_) {
       while (pool.pop(object)) {
-        delete object;
+        deleter_(object);
       }
     }
   }
@@ -221,7 +222,7 @@ class ThreadSafeObjectPool {
   void Release(T* value) {
     auto& pool = pools_[GetCPU()];
     if (!pool.bounded_push(value)) {
-      delete value;
+      deleter_(value);
     }
   }
 
@@ -240,6 +241,7 @@ class ThreadSafeObjectPool {
   typedef boost::lockfree::stack<T*> Pool;
 
   Factory factory_;
+  Deleter deleter_;
   boost::container::stable_vector<Pool> pools_;
 };
 

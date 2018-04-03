@@ -42,6 +42,8 @@
 DEFINE_bool(checksum_cache_blocks, false, "Should the checksum scanners cache the read blocks");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_int64(tablets_batch_size_max, 100, "How many tablets to get from the Master per RPC");
+DECLARE_int64(outbound_rpc_block_size);
+DECLARE_int64(outbound_rpc_memory_limit);
 
 namespace yb {
 namespace tools {
@@ -192,7 +194,8 @@ Status RemoteYsckMaster::Connect() const {
 
 Status RemoteYsckMaster::Build(const Endpoint& address, shared_ptr<YsckMaster>* master) {
   MessengerBuilder builder(kMessengerName);
-  builder.connection_context_factory()->SetParentMemTracker(
+  builder.CreateConnectionContextFactory<rpc::YBConnectionContext>(
+      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
       MemTracker::CreateTracker("RemoteYsckMaster"));
   auto messenger = builder.Build();
   RETURN_NOT_OK(messenger);

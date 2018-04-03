@@ -137,7 +137,7 @@ class MasterTest : public YBTest {
     ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
     // Create a client proxy to it.
-    client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").use_default_mem_tracker().Build());
+    client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
     proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
 
     // Create the default test namespace.
