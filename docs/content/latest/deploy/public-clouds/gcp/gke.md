@@ -4,7 +4,9 @@
 
 **NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
 
-- After installing Cloud SDK, install the kubectl command-line tool by running the following command:
+- Install `kubectl`
+
+After installing Cloud SDK, install the kubectl command-line tool by running the following command:
 ```{.sh .copy .separator-dollar}
 $ gcloud components install kubectl
 ```
@@ -22,13 +24,16 @@ gcloud config set compute/zone us-west1-b
 ```
 
 
-## 1. Create a cluster
+## 1. Create a GKE cluster
 
 Create a Kubernetes cluster if you have not already done so by running the following command.
 
 ```{.sh .copy .separator-dollar}
 $ gcloud container clusters create yugabyte
 ```
+
+
+## 2. Create a YugaByte DB cluster
 
 Create a YugaByte DB cluster by running the following.
 
@@ -41,6 +46,8 @@ statefulset "yb-master" created
 service "yb-tservers" created
 statefulset "yb-tserver" created
 ```
+
+## 3. Check the cluster
 
 You should see the following pods running.
 
@@ -57,6 +64,8 @@ yb-tserver-1   1/1       Running   0          3m
 yb-tserver-2   1/1       Running   0          3m
 ```
 
+You can view the persistent volumes.
+
 ```{.sh .copy .separator-dollar}
 $ kubectl get persistentvolumes
 ```
@@ -70,21 +79,41 @@ pvc-f366a4af-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete      
 pvc-f36d2892-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete           Bound     default/datadir-yb-tserver-2   standard                 5m
 ```
 
+You can view all the services by running the following command.
+
 ```{.sh .copy .separator-dollar}
 $ kubectl get services
 ```
 ```sh
 NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                               AGE
-kubernetes    ClusterIP   10.7.240.1   <none>        443/TCP                               23m
+kubernetes    ClusterIP   XX.XX.XX.X   <none>        443/TCP                               23m
 yb-masters    ClusterIP   None         <none>        7000/TCP,7100/TCP                     17m
 yb-tservers   ClusterIP   None         <none>        9000/TCP,9100/TCP,9042/TCP,6379/TCP   14m
 ```
 
+## 4. Connect to the cluster
 
-## 2. Destroy cluster (optional)
+You can connect to the Cassandra API by running the following.
 
 ```{.sh .copy .separator-dollar}
-$ kubectl delete -f yugabyte-statefulset.yaml
+$ kubectl exec -it yb-tserver-0 bin/cqlsh
+```
+```
+Connected to local cluster at 127.0.0.1:9042.
+[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+cqlsh> DESCRIBE KEYSPACES;
+
+system_schema  system_auth  system
+```
+
+
+## 5. Destroy cluster (optional)
+
+Destroy the YugaByte DB cluster we created above by running the following.
+
+```{.sh .copy .separator-dollar}
+$ kubectl delete -f https://downloads.yugabyte.com/kubernetes/yugabyte-statefulset.yaml
 ```
 ```sh
 service "yb-masters" deleted
@@ -98,4 +127,12 @@ To destroy the persistent volume claims (**you will lose all the data if you do 
 ```{.sh .copy}
 kubectl delete pvc -l app=yb-master
 kubectl delete pvc -l app=yb-tserver
+```
+
+## 6. Destroy the GKE cluster (optional)
+
+To destroy the machines we created for the gcloud cluster, run the following.
+
+```{.sh .copy .separator-dollar}
+$ gcloud container clusters delete yugabyte
 ```

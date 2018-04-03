@@ -14,7 +14,7 @@ menu:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#gke">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="icon-docker" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>
   </li>
