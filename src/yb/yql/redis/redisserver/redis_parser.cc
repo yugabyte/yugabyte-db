@@ -752,8 +752,6 @@ void RedisParser::Consume(size_t count) {
 
 // New data arrived, so update the end of available bytes.
 void RedisParser::Update(const IoVecs& data) {
-  DCHECK_LE(data.size(), 2);
-
   source_ = data;
   full_size_ = IoVecsFullSize(data);
   DCHECK_LE(pos_, full_size_);
@@ -884,23 +882,23 @@ CHECKED_STATUS RedisParser::BulkArgumentBody() {
 }
 
 CHECKED_STATUS RedisParser::FindEndOfLine() {
-  size_t new_line_offset;
-  if (pos_ < source_[0].iov_len) {
-    size_t extra_offset = pos_;
-    auto begin = offset_to_pointer(pos_);
-    auto new_line = static_cast<const char*>(memchr(begin, '\n', IoVecEnd(source_[0]) - begin));
-    if (new_line == nullptr && source_.size() > 1) {
-      extra_offset = source_[0].iov_len;
-      begin = IoVecBegin(source_[1]);
-      new_line = static_cast<const char*>(memchr(begin, '\n', source_[1].iov_len));
+  auto p = offset_to_idx_and_local_offset(pos_);
+
+  size_t new_line_offset = pos_;
+  while (p.first != source_.size()) {
+    auto begin = IoVecBegin(source_[p.first]) + p.second;
+    auto new_line = static_cast<const char*>(memchr(
+        begin, '\n', IoVecEnd(source_[p.first]) - begin));
+    if (new_line) {
+      new_line_offset += new_line - begin;
+      break;
     }
-    new_line_offset = new_line ? extra_offset + (new_line - begin) : kNoToken;
-  } else {
-    auto begin = offset_to_pointer(pos_);
-    auto new_line = static_cast<const char*>(memchr(begin, '\n', IoVecEnd(source_[1]) - begin));
-    new_line_offset = new_line ? pos_ + (new_line - begin) : kNoToken;
+    new_line_offset += source_[p.first].iov_len - p.second;
+    ++p.first;
+    p.second = 0;
   }
-  incomplete_ = new_line_offset == kNoToken;
+
+  incomplete_ = p.first == source_.size();
   if (!incomplete_) {
     if (new_line_offset == token_begin_) {
       return STATUS(NetworkError, "End of line at the beginning of a Redis command");
@@ -911,6 +909,24 @@ CHECKED_STATUS RedisParser::FindEndOfLine() {
     pos_ = ++new_line_offset;
   }
   return Status::OK();
+}
+
+std::pair<size_t, size_t> RedisParser::offset_to_idx_and_local_offset(size_t offset) const {
+  // We assume that there are at most 2 blocks of data.
+  if (offset < source_[0].iov_len) {
+    return std::pair<size_t, size_t>(0, offset);
+  }
+
+  offset -= source_[0].iov_len;
+  size_t idx = offset / source_[1].iov_len;
+  offset -= idx * source_[1].iov_len;
+
+  return std::pair<size_t, size_t>(idx + 1, offset);
+}
+
+const char* RedisParser::offset_to_pointer(size_t offset) const {
+  auto p = offset_to_idx_and_local_offset(offset);
+  return IoVecBegin(source_[p.first]) + p.second;
 }
 
 // Parses number with specified bounds.

@@ -89,9 +89,7 @@ ServerBaseOptions::ServerBaseOptions()
       placement_cloud(FLAGS_placement_cloud),
       placement_region(FLAGS_placement_region),
       placement_zone(FLAGS_placement_zone),
-      placement_uuid(FLAGS_placement_uuid),
-      connection_context_factory(
-          std::make_shared<rpc::ConnectionContextFactoryImpl<rpc::YBConnectionContext>>()) {}
+      placement_uuid(FLAGS_placement_uuid) {}
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
     : env(options.env),
@@ -106,8 +104,7 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       placement_region(options.placement_region),
       placement_zone(options.placement_zone),
       placement_uuid(options.placement_uuid),
-      master_addresses_flag(options.master_addresses_flag),
-      connection_context_factory(options.connection_context_factory) {
+      master_addresses_flag(options.master_addresses_flag) {
   SetMasterAddressesNoValidation(options.GetMasterAddresses());
 }
 

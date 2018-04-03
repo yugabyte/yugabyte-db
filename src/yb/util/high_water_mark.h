@@ -50,12 +50,12 @@ class HighWaterMark {
 
   // Return the current value.
   int64_t current_value() const {
-    return current_value_.Load(kMemOrderNoBarrier);
+    return current_value_.load(std::memory_order_acquire);
   }
 
   // Return the max value.
   int64_t max_value() const {
-    return max_value_.Load(kMemOrderNoBarrier);
+    return max_value_.load(std::memory_order_acquire);
   }
 
   // If current value + 'delta' is <= 'max', increment current value
@@ -67,9 +67,8 @@ class HighWaterMark {
       if (new_val > max) {
         return false;
       }
-      if (PREDICT_TRUE(current_value_.CompareAndSet(old_val,
-                                                    new_val,
-                                                    kMemOrderNoBarrier))) {
+      if (PREDICT_TRUE(current_value_.compare_exchange_weak(
+          old_val, new_val, std::memory_order_acq_rel))) {
         UpdateMax(new_val);
         return true;
       }
@@ -77,21 +76,26 @@ class HighWaterMark {
   }
 
   void IncrementBy(int64_t amount) {
-    UpdateMax(current_value_.IncrementBy(amount, kMemOrderNoBarrier));
+    UpdateMax(current_value_.fetch_add(amount, std::memory_order_acq_rel) + amount);
   }
 
   void set_value(int64_t v) {
-    current_value_.Store(v, kMemOrderNoBarrier);
+    current_value_.store(v, std::memory_order_release);
     UpdateMax(v);
   }
 
  private:
   void UpdateMax(int64_t value) {
-    max_value_.StoreMax(value, kMemOrderNoBarrier);
+    int64_t old_value = max_value_.load(std::memory_order_acquire);
+    while (old_value < value) {
+      if (max_value_.compare_exchange_weak(old_value, value, std::memory_order_acq_rel)) {
+        break;
+      }
+    }
   }
 
-  AtomicInt<int64_t> current_value_;
-  AtomicInt<int64_t> max_value_;
+  std::atomic<int64_t> current_value_;
+  std::atomic<int64_t> max_value_;
 };
 
 } // namespace yb

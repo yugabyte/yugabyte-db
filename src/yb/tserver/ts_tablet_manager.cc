@@ -1489,9 +1489,9 @@ void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
 
   // Remove the child tracker if present.
   if (ts_manager != nullptr) {
-    shared_ptr<MemTracker> tracker;
-    if (MemTracker::FindTracker(Substitute("tablet-$0", meta->tablet_id()), &tracker,
-                                ts_manager->server()->mem_tracker())) {
+    auto tracker = MemTracker::FindTracker(
+        Format("tablet-$0", meta->tablet_id()), ts_manager->server()->mem_tracker());
+    if (tracker) {
       tracker->UnregisterFromParent();
     }
   }

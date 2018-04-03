@@ -389,7 +389,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void DoApplyWithoutFlushTest(int sleep_micros);
 
   Result<std::shared_ptr<rpc::Messenger>> CreateMessenger(const std::string& name) {
-    return rpc::MessengerBuilder(name).use_default_mem_tracker().Build();
+    return rpc::MessengerBuilder(name).Build();
   }
 
   enum WhichServerToKill {

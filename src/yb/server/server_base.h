@@ -95,7 +95,8 @@ class RpcServerBase {
  protected:
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
-                const std::string& metrics_namespace);
+                const std::string& metrics_namespace,
+                rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
@@ -160,8 +161,10 @@ class RpcAndWebServerBase : public RpcServerBase {
   CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const;
 
  protected:
-  RpcAndWebServerBase(std::string name, const ServerBaseOptions& options,
-             const std::string& metrics_namespace);
+  RpcAndWebServerBase(
+      std::string name, const ServerBaseOptions& options,
+      const std::string& metrics_namespace,
+      rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual ~RpcAndWebServerBase();
 
   CHECKED_STATUS Init();
@@ -178,6 +181,9 @@ class RpcAndWebServerBase : public RpcServerBase {
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
 };
 
+std::shared_ptr<MemTracker> CreateMemTrackerForServer();
+
 } // namespace server
 } // namespace yb
+
 #endif /* YB_SERVER_SERVER_BASE_H */

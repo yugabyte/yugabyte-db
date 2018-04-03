@@ -62,19 +62,14 @@
 
 namespace yb {
 
+class MemTracker;
 class Socket;
 class ThreadPool;
 
 namespace rpc {
 
-class Acceptor;
-class DumpRunningRpcsRequestPB;
-class DumpRunningRpcsResponsePB;
-class InboundCall;
-class Messenger;
-class OutboundCall;
-class Reactor;
-class RpcService;
+template <class ContextType>
+class ConnectionContextFactoryImpl;
 
 // Used to construct a Messenger.
 class MessengerBuilder {
@@ -96,12 +91,20 @@ class MessengerBuilder {
   MessengerBuilder &set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
   // Uses the given connection type to handle the incoming connections.
-  MessengerBuilder &use_connection_context_factory(const ConnectionContextFactoryPtr& factory) {
+  MessengerBuilder &UseConnectionContextFactory(const ConnectionContextFactoryPtr& factory) {
     connection_context_factory_ = factory;
     return *this;
   }
 
-  MessengerBuilder &use_default_mem_tracker();
+  template <class ContextType>
+  MessengerBuilder &CreateConnectionContextFactory(
+      size_t block_size, size_t memory_limit,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
+    connection_context_factory_ =
+        std::make_shared<ConnectionContextFactoryImpl<ContextType>>(
+            block_size, memory_limit, parent_mem_tracker);
+    return *this;
+  }
 
   Result<std::shared_ptr<Messenger>> Build();
 

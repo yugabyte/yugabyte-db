@@ -62,11 +62,11 @@ using pgsql::PgEnv;
 // Class PgConnectionContext.
 //--------------------------------------------------------------------------------------------------
 PgConnectionContext::PgConnectionContext(
-    const MemTrackerPtr& read_buffer_tracker,
+    rpc::GrowableBufferAllocator* allocator,
     const MemTrackerPtr& call_tracker)
-  : ConnectionContextWithQueue(FLAGS_pgsql_max_concurrent_commands,
-                               FLAGS_pgsql_max_queued_bytes,
-                               read_buffer_tracker) {
+  : ConnectionContextWithQueue(allocator,
+                               FLAGS_pgsql_max_concurrent_commands,
+                               FLAGS_pgsql_max_queued_bytes) {
 }
 
 PgConnectionContext::~PgConnectionContext() {

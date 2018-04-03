@@ -225,7 +225,8 @@ TEST(MemTrackerTest, FindFunctionsTakeOwnership) {
   shared_ptr<MemTracker> ref;
   {
     shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
-    ASSERT_TRUE(MemTracker::FindTracker(m->id(), &ref));
+    ref = MemTracker::FindTracker(m->id());
+    ASSERT_TRUE(ref != nullptr);
   }
   LOG(INFO) << ref->ToString();
   ref.reset();
@@ -240,7 +241,7 @@ TEST(MemTrackerTest, FindFunctionsTakeOwnership) {
   vector<shared_ptr<MemTracker> > refs;
   {
     shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
-    MemTracker::ListTrackers(&refs);
+    refs = MemTracker::ListTrackers();
   }
   for (const shared_ptr<MemTracker>& r : refs) {
     LOG(INFO) << r->ToString();
@@ -326,31 +327,23 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
 TEST(MemTrackerTest, UnregisterFromParent) {
   shared_ptr<MemTracker> p = MemTracker::CreateTracker("parent");
   shared_ptr<MemTracker> c = MemTracker::CreateTracker("child", p);
-  vector<shared_ptr<MemTracker> > all;
 
   // Three trackers: root, parent, and child.
-  MemTracker::ListTrackers(&all);
-  ASSERT_EQ(3, all.size());
+  auto all = MemTracker::ListTrackers();
+  ASSERT_EQ(3, all.size()) << "All: " << yb::ToString(all);
 
-  c->UnregisterFromParent();
+  c.reset();
+  all.clear();
 
   // Now only two because the child cannot be found from the root, though it is
   // still alive.
-  MemTracker::ListTrackers(&all);
+  all = MemTracker::ListTrackers();
   ASSERT_EQ(2, all.size());
-  shared_ptr<MemTracker> not_found;
-  ASSERT_FALSE(MemTracker::FindTracker("child", &not_found, p));
+  ASSERT_TRUE(MemTracker::FindTracker("child", p) == nullptr);
 
   // We can also recreate the child with the same name without colliding
   // with the old one.
   shared_ptr<MemTracker> c2 = MemTracker::CreateTracker("child", p);
-
-  // We should still able to walk up to the root from the unregistered child
-  // without crashing.
-  LOG(INFO) << c->ToString();
-
-  // And this should no-op.
-  c->UnregisterFromParent();
 }
 
 } // namespace yb

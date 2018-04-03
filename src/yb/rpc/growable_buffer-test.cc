@@ -22,21 +22,26 @@
 namespace yb {
 namespace rpc {
 
+constexpr size_t kBlockSize = 0x100;
+constexpr size_t kSizeLimit = 0x1000;
+constexpr size_t kMemoryLimit = 0x10000;
+
 class GrowableBufferTest : public YBTest {
+ protected:
+  GrowableBufferAllocator allocator_{kBlockSize, kMemoryLimit, MemTrackerPtr()};
 };
 
-const size_t kInitialSize = 0x100;
-const size_t kSizeLimit = 0x1000;
-
 TEST_F(GrowableBufferTest, TestLimit) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
+  GrowableBuffer buffer(&allocator_, kSizeLimit);
 
-  ASSERT_EQ(buffer.capacity_left(), kInitialSize);
-  unsigned int seed = SeedRandom();
-  while (buffer.size() != buffer.limit()) {
-    size_t extra_space = rand_r(&seed) % (kSizeLimit * 2);
-    auto status = buffer.EnsureFreeSpace(extra_space);
-    ASSERT_EQ(status.ok(), buffer.size() + extra_space <= buffer.limit());
+  ASSERT_EQ(buffer.capacity_left(), kBlockSize);
+  for (;;) {
+    auto result = buffer.PrepareAppend();
+    ASSERT_EQ(result.ok(), buffer.size() < buffer.limit())
+        << "Status: " << (result.ok() ? Status::OK() : result.status());
+    if (!result.ok()) {
+      break;
+    }
     buffer.DataAppended(1);
   }
 
@@ -44,7 +49,7 @@ TEST_F(GrowableBufferTest, TestLimit) {
 }
 
 TEST_F(GrowableBufferTest, TestPrepareRead) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
+  GrowableBuffer buffer(&allocator_, kSizeLimit);
 
   unsigned int seed = SeedRandom();
 
@@ -59,7 +64,7 @@ TEST_F(GrowableBufferTest, TestPrepareRead) {
 }
 
 TEST_F(GrowableBufferTest, TestConsume) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
+  GrowableBuffer buffer(&allocator_, kSizeLimit);
 
   int counter = 0;
 
@@ -68,7 +73,7 @@ TEST_F(GrowableBufferTest, TestConsume) {
 
   for (auto i = 10000; i--;) {
     size_t step = 1 + rand_r(&seed) % (buffer.limit() - buffer.size());
-    ASSERT_OK(buffer.EnsureFreeSpace(step));
+    size_t appended = 0;
     {
       auto iov = ASSERT_RESULT(buffer.PrepareAppend());
       auto idx = 0;
@@ -78,12 +83,16 @@ TEST_F(GrowableBufferTest, TestConsume) {
         if (j - start >= iov[idx].iov_len) {
           start += iov[idx].iov_len;
           ++idx;
+          if (idx >= iov.size()) {
+            break;
+          }
           data = static_cast<uint8_t*>(iov[idx].iov_base);
         }
         data[j - start] = static_cast<uint8_t>(counter++);
+        ++appended;
       }
     }
-    buffer.DataAppended(step);
+    buffer.DataAppended(appended);
     ASSERT_EQ(consumed + buffer.size(), counter);
     size_t consume_size = 1 + rand_r(&seed) % buffer.size();
     buffer.Consume(consume_size);

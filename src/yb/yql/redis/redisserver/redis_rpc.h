@@ -35,7 +35,7 @@ class RedisParser;
 class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
   RedisConnectionContext(
-      const MemTrackerPtr& read_buffer_tracker,
+      rpc::GrowableBufferAllocator* allocator,
       const MemTrackerPtr& call_tracker);
   ~RedisConnectionContext();
 
@@ -58,6 +58,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   std::unique_ptr<RedisParser> parser_;
   size_t commands_in_batch_ = 0;
+  size_t end_of_batch_ = 0;
 
   MemTrackerPtr call_mem_tracker_;
 };

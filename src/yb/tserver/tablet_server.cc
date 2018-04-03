@@ -53,6 +53,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 
 using std::make_shared;
@@ -60,6 +61,8 @@ using std::shared_ptr;
 using std::vector;
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
+
+using namespace yb::size_literals;
 
 DEFINE_int32(tablet_server_svc_num_threads, -1,
              "Number of RPC worker threads for the TS service. If -1, it is auto configured.");
@@ -99,11 +102,18 @@ DEFINE_bool(enable_direct_local_tablet_server_call,
             "Enable direct call to local tablet server");
 TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
 
+DECLARE_int64(inbound_rpc_block_size);
+DECLARE_int64(inbound_rpc_memory_limit);
+
 namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-    : RpcAndWebServerBase("TabletServer", opts, "yb.tabletserver"),
+    : RpcAndWebServerBase(
+          "TabletServer", opts, "yb.tabletserver",
+          std::make_shared<rpc::ConnectionContextFactoryImpl<rpc::YBConnectionContext>>(
+              FLAGS_inbound_rpc_block_size, FLAGS_inbound_rpc_memory_limit,
+              server::CreateMemTrackerForServer())),
       initted_(false),
       fail_heartbeats_for_tests_(false),
       opts_(opts),

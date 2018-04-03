@@ -72,7 +72,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
   virtual void SetUpRemoteBootstrapClient() {
     messenger_ = ASSERT_RESULT(
-        rpc::MessengerBuilder(CURRENT_TEST_NAME()).use_default_mem_tracker().Build());
+        rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
     client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
                                                  fs_manager_.get(),
                                                  messenger_,

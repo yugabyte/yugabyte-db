@@ -91,9 +91,9 @@ using google::protobuf::MessageLite;
 using google::protobuf::io::CodedOutputStream;
 
 YBConnectionContext::YBConnectionContext(
-    const MemTrackerPtr& read_buffer_tracker,
+    GrowableBufferAllocator* allocator,
     const MemTrackerPtr& call_tracker)
-    : ConnectionContextWithCallId(read_buffer_tracker),
+    : ConnectionContextWithCallId(allocator),
       parser_(kMsgLengthPrefixLength, 0 /* size_offset */, FLAGS_rpc_max_message_size,
               IncludeHeader::kFalse, this),
       call_tracker_(call_tracker) {}

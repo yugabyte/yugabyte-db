@@ -39,12 +39,15 @@ class io_service;
 namespace yb {
 namespace rpc {
 
+class Acceptor;
 class AcceptorPool;
 class ConnectionContext;
+class GrowableBufferAllocator;
 class Messenger;
 class ReactorTask;
 class RpcContext;
 class RpcController;
+class RpcService;
 class Rpcs;
 class Scheduler;
 

@@ -15,11 +15,13 @@
 #include "yb/yql/cql/cqlserver/cql_server.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/size_literals.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/rpc/messenger.h"
 
 using yb::rpc::ServiceIf;
+using namespace yb::size_literals;
 
 DEFINE_int32(cql_service_queue_length, 1000,
              "RPC queue length for CQL service");
@@ -28,6 +30,9 @@ TAG_FLAG(cql_service_queue_length, advanced);
 DEFINE_int32(cql_nodelist_refresh_interval_secs, 60,
              "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
+
+DEFINE_int64(cql_rpc_block_size, 1_MB, "Redis RPC block size");
+DEFINE_int64(cql_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
 
 namespace yb {
 namespace cqlserver {
@@ -43,7 +48,11 @@ boost::posix_time::time_duration refresh_interval() {
 CQLServer::CQLServer(const CQLServerOptions& opts,
                      boost::asio::io_service* io,
                      const tserver::TabletServer* const tserver)
-    : RpcAndWebServerBase("CQLServer", opts, "yb.cqlserver"),
+    : RpcAndWebServerBase(
+          "CQLServer", opts, "yb.cqlserver",
+          std::make_shared<rpc::ConnectionContextFactoryImpl<CQLConnectionContext>>(
+              FLAGS_cql_rpc_block_size, FLAGS_cql_rpc_memory_limit,
+              MemTracker::CreateTracker("CQL", tserver ? tserver->mem_tracker() : nullptr))),
       opts_(opts),
       timer_(*io, refresh_interval()),
       tserver_(tserver) {

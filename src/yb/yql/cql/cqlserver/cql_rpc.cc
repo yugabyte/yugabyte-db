@@ -54,8 +54,9 @@ namespace yb {
 namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext(
-    const MemTrackerPtr& read_buffer_tracker, const MemTrackerPtr& call_tracker)
-    : ConnectionContextWithCallId(read_buffer_tracker),
+    rpc::GrowableBufferAllocator* allocator,
+    const MemTrackerPtr& call_tracker)
+    : ConnectionContextWithCallId(allocator),
       ql_session_(new ql::QLSession()),
       parser_(CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
               FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
