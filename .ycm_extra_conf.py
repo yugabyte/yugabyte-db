@@ -43,8 +43,6 @@ flags = [
     '-x',
     'c++',
     '-DYB_HEADERS_NO_STUBS=1',
-    '-DYB_HEADERS_USE_RICH_SLICE=1',
-    '-DYB_HEADERS_USE_SHORT_STATUS_MACROS=1',
     '-Dintegration_tests_EXPORTS',
     '-D_GLIBCXX_USE_CXX11_ABI=0',
     '-D__STDC_FORMAT_MACROS',

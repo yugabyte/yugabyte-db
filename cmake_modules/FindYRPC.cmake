@@ -116,6 +116,8 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
       "${PROXY_CC}" "${PROXY_H}"
       "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
     add_dependencies(gen_proto ${TGT_NAME})
+    # This might be unnecessary, but we've seen issues with plugins not having been built in time.
+    add_dependencies("${TGT_NAME}" protoc-gen-insertions protoc-gen-yrpc)
     list(APPEND ${TGTS} "${TGT_NAME}")
   endforeach()
 

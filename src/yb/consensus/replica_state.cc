@@ -877,6 +877,7 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
   DCHECK(IsLocked());
   auto* trace = Trace::CurrentTrace();
   DCHECK_LE(OpIdCompare(last_received_op_id_, op_id), 0)
+      << LogPrefixUnlocked() << ": "
       << "Previously received OpId: " << last_received_op_id_.ShortDebugString()
       << ", updated OpId: " << op_id.ShortDebugString()
       << ", Trace:" << std::endl << (trace ? trace->DumpToString(true) : "No trace found");

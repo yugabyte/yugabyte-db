@@ -99,6 +99,8 @@ class Operation {
   // before the Apply() phase as the transaction's hybrid_time is only available on the LEADER's
   // commit message.  Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
+  //
+  // The OpId is provided for debuggability purposes.
   void Start();
 
   // Executes the Apply() phase of the transaction, the actual actions of this phase depend on the

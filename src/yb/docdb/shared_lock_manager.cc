@@ -237,6 +237,7 @@ void SharedLockManager::Lock(const KeyToIntentTypeMap& key_to_intent_type) {
     reserved[idx]->Lock(intent_type);
     idx++;
   }
+  TRACE("Acquired a lock batch of $0 keys", key_to_intent_type.size());
 }
 
 std::vector<SharedLockManager::LockEntry*> SharedLockManager::Reserve(

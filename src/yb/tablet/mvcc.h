@@ -40,9 +40,22 @@
 
 #include "yb/server/clock.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/opid.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 namespace tablet {
+
+// Allows us to keep track of how a particular value of safe time was replicated, for sanity
+// checking purposes.
+YB_DEFINE_ENUM(SafeTimeSource, (kUnknown)(kNow)(kNextInQueue)(kHybridTimeLease));
+
+struct SafeTimeWithSource {
+  HybridTime safe_time = HybridTime::kMin;
+  SafeTimeSource source = SafeTimeSource::kUnknown;
+
+  std::string ToString();
+};
 
 // MvccManager is used to track operations.
 // When new operation is initiated its time should be added using AddPending.
@@ -73,6 +86,8 @@ class MvccManager {
   // by ourselves.
   // We pass ht as pointer here, because clock should be accessed with locked mutex, otherwise
   // SafeTime could return time greater than added.
+  //
+  // OpId is being passed for the ease of debugging.
   void AddPending(HybridTime* ht);
 
   // Notifies that operation with appropriate time was replicated.
@@ -130,15 +145,15 @@ class MvccManager {
   // An ordered queue of times of tracked operations.
   std::deque<HybridTime> queue_;
 
-  // Priority queue of aborted operations. Required because we could abort operations from the
-  // middle of the queue.
+  // Priority queue (min-heap, hence std::greater<> as the "less" comparator) of aborted operations.
+  // Required because we could abort operations from the middle of the queue.
   std::priority_queue<HybridTime, std::vector<HybridTime>, std::greater<>> aborted_;
 
   HybridTime last_replicated_ = HybridTime::kMin;
 
   // If we are a follower, this is the latest safe time sent by the leader to us. If we are the
   // leader, this is a safe time that gets updated every time the majority-replicated watermarks
-  // change
+  // change.
   HybridTime propagated_safe_time_ = HybridTime::kMin;
 
   // Because different calls that have current hybrid time leader lease as an argument can come to
@@ -146,8 +161,8 @@ class MvccManager {
   // newer value. We mitigate this by always using the highest value we've seen.
   mutable HybridTime max_ht_lease_seen_ = HybridTime::kMin;
 
-  mutable HybridTime max_safe_time_returned_with_lease_ = HybridTime::kMin;
-  mutable HybridTime max_safe_time_returned_without_lease_ = HybridTime::kMin;
+  mutable SafeTimeWithSource max_safe_time_returned_with_lease_;
+  mutable SafeTimeWithSource max_safe_time_returned_without_lease_;
   mutable HybridTime max_safe_time_returned_for_follower_ = HybridTime::kMin;
 };
 

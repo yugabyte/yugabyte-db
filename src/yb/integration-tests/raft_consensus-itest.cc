@@ -1264,11 +1264,14 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   sw.start();
   const int kNumWrites = AllowSlowTests() ? 10000 : 1000;
   while (workload.rows_inserted() < kNumWrites &&
-         sw.elapsed().wall_seconds() < 30) {
+         (sw.elapsed().wall_seconds() < 30 ||
+          // If no rows are inserted, run a little longer.
+          workload.rows_inserted() == 0 && sw.elapsed().wall_seconds() < 90)) {
     SleepFor(MonoDelta::FromMilliseconds(10));
     ASSERT_NO_FATALS(AssertNoTabletServersCrashed());
   }
   workload.StopAndJoin();
+  LOG(INFO) << "rows_inserted=" << workload.rows_inserted();
   ASSERT_GT(workload.rows_inserted(), 0) << "No rows inserted";
 
   // Ensure that the replicas converge.
