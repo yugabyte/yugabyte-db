@@ -77,6 +77,8 @@ import shutil
 DAEMON_TYPE_MASTER = 'master'
 DAEMON_TYPE_TSERVER = 'tserver'
 DAEMON_TYPES = [DAEMON_TYPE_MASTER, DAEMON_TYPE_TSERVER]
+MAX_WAIT_ITERS = 20
+SLEEP_TIME_IN_SEC = 1
 
 
 class ExitWithError(Exception):
@@ -109,7 +111,6 @@ class DaemonId:
 
 
 class ClusterOptions:
-
     def __init__(self):
         self.max_daemon_index = 20
         self.num_shards_per_tserver = None
@@ -356,11 +357,16 @@ class ClusterControl:
             cmd = [yb_admin_binary_path, "--master_addresses", self.options.master_addresses,
                    "modify_placement_info", self.options.placement_info_raw,
                    str(self.options.replication_factor)]
-            err = subprocess.call(cmd)
-            if err == 0:
-                print ("Successfully modified placement info.")
-            else:
-                raise RuntimeError("Could not modify placement info for the cluster.")
+            wait_count = 0
+            while wait_count < MAX_WAIT_ITERS:
+                try:
+                    subprocess.check_call(cmd)
+                    print ("Successfully modified placement info.")
+                    return
+                except subprocess.CalledProcessError:
+                    wait_count += 1
+                    time.sleep(SLEEP_TIME_IN_SEC)
+            raise RuntimeError("Could not modify placement info for the cluster.")
 
     def run(self):
         self.args = self.parser.parse_args()
@@ -546,14 +552,35 @@ class ClusterControl:
         cmd = [yb_admin_binary_path, "--master_addresses", self.options.master_addresses,
                "change_master_config", cmd_type, daemon_id.get_ip_address(),
                str(self.options.base_ports[DAEMON_TYPE_MASTER]["rpc"])]
+        wait_count = 0
+        while wait_count < MAX_WAIT_ITERS:
+            try:
+                subprocess.check_call(cmd)
+                return
+            except subprocess.CalledProcessError:
+                wait_count += 1
+                time.sleep(SLEEP_TIME_IN_SEC)
 
-        retry_count = 0
-        while retry_count < 20:
-            time.sleep(1)
-            retry_count = retry_count + 1
-            err = subprocess.call(cmd)
-            if err == 0:
-                break
+    def wait_for_cluster(self):
+        # Wait for master leader to be ready, and wait for enough tservers.
+        # 'Enough' here means that the number of live tservers
+        # should be equal to the replication factor.
+        wait_count = 0
+        yb_admin_binary_path = self.options.get_binary_path("yb-admin")
+        cmd_list_tservers = [yb_admin_binary_path,
+                             "--master_addresses",
+                             self.options.master_addresses,
+                             "list_all_tablet_servers"]
+        while wait_count < MAX_WAIT_ITERS:
+            try:
+                result = subprocess.check_output(cmd_list_tservers)
+                if len(result.splitlines()) - 1 == self.options.replication_factor:
+                    return True
+            except subprocess.CalledProcessError:
+                pass
+            wait_count += 1
+            time.sleep(SLEEP_TIME_IN_SEC)
+        return False
 
     def show_node_status(self, daemon_id):
         pid = self.get_pid(daemon_id)
@@ -595,6 +622,8 @@ class ClusterControl:
 
         self.start_helper({DAEMON_TYPE_MASTER: server_counts,
                            DAEMON_TYPE_TSERVER: server_counts})
+        self.setup_redis(on_create=True)
+        print ("Successfully created a new cluster.")
 
     # Starts as well as creates. Check if the cluster exists.
     # If it does not create it else start the individual daemons.
@@ -635,7 +664,6 @@ class ClusterControl:
         num_servers = self.get_number_of_servers(self.options.node_type)
         if len(self.options.placement_info) > 1:
             raise RuntimeError("Please specify exactly one placement_info value.")
-
         daemon_id = DaemonId(self.options.node_type, num_servers + 1)
         if self.options.node_type == DAEMON_TYPE_MASTER:
             self.options.is_shell_master = True
@@ -669,13 +697,24 @@ class ClusterControl:
     def status(self):
         self.for_all_daemons(self.show_node_status)
 
-    def setup_redis(self):
-        self.set_master_addresses()
+    def setup_redis(self, on_create=False):
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-        cmd = "{} --master_addresses {} --yb_num_shards_per_tserver {} setup_redis_table".format(
-            yb_admin_binary_path,  self.options.master_addresses,
-            self.options.num_shards_per_tserver)
-        os.system(cmd)
+        if not on_create:
+            self.set_master_addresses()
+        if self.wait_for_cluster():
+            cmd_setup_redis_table = [yb_admin_binary_path,
+                                     "--master_addresses",
+                                     self.options.master_addresses,
+                                     "setup_redis_table"]
+            result = ""
+            try:
+                result = subprocess.check_output(cmd_setup_redis_table)
+                return
+            except subprocess.CalledProcessError:
+                print (result)
+                RuntimeError("Failed to Setup Redis")
+        else:
+            raise RuntimeError("Timed out waiting for Yugabyte cluster!")
 
 
 if __name__ == "__main__":
