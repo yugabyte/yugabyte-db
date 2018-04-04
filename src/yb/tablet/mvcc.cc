@@ -32,10 +32,24 @@
 
 #include "yb/tablet/mvcc.h"
 
+#include <sstream>
+
 #include "yb/util/logging.h"
 
 namespace yb {
 namespace tablet {
+
+// ------------------------------------------------------------------------------------------------
+// SafeTimeWithSource
+// ------------------------------------------------------------------------------------------------
+
+std::string SafeTimeWithSource::ToString() {
+  return Format("{ safe_time: $0 source: $1 }", safe_time, source);
+}
+
+// ------------------------------------------------------------------------------------------------
+// MvccManager
+// ------------------------------------------------------------------------------------------------
 
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
     : prefix_(std::move(prefix)),
@@ -95,20 +109,84 @@ void MvccManager::AddPending(HybridTime* ht) {
     *ht = clock_->Now();
     VLOG_WITH_PREFIX(1) << "AddPending(<invalid>), time from clock: " << *ht;
   }
-  CHECK_GT(*ht, max_safe_time_returned_with_lease_) << LogPrefix();
-  CHECK_GT(*ht, max_safe_time_returned_without_lease_) << LogPrefix();
-  CHECK_GT(*ht, max_safe_time_returned_for_follower_) << LogPrefix();
-  if (!queue_.empty() && *ht <= queue_.back()) {
-    LOG(FATAL) << "Attempted to add a pending operation with a hybrid time lower than the "
-               << "last hybrid time in the queue. "
-               << "ht=" << (*ht)
-               << ", is_follower_side: " << is_follower_side
-               << ", last time in the queue: " << queue_.back()
-               << ", difference: " << (queue_.back().ToUint64() - ht->ToUint64())
-               << ", queue size: " << queue_.size()
-               << ", queue: " << ToString(queue_);
+
+  if (!queue_.empty() && *ht <= queue_.back() && !aborted_.empty()) {
+    // To avoid crashing with an invariant violation on leader changes, we detect the case when
+    // an entire tail of the operation queue has been aborted. Theoretically it is still possible
+    // that the subset of aborted operations is not contiguous and/or does not end with the last
+    // element of the queue. In practice, though, Raft should only abort and overwrite all
+    // operations starting with a particular index and until the end of the log.
+    auto iter = std::lower_bound(queue_.begin(), queue_.end(), aborted_.top());
+
+    // Every hybrid time in aborted_ must also exist in queue_.
+    CHECK(iter != queue_.end());
+
+    auto start_iter = iter;
+    while (iter != queue_.end() && *iter == aborted_.top()) {
+      aborted_.pop();
+      iter++;
+    }
+    queue_.erase(start_iter, iter);
   }
-  CHECK_GT(*ht, last_replicated_) << LogPrefix();
+  HybridTime last_ht_in_queue = queue_.empty() ? HybridTime::kMin : queue_.back();
+
+  HybridTime sanity_check_lower_bound =
+      std::max({
+          max_safe_time_returned_with_lease_.safe_time,
+          max_safe_time_returned_without_lease_.safe_time,
+          max_safe_time_returned_for_follower_,
+          last_replicated_,
+          last_ht_in_queue});
+
+  if (!queue_.empty() && *ht <= sanity_check_lower_bound) {
+    auto get_details_msg = [&](bool drain_aborted) {
+      std::ostringstream ss;
+#define LOG_INFO_FOR_HT_LOWER_BOUND(t) \
+             "\n  " << EXPR_VALUE_FOR_LOG(t) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(*ht < t) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(static_cast<int64_t>(ht->ToUint64() - t.ToUint64())) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(ht->PhysicalDiff(t)) \
+          << "\n  "
+
+      ss << LogPrefix() << ": new operation's hybrid time too low: " << *ht
+         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_with_lease_.safe_time)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_without_lease_.safe_time)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_for_follower_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(last_replicated_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(last_ht_in_queue)
+         << "\n  " << EXPR_VALUE_FOR_LOG(is_follower_side)
+         << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
+         << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
+      if (drain_aborted) {
+        std::vector<HybridTime> aborted;
+        while (!aborted_.empty()) {
+          aborted.push_back(aborted_.top());
+          aborted_.pop();
+        }
+        ss << "\n  " << EXPR_VALUE_FOR_LOG(aborted);
+      }
+      return ss.str();
+#undef LOG_INFO_FOR_HT_LOWER_BOUND
+    };
+
+#ifdef NDEBUG
+    // In release mode, let's try to avoid crashing if possible if we ever hit this situation.
+    // On the leader side, we can assign a timestamp that is high enough.
+    if (!is_follower_side &&
+        sanity_check_lower_bound &&
+        sanity_check_lower_bound != HybridTime::kMax) {
+      HybridTime incremented_hybrid_time = sanity_check_lower_bound.Incremented();
+      YB_LOG_EVERY_N_SECS(WARNING, 5)
+          << "Assigning an artificially incremented hybrid time: " << incremented_hybrid_time
+          << ". This needs to be investigated. " << get_details_msg(/* drain_aborted */ false);
+      *ht = incremented_hybrid_time;
+    }
+#endif
+
+    if (*ht <= sanity_check_lower_bound) {
+      LOG(FATAL) << get_details_msg(/* drain_aborted */ true);
+    }
+  }
   queue_.push_back(*ht);
 }
 
@@ -147,8 +225,21 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
                             MonoTime::kMax,    // deadline
                             ht_lease,
                             &lock);
+#ifndef NDEBUG
+    // This should only be called from RaftConsensus::UpdateMajorityReplicated, and ht_lease passed
+    // in here should keep increasing, so we should not see propagated_safe_time_ going backwards.
     CHECK_GE(ht, propagated_safe_time_) << LogPrefix();
     propagated_safe_time_ = ht;
+#else
+    // Do not crash in production.
+    if (ht < propagated_safe_time_) {
+      YB_LOG_EVERY_N_SECS(ERROR, 5) << LogPrefix()
+          << "Previously saw " << EXPR_VALUE_FOR_LOG(propagated_safe_time_)
+          << ", but now safe time is " << ht;
+    } else {
+      propagated_safe_time_ = ht;
+    }
+#endif
   }
   cond_.notify_all();
 }
@@ -197,18 +288,22 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   }
 
   HybridTime result;
-  auto predicate = [this, &result, min_allowed, has_lease] {
+  SafeTimeSource source = SafeTimeSource::kUnknown;
+  auto predicate = [this, &result, &source, min_allowed, has_lease] {
     if (queue_.empty()) {
       result = clock_->Now();
+      source = SafeTimeSource::kNow;
       CHECK_GE(result, min_allowed) << LogPrefix();
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {
       result = queue_.front().Decremented();
+      source = SafeTimeSource::kNextInQueue;
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Queue front (decremented): " << result;
     }
 
-    if (has_lease) {
-      result = std::min(result, max_ht_lease_seen_);
+    if (has_lease && result > max_ht_lease_seen_) {
+      result = max_ht_lease_seen_;
+      source = SafeTimeSource::kHybridTimeLease;
     }
 
     // This function could be invoked at a follower, so it has a very old ht_lease. In this case it
@@ -228,8 +323,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   VLOG_WITH_PREFIX(1) << "DoGetSafeTime(" << min_allowed << ", "
                       << ht_lease << "), result = " << result;
 
-  auto enforced_min_time = has_lease ? max_safe_time_returned_with_lease_
-                                     : max_safe_time_returned_without_lease_;
+  auto enforced_min_time = has_lease ? max_safe_time_returned_with_lease_.safe_time
+                                     : max_safe_time_returned_without_lease_.safe_time;
   CHECK_GE(result, enforced_min_time) << LogPrefix()
       << ": " << EXPR_VALUE_FOR_LOG(has_lease)
       << ", " << EXPR_VALUE_FOR_LOG(enforced_min_time.ToUint64() - result.ToUint64())
@@ -242,9 +337,9 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
       << ", " << EXPR_VALUE_FOR_LOG(queue_);
 
   if (has_lease) {
-    max_safe_time_returned_with_lease_ = result;
+    max_safe_time_returned_with_lease_ = { result, source };
   } else {
-    max_safe_time_returned_without_lease_ = result;
+    max_safe_time_returned_without_lease_ = { result, source };
   }
   return result;
 }

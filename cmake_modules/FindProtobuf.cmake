@@ -175,6 +175,8 @@ function(PROTOBUF_GENERATE_CPP SRCS HDRS TGTS)
     add_custom_target(${TGT_NAME}
       DEPENDS "${PROTO_CC_OUT}" "${PROTO_H_OUT}" protoc-gen-insertions)
     add_dependencies(gen_proto ${TGT_NAME})
+    # This might be unnecessary, but we've seen issues with plugins not having been built in time.
+    add_dependencies("${TGT_NAME}" protoc-gen-insertions)
     list(APPEND ${TGTS} "${TGT_NAME}")
   endforeach()
 

@@ -241,7 +241,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     });
 
     consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
-      auto ht_lease = ht_lease_provider(0, MonoTime::kMax);
+      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
       if (ht_lease) {
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }

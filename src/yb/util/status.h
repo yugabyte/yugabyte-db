@@ -55,16 +55,14 @@
     if (PREDICT_FALSE(!_s.ok())) return MoveStatus(std::move(_s)); \
   } while (false)
 
-// Return the given status if it is not OK, but first clone it and
-// prepend the given message.
+// Return the given status if it is not OK, but first clone it and prepend the given message.
 #define YB_RETURN_NOT_OK_PREPEND(s, msg) do { \
     auto&& _s = (s); \
     if (PREDICT_FALSE(!_s.ok())) return MoveStatus(_s).CloneAndPrepend(msg); \
   } while (0);
 
-// Return 'to_return' if 'to_call' returns a bad status.
-// The substitution for 'to_return' may reference the variable
-// 's' for the bad status.
+// Return 'to_return' if 'to_call' returns a bad status.  The substitution for 'to_return' may
+// reference the variable 's' for the bad status.
 #define YB_RETURN_NOT_OK_RET(to_call, to_return) do { \
     ::yb::Status s = (to_call); \
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
@@ -85,29 +83,16 @@
     return _s; \
   } while (0);
 
-// If 'to_call' returns a bad status, CHECK immediately with a logged message
-// of 'msg' followed by the status.
+// If 'to_call' returns a bad status, CHECK immediately with a logged message of 'msg' followed by
+// the status.
 #define YB_CHECK_OK_PREPEND(to_call, msg) do { \
   auto&& _s = (to_call); \
   YB_CHECK(_s.ok()) << (msg) << ": " << StatusToString(_s); \
   } while (0);
 
-// If the status is bad, CHECK immediately, appending the status to the
-// logged message.
+// If the status is bad, CHECK immediately, appending the status to the logged message.
 #define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
-// This header is used in both the YB build as well as in builds of
-// applications that use the YB C++ client. In the latter we need to be
-// careful to "namespace" our macros, to avoid colliding or overriding with
-// similarly named macros belonging to the application.
-//
-// YB_HEADERS_USE_SHORT_STATUS_MACROS handles this behavioral change. When
-// defined, we're building YB and:
-// 1. Non-namespaced macros are allowed and mapped to the namespaced versions
-//    defined above.
-// 2. Namespaced versions of glog macros are mapped to the real glog macros
-//    (otherwise the macros are defined in the C++ client stubs).
-#ifdef YB_HEADERS_USE_SHORT_STATUS_MACROS
 #define RETURN_NOT_OK         YB_RETURN_NOT_OK
 #define RETURN_NOT_OK_PREPEND YB_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET     YB_RETURN_NOT_OK_RET
@@ -119,7 +104,6 @@
 // These are standard glog macros.
 #define YB_LOG              LOG
 #define YB_CHECK            CHECK
-#endif
 
 namespace yb {
 

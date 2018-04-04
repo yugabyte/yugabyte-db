@@ -44,11 +44,9 @@
 #include <map>
 #include <string>
 
-#ifdef YB_HEADERS_USE_RICH_SLICE
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/faststring.h"
-#endif
 #include "yb/util/cast.h"
 
 
@@ -84,7 +82,6 @@ class Slice {
   Slice(const char* s) // NOLINT(runtime/explicit)
       : Slice(util::to_uchar_ptr(s), strlen(s)) {}
 
-#ifdef YB_HEADERS_USE_RICH_SLICE
   // Create a slice that refers to the contents of the faststring.
   // Note that further appends to the faststring may invalidate this slice.
   Slice(const faststring &s) // NOLINT(runtime/explicit)
@@ -92,7 +89,6 @@ class Slice {
 
   Slice(const StringPiece& s) // NOLINT(runtime/explicit)
       : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
-#endif
 
   // Create a single slice from SliceParts using buf as storage.
   // buf must exist as long as the returned Slice exists.
@@ -225,19 +221,11 @@ class Slice {
   friend bool operator==(const Slice& x, const Slice& y);
 
   static bool MemEqual(const void* a, const void* b, size_t n) {
-#ifdef YB_HEADERS_USE_RICH_SLICE
     return strings::memeq(a, b, n);
-#else
-    return memcmp(a, b, n) == 0;
-#endif
   }
 
   static int MemCompare(const void* a, const void* b, size_t n) {
-#ifdef YB_HEADERS_USE_RICH_SLICE
     return strings::fastmemcmp_inlined(a, b, n);
-#else
-    return memcmp(a, b, n);
-#endif
   }
 
   const uint8_t* begin_;
