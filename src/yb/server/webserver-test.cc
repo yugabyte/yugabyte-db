@@ -107,6 +107,11 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)),
                            &buf_));
   ASSERT_STR_CONTAINS(buf_.ToString(), "--v=");
+
+  // Test status.
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/status", ToString(addr_)),
+                           &buf_));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("{}", buf_.ToString());
 }
 
 // Used in symbolization test below.
