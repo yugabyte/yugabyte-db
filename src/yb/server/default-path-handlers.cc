@@ -149,6 +149,11 @@ static void FlagsHandler(const Webserver::WebRequest& req, std::stringstream* ou
   (*output) << tags.pre_tag << CommandlineFlagsIntoString() << tags.end_pre_tag;
 }
 
+// Registered to handle "/status", and simply returns empty JSON.
+static void StatusHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+  (*output) << "{}";
+}
+
 // Registered to handle "/memz", and prints out memory allocation statistics.
 static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream* output) {
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
@@ -192,6 +197,7 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
 void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
   webserver->RegisterPathHandler("/varz", "Flags", FlagsHandler, true, false);
+  webserver->RegisterPathHandler("/status", "Status", StatusHandler, false, false);
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
                                  MemTrackersHandler, true, false);
