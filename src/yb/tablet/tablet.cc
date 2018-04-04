@@ -493,7 +493,7 @@ Result<std::unique_ptr<common::QLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {
   // If the state already has a hybrid_time then we're replaying a transaction that occurred
-  // before a crash or at another node...
+  // before a crash or at another node.
   HybridTime ht = operation_state->hybrid_time_even_if_unset();
   bool was_valid = ht.is_valid();
   mvcc_.AddPending(&ht);

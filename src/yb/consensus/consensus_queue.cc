@@ -351,7 +351,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     request->set_propagated_hybrid_time(now_ht.ToUint64());
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
-    request->mutable_ops()->ExtractSubrange(0, request->ops_size(), nullptr);
+    request->mutable_ops()->ExtractSubrange(0, request->ops_size(), /* elements */ nullptr);
 
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.

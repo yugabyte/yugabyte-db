@@ -42,6 +42,7 @@
 
 #include "yb/util/physical_time.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -137,6 +138,13 @@ class HybridTime {
     return HybridTime(v - 1);
   }
 
+  // Returns the hybrid time value by the smallest possible amount. For invalid / max hybrid time,
+  // returns the unmodified value.
+  HybridTime Incremented() const {
+    if (v >= kInvalidHybridTimeValue) return *this;
+    return HybridTime(v + 1);
+  }
+
   HybridTime AddMicroseconds(MicrosTime micros) const {
     if (is_special()) return *this;
     return HybridTime(v + (micros << kBitsForLogicalComponent));
@@ -177,6 +185,10 @@ class HybridTime {
   // Returns the physical value embedded in this HybridTime, in microseconds.
   inline MicrosTime GetPhysicalValueMicros() const {
     return v >> kBitsForLogicalComponent;
+  }
+
+  inline int64_t PhysicalDiff(const HybridTime& other) const {
+    return static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros());
   }
 
   inline LogicalTimeComponent GetLogicalValue() const {

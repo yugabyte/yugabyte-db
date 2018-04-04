@@ -631,13 +631,6 @@ endif()
 # 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
-# We want short macros from util/status.h.
-add_definitions(-DYB_HEADERS_USE_SHORT_STATUS_MACROS=1)
-
-# Slice includes many gutil dependencies that third-party users of the YugaByte
-# client library don't have. Our build has them, though.
-add_definitions(-DYB_HEADERS_USE_RICH_SLICE=1)
-
 # We don't want to use any stubs; that's exclusively for builds using our
 # exported client headers).
 add_definitions(-DYB_HEADERS_NO_STUBS=1)
