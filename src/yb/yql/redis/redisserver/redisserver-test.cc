@@ -18,8 +18,6 @@
 #include <thread>
 #include <vector>
 
-#include <cpp_redis/cpp_redis>
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -27,6 +25,7 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
+#include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
@@ -59,12 +58,11 @@ METRIC_DECLARE_gauge_uint64(redis_available_sessions);
 METRIC_DECLARE_gauge_uint64(redis_allocated_sessions);
 
 using namespace std::literals;
+using namespace std::placeholders;
 
 namespace yb {
 namespace redisserver {
 
-using RedisClient = cpp_redis::client;
-using RedisReply = cpp_redis::reply;
 using std::string;
 using std::unique_ptr;
 using std::vector;
@@ -77,30 +75,6 @@ constexpr int kDefaultTimeoutMs = 100000;
 #else
 constexpr int kDefaultTimeoutMs = 10000;
 #endif
-
-std::string ReplyToString(const cpp_redis::reply& reply) {
-  switch (reply.get_type()) {
-    case cpp_redis::reply::type::bulk_string:
-    case cpp_redis::reply::type::simple_string:
-      return reply.as_string();
-    case cpp_redis::reply::type::array: {
-      std::string result = "[";
-      bool first = true;
-      for (const auto& item : reply.as_array()) {
-        if (first) {
-          first = false;
-        } else {
-          result += ", ";
-        }
-        result += ReplyToString(item);
-      }
-      result += ']';
-      return result;
-    }
-    default:
-      return std::string("Not supported: " + std::to_string(to_underlying(reply.get_type())));
-  }
-}
 
 class TestRedisService : public RedisTableTestBase {
  public:
@@ -129,13 +103,13 @@ class TestRedisService : public RedisTableTestBase {
   template <class Callback>
   void DoRedisTest(int line,
       const std::vector<std::string>& command,
-      cpp_redis::reply::type reply_type,
+      RedisReplyType reply_type,
       const Callback& callback);
 
   void DoRedisTestString(int line,
       const std::vector<std::string>& command,
       const std::string& expected,
-      cpp_redis::reply::type type = cpp_redis::reply::type::simple_string) {
+      RedisReplyType type = RedisReplyType::kStatus) {
     DoRedisTest(line, command, type,
         [line, expected](const RedisReply& reply) {
           ASSERT_EQ(expected, reply.as_string()) << "Originator: " << __FILE__ << ":" << line;
@@ -146,7 +120,7 @@ class TestRedisService : public RedisTableTestBase {
   void DoRedisTestBulkString(int line,
       const std::vector<std::string>& command,
       const std::string& expected) {
-    DoRedisTestString(line, command, expected, cpp_redis::reply::type::bulk_string);
+    DoRedisTestString(line, command, expected, RedisReplyType::kString);
   }
 
   void DoRedisTestOk(int line, const std::vector<std::string>& command) {
@@ -155,7 +129,7 @@ class TestRedisService : public RedisTableTestBase {
 
   void DoRedisTestExpectError(int line, const std::vector<std::string>& command,
                               const std::string& error_prefix = "") {
-    DoRedisTest(line, command, cpp_redis::reply::type::error,
+    DoRedisTest(line, command, RedisReplyType::kError,
         [line, error_prefix](const RedisReply& reply) {
           if (!error_prefix.empty()) {
             ASSERT_EQ(reply.error().find(error_prefix), 0) << "Error message has the wrong prefix "
@@ -168,13 +142,13 @@ class TestRedisService : public RedisTableTestBase {
 
   void DoRedisTestExpectErrorMsg(int line, const std::vector<std::string>& command,
       const std::string& error_msg) {
-    DoRedisTestString(line, command, error_msg, cpp_redis::reply::type::error);
+    DoRedisTestString(line, command, error_msg, RedisReplyType::kError);
   }
 
   void DoRedisTestInt(int line,
                       const std::vector<std::string>& command,
                       int64_t expected) {
-    DoRedisTest(line, command, cpp_redis::reply::type::integer,
+    DoRedisTest(line, command, RedisReplyType::kInteger,
         [line, expected](const RedisReply& reply) {
           ASSERT_EQ(expected, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
         }
@@ -185,13 +159,13 @@ class TestRedisService : public RedisTableTestBase {
   void DoRedisTestArray(int line,
       const std::vector<std::string>& command,
       const std::vector<std::string>& expected) {
-    DoRedisTest(line, command, cpp_redis::reply::type::array,
+    DoRedisTest(line, command, RedisReplyType::kArray,
         [line, expected](const RedisReply& reply) {
           const auto& replies = reply.as_array();
           ASSERT_EQ(expected.size(), replies.size())
               << "Originator: " << __FILE__ << ":" << line << std::endl
               << "Expected: " << yb::ToString(expected) << std::endl
-              << " Replies: " << ReplyToString(reply);
+              << " Replies: " << reply.ToString();
           for (size_t i = 0; i < expected.size(); i++) {
             if (expected[i] == "") {
               ASSERT_TRUE(replies[i].is_null())
@@ -211,7 +185,7 @@ class TestRedisService : public RedisTableTestBase {
       const std::vector<double>& expected_scores,
       const std::vector<std::string>& expected_values) {
     ASSERT_EQ(expected_scores.size(), expected_values.size());
-    DoRedisTest(line, command, cpp_redis::reply::type::array,
+    DoRedisTest(line, command, RedisReplyType::kArray,
       [line, expected_scores, expected_values](const RedisReply& reply) {
         const auto& replies = reply.as_array();
         ASSERT_EQ(expected_scores.size() * 2, replies.size())
@@ -230,14 +204,14 @@ class TestRedisService : public RedisTableTestBase {
 
   void DoRedisTestNull(int line,
       const std::vector<std::string>& command) {
-    DoRedisTest(line, command, cpp_redis::reply::type::null,
+    DoRedisTest(line, command, RedisReplyType::kNull,
         [line](const RedisReply& reply) {
           ASSERT_TRUE(reply.is_null()) << "Originator: " << __FILE__ << ":" << line;
         }
     );
   }
 
-  void SyncClient() { client().sync_commit(); }
+  void SyncClient() { client().Commit(); }
 
   void VerifyCallbacks();
 
@@ -362,8 +336,8 @@ class TestRedisService : public RedisTableTestBase {
 
   RedisClient& client() {
     if (!test_client_) {
-      test_client_.emplace();
-      test_client_->connect("127.0.0.1", server_port());
+      io_thread_pool_.emplace(1);
+      test_client_.emplace("127.0.0.1", server_port());
     }
     return *test_client_;
   }
@@ -378,14 +352,15 @@ class TestRedisService : public RedisTableTestBase {
   uint64_t redis_max_read_buffer_size_ = 512_MB;
 
  private:
-  std::atomic_int num_callbacks_called_;
-  int expected_callbacks_called_;
+  std::atomic<int> num_callbacks_called_{0};
+  int expected_callbacks_called_ = 0;
   Socket client_sock_;
   unique_ptr<RedisServer> server_;
   int redis_server_port_ = 0;
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
+  boost::optional<rpc::IoThreadPool> io_thread_pool_;
   boost::optional<RedisClient> test_client_;
   boost::optional<google::FlagSaver> flag_saver_;
 };
@@ -415,8 +390,6 @@ void TestRedisService::SetUp() {
 
   StartServer();
   StartClient();
-  num_callbacks_called_ = 0;
-  expected_callbacks_called_ = 0;
 }
 
 void TestRedisService::StartServer() {
@@ -470,11 +443,10 @@ void TestRedisService::TearDown() {
   EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
 
   if (test_client_) {
+    test_client_->Disconnect();
     test_client_.reset();
-    auto io_service = tacopie::get_default_io_service();
-    tacopie::set_default_io_service(nullptr);
-    EXPECT_OK(WaitFor(
-        [&io_service] { return io_service.use_count() == 1; }, 60s, "Redis IO Service shutdown"));
+    io_thread_pool_->Shutdown();
+    io_thread_pool_->Join();
   }
   StopClient();
   StopServer();
@@ -563,21 +535,22 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
 template <class Callback>
 void TestRedisService::DoRedisTest(int line,
     const std::vector<std::string>& command,
-    cpp_redis::reply::type reply_type,
+    RedisReplyType reply_type,
     const Callback& callback) {
   expected_callbacks_called_++;
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
-  client().send(command, [this, line, reply_type, callback] (RedisReply& reply) {
+  client().Send(command, [this, line, reply_type, callback] (const RedisReply& reply) {
     VLOG(4) << "Received response for line: " << __FILE__ << ":" << line
             << " : " << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
     num_callbacks_called_++;
-    ASSERT_EQ(reply_type, reply.get_type()) << "Originator: " << __FILE__ << ":" << line;
+    ASSERT_EQ(reply_type, reply.get_type())
+        << "Originator: " << __FILE__ << ":" << line << ", reply: " << reply.ToString();
     callback(reply);
   });
 }
 
 void TestRedisService::VerifyCallbacks() {
-  ASSERT_EQ(expected_callbacks_called_, num_callbacks_called_);
+  ASSERT_EQ(expected_callbacks_called_, num_callbacks_called_.load(std::memory_order_acquire));
 }
 
 TEST_F(TestRedisService, SimpleCommandInline) {
@@ -1118,7 +1091,7 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
   DoRedisTestOk(__LINE__, {"SET", "hello", "42"});
 
   DoRedisTest(__LINE__, {"DECRBY", "hello", "12"},
-      cpp_redis::reply::type::error, // TODO: fix error handling
+      RedisReplyType::kError, // TODO: fix error handling
       [](const RedisReply &reply) {
         // TBD: ASSERT_EQ(30, reply.as_integer());
       });
@@ -1131,8 +1104,8 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
 }
 
 TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
-  const std::string kFooValue = "\001\002\r\n\003\004";
-  const std::string kBarValue = "\013\010";
+  const std::string kFooValue = "\001\002\r\n\003\004"s;
+  const std::string kBarValue = "\013\010\000"s;
 
   DoRedisTestOk(__LINE__, {"SET", "foo", kFooValue});
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, kFooValue);
@@ -2167,13 +2140,13 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   // sync_commit() waits until all responses are received.
   SyncClient();
 
-  DoRedisTest(__LINE__, {"ROLE"}, cpp_redis::reply::type::array,
+  DoRedisTest(__LINE__, {"ROLE"}, RedisReplyType::kArray,
       [](const RedisReply& reply) {
         const auto& replies = reply.as_array();
         ASSERT_EQ(3, replies.size());
         ASSERT_EQ("master", replies[0].as_string());
         ASSERT_EQ(0, replies[1].as_integer());
-        ASSERT_TRUE(replies[2].is_array());
+        ASSERT_TRUE(replies[2].is_array()) << "replies[2]: " << replies[2].ToString();
         ASSERT_EQ(0, replies[2].as_array().size());
       }
   );
@@ -2329,6 +2302,8 @@ TEST_F(TestRedisService, TestQuit) {
   VerifyCallbacks();
   // Connection closed so following command fails
   DoRedisTestExpectError(__LINE__, {"SET", "key", "value"});
+  SyncClient();
+  VerifyCallbacks();
 }
 
 TEST_F(TestRedisService, TestFlushAll) {
