@@ -336,7 +336,7 @@ class ClusterControl:
                                          "cloud.region.zone. Can be comma seperated "
                                          "in case you would want to pass more than one value.")
 
-            subparsers[cmd].add_argument("--v", default=0, choices=[i for i in range(5)],
+            subparsers[cmd].add_argument("--v", default=0, choices=[str(i) for i in range(5)],
                                          help="Specify the verbosity which dictates "
                                          "the amount of logging on servers trace files."
                                          "Default is 0 and maximum is 4.")
