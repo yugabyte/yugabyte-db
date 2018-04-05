@@ -64,6 +64,12 @@ public class NodeInstance extends Model {
     }
     return nodeDetails;
   }
+  // Method sets node name to empty string and inUse to false and persists the value
+  public void clearNodeDetails() {
+    this.inUse = false;
+    this.setNodeName("");
+    this.save();
+  }
 
   public String getDetailsJson() {
     return nodeDetailsJson;

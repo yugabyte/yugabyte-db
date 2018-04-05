@@ -101,5 +101,16 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertEquals(response, 0);
   }
 
+  @Test
+  public void testClearNodeDetails() {
+    NodeInstance node = createNode();
+    node.setNodeName("yb-universe-1-n1");
+    node.inUse = true;
+    node.save();
+    node.clearNodeDetails();
+    assertEquals(node.inUse, false);
+    assertEquals(node.getNodeName(), "");
+  }
+
   // TODO: add tests for pickNodes
 }

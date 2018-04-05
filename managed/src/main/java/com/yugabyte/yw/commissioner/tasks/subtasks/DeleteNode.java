@@ -43,8 +43,7 @@ public class DeleteNode extends NodeTaskBase {
             // If OnPrem Free up the node.
             if (cluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
               NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
-              node.inUse = false;
-              node.save();
+              node.clearNodeDetails();
             }
             universe.setUniverseDetails(universeDetails);
           }
