@@ -7,6 +7,7 @@
           "bin/yb-ctl",
           "bin/yb-prof.py",
           "$BUILD_ROOT/bin/log-dump",
+          "$BUILD_ROOT/bin/sst_dump",
           "$BUILD_ROOT/bin/yb-admin",
           "$BUILD_ROOT/bin/yb-bulk_load",
           "$BUILD_ROOT/bin/yb-cqlserver",
