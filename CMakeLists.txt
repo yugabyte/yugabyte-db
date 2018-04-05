@@ -1384,6 +1384,11 @@ include_directories(SYSTEM ${SQUEASEL_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(squeasel
   STATIC_LIB "${SQUEASEL_STATIC_LIB}")
 
+## Hiredis
+find_package(Hiredis REQUIRED)
+include_directories(SYSTEM ${HIREDIS_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
+
 if (NOT "${YB_USE_ASAN}" AND
     NOT "${YB_USE_TSAN}" AND
     NOT "${YB_USING_GOLD}")

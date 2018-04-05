@@ -65,6 +65,9 @@ target_link_libraries(yb-redisserver
   yb-redis
   ${YB_BASE_LIBS})
 
+add_library(yb-redisserver-test redis_client.cc)
+target_link_libraries(yb-redisserver-test gutil yb-redis hiredis ${YB_BASE_LIBS})
+
 # Tests
-set(YB_TEST_LINK_LIBS yb-redis integration-tests cpp_redis tacopie ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb-redis integration-tests yb-redisserver-test ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(redisserver-test)

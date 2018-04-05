@@ -81,6 +81,23 @@ uint8_t* CatOne(size_t num, uint8_t* pos) {
   return pointer_cast<uint8_t*>(FastUInt64ToBufferLeft(num, pointer_cast<char*>(pos)));
 }
 
+size_t CatOne(int64_t num, size_t len) {
+  size_t unum;
+  if (num < 0) {
+    ++len;
+    unum = -num;
+  } else {
+    unum = num;
+  }
+  return len + NumberLength(unum);
+}
+
+// Important notice: FastInt64ToBufferLeft adds 0 to end of buffer, it is ok with redis,
+// because we always add \r\n, but it could be issue in general case.
+uint8_t* CatOne(int64_t num, uint8_t* pos) {
+  return pointer_cast<uint8_t*>(FastInt64ToBufferLeft(num, pointer_cast<char*>(pos)));
+}
+
 template <size_t N>
 size_t CatOne(const char str[N], size_t len) {
   return len + N - 1;
@@ -116,7 +133,7 @@ const std::string kNewLine = "\r\n"s;
 template <class Collection, class Out>
 Out ProcessArray(const Collection& collection, Out out) {
   out = CatOne('*', out);
-  out = CatOne(collection.size(), out);
+  out = CatOne(static_cast<size_t>(collection.size()), out);
   out = CatOne(kNewLine, out);
   for (const auto& element : collection) {
     if (element.empty()) {
@@ -135,7 +152,7 @@ Out ProcessArray(const Collection& collection, Out out) {
 template <class Collection, class Out>
 Out ProcessEncodedArray(const Collection& collection, Out out) {
   out = CatOne('*', out);
-  out = CatOne(collection.size(), out);
+  out = CatOne(static_cast<size_t>(collection.size()), out);
   out = CatOne(kNewLine, out);
   for (const auto& element : collection) {
     out = CatOne(element, out);
