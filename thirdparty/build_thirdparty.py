@@ -63,7 +63,8 @@ class Builder:
             build_definitions.libev.LibEvDependency(),
             build_definitions.rapidjson.RapidJsonDependency(),
             build_definitions.squeasel.SqueaselDependency(),
-            build_definitions.curl.CurlDependency()]
+            build_definitions.curl.CurlDependency(),
+            build_definitions.hiredis.HiRedisDependency()]
 
         if is_linux():
             self.dependencies += [
