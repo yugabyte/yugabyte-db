@@ -961,7 +961,9 @@ public class PlacementInfoUtil {
                                                        String nodePrefix,
                                                        boolean isEditUniverse) {
     LinkedHashSet<PlacementIndexes> indexes =
-            getDeltaPlacementIndices(cluster.placementInfo, nodes);
+            getDeltaPlacementIndices(cluster.placementInfo, nodes.stream()
+                    .filter(n -> n.placementUuid.equals(cluster.uuid))
+                    .collect(Collectors.toSet()));
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     int startIndex = getNextIndexToConfigure(nodes);
     int iter = 0;
@@ -1036,7 +1038,7 @@ public class PlacementInfoUtil {
                                                  String nodePrefix,
                                                  Universe universe) {
     UserIntent userIntent = cluster.userIntent;
-    int startIndex = universe != null ? getNextIndexToConfigure(universe.getNodes()) : 1;
+    int startIndex = universe != null ? getNextIndexToConfigure(universe.getNodes()) : getNextIndexToConfigure(nodeDetailsSet);
     int numNodes = userIntent.numNodes;
     int numMastersToChoose =  userIntent.replicationFactor;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
