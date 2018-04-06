@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -29,6 +30,7 @@ public class Module extends AbstractModule {
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
 
+    bind(HealthManager.class).asEagerSingleton();
     bind(NodeManager.class).asEagerSingleton();
     bind(MetricQueryHelper.class).asEagerSingleton();
     bind(ShellProcessHandler.class).asEagerSingleton();

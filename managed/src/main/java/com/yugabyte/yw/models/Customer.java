@@ -136,6 +136,10 @@ public class Customer extends Model {
     return find.where().idEq(String.valueOf(id)).findUnique();
   }
 
+  public static List<Customer> getAll() {
+    return find.findList();
+  }
+
   public Customer() {
     this.creationDate = new Date();
   }

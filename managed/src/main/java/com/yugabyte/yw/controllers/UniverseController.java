@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -613,7 +614,6 @@ public class UniverseController extends AuthenticatedController {
    * @return result of the universe status operation.
    */
   public Result status(UUID customerUUID, UUID universeUUID) {
-
     // Verify the customer with this universe is present.
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -633,6 +633,46 @@ public class UniverseController extends AuthenticatedController {
     try {
       JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
       return result.has("error") ? ApiResponse.error(BAD_REQUEST, result.get("error")) : ApiResponse.success(result);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  /**
+   * API that checks the health of all the tservers and masters in the universe, as well as certain
+   * conditions on the machines themselves, such as disk utilization, presence of FATAL or core
+   * files, etc.
+   *
+   * @return result of the checker script
+   */
+  public Result healthCheck(UUID customerUUID, UUID universeUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Make sure the universe exists, this method will throw an exception if it does not.
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    }
+    catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Get alive status
+    try {
+      List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
+      if (checks == null) {
+        return ApiResponse.error(BAD_REQUEST, "No health check record for universe UUID: "
+            + universeUUID);
+      }
+      ArrayNode detailsList = Json.newArray();
+      for (HealthCheck check : checks) {
+        detailsList.add(Json.stringify(Json.parse(check.detailsJson)));
+      }
+      return ApiResponse.success(detailsList);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
