@@ -561,6 +561,10 @@ CHECKED_STATUS ParseTsLastN(YBRedisReadOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   auto limit = ParseInt32(args[2], "limit");
   RETURN_NOT_OK(limit);
+  if ((*limit) <= 0) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "$0 field $1 is not within valid bounds", "limit", args[2].ToDebugString());
+  }
   op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
   op->mutable_request()->set_range_request_limit(*limit);
   op->mutable_request()->mutable_subkey_range()->mutable_lower_bound()->set_infinity_type
