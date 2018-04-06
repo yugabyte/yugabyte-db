@@ -25,10 +25,14 @@ import java.util.UUID;
 @Entity
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
+  public static final String ALERTS_PREFERENCES = "preferences";
 
   public enum ConfigType {
     @EnumValue("STORAGE")
     STORAGE,
+
+    @EnumValue("ALERTS")
+    ALERTS,
 
     // TODO: move metric and other configs to this table as well.
     @EnumValue("OTHER")
@@ -94,5 +98,23 @@ public class CustomerConfig extends Model {
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
     return CustomerConfig.find.where().eq("customer_uuid", customerUUID).idEq(configUUID).findUnique();
+  }
+
+  public static CustomerConfig createAlertConfig(UUID customerUUID, JsonNode payload) {
+    CustomerConfig customerConfig = new CustomerConfig();
+    customerConfig.type = ConfigType.ALERTS;
+    customerConfig.name = ALERTS_PREFERENCES;
+    customerConfig.customerUUID = customerUUID;
+    customerConfig.data = payload;
+    customerConfig.save();
+    return customerConfig;
+  }
+
+  public static CustomerConfig getAlertConfig(UUID customerUUID) {
+    return CustomerConfig.find.where()
+      .eq("customer_uuid", customerUUID)
+      .eq("type", ConfigType.ALERTS.toString())
+      .eq("name", ALERTS_PREFERENCES)
+      .findUnique();
   }
 }

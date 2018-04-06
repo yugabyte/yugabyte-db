@@ -3,7 +3,8 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
-  fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog
+  fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getHealthCheck,
+  getHealthCheckResponse
 } from '../../../actions/universe';
 
 import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
@@ -31,7 +32,6 @@ const mapDispatchToProps = (dispatch) => {
     resetTablesList: () => {
       dispatch(resetTablesList());
     },
-
     resetUniverseInfo: () => {
       dispatch(resetUniverseInfo());
     },
@@ -58,6 +58,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+    },
+    getHealthCheck: (uuid) => {
+      dispatch(getHealthCheck(uuid))
+      .then((response) => {
+        dispatch(getHealthCheckResponse(response.payload));
+      });
     }
   };
 };
