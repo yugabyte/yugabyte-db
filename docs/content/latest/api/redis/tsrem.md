@@ -80,4 +80,5 @@ $ TSGet cpu_usage 1509474505
 ```
 
 ## SEE ALSO
-[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/)
+[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/),
+[`tslastn`](../tslastn/), [`tscard`](../tscard/)

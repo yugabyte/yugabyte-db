@@ -81,4 +81,5 @@ $ TSAdd cpu_usage 70 “80” EXPIRE_AT 1513642307
 ```
 
 ## SEE ALSO
-[`tsrem`](../tsrem/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/)
+[`tsrem`](../tsrem/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/),
+[`tslastn`](../tslastn/), [`tscard`](../tscard/)

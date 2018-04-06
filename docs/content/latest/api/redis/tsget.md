@@ -85,4 +85,5 @@ $ TSGet cpu_usage xyz # timestamp is not int64.
 ```
 
 ## SEE ALSO
-[`tsadd`](../tsadd/), [`tsrem`](../tsrem/), [`tsrangebytime`](../tsrangebytime/)
+[`tsadd`](../tsadd/), [`tsrem`](../tsrem/), [`tsrangebytime`](../tsrangebytime/),
+[`tslastn`](../tslastn/), [`tscard`](../tscard/)

@@ -104,4 +104,5 @@ $ TSRangeByTime cpu_usage 20 +inf
 ```
 
 ## SEE ALSO
-[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/)
+[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/), 
+[`tslastn`](../tslastn/), [`tscard`](../tscard/)

@@ -69,6 +69,8 @@ Command | Description |
 [`TSADD`](tsadd/) | Add a time series entry|
 [`TSGET`](tsget/) | Retrieve a time series entry|
 [`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range|
+[`TSLASTN`](tslastn/) | Retrieve the latest N time series entries for a given time series|
+[`TSCARD`](tscard/) | Retrieve the number of elements in the given time series|
 [`TSREM`](tsrem/) | Delete a time series entry|
 [`ZADD`](zadd/) | Add a sorted set entry|
 [`ZCARD`](zcard/) | Get cardinality of a sorted set|

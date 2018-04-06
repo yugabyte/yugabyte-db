@@ -1,0 +1,58 @@
+---
+title: TSCARD
+linkTitle: TSCARD
+description: TSCARD
+menu:
+  latest:
+    parent: api-redis
+    weight: 2410
+aliases:
+  - api/redis/tscard
+---
+
+## SYNOPSIS
+<b>`TSCARD key`</b><br>
+This command returns the number of entires in the given time series.
+
+<li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
+<li>If the given `key` is not associated with any data, 0 is returned.</li>
+
+## RETURN VALUE
+Returns the number of entries in the given time series.
+
+## EXAMPLES
+```{.sh .copy .separator-dollar}
+$ TSAdd ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSCard ts_key
+```
+```sh
+(integer) 5
+```
+```{.sh .copy .separator-dollar}
+$ TSAdd ts_key1 10 v1 20 v2 30 v3
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSCard ts_key1
+```
+```sh
+(integer) 3
+```
+```{.sh .copy .separator-dollar}
+# non-existent key returns 0
+$ TSCard ts_key2
+```
+```sh
+(integer) 0
+```
+
+## SEE ALSO
+[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/), 
+[`tsrangebytime`](../tsrangebytime), [`tslastn`](../tslastn)
