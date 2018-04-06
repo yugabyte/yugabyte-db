@@ -43,6 +43,16 @@ You can use your [local cluster](../quick-start/) to explore all the core featur
     </div>
   </a>
   
+  <a class="section-link icon-offset" href="secondary-indexes/">
+    <div class="icon">
+      <i class="fa fa-sitemap"></i>
+    </div>
+    <div class="text">
+      Secondary Indexes
+      <div class="caption">Consistent, performant secondary indexes on columns of your table.</div>
+    </div>
+  </a>
+  
   <a class="section-link icon-offset" href="auto-sharding/">
     <div class="icon">
       <img src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
