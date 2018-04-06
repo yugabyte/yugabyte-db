@@ -40,6 +40,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   FLAGS_num_replicas = 1;
 
   vector<string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=1");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
