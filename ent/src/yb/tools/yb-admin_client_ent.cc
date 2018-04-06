@@ -10,6 +10,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_util.h"
+#include "yb/client/client.h"
 
 namespace yb {
 namespace tools {
@@ -327,6 +328,62 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << pad_object_type("Snapshot") << kColumnSep
        << snapshot_info->id() << kColumnSep
        << snapshot_resp.snapshot_id() << endl;
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) {
+  vector<string> tablet_ids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
+  rpc::RpcController rpc;
+  master::GetTabletLocationsRequestPB req;
+  master::GetTabletLocationsResponsePB resp;
+  rpc.set_timeout(timeout_);
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  struct ReplicaCounts {
+    int live_count;
+    int read_only_count;
+    string placement_uuid;
+  };
+  std::map<TabletServerId, ReplicaCounts> replica_map;
+
+  std::cout << "Tserver ID\t\tPlacement ID\t\tLive count\t\tRead only count\n";
+
+  for (int tablet_idx = 0; tablet_idx < resp.tablet_locations_size(); tablet_idx++) {
+    const master::TabletLocationsPB& locs = resp.tablet_locations(tablet_idx);
+    for (int replica_idx = 0; replica_idx < locs.replicas_size(); replica_idx++) {
+      const auto& replica = locs.replicas(replica_idx);
+      const string& ts_uuid = replica.ts_info().permanent_uuid();
+      const string& placement_uuid =
+          replica.ts_info().has_placement_uuid() ? replica.ts_info().placement_uuid() : "";
+      bool is_replica_read_only =
+          replica.member_type() == consensus::RaftPeerPB::PRE_OBSERVER ||
+          replica.member_type() == consensus::RaftPeerPB::OBSERVER;
+      int live_count = is_replica_read_only ? 0 : 1;
+      int read_only_count = 1 - live_count;
+      if (replica_map.count(ts_uuid) == 0) {
+        replica_map[ts_uuid].live_count = live_count;
+        replica_map[ts_uuid].read_only_count = read_only_count;
+        replica_map[ts_uuid].placement_uuid = placement_uuid;
+      } else {
+        ReplicaCounts* counts = &replica_map[ts_uuid];
+        counts->live_count += live_count;
+        counts->read_only_count += read_only_count;
+      }
+    }
+  }
+
+  for (auto const& tserver : replica_map) {
+    std::cout << tserver.first << "\t\t" << tserver.second.placement_uuid << "\t\t"
+              << tserver.second.live_count << "\t\t" << tserver.second.read_only_count << std::endl;
+  }
 
   return Status::OK();
 }
