@@ -78,6 +78,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--replication_factor=2");
   BuildAndStart(ts_flags, master_flags);
 
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
@@ -111,7 +112,6 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(10000);
-  workload.set_num_replicas(FLAGS_num_replicas);
   workload.set_num_write_threads(1);
   workload.set_write_batch_size(1);
   workload.Setup();
@@ -176,6 +176,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   FLAGS_num_replicas = 1;
 
   vector<string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=1");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 

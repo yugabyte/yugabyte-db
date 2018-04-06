@@ -349,11 +349,14 @@ class ClusterControl:
             ClusterControl.add_extra_flags_arguments(subparsers[cmd])
             self.options.is_startup_command = True
 
-    # modify_placement_info if this is a startup command and has a placement info.
     def modify_placement_info(self):
-        if self.options.is_startup_command and len(self.options.placement_info) > 0:
+        """
+        This will use yb-admin to set the cluster config object to the desired placement.
+
+        This assumes you will have called set_master_addresses already!
+        """
+        if len(self.options.placement_info) > 0:
             yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-            self.set_master_addresses(on_create=False, running_only=True)
             cmd = [yb_admin_binary_path, "--master_addresses", self.options.master_addresses,
                    "modify_placement_info", self.options.placement_info_raw,
                    str(self.options.replication_factor)]
@@ -372,7 +375,6 @@ class ClusterControl:
         self.args = self.parser.parse_args()
         self.options.update_options_from_args(self.args)
         self.args.func()
-        self.modify_placement_info()
 
     def get_number_of_servers(self, daemon_type):
         return len(glob.glob("{}/*/{}/yb-data/{}".format(
@@ -622,6 +624,7 @@ class ClusterControl:
 
         self.start_helper({DAEMON_TYPE_MASTER: server_counts,
                            DAEMON_TYPE_TSERVER: server_counts})
+        self.modify_placement_info()
         # self.setup_redis(on_create=True)
         print ("Successfully created a new cluster.")
 
@@ -633,6 +636,7 @@ class ClusterControl:
             self.for_all_daemons(self.start_daemon)
         else:
             self.create()
+        self.modify_placement_info()
 
     # Stops the cluster.
     def stop(self):
@@ -651,6 +655,7 @@ class ClusterControl:
         self.set_master_addresses()
         self.for_all_daemons(self.stop_daemon)
         self.for_all_daemons(self.start_daemon)
+        self.modify_placement_info()
 
     def wipe_restart(self):
         num_servers_map = {DAEMON_TYPE_MASTER: self.get_number_of_servers(DAEMON_TYPE_MASTER),
@@ -658,6 +663,7 @@ class ClusterControl:
         self.set_master_addresses()
         self.destroy()
         self.start_helper(num_servers_map)
+        self.modify_placement_info()
 
     def add_node(self):
         self.set_master_addresses(running_only=True)

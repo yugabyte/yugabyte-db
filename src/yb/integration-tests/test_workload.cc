@@ -250,7 +250,6 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(options.table_name)
              .schema(&client_schema)
-             .num_replicas(options.num_replicas)
              .num_tablets(options.num_tablets)
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
              // seem to be high enough in some cases (see KUDU-550). We should remove

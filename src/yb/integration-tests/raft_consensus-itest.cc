@@ -818,7 +818,6 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
 
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
   FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
   vector<string> ts_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--inject_latency_before_change_role_secs=1");
@@ -941,7 +940,6 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
 
   ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
   FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
   vector<string> ts_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--inject_latency_before_change_role_secs=10");
@@ -1005,7 +1003,6 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
 void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type) {
     ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
     FLAGS_num_tablet_servers = 3;
-    FLAGS_num_replicas = 3;
     vector<string> ts_flags;
     ts_flags.push_back("--enable_leader_failure_detection=false");
     ts_flags.push_back("--skip_change_role");
@@ -1139,13 +1136,13 @@ void RaftConsensusITest::AssertNoTabletServersCrashed() {
 // time on a slow-test debug build.
 TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   int kCrashesToCause = 3;
+  vector<string> ts_flags, master_flags;
   if (AllowSlowTests()) {
     FLAGS_num_tablet_servers = 7;
     FLAGS_num_replicas = 7;
     kCrashesToCause = 15;
+    master_flags.push_back("--replication_factor=7");
   }
-
-  vector<string> ts_flags, master_flags;
 
   // Crash 5% of the time just before sending an RPC. With 7 servers,
   // this means we crash about 30% of the time before we've fully
@@ -1172,7 +1169,6 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(FLAGS_num_replicas);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
@@ -1249,7 +1245,6 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(FLAGS_num_replicas);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(100);
   workload.set_num_write_threads(2);
@@ -1287,11 +1282,13 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
 
 TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   int kNumElections = FLAGS_num_replicas;
+  vector<string> master_flags;
 
   if (AllowSlowTests()) {
     FLAGS_num_tablet_servers = 7;
     FLAGS_num_replicas = 7;
     kNumElections = 3 * FLAGS_num_replicas;
+    master_flags.push_back("--replication_factor=7");
   }
 
   // Reset consensus rpc timeout to the default value or the election might fail often.
@@ -1300,8 +1297,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   // Start a 7 node configuration cluster (since we can't bring leaders back we start with a
   // higher replica count so that we kill more leaders).
 
-  vector<string> flags;
-  ASSERT_NO_FATALS(BuildAndStart(flags));
+  ASSERT_NO_FATALS(BuildAndStart({}, master_flags));
 
   OverrideFlagForSlowTests(
       "client_inserts_per_thread",
@@ -1347,11 +1343,13 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 
 // Test automatic leader election by killing leaders.
 TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
+  vector<string> master_flags;
   if (AllowSlowTests()) {
     FLAGS_num_tablet_servers = 5;
     FLAGS_num_replicas = 5;
+    master_flags.push_back("--replication_factor=5");
   }
-  ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
+  ASSERT_NO_FATALS(BuildAndStart({}, master_flags));
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -1394,7 +1392,7 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
 TEST_F(RaftConsensusITest, TestAutomaticLeaderElectionOneReplica) {
   FLAGS_num_tablet_servers = 1;
   FLAGS_num_replicas = 1;
-  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -1443,7 +1441,6 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
 // will trigger an assertion because the prepare order and the op indexes will become
 // misaligned.
 TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
-  FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
@@ -1485,7 +1482,6 @@ void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
 // Triggers some complicated scenarios on the replica involving aborting and
 // replacing transactions.
 TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
-  FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
   auto ts_flags = {
        "--enable_leader_failure_detection=false"s,
@@ -1668,7 +1664,6 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 }
 
 TEST_F(RaftConsensusITest, TestLeaderStepDown) {
-  FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
 
   vector<string> ts_flags, master_flags;
@@ -1838,7 +1833,6 @@ TEST_F(RaftConsensusITest, TestAddRemoveObserver) {
 // by a later leader.
 TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -1894,7 +1888,6 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
 // Test the atomic CAS arguments to ChangeConfig() add server and remove server.
 TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -1984,6 +1977,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--inject_latency_before_change_role_secs=10");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--replication_factor=5");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
@@ -2122,7 +2116,6 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
 // Test that config change works while running a workload.
 TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -2227,6 +2220,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   FLAGS_num_replicas = 2;
   vector<string> ts_flags;
   vector<string> master_flags;
+  master_flags.push_back("--replication_factor=2");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   LOG(INFO) << "Finding tablet leader and waiting for things to start...";
@@ -2309,7 +2303,8 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
       "--remote_bootstrap_begin_session_timeout_ms=15000"
   };
   std::vector<std::string> master_flags = {
-      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false",
+      "--replication_factor=2"
   };
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -2346,7 +2341,6 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
-  workload.set_num_replicas(FLAGS_num_replicas);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
   workload.Setup();

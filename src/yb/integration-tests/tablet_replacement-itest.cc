@@ -72,10 +72,10 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   int num_tservers = 5;
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--replication_factor=5");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, num_tservers));
 
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(num_tservers);
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;

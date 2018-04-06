@@ -155,7 +155,6 @@ void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int nu
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
             .split_rows(split_rows)
-            .num_replicas(3)
             .wait(false)
             .Create());
 }
@@ -372,7 +371,6 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       s = table_creator->table_name(table_name)
           .schema(&schema_)
           .set_range_partition_columns({ "key" })
-          .num_replicas(3)
           .num_tablets(1)
           .wait(false)
           .Create();

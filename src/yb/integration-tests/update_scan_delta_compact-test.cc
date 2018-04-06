@@ -99,7 +99,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   void CreateTable() {
     ASSERT_NO_FATALS(InitCluster());
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(1), schema_, client_.get(), 1));
+    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(1), schema_, client_.get()));
   }
 
   void DoTearDown() override {

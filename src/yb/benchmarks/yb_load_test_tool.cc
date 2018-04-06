@@ -75,8 +75,6 @@ DEFINE_int64(max_noop_errors,
              1000,
              "Maximum number of noop errors. The test is aborted after this number of errors.");
 
-DEFINE_int32(num_replicas, 3, "Replication factor for the load test table");
-
 DEFINE_int32(num_tablets, 16, "Number of tablets to create in the table");
 
 DEFINE_bool(noop_only, false, "Only perform noop requests");
@@ -287,7 +285,6 @@ void CreateRedisTable(const YBTableName &table_name, const shared_ptr<YBClient> 
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)
                                      .num_tablets(FLAGS_num_tablets)
-                                     .num_replicas(FLAGS_num_replicas)
                                      .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
                                      .Create();
   if (!table_creation_status.ok()) {
@@ -315,7 +312,6 @@ void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &cl
       table_creator->table_name(table_name)
           .schema(&schema)
           .split_rows(splits)
-          .num_replicas(FLAGS_num_replicas)
           .table_type(yb::client::YBTableType::YQL_TABLE_TYPE)
           .Create();
   if (!table_creation_status.ok()) {

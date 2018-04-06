@@ -72,6 +72,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
+DECLARE_int32(replication_factor);
 
 namespace yb {
 
@@ -124,6 +125,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
+    FLAGS_replication_factor = num_replicas();
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
@@ -140,7 +142,6 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
              .table_type(YBTableType::YQL_TABLE_TYPE)
-             .num_replicas(num_replicas())
              .num_tablets(1)
              .Create());
 
@@ -238,7 +239,6 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema_)
-        .num_replicas(num_replicas())
         .num_tablets(10)
         .Create();
   }
@@ -265,7 +265,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 // Subclass which creates three servers and a replicated cluster.
 class ReplicatedAlterTableTest : public AlterTableTest {
  protected:
-  int num_replicas() const override { return 3; }
+  virtual int num_replicas() const override { return 3; }
 };
 
 const YBTableName AlterTableTest::kTableName("my_keyspace", "fake-table");

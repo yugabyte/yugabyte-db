@@ -28,22 +28,19 @@ namespace client {
 Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
                            YBClient* client,
-                           YBSchemaBuilder* builder,
-                           int num_replicas) {
+                           YBSchemaBuilder* builder) {
   YBSchema schema;
   RETURN_NOT_OK(builder->Build(&schema));
-  return Create(table_name, num_tablets, schema, client, num_replicas);
+  return Create(table_name, num_tablets, schema, client);
 }
 
 Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
                            const YBSchema& schema,
-                           YBClient* client,
-                           int num_replicas) {
+                           YBClient* client) {
   std::unique_ptr <YBTableCreator> table_creator(client->NewTableCreator());
   RETURN_NOT_OK(table_creator->table_name(table_name)
       .schema(&schema)
-      .num_replicas(num_replicas)
       .num_tablets(num_tablets)
       .Create());
 

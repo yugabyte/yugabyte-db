@@ -64,14 +64,12 @@ class TableHandle {
   CHECKED_STATUS Create(const YBTableName& table_name,
                         int num_tablets,
                         YBClient* client,
-                        YBSchemaBuilder* builder,
-                        int num_replicas = 3);
+                        YBSchemaBuilder* builder);
 
   CHECKED_STATUS Create(const YBTableName& table_name,
                         int num_tablets,
                         const YBSchema& schema,
-                        YBClient* client,
-                        int num_replicas = 3);
+                        YBClient* client);
 
   CHECKED_STATUS Open(const YBTableName& table_name, YBClient* client);
 

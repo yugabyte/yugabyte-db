@@ -215,6 +215,16 @@ class MasterTest : public YBTest {
     ASSERT_EQ(tables.tables_size(), table_info.size());
   }
 
+  void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
+    ChangeMasterClusterConfigRequestPB change_req;
+    change_req.mutable_cluster_config()->CopyFrom(*cluster_config);
+    ChangeMasterClusterConfigResponsePB change_resp;
+    ASSERT_OK(proxy_->ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
+    // Bump version number by 1, so we do not have to re-query.
+    cluster_config->set_version(cluster_config->version() + 1);
+    LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
+  }
+
   shared_ptr<Messenger> client_messenger_;
   gscoped_ptr<MiniMaster> mini_master_;
   gscoped_ptr<MasterServiceProxy> proxy_;
@@ -654,24 +664,34 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", INT32)}, 1);
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  proxy_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController());
+  ASSERT_FALSE(config_resp.has_error());
+  ASSERT_TRUE(config_resp.has_cluster_config());
+  auto cluster_config = config_resp.cluster_config();
+
   CreateTableRequestPB req;
-  req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(5);
-  auto* pb = req.mutable_replication_info()->mutable_live_replicas()->add_placement_blocks();
 
   // Fail due to not cloud_info.
+  auto* live_replicas = cluster_config.mutable_replication_info()->mutable_live_replicas();
+  live_replicas->set_num_replicas(5);
+  auto* pb = live_replicas->add_placement_blocks();
+  UpdateMasterClusterConfig(&cluster_config);
   Status s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  auto* cloud_info = pb->mutable_cloud_info();
-  pb->set_min_num_replicas(req.replication_info().live_replicas().num_replicas() + 1);
-
   // Fail due to min_num_replicas being more than num_replicas.
+  auto* cloud_info = pb->mutable_cloud_info();
+  pb->set_min_num_replicas(live_replicas->num_replicas() + 1);
+  UpdateMasterClusterConfig(&cluster_config);
   s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
   // Succeed the CreateTable call, but expect to have errors on call.
-  pb->set_min_num_replicas(req.replication_info().live_replicas().num_replicas());
+  pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
+  UpdateMasterClusterConfig(&cluster_config);
   ASSERT_OK(DoCreateTable(kTableName, schema, &req));
 
   IsCreateTableDoneRequestPB is_create_req;
