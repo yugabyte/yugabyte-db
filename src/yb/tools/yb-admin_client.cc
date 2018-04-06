@@ -443,6 +443,7 @@ Status ClusterAdminClient::SetupRedisTable() {
     LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
   } else {
     // If any other error, report that!
+    LOG(ERROR) << s;
     RETURN_NOT_OK(s);
   }
   return Status::OK();

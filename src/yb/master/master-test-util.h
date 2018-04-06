@@ -107,7 +107,6 @@ void CreateTabletForTesting(MiniMaster* mini_master,
     req.set_name(table_name.table_name());
     req.mutable_namespace_()->set_name(table_name.resolved_namespace_name());
 
-    req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
     ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(
         &req, &resp, /* rpc::RpcContext* */ nullptr));

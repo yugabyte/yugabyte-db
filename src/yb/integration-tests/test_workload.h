@@ -53,7 +53,6 @@ struct TestWorkloadOptions {
   bool sequential_write = false;
   bool insert_failures_allowed = true;
 
-  int num_replicas = 3;
   int num_tablets = 1;
   client::YBTableName table_name = kDefaultTableName;
 };
@@ -108,10 +107,6 @@ class TestWorkload {
   // By default, this triggers a CHECK failure.
   void set_not_found_allowed(bool allowed) {
     options_.not_found_allowed = allowed;
-  }
-
-  void set_num_replicas(int r) {
-    options_.num_replicas = r;
   }
 
   // Set the number of tablets for the table created by this workload.

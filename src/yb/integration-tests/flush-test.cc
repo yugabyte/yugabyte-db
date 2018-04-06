@@ -56,7 +56,6 @@ class FlushITest : public YBTest {
     workload_->set_payload_bytes(kPayloadBytes);
     workload_->set_write_batch_size(1);
     workload_->set_num_write_threads(4);
-    workload_->set_num_replicas(1);
     workload_->set_num_tablets(kNumTablets);
     workload_->Setup();
   }

@@ -79,7 +79,6 @@ class PlacementInfoTest : public YBTest {
                  .schema(&schema)
                  .wait(true)
                  .num_tablets(1)
-                 .num_replicas(kNumTservers)
                  .Create());
 
   }

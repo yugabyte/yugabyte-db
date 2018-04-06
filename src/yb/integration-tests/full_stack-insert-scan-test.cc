@@ -357,7 +357,7 @@ void FullStackInsertScanTest::CreateTable() {
   for (auto& col : Int64ColumnNames()) {
     b.AddColumn(col)->Type(INT64)->NotNull();
   }
-  ASSERT_OK(reader_table_.Create(kTableName, CalcNumTablets(1), client_.get(), &b, 1));
+  ASSERT_OK(reader_table_.Create(kTableName, CalcNumTablets(1), client_.get(), &b));
   schema_ = reader_table_.schema();
 }
 
