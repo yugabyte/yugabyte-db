@@ -16,21 +16,18 @@ function validate(values) {
     hasErrors = true;
   }
 
-  if(!values.password || values.password.trim() === '') {
-    errors.password = 'Enter password';
+  const hasPassword = !values.password || values.password.trim() === '';
+  const hasConfirmPassword = !values.confirmPassword || values.confirmPassword.trim() === '';
+  if ((hasPassword || hasConfirmPassword) && values.password !== values.confirmPassword) {
     hasErrors = true;
-  }
-  if(!values.confirmPassword || values.confirmPassword.trim() === '') {
-    errors.confirmPassword = 'Enter Confirm Password';
-    hasErrors = true;
-  }
-
-  if(values.confirmPassword  && values.confirmPassword.trim() !== '' &&
-    values.password  && values.password.trim() !== '' &&
-    values.password !== values.confirmPassword) {
-    errors.password = 'Password and Confirm Password don\'t match';
-    errors.password = 'Password and Confirm Password don\'t match';
-    hasErrors = true;
+    if (!hasPassword) {
+      errors.password = 'Enter password';
+    } else if (!hasConfirmPassword) {
+      errors.confirmPassword = 'Enter Confirm Password';
+    } else {
+      errors.password = 'Password and Confirm Password don\'t match';
+      errors.confirmPassword = 'Password and Confirm Password don\'t match';
+    }
   }
   return hasErrors && errors;
 }

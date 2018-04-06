@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -17,13 +18,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.models.TaskInfo;
 
 import play.libs.Json;
 
@@ -51,6 +52,9 @@ public class Commissioner {
   // The background progress monitor for the tasks.
   static ProgressMonitor progressMonitor;
 
+  // The background thread for checking universe status.
+  static HealthChecker healthChecker;
+
   // Threadpool to run user submitted tasks.
   static ExecutorService executor;
 
@@ -75,6 +79,10 @@ public class Commissioner {
     // Initialize the task manager.
     progressMonitor = new ProgressMonitor();
     progressMonitor.start();
+    LOG.info("Started TaskProgressMonitor thread.");
+
+    healthChecker = new HealthChecker(shuttingDown);
+    healthChecker.start();
     LOG.info("Started TaskProgressMonitor thread.");
   }
 

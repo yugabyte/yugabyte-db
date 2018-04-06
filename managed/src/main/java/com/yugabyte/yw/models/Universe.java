@@ -167,6 +167,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Fetch ONLY the universeUUID field for all universes.
+   * WARNING: Returns partially filled Universe objects!!
+   * @return list of UUIDs of all universes
+   */
+  public static List<Universe> getAllUuids() {
+    return find.select("universeUUID").findList();
+  }
+
+  /**
    * Returns the Universe object given its uuid.
    *
    * @param universeUUID

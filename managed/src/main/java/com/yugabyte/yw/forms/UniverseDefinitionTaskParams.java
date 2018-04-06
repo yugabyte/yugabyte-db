@@ -220,6 +220,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.spotPrice = spotPrice;
+      newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.assignPublicIP = assignPublicIP;
@@ -241,7 +242,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           spotPrice == other.spotPrice &&
           assignPublicIP == other.assignPublicIP &&
           useTimeSync == other.useTimeSync) {
-         return true;
+        return true;
       }
       return false;
     }

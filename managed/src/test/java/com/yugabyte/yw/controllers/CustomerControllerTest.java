@@ -103,6 +103,10 @@ public class CustomerControllerTest extends WithApplication {
     params.put("email", "foo@bar.com");
     params.put("name", "Test Customer");
     params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    ObjectNode alertingData = Json.newObject();
+    alertingData.put("sendAlertsToYb", true);
+    params.put("alertingData", alertingData);
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());

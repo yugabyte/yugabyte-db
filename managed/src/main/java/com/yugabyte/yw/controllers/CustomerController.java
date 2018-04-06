@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -47,11 +48,18 @@ public class CustomerController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
-    return ok(Json.toJson(customer));
+    ObjectNode responseJson = (ObjectNode)Json.toJson(customer);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
+    if (config != null) {
+      responseJson.set("alertingData", config.data);
+    }
+
+    return ok(responseJson);
   }
 
   public Result update(UUID customerUUID) {
     ObjectNode responseJson = Json.newObject();
+    ObjectNode errorJson = Json.newObject();
 
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -65,8 +73,40 @@ public class CustomerController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
+    boolean hasPassword = formData.get().password != null && !formData.get().password.isEmpty();
+    boolean hasConfirmPassword = formData.get().confirmPassword != null &&
+        !formData.get().confirmPassword.isEmpty();
+    if (hasPassword && hasConfirmPassword) {
+      if (!formData.get().password.equals(formData.get().confirmPassword)) {
+        String errorMsg = "Both passwords must match!";
+        errorJson.put("password", errorMsg);
+        errorJson.put("confirmPassword", errorMsg);
+        responseJson.set("error", errorJson);
+        return badRequest(responseJson);
+      }
+      // Had password info that matched, should update user password!
+      customer.setPassword(formData.get().password);
+    } else if (hasPassword && !hasConfirmPassword) {
+      String errorMsg = "Please re-enter password";
+      errorJson.put("confirmPassword", errorMsg);
+      responseJson.set("error", errorJson);
+      return badRequest(responseJson);
+    } else if (!hasPassword && hasConfirmPassword) {
+      String errorMsg = "Please enter password";
+      errorJson.put("password", errorMsg);
+      responseJson.set("error", errorJson);
+      return badRequest(responseJson);
+    }
 
-    customer.setPassword(formData.get().password);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
+    if (config == null) {
+      config = CustomerConfig.createAlertConfig(
+          customerUUID, Json.toJson(formData.get().alertingData));
+    } else {
+      config.data = Json.toJson(formData.get().alertingData);
+      config.update();
+    }
+
     customer.name = formData.get().name;
     customer.update();
 

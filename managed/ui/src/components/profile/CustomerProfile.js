@@ -2,21 +2,33 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import {YBInputField, YBButton} from '../common/forms/fields';
+import {YBInputField, YBButton, YBToggle} from '../common/forms/fields';
 import { Field } from 'redux-form';
 import _ from 'lodash';
+import { isDefinedNotNull } from 'utils/ObjectUtils';
 
 export default class CustomerProfile extends Component {
-  updateCustomerProfile = values => {
-    this.props.updateCustomerDetails(values);
-  };
+  constructor(props) {
+    super(props);
+    this.toggleSendAlertsToYb = this.toggleSendAlertsToYb.bind(this);
+  }
 
   componentWillReceiveProps(nextProps) {
     if (!_.isEqual(this.props.customer, nextProps.customer)) {
       this.props.change("email", nextProps.customer.email);
       this.props.change("name", nextProps.customer.name);
       this.props.change("code", nextProps.customer.code);
+      if (isDefinedNotNull(nextProps.customer.alertingData)) {
+        this.props.change("alertingData.alertingEmail",
+            nextProps.customer.alertingData.alertingEmail);
+        this.props.change("alertingData.sendAlertsToYb",
+            nextProps.customer.alertingData.sendAlertsToYb);
+      }
     }
+  }
+
+  toggleSendAlertsToYb(event) {
+    this.setState({"alertingData.sendAlertsToYb": event.target.checked});
   }
 
   render() {
@@ -27,6 +39,7 @@ export default class CustomerProfile extends Component {
     } else if (customerProfile.error) {
       profileUpdateStatus = <span className="pull-right yb-fail-color">Profile Update Failed</span>;
     }
+
     return (
       <div className="bottom-bar-padding">
         <form name="EditCustomerProfile" onSubmit={handleSubmit(this.props.updateCustomerDetails)}>
@@ -42,6 +55,17 @@ export default class CustomerProfile extends Component {
               <h3>Change Password</h3>
               <Field name="password" type="password" component={YBInputField} label="Password" placeHolder="Enter New Password"/>
               <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password" placeHolder="Confirm New Password"/>
+            </Col>
+          </Row>
+          <Row>
+            <Col md={6} sm={12}>
+              <h3>Alerting controls</h3>
+              <Field name="alertingData.alertingEmail" type="text" component={YBInputField} label="Alert email" placeHolder="Email to forward alerts to"/>
+              <Field name="alertingData.sendAlertsToYb"
+                     component={YBToggle} isReadOnly={false}
+                     onToggle={this.toggleSendAlertsToYb}
+                     label="Send alert emails to YugaByte team"
+                     subLabel="Whether or not to send alerting emails to the YugaByte team."/>
             </Col>
           </Row>
           <Row>
