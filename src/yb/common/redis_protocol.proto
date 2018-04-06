@@ -70,7 +70,6 @@ message RedisIndexRangePB {
 
 message RedisIndexBoundPB {
   required int64 index = 1;
-  optional bool is_exclusive = 2 [default = false];
 }
 
 // Wrapper for a subkey which denotes an upper/lower bound for a range request.

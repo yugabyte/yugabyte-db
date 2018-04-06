@@ -296,30 +296,23 @@ class IndexBound {
  public:
   IndexBound() :
       index_(-1),
-      is_exclusive_(false),
       is_lower_bound_(false) {}
 
-  IndexBound(int64 index, bool is_exclusive, bool is_lower_bound) :
+  IndexBound(int64 index, bool is_lower_bound) :
       index_(index),
-      is_exclusive_(is_exclusive),
       is_lower_bound_(is_lower_bound) {}
 
   bool CanInclude(int64 curr_index) const {
     if (index_ == -1 ) {
       return true;
     }
-    if (is_lower_bound_) {
-      return (is_exclusive_) ? (index_ < curr_index) : (index_ <= curr_index);
-    } else {
-      return (is_exclusive_) ? (index_ > curr_index) : (index_ >= curr_index);
-    }
+    return is_lower_bound_ ? index_ <= curr_index : index_ >= curr_index;
   }
 
   static const IndexBound& Empty();
 
  private:
   const int64 index_;
-  const bool is_exclusive_;
   const bool is_lower_bound_;
 };
 
