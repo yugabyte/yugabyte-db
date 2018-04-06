@@ -80,7 +80,8 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
   }
 };
 
-TEST_F(CreateTableITest, TestCreateRedisTable) {
+// TODO(bogdan): disabled until ENG-2687
+TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
   const string cloud = "aws";
   const string region = "us-west-1";
   const string zone = "a";
@@ -105,7 +106,8 @@ TEST_F(CreateTableITest, TestCreateRedisTable) {
       CreateTableWithPlacement(replication_info, "success_base", YBTableType::REDIS_TABLE_TYPE));
 }
 
-TEST_F(CreateTableITest, TestCreateWithPlacement) {
+// TODO(bogdan): disabled until ENG-2687
+TEST_F(CreateTableITest, DISABLED_TestCreateWithPlacement) {
   const string cloud = "aws";
   const string region = "us-west-1";
   const string zone = "a";
@@ -179,7 +181,6 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
-            .num_replicas(3)
             .num_tablets(kNumTablets)
             .wait(false)
             .Create());
@@ -248,7 +249,6 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
-            .num_replicas(3)
             .num_tablets(kNumTablets)
             .Create());
 

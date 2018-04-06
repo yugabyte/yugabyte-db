@@ -44,6 +44,7 @@
 DECLARE_uint64(initial_seqno);
 DECLARE_uint64(bulk_load_num_files_per_tablet);
 DECLARE_bool(enable_load_balancing);
+DECLARE_int32(replication_factor);
 
 using namespace std::literals;
 
@@ -65,8 +66,7 @@ static const char* const kTableName = "my_table";
 // Lower number of runs for tsan due to low perf.
 static constexpr int32_t kNumIterations = NonTsanVsTsan(10000, 30);
 static constexpr int32_t kNumTablets = NonTsanVsTsan(3, 3);
-// Use 3 tservers to test a more realistic scenario.
-static constexpr int32_t kNumTabletServers = NonTsanVsTsan(3, 1);
+static constexpr int32_t kNumTabletServers = 1;
 static constexpr int32_t kV2Value = 12345;
 static constexpr size_t kV2Index = 5;
 static constexpr uint64_t kNumFilesPerTablet = 5;
@@ -119,7 +119,6 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(table_creator->table_name(*table_name_.get())
           .table_type(client::YBTableType::YQL_TABLE_TYPE)
           .schema(&schema_)
-          .num_replicas(1)
           .num_tablets(kNumTablets)
           .wait(true)
           .Create());

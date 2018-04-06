@@ -639,12 +639,6 @@ class YBTableCreator {
   // Optional.
   YBTableCreator& split_rows(const std::vector<const YBPartialRow*>& split_rows);
 
-  // Sets the number of replicas for each tablet in the table.
-  // This should be an odd number. Optional.
-  //
-  // If not provided (or if <= 0), falls back to the server-side default.
-  YBTableCreator& num_replicas(int n_replicas);
-
   // For index table: sets the indexed table id of this index.
   YBTableCreator& indexed_table_id(const std::string& id);
 

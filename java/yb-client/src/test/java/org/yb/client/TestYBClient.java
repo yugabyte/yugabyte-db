@@ -330,11 +330,11 @@ public class TestYBClient extends BaseYBClientTest {
     placementBlocksReadOnly.add(placementBlock0);
     
     Master.PlacementInfoPB livePlacementInfo = 
-        Master.PlacementInfoPB.newBuilder().setNumReplicas(3).addAllPlacementBlocks(placementBlocksLive).
+        Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
         setPlacementUuid(ByteString.copyFromUtf8(LIVE_TS)).build();
     
     Master.PlacementInfoPB readOnlyPlacementInfo = 
-        Master.PlacementInfoPB.newBuilder().setNumReplicas(3).addAllPlacementBlocks(placementBlocksReadOnly).
+        Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
         setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_TS)).build();
     
     List<Master.PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);
@@ -411,7 +411,7 @@ public class TestYBClient extends BaseYBClientTest {
     placementBlocksreadOnlyNew.add(placementBlock0);
     
     Master.PlacementInfoPB readOnlyPlacementInfoNew = 
-        Master.PlacementInfoPB.newBuilder().setNumReplicas(3).
+        Master.PlacementInfoPB.newBuilder().
         addAllPlacementBlocks(placementBlocksreadOnlyNew).
         setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_NEW_TS)).build();
     
@@ -432,7 +432,7 @@ public class TestYBClient extends BaseYBClientTest {
                                                                Arrays.asList(8, 8, 8));
     expectedMap.put(READ_ONLY_NEW_TS, expectedReadOnlyNewTsList);
     
-    assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap));
+    assertTrue(syncClient.waitForExpectedReplicaMap(60000, table, expectedMap));
   }
 
   /**
@@ -514,7 +514,7 @@ public class TestYBClient extends BaseYBClientTest {
     
     List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
     Schema newSchema = new Schema(columns);
-    CreateTableOptions tableOptions = new CreateTableOptions().setNumReplicas(3).setNumTablets(8);
+    CreateTableOptions tableOptions = new CreateTableOptions().setNumTablets(8);
     YBTable table = syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
     
     // Wait for leader load balancing to finish, timing out after 30 seconds. 

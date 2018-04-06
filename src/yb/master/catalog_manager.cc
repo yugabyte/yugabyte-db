@@ -1303,16 +1303,15 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
 
 Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
   // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
-  if (!replication_info.live_replicas().placement_blocks().empty() ||
-      !replication_info.read_replicas().empty()) {
-    auto l = cluster_config_->LockForRead();
-    auto ri = l->data().pb.replication_info();
-    if (!ri.live_replicas().placement_blocks().empty() ||
-        !ri.read_replicas().empty()) {
-      return STATUS(
-          InvalidArgument,
-          "Unsupported: cannot set both table and cluster level replication info yet.");
-    }
+  const auto& live_placement_info = replication_info.live_replicas();
+  if (!(live_placement_info.placement_blocks().empty() &&
+        live_placement_info.num_replicas() <= 0 &&
+        live_placement_info.placement_uuid().empty()) ||
+      !replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty()) {
+    return STATUS(
+        InvalidArgument,
+        "Unsupported: cannot set table level replication info yet.");
   }
   return Status::OK();
 }
@@ -1590,9 +1589,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
-  // If we don't have table level requirements, fallback to the cluster ones.
-  auto replication_info = req.replication_info();
-  if (!req.has_replication_info()) {
+  // Default to the cluster placement object.
+  ReplicationInfoPB replication_info;
+  {
     auto l = cluster_config_->LockForRead();
     replication_info = l->data().pb.replication_info();
   }
@@ -1859,9 +1858,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   metadata->set_namespace_id(namespace_id);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
-  if (req.has_replication_info()) {
-    metadata->mutable_replication_info()->CopyFrom(req.replication_info());
-  }
+  // TODO(bogdan): add back in replication_info once we allow overrides!
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   CHECK_OK(SchemaToPB(schema, metadata->mutable_schema()));
@@ -2633,9 +2630,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l->data().pb.schema());
   }
-  if (l->data().pb.has_replication_info()) {
-    resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
-  }
+  // TODO(bogdan): add back in replication_info once we allow overrides!
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
@@ -4588,10 +4583,12 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
                    tablet->tablet_id()));
   }
 
+  // Validate that we do not have placement blocks in both cluster and table data.
+  RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard->data().pb.replication_info()));
+
+  // Default to the cluster placement object.
   ReplicationInfoPB replication_info;
-  if (table_guard->data().pb.has_replication_info()) {
-    replication_info = table_guard->data().pb.replication_info();
-  } else {
+  {
     auto l = cluster_config_->LockForRead();
     replication_info = l->data().pb.replication_info();
   }
@@ -4602,8 +4599,6 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
-
-  RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard->data().pb.replication_info()));
 
   // TODO: we do this defaulting to cluster if no table data in two places, should refactor and
   // have a centralized getter, that will ultimately do the subsetting as well.
@@ -5271,6 +5266,7 @@ Status CatalogManager::SetClusterConfig(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
 
+  // TODO(bogdan): should this live here?
   const ReplicationInfoPB& replication_info = config.replication_info();
   for (int i = 0; i < replication_info.read_replicas_size(); i++) {
     if (!replication_info.read_replicas(i).has_placement_uuid()) {

@@ -253,7 +253,6 @@ struct MirrorTable {
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(kTableName)
         .schema(&schema)
-        .num_replicas(3)
         .Create();
   }
 

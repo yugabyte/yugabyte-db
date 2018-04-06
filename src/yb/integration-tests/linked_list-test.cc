@@ -91,6 +91,7 @@ DEFINE_bool(stress_flush_compact, false,
             "Flush and compact way more aggressively to try to find bugs");
 DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
+DECLARE_int32(replication_factor);
 
 namespace yb {
 
@@ -267,7 +268,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     tester_.reset(new LinkedListTester(client_, kTableName,
                                        FLAGS_num_chains,
                                        FLAGS_num_tablets,
-                                       FLAGS_num_replicas,
+                                       FLAGS_replication_factor,
                                        FLAGS_enable_mutation));
   }
 
@@ -535,7 +536,6 @@ Status LinkedListTester::CreateLinkedListTable() {
   RETURN_NOT_OK_PREPEND(table_creator->table_name(table_name_)
                         .schema(&schema_)
                         .num_tablets(CalcNumTablets(num_replicas_))
-                        .num_replicas(num_replicas_)
                         .table_type(client::YBTableType::YQL_TABLE_TYPE)
                         .Create(),
                         "Failed to create table");
@@ -945,7 +945,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   PeriodicWebUIChecker checker(*cluster_.get(), tablet_id,
                                check_freq);
 
-  bool can_kill_ts = FLAGS_num_tablet_servers > 1 && FLAGS_num_replicas > 2;
+  bool can_kill_ts = FLAGS_num_tablet_servers > 1 && FLAGS_replication_factor > 2;
 
   int64_t written = 0;
   ASSERT_OK(tester_->LoadLinkedList(MonoDelta::FromSeconds(FLAGS_seconds_to_run),

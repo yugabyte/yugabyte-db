@@ -271,7 +271,6 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(table_creator->table_name(table_name)
                   .schema(&schema_)
                   .num_tablets(kNumTablets)
-                  .num_replicas(kNumTabletServers)
                   .Create());
     return table_.Open(table_name, client_.get());
   }

@@ -63,7 +63,6 @@ class YBTableTestBase : public YBTest {
   virtual int num_masters();
   virtual int num_tablet_servers();
   virtual int num_tablets();
-  virtual int num_replicas();
   virtual int client_rpc_timeout_ms();
   virtual client::YBTableName table_name();
   virtual bool need_redis_table();

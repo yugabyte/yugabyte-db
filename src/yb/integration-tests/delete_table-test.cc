@@ -445,7 +445,9 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
 // Test that a tablet replica is automatically tombstoned on startup if a local
 // crash occurs in the middle of remote bootstrap.
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
-  ASSERT_NO_FATALS(StartCluster());
+  vector<string> tserver_flags, master_flags;
+  master_flags.push_back("--replication_factor=2");
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0;  // We'll test with the first TS.
 
@@ -462,7 +464,6 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(2);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -509,10 +510,15 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 // bootstrap source server fails in the middle of the remote bootstrap process.
 // Also test that we can remotely bootstrap a tombstoned tablet.
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
-  vector<string> flags;
-  flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+  vector<string> tserver_flags, master_flags;
+
+  tserver_flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+
+  master_flags.push_back("--enable_load_balancing=false");
+  master_flags.push_back("--replication_factor=2");
+
   // Start the cluster with load balancer turned off.
-  ASSERT_NO_FATALS(StartCluster(flags, {"--enable_load_balancing=false"}));
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));
   const MonoDelta timeout = MonoDelta::FromSeconds(40);
   const int kTsIndex = 0;  // We'll test with the first TS.
 
@@ -529,7 +535,6 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(2);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -754,7 +759,6 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
 
   // Create the table.
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(kNumTabletServers);
   workload.Setup();
 
   // Figure out the tablet ids of the created tablets.
@@ -883,11 +887,11 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
 
   vector<string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=1");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 1));
 
   // Create the table.
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(1);
   workload.Setup();
   workload.Start();
   while (workload.rows_inserted() < 1000) {
@@ -1002,7 +1006,6 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .num_tablets(kNumTablets)
                           .schema(&client_schema)
-                          .num_replicas(3)
                           .Create());
 
   // Start a workload on the cluster, and run it until we find WALs on disk.

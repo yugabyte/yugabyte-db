@@ -51,8 +51,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
   @Override
   protected void afterStartingMiniCluster() throws Exception {
     super.afterStartingMiniCluster();
-    // Set to 1 for testDisconnect to always test disconnecting the right server.
-    CreateTableOptions options = new CreateTableOptions().setNumReplicas(1);
+    CreateTableOptions options = new CreateTableOptions();
     table = createTable(TABLE_NAME, basicSchema, options);
   }
 

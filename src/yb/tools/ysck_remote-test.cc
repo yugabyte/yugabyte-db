@@ -97,7 +97,6 @@ class RemoteYsckTest : public YBTest {
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
-                     .num_replicas(3)
                      .num_tablets(3)
                      .Create());
     // Make sure we can open the table.

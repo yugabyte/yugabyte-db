@@ -141,7 +141,12 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_consensus_svc_num_threads = 8;
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
-  FLAGS_replication_factor = num_masters_initial_;
+  // This dictates the RF of newly created tables.
+  if (num_ts_initial_ >= 3) {
+    FLAGS_replication_factor = 3;
+  } else {
+    FLAGS_replication_factor = 1;
+  }
   FLAGS_memstore_size_mb = 16;
 
   // start the masters

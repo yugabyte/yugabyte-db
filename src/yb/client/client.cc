@@ -1084,11 +1084,6 @@ YBTableCreator& YBTableCreator::split_rows(const vector<const YBPartialRow*>& ro
   return *this;
 }
 
-YBTableCreator& YBTableCreator::num_replicas(int num_replicas) {
-  data_->num_replicas_ = num_replicas;
-  return *this;
-}
-
 YBTableCreator& YBTableCreator::replication_info(const ReplicationInfoPB& ri) {
   data_->replication_info_ = ri;
   data_->has_replication_info_ = true;
@@ -1149,20 +1144,6 @@ Status YBTableCreator::Create() {
     req.mutable_replication_info()->CopyFrom(data_->replication_info_);
   }
 
-  if (data_->num_replicas_ >= 1) {
-    if (!data_->has_replication_info_) {
-      req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(
-          data_->num_replicas_);
-    } else if (
-        data_->has_replication_info_ &&
-        data_->replication_info_.live_replicas().num_replicas() != data_->num_replicas_) {
-      return STATUS(
-          InvalidArgument,
-          strings::Substitute(
-              "Requested $0 num_replicas, but ReplicationInfoPB had $1 live_replicas.",
-              data_->num_replicas_, data_->replication_info_.live_replicas().num_replicas()));
-    }
-  }
   RETURN_NOT_OK_PREPEND(SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema()),
                         "Invalid schema");
 

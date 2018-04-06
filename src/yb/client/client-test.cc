@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <functional>
 #include <thread>
+#include <set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -90,6 +91,7 @@ DECLARE_int32(scanner_inject_latency_on_each_batch_ms);
 DECLARE_int32(scanner_max_batch_size_bytes);
 DECLARE_int32(scanner_ttl_ms);
 DECLARE_int32(tablet_server_svc_queue_length);
+DECLARE_int32(replication_factor);
 
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
@@ -143,7 +145,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_heartbeat_interval_ms = 10;
 
     // Start minicluster and wait for tablet servers to connect to master.
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    auto opts = MiniClusterOptions();
+    opts.num_tablet_servers = 3;
+    cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
@@ -154,8 +158,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
 
-    ASSERT_NO_FATALS(CreateTable(kTableName, 1, kNumTablets, &client_table_));
-    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, 1, &client_table2_));
+    ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
+    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
   }
 
   void DoTearDown() override {
@@ -320,12 +324,12 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  // Creates a table with 'num_replicas', split into tablets based on 'split_rows'
+  // Creates a table with RF=FLAGS_replication_factor, split into tablets based on 'split_rows'
   // (or single tablet if 'split_rows' is empty).
   void CreateTable(const YBTableName& table_name_orig,
-                   int num_replicas,
                    int num_tablets,
                    TableHandle* table) {
+    auto num_replicas = FLAGS_replication_factor;
     // The implementation allows table name without a keyspace.
     YBTableName table_name(table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
@@ -341,7 +345,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas));
     }
 
-    ASSERT_OK(table->Create(table_name, num_tablets, schema_, client_.get(), num_replicas));
+    ASSERT_OK(table->Create(table_name, num_tablets, schema_, client_.get()));
   }
 
   // Kills a tablet server.
@@ -472,11 +476,21 @@ TEST_F(ClientTest, TestListTables) {
 TEST_F(ClientTest, TestListTabletServers) {
   std::vector<std::unique_ptr<YBTabletServer>> tss;
   ASSERT_OK(client_->ListTabletServers(&tss));
-  ASSERT_EQ(1, tss.size());
-  ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->instance_pb().permanent_uuid(),
-            tss[0]->uuid());
-  ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->first_rpc_address().address().to_string(),
-            tss[0]->hostname());
+  ASSERT_EQ(3, tss.size());
+  set<string> actual_ts_uuids;
+  set<string> actual_ts_hostnames;
+  set<string> expected_ts_uuids;
+  set<string> expected_ts_hostnames;
+  for (int i = 0; i < tss.size(); ++i) {
+    expected_ts_uuids.insert(
+        cluster_->mini_tablet_server(i)->server()->instance_pb().permanent_uuid());
+    actual_ts_uuids.insert(tss[i]->uuid());
+    expected_ts_hostnames.insert(
+      cluster_->mini_tablet_server(i)->server()->first_rpc_address().address().to_string());
+    actual_ts_hostnames.insert(tss[i]->hostname());
+  }
+  ASSERT_EQ(expected_ts_uuids, actual_ts_uuids);
+  ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);
 }
 
 TEST_F(ClientTest, TestBadTable) {
@@ -548,7 +562,7 @@ void CheckCounts(const TableHandle& table, const std::vector<int>& expected) {
 TEST_F(ClientTest, TestScanMultiTablet) {
   // 5 tablets, each with 10 rows worth of space.
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("TestScanMultiTablet"), 1, 5, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName("TestScanMultiTablet"), 5, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
@@ -654,7 +668,7 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("blacklist"), 3, kNumTablets, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName("blacklist"), kNumTablets, &table));
   InsertTestRows(table, 1, 0);
 
   // Look up the tablet and its replicas into the metadata cache.
@@ -731,7 +745,6 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(YBTableName("split-table"),
-                               1, /* replicas */
                                kNumTablets,
                                &table));
 
@@ -904,7 +917,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(), "Failed Write");
-    ASSERT_STR_CONTAINS(error->status().ToString(), "Write RPC to 127.0.0.1:");
+    ASSERT_STR_CONTAINS(error->status().ToString(), "Write RPC to 127.0.0.");
     ASSERT_STR_CONTAINS(error->status().ToString(), "after 1 attempt");
   }
 }
@@ -1016,7 +1029,9 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
       cluster_->mini_master()->Shutdown();
       break;
     case DEAD_TSERVER:
-      cluster_->mini_tablet_server(0)->Shutdown();
+      for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+        cluster_->mini_tablet_server(i)->Shutdown();
+      }
       break;
   }
 
@@ -1288,7 +1303,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
-  ASSERT_NO_FATALS(CreateTable(kTableName, 1, kNumTablets, &client_table_));
+  ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
 
   // Should be able to insert successfully into the new table.
   ASSERT_NO_FATALS(InsertTestRows(client_table_, 10));
@@ -1319,7 +1334,9 @@ TEST_F(ClientTest, TestStaleLocations) {
   ASSERT_FALSE(locs_pb.stale());
 
   // On Master restart and no tablet report we expect the locations to be stale
-  cluster_->mini_tablet_server(0)->Shutdown();
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
   ASSERT_OK(cluster_->mini_master()->Restart());
   ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
@@ -1327,8 +1344,10 @@ TEST_F(ClientTest, TestStaleLocations) {
   ASSERT_TRUE(locs_pb.stale());
 
   // Restart the TS and Wait for the tablets to be reported to the master.
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(1));
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+  }
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
   ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
                   tablet_id, &locs_pb));
 
@@ -1356,11 +1375,9 @@ TEST_F(ClientTest, TestStaleLocations) {
 TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
   const YBTableName kReplicatedTable("replicated");
   const int kNumRowsToWrite = 100;
-  const int kNumReplicas = 3;
 
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
-                               kNumReplicas,
                                kNumTablets,
                                &table));
 
@@ -1380,12 +1397,10 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
 TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   const YBTableName kReplicatedTable("replicated_failover_on_reads");
   const int kNumRowsToWrite = 100;
-  const int kNumReplicas = 3;
   const int kNumTries = 100;
 
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
-                               kNumReplicas,
                                kNumTablets,
                                &table));
 
@@ -1430,11 +1445,9 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
 TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   const YBTableName kReplicatedTable("replicated_failover_on_writes");
   const int kNumRowsToWrite = 100;
-  const int kNumReplicas = 3;
 
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
-                               kNumReplicas,
                                1,
                                &table));
 
@@ -1476,8 +1489,10 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
+    LOG(INFO) << "GOT TS " << i << " WITH UUID ???";
     if (ts->is_started()) {
       const string& uuid = ts->server()->instance_pb().permanent_uuid();
+      LOG(INFO) << uuid;
       if (uuid != killed_uuid) {
         new_leader_idx = i;
         break;
@@ -1788,7 +1803,6 @@ TEST_F(ClientTest, TestCreateDuplicateTable) {
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_TRUE(table_creator->table_name(kTableName)
               .schema(&schema_)
-              .num_replicas(1)
               .Create().IsAlreadyPresent());
 }
 
@@ -1818,24 +1832,27 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
 
 TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   FLAGS_max_create_tablets_per_ts = 1;
+  auto many_tablets = FLAGS_replication_factor + 1;
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
       .schema(&schema_)
-      .num_tablets(2)
-      .num_replicas(3)
+      .num_tablets(many_tablets)
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
-  ASSERT_STR_CONTAINS(s.ToString(),
-                      "The requested number of tablets (2) is over the permitted maximum (1)");
+  ASSERT_STR_CONTAINS(
+      s.ToString(),
+      strings::Substitute(
+          "The requested number of tablets ($0) is over the permitted maximum ($1)", many_tablets,
+          FLAGS_replication_factor));
 }
 
-TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
+// TODO(bogdan): Disabled until ENG-2687
+TEST_F(ClientTest, DISABLED_TestCreateTableWithTooManyReplicas) {
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(2)
-      .num_replicas(3)
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(s.ToString(),
@@ -1890,7 +1907,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // Create table and write some rows.
   const YBTableName kReadFromFollowerTable("TestReadFromFollower");
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 3, 1, &table));
+  ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 1, &table));
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
   // Find the followers.

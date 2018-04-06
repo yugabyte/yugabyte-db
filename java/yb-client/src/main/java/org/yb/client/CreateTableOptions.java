@@ -120,19 +120,6 @@ public class CreateTableOptions {
   }
 
   /**
-   * Sets the number of replicas that each tablet will have. If not specified, it uses the
-   * server-side default which is usually 3 unless changed by an administrator.
-   *
-   * @param numReplicas the number of replicas to use
-   * @return this instance
-   */
-  public CreateTableOptions setNumReplicas(int numReplicas) {
-    pb.getReplicationInfoBuilder().getLiveReplicasBuilder().setNumReplicas(
-        numReplicas);
-    return this;
-  }
-
-  /**
    * Sets the number of tablets.
    *
    * @param numTablets the number of tablets to split the table.

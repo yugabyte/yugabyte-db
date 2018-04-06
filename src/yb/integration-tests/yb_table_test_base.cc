@@ -50,10 +50,6 @@ int YBTableTestBase::num_tablets() {
   return CalcNumTablets(num_tablet_servers());
 }
 
-int YBTableTestBase::num_replicas() {
-  return std::min(num_tablet_servers(), 3);
-}
-
 int YBTableTestBase::session_timeout_ms() {
   return kDefaultSessionTimeoutMs;
 }
@@ -243,7 +239,6 @@ void YBTableTestBase::FetchTSMetricsPage() {
 
 std::unique_ptr<client::YBTableCreator> YBTableTestBase::NewTableCreator() {
   unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  table_creator->num_replicas(num_replicas());
   if (num_tablets() > 0) {
     table_creator->num_tablets(num_tablets());
   }

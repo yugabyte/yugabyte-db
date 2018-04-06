@@ -178,7 +178,10 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
 void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
   crash_test_tserver_flags_.push_back("--log_segment_size_mb=1");  // Faster log rolls.
   // Start the cluster with load balancer turned off.
-  ASSERT_NO_FATALS(StartCluster(crash_test_tserver_flags_, {"--enable_load_balancing=false"}, 5));
+  vector<string> master_flags;
+  master_flags.push_back("--enable_load_balancing=false");
+  master_flags.push_back("--replication_factor=4");
+  ASSERT_NO_FATALS(StartCluster(crash_test_tserver_flags_, master_flags, 5));
   crash_test_tserver_index_ = 0;  // We'll test with the first TS.
 
   LOG(INFO) << "Started cluster";
@@ -195,7 +198,6 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
 
   // Start a workload on the cluster, and run it for a little while.
   crash_test_workload_.reset(new TestWorkload(cluster_.get()));
-  crash_test_workload_->set_num_replicas(4);
   crash_test_workload_->Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(4));
 
@@ -488,6 +490,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--replication_factor=2");
   const int kNumTabletServers = 2;
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
 
@@ -496,7 +499,6 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(2);
   workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
@@ -603,7 +605,6 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .split_rows(splits)
                           .schema(&client_schema)
-                          .num_replicas(3)
                           .table_type(table_type)
                           .Create());
 
@@ -683,10 +684,11 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   }
 
   const MonoDelta timeout = MonoDelta::FromSeconds(FLAGS_remote_bootstrap_itest_timeout_sec);
-  ASSERT_NO_FATALS(StartCluster(vector<string>(), vector<string>(), 5));
+  vector<string> master_flags;
+  master_flags.push_back("--replication_factor=5");
+  ASSERT_NO_FATALS(StartCluster(vector<string>(), master_flags, 5));
 
   TestWorkload workload(cluster_.get());
-  workload.set_num_replicas(5);
   workload.set_payload_bytes(FLAGS_test_delete_leader_payload_bytes);
   workload.set_num_write_threads(FLAGS_test_delete_leader_num_writer_threads);
   workload.set_write_batch_size(1);

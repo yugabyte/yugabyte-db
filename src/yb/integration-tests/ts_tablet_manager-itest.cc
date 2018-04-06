@@ -84,7 +84,7 @@ using tserver::MiniTabletServer;
 using tserver::TSTabletManager;
 
 static const YBTableName kTableName("my_keyspace", "test-table");
-static const int kNumReplicas = 2;
+static const int kNumReplicas = 3;
 
 class TsTabletManagerITest : public YBTest {
  public:
@@ -137,7 +137,6 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
-            .num_replicas(kNumReplicas)
             .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));
