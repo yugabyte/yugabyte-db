@@ -1324,13 +1324,9 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
 
       bool add_keys = request_.get_collection_range_request().with_scores();
-      bool low_is_exclusive = low_index_bound.is_exclusive();
-      bool high_is_exclusive = high_index_bound.is_exclusive();
 
-      IndexBound low_bound =
-          IndexBound(low_idx_normalized, low_is_exclusive, true /* is_lower */);
-      IndexBound high_bound =
-          IndexBound(high_idx_normalized, high_is_exclusive, false /* is_lower */);
+      IndexBound low_bound = IndexBound(low_idx_normalized, true /* is_lower */);
+      IndexBound high_bound = IndexBound(high_idx_normalized, false /* is_lower */);
 
       SubDocument doc;
       bool doc_found = false;
