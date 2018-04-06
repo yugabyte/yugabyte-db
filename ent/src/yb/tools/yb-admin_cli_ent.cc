@@ -106,6 +106,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               Substitute("Unable to delete snapshot $0", snapshot_id));
         return Status::OK();
       });
+
+  Register(
+      "list_replica_type_counts", " <keyspace> <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
+        }
+        const YBTableName table_name(args[2], args[3]);
+        RETURN_NOT_OK_PREPEND(client->ListReplicaTypeCounts(table_name),
+                              "Unable to list live and read-only replica counts");
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
