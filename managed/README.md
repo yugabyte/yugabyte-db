@@ -8,6 +8,13 @@
 
 #### General Pre-requisites
 
+* Install Python requirements:
+$ (cd ~/code/devops; git pull --rebase original master)
+$ ~/code/devops/bin/install_python_requirements.sh
+
+And check Java build JAR file:
+~/code/yugabyte/java/yb-loadtester/target/yb-sample-apps.jar
+
 * Install JDK8
 * Need to have `vault_password`, yugabyte dev pem file `no-such-key.pem` (AWS) inside of `~/.yugabyte`
 * And also `ansible.env` file with AWS credentials inside of `~/.yugabyte`:
@@ -24,10 +31,14 @@
 ```
   cd /opt/yugabyte/releases/
   aws s3 sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
+OR
+  s3cmd sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
 ```
 
 #### On a mac, run the following:
 * Install SBT and Node
+Note: on CentOS use yum to install java, sbt, node(js), awscli, postgresql-9.6. See how-to in google. Like this:
+      https://www.e2enetworks.com/help/knowledge-base/how-to-install-node-js-and-npm-on-centos/
 ```
   $ brew install sbt
   $ brew install node
@@ -36,11 +47,16 @@
 ```
   # Currently we support postgres@9.5 for local development
   $ brew install postgresql@9.5
+  # If postgresql@9.5 is not available - install postgresql@9.2 or just postgresql
+  # See up-to-date Postgres how-to in google.
   $ echo 'export PATH="/usr/local/opt/postgresql@9.5/bin:$PATH"' >> ~/.bash_profile
+  $ source ~/.bash_profile
   # Note: do not set any password for postgres.
   # Make postgres a daemon.
+  # Check the path (and fix if it's needed) before doing it.
   $ ln -sfv /usr/local/opt/postgresql/*.plist ~/Library/LaunchAgents
   $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist
+  # Note: use systemctl tool on CentOS
   # Create user and database
   $ createuser root
   $ createdb yugaware
@@ -53,7 +69,7 @@
   $ sudo apt-get update
   $ sudo apt-get install sbt
 ```
-* Install Node js
+* Install Node js (see how-to install Node js on CentOS in google)
 ```
   $ curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
   $ sudo apt-get install -y nodejs
@@ -62,6 +78,7 @@
 ```
 # Create user and yugaware db in PostgreSQL:
 # Follow all the steps on http://tecadmin.net/install-postgresql-server-on-ubuntu/
+# https://linode.com/docs/databases/postgresql/how-to-install-postgresql-relational-databases-on-centos-7/
 # Then do the following to ensure that we can connect to "yugaware" db as "root" user.
 $ sudo -u postgres createuser -s root
 $ sudo -u postgres createdb yugaware
@@ -94,11 +111,24 @@ yb_devops_home=~/code/devops/ ~/code/devops/bin/py_wrapper ansible-playbook ~/co
 
 #### API Layer
 
-* To compile and run the code:
+* To compile and run the code (it must still running in a separate console):
 ```
   $ sbt "run -Dyb.devops.home=<path to your devops repo>"
+OR (better!)
+  $ export DEVOPS_HOME=<path to your devops repo>
+  # Better to add this to your ~/.bashrc or any other profile (like ~/.yb_build_env_bashrc)
+  $ export DEVOPS_HOME=~/code/devops
+  # Set the terminal to prenet error on the SBT start: [ERROR] Failed to construct terminal
+  $ export TERM=xterm-color
+  $ sbt run
+
   # Test that everything is running by going to http://localhost:9000 in a browser (or curl). This page will show 
   expected error 'Action not found' and list of possible API routes.
+      For request 'GET /'
+      These routes have been tried, in this order:
+        1   POST  /api/login  com.yugabyte.yw.controllers.SessionController.login()
+        2   GET  /api/logout  com.yugabyte.yw.controllers.SessionController.logout()
+        ... etc
 ```
 
 * To compile and not run:
@@ -200,6 +230,8 @@ Upload to S3 bucket, make sure permissions are open, set content/type to "image/
  ```
   On Centos/Ubuntu connect to postgres
   sudo -u root psql -d yugaware
+OR
+  sudo -u postgres psql -d yugaware
   On Mac
   psql -d yugaware
  ```
@@ -210,10 +242,20 @@ Upload to S3 bucket, make sure permissions are open, set content/type to "image/
  --------------------------------------
   /etc/postgresql/9.3/main/pg_hba.conf
  (1 row)
+
+On Centos:
+ /var/lib/pgsql/data/pg_hba.conf
  ```
  Edit the file and make sure change the method from "intent" to "trust" for localhost
+ NOTE:
  ```
  host    all             all             127.0.0.1/32            trust
+ ```
+OR better to enable all lines in the file:
+ ```
+ local   all             all                                     trust
+ host    all             all             127.0.0.1/32            trust
+ host    all             all             ::1/128                 trust
  ```
 
 ##### java.lang.OutOfMemoryError: GC overhead limit exceeded
@@ -221,3 +263,12 @@ Upload to S3 bucket, make sure permissions are open, set content/type to "image/
  ```
     echo SBT_OPTS="-XX:MaxPermSize=4G -Xmx4096M" > ~/.sbt_config
  ```
+
+
+See the docs for additional info:
+
+YugaWare driven testing
+https://docs.google.com/document/d/1tuwn1vQj2nOQVW9JzR6L9IwdkYzLfW8lXepUCKGrKgk
+
+Deploying a private YB build on portal
+https://docs.google.com/document/d/16eG3S8exZRbdJOqQasYsFq344oGUZeFkW48M_V5oqKQ
