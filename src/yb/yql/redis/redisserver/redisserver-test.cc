@@ -1633,7 +1633,6 @@ TEST_F(TestRedisService, TestZRevRange) {
                              {1, 1, 1, 0, 0, 0},
                              {"v5", "v4", "v3", "v2", "v1", "v0"});
   DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "1"}, {"v5", "v4"});
-  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "(0", "(1"}, {});
   DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "2", "3"}, {"v3", "v2"});
   DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "6", "7"}, {});
   DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "-1"},
@@ -1650,6 +1649,9 @@ TEST_F(TestRedisService, TestZRevRange) {
   DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "1", "2", "WITHSCORES", "1"});
   DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "1.0", "2.0"});
   DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "1", "2"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "0", "(2"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "(0", "2"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "(0", "(2"});
 
   // Test key with wrong type.
   DoRedisTestOk(__LINE__, {"SET", "s_key", "s_val"});

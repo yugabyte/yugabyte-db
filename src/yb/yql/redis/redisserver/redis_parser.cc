@@ -505,11 +505,10 @@ CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
 }
 
 CHECKED_STATUS
-ParseIndexBoundArg(const Slice& slice, RedisIndexBoundPB* bound_pb, bool exclusive) {
+ParseIndexBoundArg(const Slice& slice, RedisIndexBoundPB* bound_pb) {
   auto index_bound = util::CheckedStoll(slice);
   RETURN_NOT_OK(index_bound);
   bound_pb->set_index(*index_bound);
-  bound_pb->set_is_exclusive(exclusive);
   return Status::OK();
 }
 
@@ -534,14 +533,7 @@ CHECKED_STATUS ParseIndexBound(const Slice& slice, RedisIndexBoundPB* bound_pb) 
   if (slice.empty()) {
     return STATUS(InvalidArgument, "range bound index cannot be empty");
   }
-
-  if (slice[0] == '(' && slice.size() > 1) {
-    auto slice_copy = slice;
-    slice_copy.remove_prefix(1);
-    RETURN_NOT_OK(ParseIndexBoundArg(slice_copy, bound_pb, /* exclusive */ true));
-  } else {
-    RETURN_NOT_OK(ParseIndexBoundArg(slice, bound_pb, /* exclusive */ false));
-  }
+  RETURN_NOT_OK(ParseIndexBoundArg(slice, bound_pb));
   return Status::OK();
 }
 
