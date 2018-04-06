@@ -13,7 +13,7 @@ menu:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#azure">
+    <a href="#aks">
       <i class="icon-docker" aria-hidden="true"></i>
       Azure Container Service (AKS)
     </a>
@@ -21,7 +21,7 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <div id="azure" class="tab-pane fade in active">
+  <div id="aks" class="tab-pane fade in active">
     {{% includeMarkdown "azure/aks.md" /%}}
   </div>
 </div>
