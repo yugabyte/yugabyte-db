@@ -27,9 +27,6 @@ DEFINE_uint64(transaction_table_num_tablets, 24,
               "Automatically create transaction table with specified number of tablets if missing. "
               "0 to disable.");
 
-DEFINE_uint64(transaction_table_num_replicas, 3,
-              "Number of replicas in automatically created transaction table.");
-
 namespace yb {
 namespace client {
 
@@ -99,7 +96,6 @@ class PickStatusTabletTask {
           table_creator->num_tablets(tablets);
           table_creator->table_type(client::YBTableType::REDIS_TABLE_TYPE);
           table_creator->table_name(kTransactionTableName);
-          table_creator->num_replicas(FLAGS_transaction_table_num_replicas);
           status = table_creator->Create();
           LOG_IF(DFATAL, !status.ok() && !status.IsAlreadyPresent())
               << "Failed to create transaction table: " << status;
