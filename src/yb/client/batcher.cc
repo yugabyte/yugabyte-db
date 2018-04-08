@@ -59,7 +59,14 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+
+DEFINE_bool(redis_allow_reads_from_followers, false,
+            "If true, the read will be served from the closest replica in the same AZ, which can "
+            "be a follower.");
+TAG_FLAG(redis_allow_reads_from_followers, evolving);
+TAG_FLAG(redis_allow_reads_from_followers, runtime);
 
 using std::pair;
 using std::set;
@@ -366,13 +373,24 @@ void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
 
 YB_DEFINE_ENUM(OpGroup, (kWrite)(kLeaderRead)(kConsistentPrefixRead));
 
+namespace {
+inline bool IsOkToReadFromFollower(const InFlightOpPtr& op) {
+  return op->yb_op->type() == YBOperation::Type::REDIS_READ &&
+         FLAGS_redis_allow_reads_from_followers;
+}
+
+inline bool IsQLConsistentPrefixRead(const InFlightOpPtr& op) {
+  return op->yb_op->type() == YBOperation::Type::QL_READ &&
+         std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
+         YBConsistencyLevel::CONSISTENT_PREFIX;
+}
+} // namespace
+
 OpGroup GetOpGroup(const InFlightOpPtr& op) {
   if (!op->yb_op->read_only()) {
     return OpGroup::kWrite;
   }
-  if (op->yb_op->type() == YBOperation::Type::QL_READ &&
-      std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
-          YBConsistencyLevel::CONSISTENT_PREFIX) {
+  if (IsOkToReadFromFollower(op) || IsQLConsistentPrefixRead(op)) {
     return OpGroup::kConsistentPrefixRead;
   }
 
