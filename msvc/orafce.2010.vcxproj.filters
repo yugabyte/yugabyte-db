@@ -32,45 +32,25 @@
     <None Include="..\sql\files.sql">
       <Filter>regress</Filter>
     </None>
-    <None Include="..\sql\orafunc.sql">
-      <Filter>regress</Filter>
-    </None>
     <None Include="..\expected\dbms_output.out">
       <Filter>regress</Filter>
     </None>
     <None Include="..\expected\files.out">
       <Filter>regress</Filter>
     </None>
-    <None Include="..\expected\orafunc.out">
-      <Filter>regress</Filter>
-    </None>
-    <None Include="..\INSTALL.orafunc" />
-    <None Include="..\COPYRIGHT.orafunc" />
-    <None Include="..\README.orafunc" />
-    <None Include="..\uninstall_orafunc.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-8.1.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-8.2.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-8.3.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-8.4.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-9.0.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-9.1.sql">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\orafunc-common.sql">
-      <Filter>script</Filter>
-    </None>
+    <None Include="..\COPYRIGHT.orafce" />
+    <None Include="..\expected\orafce.out" />
+    <None Include="..\INSTALL.orafce" />
+    <None Include="..\orafce-8.1.sql" />
+    <None Include="..\orafce-8.2.sql" />
+    <None Include="..\orafce-8.3.sql" />
+    <None Include="..\orafce-8.4.sql" />
+    <None Include="..\orafce-9.0.sql" />
+    <None Include="..\orafce-9.1.sql" />
+    <None Include="..\orafce-common.sql" />
+    <None Include="..\README.orafce" />
+    <None Include="..\sql\orafce.sql" />
+    <None Include="..\uninstall_orafce.sql" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\aggregate.c">
@@ -127,15 +107,27 @@
     <ClCompile Include="..\utility.c">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\charlen.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\charpad.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\nvarchar2.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\varchar2.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\orafce.c">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\assert.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="..\builtins.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="..\orafunc.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="..\pipe.h">
@@ -145,6 +137,9 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="..\shmmc.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\orafce.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
