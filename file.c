@@ -336,14 +336,14 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 	char *bpt;
 	int csize = 0;
 	text *result = NULL;
-
+	bool eof = true;
 #ifdef _MSC_VER
 
 	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
 
 #endif
 
-	bool eof = true;
+	
 
 	buffer = palloc(max_linesize + 2);
 	bpt = buffer;
