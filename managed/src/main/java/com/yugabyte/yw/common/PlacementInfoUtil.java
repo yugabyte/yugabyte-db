@@ -1015,11 +1015,12 @@ public class PlacementInfoUtil {
           if (currentNode.isActive()) {
             currentNode.state = NodeDetails.NodeState.ToBeDecommissioned;
             LOG.debug("Removing node [{}].", currentNode);
+            deleteCounter++;
           }
         } else {
           nodeIter.remove();
+          deleteCounter++;
         }
-        deleteCounter++;
         if (deleteCounter == -numDeltaNodes) {
           break;
         }
