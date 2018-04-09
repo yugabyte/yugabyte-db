@@ -18,4 +18,4 @@
 
 . "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
 
-exec "$YB_THIRDPARTY_DIR/installed/common/bin/cqlsh" "$@"
+exec "$YB_THIRDPARTY_DIR/installed/common/cqlsh/bin/cqlsh" "$@"
