@@ -17,6 +17,11 @@ import OnPremNodesListContainer from './OnPremNodesListContainer';
 const PROVIDER_TYPE = "onprem";
 
 class OnPremSuccess extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {manageInstances: false};
+  }
+
   deleteProvider(uuid) {
     this.props.deleteProviderConfig(uuid);
   }
@@ -28,9 +33,6 @@ class OnPremSuccess extends Component {
       this.props.fetchConfiguredNodeList(currentProvider.uuid);
       this.props.fetchInstanceTypeList(currentProvider.uuid);
     }
-
-    this.manageNodesLocation = cloneDeep(location);
-    this.manageNodesLocation.pathname = '/config/onprem/instances';
   }
 
   getReadyState = dataObject => {
@@ -38,7 +40,7 @@ class OnPremSuccess extends Component {
   };
 
   handleManageNodesClick = () => {
-    browserHistory.push(this.manageNodesLocation);
+   this.setState({manageInstances: true});
   };
 
   componentWillReceiveProps(nextProps) {
@@ -114,10 +116,9 @@ class OnPremSuccess extends Component {
     const {configuredRegions, configuredProviders, accessKeys, universeList, params,
       cloud: {nodeInstanceList}} = this.props;
 
-    if (params.section === 'instances') {
-      return <OnPremNodesListContainer changeSection={this.changeSection} />;
+    if (this.state.manageInstances) {
+      return <OnPremNodesListContainer {...this.props}/>;
     }
-
     const currentProvider = configuredProviders.data.find(provider => provider.code === PROVIDER_TYPE);
     if (!currentProvider) {
       return <span/>;
