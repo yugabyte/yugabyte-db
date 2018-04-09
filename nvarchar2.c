@@ -154,7 +154,7 @@ nvarchar2(PG_FUNCTION_ARGS)
 	bool		isExplicit = PG_GETARG_BOOL(2);
 	int32		len,
 				maxlen;
-	size_t		maxmblen;
+	int		maxmblen;
 	char		*s_data;
 
 	len = VARSIZE_ANY_EXHDR(source);

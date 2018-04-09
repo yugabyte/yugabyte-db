@@ -120,7 +120,7 @@ dbms_utility_format_call_stack(char mode)
 
 				if ((p1 = strstr(start, "line ")))
 				{
-					int p2i;
+					size_t p2i;
 					char c;
 
 					p1 += strlen("line ");

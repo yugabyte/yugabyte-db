@@ -375,7 +375,7 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 	if (!eof)
 	{
 		char   *decoded;
-		int		len;
+		size_t		len;
 
 		pg_verify_mbstr(encoding, buffer, csize, false);
 		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
@@ -532,7 +532,7 @@ do_flush(FILE *f)
 
 /* encode(t, encoding) */
 static char *
-encode_text(int encoding, text *t, int *length)
+encode_text(int encoding, text *t, size_t *length)
 {
 	char	   *src = VARDATA_ANY(t);
 	char	   *encoded;
@@ -545,12 +545,12 @@ encode_text(int encoding, text *t, int *length)
 }
 
 /* fwrite(encode(args[n], encoding), f) */
-static int
-do_write(PG_FUNCTION_ARGS, int n, FILE *f, int max_linesize, int encoding)
+static size_t
+do_write(PG_FUNCTION_ARGS, int n, FILE *f, size_t max_linesize, int encoding)
 {
 	text	   *arg = PG_GETARG_TEXT_P(n);
 	char	   *str;
-	int			len;
+	size_t			len;
 
 	str = encode_text(encoding, arg, &len);
 	CHECK_LENGTH(len);
@@ -676,10 +676,10 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	char   *format;
 	int		max_linesize;
 	int		encoding;
-	int		format_length;
+	size_t		format_length;
 	char   *fpt;
 	int		cur_par = 0;
-	int		cur_len = 0;
+	size_t		cur_len = 0;
 
 #ifdef _MSC_VER
 
