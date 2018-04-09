@@ -5,7 +5,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
@@ -24,10 +27,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +40,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -193,6 +200,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to destroy nodes and adds it to the task queue.
    *
    * @param nodes : a collection of nodes that need to be destroyed
+   * @param isForceDelete if this is true, ignore ansible errors
    */
   public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes, Boolean isForceDelete) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
@@ -622,4 +630,46 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Creates a task list to manipulate the DNS record available for this universe.
+   * @param eventType   the type of manipulation to do on the DNS records.
+   * @param isForceDelete if this is a delete operation, set this to true to ignore errors
+   * @return subtask group
+   */
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType, Boolean isForceDelete) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateDnsEntry", executor);
+    // TODO: this feels a bit wrong, but I would like CreateUniverse and DestroyUniverse to both
+    // have access to this, but one extends UniverseTaskBase and the other
+    // UniverseDefinitionTaskBase...
+    UserIntent userIntent = Universe.get(taskParams().universeUUID).getUniverseDetails().getPrimaryCluster().userIntent;
+    if (!userIntent.providerType.equals(CloudType.aws)) {
+      return subTaskGroup;
+    }
+    Provider p = Provider.get(UUID.fromString(userIntent.provider));
+    // TODO: shared constant with javascript land?
+    String hostedZoneId = p.getConfig().get("AWS_HOSTED_ZONE_ID");
+    if (hostedZoneId == null || hostedZoneId.isEmpty()) {
+      return subTaskGroup;
+    }
+    ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.type = eventType;
+    params.providerUUID = UUID.fromString(userIntent.provider);
+    params.hostedZoneId = hostedZoneId;
+    params.domainNamePrefix = String.format(
+        "%s.%s", userIntent.universeName, Customer.get(p.customerUUID).code);
+    params.isForceDelete = isForceDelete;
+    // Create the task to update DNS entries.
+    ManipulateDnsRecordTask task = new ManipulateDnsRecordTask();
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createDnsManipulationTask(DnsManager.DnsCommandType eventType) {
+    return createDnsManipulationTask(eventType, false /* isForceDelete */);
+  }
 }

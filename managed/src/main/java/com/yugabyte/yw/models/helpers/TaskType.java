@@ -58,6 +58,8 @@ public enum TaskType {
 
   ModifyBlackList("subtasks.ModifyBlackList"),
 
+  ManipulateDnsRecordTask("subtasks.ManipulateDnsRecordTask"),
+
   RemoveUniverseEntry("subtasks.RemoveUniverseEntry"),
 
   SetNodeState("subtasks.SetNodeState"),

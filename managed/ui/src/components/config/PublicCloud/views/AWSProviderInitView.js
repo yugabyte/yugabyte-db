@@ -20,16 +20,20 @@ class AWSProviderInitView extends Component {
 
   createProviderConfig = formValues => {
     const {hostInfo} = this.props;
-    const awsProviderConfig = {
+    let awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
       'AWS_SECRET_ACCESS_KEY': formValues.secretKey
     };
+    if (isDefinedNotNull(formValues.hostedZoneId)) {
+      awsProviderConfig['AWS_HOSTED_ZONE_ID'] = formValues.hostedZoneId;
+    }
     let regionFormVals = {};
 
     if (this.isHostInAWS()) {
       const awsHostInfo = hostInfo["aws"];
       regionFormVals = {
         "regionList": [],
+        "hostedZoneId": formValues.hostedZoneId,
         "hostVpcRegion": awsHostInfo["region"],
         "hostVpcId": awsHostInfo["vpc-id"],
         "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? awsHostInfo["vpc-id"] : "",
@@ -37,6 +41,7 @@ class AWSProviderInitView extends Component {
     } else {
       regionFormVals = {
         "regionList": [],
+        "hostedZoneId": formValues.hostedZoneId,
         // TODO: this should really be called destVpcRegion, but we're piggybacking on this through
         // YW and devops.
         // DEFAULT FOR PORTAL OR LOCAL: us-west-2
@@ -85,6 +90,8 @@ class AWSProviderInitView extends Component {
               <Field name="accessKey" type="text" label="Access Key ID"
                      component={YBTextInputWithLabel} normalize={trimString} />
               <Field name="secretKey" type="text" label="Secret Access Key"
+                     component={YBTextInputWithLabel} normalize={trimString} />
+              <Field name="hostedZoneId" type="text" label="Route53 Hosted Zone ID"
                      component={YBTextInputWithLabel} normalize={trimString} />
               {hostVpcRegionField}
               {hostVpcIdField}
