@@ -43,7 +43,7 @@ weekday_search(const WeekDays *weekdays, const char *str, int len)
 
 	for (i = 0; i < 7; i++)
 	{
-		int	n = strlen(weekdays->names[i]);
+		size_t	n = strlen(weekdays->names[i]);
 		if (n > len)
 			continue;	/* too short */
 		if (pg_strncasecmp(weekdays->names[i], str, n) == 0)

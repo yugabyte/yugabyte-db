@@ -301,7 +301,12 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 	text *str = PG_GETARG_TEXT_PP(0);
 	text *result;
 	char *aux, *aux_cur;
-	int i, l;
+	int i;
+	#if defined(_M_X64) || defined(__amd64__)	
+	__int64			l;
+	#else	
+	int				l;
+	#endif
 	char c, *cur;
 	bool write_spc = false;
 	bool ignore_stsp = true;

@@ -168,7 +168,7 @@ dbms_random_seed_varchar(PG_FUNCTION_ARGS)
  * 'x','X'  any alpha-numeric characters (upper)
  */
 static text *
-random_string(const char *charset, int chrset_size, int len)
+random_string(const char *charset, size_t chrset_size, int len)
 {
 	StringInfo	str;
 	int	i;
@@ -190,7 +190,7 @@ dbms_random_string(PG_FUNCTION_ARGS)
 	char *option;
 	int	len;
 	const char *charset;
-	int chrset_size;
+	size_t chrset_size;
 
 	const char *alpha_mixed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
