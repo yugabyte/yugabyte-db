@@ -102,11 +102,12 @@ const char *FsManager::kDataDirName = "data";
 const char *FsManager::kCorruptedSuffix = ".corrupted";
 const char *FsManager::kInstanceMetadataFileName = "instance";
 const char *FsManager::kConsensusMetadataDirName = "consensus-meta";
+const char *FsManager::kLogsDirName = "logs";
 
 static const char* const kTmpInfix = ".tmp";
 
 FsManagerOpts::FsManagerOpts()
-  : read_only(false) {
+    : read_only(false) {
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
@@ -256,17 +257,36 @@ Status FsManager::Open() {
   return Status::OK();
 }
 
-Status FsManager::DeleteFileSystemLayout() {
+Status FsManager::DeleteFileSystemLayout(bool delete_logs_also) {
   CHECK(!read_only_);
-  for (const string& root : canonicalized_all_fs_roots_) {
-    string target_dir = GetServerTypeDataPath(root, server_type_);
+  set<string> removal_set;
+  if (delete_logs_also) {
+    removal_set = canonicalized_all_fs_roots_;
+  } else {
+    auto removal_list = GetWalRootDirs();
+    removal_list.push_back(GetTabletMetadataDir());
+    removal_list.push_back(GetConsensusMetadataDir());
+    for (const string& root : canonicalized_all_fs_roots_) {
+      removal_list.push_back(GetInstanceMetadataPath(root));
+    }
+    auto data_dirs = GetDataRootDirs();
+    removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
+    removal_set.insert(removal_list.begin(), removal_list.end());
+  }
+
+  for (const string& target : removal_set) {
     bool is_dir = false;
-    Status s = env_->IsDirectory(target_dir, &is_dir);
-    if (!s.ok() || !is_dir) {
-      LOG(INFO) << target_dir << " does not exist or is not a directory.";
+    Status s = env_->IsDirectory(target, &is_dir);
+    if (!s.ok()) {
+      LOG(WARNING) << "Error: " << s.ToString() << " when checking if " << target
+                   << " is a directory.";
       continue;
     }
-    RETURN_NOT_OK(env_->DeleteRecursively(target_dir));
+    if (is_dir) {
+      RETURN_NOT_OK(env_->DeleteRecursively(target));
+    } else {
+      RETURN_NOT_OK(env_->DeleteFile(target));
+    }
   }
   return Status::OK();
 }
@@ -390,7 +410,7 @@ Status FsManager::IsDirectoryEmpty(const string& path, bool* is_empty) {
   RETURN_NOT_OK(env_->GetChildren(path, &children));
   for (const string& child : children) {
     // Excluding logs directory from the list of things to check for.
-    if (child == "." || child == ".." || child == "logs") {
+    if (child == "." || child == ".." || child == kLogsDirName) {
       continue;
     } else {
       LOG(INFO) << "Found data " << child;

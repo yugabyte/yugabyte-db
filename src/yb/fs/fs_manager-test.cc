@@ -132,12 +132,37 @@ class FsManagerTestBase : public YBTest {
     *out_opts = opts;
   }
 
+  void SetupForDelete(bool delete_logs_dir = false) {
+    string path = GetTestPath("new_fs_root");
+    ASSERT_OK(env_->CreateDir(path));
+
+    ReinitFsManager(vector <string> (), {path});
+    ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
+    ValidateRootDataPaths(path, "");
+
+    log_dir_ = path + "/yb-data/logs";
+    ASSERT_OK(env_->CreateDir(log_dir_));
+    ASSERT_OK(fs_manager()->DeleteFileSystemLayout(delete_logs_dir));
+  }
+
+  void EnsureDataDirNotPresent() {
+    std::vector <std::string> data_dirs = fs_manager()->GetDataRootDirs();
+    for (auto data_dir : data_dirs) {
+      bool is_dir = false;
+      ASSERT_NOK(env_->IsDirectory(data_dir, &is_dir));
+      ASSERT_FALSE(is_dir);
+    }
+  }
+
   FsManager *fs_manager() const { return fs_manager_.get(); }
+
+  string log_dir() const { return log_dir_; }
 
   const char* kServerType = "tserver_test";
 
  private:
   gscoped_ptr<FsManager> fs_manager_;
+  string log_dir_ = "";
 };
 
 TEST_F(FsManagerTestBase, TestBaseOperations) {
@@ -268,6 +293,26 @@ TEST_F(FsManagerTestBase, TestPathsFromFlags) {
     ASSERT_STR_CONTAINS(s.ToString(),
                         "List of data directories (fs_data_dirs) not provided");
   }
+}
+
+TEST_F(FsManagerTestBase, TestDataDirDeletedAndNotLogDir) {
+  SetupForDelete();
+
+  EnsureDataDirNotPresent();
+
+  bool is_dir = false;
+  ASSERT_OK(env_->IsDirectory(log_dir(), &is_dir));
+  ASSERT_TRUE(is_dir);
+}
+
+TEST_F(FsManagerTestBase, TestLogDirAlsoDeleted) {
+  SetupForDelete(true);
+
+  EnsureDataDirNotPresent();
+
+  bool is_dir = false;
+  ASSERT_NOK(env_->IsDirectory(log_dir(), &is_dir));
+  ASSERT_FALSE(is_dir);
 }
 
 } // namespace yb
