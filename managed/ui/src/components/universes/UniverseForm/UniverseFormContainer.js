@@ -231,7 +231,7 @@ const validate = (values, props) => {
   }
   if (currentProvider && currentProvider.code === "gcp") {
     const specialCharsRegex = /^[a-z0-9-]*$/;
-    if(!specialCharsRegex.test(values.universeName)) {
+    if(!specialCharsRegex.test(values.primary.universeName)) {
       errors.primary.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
     }
   }
