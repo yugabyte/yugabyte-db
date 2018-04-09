@@ -24,7 +24,7 @@
  */
 
 static char *lc_collate_cache = NULL;
-static int multiplication = 1;
+static size_t multiplication = 1;
 
 text *def_locale = NULL;
 

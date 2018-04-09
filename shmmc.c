@@ -27,7 +27,7 @@ typedef struct {
 
 typedef struct {
 	int list_c;
-	int max_size;
+	size_t max_size;
 	vardata data[1];	 /* flexible array member */
 } mem_desc;
 
@@ -66,7 +66,7 @@ ptr_comp(const void* a, const void* b)
 char *
 ora_sstrcpy(char *str)
 {
-	int len;
+	size_t len;
 	char *result;
 
 	len = strlen(str);

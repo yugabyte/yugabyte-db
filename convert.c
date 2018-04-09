@@ -397,7 +397,12 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 	const char *s;
 	char	   *d;
 	int			srclen;
+	#if defined(_M_X64) || defined(__amd64__)	
+	__int64			dstlen;
+	#else	
 	int			dstlen;
+	#endif
+	
 	int			i;
 	const char **map;
 
@@ -468,7 +473,11 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 	char	   *s;
 	char	   *d;
 	int			srclen;
+	#if defined(_M_X64) || defined(__amd64__)	
+	__int64			dstlen;
+	#else	
 	int			dstlen;
+	#endif	
 	const char **map;
 
 	switch (GetDatabaseEncoding())
