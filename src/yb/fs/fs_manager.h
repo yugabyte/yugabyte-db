@@ -140,8 +140,10 @@ class FsManager {
   // Returns an error if the file system is already initialized.
   CHECKED_STATUS CreateInitialFileSystemLayout();
 
-  // Deletes the top level yb-data directory. Needed for a shell process that can get restarted.
-  CHECKED_STATUS DeleteFileSystemLayout();
+  // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
+  // when 'delete_logs_also' is set to false.
+  // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
+  CHECKED_STATUS DeleteFileSystemLayout(bool delete_logs_also = false);
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -274,6 +276,7 @@ class FsManager {
   static const char *kInstanceMetadataMagicNumber;
   static const char *kTabletSuperBlockMagicNumber;
   static const char *kConsensusMetadataDirName;
+  static const char *kLogsDirName;
 
   Env *env_;
 
