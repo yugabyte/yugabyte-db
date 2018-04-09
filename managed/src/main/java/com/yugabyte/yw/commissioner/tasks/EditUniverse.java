@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -167,6 +168,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update the swamper target file (implicitly calls setSubTaskGroupType)
       createSwamperTargetUpdateTask(false /* removeFile */, SubTaskGroupType.ConfigureUniverse);
+
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

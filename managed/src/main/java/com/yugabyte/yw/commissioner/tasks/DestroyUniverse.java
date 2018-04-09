@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 
@@ -35,6 +36,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete)
+        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Create tasks to destroy the existing nodes.
       createDestroyServerTasks(universe.getNodes(), params().isForceDelete)
