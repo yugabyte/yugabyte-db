@@ -262,7 +262,6 @@ public class NodeManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
-    
     switch (type) {
       case Provision:
       {

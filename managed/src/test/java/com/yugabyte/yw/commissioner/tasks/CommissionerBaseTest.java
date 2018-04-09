@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -36,6 +37,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected GCPInitializer mockGCPInitializer;
   protected YBClientService mockYBClient;
   protected NodeManager mockNodeManager;
+  protected DnsManager mockDnsManager;
   protected TableManager mockTableManager;
   protected CloudQueryHelper mockCloudQueryHelper;
 
@@ -59,6 +61,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockGCPInitializer = mock(GCPInitializer.class);
     mockYBClient = mock(YBClientService.class);
     mockNodeManager = mock(NodeManager.class);
+    mockDnsManager = mock(DnsManager.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     mockTableManager = mock(TableManager.class);
 
@@ -71,6 +74,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(GCPInitializer.class).toInstance(mockGCPInitializer))
         .overrides(bind(YBClientService.class).toInstance(mockYBClient))
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
+        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
         .overrides(bind(TableManager.class).toInstance(mockTableManager))
         .build();

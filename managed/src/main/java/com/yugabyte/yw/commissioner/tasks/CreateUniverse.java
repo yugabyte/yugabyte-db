@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class CreateUniverse extends UniverseDefinitionTaskBase {
@@ -113,6 +114,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Create a simple redis table.
       createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Create)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
