@@ -146,11 +146,11 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='9.0|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='9.6|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/9.6/</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='10.3|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/10.3/</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='9.6|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='10.3|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='9.0|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='9.6|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/9.6/</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='10.3|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/10.3/</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='9.6|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='10.3|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='8.4|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='8.4|x64'">$(SolutionDir)/bin/$(Platform)/$(Configuration)/lib/</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='8.3|Win32'">$(SolutionDir)/bin/x86/$(Configuration)/lib/</OutDir>
