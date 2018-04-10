@@ -704,6 +704,12 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                    this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
+
+  // TODO(hector):  ENG-3173: We need to simulate a failure in OpenTablet during remote bootstrap
+  // and verify that this tablet server gets remote bootstrapped again by the leader. We also need
+  // to check what happens when this server receives raft consensus requests since at this point,
+  // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
+  // initial role was PRE_VOTER).
   OpenTablet(meta, nullptr);
 
   // If OpenTablet fails, tablet_peer->error() will be set.
@@ -714,15 +720,16 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                                             "Remote bootstrap: Failure calling OpenTablet()",
                                             this);
 
-  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(
-      rb_client->VerifyRemoteBootstrapSucceeded(tablet_peer->shared_consensus()),
-      tablet_peer,
-      meta,
-      fs_manager_->uuid(),
-      "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
-      this);
-
-  LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+  auto status = rb_client->VerifyChangeRoleSucceeded(tablet_peer->shared_consensus());
+  if (!status.ok()) {
+    // If for some reason this tserver wasn't promoted (e.g. from PRE-VOTER to VOTER), the leader
+    // will find out and do the CHANGE_CONFIG.
+    LOG(WARNING) << kLogPrefix << "Remote bootstrap finished. "
+                               << "Failure calling VerifyChangeRoleSucceeded: "
+                               << status.ToString();
+  } else {
+    LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+  }
 
   return Status::OK();
 }

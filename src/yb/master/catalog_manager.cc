@@ -4089,22 +4089,18 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   master_->SetShellMode(false);
 
-  // Call VerifyRemoteBootstrapSucceeded only after we have set shell mode to false. Otherwise,
+  // Call VerifyChangeRoleSucceeded only after we have set shell mode to false. Otherwise,
   // CatalogManager::GetTabletPeer will always return an error, and the consensus will never get
   // updated.
-  auto status = rb_client->VerifyRemoteBootstrapSucceeded(
+  auto status = rb_client->VerifyChangeRoleSucceeded(
       sys_catalog_->tablet_peer()->shared_consensus());
 
   if (!status.ok()) {
-    // Set shell mode to true so another request can remote bootstrap this master.
-    master_->SetShellMode(true);
-    SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(
-        status,
-        sys_catalog_->tablet_peer(),
-        meta,
-        master_->fs_manager()->uuid(),
-        "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
-        nullptr);
+    LOG_WITH_PREFIX(WARNING) << "Remote bootstrap finished. "
+                             << "Failure calling VerifyChangeRoleSucceeded: "
+                             << status.ToString();
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Remote bootstrap finished successfully";
   }
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
