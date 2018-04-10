@@ -388,8 +388,8 @@ Status RemoteBootstrapClient::Finish() {
   return Status::OK();
 }
 
-Status RemoteBootstrapClient::VerifyRemoteBootstrapSucceeded(
-    const scoped_refptr<consensus::Consensus>& shared_consensus) {
+Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
+    const scoped_refptr<consensus::Consensus> &shared_consensus) {
 
   if (!shared_consensus) {
     return STATUS(InvalidArgument, "Invalid consensus object");
