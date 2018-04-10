@@ -53,5 +53,20 @@ This is my
       )#"));
 }
 
+TEST(StringTrimTest, TestTrimCppComments) {
+  ASSERT_EQ(
+      R"#(
+Line1
+
+Line2
+)#",
+      TrimCppComments(R"#(
+Line1  // This is a comment
+
+Line2  // This is a comment too
+)#")
+      );
+}
+
 }  // namespace util
 }  // namespace yb

@@ -140,7 +140,7 @@ class DocDBRocksDBUtil {
 
   void DocDBDebugDumpToConsole();
 
-  CHECKED_STATUS FlushRocksDB();
+  CHECKED_STATUS FlushRocksDbAndWait();
 
   void SetTableTTL(uint64_t ttl_msec);
 

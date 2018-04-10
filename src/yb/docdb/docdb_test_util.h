@@ -99,7 +99,16 @@ class LogicalRocksDBDebugSnapshot {
 class DocDBRocksDBFixture : public DocDBRocksDBUtil {
  public:
   void AssertDocDbDebugDumpStrEq(const string &expected);
-  void CompactHistoryBefore(HybridTime history_cutoff);
+  void FullyCompactHistoryBefore(HybridTime history_cutoff);
+
+  // num_files_to_compact - number of files that should participate in the minor compaction
+  // start_index - the index of the file to start with (0 = the oldest file, -1 = compact
+  //               num_files_to_compact newest files).
+  void MinorCompaction(HybridTime history_cutoff, int num_files_to_compact, int start_index = -1);
+
+  int NumSSTableFiles();
+  StringVector SSTableFileNames();
+
   CHECKED_STATUS InitRocksDBDir() override;
   CHECKED_STATUS InitRocksDBOptions() override;
   TabletId tablet_id() override;
@@ -228,6 +237,10 @@ class DocDBLoadGenerator {
 
   TransactionOperationContextOpt GetReadOperationTransactionContext();
 };
+
+// Used for pre-processing multi-line DocDB debug dump strings in tests.  Removes common indentation
+// and C++-style comments and applies backslash line continuation.
+string TrimDocDbDebugDumpStr(const string& debug_dump);
 
 #define ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(expected) \
   do { \
