@@ -93,7 +93,8 @@ namespace rpc {
 
 namespace {
 
-static constexpr CoarseMonoClock::TimePoint kNone{CoarseMonoClock::TimePoint::min()};
+static constexpr CoarseMonoClock::Duration kNone{
+    CoarseMonoClock::TimePoint::min().time_since_epoch()};
 
 class InboundCallTask final {
  public:
@@ -169,7 +170,8 @@ class ServicePoolImpl {
     const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
     call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
-    last_backpressure_at_.store(CoarseMonoClock::Now(), std::memory_order_release);
+    last_backpressure_at_.store(
+        CoarseMonoClock::Now().time_since_epoch(), std::memory_order_release);
   }
 
   void Processed(const InboundCallPtr& call, const Status& status) {
@@ -197,6 +199,7 @@ class ServicePoolImpl {
                ? "Call waited in the queue past deadline"
                : "The server is overloaded. Call waited in the queue past max_time_in_queue.");
       TRACE_TO(incoming->trace(), message);
+      VLOG(4) << "Timing out call " << incoming->ToString() << " due to : " << message;
       rpcs_timed_out_in_queue_->Increment();
 
       // Respond as a failure, even though the client will probably ignore
@@ -217,17 +220,16 @@ class ServicePoolImpl {
 
     // For testing purposes.
     if (FLAGS_enable_backpressure_mode_for_testing) {
-      last_backpressure_at = CoarseMonoClock::Now();
+      last_backpressure_at = CoarseMonoClock::Now().time_since_epoch();
     }
 
     // Test for a sentinel value, to avoid reading the clock.
     if (last_backpressure_at == kNone) {
       return false;
     }
-    auto now = CoarseMonoClock::Now();
-    if (ToMilliseconds(now.time_since_epoch()) <=
-        ToMilliseconds(last_backpressure_at.time_since_epoch()) +
-            FLAGS_backpressure_recovery_period_ms) {
+    auto now = CoarseMonoClock::Now().time_since_epoch();
+    if (ToMilliseconds(now) >
+        ToMilliseconds(last_backpressure_at) + FLAGS_backpressure_recovery_period_ms) {
       last_backpressure_at_.store(kNone, std::memory_order_release);
       return false;
     }
@@ -240,7 +242,7 @@ class ServicePoolImpl {
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
-  std::atomic<CoarseMonoClock::TimePoint> last_backpressure_at_{kNone};
+  std::atomic<CoarseMonoClock::Duration> last_backpressure_at_;
 
   std::atomic<bool> closing_ = {false};
   TasksPool<InboundCallTask> tasks_pool_;

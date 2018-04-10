@@ -126,6 +126,7 @@ Trace* InboundCall::trace() {
 void InboundCall::RecordCallReceived() {
   TRACE_EVENT_ASYNC_BEGIN0("rpc", "InboundCall", this);
   DCHECK(!timing_.time_received.Initialized());  // Protect against multiple calls.
+  VLOG(4) << "Received call " << ToString();
   timing_.time_received = MonoTime::Now();
 }
 
@@ -133,6 +134,7 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
   DCHECK(incoming_queue_time != nullptr);
   DCHECK(!timing_.time_handled.Initialized());  // Protect against multiple calls.
   timing_.time_handled = MonoTime::Now();
+  VLOG(4) << "Handling call " << ToString();
   incoming_queue_time->Increment(
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
@@ -144,6 +146,7 @@ MonoDelta InboundCall::GetTimeInQueue() const {
 void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
   DCHECK(!timing_.time_completed.Initialized());  // Protect against multiple calls.
   timing_.time_completed = MonoTime::Now();
+  VLOG(4) << "Completed handling call " << ToString();
   if (handler_run_time) {
     handler_run_time->Increment((timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
