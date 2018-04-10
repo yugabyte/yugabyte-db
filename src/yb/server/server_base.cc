@@ -95,6 +95,7 @@ using std::string;
 using std::stringstream;
 using std::vector;
 using strings::Substitute;
+using namespace std::placeholders;
 
 namespace yb {
 namespace server {
@@ -424,9 +425,9 @@ std::string RpcAndWebServerBase::FooterHtml() const {
                     instance_pb_->permanent_uuid());
 }
 
-static void DisplayIconTile(std::stringstream* output, const string icon,
-                            const string caption, const string url) {
-  *output << "  <div class='col-sm-6 col-md-4 dbg-tile'>\n"
+void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const string icon,
+                                          const string caption, const string url) {
+  *output << "  <div class='col-sm-4 col-md-4 dbg-tile'>\n"
           << "    <a href='" << url << "' class='thumbnail'>\n"
           << "      <div class='dbg-icon'>\n"
           << "        <i class='fa " << icon << "' aria-hidden='true'></i>\n"
@@ -435,30 +436,38 @@ static void DisplayIconTile(std::stringstream* output, const string icon,
           << "        <h3>" << caption << "</h3>\n"
           << "      </div> <!-- caption -->\n"
           << "    </a> <!-- thumbnail -->\n"
-          << "  </div> <!-- col-xs-6 col-md-3 -->\n";
+          << "  </div> <!-- col-sm-4 col-md-4 -->\n";
 }
 
-static void HandleDebugPage(const Webserver::WebRequest& req, stringstream* output) {
+void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+}
+
+Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
+                                            stringstream* output) {
   *output << "<h1>Debug Utilities</h1>\n";
 
   *output << "<div class='row debug-tiles'>\n";
-
+  *output << "<h2> General Info </h2>";
   // Logs.
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
   // Memory trackers.
   DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
-  // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
-  // RPCs in progress.
-  DisplayIconTile(output, "fa-tasks", "RPCs In Progress", "/rpcz");
-  // Threads.
-  DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
   // Total memory.
   DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
-
+  // Metrics.
+  DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
+  // Threads.
+  DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
   *output << "</div> <!-- row -->\n";
+  *output << "<h2> RPCs In Progress </h2>";
+  *output << "<div class='row debug-tiles'>\n";
+  DisplayRpcIcons(output);
+  *output << "</div> <!-- row -->\n";
+  return Status::OK();
 }
 
 Status RpcAndWebServerBase::Start() {
@@ -468,7 +477,8 @@ Status RpcAndWebServerBase::Start() {
   AddRpczPathHandlers(messenger_, web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   TracingPathHandlers::RegisterHandlers(web_server_.get());
-  web_server_->RegisterPathHandler("/utilz", "Utilities", HandleDebugPage,
+  web_server_->RegisterPathHandler("/utilz", "Utilities",
+                                   std::bind(&RpcAndWebServerBase::HandleDebugPage, this, _1, _2),
                                    true, true, "fa fa-wrench");
   web_server_->set_footer_html(FooterHtml());
   RETURN_NOT_OK(web_server_->Start());
