@@ -30,24 +30,26 @@ Data definition language (DDL) statements are instructions for the following dat
 Statement | Description |
 ----------|-------------|
 [`ALTER TABLE`](ddl_alter_table) | Alter a table |
+[`CREATE INDEX`](ddl_create_index) | Create a new index on a table |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
 [`CREATE TYPE`](ddl_create_type) | Create a user-defined datatype |
 [`DROP KEYSPACE`](ddl_drop_keyspace) | Delete a keyspace and associated objects |
 [`DROP TABLE`](ddl_drop_table) | Remove a table |
 [`DROP TYPE`](ddl_drop_type) | Remove a user-defined datatype |
-[`USE`](ddl_use) | Use an existing keyspace for subsequent commands|
+[`USE`](ddl_use) | Use an existing keyspace for subsequent commands |
 
 ## DML Statements
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugaByte implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
 
 Statement | Description |
 ----------|-------------|
-[`INSERT`](dml_insert) | Insert rows into a table.
-[`SELECT`](dml_select) | Select rows from a table.
-[`UPDATE`](dml_update) | Update rows in a table.
-[`DELETE`](dml_delete) | Delete specific rows from a table.
-[`TRUNCATE`](dml_truncate) | Remove all rows from a table.
+[`INSERT`](dml_insert) | Insert rows into a table |
+[`SELECT`](dml_select) | Select rows from a table |
+[`UPDATE`](dml_update) | Update rows in a table |
+[`DELETE`](dml_delete) | Delete specific rows from a table |
+[`TRANSACTION`](dml_transaction) | Makes changes to multiple rows in one or more tables in a transaction |
+[`TRUNCATE`](dml_truncate) | Remove all rows from a table |
 
 ## Expressions
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.
