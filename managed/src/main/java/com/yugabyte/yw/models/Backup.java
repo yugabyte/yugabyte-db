@@ -95,16 +95,16 @@ public class Backup extends Model {
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
-    backup.setBackupInfo(params);
     backup.createTime = new Date();
     // We would derive the storage location based on the parameters
     backup.updateStorageLocation(params);
+    backup.setBackupInfo(params);
     backup.save();
     return backup;
   }
 
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
-      List<Backup> backupList = find.where().eq("customer_uuid", customerUUID).findList();
+      List<Backup> backupList = find.where().eq("customer_uuid", customerUUID).orderBy("create_time desc").findList();
       return backupList.stream()
           .filter(backup -> backup.getBackupInfo().universeUUID.equals(universeUUID))
           .collect(Collectors.toList());

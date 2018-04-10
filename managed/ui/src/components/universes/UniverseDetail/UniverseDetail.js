@@ -15,7 +15,7 @@ import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel, YBPanelItem, YBWidget } from '../../panels';
 import { RegionMap } from '../../maps';
-import { ListTablesContainer } from '../../tables';
+import { ListTablesContainer, ListBackupsContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
@@ -191,6 +191,9 @@ class UniverseDetail extends Component {
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
         <UniverseTaskList universe={universe}/>
+      </Tab>,
+      <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
+        <ListBackupsContainer currentUniverse={currentUniverse.data} />
       </Tab>
     ];
     const currentBreadCrumb = (
