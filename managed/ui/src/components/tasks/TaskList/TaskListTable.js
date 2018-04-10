@@ -2,13 +2,11 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { isValidObject } from '../../../utils/ObjectUtils';
-import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
-import { YBFormattedNumber } from '../../common/descriptors';
 import { YBPanelItem } from '../../panels';
-import { YBLoadingIcon } from '../../common/indicators';
+import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
+
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -27,45 +25,6 @@ export default class TaskListTable extends Component {
 
     function typeFormatter(cell, row) {
       return <span>{row.type} {row.target}</span>;
-    }
-
-    function percentFormatter(cell, row) {
-      return <YBFormattedNumber value={cell/100} formattedNumberStyle={"percent"} />;
-    }
-
-    function timeFormatter(cell) {
-      if (!isValidObject(cell)) {
-        return "<span>-</span>";
-      } else {
-        return (
-          <FormattedDate
-            value={new Date(cell)}
-            year='numeric'
-            month='long'
-            day='2-digit'
-            hour='numeric'
-            minute='numeric' />
-        );
-      }
-    }
-
-    function successStringFormatter(cell, row) {
-      switch (row.status) {
-        case "Success":
-          return <span className="yb-success-color"><i className='fa fa-check'/> Completed</span>;
-        case "Initializing":
-          return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> Initializing</span>;
-        case "Running":
-          return (
-            <span className="yb-pending-color">
-              <YBLoadingIcon size="inline" />Pending ({percentFormatter(row.percentComplete, row)})
-          </span>
-          );
-        case "Failure":
-          return <span className="yb-fail-color"><i className='fa fa-warning' /> Failed</span> ;
-        default:
-          return <span className="yb-fail-color"><i className="fa fa-warning" />Unknown</span>;
-      }
     }
 
     const taskDetailLinkFormatter = function(cell, row) {
