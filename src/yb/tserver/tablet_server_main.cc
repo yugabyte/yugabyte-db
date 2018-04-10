@@ -66,26 +66,30 @@ using yb::pgserver::PgServer;
 using yb::pgserver::PgServerOptions;
 
 DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet server");
-DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
-DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 
 DEFINE_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
 DEFINE_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
-DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
-DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+
 DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
-             "use for the thread cache for tcmalloc across all threads in the tserver.");
+    "use for the thread cache for tcmalloc across all threads in the tserver.");
 
 DEFINE_bool(start_pgsql_proxy, true, "Starts a PostgreSQL proxy along with the tablet server");
-DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
-DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
 DECLARE_int32(logbuflevel);
+
+DECLARE_string(redis_proxy_bind_address);
+DECLARE_int32(redis_proxy_webserver_port);
+
+DECLARE_string(cql_proxy_bind_address);
+DECLARE_int32(cql_proxy_webserver_port);
+
+DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 namespace yb {
 namespace tserver {
