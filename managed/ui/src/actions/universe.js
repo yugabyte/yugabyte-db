@@ -78,6 +78,10 @@ export const FETCH_UNIVERSE_METADATA = 'FETCH_UNIVERSE_METADATA';
 export const PERFORM_UNIVERSE_NODE_ACTION = 'PERFORM_UNIVERSE_NODE_ACTION';
 export const PERFORM_UNIVERSE_NODE_ACTION_RESPONSE = 'PERFORM_UNIVERSE_NODE_ACTION_RESPONSE';
 
+export const FETCH_UNIVERSE_BACKUPS = 'FETCH_UNIVERSE_BACKUPS';
+export const FETCH_UNIVERSE_BACKUPS_RESPONSE = 'FETCH_UNIVERSE_BACKUPS_RESPONSE';
+export const RESET_UNIVERSE_BACKUPS = 'RESET_UNIVERSE_BACKUPS';
+
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -384,5 +388,27 @@ export function resetUniverseConfiguration() {
 export function fetchUniverseMetadata() {
   return {
     type: FETCH_UNIVERSE_METADATA
+  };
+}
+
+export function fetchUniverseBackups(universeUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/backups`);
+  return {
+    type: FETCH_UNIVERSE_BACKUPS,
+    payload: request
+  };
+}
+
+export function fetchUniverseBackupsResponse(response) {
+  return {
+    type: FETCH_UNIVERSE_BACKUPS_RESPONSE,
+    payload: response
+  };
+}
+
+export function resetUniverseBackups() {
+  return {
+    type: RESET_UNIVERSE_BACKUPS
   };
 }

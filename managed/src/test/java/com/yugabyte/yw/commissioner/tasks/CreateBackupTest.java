@@ -90,4 +90,17 @@ public class CreateBackupTest extends CommissionerBaseTest {
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
   }
+
+  @Test
+  public void testBackupTableFatal() {
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"error\": true}";
+    shellResponse.code = 99;
+    when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
+    TaskInfo taskInfo = submitTask();
+    verify(mockTableManager, times(1)).createBackup(any());
+    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    assertNotNull(backup);
+    assertEquals(Failed, backup.state);
+  }
 }

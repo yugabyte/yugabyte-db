@@ -14,11 +14,11 @@ const storageConfigTypes = {
   S3: {
     title: "S3 Storage",
     fields: [{
-      id: "AWS_ACCESS_KEY",
+      id: "AWS_ACCESS_KEY_ID",
       label: "Access Key",
       placeHolder: "AWS Access Key"
     }, {
-      id: "AWS_ACCESS_SECRET",
+      id: "AWS_SECRET_ACCESS_KEY",
       label: "Access Secret",
       placeHolder: "AWS Access Secret"
     }, {
