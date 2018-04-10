@@ -154,6 +154,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  protected:
   friend class TabletServerTestBase;
 
+  void DisplayRpcIcons(std::stringstream* output) override;
+
   CHECKED_STATUS ValidateMasterAddressResolution() const;
 
   bool initted_;

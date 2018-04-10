@@ -55,6 +55,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/gutil/strings/split.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -101,6 +102,15 @@ DEFINE_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
 TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
+
+DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
+DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
+
+DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
+DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+
+DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
 
 DECLARE_int64(inbound_rpc_block_size);
 DECLARE_int64(inbound_rpc_memory_limit);
@@ -297,6 +307,34 @@ std::string TabletServer::cluster_uuid() const {
 TabletServiceImpl* TabletServer::tablet_server_service() {
   std::lock_guard<simple_spinlock> l(lock_);
   return tablet_server_service_;
+}
+
+string GetDynamicUrlTile(const string path, const string host, const int port) {
+
+  vector<std::string> parsed_hostname = strings::Split(host, ":");
+  std::string link = strings::Substitute("http://$0:$1$2",
+                                         parsed_hostname[0], yb::ToString(port), path);
+  return link;
+}
+
+void TabletServer::DisplayRpcIcons(std::stringstream* output) {
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "TServer RPCs", "/rpcz");
+  // Cassandra RPCs in Progress.
+  string cass_url = GetDynamicUrlTile("/rpcz", FLAGS_cql_proxy_bind_address,
+                                      FLAGS_cql_proxy_webserver_port);
+  DisplayIconTile(output, "fa-tasks", "Cassandra RPCs", cass_url);
+
+  // Redis RPCs in Progress.
+  string redis_url = GetDynamicUrlTile("/rpcz", FLAGS_redis_proxy_bind_address,
+                                       FLAGS_redis_proxy_webserver_port);
+  DisplayIconTile(output, "fa-tasks", "Redis RPCs", redis_url);
+
+  // PGSQL RPCs in Progress.
+  string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
+                                     FLAGS_pgsql_proxy_webserver_port);
+  DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
+
 }
 
 }  // namespace tserver

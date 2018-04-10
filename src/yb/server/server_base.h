@@ -167,6 +167,13 @@ class RpcAndWebServerBase : public RpcServerBase {
       rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual ~RpcAndWebServerBase();
 
+  virtual Status HandleDebugPage(const Webserver::WebRequest& req, std::stringstream* output);
+
+  virtual void DisplayRpcIcons(std::stringstream* output);
+
+  static void DisplayIconTile(std::stringstream* output, const string icon, const string caption,
+                              const string url);
+
   CHECKED_STATUS Init();
   CHECKED_STATUS Start();
   void Shutdown();
