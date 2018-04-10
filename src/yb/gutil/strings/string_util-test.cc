@@ -30,9 +30,13 @@
 // under the License.
 //
 // Some portions Copyright 2013 The Chromium Authors. All rights reserved.
+
 #include "yb/gutil/strings/util.h"
+#include "yb/util/string_util.h"
 
 #include <gtest/gtest.h>
+
+using std::string;
 
 namespace yb {
 
@@ -66,7 +70,25 @@ TEST(StringUtilTest, MatchPatternTest) {
   // wildcard (when this doesn't occur, MatchPattern reaches it's maximum
   // recursion depth).
   EXPECT_TRUE(MatchPattern("Hello" ,
-                           "He********************************o")) ;
+                           "He********************************o"));
+}
+
+TEST(StringUtilTest, TestAppendWithSeparator) {
+  string s;
+  AppendWithSeparator("foo", &s);
+  ASSERT_EQ(s, "foo");
+  AppendWithSeparator("bar", &s);
+  ASSERT_EQ(s, "foo, bar");
+  AppendWithSeparator("foo", &s, " -- ");
+  ASSERT_EQ(s, "foo, bar -- foo");
+
+  s = "";
+  AppendWithSeparator(string("foo"), &s);
+  ASSERT_EQ(s, "foo");
+  AppendWithSeparator(string("bar"), &s);
+  ASSERT_EQ(s, "foo, bar");
+  AppendWithSeparator(string("foo"), &s, " -- ");
+  ASSERT_EQ(s, "foo, bar -- foo");
 }
 
 } // namespace yb

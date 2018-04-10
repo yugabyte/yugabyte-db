@@ -24,6 +24,10 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include <regex>
+
+#include <boost/optional.hpp>
+
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/util/malloc.h"
 #include "yb/util/debug-util.h"
@@ -39,7 +43,18 @@ const char* kTimeoutErrorMsgs[] = {
     "Failed to acquire lock due to max_num_locks limit"  // kLockLimit
 };
 
+#ifndef NDEBUG
+// This allows to dump stack traces whenever an error status matching a certain regex is generated.
+boost::optional<std::regex> StatusStackTraceRegEx() {
+  const char* regex_str = getenv("YB_STACK_TRACE_ON_ERROR_STATUS_RE");
+  if (!regex_str) {
+    return boost::none;
+  }
+  return std::regex(regex_str);
 }
+#endif
+
+} // anonymous namespace
 
 Status::Status(Code code,
                const char* file_name,
@@ -67,7 +82,16 @@ Status::Status(Code code,
   }
 #ifndef NDEBUG
   static const bool print_stack_trace = getenv("YB_STACK_TRACE_ON_ERROR_STATUS") != nullptr;
-  if (print_stack_trace) {
+  static const boost::optional<std::regex> status_stack_trace_re =
+      StatusStackTraceRegEx();
+
+  std::string string_rep;  // To avoid calling ToString() twice.
+  if (print_stack_trace ||
+      (status_stack_trace_re &&
+       std::regex_search(string_rep = ToString(), *status_stack_trace_re))) {
+    if (string_rep.empty()) {
+      string_rep = ToString();
+    }
     // We skip a couple of top frames like these:
     //    ~/code/yugabyte/src/yb/util/status.cc:53:
     //        @ yb::Status::Status(yb::Status::Code, yb::Slice const&, yb::Slice const&, long,
@@ -76,8 +100,8 @@ Status::Status(Code code,
     //        @ yb::STATUS(Corruption, char const*, int, yb::Slice const&, yb::Slice const&, short)
     //    ~/code/yugabyte/src/yb/common/doc_hybrid_time.cc:94:
     //        @ yb::DocHybridTime::DecodeFrom(yb::Slice*)
-    LOG(WARNING) << "Non-OK status generated: " << ToString() << ", stack trace:\n"
-                 << GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, /* skip frames: */ 2);
+    LOG(WARNING) << "Non-OK status generated: " << string_rep << ", stack trace:\n"
+                 << GetStackTrace(StackTraceLineFormat::DEFAULT, /* skip frames: */ 1);
   }
 #endif
 }

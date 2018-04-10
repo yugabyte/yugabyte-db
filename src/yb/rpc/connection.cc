@@ -49,6 +49,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/trace.h"
+#include "yb/util/string_util.h"
 
 using namespace std::literals;
 using std::shared_ptr;
@@ -142,6 +143,31 @@ bool Connection::Idle() const {
   }
 
   return true;
+}
+
+string Connection::ReasonNotIdle() const {
+  DCHECK(reactor_->IsCurrentThread());
+  string reason;
+  // Check if we're in the middle of receiving something.
+  if (!read_buffer_.empty()) {
+    reason += "read buffer not empty";
+  }
+
+  // Check if we still need to send something.
+  if (!sending_.empty()) {
+    AppendWithSeparator("still sending", &reason);
+  }
+
+  // Can't kill a connection if calls are waiting for a response. TODO: why?
+  if (!awaiting_response_.empty()) {
+    AppendWithSeparator("awaiting response", &reason);
+  }
+
+  // Check upstream logic (i.e. processing calls, etc.)
+  if (!context_->Idle()) {
+    AppendWithSeparator("context not idle: " + context_->ReasonNotIdle(), &reason);
+  }
+  return reason;
 }
 
 void Connection::ClearSending(const Status& status) {

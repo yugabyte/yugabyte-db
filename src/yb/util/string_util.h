@@ -16,7 +16,6 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
 
 #ifndef YB_UTIL_STRING_UTIL_H
 #define YB_UTIL_STRING_UTIL_H
@@ -64,6 +63,18 @@ inline bool StringEndsWith(
     const std::string& s, const std::string end, std::string* left = nullptr) {
   return StringEndsWith(s, end.c_str(), end.length(), left);
 }
+
+static constexpr const char* kDefaultSeparatorStr = ", ";
+
+// Append then given string to the given destination string. If the destination string is already
+// non-empty, append a separator first.
+void AppendWithSeparator(const std::string& to_append,
+                         std::string* dest,
+                         const char* separator = kDefaultSeparatorStr);
+
+void AppendWithSeparator(const char* to_append,
+                         std::string* dest,
+                         const char* separator = kDefaultSeparatorStr);
 
 }  // namespace yb
 

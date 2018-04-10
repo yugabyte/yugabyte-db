@@ -86,6 +86,7 @@ class ConnectionContextWithQueue : public ConnectionContextBase {
   void AssignConnection(const ConnectionPtr& conn) override;
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle() override;
+  std::string ReasonNotIdle() override;
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
   void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
   void Shutdown(const Status& status) override;

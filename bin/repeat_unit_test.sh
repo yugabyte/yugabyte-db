@@ -45,7 +45,7 @@ Options:
     be allowed.
   --skip-log-compression
     Don't compress kept logs.
-  --stop-at-failure, --stop-on-failure
+  --stop-at-failure, --stop-on-failure, --saf, --sof
     Stop running further iterations after the first failure happens.
 EOT
 }
@@ -148,7 +148,7 @@ while [[ $# -gt 0 ]]; do
       fi
       yb_compiler_type_arg="clang"
     ;;
-    --stop-at-failure|--stop-on-failure)
+    --stop-at-failure|--stop-on-failure|--saf|--sof)
       stop_at_failure=true
     ;;
     *)

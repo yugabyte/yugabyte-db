@@ -45,6 +45,10 @@ bool ConnectionContextWithQueue::Idle() {
   return calls_queue_.empty();
 }
 
+string ConnectionContextWithQueue::ReasonNotIdle() {
+  return Format("$0 calls", calls_queue_.size());
+}
+
 void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> call) {
   auto reactor = call->connection()->reactor();
   DCHECK(reactor->IsCurrentThread());

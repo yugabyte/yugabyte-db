@@ -140,6 +140,15 @@ Options:
     --parallelism argument of repeat_unit_test.sh.
   --remove-successful-test-logs
     Remove logs after a successful test run.
+  --stop-at-failure, --stop-on-failure
+    Stop running further iterations after the first failure happens when running a unit test
+    repeatedly.
+  --stack-trace-error-status, --stes
+    When running tests, print stack traces when error statuses are generated. Only works in
+    non-release mode.
+  --stack-trace-error-status-re, --stesr
+    When running tests, print stack traces when error statuses matching the given regex are
+    generated. Only works in non-release mode.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -778,6 +787,16 @@ while [[ $# -gt 0 ]]; do
     ;;
     --remove-successful-test-logs)
       export YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT=1
+    ;;
+    --stop-at-failure|--stop-on-failure|--saf|--sof)
+      repeat_unit_test_inherited_args+=( "$1" )
+    ;;
+    --stack-trace-error-status|--stes)
+      export YB_STACK_TRACE_ON_ERROR_STATUS=1
+    ;;
+    --stack-trace-error-status-re|--stesr)
+      export YB_STACK_TRACE_ON_ERROR_STATUS_RE=$2
+      shift
     ;;
     *)
       echo "Invalid option: '$1'" >&2

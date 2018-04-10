@@ -136,6 +136,8 @@ class InboundCall : public RpcCall {
   virtual const std::string& service_name() const = 0;
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
 
+  std::string LogPrefix() const override;
+
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
@@ -163,7 +165,7 @@ class InboundCall : public RpcCall {
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
-  std::function<void(InboundCall*)> call_processed_listener_;
+  const std::function<void(InboundCall*)> call_processed_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };

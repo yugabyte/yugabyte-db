@@ -22,6 +22,8 @@
 
 #include <sstream>
 
+#include "yb/util/logging.h"
+
 using std::vector;
 using std::string;
 using std::stringstream;
@@ -58,6 +60,25 @@ bool StringEndsWith(const string& s, const char* end, size_t end_len, string* le
     return true;
   }
   return false;
+}
+
+void AppendWithSeparator(const string& to_append, string* dest, const char* separator) {
+  CHECK_NOTNULL(dest);
+  if (!dest->empty()) {
+    *dest += separator;
+  }
+  *dest += to_append;
+}
+
+void AppendWithSeparator(const char* to_append, string* dest, const char* separator) {
+  CHECK_NOTNULL(dest);
+  if (!dest->empty()) {
+    *dest += separator;
+  }
+  *dest += to_append;
+}
+
+void FooBar() {
 }
 
 }  // namespace yb
