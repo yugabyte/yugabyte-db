@@ -548,7 +548,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
                 { row.k, row.r, row.v },
                 1000,
                 t);
-    ASSERT_OK(FlushRocksDB());
+    ASSERT_OK(FlushRocksDbAndWait());
   }
   std::vector<rocksdb::LiveFileMetaData> live_files;
   rocksdb()->GetLiveFilesMetaData(&live_files);
@@ -651,7 +651,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
       )#");
 
-  CompactHistoryBefore(t1);
+  FullyCompactHistoryBefore(t1);
 
   // Verify all entries are purged.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -697,7 +697,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
       )#");
 
-  CompactHistoryBefore(t1);
+  FullyCompactHistoryBefore(t1);
 
   // Verify the rest of the columns still live.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -746,7 +746,7 @@ size_t GenerateFiles(int total_batches, DocOperationTest* test) {
       test->WriteQLRow(
           QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
     }
-    EXPECT_OK(test->FlushRocksDB());
+    EXPECT_OK(test->FlushRocksDbAndWait());
   }
   return expected_files;
 }

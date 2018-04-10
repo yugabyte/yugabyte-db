@@ -2206,7 +2206,7 @@ TEST_F(DBCompactionTest, FilesDeletedAfterCompaction) {
   } while (ChangeCompactOptions());
 }
 
-// Check level comapction with compact files
+// Check level compaction with compact files
 TEST_P(DBCompactionTestWithParam, DISABLED_CompactFilesOnLevelCompaction) {
   const int kTestKeySize = 16;
   const int kTestValueSize = 984;

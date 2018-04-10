@@ -31,7 +31,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
   DocDBCompactionFilter(HybridTime history_cutoff,
                         ColumnIdsPtr deleted_cols,
-                        bool is_full_compaction,
+                        bool is_major_compaction,
                         MonoDelta table_ttl);
 
   ~DocDBCompactionFilter() override;
@@ -45,11 +45,11 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  private:
   // We will not keep history below this hybrid_time. The view of the database at this hybrid_time
   // is preserved, but after the compaction completes, we should not expect to be able to do
-  // consistent scans at DocDB hybrid_times lower than this. Those scans will result in missing
+  // consistent scans at DocDB hybrid times lower than this. Those scans will result in missing
   // data. Therefore, it is really important to always set this to a value lower than or equal to
   // the lowest "read point" of any pending read operations.
   const HybridTime history_cutoff_;
-  const bool is_full_compaction_;
+  const bool is_major_compaction_;
 
   mutable bool is_first_key_value_;
   mutable SubDocKey prev_subdoc_key_;
@@ -72,7 +72,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // doc_key1 HT(20) -> DEL               | [20]          | 20 >= MinHT, keeping the entry
   //                                      |               | ^^    ^^^^^
   //                                      | Note: we're comparing the hybrid_time in this key with
-  //                                      | the _previous_ stack top of overwrite_ht_.
+  //                                      | the previous stack top of overwrite_ht_.
   //                                      |               |
   // doc_key1 HT(10) -> {}                | [20]          | 10 < 20, deleting the entry
   // doc_key1 subkey1 HT(35) -> "value4"  | [20, 20]      | 35 >= 20, keeping the entry

@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <regex>
 
 using std::string;
 using std::vector;
@@ -99,6 +100,11 @@ string LeftShiftTextBlock(const std::string& s) {
     }
   }
   return result;
+}
+
+std::string TrimCppComments(const std::string& s) {
+  static const std::regex kCppCommentRE = std::regex("\\s*//[^\n]+");
+  return std::regex_replace(s, kCppCommentRE, "");
 }
 
 }  // namespace util

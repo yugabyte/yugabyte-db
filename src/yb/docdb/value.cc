@@ -140,5 +140,15 @@ Status Value::DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
   return Status::OK();
 }
 
+const Value& Value::Tombstone() {
+  static const auto kTombstone = Value(PrimitiveValue::kTombstone);
+  return kTombstone;
+}
+
+const string& Value::EncodedTombstone() {
+  static const string kEncodedTombstone = Tombstone().Encode();
+  return kEncodedTombstone;
+}
+
 }  // namespace docdb
 }  // namespace yb

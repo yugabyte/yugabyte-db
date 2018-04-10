@@ -123,7 +123,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
     }
     ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " << current_iteration;
     if (current_iteration % kFlushFrequency == 0) {
-      ASSERT_OK(FlushRocksDB());
+      ASSERT_OK(FlushRocksDbAndWait());
     }
     if (current_iteration % snapshot_frequency == 0) {
       load_gen_->CaptureDocDbSnapshot();
@@ -140,7 +140,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
         // We are performing cleanup at an old hybrid_time, and don't expect it to have any effect.
         InMemDocDbState snapshot_before_cleanup;
         snapshot_before_cleanup.CaptureAt(rocksdb(), HybridTime::kMax);
-        ASSERT_NO_FATALS(CompactHistoryBefore(cleanup_ht));
+        ASSERT_NO_FATALS(FullyCompactHistoryBefore(cleanup_ht));
 
         InMemDocDbState snapshot_after_cleanup;
         snapshot_after_cleanup.CaptureAt(rocksdb(), HybridTime::kMax);
@@ -149,7 +149,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
         max_history_cleanup_ht = cleanup_ht;
         cleanup_ht_and_iteration.emplace_back(cleanup_ht.value(),
                                               load_gen_->last_operation_ht().value());
-        ASSERT_NO_FATALS(CompactHistoryBefore(cleanup_ht));
+        ASSERT_NO_FATALS(FullyCompactHistoryBefore(cleanup_ht));
 
         // We expect some snapshots at hybrid_times earlier than cleanup_ht to no longer be
         // recoverable.

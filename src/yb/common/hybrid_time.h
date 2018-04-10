@@ -164,6 +164,8 @@ class HybridTime {
       default:
         return false;
     }
+    LOG(FATAL) << "Should never happen";
+    return false;  // Never reached.
   }
 
   bool operator <(const HybridTime& other) const {
@@ -241,6 +243,16 @@ inline int HybridTime::CompareTo(const HybridTime &other) const {
 inline std::ostream &operator <<(std::ostream &o, const HybridTime &hybridTime) {
   return o << hybridTime.ToString();
 }
+
+namespace hybrid_time_literals {
+
+inline HybridTime operator "" _usec_ht(unsigned long long microseconds) { // NOLINT
+  return HybridTime::FromMicros(microseconds);
+}
+
+} // namespace hybrid_time_literals
+
+using hybrid_time_literals::operator"" _usec_ht;
 
 }  // namespace yb
 

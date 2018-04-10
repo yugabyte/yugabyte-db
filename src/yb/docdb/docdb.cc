@@ -418,7 +418,7 @@ CHECKED_STATUS BuildSubDocument(
     key = key_copy.AsSlice();
     rocksdb::Slice value = iter->value();
 
-    // Checking that intent aware iterator returns entry with correct time.
+    // Checking that IntentAwareIterator returns an entry with correct time.
     DCHECK_GE(iter->read_time().global_limit, doc_ht.hybrid_time())
         << "Found key: " << SubDocKey::DebugSliceToString(key);
 
@@ -430,6 +430,7 @@ CHECKED_STATUS BuildSubDocument(
 
     Value doc_value;
     RETURN_NOT_OK(doc_value.Decode(value));
+    ValueType value_type = doc_value.value_type();
 
     if (key == data.subdocument_key) {
       const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
@@ -449,32 +450,28 @@ CHECKED_STATUS BuildSubDocument(
                 expiry.ToDebugString(), low_ts.ToString());
           }
 
-          // Treat the value as a tombstone written at expiry time. Note that this doesn't apply
-          // to init markers for collections since even if the init marker for the collection has
-          // expired, individual elements in the collection might still be valid.
-          if (!IsCollectionType(doc_value.value_type())) {
-            doc_value = Value(PrimitiveValue::kTombstone);
-            // Use a write id that could never be used by a real operation within a single-shard
-            // txn, so that we don't split that operation into multiple parts.
-            write_time = DocHybridTime(expiry, kMaxWriteId);
-          }
+          // Treat an expired value as a tombstone written at the same time as the original value.
+          doc_value = Value::Tombstone();
+          value_type = ValueType::kTombstone;
         }
       }
+
+      const bool is_collection = IsCollectionType(value_type);
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
-      if (IsCollectionType(doc_value.value_type()) ||
-          doc_value.value_type() == ValueType::kTombstone) {
+      if (is_collection || value_type == ValueType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
-        if (IsCollectionType(doc_value.value_type()) && !has_expired) {
-          *data.result = SubDocument(doc_value.value_type());
+        if (is_collection && !has_expired) {
+          *data.result = SubDocument(value_type);
         }
 
-        // If the low subkey cannot include the found key, we want to skip to the low subkey,
-        // but if it can, we want to seek to the next key. This prevents an infinite loop
-        // where the iterator keeps seeking to itself if the found key matches the low subkey.
-        if (IsObjectType(doc_value.value_type()) && !data.low_subkey->CanInclude(key)) {
+        // If the subkey lower bound filters out the key we found, we want to skip to the lower
+        // bound. If it does not, we want to seek to the next key. This prevents an infinite loop
+        // where the iterator keeps seeking to itself if the key we found matches the low subkey.
+        // TODO: why are not we doing this for arrays?
+        if (IsObjectType(value_type) && !data.low_subkey->CanInclude(key)) {
           // Try to seek to the low_subkey for efficiency.
           SeekToLowerBound(*data.low_subkey, iter);
         } else {
@@ -483,9 +480,9 @@ CHECKED_STATUS BuildSubDocument(
         }
         continue;
       } else {
-        if (!IsPrimitiveValueType(doc_value.value_type())) {
+        if (!IsPrimitiveValueType(value_type)) {
           return STATUS_FORMAT(Corruption,
-              "Expected primitive value type, got $0", doc_value.value_type());
+              "Expected primitive value type, got $0", value_type);
         }
 
         DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time());
@@ -522,7 +519,8 @@ CHECKED_STATUS BuildSubDocument(
     }
 
     SubDocument descendant{PrimitiveValue(ValueType::kInvalidValueType)};
-    // TODO: what if found_key is the same as before? We'll get into an infinite recursion then.
+    // TODO: what if the key we found is the same as before?
+    //       We'll get into an infinite recursion then.
     {
       IntentAwareIteratorPrefixScope prefix_scope(key, iter);
       RETURN_NOT_OK(BuildSubDocument(
@@ -650,8 +648,7 @@ yb::Status GetSubDocument(
       if (!decode_result) {
         break;
       }
-      RETURN_NOT_OK(db_iter->FindLastWriteTime(
-          key_slice, &max_deleted_ts, nullptr /* result_value */));
+      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts));
       key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
     }
   }
@@ -661,14 +658,15 @@ yb::Status GetSubDocument(
   // Check for init-marker / tombstones at the top level, update max_deleted_ts.
   Value doc_value = Value(PrimitiveValue(ValueType::kInvalidValueType));
   RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts, &doc_value));
+  const ValueType value_type = doc_value.value_type();
 
   if (data.return_type_only) {
-    *data.doc_found = doc_value.value_type() != ValueType::kInvalidValueType;
+    *data.doc_found = value_type != ValueType::kInvalidValueType;
     // Check for ttl.
     if (*data.doc_found) {
       const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
       DocHybridTime write_time(DocHybridTime::kMin);
-      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &write_time, nullptr));
+      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &write_time));
       if (write_time != DocHybridTime::kMin && !ttl.Equals(Value::kMaxTtl)) {
         const HybridTime expiry =
             server::HybridClock::AddPhysicalTimeToHybridTime(write_time.hybrid_time(), ttl);
@@ -690,17 +688,20 @@ yb::Status GetSubDocument(
     IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts, &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueType::kInvalidValueType;
-    if (*data.doc_found && doc_value.value_type() == ValueType::kRedisSet) {
-      RETURN_NOT_OK(data.result->ConvertToRedisSet());
-    } else if (*data.doc_found && doc_value.value_type() == ValueType::kRedisTS) {
-      RETURN_NOT_OK(data.result->ConvertToRedisTS());
-    } else if (*data.doc_found && doc_value.value_type() == ValueType::kRedisSortedSet) {
-      RETURN_NOT_OK(data.result->ConvertToRedisSortedSet());
+    if (*data.doc_found) {
+      if (value_type == ValueType::kRedisSet) {
+        RETURN_NOT_OK(data.result->ConvertToRedisSet());
+      } else if (value_type == ValueType::kRedisTS) {
+        RETURN_NOT_OK(data.result->ConvertToRedisTS());
+      } else if (value_type == ValueType::kRedisSortedSet) {
+        RETURN_NOT_OK(data.result->ConvertToRedisSortedSet());
+      }
+      // TODO: Could also handle lists here.
     }
-    // TODO: Also could handle lists here.
 
     return Status::OK();
   }
+
   // For each subkey in the projection, build subdocument.
   *data.result = SubDocument();
   for (const PrimitiveValue& subkey : *projection) {

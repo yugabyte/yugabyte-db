@@ -38,10 +38,10 @@ namespace docdb {
 
 DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff,
                                              ColumnIdsPtr deleted_cols,
-                                             bool is_full_compaction,
+                                             bool is_major_compaction,
                                              MonoDelta table_ttl)
     : history_cutoff_(history_cutoff),
-      is_full_compaction_(is_full_compaction),
+      is_major_compaction_(is_major_compaction),
       is_first_key_value_(true),
       filter_usage_logged_(false),
       table_ttl_(table_ttl),
@@ -56,20 +56,10 @@ bool DocDBCompactionFilter::Filter(int level,
                                    const rocksdb::Slice& existing_value,
                                    std::string* new_value,
                                    bool* value_changed) const {
-  if (!is_full_compaction_) {
-    // By default, we only perform history garbage collection on full compactions
-    // (or major compactions, in the HBase terminology).
-    //
-    // TODO: Enable history garbage collection on minor (non-full) compactions as well.
-    //       This should be similar to the existing workflow, but should be extensively tested.
-    //
-    // Here, false means "keep the key/value pair" (don't filter it out).
-    return false;
-  }
-
   if (!filter_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG(INFO) << "DocDB compaction filter is being used";
+    LOG(INFO) << "DocDB compaction filter is being used for a "
+              << (is_major_compaction_ ? "major" : "minor") << " compaction";
     filter_usage_logged_ = true;
   }
 
@@ -78,9 +68,9 @@ bool DocDBCompactionFilter::Filter(int level,
   // TODO: Find a better way for handling of data corruption encountered during compactions.
   const Status key_decode_status = subdoc_key.FullyDecodeFrom(key);
   CHECK(key_decode_status.ok())
-    << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
-    << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
-    << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
+      << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
+      << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
+      << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
 
   if (is_first_key_value_) {
     CHECK_EQ(0, overwrite_ht_.size());
@@ -95,35 +85,40 @@ bool DocDBCompactionFilter::Filter(int level,
 
   const DocHybridTime& ht = subdoc_key.doc_hybrid_time();
 
-  // We're comparing the hybrid_time in this key with the _previous_ stack top of overwrite_ht_,
-  // after truncating the previous hybrid_time to the number of components in the common prefix
-  // of previous and current key.
+  // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
+  // truncating the stack to the number of components in the common prefix of previous and current
+  // key.
   //
   // Example (history_cutoff_ = 12):
   // --------------------------------------------------------------------------------------------
   // Key          overwrite_ht_ stack and relevant notes
   // --------------------------------------------------------------------------------------------
   // k1 T10       [MinHT]
+  //
   // k1 T5        [T10]
+  //
   // k1 col1 T11  [T10, T11]
+  //
   // k1 col1 T7   The stack does not get truncated (shared prefix length is 2), so
   //              prev_overwrite_ht = 11. Removing this entry because 7 < 11.
+  //              The stack stays at [T10, T11].
+  //
   // k1 col2 T9   Truncating the stack to [T10], setting prev_overwrite_ht to 10, and therefore
   //              deciding to remove this entry because 9 < 10.
   //
   const DocHybridTime prev_overwrite_ht =
-    overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
+      overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
-  // was fully overwritten or deleted prior to or at the history cutoff hybrid_time. The intuition
-  // is that key/value pairs that were overwritten at or before history cutoff time will not be
-  // visible at history cutoff time or any later time anyway.
+  // was fully overwritten or deleted prior to or at the history cutoff time. The intuition is that
+  // key/value pairs that were overwritten at or before history cutoff time will not be visible at
+  // history cutoff time or any later time anyway.
   //
   // Furthermore, we only need to update the overwrite hybrid_time stack in case we have decided to
-  // keep the new entry. Otherwise, the current entry's hybrid_time ts is less than the previous
+  // keep the new entry. Otherwise, the current entry's hybrid time ht is less than the previous
   // overwrite hybrid_time prev_overwrite_ht, and therefore it does not provide any new information
-  // about key/value pairs that follow being overwritten at a particular hybrid_time. Another way to
-  // explain this is to look at the logic that follows. If we don't early-exit here while ts is less
+  // about key/value pairs that follow being overwritten at a particular hybrid time. Another way to
+  // explain this is to look at the logic that follows. If we don't early-exit here while ht is less
   // than prev_overwrite_ht, we'll end up adding more prev_overwrite_ht values to the overwrite
   // hybrid_time stack, and we might as well do that while handling the next key/value pair that
   // does not get cleaned up the same way as this one.
@@ -148,25 +143,30 @@ bool DocDBCompactionFilter::Filter(int level,
 
   const bool ht_at_or_below_cutoff = ht.hybrid_time() <= history_cutoff_;
 
-  // See if we found a higher hybrid_time not exceeding the history cutoff hybrid_time at which the
+  // See if we found a higher hybrid time not exceeding the history cutoff hybrid time at which the
   // subdocument (including a primitive value) rooted at the current key was fully overwritten.
-  // In case ts > history_cutoff_, we just keep the parent document's highest known overwrite
-  // hybrid_time that does not exceed the cutoff hybrid_time. In that case this entry is obviously
+  // In case of ht > history_cutoff_, we just keep the parent document's highest known overwrite
+  // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
   overwrite_ht_.push_back(ht_at_or_below_cutoff ? max(prev_overwrite_ht, ht) : prev_overwrite_ht);
 
   CHECK_EQ(new_stack_size, overwrite_ht_.size());
-  prev_subdoc_key_ = std::move(subdoc_key);
 
-  if (prev_subdoc_key_.num_subkeys() > 0 &&
-      prev_subdoc_key_.subkeys()[0].value_type() == ValueType::kColumnId) {
-    // Column ID is first subkey in QL tables.
-    ColumnId col_id = prev_subdoc_key_.subkeys()[0].GetColumnId();
-
-    if (deleted_cols_->find(col_id) != deleted_cols_->end()) {
+  // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
+  // major or minor compaction.
+  //
+  // TODO: could there be a case when there is still a read request running that uses an old schema,
+  //       and we end up removing some data that the client expects to see?
+  if (subdoc_key.num_subkeys() > 0) {
+    const auto& first_subkey = subdoc_key.subkeys()[0];
+    // Column ID is the first subkey in every CQL row.
+    if (first_subkey.value_type() == ValueType::kColumnId &&
+        deleted_cols_->find(first_subkey.GetColumnId()) != deleted_cols_->end()) {
       return true;
     }
   }
+
+  prev_subdoc_key_ = std::move(subdoc_key);
 
   ValueType value_type;
   CHECK_OK(Value::DecodePrimitiveValueType(existing_value, &value_type));
@@ -177,34 +177,35 @@ bool DocDBCompactionFilter::Filter(int level,
 
   bool has_expired = false;
 
-  CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, table_ttl_), history_cutoff_,
-                         &has_expired));
+  if (ht_at_or_below_cutoff) {
+    // Only check for expiration if the current hybrid time is at or below history cutoff.
+    // The key could not have possibly expired by history_cutoff_ otherwise.
+    CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, table_ttl_), history_cutoff_,
+                           &has_expired));
+  }
 
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
-  // the ttl would default to kMaxTtl which would make has_expired false.
+  // the TTL would default to kMaxTtl which would make has_expired false.
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
-    // because ts <= history_cutoff_ is implied by has_expired.
-    if (is_full_compaction_) {
+    // because ht_at_or_below_cutoff is implied by has_expired.
+    if (is_major_compaction_) {
       return true;
     }
+
     // During minor compactions, expired values are written back as tombstones because removing the
-    // record might expose earlier values which would be incorrect. Note that this doesn't apply
-    // to init markers for collections since even if the init marker for the collection has
-    // expired, individual elements in the collection might still be valid.
-    if (!IsCollectionType(value_type)) {
-      *value_changed = true;
-      *new_value = Value(PrimitiveValue::kTombstone).Encode();
-    }
+    // record might expose earlier values which would be incorrect.
+    *value_changed = true;
+    *new_value = Value::EncodedTombstone();
   }
 
-  // Deletes at or below the history cutoff hybrid_time can always be cleaned up on full (major)
-  // compactions. However, we do need to update the overwrite hybrid_time stack in this case (as we
+  // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
+  // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
-  // more entries appearing at earlier hybrid_times.
-  return value_type == ValueType::kTombstone && ht_at_or_below_cutoff && is_full_compaction_;
+  // more entries appearing at earlier hybrid times.
+  return value_type == ValueType::kTombstone && ht_at_or_below_cutoff && is_major_compaction_;
 }
 
 const char* DocDBCompactionFilter::Name() const {
