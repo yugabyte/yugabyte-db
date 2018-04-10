@@ -31,9 +31,14 @@ YB_DEFINE_ENUM(TransferState, (PENDING)(FINISHED)(ABORTED));
 
 class RpcCall : public OutboundData {
  public:
-  // This functions is invoked in reactor thread of appropriate connection.
-  // So it doesn't require synchronization.
+  // This functions is invoked in reactor thread of the appropriate connection, except during
+  // reactor shutdown. In case of shutdown all such final calls are sequential. Therefore, this
+  // function doesn't require synchronization.
   void Transferred(const Status& status, Connection* conn) override;
+
+  virtual std::string LogPrefix() const {
+    return "";
+  }
 
  private:
   virtual void NotifyTransferred(const Status& status, Connection* conn) = 0;

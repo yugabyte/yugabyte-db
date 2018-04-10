@@ -239,6 +239,8 @@ class OutboundCall : public RpcCall {
 
   bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
+  std::string LogPrefix() const override;
+
   ////////////////////////////////////////////////////////////
   // Getters
   ////////////////////////////////////////////////////////////

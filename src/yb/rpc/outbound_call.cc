@@ -215,8 +215,8 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
       conn->CallSent(shared_from(this));
       SetSent();
     } else {
-      VLOG(1) << "Connection torn down before " << ToString()
-              << " could send its call: " << status.ToString();
+      VLOG_WITH_PREFIX(1) << "Connection torn down before " << ToString()
+                          << " could send its call: " << status.ToString();
 
       SetFailed(status);
     }
@@ -478,6 +478,10 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
   return true;
+}
+
+std::string OutboundCall::LogPrefix() const {
+  return Format("{ OutboundCall@$0 } ", this);
 }
 
 void OutboundCall::InitHeader(RequestHeader* header) {

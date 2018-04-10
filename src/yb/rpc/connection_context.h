@@ -50,7 +50,10 @@ class ConnectionContext {
   // Checks whether this connection context is idle.
   virtual bool Idle() = 0;
 
-  // Listen when context becomes idle.
+  // Returns a human-readable description of why the context is not idle.
+  virtual std::string ReasonNotIdle() = 0;
+
+  // Listen for when context becomes idle.
   virtual void ListenIdle(IdleListener listener) = 0;
 
   // Shutdown this context.

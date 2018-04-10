@@ -92,7 +92,7 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 
 RpcContext::~RpcContext() {
   if (call_ && !responded_) {
-    LOG(DFATAL) << "RpcContext is destroyed, but response did not send, for call: "
+    LOG(DFATAL) << "RpcContext is destroyed, but response has not been sent, for call: "
                 << call_->ToString();
   }
 }

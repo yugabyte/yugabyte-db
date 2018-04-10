@@ -107,6 +107,10 @@ void DoInitLibEv() {
   ev::set_syserr_cb(LibevSysErr);
 }
 
+bool HasReactorStartedClosing(ReactorState state) {
+  return state == ReactorState::kClosing || state == ReactorState::kClosed;
+}
+
 } // anonymous namespace
 
 // ------------------------------------------------------------------------------------------------
@@ -116,13 +120,13 @@ void DoInitLibEv() {
 Reactor::Reactor(const shared_ptr<Messenger>& messenger,
                  int index,
                  const MessengerBuilder &bld)
-  : messenger_(messenger),
-    name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
-    loop_(kDefaultLibEvFlags),
-    cur_time_(CoarseMonoClock::Now()),
-    last_unused_tcp_scan_(cur_time_),
-    connection_keepalive_time_(bld.connection_keepalive_time()),
-    coarse_timer_granularity_(bld.coarse_timer_granularity()) {
+    : messenger_(messenger),
+      name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
+      loop_(kDefaultLibEvFlags),
+      cur_time_(CoarseMonoClock::Now()),
+      last_unused_tcp_scan_(cur_time_),
+      connection_keepalive_time_(bld.connection_keepalive_time()),
+      coarse_timer_granularity_(bld.coarse_timer_granularity()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
@@ -155,16 +159,17 @@ Status Reactor::Init() {
 }
 
 void Reactor::Shutdown() {
-  {
-    std::lock_guard<simple_spinlock> l(pending_tasks_lock_);
-    if (closing_) {
-      return;
+  ReactorState old_state = ReactorState::kRunning;
+  do {
+    if (state_.compare_exchange_weak(old_state,
+                                     ReactorState::kClosing,
+                                     std::memory_order_acq_rel)) {
+      VLOG(1) << name() << ": shutting down Reactor thread.";
+      WakeThread();
     }
-    closing_ = true;
-  }
+  } while (!HasReactorStartedClosing(old_state));
 
-  VLOG(1) << name() << ": shutting down Reactor thread.";
-  WakeThread();
+  // Another thread already switched the state to closing before us.
 }
 
 void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
@@ -173,16 +178,21 @@ void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
   VLOG(1) << name() << ": shutting down " << conn->ToString();
   conn->Shutdown(ServiceUnavailableError());
   if (!conn->context().Idle()) {
+    VLOG(1) << name() << ": connection is not idle: " << conn->ToString();
     std::weak_ptr<Connection> weak_conn(conn);
     conn->context().ListenIdle([this, weak_conn]() {
-      DCHECK(IsCurrentThread());
+      DCHECK(IsCurrentThreadOrClosed());
       auto conn = weak_conn.lock();
       if (conn) {
-        VLOG(1) << name() << ": connection become idle " << conn->ToString();
+        VLOG(1) << name() << ": connection became idle " << conn->ToString();
+        // The access to waiting_conns_ is safe here, because this code can only be called on the
+        // reactor thread or when holding final_abort_mutex_ during shutdown.
         waiting_conns_.erase(conn);
       }
     });
     waiting_conns_.insert(conn);
+  } else {
+    VLOG(1) << name() << ": connection is idle: " << conn->ToString();
   }
 }
 
@@ -210,32 +220,30 @@ void Reactor::ShutdownInternal() {
   //
   // These won't be found in the Reactor's list of pending tasks
   // because they've been "run" (that is, they've been scheduled).
+  VLOG(1) << name() << ": aborting scheduled tasks";
   Status aborted = AbortedError();
   for (const auto& task : scheduled_tasks_) {
     task->Abort(aborted);
   }
   scheduled_tasks_.clear();
 
+  // async_handler_tasks_ are the tasks added by ScheduleReactorTask.
+  VLOG(1) << name() << ": aborting async handler tasks";
   for (const auto& task : async_handler_tasks_) {
     task->Abort(aborted);
   }
 
+  VLOG(1) << name() << ": aborting outbound calls";
+  CHECK(processing_outbound_queue_.empty()) << yb::ToString(processing_outbound_queue_);
   {
     std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
     outbound_queue_stopped_ = true;
     outbound_queue_.swap(processing_outbound_queue_);
   }
-
   for (auto& call : processing_outbound_queue_) {
     call->Transferred(aborted, nullptr);
   }
   processing_outbound_queue_.clear();
-}
-
-ReactorTask::ReactorTask() {
-}
-
-ReactorTask::~ReactorTask() {
 }
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
@@ -275,10 +283,31 @@ void Reactor::WakeThread() {
 void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
-  VLOG(4) << "Check ready to stop: " << this << ", " << waiting_conns_.size();
+  VLOG(4) << "Check ready to stop: " << thread_->ToString() << ", "
+          << "waiting connections: " << yb::ToString(waiting_conns_);
+
+  if (VLOG_IS_ON(4)) {
+    for (const auto& conn : waiting_conns_) {
+      VLOG(4) << "Connection: " << conn->ToString() << ", idle=" << conn->Idle() << ", why: "
+              << conn->ReasonNotIdle();
+    }
+  }
 
   if (waiting_conns_.empty()) {
     VLOG(4) << "Reactor ready to stop, breaking loop: " << this;
+
+    LOG(INFO) << "Marking reactor as closed: " << thread_.get()->ToString();
+    ReactorTasks final_tasks;
+    {
+      std::lock_guard<simple_spinlock> lock(pending_tasks_mtx_);
+      state_.store(ReactorState::kClosed, std::memory_order_release);
+      final_tasks.swap(pending_tasks_);
+    }
+    LOG(INFO) << "Running final pending task aborts: " << thread_.get()->ToString();;
+    for (auto task : final_tasks) {
+      task->Abort(ServiceUnavailableError());
+    }
+    LOG(INFO) << "Breaking reactor loop: " << thread_.get()->ToString();;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
@@ -292,7 +321,8 @@ void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   BOOST_SCOPE_EXIT(&async_handler_tasks_) {
     async_handler_tasks_.clear();
   } BOOST_SCOPE_EXIT_END;
-  if (PREDICT_FALSE(!DrainTaskQueue(&async_handler_tasks_))) {
+
+  if (PREDICT_FALSE(DrainTaskQueueAndCheckIfClosing())) {
     ShutdownInternal();
     CheckReadyToStop();
     return;
@@ -415,11 +445,16 @@ bool Reactor::IsCurrentThread() const {
   return thread_.get() == yb::Thread::current_thread();
 }
 
+bool Reactor::IsCurrentThreadOrClosed() const {
+  return thread_.get() == yb::Thread::current_thread() ||
+         state_.load(std::memory_order_acquire) == ReactorState::kClosed;
+}
+
 void Reactor::RunThread() {
   ThreadRestrictions::SetWaitAllowed(false);
   ThreadRestrictions::SetIOAllowed(false);
   DVLOG(6) << "Calling Reactor::RunThread()...";
-  loop_.run(0);
+  loop_.run(/* flags */ 0);
   VLOG(1) << name() << " thread exiting.";
 
   // No longer need the messenger. This causes the messenger to
@@ -457,6 +492,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   if (c != client_conns_.end()) {
     *conn = (*c).second;
     return Status::OK();
+  }
+
+  if (HasReactorStartedClosing(state_.load(std::memory_order_acquire))) {
+    return ServiceUnavailableError();
   }
 
   // No connection to this remote. Need to create one.
@@ -571,6 +610,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
 }
 
 void Reactor::ProcessOutboundQueue() {
+  CHECK(processing_outbound_queue_.empty()) << yb::ToString(processing_outbound_queue_);
   {
     std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
     outbound_queue_.swap(processing_outbound_queue_);
@@ -578,12 +618,14 @@ void Reactor::ProcessOutboundQueue() {
   if (processing_outbound_queue_.empty()) {
     return;
   }
+
   processing_connections_.reserve(processing_outbound_queue_.size());
   for (auto& call : processing_outbound_queue_) {
     auto conn = AssignOutboundCall(call);
     processing_connections_.push_back(std::move(conn));
   }
   processing_outbound_queue_.clear();
+
   std::sort(processing_connections_.begin(), processing_connections_.end());
   auto new_end = std::unique(processing_connections_.begin(), processing_connections_.end());
   processing_connections_.erase(new_end, processing_connections_.end());
@@ -618,6 +660,22 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
     ScheduleReactorTask(process_outbound_queue_task_);
   }
   TRACE_TO(call->trace(), "Scheduled.");
+}
+
+// ------------------------------------------------------------------------------------------------
+// ReactorTask class members
+// ------------------------------------------------------------------------------------------------
+
+ReactorTask::ReactorTask() {
+}
+
+ReactorTask::~ReactorTask() {
+}
+
+void ReactorTask::Abort(const Status& abort_status) {
+  if (!abort_called_.exchange(true, std::memory_order_acq_rel)) {
+    DoAbort(abort_status);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -694,7 +752,7 @@ void DelayedTask::AbortTask(const Status& abort_status) {
   }
 }
 
-void DelayedTask::Abort(const Status& abort_status) {
+void DelayedTask::DoAbort(const Status& abort_status) {
   AbortTask(abort_status);
 }
 
@@ -741,29 +799,36 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   });
 }
 
-void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
+void Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
   bool was_empty;
   {
-    std::unique_lock<simple_spinlock> l(pending_tasks_lock_);
-    if (closing_) {
-      // We guarantee the reactor lock is not taken when calling Abort().
-      l.unlock();
+    // Even though state_ is atomic, we still need to take the lock to make sure state_
+    // and pending_tasks_mtx_ are being modified in a consistent way.
+    std::unique_lock<simple_spinlock> pending_lock(pending_tasks_mtx_);
+    if (state_.load(std::memory_order_acquire) == ReactorState::kClosed) {
+      // The reactor thread has already stopped. We can safely call Abort() now. Abort() will
+      // internally deduplicate repeated calls using an atomic.
+      //
+      // Also, we guarantee that pending_tasks_mtx_ is not taken when calling Abort().
+      pending_lock.unlock();
+      std::lock_guard<std::recursive_mutex> final_abort_serializer(final_abort_mutex_);
       task->Abort(ServiceUnavailableError());
       return;
     }
     was_empty = pending_tasks_.empty();
-    pending_tasks_.push_back(std::move(task));
+    pending_tasks_.emplace_back(std::move(task));
   }
   if (was_empty) {
     WakeThread();
   }
 }
 
-bool Reactor::DrainTaskQueue(std::vector<std::shared_ptr<ReactorTask>>* tasks) {
-  CHECK(tasks->empty());
-  std::lock_guard<simple_spinlock> l(pending_tasks_lock_);
-  tasks->swap(pending_tasks_);
-  return !closing_;
+bool Reactor::DrainTaskQueueAndCheckIfClosing() {
+  CHECK(async_handler_tasks_.empty());
+
+  std::lock_guard<simple_spinlock> lock(pending_tasks_mtx_);
+  async_handler_tasks_.swap(pending_tasks_);
+  return HasReactorStartedClosing(state_.load(std::memory_order_acquire));
 }
 
 // Task to call an arbitrary function within the reactor thread.
@@ -777,11 +842,6 @@ class RunFunctionTask : public ReactorTask {
     latch_.CountDown();
   }
 
-  void Abort(const Status &status) override {
-    status_ = status;
-    latch_.CountDown();
-  }
-
   // Wait until the function has completed, and return the Status returned by the function.
   Status Wait() {
     latch_.Wait();
@@ -789,6 +849,11 @@ class RunFunctionTask : public ReactorTask {
   }
 
  private:
+  void DoAbort(const Status &status) override {
+    status_ = status;
+    latch_.CountDown();
+  }
+
   F function_;
   Status status_;
   CountDownLatch latch_;
