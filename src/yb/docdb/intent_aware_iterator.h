@@ -137,7 +137,7 @@ class IntentAwareIterator {
   CHECKED_STATUS FindLastWriteTime(
       const Slice& key_without_ht,
       DocHybridTime* max_deleted_ts,
-      Value* result_value);
+      Value* result_value = nullptr);
 
  private:
   // Seek forward on regular sub-iterator.

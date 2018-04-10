@@ -17,6 +17,8 @@
 #include <memory>
 #include <sstream>
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/statistics.h"
 
@@ -36,7 +38,10 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/algorithm_util.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/rocksdb/db/filename.h"
 
 using std::endl;
 using std::make_shared;
@@ -49,6 +54,9 @@ using strings::Substitute;
 
 using yb::util::ApplyEagerLineContinuation;
 using yb::util::FormatBytesAsStr;
+using yb::util::TrimStr;
+using yb::util::LeftShiftTextBlock;
+using yb::util::TrimCppComments;
 
 namespace yb {
 namespace docdb {
@@ -262,8 +270,7 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
   iter->SeekToFirst();
   while (iter->Valid()) {
-    kvs.emplace_back(iter->key().ToString(/* hex = */ false),
-                     iter->value().ToString(/* hex = */ false));
+    kvs.emplace_back(iter->key().ToBuffer(), iter->value().ToBuffer());
     iter->Next();
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
@@ -392,7 +399,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     if (do_compaction_now) {
       // This will happen between the two iterations of the loop. If compact_history is false,
       // there is only one iteration and the compaction does not happen.
-      fixture_->CompactHistoryBefore(hybrid_time);
+      fixture_->FullyCompactHistoryBefore(hybrid_time);
     }
     SubDocKey sub_doc_key(doc_key);
     SubDocument doc_from_rocksdb;
@@ -435,7 +442,7 @@ HybridTime DocDBLoadGenerator::last_operation_ht() const {
 
 void DocDBLoadGenerator::FlushRocksDB() {
   LOG(INFO) << "Forcing a RocksDB flush after hybrid_time " << last_operation_ht().value();
-  ASSERT_OK(fixture_->FlushRocksDB());
+  ASSERT_OK(fixture_->FlushRocksDbAndWait());
 }
 
 void DocDBLoadGenerator::CaptureDocDbSnapshot() {
@@ -558,15 +565,119 @@ TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionCo
 // ------------------------------------------------------------------------------------------------
 
 void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr());
+  const string debug_dump_str = TrimDocDbDebugDumpStr(DocDBDebugDumpToStr());
+  const string expected_str = TrimDocDbDebugDumpStr(expected);
+  if (expected_str != debug_dump_str) {
+    LOG(INFO) << "Assertion failure"
+              << "\nExpected DocDB contents:\n\n" << expected_str << "\n"
+              << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n";
+    FAIL();
+  }
 }
 
-void DocDBRocksDBFixture::CompactHistoryBefore(HybridTime history_cutoff) {
-  LOG(INFO) << "Compacting history before hybrid_time " << history_cutoff.ToDebugString();
+void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
+  LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
-  ASSERT_OK(FlushRocksDB());
+  BOOST_SCOPE_EXIT(this_) {
+    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
+  } BOOST_SCOPE_EXIT_END;
+
+  ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_OK(FullyCompactDB(rocksdb_.get()));
-  SetHistoryCutoffHybridTime(HybridTime::kMin);
+}
+
+void DocDBRocksDBFixture::MinorCompaction(
+    HybridTime history_cutoff,
+    int num_files_to_compact,
+    int start_index) {
+
+  ASSERT_OK(FlushRocksDbAndWait());
+  SetHistoryCutoffHybridTime(history_cutoff);
+  BOOST_SCOPE_EXIT(this_) {
+    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
+  } BOOST_SCOPE_EXIT_END;
+
+  rocksdb::ColumnFamilyMetaData cf_meta;
+  rocksdb_->GetColumnFamilyMetaData(&cf_meta);
+
+  vector<string> compaction_input_file_names;
+  vector<string> remaining_file_names;
+
+  size_t initial_num_files = 0;
+  {
+    const auto& files = cf_meta.levels[0].files;
+    initial_num_files = files.size();
+    ASSERT_LE(num_files_to_compact, files.size());
+    vector<string> file_names;
+    for (const auto& sst_meta : files) {
+      file_names.push_back(sst_meta.name);
+    }
+    SortByKey(file_names.begin(), file_names.end(), rocksdb::TableFileNameToNumber);
+
+    if (start_index < 0) {
+      start_index = file_names.size() - num_files_to_compact;
+    }
+
+    for (int i = 0; i < file_names.size(); ++i) {
+      if (start_index <= i && compaction_input_file_names.size() < num_files_to_compact) {
+        compaction_input_file_names.push_back(file_names[i]);
+      } else {
+        remaining_file_names.push_back(file_names[i]);
+      }
+    }
+    ASSERT_EQ(num_files_to_compact, compaction_input_file_names.size())
+        << "Tried to add " << num_files_to_compact << " files starting with index " << start_index
+        << ", ended up adding " << yb::ToString(compaction_input_file_names)
+        << " and leaving " << yb::ToString(remaining_file_names) << " out. All files: "
+        << yb::ToString(file_names);
+
+    LOG(INFO) << "Minor-compacting history before hybrid_time " << history_cutoff << ":\n"
+              << "  files being compacted: " << yb::ToString(compaction_input_file_names) << "\n"
+              << "  other files: " << yb::ToString(remaining_file_names);
+
+    ASSERT_OK(rocksdb_->CompactFiles(
+        rocksdb::CompactionOptions(),
+        compaction_input_file_names,
+        /* output_level */ 0));
+    const auto sstables_after_compaction = SSTableFileNames();
+    LOG(INFO) << "SSTable files after compaction: " << sstables_after_compaction.size()
+              << " (" << yb::ToString(sstables_after_compaction) << ")";
+    for (const auto& remaining_file : remaining_file_names) {
+      ASSERT_TRUE(
+          std::find(sstables_after_compaction.begin(), sstables_after_compaction.end(),
+                    remaining_file) != sstables_after_compaction.end()
+      ) << "File " << remaining_file << " not found in file list after compaction: "
+        << yb::ToString(sstables_after_compaction) << ", even though none of these files were "
+        << "supposed to be compacted: " << yb::ToString(remaining_file_names);
+    }
+  }
+
+  rocksdb_->GetColumnFamilyMetaData(&cf_meta);
+  vector<string> files_after_compaction;
+  for (const auto& sst_meta : cf_meta.levels[0].files) {
+    files_after_compaction.push_back(sst_meta.name);
+  }
+  const int64_t expected_resulting_num_files = initial_num_files - num_files_to_compact + 1;
+  ASSERT_EQ(expected_resulting_num_files,
+            static_cast<int64_t>(cf_meta.levels[0].files.size()))
+      << "Files after compaction: " << yb::ToString(files_after_compaction);
+}
+
+int DocDBRocksDBFixture::NumSSTableFiles() {
+  rocksdb::ColumnFamilyMetaData cf_meta;
+  rocksdb_->GetColumnFamilyMetaData(&cf_meta);
+  return cf_meta.levels[0].files.size();
+}
+
+StringVector DocDBRocksDBFixture::SSTableFileNames() {
+  rocksdb::ColumnFamilyMetaData cf_meta;
+  rocksdb_->GetColumnFamilyMetaData(&cf_meta);
+  StringVector files;
+  for (const auto& sstable_meta : cf_meta.levels[0].files) {
+    files.push_back(sstable_meta.name);
+  }
+  SortByKey(files.begin(), files.end(), rocksdb::TableFileNameToNumber);
+  return files;
 }
 
 Status DocDBRocksDBFixture::FormatDocWriteBatch(const DocWriteBatch &dwb, string* dwb_str) {
@@ -598,7 +709,12 @@ string DocDBRocksDBFixture::tablet_id() {
 }
 
 Status DocDBRocksDBFixture::InitRocksDBOptions() {
-  return InitCommonRocksDBOptions();
+  RETURN_NOT_OK(InitCommonRocksDBOptions());
+  return Status::OK();
+}
+
+string TrimDocDbDebugDumpStr(const string& debug_dump_str) {
+  return TrimStr(ApplyEagerLineContinuation(LeftShiftTextBlock(TrimCppComments(debug_dump_str))));
 }
 
 }  // namespace docdb

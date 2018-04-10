@@ -294,8 +294,9 @@ void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
   DocDBDebugDump(rocksdb_.get(), std::cerr);
 }
 
-Status DocDBRocksDBUtil::FlushRocksDB() {
+Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
   rocksdb::FlushOptions flush_options;
+  flush_options.wait = true;
   return rocksdb()->Flush(flush_options);
 }
 

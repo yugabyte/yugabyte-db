@@ -76,13 +76,16 @@ class Value {
 
   void EncodeAndAppend(std::string* value_bytes) const;
 
-  // Decodes the ValueType of the primitive value stored in the given rocksdb_value.
+  // Decodes the ValueType of the primitive value stored in the given RocksDB value.
   static CHECKED_STATUS DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
                                                  ValueType* value_type);
 
-  // Return the user timestamp portion from a slice that points to the rocksdb_value.
+  // Return the user timestamp portion from a slice that points to the RocksDB value.
   static CHECKED_STATUS DecodeUserTimestamp(const rocksdb::Slice& rocksdb_value,
                                             UserTimeMicros* user_timestamp);
+
+  static const Value& Tombstone();
+  static const std::string& EncodedTombstone();
 
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to

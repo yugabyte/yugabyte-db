@@ -393,8 +393,11 @@ run_cxx_test() {
       # summary information is displayed.  This option will show all test output.
       # --output-on-failure is unnecessary when --verbose is specified. In fact, adding
       # --output-on-failure will result in duplicate output in case of a failure.
+      #
+      # In this verbose mode, ctest also adds some number (test number?) with a colon in the
+      # beginning of every line of the output. We filter that out.
       set -x
-      ctest --verbose -R ^"$cxx_test_name"$
+      ctest --verbose -R ^"$cxx_test_name"$ 2>&1 | sed 's/^[0-9][0-9]*: //g'
     )
   else
     (

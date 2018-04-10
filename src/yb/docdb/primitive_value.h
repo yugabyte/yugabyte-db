@@ -32,6 +32,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/util/decimal.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/algorithm_util.h"
 
 namespace yb {
 namespace docdb {
@@ -41,11 +42,6 @@ class SubDocument;
 
 enum class SystemColumnIds : ColumnIdRep {
   kLivenessColumn = 0  // Stores the TTL for QL rows inserted using an INSERT statement.
-};
-
-enum class SortOrder : int8_t {
-  kAscending = 0,
-  kDescending
 };
 
 class PrimitiveValue {
@@ -495,7 +491,7 @@ template <class T, class ...U>
 inline void AppendPrimitiveValues(std::vector<PrimitiveValue>* dest,
                                   T first_arg,
                                   U... more_args) {
-  dest->push_back(PrimitiveValue(first_arg));
+  dest->emplace_back(first_arg);
   AppendPrimitiveValues(dest, more_args...);
 }
 

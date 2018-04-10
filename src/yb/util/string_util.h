@@ -32,7 +32,8 @@
 
 namespace yb {
 
-std::vector<std::string> StringSplit(const std::string& arg, char delim);
+using StringVector = std::vector<std::string>;
+StringVector StringSplit(const std::string& arg, char delim);
 
 template <typename T>
 inline std::string VectorToString(const std::vector<T>& vec) {
