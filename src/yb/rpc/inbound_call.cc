@@ -97,7 +97,7 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   if (status.ok()) {
     TRACE_TO(trace_, "Transfer finished");
   } else {
-    YB_LOG_EVERY_N_SECS(WARNING, 10) << "Connection torn down before " << ToString()
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Connection torn down before " << ToString()
                                      << " could send its response: " << status.ToString();
   }
   if (call_processed_listener_) {
@@ -163,6 +163,10 @@ void InboundCall::QueueResponse(bool is_success) {
   TRACE_TO(trace_, is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
   connection()->context().QueueResponse(connection(), shared_from(this));
+}
+
+std::string InboundCall::LogPrefix() const {
+  return Format("{ InboundCall@$0 } ", this);
 }
 
 }  // namespace rpc

@@ -78,9 +78,6 @@ class Collector:
             else:
                 return False
 
-        if self.current_stack and len(line) == 0:
-            self.stack_finished()
-            return True
         self.stack_finished()
         return False
 
@@ -99,16 +96,12 @@ class Collector:
             header = "Thread " + ", ".join(
                     "%d (LWP %d)" % (stack.thread_id, stack.lwp_id) for stack in stacks)
             min_thread_id = min(stack.thread_id for stack in stacks)
-            print header
             if len(stacks) == 1:
                 # This is a unique stack trace, so we can show argument values without introducing
                 # any confusion.
                 frames = stacks[0].raw_frames
             else:
                 frames = stacks[0].frames
-
-            for frame in frames:
-                print frame
 
             line_groups.append((min_thread_id, [header] + frames))
 
@@ -119,7 +112,6 @@ class Collector:
 
 
 if __name__ == '__main__':
-    in_stack = False
     collector = Collector()
 
     for line in sys.stdin:

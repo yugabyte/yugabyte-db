@@ -125,6 +125,9 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // message, and we have no outstanding calls.
   bool Idle() const;
 
+  // A human-readable reason why the connection is not idle.
+  std::string ReasonNotIdle() const;
+
   // Fail any calls which are currently queued or awaiting response.
   // Prohibits any future calls (they will be failed immediately with this
   // same Status).
@@ -243,7 +246,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // Calls which have been sent and are now waiting for a response.
   std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
 
-  // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
+  // Starts as Status::OK, gets set to a shutdown status upon Shutdown(). Guarded by
+  // outbound_data_queue_lock_.
   Status shutdown_status_;
 
   // We instantiate and store this metric instance at the level of connection, but not at the level

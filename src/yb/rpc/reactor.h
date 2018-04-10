@@ -98,14 +98,23 @@ class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
 
   // Abort the task, in the case that the reactor shut down before the task could be processed. This
   // may or may not run on the reactor thread itself.  If this is run not on the reactor thread,
-  // then reactor thread should have already been shut down.
+  // then reactor thread should have already been shut down. It is guaranteed that Abort() will be
+  // called at most once.
   //
   // The Reactor guarantees that the Reactor lock is free when this method is called.
-  virtual void Abort(const Status &abort_status) {}
+  void Abort(const Status& abort_status);
 
   virtual ~ReactorTask();
+
+ private:
+  // To be overridden by subclasses.
+  virtual void DoAbort(const Status &abort_status) {}
+
+  // Used to prevent Abort() from being called twice from multiple threads.
+  std::atomic<bool> abort_called_{false};
 };
 
+typedef std::shared_ptr<ReactorTask> ReactorTaskPtr;
 
 // ------------------------------------------------------------------------------------------------
 // A task that runs the given user functor on success. Abort is ignored.
@@ -123,7 +132,7 @@ class FunctorReactorTask : public ReactorTask {
 };
 
 template <class F>
-std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f) {
+ReactorTaskPtr MakeFunctorReactorTask(const F& f) {
   return std::make_shared<FunctorReactorTask<F>>(f);
 }
 
@@ -139,15 +148,16 @@ class FunctorReactorTaskWithAbort : public ReactorTask {
     f_(reactor, Status::OK());
   }
 
-  void Abort(const Status &abort_status) override  {
+ private:
+  void DoAbort(const Status &abort_status) override {
     f_(nullptr, abort_status);
   }
- private:
+
   F f_;
 };
 
 template <class F>
-std::shared_ptr<ReactorTask> MakeFunctorReactorTaskWithAbort(const F& f) {
+ReactorTaskPtr MakeFunctorReactorTaskWithAbort(const F& f) {
   return std::make_shared<FunctorReactorTaskWithAbort<F>>(f);
 }
 
@@ -173,13 +183,13 @@ class FunctorReactorTaskWithWeakPtr : public ReactorTask {
 };
 
 template <class F, class Object>
-std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
+ReactorTaskPtr MakeFunctorReactorTask(const F& f,
                                                     const std::weak_ptr<Object>& ptr) {
   return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
 }
 
 template <class F, class Object>
-std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
+ReactorTaskPtr MakeFunctorReactorTask(const F& f,
                                                     const std::shared_ptr<Object>& ptr) {
   return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
 }
@@ -208,13 +218,12 @@ class DelayedTask : public ReactorTask {
   // Schedules the task for running later but doesn't actually run it yet.
   virtual void Run(Reactor* reactor) override;
 
-  // Behaves like ReactorTask::Abort.
-  virtual void Abort(const Status& abort_status) override;
-
   // Could be called from non-reactor thread even before reactor thread shutdown.
   void AbortTask(const Status& abort_status);
 
  private:
+  void DoAbort(const Status& abort_status) override;
+
   // Set done_ to true if not set and return true. If done_ is already set, return false.
   MarkAsDoneResult MarkAsDone();
 
@@ -245,6 +254,10 @@ class DelayedTask : public ReactorTask {
   typedef simple_spinlock LockType;
   mutable LockType lock_;
 };
+
+typedef std::vector<ReactorTaskPtr> ReactorTasks;
+
+YB_DEFINE_ENUM(ReactorState, (kRunning)(kClosing)(kClosed));
 
 class Reactor {
  public:
@@ -294,6 +307,11 @@ class Reactor {
   // running. Should be used in DCHECK assertions.
   bool IsCurrentThread() const;
 
+  // Return true if this reactor thread is the thread currently running, or the reactor is closing.
+  // This is the condition under which the Abort method can be called for tasks. Should be used in
+  // DCHECK assertions.
+  bool IsCurrentThreadOrClosed() const;
+
   // Shut down the given connection, removing it from the connection tracking
   // structures of this reactor.
   //
@@ -322,7 +340,7 @@ class Reactor {
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
-  void ScheduleReactorTask(std::shared_ptr<ReactorTask> task);
+  void ScheduleReactorTask(ReactorTaskPtr task);
 
   template<class F>
   void ScheduleReactorFunctor(const F& f) {
@@ -365,9 +383,9 @@ class Reactor {
 
   void CheckReadyToStop();
 
-  // If the Reactor is closing, returns false.
-  // Otherwise, drains the pending_tasks_ queue into the provided list.
-  bool DrainTaskQueue(std::vector<std::shared_ptr<ReactorTask>> *tasks);
+  // Drains the pending_tasks_ queue into async_handler_tasks_. Returns true if the reactor is
+  // closing.
+  bool DrainTaskQueueAndCheckIfClosing();
 
   template<class F>
   CHECKED_STATUS RunOnReactorThread(const F& f);
@@ -379,15 +397,22 @@ class Reactor {
 
   const std::string name_;
 
-  mutable simple_spinlock pending_tasks_lock_;
+  mutable simple_spinlock pending_tasks_mtx_;
 
-  // Whether the reactor is shutting down.
-  // Guarded by pending_tasks_lock_.
-  bool closing_ = false;
+  // Reactor status, mostly used when shutting down. Guarded by pending_tasks_mtx_, but also read
+  // without a lock for sanity checking.
+  std::atomic<ReactorState> state_{ReactorState::kRunning};
+
+  // This mutex is used to make sure that multiple threads that end up running Abort() in case the
+  // reactor has already shut down will not have data races accessing data that is normally only
+  // accessed from the reactor thread. We are using a recursive mutex because Abort() could try to
+  // submit another reactor task, which will result in Abort() being called on that other task
+  // as well.
+  std::recursive_mutex final_abort_mutex_;
 
   // Tasks to be run within the reactor thread.
-  // Guarded by lock_.
-  std::vector<std::shared_ptr<ReactorTask>> pending_tasks_;
+  // Guarded by pending_tasks_mtx_.
+  ReactorTasks pending_tasks_;
 
   scoped_refptr<yb::Thread> thread_;
 
@@ -403,7 +428,7 @@ class Reactor {
   // Scheduled (but not yet run) delayed tasks.
   std::set<std::shared_ptr<DelayedTask>> scheduled_tasks_;
 
-  std::vector<std::shared_ptr<ReactorTask>> async_handler_tasks_;
+  ReactorTasks async_handler_tasks_;
 
   // The current monotonic time.  Updated every coarse_timer_granularity_.
   CoarseMonoClock::TimePoint cur_time_;
@@ -428,12 +453,19 @@ class Reactor {
 
   simple_spinlock outbound_queue_lock_;
   bool outbound_queue_stopped_ = false;
-  // We found that should shutdown, but not all connections are ready for it.
+
+  // We found that we should shut down, but not all connections are ready for it.  Only accessed in
+  // the reactor thread.
   bool stopping_ = false;
+
   std::vector<OutboundCallPtr> outbound_queue_;
+
+  // Outbound calls currently being processed. Only accessed on the reactor thread. Could be a local
+  // variable, but implemented as a member field as an optimization to avoid memory allocation.
   std::vector<OutboundCallPtr> processing_outbound_queue_;
+
   std::vector<ConnectionPtr> processing_connections_;
-  std::shared_ptr<ReactorTask> process_outbound_queue_task_;
+  ReactorTaskPtr process_outbound_queue_task_;
 };
 
 }  // namespace rpc

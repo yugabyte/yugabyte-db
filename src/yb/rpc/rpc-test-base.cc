@@ -364,7 +364,7 @@ CHECKED_STATUS RpcTestBase::DoTestSyncCall(const Proxy& p, const RemoteMethod* m
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
   RETURN_NOT_OK(p.SyncRequest(method, req, &resp, &controller));
 
-  LOG(INFO) << "Result: " << resp.ShortDebugString();
+  VLOG(1) << "Result: " << resp.ShortDebugString();
   CHECK_EQ(req.x() + req.y(), resp.result());
   return Status::OK();
 }

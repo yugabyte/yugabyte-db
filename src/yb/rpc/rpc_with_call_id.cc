@@ -37,6 +37,10 @@ bool ConnectionContextWithCallId::Idle() {
   return calls_being_handled_.empty();
 }
 
+std::string ConnectionContextWithCallId::ReasonNotIdle() {
+  return Format("$0 calls being handled: $1", calls_being_handled_.size(), calls_being_handled_);
+}
+
 Status ConnectionContextWithCallId::Store(InboundCall* call) {
   uint64_t call_id = ExtractCallId(call);
   if (!calls_being_handled_.emplace(call_id, call).second) {
@@ -51,7 +55,7 @@ void ConnectionContextWithCallId::Shutdown(const Status& status) {
 }
 
 void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
-  DCHECK(call->connection()->reactor()->IsCurrentThread());
+  DCHECK(call->connection()->reactor()->IsCurrentThreadOrClosed());
 
   ++processed_call_count_;
   auto id = ExtractCallId(call);
