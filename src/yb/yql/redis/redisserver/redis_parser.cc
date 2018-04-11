@@ -623,20 +623,22 @@ CHECKED_STATUS ParseZRangeByScore(YBRedisReadOp* op, const RedisClientCommand& a
   }
 }
 
-CHECKED_STATUS ParseZRevRange(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseIndexBasedQuery(
+    YBRedisReadOp* op,
+    const RedisClientCommand& args,
+    RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type) {
   if (args.size() <= 5) {
     op->mutable_request()->set_allocated_get_collection_range_request(
         new RedisCollectionGetRangeRequestPB());
-    op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
-        RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE);
+    op->mutable_request()->mutable_get_collection_range_request()->set_request_type(request_type);
 
     const auto& key = args[1];
-        RETURN_NOT_OK(ParseIndexBound(
-        args[2],
-        op->mutable_request()->mutable_index_range()->mutable_lower_bound()));
-        RETURN_NOT_OK(ParseIndexBound(
-        args[3],
-        op->mutable_request()->mutable_index_range()->mutable_upper_bound()));
+    RETURN_NOT_OK(ParseIndexBound(
+    args[2],
+    op->mutable_request()->mutable_index_range()->mutable_lower_bound()));
+    RETURN_NOT_OK(ParseIndexBound(
+    args[3],
+    op->mutable_request()->mutable_index_range()->mutable_upper_bound()));
     op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
     if (args.size() == 5) {
       RETURN_NOT_OK(ParseWithScores(
@@ -644,10 +646,19 @@ CHECKED_STATUS ParseZRevRange(YBRedisReadOp* op, const RedisClientCommand& args)
       op->mutable_request()->mutable_get_collection_range_request()));
     }
     return Status::OK();
-  } else {
-    return STATUS(InvalidArgument, "Expected at most 5 arguments, found $0",
-                  std::to_string(args.size()));
   }
+  return STATUS(InvalidArgument, "Expected at most 5 arguments, found $0",
+                  std::to_string(args.size()));
+}
+
+CHECKED_STATUS ParseZRange(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseIndexBasedQuery(
+      op, args, RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGE);
+}
+
+CHECKED_STATUS ParseZRevRange(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseIndexBasedQuery(
+      op, args, RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE);
 }
 
 CHECKED_STATUS ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {

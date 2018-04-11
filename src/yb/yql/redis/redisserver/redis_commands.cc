@@ -66,6 +66,7 @@ namespace redisserver {
     ((tscard, TsCard, 2, READ)) \
     ((zrangebyscore, ZRangeByScore, -4, READ)) \
     ((zrevrange, ZRevRange, -4, READ)) \
+    ((zrange, ZRange, -4, READ)) \
     ((tsrem, TsRem, -3, WRITE)) \
     ((zrem, ZRem, -3, WRITE)) \
     ((zadd, ZAdd, -4, WRITE)) \

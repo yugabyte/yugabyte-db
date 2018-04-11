@@ -205,6 +205,7 @@ message RedisCollectionGetRangeRequestPB {
     TSRANGEBYTIME = 1;
     ZRANGEBYSCORE = 2;
     ZREVRANGE = 3;
+    ZRANGE = 4;
     UNKNOWN = 99;
   }
 
