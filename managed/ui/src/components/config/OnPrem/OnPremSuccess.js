@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Link, withRouter, browserHistory } from 'react-router';
+import { Link, withRouter } from 'react-router';
 import { cloneDeep, pluck, sortBy } from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
@@ -27,7 +27,7 @@ class OnPremSuccess extends Component {
   }
 
   componentWillMount() {
-    const {configuredProviders, location} = this.props;
+    const {configuredProviders} = this.props;
     const currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
       this.props.fetchConfiguredNodeList(currentProvider.uuid);
@@ -40,7 +40,7 @@ class OnPremSuccess extends Component {
   };
 
   handleManageNodesClick = () => {
-   this.setState({manageInstances: true});
+    this.setState({manageInstances: true});
   };
 
   componentWillReceiveProps(nextProps) {
@@ -113,7 +113,7 @@ class OnPremSuccess extends Component {
   }
 
   render() {
-    const {configuredRegions, configuredProviders, accessKeys, universeList, params,
+    const {configuredRegions, configuredProviders, accessKeys, universeList, 
       cloud: {nodeInstanceList}} = this.props;
 
     if (this.state.manageInstances) {

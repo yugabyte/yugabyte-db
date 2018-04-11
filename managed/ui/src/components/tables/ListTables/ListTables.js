@@ -1,19 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
-import { Button, Image, ProgressBar } from 'react-bootstrap';
+import { Button, Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
 import cassandraLogo from '../images/cassandra.png';
 import redisLogo from '../images/redis.png';
 import './ListTables.scss';
-import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
-import { CreateTableContainer } from '../../tables';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { CreateTableContainer, TableAction } from '../../tables';
 import { YBPanelItem } from '../../panels';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
 import {getPromiseState} from '../../../utils/PromiseUtils';
 import { YBStatsBlock } from '../../common/descriptors';
+
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
 class TableTitle extends Component {
@@ -48,36 +49,6 @@ export default class ListTables extends Component {
   constructor(props) {
     super(props);
     this.state = {'currentView': 'listTables'};
-  }
-
-  componentWillMount() {
-    const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
-    const {universe: {universeTasks}} = this.props;
-    // Do not send tables query if task type is create, status is pending and target is universe
-    if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTasks.data[universeUUID])) {
-      this.fetchUniverseTables(universeTasks, universeUUID);
-    }
-  }
-
-  fetchUniverseTables = (universeTasks, universeUUID) => {
-    const createUniverseTask = universeTasks.data[universeUUID].find(function(task){
-      return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
-    });
-    if (!isDefinedNotNull(createUniverseTask)) {
-      this.props.fetchUniverseTables(universeUUID);
-    }
-  };
-
-  componentWillReceiveProps(nextProps) {
-    const {universe: {universeTasks, currentUniverse}} = nextProps;
-    const universeUUID = currentUniverse.data.universeUUID;
-    if (getPromiseState(universeTasks).isSuccess() && getPromiseState(this.props.universe.universeTasks).isLoading() && isNonEmptyArray(universeTasks.data[universeUUID])) {
-      this.fetchUniverseTables(universeTasks, universeUUID);
-    }
-  }
-
-  componentWillUnmount() {
-    this.props.resetTablesList();
   }
 
   showCreateTable = () => {
@@ -128,18 +99,17 @@ export default class ListTables extends Component {
 }
 
 class ListTableGrid extends Component {
-
-
   render(){
     const self = this;
-    const {universe: {currentUniverse: {data: {universeUUID}}, universeTasks}} = this.props;
+    const {universe: {universeTasks}} = this.props;
+    const currentUniverse = this.props.universe.currentUniverse.data;
     const getTableIcon = function(tableType) {
       return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
     };
 
     const getTableName = function (tableName, data) {
       if (data.status === "success") {
-        return <Link to={`/universes/${universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
+        return <Link to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
       } else {
         return tableName;
       }
@@ -149,6 +119,20 @@ class ListTableGrid extends Component {
       return <div className="top-5">{cell}</div>;
     };
 
+    const formatActionButtons = function(item, row) {
+      if (item === true) {
+        return (
+          <ButtonGroup>
+            <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+              <TableAction currentRow={row} actionType="backup" />
+              <TableAction currentRow={row} actionType="import" />
+              <TableAction currentRow={row} actionType="drop" />
+            </DropdownButton>
+          </ButtonGroup>
+        );
+      };
+    };
+    
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
     const formatTableStatus = function(item, row) {
@@ -176,12 +160,13 @@ class ListTableGrid extends Component {
           "tableType": item.tableType,
           "tableName": item.tableName,
           "status": "success",
+          "actions": item.tableType !== "REDIS_TABLE_TYPE",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write
         };
       });
     }
-    const currentUniverseTasks = universeTasks.data[universeUUID];
+    const currentUniverseTasks = universeTasks.data[currentUniverse.universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(currentUniverseTasks)) {
       const pendingTableTasks = currentUniverseTasks.find(function(taskItem){
         return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100;
@@ -195,6 +180,7 @@ class ListTableGrid extends Component {
             tableType: "YQL_TABLE_TYPE",
             tableName: pendingTableName,
             status: "pending",
+            actions: false,
             percentComplete: pendingTableTasks.percentComplete
           };
           listItems.push(pendingTableRow);
@@ -223,9 +209,16 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField={"write"}
                           columnClassName={"yb-table-cell"} >
           Write</TableHeaderColumn>
+        <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"}
+                           dataFormat={formatActionButtons}>
+          Actions
+        </TableHeaderColumn>
       </BootstrapTable>
     );
-
-    return <div>{tableListDisplay}</div>;
+    return (
+      <Fragment>
+        {tableListDisplay}
+      </Fragment>
+    );
   }
 }

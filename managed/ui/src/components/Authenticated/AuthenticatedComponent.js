@@ -25,6 +25,7 @@ class AuthenticatedComponent extends Component {
     this.props.getSupportedRegionList();
     this.props.getYugaWareVersion();
     this.props.fetchCustomerTasks();
+    this.props.fetchCustomerConfigs();
   }
 
   componentWillUnmount() {

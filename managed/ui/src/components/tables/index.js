@@ -13,3 +13,6 @@ export { default as CreateTableContainer } from './CreateTable/CreateTableContai
 export { default as TableSchema} from './TableSchema/TableSchema';
 export { default as ListBackups } from './ListBackups/ListBackups';
 export { default as ListBackupsContainer } from './ListBackups/ListBackupsContainer';
+export { default as TableAction } from './TableAction/TableAction';
+export { default as CreateBackup } from './CreateBackup/CreateBackup';
+export { default as CreateBackupContainer } from './CreateBackup/CreateBackupContainer';

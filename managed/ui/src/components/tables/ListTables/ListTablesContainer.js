@@ -2,25 +2,12 @@
 
 import { connect } from 'react-redux';
 import { ListTables } from '..';
-import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure, toggleTableView, 
-  resetTablesList } from '../../../actions/tables';
+import { toggleTableView } from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    fetchUniverseTables: (universeUUID) => {
-      dispatch(fetchUniverseTables(universeUUID)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(fetchUniverseTablesFailure(response.payload));
-        } else {
-          dispatch(fetchUniverseTablesSuccess(response.payload));
-        }
-      });
-    },
     showCreateTable: () => {
       dispatch(toggleTableView("create"));
-    },
-    resetTablesList: () => {
-      dispatch(resetTablesList());
     }
   };
 };

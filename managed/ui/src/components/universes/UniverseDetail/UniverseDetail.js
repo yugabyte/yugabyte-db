@@ -38,6 +38,7 @@ class UniverseDetail extends Component {
     this.props.resetUniverseInfo();
     this.props.resetUniverseTasks();
     this.props.resetMasterLeader();
+    this.props.resetTablesList();
   }
 
   componentWillMount() {
@@ -50,6 +51,7 @@ class UniverseDetail extends Component {
       }
       this.props.getUniverseInfo(uuid);
       this.props.fetchUniverseTasks(uuid);
+      this.props.fetchUniverseTables(uuid);
     }
   }
 
