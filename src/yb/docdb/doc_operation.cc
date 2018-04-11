@@ -449,7 +449,7 @@ CHECKED_STATUS GetAndPopulateResponseValues(
 }
 
 // Get normalized (with respect to card) upper and lower index bounds for reverse range scans.
-void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card,
+void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card, bool reverse,
                          int64* low_idx_normalized, int64* high_idx_normalized) {
   // Turn negative bounds positive.
   if (low_idx < 0) {
@@ -460,8 +460,13 @@ void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card,
   }
 
   // Index from lower to upper instead of upper to lower.
-  *low_idx_normalized = card - high_idx - 1;
-  *high_idx_normalized = card - low_idx - 1;
+  if (reverse) {
+    *low_idx_normalized = card - high_idx - 1;
+    *high_idx_normalized = card - low_idx - 1;
+  } else {
+    *low_idx_normalized = low_idx;
+    *high_idx_normalized = high_idx;
+  }
 
   // Fit bounds to range [0, card).
   if (*low_idx_normalized < 0) {
@@ -1282,6 +1287,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
       break;
     }
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGE: FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE: {
       if(!request_.has_index_range() || !request_.index_range().has_lower_bound() ||
           !request_.index_range().has_upper_bound()) {
@@ -1307,7 +1313,12 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       int64 low_idx = low_index_bound.index();
       int64 high_idx = high_index_bound.index();
       // Normalize the bounds to be positive and go from low to high index.
-      GetNormalizedBounds(low_idx, high_idx, card, &low_idx_normalized, &high_idx_normalized);
+      bool reverse = false;
+      if (request_type == RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE) {
+        reverse = true;
+      }
+      GetNormalizedBounds(
+          low_idx, high_idx, card, reverse, &low_idx_normalized, &high_idx_normalized);
 
       if (high_idx_normalized < low_idx_normalized) {
         // Return empty response.
@@ -1336,7 +1347,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
       RETURN_NOT_OK(GetAndPopulateResponseValues(
           iterator_.get(), AddResponseValuesSortedSets, data, ValueType::kObject, request_,
-          &response_, add_keys, /* add_values */ true, /* reverse */ true));
+          &response_, add_keys, /* add_values */ true, reverse));
       break;
     }
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_UNKNOWN:
