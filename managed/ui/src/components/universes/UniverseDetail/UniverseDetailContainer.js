@@ -4,9 +4,12 @@ import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader, 
+  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader,
   performUniverseNodeAction, performUniverseNodeActionResponse
 } from '../../../actions/universe';
+
+import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
+  resetTablesList } from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -36,6 +39,20 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getUniversePerNodeStatus(uuid)).then((perNodeResponse) => {
         dispatch(getUniversePerNodeStatusResponse(perNodeResponse.payload));
       });
+    },
+
+    fetchUniverseTables: (universeUUID) => {
+      dispatch(fetchUniverseTables(universeUUID)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(fetchUniverseTablesFailure(response.payload));
+        } else {
+          dispatch(fetchUniverseTablesSuccess(response.payload));
+        }
+      });
+    },
+    
+    resetTablesList: () => {
+      dispatch(resetTablesList());
     },
 
     resetUniverseInfo: () => {

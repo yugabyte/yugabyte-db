@@ -13,7 +13,8 @@ import { getProviderList, getProviderListResponse, getSupportedRegionData,
 import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
-  fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse }
+  fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse,
+  fetchCustomerConfigs, fetchCustomerConfigsResponse }
   from 'actions/customers';
 import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
@@ -113,7 +114,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
-    }
+    },
+
+    fetchCustomerConfigs: () => {
+      dispatch(fetchCustomerConfigs()).then((response) => {
+        dispatch(fetchCustomerConfigsResponse(response.payload));
+      });
+    },
   };
 };
 

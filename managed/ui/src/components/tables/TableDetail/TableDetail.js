@@ -2,13 +2,13 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Grid, Row, Col, Tab, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
+import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
 import './TableDetail.scss';
-import { TableSchema, BulkImportContainer, DropTableContainer } from '../../tables';
+import { TableSchema } from '../../tables';
 import { CustomerMetricsPanel } from '../../metrics';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -37,7 +37,7 @@ export default class TableDetail extends Component {
   render() {
     let tableInfoContent = <span/>;
     const {
-      universe: { currentUniverse, showModal, visibleModal },
+      universe: { currentUniverse },
       tables: { currentTableDetail }
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
@@ -125,30 +125,11 @@ export default class TableDetail extends Component {
           </div>
         </Col>);
     }
+
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
           {universeState}
-          <Col lg={2} className="page-action-buttons">
-            <ButtonGroup className="universe-detail-btn-group">
-              <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-                <MenuItem eventKey="1" onClick={this.props.showDropTableModal}>
-                  <YBLabelWithIcon icon="fa fa-trash">
-                    Drop Table
-                  </YBLabelWithIcon>
-                </MenuItem>
-                <MenuItem eventKey="2" onClick={this.props.showBulkImportModal} >
-                  <YBLabelWithIcon icon="fa fa-upload">
-                    Bulk Import Data
-                  </YBLabelWithIcon>
-                </MenuItem>
-              </DropdownButton>
-            </ButtonGroup>
-          </Col>
-          <DropTableContainer visible={showModal && visibleModal==="dropTable"}
-                              onHide={this.props.closeModal} />
-          <BulkImportContainer visible={showModal && visibleModal==="bulkImport"}
-                               onHide={this.props.closeModal} />
         </Row>
         <Row>
           <Col lg={12}>
