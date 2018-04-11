@@ -178,10 +178,10 @@ public class TablesControllerTest extends WithApplication {
       assertTrue(tableNames.contains(tableName));
       if (tableName.equals("Table1")) {
         assertEquals(TableType.REDIS_TABLE_TYPE.toString(), tableType);
-        assertEquals(tableKeySpace, null);
+        assertEquals("$$$Default", tableKeySpace);
       } else if (tableName.equals("Table2")) {
         assertEquals(TableType.YQL_TABLE_TYPE.toString(), tableType);
-        assertEquals(tableKeySpace, "$$$Default");
+        assertEquals("$$$Default", tableKeySpace);
       }
 
     }
