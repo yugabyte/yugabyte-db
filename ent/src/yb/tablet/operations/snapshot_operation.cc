@@ -65,8 +65,6 @@ Status SnapshotOperation::Prepare() {
 }
 
 void SnapshotOperation::DoStart() {
-  DCHECK_EQ(state()->tablet()->table_type(), TableType::YQL_TABLE_TYPE);
-
   state()->TrySetHybridTimeFromClock();
 
   TRACE("START. HybridTime: $0",
