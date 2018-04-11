@@ -8,9 +8,9 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2js
 SELECT 'msg1' FROM pg_logical_emit_message(true, 'wal2json', 'this is a\ message');
 SELECT 'msg2' FROM pg_logical_emit_message(false, 'wal2json', 'this is "another" message');
 
-SELECT 'msg3' FROM pg_logical_emit_message(false, 'wal2json', E'\\x31320033003435'::bytea);
-SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', E'\\xC0FFEE00C0FFEE'::bytea);
-SELECT 'msg5' FROM pg_logical_emit_message(false, 'wal2json', E'\\x01020300101112'::bytea);
+SELECT 'msg3' FROM pg_logical_emit_message(false, 'wal2json', E'\\x546170697275732074657272657374726973'::bytea);
+SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', E'\\x5072696f646f6e746573206d6178696d7573'::bytea);
+SELECT 'msg5' FROM pg_logical_emit_message(false, 'wal2json', E'\\x436172796f6361722062726173696c69656e7365'::bytea);
 
 BEGIN;
 SELECT 'msg6' FROM pg_logical_emit_message(true, 'wal2json', 'this message will not be printed');

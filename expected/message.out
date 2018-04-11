@@ -19,19 +19,19 @@ SELECT 'msg2' FROM pg_logical_emit_message(false, 'wal2json', 'this is "another"
  msg2
 (1 row)
 
-SELECT 'msg3' FROM pg_logical_emit_message(false, 'wal2json', E'\\x31320033003435'::bytea);
+SELECT 'msg3' FROM pg_logical_emit_message(false, 'wal2json', E'\\x546170697275732074657272657374726973'::bytea);
  ?column? 
 ----------
  msg3
 (1 row)
 
-SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', E'\\xC0FFEE00C0FFEE'::bytea);
+SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', E'\\x5072696f646f6e746573206d6178696d7573'::bytea);
  ?column? 
 ----------
  msg4
 (1 row)
 
-SELECT 'msg5' FROM pg_logical_emit_message(false, 'wal2json', E'\\x01020300101112'::bytea);
+SELECT 'msg5' FROM pg_logical_emit_message(false, 'wal2json', E'\\x436172796f6361722062726173696c69656e7365'::bytea);
  ?column? 
 ----------
  msg5
@@ -100,7 +100,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                          "kind": "message",                                                             +
                          "transactional": false,                                                        +
                          "prefix": "wal2json",                                                          +
-                         "content": "12"                                                                +
+                         "content": "Tapirus terrestris"                                                +
                  }                                                                                      +
          ]                                                                                              +
  }
@@ -110,7 +110,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                          "kind": "message",                                                             +
                          "transactional": false,                                                        +
                          "prefix": "wal2json",                                                          +
-                         "content": ""                                                                  +
+                         "content": "Priodontes maximus"                                                +
                  }                                                                                      +
          ]                                                                                              +
  }
@@ -120,7 +120,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
                          "kind": "message",                                                             +
                          "transactional": false,                                                        +
                          "prefix": "wal2json",                                                          +
-                         "content": "\u0001\u0002\u0003"                                                +
+                         "content": "Caryocar brasiliense"                                              +
                  }                                                                                      +
          ]                                                                                              +
  }
