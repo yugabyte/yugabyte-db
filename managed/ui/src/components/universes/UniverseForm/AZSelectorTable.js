@@ -35,6 +35,7 @@ export default class AZSelectorTable extends Component {
       });
     }
     currentTemplate.userAZSelected = true;
+    currentTemplate.currentClusterType = clusterType;
     this.props.submitConfigureUniverse(currentTemplate);
   };
 
@@ -136,6 +137,7 @@ export default class AZSelectorTable extends Component {
         });
       }
       if (isEmptyObject(currentUniverse.data)) {
+        newTaskParams.currentClusterType = clusterType;
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
@@ -261,7 +263,13 @@ export default class AZSelectorTable extends Component {
   };
 
   componentWillMount() {
-    const {universe: {currentUniverse}, type} = this.props;
+    const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
+    let currentCluster = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
+    // Set AZ Groups when switching back to a cluster tab
+    if (isNonEmptyObject(currentCluster)) {
+      const azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;
+      this.setState({azItemState: azGroups});
+    }
     if (type === "Edit" &&  isNonEmptyObject(currentUniverse)) {
       const azGroups = this.getGroupWithCounts(currentUniverse.data.universeDetails).groups;
       this.setState({azItemState: azGroups});
