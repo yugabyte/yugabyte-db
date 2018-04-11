@@ -21,7 +21,7 @@ class YBTabsPanel extends Component {
     id: PropTypes.string.isRequired,
     activeTab: PropTypes.string,
     defaultTab: PropTypes.string.isRequired,
-    children: PropTypes.array.isRequired,
+    children: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
     className: PropTypes.string,
     routePrefix: PropTypes.string,
   }
