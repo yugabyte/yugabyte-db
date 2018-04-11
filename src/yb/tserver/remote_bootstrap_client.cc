@@ -61,6 +61,9 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/size_literals.h"
+
+using namespace yb::size_literals;
 
 DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 3000,
              "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
@@ -92,6 +95,9 @@ DEFINE_test_flag(double, fault_crash_bootstrap_client_before_changing_role, 0.0,
                  "a ChangeConfig request to change this tserver role *(from PRE_VOTER or "
                  "PRE_OBSERVER to VOTER or OBSERVER respectively).");
 
+DEFINE_int32(remote_bootstrap_max_chunk_size, 1_MB,
+             "Maximum chunk size to be transferred at a time during remote bootstrap.");
+
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
   RETURN_NOT_OK_PREPEND(UnwindRemoteError(status, controller), msg)
@@ -116,6 +122,8 @@ using tablet::TabletDataState_Name;
 using tablet::TabletMetadata;
 using tablet::TabletStatusListener;
 using tablet::TabletSuperBlockPB;
+
+constexpr int kBytesReservedForMessageHeaders = 16384;
 
 RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
                                              FsManager* fs_manager,
@@ -663,7 +671,8 @@ template<class Appendable>
 Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
                                            Appendable* appendable) {
   uint64_t offset = 0;
-  int32_t max_length = FLAGS_rpc_max_message_size - 1024; // Leave 1K for message headers.
+  int32_t max_length = std::min(FLAGS_remote_bootstrap_max_chunk_size,
+                                FLAGS_rpc_max_message_size - kBytesReservedForMessageHeaders);
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(session_idle_timeout_millis_));
