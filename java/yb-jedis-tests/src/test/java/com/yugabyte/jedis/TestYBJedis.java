@@ -12,17 +12,25 @@
 //
 package com.yugabyte.jedis;
 
+import junit.framework.TestCase;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.*;
-
-import java.util.*;
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
-
-import redis.clients.jedis.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertFalse;
@@ -31,50 +39,18 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.fail;
 
+@RunWith(Parameterized.class)
 public class TestYBJedis extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
 
-  class TSValuePairs {
-    TSValuePairs(int size) {
-      pairs = new HashMap<>();
-      minTS = Long.MAX_VALUE;
-      maxTS = Long.MIN_VALUE;
+  public TestYBJedis(JedisClientType jedisClientType) {
+    super(jedisClientType);
+  }
 
-      long timestamp;
-      for (int i = 0; i < size; i++) {
-        do {
-          timestamp = ThreadLocalRandom.current().nextLong(Long.MAX_VALUE);
-        } while (pairs.containsKey(timestamp));
-
-        String v = String.format("v%d", ThreadLocalRandom.current().nextInt());
-        pairs.put(timestamp, v);
-
-        minTS = Math.min(minTS, timestamp);
-        maxTS = Math.max(maxTS, timestamp);
-      }
-    }
-
-    public String MinValue() throws Exception {
-      if (pairs.size() < 1) {
-        throw new IndexOutOfBoundsException("Empty hash map");
-      }
-      return pairs.get(minTS);
-    }
-
-    public String MaxValue() throws Exception {
-      if (pairs.size() < 1) {
-        throw new IndexOutOfBoundsException("Empty hash map");
-      }
-      return pairs.get(maxTS);
-    }
-
-    public Map<Long, String> pairs;
-
-    // Minimum timestamp stored in pairs.
-    public long minTS;
-    // Maximum timestamp stored in pairs.
-    public long maxTS;
-    private Random random;
+  // Run each test with both Jedis and YBJedis clients.
+  @Parameterized.Parameters
+  public static Collection jedisClients() {
+    return Arrays.asList(JedisClientType.JEDIS, JedisClientType.YBJEDIS);
   }
 
   @Test
@@ -394,4 +370,5 @@ public class TestYBJedis extends BaseJedisTest {
       LOG.info("Expected exception", e);
     }
   }
+
 }

@@ -24,8 +24,9 @@ import java.util.Random;
 /**
  * This workload writes and reads some random string keys from a Redis server. One reader and one
  * writer thread thread each is spawned.
+ * Same as RedisKeyValue but uses the YBJedis client instead of Jedis.
  */
-public class RedisKeyValue extends AppBase {
+public class RedisYBClientKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(RedisKeyValue.class);
 
   // Static initialization of this workload's config.
@@ -41,7 +42,7 @@ public class RedisKeyValue extends AppBase {
     appConfig.numUniqueKeysToWrite = AppBase.NUM_UNIQUE_KEYS;
   }
 
-  public RedisKeyValue() {
+  public RedisYBClientKeyValue() {
     buffer = new byte[appConfig.valueSize];
   }
 
@@ -53,10 +54,10 @@ public class RedisKeyValue extends AppBase {
       return 0;
     }
     if (appConfig.valueSize == 0) {
-      String value = getJedisClient().get(key.asString());
+      String value = getYBJedisClient().get(key.asString());
       key.verify(value);
     } else {
-      byte[] value = getJedisClient().get(key.asString().getBytes());
+      byte[] value = getYBJedisClient().get(key.asString().getBytes());
       verifyRandomValue(key, value);
     }
     LOG.debug("Read key: " + key.toString());
@@ -70,9 +71,9 @@ public class RedisKeyValue extends AppBase {
       String retVal;
       if (appConfig.valueSize == 0) {
         String value = key.getValueStr();
-        retVal = getJedisClient().set(key.asString(), value);
+        retVal = getYBJedisClient().set(key.asString(), value);
       } else {
-        retVal = getJedisClient().set(key.asString().getBytes(), getRandomValue(key));
+        retVal = getYBJedisClient().set(key.asString().getBytes(), getRandomValue(key));
       }
       if (retVal == null) {
         getSimpleLoadGenerator().recordWriteFailure(key);
@@ -90,19 +91,20 @@ public class RedisKeyValue extends AppBase {
   @Override
   public List<String> getWorkloadDescription() {
     return Arrays.asList(
-      "Sample key-value app built on Redis. The app writes out 1M unique string keys each",
-      "with a string value. There are multiple readers and writers that update these keys",
-      "and read them indefinitely. Note that the number of reads and writes to perform",
-      "can be specified as a parameter.");
+        "Sample key-value app built on Redis that uses the YBJedis (multi-node) client instead ",
+        "of the default (one-node) Jedis one. The app writes out 1M unique string keys each",
+        "with a string value. There are multiple readers and writers that update these keys",
+        "and read them indefinitely. Note that the number of reads and writes to perform",
+        "can be specified as a parameter.");
   }
 
   @Override
   public List<String> getExampleUsageOptions() {
     return Arrays.asList(
-      "--num_unique_keys " + appConfig.numUniqueKeysToWrite,
-      "--num_reads " + appConfig.numKeysToRead,
-      "--num_writes " + appConfig.numKeysToWrite,
-      "--num_threads_read " + appConfig.numReaderThreads,
-      "--num_threads_write " + appConfig.numWriterThreads);
+        "--num_unique_keys " + appConfig.numUniqueKeysToWrite,
+        "--num_reads " + appConfig.numKeysToRead,
+        "--num_writes " + appConfig.numKeysToWrite,
+        "--num_threads_read " + appConfig.numReaderThreads,
+        "--num_threads_write " + appConfig.numWriterThreads);
   }
 }
