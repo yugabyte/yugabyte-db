@@ -36,8 +36,7 @@ public class CassandraHelloWorld extends AppBase {
   public void run() {
     try {
       // Create a Cassandra client.
-      Cluster cluster = Cluster.builder().addContactPointsWithPorts(getNodesAsInet()).build();
-      Session session = cluster.connect();
+      Session session = getCassandraClient();
 
       // Create the keyspace and use it.
       String createKeyspaceStatement =
@@ -70,8 +69,7 @@ public class CassandraHelloWorld extends AppBase {
       LOG.info("Got result: row-count=" + rows.size() + ", name=" + name + ", age=" + age);
 
       // Close the client.
-      session.close();
-      cluster.close();
+      destroyClients();
     } catch (Exception e) {
       LOG.error("Error running CassandraHelloWorld" + e.getMessage(), e);
     }
