@@ -80,6 +80,10 @@ export default class ClusterFields extends Component {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
       updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
     }
+    // This flag will prevent configure from being fired on component load
+    if (formValues && isNonEmptyObject(formValues[clusterType])) {
+      this.setState({nodeSetViaAZList: true});
+    }
 
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
@@ -111,42 +115,33 @@ export default class ClusterFields extends Component {
       }
       // If Edit Case Set Initial Configuration
       this.props.getExistingUniverseConfiguration(universeDetails);
-    } else {
-      // Set Default form values for numNodes and replicationFactor
-      if (isEmptyObject(formValues[clusterType]) || isNonEmptyString(formValues[clusterType].numNodes)) {
-        updateFormField(`${clusterType}.numNodes`, 3);
-      }
+    }
+    else {
+      // Repopulate the form fields when switching back to the view
+      if (formValues && isNonEmptyObject(formValues[clusterType])) {
+        this.setState({providerSelected: formValues[clusterType].provider});
+        this.setState({numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3});
+        this.setState({replicationFactor: formValues[clusterType].replicationFactor ?
+                                          Number(formValues[clusterType].replicationFactor) : 3});
 
-      // Replication-Factor
-      if (isEmptyObject(formValues[clusterType]) || isNonEmptyString(formValues[clusterType].replicationFactor)) {
-        if (formValues[clusterType] && formValues[clusterType].numNodes) {
-          updateFormField(`${clusterType}.replicationFactor`, 3);
-        } else {
-          updateFormField(`${clusterType}.replicationFactor`, 3);
+        if (isNonEmptyString(formValues[clusterType].provider)) {
+          this.props.getInstanceTypeListItems(formValues[clusterType].provider);
+          this.props.getRegionListItems(formValues[clusterType].provider);
+          this.setState({instanceTypeSelected: formValues[clusterType].instanceTypeSelected});
+
+          if (formValues[clusterType].spotPrice && formValues[clusterType].spotPrice > 0) {
+            this.setState({useSpotPrice: true, spotPrice: formValues[clusterType].spotPrice});
+          } else {
+            this.setState({useSpotPrice: false, spotPrice: 0.0});
+          }
+          if (formValues[clusterType].assignPublicIP) {
+            this.setState({assignPublicIP: formValues[clusterType].assignPublicIP});
+          }
         }
-      }
-    }
-
-    if (isNonEmptyObject(formValues[clusterType]) && clusterType === "primary") {
-      const primaryCluster = formValues[clusterType];
-      if (isNonEmptyArray(primaryCluster.regionList)) {
-        this.configureUniverseNodeList();
-      }
-    }
-
-    if (isNonEmptyObject(formValues[clusterType]) && isNonEmptyString(formValues[clusterType].provider)) {
-      this.props.getInstanceTypeListItems(formValues[clusterType].provider);
-      this.props.getRegionListItems(formValues[clusterType].provider);
-      this.setState({
-        instanceTypeSelected: formValues[clusterType].instanceTypeSelected,
-      });
-      if (formValues[clusterType].spotPrice && formValues[clusterType].spotPrice > 0) {
-        this.setState({useSpotPrice: true, spotPrice: formValues[clusterType].spotPrice});
       } else {
-        this.setState({useSpotPrice: false, spotPrice: 0.0});
-      }
-      if (formValues[clusterType].assignPublicIP) {
-        this.setState({assignPublicIP: formValues[clusterType].assignPublicIP});
+        // Initialize the form values if not exists
+        updateFormField(`${clusterType}.numNodes`, 3);
+        updateFormField(`${clusterType}.replicationFactor`, 3);
       }
     }
   }
@@ -363,7 +358,7 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
       updateFormField(`${clusterType}.diskIops`, null);
       updateFormField(`${clusterType}.ebsType`, volumeDetail.volumeType === "EBS" ? "GP2" : null);
-      this.setState({nodeSetViaAZList: false, deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+      this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
   }
 
@@ -638,7 +633,7 @@ export default class ClusterFields extends Component {
     const {updateFormField, clusterType} = this.props;
     const instanceTypeValue = value;
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
-    this.setState({instanceTypeSelected: instanceTypeValue});
+    this.setState({instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false});
 
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
     if (this.state.useSpotPrice) {
@@ -836,10 +831,13 @@ export default class ClusterFields extends Component {
 
     universeProviderList.unshift(<option key="" value=""></option>);
 
-    const universeRegionList =
-      cloud.regions.data && cloud.regions.data.map(function (regionItem) {
-        return {value: regionItem.uuid, label: regionItem.name};
-      });
+    let universeRegionList = [];
+    if (self.state.providerSelected) {
+      universeRegionList =
+        cloud.regions.data && cloud.regions.data.map(function (regionItem) {
+          return {value: regionItem.uuid, label: regionItem.name};
+        });
+    }
 
     let universeInstanceTypeList = <option/>;
 

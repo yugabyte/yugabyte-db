@@ -212,7 +212,7 @@ public class PlacementInfoUtil {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
     } else if (newIntent.numNodes != placementCount) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
-    } 
+    }
     LOG.info("Pure expand/shrink in {} mode.", mode);
     return mode;
   }
@@ -263,8 +263,8 @@ public class PlacementInfoUtil {
     // Compare Regions.
     Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes, cluster.uuid);
     Set<UUID> intentRegionSet = new HashSet<>(cluster.userIntent.regionList);
-    LOG.info("Intended Regions {} vs existing Regions {} in cluster {}.", 
-             intentRegionSet, nodeRegionSet, cluster.uuid);
+    LOG.info("Intended Regions {} vs existing Regions {} in cluster {}.",
+            intentRegionSet, nodeRegionSet, cluster.uuid);
     return !intentRegionSet.equals(nodeRegionSet);
   }
 
@@ -381,7 +381,7 @@ public class PlacementInfoUtil {
 
     LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
     ensureUniqueNodeNames(taskParams.nodeDetailsSet.stream().filter(n -> n.isInPlacement(placementUuid)).
-        collect(Collectors.toSet()));
+            collect(Collectors.toSet()));
     LOG.info("Placement info:{}.", cluster.placementInfo);
   }
 
@@ -518,7 +518,7 @@ public class PlacementInfoUtil {
     public AZInfo(boolean affinitized, int numNodes) {
       isAffinitized = affinitized;
       numNodesInAZ = numNodes;
-	}
+    }
 
     public boolean isAffinitized;
     public int numNodesInAZ;
@@ -546,7 +546,7 @@ public class PlacementInfoUtil {
           }
           AZInfo azInfo = oldAZMap.get(newAZ.uuid);
           if (azInfo.isAffinitized != newAZ.isAffinitized ||
-              azInfo.numNodesInAZ != newAZ.numNodesInAZ) {
+                  azInfo.numNodesInAZ != newAZ.numNodesInAZ) {
             return false;
           }
         }
@@ -568,7 +568,7 @@ public class PlacementInfoUtil {
     LOG.info("new intent: {}", userIntent.toString());
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
-        isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)) {
+            isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
               "modified for editing the universe.");
@@ -892,8 +892,8 @@ public class PlacementInfoUtil {
       });
 
       taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(taskParams.getPrimaryCluster().userIntent);
-      configureDefaultNodeStates(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet, 
-                                 taskParams.nodePrefix, universe);
+      configureDefaultNodeStates(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet,
+              taskParams.nodePrefix, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
       Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.getPrimaryCluster().placementInfo);
@@ -913,8 +913,8 @@ public class PlacementInfoUtil {
       }
       if (isSimpleExpand) {
         // If simple expand we can go in the configure using placement info path
-        configureNodesUsingPlacementInfo(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet, 
-                                         taskParams.nodePrefix, true);
+        configureNodesUsingPlacementInfo(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet,
+                taskParams.nodePrefix, true);
         // Break execution sequence because there are no nodes to be decomissioned
         return;
       } else {
@@ -937,9 +937,9 @@ public class PlacementInfoUtil {
                 iter ++;
                 placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
                 NodeDetails nodeDetails =
-                        createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(), 
-                            taskParams.nodePrefix, new PlacementIndexes(azIdx, rIdx, cIdx, true),
-                            startIndex + iter);
+                        createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(),
+                                taskParams.nodePrefix, new PlacementIndexes(azIdx, rIdx, cIdx, true),
+                                startIndex + iter);
                 taskParams.nodeDetailsSet.add(nodeDetails);
                 numChange--;
               }

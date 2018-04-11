@@ -108,6 +108,9 @@ class UniverseForm extends Component {
     const submitPayload = _.clone(universeConfigTemplate.data, true);
     const self = this;
     const getIntentValues = function (clusterType) {
+      if (!isNonEmptyString(formValues[clusterType].provider) || !isNonEmptyArray(formValues[clusterType].regionList)) {
+        return null;
+      }
       const clusterIntent = {
         regionList: formValues[clusterType].regionList.map(function (item) {
           return item.value;
@@ -176,6 +179,7 @@ class UniverseForm extends Component {
         }
       ];
     }
+    submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
     return submitPayload;
   }
 
