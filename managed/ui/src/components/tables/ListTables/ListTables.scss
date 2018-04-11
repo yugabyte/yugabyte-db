@@ -71,3 +71,14 @@
   border-left-style: none !important;
   border-right-style: none !important;
 }
+
+.yb-actions-cell {
+  overflow: inherit !important;
+
+  div {
+    overflow: inherit !important;
+  }
+}
+.react-bs-container-body{
+    overflow: inherit !important;
+}

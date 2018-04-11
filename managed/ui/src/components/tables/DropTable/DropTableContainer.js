@@ -20,7 +20,8 @@ const mapDispatchToProps = (dispatch) => {
 
 const mapStateToProps = (state) => {
   return {
-    currentTableDetail: state.tables.currentTableDetail
+    currentTableDetail: state.tables.currentTableDetail,
+    universeDetails: state.universe.currentUniverse.data.universeDetails
   };
 };
 

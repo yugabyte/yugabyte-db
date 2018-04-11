@@ -1,12 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
 import { YBLoadingIcon } from '../../common/indicators';
+import { TableAction } from '../../tables';
 
 import './ListBackups.scss';
 
@@ -46,11 +47,14 @@ export default class ListBackups extends Component {
     return (
       <YBPanelItem
         header={
-          <h2 className="task-list-header content-title">{title}</h2>
+          <Fragment>
+            <h2 className="task-list-header content-title pull-left">{title}</h2>
+            <TableAction actionType="backup" isMenuItem={false} className="pull-right"/>
+          </Fragment>
+
         }
         body={
-          <BootstrapTable data={backupInfos} pagination={true} className="backup-list-table"
-                          search multiColumnSearch searchPlaceholder='Search by Table Name or State'>
+          <BootstrapTable data={backupInfos} pagination={true} className="backup-list-table">
             <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="keyspace" dataSort
                               columnClassName="no-border name-column" className="no-border">

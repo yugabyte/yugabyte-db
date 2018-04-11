@@ -18,3 +18,8 @@ export function getCustomerEndpoint() {
   const customerUUID = localStorage.getItem("customer_id");
   return `${ROOT_URL}/customers/${customerUUID}`;
 }
+
+export function getTablesEndpoint(universeUUID) {
+  const baseUrl = getCustomerEndpoint();
+  return `${baseUrl}/universes/${universeUUID}/tables`;
+}

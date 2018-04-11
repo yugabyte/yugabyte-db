@@ -33,6 +33,8 @@ export function successStringFormatter(cell, row) {
       return <span className="yb-success-color"><i className='fa fa-check'/> Completed</span>;
     case "Initializing":
       return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> Initializing</span>;
+    case "InProgress":
+      return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> InProcess</span>;
     case "Running":
       return (
         <span className="yb-pending-color">
