@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
 
@@ -98,7 +99,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   protected Session getCassandraClient() {
     if (cassandra_session == null) {
-      createCassandraClient(getNodesAsInet());
+      createCassandraClient(configuration.getContactPoints());
     }
     return cassandra_session;
   }
@@ -128,16 +129,21 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Private method that is thread-safe and creates the Cassandra client. Exactly one calling thread
    * will succeed in creating the client. This method does nothing for the other threads.
    */
-  private static synchronized void createCassandraClient(List<InetSocketAddress> nodes) {
+  protected static synchronized void createCassandraClient(List<ContactPoint> contactPoints) {
     if (cassandra_cluster == null) {
-      {
-        List<String> ips = new ArrayList<>(nodes.size());
-        for (InetSocketAddress contactPoint : nodes) {
-          ips.add(contactPoint.getAddress().getHostAddress());
+      Cluster.Builder builder = Cluster.builder();
+      Integer port = null;
+      for (ContactPoint cp : contactPoints) {
+        if (port == null) {
+          port = cp.getPort();
+          builder.withPort(port);
+        } else if (port != cp.getPort()) {
+          throw new IllegalArgumentException("Using multiple CQL ports is not supported.");
         }
-        LOG.info("Connecting to nodes: " + String.join(",", ips));
+        builder.addContactPoint(cp.getHost());
       }
-      Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(nodes);
+      LOG.info("Connecting to nodes: " + builder.getContactPoints().stream()
+              .map(it -> it.toString()).collect(Collectors.joining(",")));
       if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
         builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
             DCAwareRoundRobinPolicy.builder()
@@ -465,7 +471,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public List<InetSocketAddress> getNodesAsInet() {
-    List<InetSocketAddress> inetSocketAddresses = new ArrayList<InetSocketAddress>();
+    List<InetSocketAddress> inetSocketAddresses = new ArrayList<>();
     for (ContactPoint contactPoint : configuration.getContactPoints()) {
       try {
         for (InetAddress addr : InetAddress.getAllByName(contactPoint.getHost())) {
