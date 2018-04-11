@@ -57,7 +57,8 @@ public class CmdLineOpts {
     CassandraSparkKeyValueCopy,
     RedisKeyValue,
     RedisPipelinedKeyValue,
-    RedisHashPipelined
+    RedisHashPipelined,
+    RedisYBClientKeyValue,
   }
 
   // The class type of the app needed to spawn new objects.

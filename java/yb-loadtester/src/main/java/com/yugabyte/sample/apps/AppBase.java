@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -45,7 +46,9 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import com.yugabyte.sample.common.metrics.MetricsTracker;
 import com.yugabyte.sample.common.metrics.MetricsTracker.MetricName;
 
+import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.YBJedis;
 import redis.clients.jedis.Pipeline;
 
 /**
@@ -79,8 +82,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   protected static volatile Session cassandra_session = null;
   // The Java redis client.
   private volatile Jedis jedisClient = null;
+  private volatile YBJedis ybJedisClient = null;
   private volatile Pipeline jedisPipeline = null;
-  private ContactPoint redisServerInUse = null;
+  private List<ContactPoint> redisServerInUse = null;
   // Instances of the load generator.
   private static volatile SimpleLoadGenerator simpleLoadGenerator = null;
   private static volatile RedisHashLoadGenerator redisHashLoadGenerator = null;
@@ -172,20 +176,35 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Helper method to create a Jedis client.
    * @return a Jedis (Redis client) object.
    */
-  protected synchronized Jedis getRedisClient() {
+  protected synchronized Jedis getJedisClient() {
     if (jedisClient == null) {
       CmdLineOpts.ContactPoint contactPoint = getRandomContactPoint();
       // Set the timeout to something more than the timeout in the proxy layer.
       jedisClient = new Jedis(contactPoint.getHost(), contactPoint.getPort(),
           appConfig.jedisSocketTimeout);
-      redisServerInUse = contactPoint;
+      redisServerInUse = Arrays.asList(contactPoint);
     }
     return jedisClient;
   }
 
+  /**
+   * Helper method to create a YBJedis client.
+   * @return a YBJedis (Redis client) object.
+   */
+  protected synchronized YBJedis getYBJedisClient() {
+    if (ybJedisClient == null) {
+      Set<HostAndPort> hosts = configuration.getContactPoints().stream()
+          .map(cp -> new HostAndPort(cp.getHost(), cp.getPort())).collect(Collectors.toSet());
+      // Set the timeout to something more than the timeout in the proxy layer.
+      ybJedisClient = new YBJedis(hosts, appConfig.jedisSocketTimeout);
+      redisServerInUse = configuration.getContactPoints();
+    }
+    return ybJedisClient;
+  }
+
   protected synchronized Pipeline getRedisPipeline() {
     if (jedisPipeline == null) {
-      jedisPipeline = getRedisClient().pipelined();
+      jedisPipeline = getJedisClient().pipelined();
     }
     return jedisPipeline;
   }
@@ -378,7 +397,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Used for debug purposes. Returns "" for non-redis workloads.
    */
   public String getRedisServerInUse() {
-    return (redisServerInUse != null ? redisServerInUse.ToString() : "");
+    if (redisServerInUse == null) {
+      return "";
+    }
+    return redisServerInUse.stream().map(ContactPoint::ToString)
+        .collect(Collectors.joining(", "));
   }
 
   /**
