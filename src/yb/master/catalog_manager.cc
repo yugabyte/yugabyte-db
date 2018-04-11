@@ -1952,11 +1952,6 @@ Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
   TRACE("Locking table");
   auto l = table_obj->LockForRead();
 
-  if (table_obj->metadata().state().table_type() != TableType::YQL_TABLE_TYPE) {
-    *error = MasterErrorPB::INVALID_TABLE_TYPE;
-    return STATUS(InvalidArgument, "Invalid table type", table_identifier.DebugString());
-  }
-
   if (table_obj->IsCreateInProgress()) {
     *error = MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS;
     return STATUS(IllegalState, "Table creation is in progress", table_obj->ToString());
