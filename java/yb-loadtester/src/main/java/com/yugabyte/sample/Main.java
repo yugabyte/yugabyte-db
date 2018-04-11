@@ -49,6 +49,7 @@ import com.yugabyte.sample.common.IOPSThread.IOType;
  *     |__ RedisKeyValue.java        : Simple Redis app, good starting point for writing Redis apps.
  *     |__ RedisPipelinedKeyValue.java : Similar to RedisKeyValue but uses pipelined mode.
  *     |__ RedisHashPipelined        : Similar to RedisPipelinedKeyValue. Uses HMSET/HMGET instead.
+ *     |__ RedisYBClientKeyValue.java : Similar to RedisKeyValue but uses YBJedis client.
  *
  *
  * Usage

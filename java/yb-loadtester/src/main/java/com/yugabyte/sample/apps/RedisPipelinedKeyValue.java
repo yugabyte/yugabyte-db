@@ -20,6 +20,7 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import redis.clients.jedis.Response;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.Jedis;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -78,7 +79,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
       ArrayList<Callable<Integer>> callbacksToWaitFor = pipelinedOpResponseCallables;
       long batch = numPipelinesCreated.addAndGet(1);
       Pipeline currPipeline = getRedisPipeline();
-      Jedis currJedis = getRedisClient();
+      Jedis currJedis = getJedisClient();
       if (appConfig.sleepTime == 0) {  // 0 disables running pipelines in parallel.
         doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch);
       } else {
