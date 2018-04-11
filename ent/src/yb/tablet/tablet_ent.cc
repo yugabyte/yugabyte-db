@@ -38,9 +38,6 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  // The table type must be checked on the Master side.
-  DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
-
   Status s = rocksdb_->Flush(rocksdb::FlushOptions());
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Rocksdb flush status: " << s;
@@ -137,9 +134,6 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
 }
 
 Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
-  // The table type must be checked on the Master side.
-  DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
-
   const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
   const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
                                                tx_state->request()->snapshot_id());
@@ -219,9 +213,6 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
 }
 
 Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
-  // The table type must be checked on the Master side.
-  DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
-
   const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
   const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
                                                tx_state->request()->snapshot_id());
