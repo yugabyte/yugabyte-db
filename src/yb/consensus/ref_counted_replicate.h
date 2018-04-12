@@ -34,8 +34,6 @@
 #define YB_CONSENSUS_REF_COUNTED_REPLICATE_H_
 
 #include "yb/consensus/consensus.pb.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/gscoped_ptr.h"
 
 namespace yb {
 namespace consensus {

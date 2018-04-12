@@ -89,7 +89,7 @@ class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
-typedef StatusCallback ConsensusReplicatedCallback;
+typedef StdStatusCallback ConsensusReplicatedCallback;
 
 typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
 typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
@@ -143,11 +143,12 @@ YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 // 1 - quiesce Consensus
 // 2 - close/destroy Log
 // 3 - destroy Consensus
-class Consensus : public RefCountedThreadSafe<Consensus> {
+class Consensus {
  public:
   class ConsensusFaultHooks;
 
   Consensus() {}
+  virtual ~Consensus() {}
 
   // Starts running the consensus algorithm.
   virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) = 0;
@@ -302,7 +303,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 
   // Implement a ChangeConfig() request.
   virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
-                                      const StatusCallback& client_cb,
+                                      const StdStatusCallback& client_cb,
                                       boost::optional<tserver::TabletServerErrorPB::Code>* error) {
     return STATUS(NotSupported, "Not implemented.");
   }
@@ -372,8 +373,6 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   friend class tablet::TabletPeer;
   friend class master::SysCatalogTable;
 
-  // This class is refcounted.
-  virtual ~Consensus() {}
 
   // Fault hooks for tests. In production code this will always be null.
   std::shared_ptr<ConsensusFaultHooks> fault_hooks_;
@@ -559,8 +558,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // permanently failed to replicate if 'status' is anything else. If 'status'
   // is OK() then the operation can be applied to the state machine, otherwise
   // the operation should be aborted.
-  void SetConsensusReplicatedCallback(const ConsensusReplicatedCallback& replicated_cb) {
-    replicated_cb_ = replicated_cb;
+  void SetConsensusReplicatedCallback(ConsensusReplicatedCallback replicated_cb) {
+    replicated_cb_ = std::move(replicated_cb);
   }
 
   void SetAppendCallback(ConsensusAppendCallback* append_cb) {

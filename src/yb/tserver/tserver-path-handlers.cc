@@ -222,7 +222,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
                                                   peer->tablet_metadata()->schema());
 
     // TODO: would be nice to include some other stuff like memory usage
-    scoped_refptr<consensus::Consensus> consensus = peer->shared_consensus();
+    shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     (*output) << Substitute(
         // Table name, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td>"
@@ -386,7 +386,7 @@ void TabletServerPathHandlers::HandleConsensusStatusPage(const Webserver::WebReq
   string id;
   scoped_refptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
-  scoped_refptr<consensus::Consensus> consensus = peer->shared_consensus();
+  shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
   if (!consensus) {
     *output << "Tablet " << EscapeForHtmlToString(id) << " not running";
     return;

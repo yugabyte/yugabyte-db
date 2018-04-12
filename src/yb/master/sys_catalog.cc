@@ -319,7 +319,7 @@ void SysCatalogTable::SysCatalogStateChanged(
     const string& tablet_id,
     std::shared_ptr<StateChangeContext> context) {
   CHECK_EQ(tablet_id, tablet_peer_->tablet_id());
-  scoped_refptr<consensus::Consensus> consensus  = tablet_peer_->shared_consensus();
+  shared_ptr<consensus::Consensus> consensus  = tablet_peer_->shared_consensus();
   if (!consensus) {
     LOG_WITH_PREFIX(WARNING) << "Received notification of tablet state change "
                              << "but tablet no longer running. Tablet ID: "

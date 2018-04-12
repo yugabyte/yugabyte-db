@@ -172,7 +172,7 @@ template<class RespClass>
 bool GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
                            RespClass* resp,
                            rpc::RpcContext* context,
-                           scoped_refptr<Consensus>* consensus) {
+                           shared_ptr<Consensus>* consensus) {
   *consensus = tablet_peer->shared_consensus();
   if (!*consensus) {
     Status s = STATUS(ServiceUnavailable, "Consensus unavailable. Tablet not running");
@@ -752,7 +752,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
 Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,
                                            TabletServerErrorPB::Code* error_code) {
-  scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
+  shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
     *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
     return STATUS_SUBSTITUTE(IllegalState,
@@ -769,7 +769,7 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,
 
 Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer,
                                             TabletServerErrorPB::Code* error_code) {
-  scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
+  shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   const Consensus::LeaderStatus leader_status = consensus->leader_status();
 
   VLOG(1) << "Check for " << Format(
@@ -1079,7 +1079,7 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   }
 
   // Submit the update directly to the TabletPeer's Consensus instance.
-  scoped_refptr<Consensus> consensus;
+  shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
 
   // Unfortunately, we have to use const_cast here, because the protobuf-generated interface only
@@ -1113,7 +1113,7 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
   }
 
   // Submit the vote request directly to the consensus instance.
-  scoped_refptr<Consensus> consensus;
+  shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   Status s = consensus->RequestVote(req, resp);
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
@@ -1138,7 +1138,7 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
     return;
   }
 
-  scoped_refptr<Consensus> consensus;
+  shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   boost::optional<TabletServerErrorPB::Code> error_code;
   std::shared_ptr<RpcContext> context_ptr = std::make_shared<RpcContext>(std::move(context));
@@ -1212,7 +1212,7 @@ class RpcScope {
  private:
   rpc::RpcContext* context_;
   bool responded_ = true;
-  scoped_refptr<Consensus> consensus_;
+  shared_ptr<Consensus> consensus_;
 };
 
 } // namespace
@@ -1282,7 +1282,7 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
                          TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
     return;
   }
-  scoped_refptr<Consensus> consensus;
+  std::shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   if (PREDICT_FALSE(req->opid_type() == consensus::UNKNOWN_OPID_TYPE)) {
     HandleErrorResponse(resp, &context,
@@ -1371,7 +1371,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_table_name(status.table_name());
     data_entry->set_tablet_id(status.tablet_id());
 
-    scoped_refptr<consensus::Consensus> consensus = peer->shared_consensus();
+    std::shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     data_entry->set_is_leader(consensus && consensus->role() == consensus::RaftPeerPB::LEADER);
     data_entry->set_state(status.state());
   }

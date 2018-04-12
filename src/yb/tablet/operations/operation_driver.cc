@@ -102,7 +102,8 @@ Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType ty
       consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
       mutable_state()->set_consensus_round(
         consensus_->NewRound(std::move(replicate_msg),
-                             Bind(&OperationDriver::ReplicationFinished, Unretained(this))));
+                             std::bind(&OperationDriver::ReplicationFinished, this,
+                                       std::placeholders::_1)));
       mutable_state()->consensus_round()->SetAppendCallback(this);
     }
   }

@@ -42,6 +42,11 @@ class Status;
 // produce asynchronous results and may fail.
 typedef Callback<void(const Status& status)> StatusCallback;
 
+// Like StatusCallback but uses the STL function objects.
+//
+// TODO(adar): should eventually replace all StatusCallback usage with this.
+typedef std::function<void(const Status& status)> StdStatusCallback;
+
 // To be used when a function signature requires a StatusCallback but none
 // is needed.
 extern void DoNothingStatusCB(const Status& status);
@@ -55,4 +60,4 @@ extern CHECKED_STATUS DoNothingStatusClosure();
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_STATUS_CALLBACK_H

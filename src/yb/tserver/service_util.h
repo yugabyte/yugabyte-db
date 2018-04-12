@@ -86,9 +86,9 @@ void HandleResponse(RespType* resp,
 }
 
 template <class RespType>
-StatusCallback BindHandleResponse(RespType* resp,
+StdStatusCallback BindHandleResponse(RespType* resp,
                                   const std::shared_ptr<rpc::RpcContext>& context) {
-  return Bind(&HandleResponse<RespType>, resp, context);
+  return std::bind(&HandleResponse<RespType>, resp, context, std::placeholders::_1);
 }
 
 // Lookup the given tablet, ensuring that it both exists and is RUNNING.

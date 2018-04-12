@@ -33,6 +33,7 @@
 #ifndef YB_CONSENSUS_LEADER_ELECTION_H
 #define YB_CONSENSUS_LEADER_ELECTION_H
 
+#include <functional>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -44,7 +45,6 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -174,7 +174,7 @@ typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 // This class is thread-safe.
 class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
  public:
-  typedef Callback<void(const ElectionResult&)> ElectionDecisionCallback;
+  typedef std::function<void(const ElectionResult&)> ElectionDecisionCallback;
   typedef std::unordered_map<std::string, PeerProxy*> ProxyMap;
 
   // Set up a new leader election driver.

@@ -32,6 +32,7 @@
 
 #include "yb/consensus/leader_election.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -296,7 +297,7 @@ LeaderElectionPtr LeaderElectionTest::SetUpElectionWithHighTermVoter(ConsensusTe
   return make_scoped_refptr<LeaderElection>(
       config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
       TEST_SuppressVoteRequest::kFalse,
-      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
+      std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
 }
 
 LeaderElectionPtr LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
@@ -350,7 +351,7 @@ LeaderElectionPtr LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
   return make_scoped_refptr<LeaderElection>(
       config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
       TEST_SuppressVoteRequest::kFalse,
-      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
+      std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
 }
 
 // All peers respond "yes", no failures.
@@ -385,7 +386,7 @@ TEST_F(LeaderElectionTest, TestPerfectElection) {
           auto election = make_scoped_refptr<LeaderElection>(
               config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
               TEST_SuppressVoteRequest::kFalse,
-              Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
+              std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
           election->Run();
           latch_.Wait();
 
@@ -519,7 +520,7 @@ TEST_F(LeaderElectionTest, TestFailToCreateProxy) {
   auto election = make_scoped_refptr<LeaderElection>(
       config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
       TEST_SuppressVoteRequest::kFalse,
-      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
+      std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
   election->Run();
   latch_.Wait();
   ASSERT_EQ(kElectionTerm, result_->election_term);
