@@ -423,22 +423,25 @@ void InitRocksDBOptions(
   options->num_levels = 1;
 
   if (compactions_enabled) {
-    if (FLAGS_rocksdb_max_background_compactions == -1) {
-      FLAGS_rocksdb_max_background_compactions = 4;
+    auto rocksdb_max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    if (rocksdb_max_background_compactions == -1) {
       int num_cpus = std::thread::hardware_concurrency();
       if (num_cpus <= 4) {
-        FLAGS_rocksdb_max_background_compactions = 1;
+        rocksdb_max_background_compactions = 1;
       } else if (num_cpus <= 8) {
-        FLAGS_rocksdb_max_background_compactions = 2;
+        rocksdb_max_background_compactions = 2;
       } else if (num_cpus <= 32) {
-        FLAGS_rocksdb_max_background_compactions = 3;
+        rocksdb_max_background_compactions = 3;
+      } else {
+        rocksdb_max_background_compactions = 4;
       }
     }
-    if (FLAGS_rocksdb_base_background_compactions == -1) {
-      FLAGS_rocksdb_base_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    auto rocksdb_base_background_compactions = FLAGS_rocksdb_base_background_compactions;
+    if (rocksdb_base_background_compactions == -1) {
+      rocksdb_base_background_compactions = rocksdb_max_background_compactions;
     }
-    options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
-    options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    options->base_background_compactions = rocksdb_base_background_compactions;
+    options->max_background_compactions = rocksdb_max_background_compactions;
     options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
     options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
     options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
