@@ -38,7 +38,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static final int NUM_TABLET_SERVERS = 3;
   protected static final int DEFAULT_NUM_MASTERS = 3;
   protected static final int STANDARD_DEVIATION_FACTOR = 2;
-  protected static final long DEFAULT_DEADLINE = 100000;
+  protected static final int DEFAULT_TIMEOUT_MS = 50000;
 
   // Number of masters that will be started for this test if we're starting
   // a cluster.

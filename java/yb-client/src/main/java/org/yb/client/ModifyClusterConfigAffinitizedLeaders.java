@@ -13,14 +13,23 @@
 
 package org.yb.client;
 
+import java.util.List;
+
+import org.yb.WireProtocol.CloudInfoPB;
 import org.yb.master.Master;
 
-// This provides the wrapper to read-modify the replication factor.
-public class ModifyClusterConfigReplicationFactor extends AbstractModifyMasterClusterConfig {
-  private int replicationFactor;
-  public ModifyClusterConfigReplicationFactor(YBClient client, int replFactor) {
+/**
+ * Class for changing the affinitized leader information for the master's cluster config.
+ * Takes in the list of affinitized leaders to pass into the config.
+ */
+public class ModifyClusterConfigAffinitizedLeaders extends AbstractModifyMasterClusterConfig {
+  // List of all azs where leaders should reside.
+  private List<CloudInfoPB> affinitizedLeadersAZs;
+
+  public ModifyClusterConfigAffinitizedLeaders(YBClient client,
+                                               List<CloudInfoPB> affinitizedLeadersAZs) {
     super(client);
-    this.replicationFactor = replFactor;
+    this.affinitizedLeadersAZs = affinitizedLeadersAZs;
   }
 
   @Override
@@ -28,10 +37,9 @@ public class ModifyClusterConfigReplicationFactor extends AbstractModifyMasterCl
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder(config);
 
-    // Modify the num_replicas which is the cluster's RF.
-    configBuilder.getReplicationInfoBuilder()
-                 .getLiveReplicasBuilder()
-                 .setNumReplicas(this.replicationFactor)
+    // Modify the affinitized leaders information in the cluster config.
+    configBuilder.getReplicationInfoBuilder().clearAffinitizedLeaders()
+                 .addAllAffinitizedLeaders(this.affinitizedLeadersAZs)
                  .build();
 
     return configBuilder.build();

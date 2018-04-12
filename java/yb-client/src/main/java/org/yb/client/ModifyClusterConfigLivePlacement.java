@@ -13,25 +13,24 @@
 
 package org.yb.client;
 
-import org.yb.master.Master;
+import org.yb.master.Master.PlacementInfoPB;
+import org.yb.master.Master.SysClusterConfigEntryPB;
 
-// This provides the wrapper to read-modify the replication factor.
-public class ModifyClusterConfigReplicationFactor extends AbstractModifyMasterClusterConfig {
-  private int replicationFactor;
-  public ModifyClusterConfigReplicationFactor(YBClient client, int replFactor) {
+// This provides the wrapper to read-modify the live placement for the cluster.
+public class ModifyClusterConfigLivePlacement extends AbstractModifyMasterClusterConfig {
+  private PlacementInfoPB placementInfo;
+  public ModifyClusterConfigLivePlacement(YBClient client, PlacementInfoPB placementInfo) {
     super(client);
-    this.replicationFactor = replFactor;
+    this.placementInfo = placementInfo;
   }
 
   @Override
-  protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder(config);
+  protected SysClusterConfigEntryPB modifyConfig(SysClusterConfigEntryPB config) {
+    SysClusterConfigEntryPB.Builder configBuilder = SysClusterConfigEntryPB.newBuilder(config);
 
-    // Modify the num_replicas which is the cluster's RF.
+    // Modify the live placement for this cluster.
     configBuilder.getReplicationInfoBuilder()
-                 .getLiveReplicasBuilder()
-                 .setNumReplicas(this.replicationFactor)
+                 .setLiveReplicas(placementInfo)
                  .build();
 
     return configBuilder.build();

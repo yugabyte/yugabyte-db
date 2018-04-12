@@ -38,6 +38,7 @@ import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
+import org.yb.client.YBClient.Condition;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -401,10 +402,6 @@ public class TestUtils {
 
   public static boolean isJenkins() {
     return System.getenv("BUILD_ID") != null && System.getenv("JOB_NAME") != null;
-  }
-
-  public interface Condition {
-    boolean get() throws Exception;
   }
 
   public static void waitFor(Condition condition, long timeoutMs) throws Exception {
