@@ -76,7 +76,7 @@ class PeerManager {
   virtual void SetConsensus(Consensus* consensus) {consensus_ = consensus; }
 
   // Updates 'peers_' according to the new configuration config.
-  virtual CHECKED_STATUS UpdateRaftConfig(const RaftConfigPB& config);
+  virtual void UpdateRaftConfig(const RaftConfigPB& config);
 
   // Signals all peers of the current configuration that there is a new request pending.
   virtual void SignalRequest(RequestTriggerMode trigger_mode);
@@ -100,6 +100,9 @@ class PeerManager {
   PeersMap peers_;
   Consensus* consensus_ = nullptr;
   mutable simple_spinlock lock_;
+
+  // Serial number of config update, used to filter out async results.
+  size_t config_serial_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(PeerManager);
 };

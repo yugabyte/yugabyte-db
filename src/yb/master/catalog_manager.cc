@@ -3992,8 +3992,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
 
-  HostPort bootstrap_peer_addr;
-  RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
+  HostPort bootstrap_peer_addr = HostPortFromPB(req.bootstrap_peer_addr());
 
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
@@ -5206,9 +5205,7 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
             << blacklist.initial_replica_load() << " for num_tablets = " << tablet_map_.size();
 
   for (const auto& pb : blacklist.hosts()) {
-    HostPort hp;
-    RETURN_NOT_OK(HostPortFromPB(pb, &hp));
-    blacklistState.tservers_.insert(hp);
+    blacklistState.tservers_.insert(HostPortFromPB(pb));
   }
 
   return Status::OK();
@@ -5318,8 +5315,7 @@ int64_t CatalogManager::GetNumBlacklistReplicas() {
     tablet->GetReplicaLocations(&locs);
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
       replica.second.ts_desc->GetRegistration(&reg);
-      HostPort hp;
-      HostPortFromPB(reg.common().rpc_addresses(0), &hp);
+      HostPort hp = HostPortFromPB(reg.common().rpc_addresses(0));
       if (blacklistState.tservers_.count(hp) != 0) {
         blacklist_replicas++;
       }

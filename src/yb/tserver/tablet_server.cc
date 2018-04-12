@@ -150,8 +150,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   SetCurrentMasterIndex(new_config.opid_index());
 
   for (const auto& peer : new_config.peers()) {
-    HostPort hp;
-    RETURN_NOT_OK(HostPortFromPB(peer.last_known_addr(), &hp));
+    HostPort hp = HostPortFromPB(peer.last_known_addr());
     new_master_addresses->push_back(std::move(hp));
   }
   opts_.SetMasterAddresses(new_master_addresses);

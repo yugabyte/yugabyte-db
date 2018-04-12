@@ -363,8 +363,7 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
 
   ts_map->clear();
   for (const ListTabletServersResponsePB::Entry& entry : resp.servers()) {
-    HostPort host_port;
-    RETURN_NOT_OK(HostPortFromPB(entry.registration().common().rpc_addresses(0), &host_port));
+    HostPort host_port = HostPortFromPB(entry.registration().common().rpc_addresses(0));
     std::vector<Endpoint> addresses;
     RETURN_NOT_OK(host_port.ResolveAddresses(&addresses));
 

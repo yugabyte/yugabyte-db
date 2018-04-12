@@ -41,6 +41,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/callback.h"
@@ -49,6 +50,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/locks.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 class Status;
@@ -58,7 +60,6 @@ class RaftPeerPB;
 }
 
 namespace consensus {
-class PeerProxy;
 class PeerProxyFactory;
 
 // The vote a peer has given.
@@ -194,11 +195,9 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   friend class RefCountedThreadSafe<LeaderElection>;
 
   struct VoterState {
-    gscoped_ptr<PeerProxy> proxy;
-
-    // If constructing the proxy failed (e.g. due to a DNS resolution issue)
-    // then 'proxy' will be NULL, and 'proxy_status' will contain the error.
-    Status proxy_status;
+    std::future<Result<PeerProxyPtr>> proxy_future;
+    PeerProxyPtr proxy;
+    HostPort address;
 
     rpc::RpcController rpc;
     VoteRequestPB request;
@@ -229,6 +228,9 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
   // Log the reason for a denied vote and record it.
   void HandleVoteDeniedUnlocked(const std::string& voter_uuid, const VoterState& state);
+
+  bool TrySendRequestToVoters(
+    std::chrono::steady_clock::time_point deadline, size_t* voters_left);
 
   // Returns a string to be prefixed to all log entries.
   // This method accesses const members and is thread safe.

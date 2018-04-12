@@ -1543,9 +1543,7 @@ std::string ExternalDaemon::ProcessNameAndPidStr() {
 HostPort ExternalDaemon::bound_rpc_hostport() const {
   CHECK(status_);
   CHECK_GE(status_->bound_rpc_addresses_size(), 1);
-  HostPort ret;
-  CHECK_OK(HostPortFromPB(status_->bound_rpc_addresses(0), &ret));
-  return ret;
+  return HostPortFromPB(status_->bound_rpc_addresses(0));
 }
 
 Endpoint ExternalDaemon::bound_rpc_addr() const {
@@ -1559,9 +1557,7 @@ Endpoint ExternalDaemon::bound_rpc_addr() const {
 HostPort ExternalDaemon::bound_http_hostport() const {
   CHECK(status_);
   CHECK_GE(status_->bound_http_addresses_size(), 1);
-  HostPort ret;
-  CHECK_OK(HostPortFromPB(status_->bound_http_addresses(0), &ret));
-  return ret;
+  return HostPortFromPB(status_->bound_http_addresses(0));
 }
 
 const NodeInstancePB& ExternalDaemon::instance_id() const {

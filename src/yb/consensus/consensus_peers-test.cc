@@ -123,15 +123,9 @@ class ConsensusPeersTest : public YBTest {
     peer_pb.set_permanent_uuid(peer_name);
     auto proxy_ptr = new DelayablePeerProxy<NoOpTestPeerProxy>(
         raft_pool_.get(), new NoOpTestPeerProxy(raft_pool_.get(), peer_pb));
-    gscoped_ptr<PeerProxy> proxy(proxy_ptr);
-    CHECK_OK(Peer::NewRemotePeer(peer_pb,
-                                 kTabletId,
-                                 kLeaderUuid,
-                                 message_queue_.get(),
-                                 raft_pool_token_.get(),
-                                 proxy.Pass(),
-                                 nullptr,
-                                 peer));
+    *peer = CHECK_RESULT(Peer::NewRemotePeer(
+        peer_pb, kTabletId, kLeaderUuid, message_queue_.get(), raft_pool_token_.get(),
+        PeerProxyPtr(proxy_ptr), nullptr /* consensus */));
     return proxy_ptr;
   }
 
@@ -296,15 +290,9 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
 // and thus always has data pending, we should be able to close the peer.
 TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
-  std::unique_ptr<Peer> peer;
-  ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
-                                kTabletId,
-                                kLeaderUuid,
-                                message_queue_.get(),
-                                raft_pool_token_.get(),
-                                gscoped_ptr<PeerProxy>(mock_proxy),
-                                nullptr,  // consensus
-                                &peer));
+  auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
+      FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, message_queue_.get(),
+      raft_pool_token_.get(), PeerProxyPtr(mock_proxy), nullptr /* consensus */));
 
   // Make the peer respond without making any progress -- it always returns
   // that it has only replicated op 0.0. When we see the response, we always
@@ -330,15 +318,9 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
 
 TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
-  std::unique_ptr<Peer> peer;
-  ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
-                                kTabletId,
-                                kLeaderUuid,
-                                message_queue_.get(),
-                                raft_pool_token_.get(),
-                                gscoped_ptr<PeerProxy>(mock_proxy),
-                                nullptr,  // consensus
-                                &peer));
+  auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
+      FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, message_queue_.get(),
+      raft_pool_token_.get(), PeerProxyPtr(mock_proxy), nullptr /* consensus */));
 
   // Initial response has to be successful -- otherwise we'll consider the peer "new" and only send
   // heartbeat RPCs.

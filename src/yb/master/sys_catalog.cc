@@ -141,8 +141,7 @@ Status SysCatalogTable::ConvertConfigToMasterAddresses(
     std::make_shared<std::vector<HostPort>>();
   bool has_missing_uuids = false;
   for (const auto& peer : config.peers()) {
-    HostPort hp;
-    RETURN_NOT_OK(HostPortFromPB(peer.last_known_addr(), &hp));
+    HostPort hp = HostPortFromPB(peer.last_known_addr());
     if (check_missing_uuids && !peer.has_permanent_uuid()) {
       LOG(WARNING) << "No uuid for master peer at " << hp.ToString();
       has_missing_uuids = true;
@@ -301,7 +300,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
       RETURN_NOT_OK_PREPEND(
         consensus::SetPermanentUuidForRemotePeer(
           master_->messenger(),
-          FLAGS_master_discovery_timeout_ms,
+          std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
           &new_peer),
         Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
       resolved_config.add_peers()->CopyFrom(new_peer);

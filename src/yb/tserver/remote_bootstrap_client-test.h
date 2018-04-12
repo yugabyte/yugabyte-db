@@ -80,8 +80,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     ASSERT_OK(GetRaftConfigLeader(tablet_peer_->consensus()
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
-    HostPort host_port;
-    HostPortFromPB(leader_.last_known_addr(), &host_port);
+    HostPort host_port = HostPortFromPB(leader_.last_known_addr());
     ASSERT_OK(client_->Start(leader_.permanent_uuid(), host_port, &meta_));
   }
 

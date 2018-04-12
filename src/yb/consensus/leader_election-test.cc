@@ -84,13 +84,14 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
     DeleteUnusedPeerProxies();
   }
 
-  Status NewProxy(const RaftPeerPB& peer_pb,
-                  gscoped_ptr<PeerProxy>* proxy) override {
+  void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override {
     PeerProxy* proxy_ptr = FindPtrOrNull(*proxy_map_, peer_pb.permanent_uuid());
-    if (!proxy_ptr) return STATUS(NotFound, "No proxy for peer.");
-    proxy->reset(proxy_ptr);
+    if (!proxy_ptr) {
+      waiter(STATUS(NotFound, "No proxy for peer."));
+      return;
+    }
     used_peer_proxy_.insert(peer_pb.permanent_uuid());
-    return Status::OK();
+    waiter(PeerProxyPtr(proxy_ptr));
   }
 
   void DeleteUnusedPeerProxies() {

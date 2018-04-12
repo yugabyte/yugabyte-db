@@ -660,7 +660,10 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
       if (peer.member_type() == RaftPeerPB::VOTER &&
           peer.permanent_uuid() == new_leader_uuid) {
         auto election_state = std::make_shared<RunLeaderElectionState>();
-        RETURN_NOT_OK(peer_proxy_factory_->NewProxy(peer, &election_state->proxy));
+        // TODO(sergei) Currently we preserved synchronous DNS resolution in this case.
+        // It is possible that it should be changed to async in future.
+        // But it looks like it is not a problem to leave synchronous variant here.
+        election_state->proxy = VERIFY_RESULT(peer_proxy_factory_->NewProxyFuture(peer).get());
         election_state->req.set_originator_uuid(req->dest_uuid());
         election_state->req.set_dest_uuid(new_leader_uuid);
         election_state->req.set_tablet_id(tablet_id);
@@ -800,7 +803,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   leader_no_op_committed_ = false;
   queue_->RegisterObserver(this);
-  RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
+  RefreshConsensusQueueAndPeersUnlocked();
 
   // Initiate a NO_OP operation that is sent at the beginning of every term
   // change in raft.
@@ -2448,7 +2451,7 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   }
 
   // Set as pending.
-  RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
+  RefreshConsensusQueueAndPeersUnlocked();
   auto status = AppendNewRoundToQueueUnlocked(round);
   if (!status.ok()) {
     // We could just cancel pending config, because there is could be only one pending config.
@@ -2460,7 +2463,7 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   return status;
 }
 
-Status RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
+void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   DCHECK_EQ(RaftPeerPB::LEADER, state_->GetActiveRoleUnlocked());
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
 
@@ -2473,8 +2476,7 @@ Status RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked(),
                         state_->GetCurrentTermUnlocked(),
                         active_config);
-  RETURN_NOT_OK(peer_manager_->UpdateRaftConfig(active_config));
-  return Status::OK();
+  peer_manager_->UpdateRaftConfig(active_config);
 }
 
 string RaftConsensus::peer_uuid() const {
@@ -2566,13 +2568,16 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   for (const RaftPeerPB& peer : active_config.peers()) {
     if (peer.permanent_uuid() == originator_uuid) {
-      gscoped_ptr<PeerProxy> proxy;
-      auto status = peer_proxy_factory_->NewProxy(peer, &proxy);
-      if (!status.ok()) {
+      // TODO(sergei) Currently we preserved synchronous DNS resolution in this case.
+      // It is possible that it should be changed so async in future.
+      // But look like it is not problem to leave synchronous variant here.
+      auto proxy_result = peer_proxy_factory_->NewProxyFuture(peer).get();
+      if (!proxy_result.ok()) {
         LOG_WITH_PREFIX_UNLOCKED(INFO) << "Unable to notify originator about lost election, "
-                                       << "failed to create proxy: " << s.ToString();
+                                       << "failed to create proxy: " << proxy_result.status();
         return;
       }
+      auto proxy = std::move(*proxy_result);
       LeaderElectionLostRequestPB req;
       req.set_dest_uuid(originator_uuid);
       req.set_election_lost_by_uuid(state_->GetPeerUuid());
