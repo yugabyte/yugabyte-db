@@ -622,7 +622,7 @@ class ClusterControl:
 
         self.start_helper({DAEMON_TYPE_MASTER: server_counts,
                            DAEMON_TYPE_TSERVER: server_counts})
-        self.setup_redis(on_create=True)
+        # self.setup_redis(on_create=True)
         print ("Successfully created a new cluster.")
 
     # Starts as well as creates. Check if the cluster exists.
