@@ -355,7 +355,7 @@ public class TestYBClient extends BaseYBClientTest {
     // Ensure that each live tserver has 8 live replicas each and each read only tserver has 8 read only replicas
     // each.
     Map<String, List<List<Integer>>> placementUuidMap = 
-        table.getMemberTypeCountsForEachTSType(DEFAULT_DEADLINE);
+        table.getMemberTypeCountsForEachTSType(DEFAULT_TIMEOUT_MS);
     List<List<Integer>> liveTsList = placementUuidMap.get(LIVE_TS);
     List<List<Integer>> readOnlyTsList = placementUuidMap.get(READ_ONLY_TS);
     
@@ -373,7 +373,7 @@ public class TestYBClient extends BaseYBClientTest {
     miniCluster.waitForTabletServers(8);
 
     // Test that now each live tsever has 6 live replicas and each read only tserver has 6 read only replicas.
-    placementUuidMap = table.getMemberTypeCountsForEachTSType(DEFAULT_DEADLINE);
+    placementUuidMap = table.getMemberTypeCountsForEachTSType(DEFAULT_TIMEOUT_MS);
     Map<String, List<List<Integer>>> expectedMap = new HashMap<String, List<List<Integer>>>();
     List<List<Integer>> expectedLiveTsList = Arrays.asList(Arrays.asList(6, 6, 6, 6), 
                                                            Arrays.asList(0, 0, 0, 0));
@@ -382,7 +382,7 @@ public class TestYBClient extends BaseYBClientTest {
     expectedMap.put(LIVE_TS, expectedLiveTsList);
     expectedMap.put(READ_ONLY_TS, expectedReadOnlyTsList);
     
-    assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap, DEFAULT_DEADLINE));
+    assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap));
     
     // Now we create a new read only cluster with 3 nodes and RF=3 with uuid readOnlyNew in the same zone.
     List<String> readOnlyPlacementNew = Arrays.asList(
@@ -421,8 +421,7 @@ public class TestYBClient extends BaseYBClientTest {
                                                                Arrays.asList(8, 8, 8));
     expectedMap.put(READ_ONLY_NEW_TS, expectedReadOnlyNewTsList);
     
-    assertTrue(syncClient.waitForExpectedReplicaMap(
-        30000, table, expectedMap, DEFAULT_DEADLINE));
+    assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap));
   }
 
   /**
@@ -465,6 +464,117 @@ public class TestYBClient extends BaseYBClientTest {
     assertFalse(resp.hasError());
     assertEquals(2, resp.getConfig().getVersion());
     assertEquals(3, resp.getConfig().getReplicationInfo().getLiveReplicas().getNumReplicas());
+  }
+  
+  @Test(timeout = 100000)
+  public void testAffinitizedLeaders() throws Exception {
+    destroyMiniCluster();
+    List<List<String>> tserverArgs = new ArrayList<List<String>>();
+    tserverArgs.add(Arrays.asList(
+        "--placement_cloud=testCloud", "--placement_region=testRegion", "--placement_zone=testZone0"));
+    tserverArgs.add(Arrays.asList(
+        "--placement_cloud=testCloud", "--placement_region=testRegion", "--placement_zone=testZone1"));
+    tserverArgs.add(Arrays.asList(
+        "--placement_cloud=testCloud", "--placement_region=testRegion", "--placement_zone=testZone2"));
+    createMiniCluster(3, tserverArgs);
+    LOG.info("created mini cluster");
+    
+    List<org.yb.WireProtocol.CloudInfoPB> leaders = new ArrayList<org.yb.WireProtocol.CloudInfoPB>();
+    
+    org.yb.WireProtocol.CloudInfoPB.Builder cloudInfoBuilder = org.yb.WireProtocol.CloudInfoPB.newBuilder().
+    setPlacementCloud("testCloud").setPlacementRegion("testRegion");
+    
+    org.yb.WireProtocol.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
+    org.yb.WireProtocol.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
+    org.yb.WireProtocol.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
+    
+    // First, making the first two zones affinitized leaders.
+    leaders.add(ci0);
+    leaders.add(ci1);
+    
+    ModifyClusterConfigAffinitizedLeaders operation =
+        new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    
+    List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
+    Schema newSchema = new Schema(columns);
+    CreateTableOptions tableOptions = new CreateTableOptions().setNumReplicas(3).setNumTablets(8);
+    YBTable table = syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
+    
+    // Wait for leader load balancing to finish, timing out after 30 seconds. 
+    List<Integer> leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(4, 4));
+    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
+        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
+    
+    Map<String, Integer> leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
+    assertTrue(leaderCounts.containsKey("testZone0"));
+    assertTrue(leaderCounts.containsKey("testZone1"));
+    assertFalse(leaderCounts.containsKey("testZone2"));
+    
+    leaders.clear();
+    //Now make only the third zone an affinitized leader.
+    leaders.add(ci2);
+    
+    operation = new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    
+    // Should have 8 leaders all in the one specified affinitized zone.
+    leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(8));
+    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
+        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
+    
+    leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
+    assertFalse(leaderCounts.containsKey("testZone0"));
+    assertFalse(leaderCounts.containsKey("testZone1"));
+    assertTrue(leaderCounts.containsKey("testZone2"));
+    
+    // Now have no affinitized leaders, should balance 2, 3, 3.
+    leaders.clear();
+    operation = new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    
+    leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(2, 3, 3));
+    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
+        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
+    
+    leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
+    assertTrue(leaderCounts.containsKey("testZone0"));
+    assertTrue(leaderCounts.containsKey("testZone1"));
+    assertTrue(leaderCounts.containsKey("testZone2"));
+    
+    // Now balance all affinitized leaders, should take no balancing steps.
+    leaders.add(ci0);
+    leaders.add(ci1);
+    leaders.add(ci2);
+    operation = new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    
+    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
+        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
+    
+    // Since having no and all affinitized zones is the same, the two maps should be identical.
+    Map<String, Integer> newLeaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
+    assertTrue(leaderCounts.equals(newLeaderCounts));
   }
 
   /**

@@ -163,6 +163,10 @@ public class LocatedTablet {
     public String getTsPlacementUuid() {
       return pb.getTsInfo().getPlacementUuid().toStringUtf8();
     }
+
+    public org.yb.WireProtocol.CloudInfoPB getCloudInfo() {
+      return pb.getTsInfo().getCloudInfo();
+    }
   }
 
 };

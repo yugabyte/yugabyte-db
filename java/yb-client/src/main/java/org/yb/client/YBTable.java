@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 
+
 /**
  * A YBTable represents a table on a particular cluster. It holds the current
  * schema of the table. Any given YBTable instance belongs to a specific AsyncYBClient
@@ -209,6 +210,28 @@ public class YBTable {
   public Deferred<List<LocatedTablet>> asyncGetTabletsLocations(
       byte[] startKey, byte[] endKey, long deadline) throws Exception {
     return client.locateTable(tableId, startKey, endKey, deadline);
+  }
+
+  /**
+   * Return the leader counts for each placement zone in the cluster.
+   * @param deadline deadline in milliseconds for this method to finish.
+   *        throws a TimeoutException if it doesn't.
+   * @return a map from placement zones to the leader count in that zone
+   */
+  public Map<String, Integer> getLeaderCountsPerPlacementZone(long deadline) throws Exception {
+    Map<String, Integer> leaderCounts = new HashMap<>();
+    List<LocatedTablet> tablets = getTabletsLocations(deadline);
+    for (LocatedTablet tablet : tablets) {
+      LocatedTablet.Replica leaderReplica = tablet.getLeaderReplica();
+      String placementZone = leaderReplica.getCloudInfo().getPlacementZone();
+      if (leaderCounts.containsKey(placementZone)) {
+        int currentLeaderCount = leaderCounts.get(placementZone);
+        leaderCounts.put(placementZone, currentLeaderCount + 1);
+      } else {
+        leaderCounts.put(placementZone, 1);
+      }
+    }
+    return leaderCounts;
   }
 
   /**
