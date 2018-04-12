@@ -206,8 +206,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()].get();
   ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::PRE_VOTER,
                       boost::none, kTimeout));
-  HostPort hp;
-  ASSERT_OK(HostPortFromPB(leader->registration.common().rpc_addresses(0), &hp));
+  HostPort hp = HostPortFromPB(leader->registration.common().rpc_addresses(0));
   ASSERT_OK(StartRemoteBootstrap(to_add, tablet_id, leader->uuid(), hp, 1, kTimeout));
 
   const string& new_ts_uuid = cluster_->tablet_server(missing_replica_index)->uuid();

@@ -222,6 +222,10 @@ class Messenger {
     return scheduler_;
   }
 
+  IoService& io_service() {
+    return io_thread_pool_.io_service();
+  }
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;

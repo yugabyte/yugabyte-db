@@ -38,6 +38,7 @@
 #include <vector>
 #include <atomic>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
@@ -47,6 +48,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/resettable_heartbeater.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/status.h"
@@ -60,12 +62,6 @@ class Log;
 }
 
 namespace consensus {
-class ConsensusServiceProxy;
-class PeerProxy;
-class PeerProxyFactory;
-class PeerMessageQueue;
-class VoteRequestPB;
-class VoteResponsePB;
 
 // A peer in consensus (local or remote).
 //
@@ -117,6 +113,9 @@ class VoteResponsePB;
 //        v                               v
 //  SignalRequest()                    return
 //
+class Peer;
+typedef std::unique_ptr<Peer> PeerPtr;
+
 class Peer {
  public:
   // Initializes a peer and get its status.
@@ -152,15 +151,14 @@ class Peer {
   // Requests to this peer (which may end up doing IO to read non-cached log entries) are assembled
   // on 'raft_pool_token'.  Response handling may also involve IO related to log-entry lookups
   // and is also done on 'thread_pool'.
-  static CHECKED_STATUS NewRemotePeer(
+  static Result<PeerPtr> NewRemotePeer(
       const RaftPeerPB& peer_pb,
       const std::string& tablet_id,
       const std::string& leader_uuid,
       PeerMessageQueue* queue,
       ThreadPoolToken* raft_pool_token,
-      gscoped_ptr<PeerProxy> proxy,
-      Consensus* consensus,
-      std::unique_ptr<Peer>* peer);
+      PeerProxyPtr proxy,
+      Consensus* consensus);
 
   uint64_t failed_attempts() {
     std::lock_guard<simple_spinlock> l(peer_lock_);
@@ -169,7 +167,7 @@ class Peer {
 
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
-       gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
+       PeerProxyPtr proxy, PeerMessageQueue* queue,
        ThreadPoolToken* raft_pool_token, Consensus* consensus);
 
   void SendNextRequest(RequestTriggerMode trigger_mode);
@@ -204,7 +202,7 @@ class Peer {
 
   RaftPeerPB peer_pb_;
 
-  gscoped_ptr<PeerProxy> proxy_;
+  PeerProxyPtr proxy_;
 
   PeerMessageQueue* queue_;
   uint64_t failed_attempts_ = 0;
@@ -294,13 +292,20 @@ class PeerProxy {
   virtual ~PeerProxy() {}
 };
 
+typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
+typedef std::function<void(Result<PeerProxyPtr>)> PeerProxyWaiter;
+
 // A peer proxy factory. Usually just obtains peers through the rpc implementation but can be
 // replaced for tests.
 class PeerProxyFactory {
  public:
+  virtual void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) = 0;
 
-  virtual CHECKED_STATUS NewProxy(const RaftPeerPB& peer_pb,
-                          gscoped_ptr<PeerProxy>* proxy) = 0;
+  auto NewProxyFuture(const RaftPeerPB& peer_pb) {
+    return MakeFuture<Result<PeerProxyPtr>>([this, &peer_pb] (auto callback) {
+      this->NewProxy(peer_pb, callback);
+    });
+  }
 
   virtual ~PeerProxyFactory() {}
 };
@@ -308,8 +313,7 @@ class PeerProxyFactory {
 // PeerProxy implementation that does RPC calls
 class RpcPeerProxy : public PeerProxy {
  public:
-  RpcPeerProxy(gscoped_ptr<HostPort> hostport,
-               gscoped_ptr<ConsensusServiceProxy> consensus_proxy);
+  RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy);
 
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
@@ -340,8 +344,8 @@ class RpcPeerProxy : public PeerProxy {
   virtual ~RpcPeerProxy();
 
  private:
-  gscoped_ptr<HostPort> hostport_;
-  gscoped_ptr<ConsensusServiceProxy> consensus_proxy_;
+  HostPort hostport_;
+  ConsensusServiceProxyPtr consensus_proxy_;
 };
 
 // PeerProxyFactory implementation that generates RPCPeerProxies
@@ -349,10 +353,10 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
   explicit RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger);
 
-  virtual CHECKED_STATUS NewProxy(const RaftPeerPB& peer_pb,
-                          gscoped_ptr<PeerProxy>* proxy) override;
+  void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override;
 
   virtual ~RpcPeerProxyFactory();
+
  private:
   std::shared_ptr<rpc::Messenger> messenger_;
 };
@@ -361,7 +365,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
 // the 'permanent_uuid' field based on the response.
 Status SetPermanentUuidForRemotePeer(
     const std::shared_ptr<rpc::Messenger>& messenger,
-    const uint64_t timeout_ms,
+    std::chrono::steady_clock::duration timeout,
     RaftPeerPB* remote_peer);
 
 }  // namespace consensus

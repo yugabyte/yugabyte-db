@@ -104,6 +104,10 @@ class HostPort {
   uint16_t port_;
 };
 
+inline std::ostream& operator<<(std::ostream& out, const HostPort& value) {
+  return out << value.ToString();
+}
+
 struct HostPortHash {
   size_t operator()(const HostPort& hostPort) const {
     return hash<std::string>()(std::to_string(hostPort.port()) + hostPort.host());

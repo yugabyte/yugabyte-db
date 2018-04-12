@@ -302,7 +302,7 @@ class RaftConsensus : public Consensus,
 
   // Update the peers and queue to be consistent with a new active configuration.
   // Should only be called by the leader.
-  CHECKED_STATUS RefreshConsensusQueueAndPeersUnlocked();
+  void RefreshConsensusQueueAndPeersUnlocked();
 
   // Makes the peer become leader.
   // Returns OK once the change config operation that has this peer as leader
@@ -431,7 +431,7 @@ class RaftConsensus : public Consensus,
 
   // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
   struct RunLeaderElectionState {
-    gscoped_ptr<PeerProxy> proxy;
+    PeerProxyPtr proxy;
     RunLeaderElectionRequestPB req;
     RunLeaderElectionResponsePB resp;
     rpc::RpcController rpc;
