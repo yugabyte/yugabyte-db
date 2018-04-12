@@ -208,15 +208,15 @@ Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
   return Status::OK();
 }
 
-Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port) {
-  host_port->set_host(host_port_pb.host());
-  host_port->set_port(host_port_pb.port());
-  return Status::OK();
+HostPort HostPortFromPB(const HostPortPB& host_port_pb) {
+  HostPort host_port;
+  host_port.set_host(host_port_pb.host());
+  host_port.set_port(host_port_pb.port());
+  return host_port;
 }
 
 Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint) {
-  HostPort host_port;
-  RETURN_NOT_OK(HostPortFromPB(host_portpb, &host_port));
+  HostPort host_port = HostPortFromPB(host_portpb);
   return EndpointFromHostPort(host_port, endpoint);
 }
 
@@ -378,7 +378,8 @@ Status FindLeaderHostPort(const RepeatedPtrField<ServerEntryPB>& entries,
                               entry.ShortDebugString()));
     }
     if (entry.role() == consensus::RaftPeerPB::LEADER) {
-      return HostPortFromPB(entry.registration().rpc_addresses(0), leader_hostport);
+      *leader_hostport = HostPortFromPB(entry.registration().rpc_addresses(0));
+      return Status::OK();
     }
   }
   return STATUS(NotFound, "No leader found.");

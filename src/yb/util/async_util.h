@@ -122,8 +122,8 @@ class Synchronizer {
 template <class Result, class Functor>
 std::future<Result> MakeFuture(const Functor& functor) {
   auto promise = std::make_shared<std::promise<Result>>();
-  functor([promise](const Result& result) {
-    promise->set_value(result);
+  functor([promise](Result result) {
+    promise->set_value(std::move(result));
   });
   return promise->get_future();
 }

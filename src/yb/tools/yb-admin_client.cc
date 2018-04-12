@@ -197,8 +197,7 @@ Status ClusterAdminClient::SetTabletPeerInfo(
   CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
         .ShortDebugString();
 
-  HostPort peer_hostport;
-  RETURN_NOT_OK(HostPortFromPB(rpc_addresses.Get(0), &peer_hostport));
+  HostPort peer_hostport = HostPortFromPB(rpc_addresses.Get(0));
   std::vector<Endpoint> peer_addrs;
   RETURN_NOT_OK(peer_hostport.ResolveAddresses(&peer_addrs));
   CHECK(!peer_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
@@ -620,7 +619,7 @@ Status ClusterAdminClient::GetFirstRpcAddressForTS(
       if (!server.has_registration() || server.registration().common().rpc_addresses_size() == 0) {
         break;
       }
-      RETURN_NOT_OK(HostPortFromPB(server.registration().common().rpc_addresses(0), hp));
+      *hp = HostPortFromPB(server.registration().common().rpc_addresses(0));
       return Status::OK();
     }
   }

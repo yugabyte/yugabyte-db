@@ -110,7 +110,7 @@ Result<Endpoint> ParseEndpoint(const std::string& input, uint16_t default_port) 
   auto address_str = input.substr(address_begin, address_end - address_begin);
   address = IpAddress::from_string(address_str, ec);
   if (ec) {
-    return STATUS_SUBSTITUTE(NetworkError, "Failed to parse $0: $1", input, ec.message());
+    return STATUS_FORMAT(NetworkError, "Failed to parse $0: $1", input, ec);
   }
   if (pos == std::string::npos) {
     return Endpoint(address, default_port);

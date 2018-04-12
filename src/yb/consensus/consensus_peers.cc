@@ -50,7 +50,9 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/messenger.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -86,34 +88,27 @@ using rpc::Messenger;
 using rpc::RpcController;
 using strings::Substitute;
 
-Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
-                           const string& tablet_id,
-                           const string& leader_uuid,
-                           PeerMessageQueue* queue,
-                           ThreadPoolToken* raft_pool_token,
-                           gscoped_ptr<PeerProxy> proxy,
-                           Consensus* consensus,
-                           std::unique_ptr<Peer>* peer) {
+Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
+                                    const string& tablet_id,
+                                    const string& leader_uuid,
+                                    PeerMessageQueue* queue,
+                                    ThreadPoolToken* raft_pool_token,
+                                    PeerProxyPtr proxy,
+                                    Consensus* consensus) {
 
-  std::unique_ptr<Peer> new_peer(new Peer(peer_pb,
-                                          tablet_id,
-                                          leader_uuid,
-                                          proxy.Pass(),
-                                          queue,
-                                          raft_pool_token,
-                                          consensus));
+  PeerPtr new_peer(new Peer(
+      peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus));
   RETURN_NOT_OK(new_peer->Init());
-  peer->reset(new_peer.release());
-  return Status::OK();
+  return Result<PeerPtr>(std::move(new_peer));
 }
 
 Peer::Peer(
-    const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, gscoped_ptr<PeerProxy> proxy,
+    const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
     PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
-      proxy_(proxy.Pass()),
+      proxy_(std::move(proxy)),
       queue_(queue),
       sem_(1),
       heartbeater_(
@@ -402,10 +397,9 @@ Peer::~Peer() {
   Close();
 }
 
-RpcPeerProxy::RpcPeerProxy(gscoped_ptr<HostPort> hostport,
-                           gscoped_ptr<ConsensusServiceProxy> consensus_proxy)
-    : hostport_(hostport.Pass()),
-      consensus_proxy_(consensus_proxy.Pass()) {
+RpcPeerProxy::RpcPeerProxy(HostPort hostport,
+                           ConsensusServiceProxyPtr consensus_proxy)
+    : hostport_(hostport), consensus_proxy_(std::move(consensus_proxy)) {
 }
 
 void RpcPeerProxy::UpdateAsync(const ConsensusRequestPB* request,
@@ -450,18 +444,38 @@ RpcPeerProxy::~RpcPeerProxy() {}
 
 namespace {
 
-Status CreateConsensusServiceProxyForHost(const shared_ptr<Messenger>& messenger,
-                                          const HostPort& hostport,
-                                          gscoped_ptr<ConsensusServiceProxy>* new_proxy) {
-  std::vector<Endpoint> addrs;
-  RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
-  if (addrs.size() > 1) {
-    LOG(WARNING) << "Peer address '" << hostport.ToString() << "' "
-                 << "resolves to " << addrs.size() << " different addresses. Using "
-                 << addrs[0];
-  }
-  new_proxy->reset(new ConsensusServiceProxy(messenger, addrs[0]));
-  return Status::OK();
+typedef std::function<void(Result<ConsensusServiceProxyPtr>)> ConsensusServiceProxyWaiter;
+
+void CreateConsensusServiceProxyForHost(const shared_ptr<Messenger>& messenger,
+                                        const HostPort& hostport,
+                                        ConsensusServiceProxyWaiter waiter) {
+  typedef boost::asio::ip::tcp::resolver Resolver;
+  auto resolver = std::make_shared<Resolver>(messenger->io_service());
+  resolver->async_resolve(
+      Resolver::query(hostport.host(), "" /* service */),
+      [waiter, messenger, hostport, resolver](
+          const boost::system::error_code& error, const auto& entries) {
+    if (error) {
+      waiter(STATUS_FORMAT(NetworkError, "Resolve failed: $0", error.message()));
+      return;
+    }
+    std::vector<Endpoint> endpoints;
+    for (const auto& entry : entries) {
+      if (entry.endpoint().address().is_v4()) {
+        endpoints.push_back(Endpoint(entry.endpoint().address(), hostport.port()));
+      }
+    }
+    if (endpoints.empty()) {
+      waiter(STATUS(NetworkError, "No endpoints resolved"));
+      return;
+    }
+    if (endpoints.size() > 1) {
+      LOG(WARNING) << "Peer address '" << hostport.ToString() << "' "
+                   << "resolves to " << yb::ToString(endpoints) << " different addresses. Using "
+                   << endpoints[0];
+    }
+    waiter(std::make_unique<ConsensusServiceProxy>(messenger, endpoints[0]));
+  });
 }
 
 } // anonymous namespace
@@ -469,39 +483,57 @@ Status CreateConsensusServiceProxyForHost(const shared_ptr<Messenger>& messenger
 RpcPeerProxyFactory::RpcPeerProxyFactory(shared_ptr<Messenger> messenger)
     : messenger_(std::move(messenger)) {}
 
-Status RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb,
-                                     gscoped_ptr<PeerProxy>* proxy) {
-  gscoped_ptr<HostPort> hostport(new HostPort);
-  RETURN_NOT_OK(HostPortFromPB(peer_pb.last_known_addr(), hostport.get()));
-  gscoped_ptr<ConsensusServiceProxy> new_proxy;
-  RETURN_NOT_OK(CreateConsensusServiceProxyForHost(messenger_, *hostport, &new_proxy));
-  proxy->reset(new RpcPeerProxy(hostport.Pass(), new_proxy.Pass()));
-  return Status::OK();
+void RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) {
+  auto hostport = HostPortFromPB(peer_pb.last_known_addr());
+  CreateConsensusServiceProxyForHost(
+      messenger_, hostport, [hostport, waiter](Result<ConsensusServiceProxyPtr> proxy) {
+    if (!proxy.ok()) {
+      waiter(proxy.status());
+      return;
+    }
+    auto peer_proxy = std::make_unique<RpcPeerProxy>(hostport, std::move(*proxy));
+    waiter(std::move(peer_proxy));
+  });
 }
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
 
 Status SetPermanentUuidForRemotePeer(
     const shared_ptr<Messenger>& messenger,
-    const uint64_t timeout_ms,
+    std::chrono::steady_clock::duration timeout,
     RaftPeerPB* remote_peer) {
   DCHECK(!remote_peer->has_permanent_uuid());
-  HostPort hostport;
-  RETURN_NOT_OK(HostPortFromPB(remote_peer->last_known_addr(), &hostport));
-  gscoped_ptr<ConsensusServiceProxy> proxy;
-  RETURN_NOT_OK(CreateConsensusServiceProxyForHost(messenger, hostport, &proxy));
+  HostPort hostport = HostPortFromPB(remote_peer->last_known_addr());
+  auto deadline = std::chrono::steady_clock::now() + timeout;
+  ConsensusServiceProxyPtr proxy;
+
+  BackoffWaiter waiter(deadline);
+  for (;;) {
+    auto proxy_future = MakeFuture<Result<ConsensusServiceProxyPtr>>(
+        [messenger, hostport](auto callback) {
+      CreateConsensusServiceProxyForHost(messenger, hostport, callback);
+    });
+    if (proxy_future.wait_until(deadline) != std::future_status::ready) {
+      break;
+    }
+    auto result = proxy_future.get();
+    if (result.ok()) {
+      LOG(INFO) << "Created proxy for: " << hostport.ToString();
+      proxy = std::move(*result);
+      break;
+    }
+    LOG(WARNING) << "Failed to resolve " << hostport.ToString() << ": " << result.status();
+    if (!waiter.Wait()) {
+      return STATUS_FORMAT(TimedOut, "Timeout resolving $0, waited: $1", hostport, timeout);
+    }
+  }
+
   GetNodeInstanceRequestPB req;
   GetNodeInstanceResponsePB resp;
   rpc::RpcController controller;
 
-  // TODO generalize this exponential backoff algorithm, as we do the same thing in
-  // catalog_manager.cc (AsyncTabletRequestTask::RpcCallBack).
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_ms));
-  int attempt = 1;
-  // Normal rand is seeded by default with 1. Using the same for rand_r seed.
-  unsigned int seed = 1;
-  while (true) {
+  waiter.Restart();
+  for (;;) {
     VLOG(2) << "Getting uuid from remote peer. Request: " << req.ShortDebugString();
 
     controller.Reset();
@@ -513,25 +545,14 @@ Status SetPermanentUuidForRemotePeer(
       s = controller.status();
     }
 
-    LOG(WARNING) << "Error getting permanent uuid from config peer " << hostport.ToString() << ": "
-                 << s.ToString();
-    MonoTime now = MonoTime::Now();
-    if (now.ComesBefore(deadline)) {
-      int64_t remaining_ms = deadline.GetDeltaSince(now).ToMilliseconds();
-      int64_t base_delay_ms = 1 << (attempt + 3); // 1st retry delayed 2^4 ms, 2nd 2^5, etc..
-      int64_t jitter_ms = rand_r(&seed) % 50; // Add up to 50ms of additional random delay.
-      int64_t delay_ms = std::min<int64_t>(base_delay_ms + jitter_ms, remaining_ms);
-      VLOG(1) << "Sleeping " << delay_ms << " ms. before retrying to get uuid from remote peer...";
-      SleepFor(MonoDelta::FromMilliseconds(delay_ms));
-      LOG(INFO) << "Retrying to get permanent uuid for remote peer: "
-          << remote_peer->ShortDebugString() << " attempt: " << attempt++;
-    } else {
-      s = STATUS(TimedOut, Substitute("Getting permanent uuid from $0 timed out after $1 ms.",
-                                      hostport.ToString(),
-                                      timeout_ms),
-                           s.ToString());
-      return s;
+    LOG(WARNING) << "Error getting permanent uuid from config peer " << hostport << ": " << s;
+    if (!waiter.Wait()) {
+      return STATUS_FORMAT(TimedOut, "Getting permanent uuid from $0 timed out after $1: $2",
+                           hostport, timeout, s);
     }
+
+    LOG(INFO) << "Retrying to get permanent uuid for remote peer: "
+        << remote_peer->ShortDebugString() << " attempt: " << waiter.attempt();
   }
   remote_peer->set_permanent_uuid(resp.node_instance().permanent_uuid());
   return Status::OK();

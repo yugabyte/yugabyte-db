@@ -114,7 +114,7 @@ class MockQueue : public PeerMessageQueue {
 class MockPeerManager : public PeerManager {
  public:
   MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr) {}
-  MOCK_METHOD1(UpdateRaftConfig, Status(const consensus::RaftConfigPB& config));
+  MOCK_METHOD1(UpdateRaftConfig, void(const consensus::RaftConfigPB& config));
   MOCK_METHOD1(SignalRequest, void(RequestTriggerMode trigger_mode));
   MOCK_METHOD0(Close, void());
 };
@@ -394,8 +394,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   SetUpConsensus();
   SetUpGeneralExpectations();
   EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
-      .Times(1)
-      .WillOnce(Return(Status::OK()));
+      .Times(1);
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _))
@@ -432,8 +431,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   SetUpConsensus();
   SetUpGeneralExpectations();
   EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
-      .Times(2)
-      .WillRepeatedly(Return(Status::OK()));
+      .Times(2);
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _))
@@ -527,7 +525,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
     InSequence dummy;
     // Peer manager gets updated with the new set of peers to send stuff to.
     EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
-        .Times(1).WillOnce(Return(Status::OK()));
+        .Times(1);
     // The no-op should be appended to the queue.
     // One more op will be appended for the election.
     EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
@@ -600,8 +598,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
   EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
-      .Times(1)
-      .WillRepeatedly(Return(Status::OK()));
+      .Times(1);
 
   // We'll append to the queue 12 times, the initial noop txn + 10 initial ops while leader
   // and the new leader's update, when we're overwriting operations.

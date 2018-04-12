@@ -119,6 +119,7 @@ set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
   atomic.cc
+  backoff_waiter.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc

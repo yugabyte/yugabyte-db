@@ -63,7 +63,7 @@ Status StatusFromPB(const AppStatusPB& pb);
 Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 
 // Returns the HostPort created from the specified protobuf.
-Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port);
+HostPort HostPortFromPB(const HostPortPB& host_port_pb);
 
 // Returns an Endpoint from HostPortPB.
 CHECKED_STATUS EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint);

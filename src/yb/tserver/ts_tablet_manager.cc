@@ -624,8 +624,7 @@ Status HandleReplacingStaleTablet(
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   const string& tablet_id = req.tablet_id();
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
-  HostPort bootstrap_peer_addr;
-  RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
+  HostPort bootstrap_peer_addr = HostPortFromPB(req.bootstrap_peer_addr());
   int64_t leader_term = req.caller_term();
 
   const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());

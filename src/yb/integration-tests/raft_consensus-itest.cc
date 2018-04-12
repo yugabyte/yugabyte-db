@@ -481,8 +481,8 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   auto messenger = ASSERT_RESULT(builder.Build());
 
   // Set a decent timeout for allowing the masters to find eachother.
-  const uint64_t kTimeoutMs = 30000;
-  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(messenger, kTimeoutMs, &peer));
+  const auto kTimeout = 30s;
+  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(messenger, kTimeout, &peer));
   ASSERT_EQ(expected_uuid, peer.permanent_uuid());
 }
 
