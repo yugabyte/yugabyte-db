@@ -334,7 +334,7 @@ void LeaderElection::CheckForDecision() {
   // Respond outside of the lock.
   if (to_respond) {
     // This is thread-safe since result_ is write-once.
-    decision_callback_.Run(*result_);
+    decision_callback_(*result_);
   }
 }
 

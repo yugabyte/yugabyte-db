@@ -98,7 +98,7 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 Status RemoteBootstrapSession::ChangeRole() {
   CHECK(succeeded_);
 
-  scoped_refptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
+  shared_ptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
   // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
   // null.
@@ -147,7 +147,7 @@ Status RemoteBootstrapSession::ChangeRole() {
                   << "in bootstrap session " << session_id_;
 
         // If another ChangeConfig is being processed, our request will be rejected.
-        return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
+        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
         return STATUS(IllegalState, Substitute("Unable to change role for peer $0 in config for "
@@ -163,7 +163,7 @@ Status RemoteBootstrapSession::ChangeRole() {
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
-  scoped_refptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
+  shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   if (!consensus) {
     tablet::TabletStatePB tablet_state = tablet_peer_->state();
     return STATUS(IllegalState,

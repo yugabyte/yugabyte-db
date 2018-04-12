@@ -158,7 +158,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   consensus::Consensus* consensus() const;
 
-  scoped_refptr<consensus::Consensus> shared_consensus() const;
+  std::shared_ptr<consensus::Consensus> shared_consensus() const;
 
   TabletClass* tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -327,7 +327,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   scoped_refptr<log::Log> log_;
   std::shared_ptr<TabletClass> tablet_;
   std::shared_ptr<rpc::Messenger> messenger_;
-  scoped_refptr<consensus::RaftConsensus> consensus_;
+  std::shared_ptr<consensus::RaftConsensus> consensus_;
   gscoped_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
 

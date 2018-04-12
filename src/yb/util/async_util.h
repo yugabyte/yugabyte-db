@@ -81,6 +81,17 @@ class Synchronizer {
     return Bind(&Synchronizer::StatusCB, Unretained(this));
   }
 
+  StdStatusCallback AsStdStatusCallback() {
+    DCHECK(!assigned_);
+
+    // Synchronizers are often declared on the stack, so it doesn't make
+    // sense for a callback to take a reference to its synchronizer.
+    //
+    // Note: this means the returned callback _must_ go out of scope before
+    // its synchronizer.
+    return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
+  }
+
   boost::function<void(const Status&)> AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
   }

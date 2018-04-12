@@ -129,7 +129,7 @@ class RemoteBootstrapClient {
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
   // request was propagated.
   CHECKED_STATUS VerifyChangeRoleSucceeded(
-      const scoped_refptr<consensus::Consensus> &shared_consensus);
+      const std::shared_ptr<consensus::Consensus>& shared_consensus);
 
  protected:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);

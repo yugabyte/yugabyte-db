@@ -215,7 +215,7 @@ using tserver::TabletServerErrorPB;
 // Special string that represents any known leader to the failure detector.
 static const char* const kTimerId = "election-timer";
 
-scoped_refptr<RaftConsensus> RaftConsensus::Create(
+shared_ptr<RaftConsensus> RaftConsensus::Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
     const RaftPeerPB& local_peer_pb,
@@ -261,7 +261,7 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
                     raft_pool_token.get(),
                     log));
 
-  return make_scoped_refptr(new RaftConsensus(
+  return std::make_shared<RaftConsensus>(
       options,
       std::move(cmeta),
       rpc_factory.Pass(),
@@ -276,7 +276,7 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      std::move(lost_leadership_listener)));
+      std::move(lost_leadership_listener));
 }
 
 RaftConsensus::RaftConsensus(
@@ -531,7 +531,8 @@ Status RaftConsensus::DoStartElection(
           std::move(counter),
           timeout,
           suppress_vote_request,
-          Bind(&RaftConsensus::ElectionCallback, this, originator_uuid)));
+          std::bind(&RaftConsensus::ElectionCallback, shared_from_this(), originator_uuid,
+                    std::placeholders::_1)));
 
       // Clear the pending election op id so that we won't start the same pending election again.
       state_->ClearPendingElectionOpIdUnlocked();
@@ -821,10 +822,10 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   replicate->set_hybrid_time(clock_->Now().ToUint64());
 
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate));
-  round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                             Unretained(this),
-                                             Unretained(round.get()),
-                                             Bind(&DoNothingStatusCB)));
+  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
+                                             this,
+                                             round.get(),
+                                             &DoNothingStatusCB, std::placeholders::_1));
   RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
 
   return Status::OK();
@@ -1078,8 +1079,8 @@ void RaftConsensus::NotifyFailedFollower(const string& uuid,
   }
 
   // Run config change on thread pool after dropping ReplicaState lock.
-  WARN_NOT_OK(raft_pool_token_->SubmitClosure(Bind(&RaftConsensus::TryRemoveFollowerTask,
-                                               this, uuid, committed_config, reason)),
+  WARN_NOT_OK(raft_pool_token_->SubmitFunc(std::bind(&RaftConsensus::TryRemoveFollowerTask,
+                                               shared_from_this(), uuid, committed_config, reason)),
               state_->LogPrefixThreadSafe() + "Unable to start RemoteFollowerTask");
 }
 
@@ -1095,7 +1096,7 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
             << uuid << " from the Raft config at commit index "
             << committed_config.opid_index() << ". Reason: " << reason;
   boost::optional<TabletServerErrorPB::Code> error_code;
-  WARN_NOT_OK(ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code),
+  WARN_NOT_OK(ChangeConfig(req, &DoNothingStatusCB, &error_code),
               state_->LogPrefixThreadSafe() + "Unable to remove follower " + uuid);
 }
 
@@ -1936,7 +1937,7 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
 }
 
 Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
-                                   const StatusCallback& client_cb,
+                                   const StdStatusCallback& client_cb,
                                    boost::optional<TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_type())) {
     return STATUS(InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
@@ -2101,10 +2102,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         ReplicateConfigChangeUnlocked(cc_replicate,
                                       new_config,
                                       type,
-                                      Bind(&RaftConsensus::MarkDirtyOnSuccess,
-                                           Unretained(this),
-                                           context,
-                                           client_cb)));
+                                      std::bind(&RaftConsensus::MarkDirtyOnSuccess,
+                                           this,
+                                           std::move(context),
+                                           std::move(client_cb), std::placeholders::_1)));
   }
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
@@ -2187,13 +2188,17 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
     context = std::make_shared<StateChangeContext>(StateChangeReason::FOLLOWER_NO_OP_COMPLETE);
   }
 
-  round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                             Unretained(this),
-                                             Unretained(round.get()),
-                                             Bind(&RaftConsensus::MarkDirtyOnSuccess,
-                                                  Unretained(this),
-                                                  context,
-                                                  Bind(&DoNothingStatusCB))));
+  StdStatusCallback client_cb =
+      std::bind(&RaftConsensus::MarkDirtyOnSuccess,
+                this,
+                context,
+                &DoNothingStatusCB,
+                std::placeholders::_1);
+  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
+                                                  this,
+                                                  round.get(),
+                                                  std::move(client_cb),
+                                                  std::placeholders::_1));
   return state_->AddPendingOperation(round);
 }
 
@@ -2433,12 +2438,12 @@ void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
 Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
-                                                    const StatusCallback& client_cb) {
+                                                    StdStatusCallback client_cb) {
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate_ref));
-  round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
-                                             Unretained(this),
-                                             Unretained(round.get()),
-                                             client_cb));
+  round->SetConsensusReplicatedCallback(std::bind(&RaftConsensus::NonTxRoundReplicationFinished,
+                                                  this,
+                                                  round.get(),
+                                                  std::move(client_cb), std::placeholders::_1));
   LOG(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
             << ", type = " << ChangeConfigType_Name(type);
 
@@ -2547,8 +2552,9 @@ void RaftConsensus::ElectionCallback(const std::string& originator_uuid,
   // The election callback runs on a reactor thread, so we need to defer to our
   // threadpool. If the threadpool is already shut down for some reason, it's OK --
   // we're OK with the callback never running.
-  WARN_NOT_OK(raft_pool_token_->SubmitClosure(
-              Bind(&RaftConsensus::DoElectionCallback, this, originator_uuid, result)),
+  WARN_NOT_OK(raft_pool_token_->SubmitFunc(
+              std::bind(&RaftConsensus::DoElectionCallback, shared_from_this(), originator_uuid,
+                        result)),
               state_->LogPrefixThreadSafe() + "Unable to run election callback");
 }
 
@@ -2698,16 +2704,16 @@ void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
 }
 
 void RaftConsensus::MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> context,
-                                       const StatusCallback& client_cb,
+                                       const StdStatusCallback& client_cb,
                                        const Status& status) {
   if (PREDICT_TRUE(status.ok())) {
     MarkDirty(context);
   }
-  client_cb.Run(status);
+  client_cb(status);
 }
 
 void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
-                                                  const StatusCallback& client_cb,
+                                                  const StdStatusCallback& client_cb,
                                                   const Status& status) {
   DCHECK(state_->IsLocked());
   OperationType op_type = round->replicate_msg()->op_type();
@@ -2730,7 +2736,7 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
     }
   }
 
-  client_cb.Run(status);
+  client_cb(status);
 
   // Set 'Leader is ready to serve' flag only for commited NoOp operation
   // and only if the term is up-to-date.

@@ -81,13 +81,14 @@ typedef std::function<void()> LostLeadershipListener;
 
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
-class RaftConsensus : public Consensus,
+class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
+                      public Consensus,
                       public PeerMessageQueueObserver,
                       public SafeOpIdWaiter {
  public:
   class ConsensusFaultHooks;
 
-  static scoped_refptr<RaftConsensus> Create(
+  static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
     const RaftPeerPB& local_peer_pb,
@@ -154,7 +155,7 @@ class RaftConsensus : public Consensus,
                              VoteResponsePB* response) override;
 
   CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
-                              const StatusCallback& client_cb,
+                              const StdStatusCallback& client_cb,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               override;
 
@@ -231,7 +232,7 @@ class RaftConsensus : public Consensus,
   // type of message it is.
   // The 'client_cb' will be invoked at the end of this execution.
   virtual void NonTxRoundReplicationFinished(ConsensusRound* round,
-                                             const StatusCallback& client_cb,
+                                             const StdStatusCallback& client_cb,
                                              const Status& status);
 
   // As a leader, append a new ConsensusRound to the queue.
@@ -298,7 +299,7 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
                                                const RaftConfigPB& new_config,
                                                ChangeConfigType type,
-                                               const StatusCallback& client_cb);
+                                               StdStatusCallback client_cb);
 
   // Update the peers and queue to be consistent with a new active configuration.
   // Should only be called by the leader.
@@ -500,7 +501,7 @@ class RaftConsensus : public Consensus,
   // Calls MarkDirty() if 'status' == OK. Then, always calls 'client_cb' with
   // 'status' as its argument.
   void MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> context,
-                          const StatusCallback& client_cb,
+                          const StdStatusCallback& client_cb,
                           const Status& status);
 
   // Attempt to remove the follower with the specified 'uuid' from the config,
