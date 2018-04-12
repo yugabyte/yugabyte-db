@@ -31,12 +31,11 @@
 //
 package org.yb.client;
 
-import com.google.common.net.HostAndPort;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.Map;
+import java.util.Collections;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +49,7 @@ import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 import org.yb.tserver.Tserver;
 
+import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Deferred;
 
 /**
@@ -621,13 +621,89 @@ public class YBClient implements AutoCloseable {
     return true;
   }
 
+  public interface Condition {
+    boolean get() throws Exception;
+  }
+
   /**
-  * Wait for the specific server to come online.
-  * @param hp the HostAndPort of the server
-  * @param timeoutMs the amount of time, in MS, to wait
-  * @return true if the server responded to pings in the given time, false otherwise
-  */
-  public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
+   * Checks the ping of the given ip and port.
+   */
+  private class ServerCondition implements Condition {
+    private HostAndPort hp;
+    public ServerCondition(HostAndPort hp) {
+      this.hp = hp;
+    }
+    @Override
+    public boolean get() throws Exception {
+      return ping(hp.getHostText(), hp.getPort());
+    }
+  }
+
+  /**
+   * Checks whether the IsLoadBalancedResponse has no error.
+   */
+  private class LoadBalanceCondition implements Condition {
+    private int numServers;
+    public LoadBalanceCondition(int numServers) {
+      this.numServers = numServers;
+    }
+    @Override
+    public boolean get() throws Exception {
+      IsLoadBalancedResponse resp = getIsLoadBalanced(numServers);
+      return !resp.hasError();
+    }
+  }
+
+  /**
+   * Checks whether the leader counts of tablet servers match the expected.
+   */
+  private class LeaderLoadBalanceCondition implements Condition {
+    private YBTable table;
+    private List<Integer> leaderCountsExpected;
+    private long deadline;
+    public LeaderLoadBalanceCondition(YBTable table,
+                                      List<Integer> leaderCountsExpected,
+                                      long deadline) {
+      this.table = table;
+      this.leaderCountsExpected = leaderCountsExpected;
+      this.deadline = deadline;
+    }
+    @Override
+    public boolean get() throws Exception {
+      Map<String, Integer> leaderMap = table.getLeaderCountsPerPlacementZone(deadline);
+      List<Integer>leaderCounts = new ArrayList<Integer>(leaderMap.values());
+      Collections.sort(leaderCounts);
+      return leaderCounts.equals(leaderCountsExpected);
+    }
+  }
+
+  private class ReplicaMapCondition implements Condition {
+    private YBTable table;
+    Map<String, List<List<Integer>>> replicaMapExpected;
+    private long deadline;
+    public ReplicaMapCondition(YBTable table,
+                               Map<String, List<List<Integer>>> replicaMapExpected,
+                               long deadline) {
+      this.table = table;
+      this.replicaMapExpected = replicaMapExpected;
+      this.deadline = deadline;
+    }
+    @Override
+    public boolean get() throws Exception {
+      Map<String, List<List<Integer>>> replicaMap =
+          table.getMemberTypeCountsForEachTSType(deadline);
+      return replicaMap.equals(replicaMapExpected);
+    }
+  }
+
+  /**
+   * Helper method that loops on a condition every 500ms until it returns true or the
+   * operation times out.
+   * @param condition the Condition which implements a boolean get() method.
+   * @param timeoutMs the amount of time, in MS, to wait.
+   * @return true if the condition is true within the time frame, false otherwise.
+   */
+  private boolean waitForCondition(Condition condition, final long timeoutMs) {
     Exception finalException = null;
     long start = System.currentTimeMillis();
     int numErrors = 0;
@@ -635,7 +711,7 @@ public class YBClient implements AutoCloseable {
     String errorMessage = null;
     do {
       try {
-        if (ping(hp.getHostText(), hp.getPort())) {
+        if (condition.get()) {
           return true;
         }
       } catch (Exception e) {
@@ -654,7 +730,7 @@ public class YBClient implements AutoCloseable {
 
       numIters++;
       if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-        LOG.info("Tried load balance rpc {} times so far.", numIters);
+        LOG.info("Tried operation {} times so far.", numIters);
       }
 
       // Need to wait even when ping has an exception, so the sleep is outside the above try block.
@@ -664,8 +740,8 @@ public class YBClient implements AutoCloseable {
     } while (System.currentTimeMillis() < start + timeoutMs);
 
     if (errorMessage == null) {
-      LOG.error("Timed out waiting for server {} to come online. Final exception was {}.",
-                hp.toString(), finalException != null ? finalException.toString() : "none");
+      LOG.error("Timed out waiting for operation. Final exception was {}.",
+                finalException != null ? finalException.toString() : "none");
     } else {
       LOG.error(errorMessage);
     }
@@ -676,58 +752,40 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Wait for the specific server to come online.
+  * @param hp the HostAndPort of the server
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the server responded to pings in the given time, false otherwise
+  */
+  public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
+    Condition serverCondition = new ServerCondition(hp);
+    return waitForCondition(serverCondition, timeoutMs);
+  }
+
+  /**
   * Wait for the tablet load to be balanced by master leader.
   * @param timeoutMs the amount of time, in MS, to wait
   * @param numServers expected number of servers which need to balanced.
   * @return true if the master leader does not return any error balance check.
   */
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
-    Exception finalException = null;
-    long start = System.currentTimeMillis();
-    int numErrors = 0;
-    int numIters = 0;
-    String errorMessage = null;
-    do {
-      try {
-        IsLoadBalancedResponse resp = getIsLoadBalanced(numServers);
-        if (!resp.hasError()) {
-          return true;
-        }
-      } catch (Exception e) {
-        // We will get exceptions if we cannot connect to the other end. Catch them and save for
-        // final debug if we never succeed.
-        finalException = e;
-        numErrors++;
-        if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
-          LOG.warn("Hit {} errors so far. Latest is : {}.", numErrors, finalException.toString());
-        }
-        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
-          errorMessage = "Hit too many errors, final exception is " + finalException.toString();
-          break;
-        }
-      }
+    Condition loadBalanceCondition = new LoadBalanceCondition(numServers);
+    return waitForCondition(loadBalanceCondition, timeoutMs);
+  }
 
-      numIters++;
-      if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-        LOG.info("Tried load balance rpc {} times so far.", numIters);
-      }
-
-      // Need to wait even when check has an exception, so sleep is outside the above try block.
-      try {
-        Thread.sleep(AsyncYBClient.SLEEP_TIME);
-      } catch (InterruptedException e) {}
-    } while ((timeoutMs == Long.MAX_VALUE) || System.currentTimeMillis() < start + timeoutMs);
-
-    if (errorMessage == null) {
-      LOG.error("Timed out waiting for load to balance. Final exception was {}.",
-                finalException != null ? finalException.toString() : "none");
-    } else {
-      LOG.error(errorMessage);
-    }
-
-    LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
-
-    return false;
+  /**
+   * Wait for the table leader count to match the expected.
+   * @param timeoutMs the amount of time, in MS, to wait.
+   * @param table the table to wait for leader balancing.
+   * @param leaderCountsExpected the list of expected leader counts, sorted.
+   * @return true if the leader count matches within timeoutMs, false otherwise.
+   */
+  public boolean waitForExpectedLeaderLoadBalance(final long timeoutMs,
+                                                  YBTable table,
+                                                  List<Integer> leaderCountsExpected) {
+    Condition leaderLoadBalanceCondition =
+        new LeaderLoadBalanceCondition(table, leaderCountsExpected, timeoutMs);
+    return waitForCondition(leaderLoadBalanceCondition, timeoutMs);
   }
 
   /**
@@ -738,60 +796,13 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs number of milliseconds before timing out.
    * @param table the table to wait for load balancing.
    * @param replicaMapExpected the expected map between cluster uuid and live, read replica count.
-   * @param deadline for each call to getMemberTypeCountsForEachTSType
    * @return true if the read only replica count for the table matches the expected within the
    * expected time frame, false otherwise.
    */
   public boolean waitForExpectedReplicaMap(final long timeoutMs, YBTable table,
-                                            Map<String, List<List<Integer>>> replicaMapExpected,
-                                            long deadline) {
-    Exception finalException = null;
-    Map<String, List<List<Integer>>> replicaMap = null;
-    long start = System.currentTimeMillis();
-    int numErrors = 0;
-    int numIters = 0;
-    String errorMessage = null;
-    do {
-      try {
-        replicaMap = table.getMemberTypeCountsForEachTSType(deadline);
-        if (replicaMap.equals(replicaMapExpected)) {
-          return true;
-        }
-      } catch (Exception e) {
-        finalException = e;
-        numErrors++;
-        if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
-          LOG.warn("Hit {} errors so far. Latest is : {}.",
-              numErrors, finalException.toString());
-        }
-        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
-          errorMessage = "Hit too many errors, final exception is " +
-                         finalException.toString();
-          break;
-        }
-      }
-
-      numIters++;
-      if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-        LOG.info("Tried matching replica map {} times so far.", numIters);
-      }
-      // Need to wait even when check has an exception, so sleep is outside the above try block.
-
-      try {
-        Thread.sleep(AsyncYBClient.SLEEP_TIME);
-      } catch (InterruptedException e) {}
-    } while ((timeoutMs == Long.MAX_VALUE) || System.currentTimeMillis() < start + timeoutMs);
-
-    if (errorMessage == null) {
-      LOG.error("Timed out waiting for expected replica map. Final exception was {}.",
-                finalException != null ? finalException.toString() : "none");
-    } else {
-      LOG.error(errorMessage);
-    }
-
-    LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
-
-    return false;
+                                            Map<String, List<List<Integer>>> replicaMapExpected) {
+    Condition replicaMapCondition = new ReplicaMapCondition(table, replicaMapExpected, timeoutMs);
+    return waitForCondition(replicaMapCondition, timeoutMs);
   }
 
   /**
