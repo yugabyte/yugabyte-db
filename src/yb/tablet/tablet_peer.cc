@@ -721,7 +721,7 @@ Status TabletPeer::StartReplicaOperation(
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      Bind(&OperationDriver::ReplicationFinished, Unretained(driver.get())));
+      std::bind(&OperationDriver::ReplicationFinished, driver.get(), std::placeholders::_1));
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
@@ -762,7 +762,7 @@ consensus::Consensus* TabletPeer::consensus() const {
   return consensus_.get();
 }
 
-scoped_refptr<consensus::Consensus> TabletPeer::shared_consensus() const {
+shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_;
 }
@@ -840,7 +840,7 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
 }
 
 consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
-  scoped_refptr<consensus::Consensus> consensus;
+  shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;

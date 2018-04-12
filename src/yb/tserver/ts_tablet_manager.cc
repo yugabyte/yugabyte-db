@@ -794,7 +794,7 @@ Status TSTabletManager::DeleteTablet(
   // restarting the tablet if the local replica committed a higher config
   // change op during that time, or potentially something else more invasive.
   if (cas_config_opid_index_less_or_equal && !tablet_deleted) {
-    scoped_refptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
+    shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
     if (!consensus) {
       *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
       return STATUS(IllegalState, "Consensus not available. Tablet shutting down");
@@ -1176,7 +1176,7 @@ void TSTabletManager::CreateReportedTabletPB(const string& tablet_id,
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
   // We cannot get consensus state information unless the TabletPeer is running.
-  scoped_refptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
+  shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
   if (consensus) {
     *reported_tablet->mutable_committed_consensus_state() =
         consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);

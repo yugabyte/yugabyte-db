@@ -395,25 +395,25 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
   gscoped_ptr<ThreadPool> pool_;
 };
 
-typedef std::unordered_map<std::string, scoped_refptr<RaftConsensus> > TestPeerMap;
+typedef std::unordered_map<std::string, std::shared_ptr<RaftConsensus> > TestPeerMap;
 
 // Thread-safe manager for list of peers being used in tests.
 class TestPeerMapManager {
  public:
   explicit TestPeerMapManager(const RaftConfigPB& config) : config_(config) {}
 
-  void AddPeer(const std::string& peer_uuid, const scoped_refptr<RaftConsensus>& peer) {
+  void AddPeer(const std::string& peer_uuid, const std::shared_ptr<RaftConsensus>& peer) {
     std::lock_guard<simple_spinlock> lock(lock_);
     InsertOrDie(&peers_, peer_uuid, peer);
   }
 
-  CHECKED_STATUS GetPeerByIdx(int idx, scoped_refptr<RaftConsensus>* peer_out) const {
+  CHECKED_STATUS GetPeerByIdx(int idx, std::shared_ptr<RaftConsensus>* peer_out) const {
     CHECK_LT(idx, config_.peers_size());
     return GetPeerByUuid(config_.peers(idx).permanent_uuid(), peer_out);
   }
 
   CHECKED_STATUS GetPeerByUuid(const std::string& peer_uuid,
-                       scoped_refptr<RaftConsensus>* peer_out) const {
+                       std::shared_ptr<RaftConsensus>* peer_out) const {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
       return STATUS(NotFound, "Other consensus instance was destroyed");
@@ -520,7 +520,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
 
     // Give the other peer a clean response object to write to.
     ConsensusResponsePB other_peer_resp;
-    scoped_refptr<RaftConsensus> peer;
+    std::shared_ptr<RaftConsensus> peer;
     Status s = peers_->GetPeerByUuid(peer_uuid_, &peer);
 
     if (s.ok()) {
@@ -553,7 +553,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
     VoteResponsePB other_peer_resp;
     other_peer_resp.CopyFrom(*response);
 
-    scoped_refptr<RaftConsensus> peer;
+    std::shared_ptr<RaftConsensus> peer;
     Status s = peers_->GetPeerByUuid(peer_uuid_, &peer);
 
     if (s.ok()) {
@@ -686,8 +686,8 @@ class TestOperationFactory : public ReplicaOperationFactory {
   CHECKED_STATUS StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     auto txn = new TestDriver(pool_.get(), round);
-    txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
-                                                     Unretained(txn)));
+    txn->round_->SetConsensusReplicatedCallback(std::bind(&TestDriver::ReplicationFinished,
+                                                     txn, std::placeholders::_1));
     return Status::OK();
   }
 

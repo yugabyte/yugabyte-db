@@ -178,10 +178,10 @@ class RaftConsensusSpy : public RaftConsensus {
   }
 
   MOCK_METHOD3(NonTxRoundReplicationFinished, void(ConsensusRound* round,
-                                                   const StatusCallback& client_cb,
+                                                   const StdStatusCallback& client_cb,
                                                    const Status& status));
   void NonTxRoundReplicationFinishedConcrete(ConsensusRound* round,
-                                             const StatusCallback& client_cb,
+                                             const StdStatusCallback& client_cb,
                                              const Status& status) {
     LOG(INFO) << "Committing round with opid " << round->id()
               << " given Status " << status.ToString();
@@ -327,8 +327,8 @@ class RaftConsensusTest : public YBTest {
     scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(),
                                                            std::move(replicate_ptr)));
     round->SetConsensusReplicatedCallback(
-        Bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
-             Unretained(consensus_.get()), Unretained(round.get()), Bind(&DoNothingStatusCB)));
+        std::bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
+             consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1));
 
     CHECK_OK(consensus_->Replicate(round));
     LOG(INFO) << "Appended NO_OP round with opid " << round->id();
@@ -356,7 +356,7 @@ class RaftConsensusTest : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   const Schema schema_;
-  scoped_refptr<RaftConsensusSpy> consensus_;
+  shared_ptr<RaftConsensusSpy> consensus_;
 
   vector<scoped_refptr<ConsensusRound> > rounds_;
 

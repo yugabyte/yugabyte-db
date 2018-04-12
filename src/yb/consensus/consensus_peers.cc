@@ -225,7 +225,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
       // If another ChangeConfig is being processed, our request will be rejected.
       LOG(INFO) << "Sending ChangeConfig request";
-      auto status = consensus_->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
+      auto status = consensus_->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       if (PREDICT_FALSE(!status.ok())) {
         LOG(WARNING) << "Unable to change role for peer " << uuid << ": " << status.ToString(false);
         // Since we released the semaphore, we need to call SignalRequest again to send a message

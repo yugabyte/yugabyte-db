@@ -65,8 +65,8 @@ ConsensusRound::ConsensusRound(Consensus* consensus,
 }
 
 void ConsensusRound::NotifyReplicationFinished(const Status& status) {
-  if (PREDICT_FALSE(replicated_cb_.is_null())) return;
-  replicated_cb_.Run(status);
+  if (PREDICT_FALSE(replicated_cb_ == nullptr)) return;
+  replicated_cb_(status);
 }
 
 Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
