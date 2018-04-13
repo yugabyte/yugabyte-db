@@ -940,6 +940,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 
   IntentAwareIterator iter(
       rocksdb(), rocksdb::ReadOptions(), ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
+  ASSERT_TRUE(iter.valid());
   Result<Slice> key = iter.FetchKey();
   ASSERT_OK(key);
   SubDocKey subdoc_key;

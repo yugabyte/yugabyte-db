@@ -91,8 +91,12 @@ class IntentAwareIterator {
   void Seek(const Slice& key);
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
-  // doesn't have hybrid time).
+  // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
+  // avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to, and may
+  // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
+  // is removed when the method returns.
   void SeekForward(const Slice& key);
+  void SeekForward(KeyBytes* key);
 
   // Seek past specified subdoc key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
@@ -109,9 +113,7 @@ class IntentAwareIterator {
   // provided
   void PrevDocKey(const DocKey& doc_key);
 
-  // Adds new value to prefix stack. The top value of this stack is used to filter
-  // returned entries. After seek we check whether currently pointed value has active prefix.
-  // If not, than it means that we are out of range of interest and iterator becomes invalid.
+  // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
   void PushPrefix(const Slice& prefix);
 
   // Removes top value from prefix stack. This iteration could became valid after poping prefix,
@@ -217,6 +219,12 @@ class IntentAwareIterator {
   KeyBytes resolved_intent_value_;
   std::vector<Slice> prefix_stack_;
   TransactionStatusCache transaction_status_cache_;
+
+  bool skip_future_records_needed_ = false;
+  bool skip_future_intents_needed_ = false;
+
+  // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
+  KeyBytes seek_key_buffer_;
 };
 
 // Utility class that controls stack of prefixes in IntentAwareIterator.

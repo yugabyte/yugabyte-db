@@ -148,6 +148,11 @@ class Slice {
     return *begin_++;
   }
 
+  void consume_byte(char c) {
+    char consumed = consume_byte();
+    DCHECK_EQ(consumed, c);
+  }
+
   // Checks that this slice has size() = 'expected_size' and returns
   // STATUS(Corruption, ) otherwise.
   Status check_size(size_t expected_size) const;
