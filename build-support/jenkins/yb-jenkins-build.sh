@@ -38,6 +38,8 @@ Environment variables:
 EOT
 }
 
+echo "Build script $BASH_SOURCE is running"
+
 delete_arc_patch_branches=false
 
 while [ $# -gt 0 ]; do
@@ -113,8 +115,12 @@ echo
 
 show_disk_usage
 
+if is_mac; then
+  "$YB_BUILD_SUPPORT_DIR"/kill_long_running_minicluster_daemons.py
+fi
+
 set +e
-build-support/jenkins/build-and-test.sh
+"$YB_BUILD_SUPPORT_DIR"/jenkins/build-and-test.sh
 exit_code=$?
 set -e
 

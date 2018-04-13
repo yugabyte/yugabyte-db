@@ -328,15 +328,18 @@ expect_num_args() {
   shift
   if [[ $# -ne $caller_expected_num_args ]]; then
     yb_log_quiet=false
-    log "$calling_func_name expects $caller_expected_num_args arguments, got $#."
+    local error_msg="$calling_func_name expects $caller_expected_num_args arguments, got $#."
+    if [[ $# -eq 0 ]]; then
+      error_msg+=" Check if \"\$@\" was included in the call to expect_num_args."
+    fi
     if [[ $# -gt 0 ]]; then
-      log "Actual arguments:"
+      log "Logging actual arguments to '$calling_func_name' before a fatal error:"
       local arg
       for arg in "$@"; do
         log "  - $arg"
       done
     fi
-    exit 1
+    fatal "$error_msg"
   fi
 }
 
@@ -876,13 +879,22 @@ Connection to .* closed by remote host.|\
 ssh: Could not resolve hostname build-workers-.*: Name or service not known"
 }
 
+remove_path_entry() {
+  expect_num_args 1 "$@"
+  local path_entry=$1
+  PATH=:$PATH:
+  PATH=${PATH//:$path_entry:/:}
+  PATH=${PATH#:}
+  PATH=${PATH%:}
+  export PATH
+}
+
 # Removes the ccache wrapper directory from PATH so we can find the real path to a compiler, e.g.
 # /usr/bin/gcc instead of /usr/lib64/ccache/gcc.  This is expected to run in a subshell so that we
 # don't make any unexpected changes to the script's PATH.
 # TODO: how to do this properly on Mac OS X?
 remove_ccache_dir_from_path() {
-  PATH=:$PATH:
-  export PATH=${PATH//:\/usr\/lib64\/ccache:/:}
+  remove_path_entry /usr/lib64/ccache
 }
 
 # Given a compiler type, e.g. gcc or clang, find the actual compiler executable (not a wrapper
@@ -1310,83 +1322,6 @@ set_yb_src_root() {
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
 }
 
-# Checks syntax of all Python scripts in the repository.
-check_python_script_syntax() {
-  if [[ -n ${YB_VERBOSE:-} ]]; then
-    log "Checking syntax of Python scripts"
-  fi
-  pushd "$YB_SRC_ROOT"
-  local IFS=$'\n'
-  local file_list=$( git ls-files '*.py' )
-  local file_path
-  for file_path in $file_list; do
-    (
-      if [[ -n ${YB_VERBOSE:-} ]]; then
-        log "Checking Python syntax of $file_path"
-        set -x
-      fi
-      "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py" "$file_path"
-    )
-  done
-  popd
-}
-
-run_python_doctest() {
-  python_root=$YB_SRC_ROOT/python
-  local PYTHONPATH
-  export PYTHONPATH=$python_root
-
-  local IFS=$'\n'
-  local file_list=$( git ls-files '*.py' )
-
-  local python_file
-  for python_file in $file_list; do
-    local basename=${python_file##*/}
-    if [[ $basename == .ycm_extra_conf.py ||
-          $basename == split_long_command_line.py ]]; then
-      continue
-    fi
-    ( set -x; python -m doctest "$python_file" )
-  done
-}
-
-run_python_tests() {
-  activate_virtualenv
-  run_python_doctest
-  check_python_script_syntax
-}
-
-activate_virtualenv() {
-  local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
-  local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
-  if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
-    fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
-          "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
-  fi
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]]; then
-    log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
-    rm -rf "$virtualenv_dir"
-    unset YB_RECREATE_VIRTUALENV
-  fi
-  if [[ ! -d $virtualenv_dir ]]; then
-    # We need to be using system python to install the virtualenv module or create a new virtualenv.
-    pip2 install virtualenv --user
-    (
-      set -x
-      mkdir -p "$virtualenv_parent_dir"
-      cd "$virtualenv_parent_dir"
-      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
-    )
-  fi
-  set +u
-  . "$virtualenv_dir"/bin/activate
-  # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
-  unset PYTHONPATH
-  set -u
-  export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
-  pip2 install -r "$YB_SRC_ROOT/requirements.txt"
-}
-
 read_file_and_trim() {
   expect_num_args 1 "$@"
   local file_name=$1
@@ -1593,6 +1528,104 @@ validate_numeric_arg_range() {
 }
 
 # -------------------------------------------------------------------------------------------------
+# Python support
+# -------------------------------------------------------------------------------------------------
+
+# Checks syntax of all Python scripts in the repository.
+check_python_script_syntax() {
+  if [[ -n ${YB_VERBOSE:-} ]]; then
+    log "Checking syntax of Python scripts"
+  fi
+  pushd "$YB_SRC_ROOT"
+  local IFS=$'\n'
+  git ls-files '*.py' | xargs -P 8 -n 1 "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py"
+  popd
+}
+
+add_python_wrappers_dir_to_path() {
+  # Make sure the Python wrappers directory is the first on PATH
+  remove_path_entry "$YB_PYTHON_WRAPPERS_DIR"
+  export PATH=$YB_PYTHON_WRAPPERS_DIR:$PATH
+}
+
+activate_virtualenv() {
+  local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
+  local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
+  if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
+    fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
+          "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
+  fi
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]]; then
+    log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
+    rm -rf "$virtualenv_dir"
+    unset YB_RECREATE_VIRTUALENV
+  fi
+  if [[ ! -d $virtualenv_dir ]]; then
+    # We need to be using system python to install the virtualenv module or create a new virtualenv.
+    pip2 install virtualenv --user
+    (
+      set -x
+      mkdir -p "$virtualenv_parent_dir"
+      cd "$virtualenv_parent_dir"
+      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
+    )
+  fi
+  set +u
+  . "$virtualenv_dir"/bin/activate
+  # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
+  unset PYTHONPATH
+  set -u
+  export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
+  pip2 install -r "$YB_SRC_ROOT/requirements.txt"
+  add_python_wrappers_dir_to_path
+}
+
+check_python_interpreter_version() {
+  expect_num_args 3 "$@"
+  local python_interpreter=$1
+  local expected_major_version=$2
+  local minor_version_lower_bound=$3
+  # Get the Python interpreter version. Filter out debug output we may be adding if
+  # YB_PYTHON_WRAPPER_DEBUG is set.
+  local version_str=$( "$python_interpreter" --version 2>&1 >/dev/null | grep -v "Invoking Python" )
+  version_str=${version_str#Python }
+  local actual_major_version=${version_str%%.*}
+  local version_str_without_major=${version_str#*.}
+  local actual_minor_version=${version_str_without_major%%.*}
+  if [[ $actual_major_version -ne $expected_major_version ]]; then
+    fatal "Expected major version for Python interpreter '$python_interpreter' to be" \
+          "'$expected_major_version', found '$actual_major_version'. Full Python version:" \
+          "'$version_str'."
+  fi
+  if [[ $actual_minor_version -lt $minor_version_lower_bound ]]; then
+    fatal "Expected minor version for Python interpreter '$python_interpreter' to be at least " \
+          "'$minor_version_lower_bound', found '$actual_minor_version'. Full Python version:" \
+          "'$version_str'."
+  fi
+}
+
+check_python_interpreter_versions() {
+  check_python_interpreter_version python2 2 7
+  if is_mac; then
+    local python_interpreter_basename
+    for python_interpreter_basename in python python2 python 2.7 python3; do
+      local homebrew_interpreter_path=/usr/local/bin/$python_interpreter_basename
+      if [[ -e $homebrew_interpreter_path ]]; then
+        if [[ ! -L $homebrew_interpreter_path ]]; then
+          fatal "$homebrew_interpreter_path exists but is not a symlink." \
+                "Broken Homebrew installation?"
+        fi
+        local link_target=$( readlink "$homebrew_interpreter_path" )
+        if [[ $link_target == /usr/bin/* ]]; then
+          fatal "Found symlink  $homebrew_interpreter_path -> $link_target." \
+                "Broken Homebrew installation?"
+        fi
+      fi
+    done
+  fi
+}
+
+# -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
 
@@ -1630,7 +1663,12 @@ readonly YB_DEFAULT_CMAKE_OPTS=(
   "-DCMAKE_CXX_COMPILER=$YB_COMPILER_WRAPPER_CXX"
 )
 
-detect_linuxbrew
+YB_PYTHON_WRAPPERS_DIR=$YB_BUILD_SUPPORT_DIR/python-wrappers
+
+if ! "${yb_is_python_wrapper_script:-false}"; then
+  detect_linuxbrew
+  add_python_wrappers_dir_to_path
+fi
 
 # End of initialization.
 # -------------------------------------------------------------------------------------------------

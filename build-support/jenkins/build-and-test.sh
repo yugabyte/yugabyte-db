@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-#
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -32,8 +31,7 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
-# This script is invoked from the Jenkins builds to build YB
-# and run all the unit tests.
+# This script is invoked from the Jenkins builds to build YB and run all the unit tests.
 #
 # Environment variables may be used to customize operation:
 #   BUILD_TYPE: Default: debug
@@ -73,6 +71,8 @@
 # Portions Copyright (c) YugaByte, Inc.
 
 set -euo pipefail
+
+echo "Build script $BASH_SOURCE is running"
 
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
 
@@ -141,7 +141,7 @@ fi
 
 export TSAN_OPTIONS=""
 
-if [[ $OSTYPE =~ ^darwin ]]; then
+if is_mac; then
   # This is needed to make sure we're using Homebrew-installed CMake on Mac OS X.
   export PATH=/usr/local/bin:$PATH
 fi
@@ -172,6 +172,17 @@ if is_jenkins; then
   log "Running on Jenkins, will re-create the Python virtualenv"
   YB_RECREATE_VIRTUALENV=1
 fi
+
+log "Running with PATH: $PATH"
+
+check_python_interpreter_versions
+
+set +e
+for python_command in python python2 python2.7 python3; do
+  log "Location of $python_command: $( which "$python_command" )"
+done
+set -e
+
 run_python_tests
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
