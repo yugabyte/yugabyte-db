@@ -964,6 +964,8 @@ mkdir_safe "thirdparty/installed-deps/include"
 
 cd "$BUILD_ROOT"
 
+activate_virtualenv
+check_python_interpreter_versions
 check_python_script_syntax
 
 if "$clean_thirdparty"; then

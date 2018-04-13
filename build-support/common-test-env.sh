@@ -1354,6 +1354,31 @@ run_java_test() {
   fi
 }
 
+run_python_doctest() {
+  python_root=$YB_SRC_ROOT/python
+  local PYTHONPATH
+  export PYTHONPATH=$python_root
+
+  local IFS=$'\n'
+  local file_list=$( git ls-files '*.py' )
+
+  local python_file
+  for python_file in $file_list; do
+    local basename=${python_file##*/}
+    if [[ $basename == .ycm_extra_conf.py ||
+          $basename == split_long_command_line.py ]]; then
+      continue
+    fi
+    ( set -x; python -m doctest "$python_file" )
+  done
+}
+
+run_python_tests() {
+  activate_virtualenv
+  run_python_doctest
+  check_python_script_syntax
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
