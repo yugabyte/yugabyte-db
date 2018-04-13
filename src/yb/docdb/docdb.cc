@@ -702,27 +702,38 @@ yb::Status GetSubDocument(
     return Status::OK();
   }
 
-  // For each subkey in the projection, build subdocument.
+  // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
+  // and reuse key_bytes while appending the subkey.
   *data.result = SubDocument();
+  KeyBytes key_bytes(data.subdocument_key);
+  const size_t subdocument_key_size = key_bytes.size();
   for (const PrimitiveValue& subkey : *projection) {
-    KeyBytes encoded_projection_subdockey(data.subdocument_key);
-    subkey.AppendToKey(&encoded_projection_subdockey);
+    // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
+    // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
+    // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
+    subkey.AppendToKey(&key_bytes);
+    key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
+
     // This seek is to initialize the iterator for BuildSubDocument call.
-    IntentAwareIteratorPrefixScope prefix_scope(encoded_projection_subdockey, db_iter);
-    db_iter->SeekForward(encoded_projection_subdockey);
+    IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
+    db_iter->SeekForward(&key_bytes);
 
     SubDocument descendant(ValueType::kInvalidValueType);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(encoded_projection_subdockey, &descendant),
-        max_deleted_ts, &num_values_observed));
+        db_iter, data.Adjusted(key_bytes, &descendant), max_deleted_ts, &num_values_observed));
     if (descendant.value_type() != ValueType::kInvalidValueType) {
       *data.doc_found = true;
     }
     data.result->SetChild(subkey, std::move(descendant));
+
+    // Restore subdocument key by truncating the appended subkey.
+    key_bytes.Truncate(subdocument_key_size);
   }
   // Make sure the iterator is placed outside the whole document in the end.
-  db_iter->SeekForward(KeyBytes(key_slice, static_cast<char>(ValueType::kMaxByte)));
+  key_bytes.Truncate(dockey_size);
+  key_bytes.AppendValueType(ValueType::kMaxByte);
+  db_iter->SeekForward(&key_bytes);
   return Status::OK();
 }
 
