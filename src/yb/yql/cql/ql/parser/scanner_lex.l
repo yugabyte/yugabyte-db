@@ -295,6 +295,8 @@ less_equals               "<="
 greater_equals            ">="
 less_greater              "<>"
 not_equals                "!="
+single_arrow              "->"
+double_arrow              "->>"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -812,6 +814,16 @@ other                     .
 {colon_equals} {
   SET_YYLLOC();
   return GramProcessor::make_COLON_EQUALS(cursor_);
+}
+
+{single_arrow} {
+  SET_YYLLOC();
+  return GramProcessor::make_SINGLE_ARROW(cursor_);
+}
+
+{double_arrow} {
+  SET_YYLLOC();
+  return GramProcessor::make_DOUBLE_ARROW(cursor_);
 }
 
 {equals_greater} {

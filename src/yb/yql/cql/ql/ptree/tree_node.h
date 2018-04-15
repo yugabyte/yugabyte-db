@@ -60,7 +60,8 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTSubscript)
                (kPTAllColumns)
                (kPTAssign)
-               (kPTBindVar));
+               (kPTBindVar)
+               (kPTJsonOp));
 
 // TreeNode base class.
 class TreeNode : public MCBase {

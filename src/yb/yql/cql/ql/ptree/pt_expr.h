@@ -72,6 +72,53 @@ enum class ExprOperator : int {
 
   // Relation operators that take unspecified number of operands.
   kCollection = 14,
+
+  // Reference to a column with json operators.
+  kJsonOperatorRef = 15,
+};
+
+enum class JsonOperator {
+  JSON_OBJECT,
+  JSON_TEXT
+};
+
+// Class representing a json operator.
+class PTJsonOperator : public TreeNode {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTJsonOperator> SharedPtr;
+  typedef MCSharedPtr<const PTJsonOperator> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructors and destructor.
+  PTJsonOperator(MemoryContext *memctx,
+                 YBLocation::SharedPtr loc,
+                 const JsonOperator& json_operator,
+                 const MCSharedPtr<MCString>& arg);
+
+  virtual ~PTJsonOperator();
+
+  template<typename... TypeArgs>
+  inline static PTJsonOperator::SharedPtr MakeShared(MemoryContext *memctx,
+                                                     TypeArgs&&... args) {
+    return MCMakeShared<PTJsonOperator>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
+
+  const MCString& arg() const {
+    return *arg_;
+  }
+
+  JsonOperator json_operator() const {
+    return json_operator_;
+  }
+
+ protected:
+  JsonOperator json_operator_;
+  MCSharedPtr<MCString> arg_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -269,6 +316,7 @@ class PTExpr : public TreeNode {
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
+using PTJsonOpListNode = TreeListNode<PTJsonOperator>;
 
 //--------------------------------------------------------------------------------------------------
 // Tree Nodes for Collections -- treated as expressions with flexible arity
@@ -893,6 +941,62 @@ class PTRef : public PTOperator0 {
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_;
+};
+
+// A json column with json operators applied to the column.
+class PTJsonColumnWithOperators : public PTOperator0 {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTJsonColumnWithOperators> SharedPtr;
+  typedef MCSharedPtr<const PTJsonColumnWithOperators> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTJsonColumnWithOperators(MemoryContext *memctx,
+                            YBLocation::SharedPtr loc,
+                            const PTQualifiedName::SharedPtr& name,
+                            const PTJsonOpListNode::SharedPtr& args);
+  virtual ~PTJsonColumnWithOperators();
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTJsonColumnWithOperators::SharedPtr MakeShared(MemoryContext *memctx,
+                                                          TypeArgs&&... args) {
+    return MCMakeShared<PTJsonColumnWithOperators>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  using PTOperatorExpr::AnalyzeOperator;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+
+  // Access function for name.
+  const PTQualifiedName::SharedPtr& name() const {
+    return name_;
+  }
+
+  const PTJsonOpListNode::SharedPtr& operators() const {
+    return args_;
+  }
+
+  // Access function for descriptor.
+  const ColumnDesc *desc() const {
+    return desc_;
+  }
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTJsonOp;
+  }
+
+  // Analyze LHS expression.
+  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+
+ private:
+  PTQualifiedName::SharedPtr name_;
+  PTJsonOpListNode::SharedPtr args_;
+
+  // Fields that should be resolved by semantic analysis.
+  const ColumnDesc *desc_ = nullptr;
 };
 
 // SubColumn Reference. The datatype of this expression would need to be resolved by the analyzer.

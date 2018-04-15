@@ -26,6 +26,13 @@ class QLTestAnalyzer: public QLTestBase {
  public:
   QLTestAnalyzer() : QLTestBase() {
   }
+
+  PTJsonColumnWithOperators* RetrieveJsonColumn(const ParseTree::UniPtr& parse_tree) {
+    auto select_stmt = std::dynamic_pointer_cast<PTSelectStmt>(parse_tree->root());
+    auto ptrelation2 = std::dynamic_pointer_cast<PTRelation2>(select_stmt->where_clause());
+    EXPECT_EQ(DataType::JSONB, ptrelation2->op1()->ql_type()->main());
+    return std::dynamic_pointer_cast<PTJsonColumnWithOperators>(ptrelation2->op1()).get();
+  }
 };
 
 TEST_F(QLTestAnalyzer, TestCreateTablePropertyAnalyzer) {
@@ -92,6 +99,47 @@ TEST_F(QLTestAnalyzer, TestCreateTableWithStaticColumn) {
   // Invalid: no static column for table hash key column only.
   ANALYZE_INVALID_STMT("CREATE TABLE foo (h1 int, h2 int, s int static, c int, "
                        "PRIMARY KEY ((h1, h2)));", &parse_tree);
+}
+
+TEST_F(QLTestAnalyzer, TestJsonColumn) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, c1 jsonb, c2 int, PRIMARY KEY (h1));"));
+
+  ParseTree::UniPtr parse_tree;
+
+  ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->'a'->'b'->>'c' = '1'", &parse_tree);
+  auto jsoncolumn = RetrieveJsonColumn(parse_tree);
+  EXPECT_TRUE(jsoncolumn != nullptr);
+  EXPECT_TRUE(jsoncolumn->name()->IsSimpleName());
+  EXPECT_EQ("c1", jsoncolumn->name()->first_name());
+
+  EXPECT_EQ(3, jsoncolumn->operators()->size());
+  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn->operators()->element(0)->json_operator());
+  EXPECT_EQ("a", jsoncolumn->operators()->element(0)->arg());
+
+  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn->operators()->element(1)->json_operator());
+  EXPECT_EQ("b", jsoncolumn->operators()->element(1)->arg());
+
+  EXPECT_EQ(JsonOperator::JSON_TEXT, jsoncolumn->operators()->element(2)->json_operator());
+  EXPECT_EQ("c", jsoncolumn->operators()->element(2)->arg());
+
+  ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->>'a' = '1'", &parse_tree);
+  auto jsoncolumn1 = RetrieveJsonColumn(parse_tree);
+  EXPECT_EQ(1, jsoncolumn1->operators()->size());
+  EXPECT_EQ(JsonOperator::JSON_TEXT, jsoncolumn1->operators()->element(0)->json_operator());
+  EXPECT_EQ("a", jsoncolumn1->operators()->element(0)->arg());
+  ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->'a' = '1'", &parse_tree);
+  auto jsoncolumn2 = RetrieveJsonColumn(parse_tree);
+  EXPECT_EQ(1, jsoncolumn2->operators()->size());
+  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn2->operators()->element(0)->json_operator());
+  EXPECT_EQ("a", jsoncolumn2->operators()->element(0)->arg());
+
+  // Comparing string and integer.
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE c1->'a'->'b'->>'c' = 1", &parse_tree);
+  // Column is not json.
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE c2->>'a' = '1'", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1->'a' = '1'", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestDmlWithStaticColumn) {
