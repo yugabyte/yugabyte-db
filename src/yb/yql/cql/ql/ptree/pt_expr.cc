@@ -594,6 +594,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     // CheckLhsExpr already checks that this is either kRef or kBcall
     DCHECK(op1->expr_op() == ExprOperator::kRef ||
            op1->expr_op() == ExprOperator::kSubColRef ||
+           op1->expr_op() == ExprOperator::kJsonOperatorRef ||
            op1->expr_op() == ExprOperator::kBcall);
     if (op1->expr_op() == ExprOperator::kRef) {
       const PTRef *ref = static_cast<const PTRef *>(op1.get());
@@ -741,6 +742,70 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
 
 void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
+}
+
+PTJsonOperator::PTJsonOperator(MemoryContext *memctx,
+                               YBLocation::SharedPtr loc,
+                               const JsonOperator& json_operator,
+                               const MCSharedPtr<MCString>& arg)
+    : TreeNode(memctx, loc),
+      json_operator_(json_operator),
+      arg_(arg) {
+}
+
+PTJsonOperator::~PTJsonOperator() {
+}
+
+Status PTJsonOperator::Analyze(SemContext *sem_context) {
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PTJsonColumnWithOperators::PTJsonColumnWithOperators(MemoryContext *memctx,
+                                                     YBLocation::SharedPtr loc,
+                                                     const PTQualifiedName::SharedPtr& name,
+                                                     const PTJsonOpListNode::SharedPtr& args)
+    : PTOperator0(memctx, loc, ExprOperator::kJsonOperatorRef, yb::QLOperator::QL_OP_NOOP),
+      name_(name),
+      args_(args) {
+}
+
+PTJsonColumnWithOperators::~PTJsonColumnWithOperators() {
+}
+
+CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_context) {
+
+  // Look for a column descriptor from symbol table.
+  RETURN_NOT_OK(name_->Analyze(sem_context));
+  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  if (desc_ == nullptr) {
+    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+  }
+
+  SemState sem_state(sem_context);
+
+  if (!desc_->ql_type()->IsJson()) {
+    return sem_context->Error(this, "Column provided is not json data type",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  // Analyze each operator.
+  RETURN_NOT_OK(args_->Analyze(sem_context));
+
+  // Without any CASTs, json columns are considered as strings.
+  ql_type_ = QLType::Create(DataType::JSONB);
+  if (args_->element(args_->size() - 1)->json_operator() == JsonOperator::JSON_OBJECT) {
+    internal_type_ = InternalType::kJsonbValue;
+  } else {
+    internal_type_ = InternalType::kStringValue;
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) {
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

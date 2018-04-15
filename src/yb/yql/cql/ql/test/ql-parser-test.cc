@@ -187,6 +187,16 @@ TEST_F(QLTestParser, TestQLParser) {
   // Create table with jsonb type.
   PARSE_VALID_STMT("CREATE TABLE human_resource (h1 int, r1 int, data jsonb, "
                        "PRIMARY KEY ((h1), r1));");
+  // Valid json operators.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c2->'a' = '1';");
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c2->'a'->'b' = '1';");
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c2->'a'->'b'->>'c' = '1';");
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c2->>'a' = '1';");
+
+  // Invalid json operators.
+  PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->>'a'->'b' = '1';");
+  PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->>a = '1';");
+  PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->a = '1';");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {

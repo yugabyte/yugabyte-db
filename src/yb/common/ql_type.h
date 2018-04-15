@@ -314,6 +314,10 @@ class QLType {
     return IsInteger(id_);
   }
 
+  bool IsJson() const {
+    return IsJson(id_);
+  }
+
   bool IsNumeric() const {
     return IsNumeric(id_);
   }
@@ -375,6 +379,10 @@ class QLType {
 
   static bool IsInteger(DataType t) {
     return (t >= INT8 && t <= INT64) || t == VARINT;
+  }
+
+  static bool IsJson(DataType t) {
+    return t == JSONB;
   }
 
   static bool IsNumeric(DataType t) {

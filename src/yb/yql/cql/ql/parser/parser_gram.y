@@ -140,6 +140,7 @@ typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
 typedef PTBaseType::SharedPtr          PType;
 typedef PTCharBaseType::SharedPtr      PCharBaseType;
+typedef PTJsonOpListNode::SharedPtr    PJsonOpListNode;
 
 // Inactive parsing node types.
 typedef UndefTreeNode::SharedPtr       UndefType;
@@ -345,6 +346,8 @@ using namespace yb::ql;
 
 %type <PTypeField>         TypeField
 %type <PTypeFieldListNode> TypeFieldList
+
+%type <PJsonOpListNode>    json_ref
 
 // Name nodes.
 %type <PName>             indirection_el columnElem
@@ -669,9 +672,9 @@ using namespace yb::ql;
 // Character constants.
 %token <PChar>            CCONST
 
-// Multichar operators: "::", "..", ":=", "=>", "<=", ">=", "<>", "!=".
+// Multichar operators: "::", "..", ":=", "=>", "<=", ">=", "<>", "!=", "->", "->>".
 %token                    TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER LESS_EQUALS
-                          GREATER_EQUALS NOT_EQUALS
+                          GREATER_EQUALS NOT_EQUALS SINGLE_ARROW DOUBLE_ARROW
 
 // Special ops. The grammar treat them as keywords, but they are not in the kwlist.h list and so can
 // never be entered directly.  The filter in parser.c creates these tokens when required (based on
@@ -3106,7 +3109,9 @@ a_expr:
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $3);
     $$ = MAKE_NODE(@1, PTSubscriptedColumn, $1->name(), args);
   }
-
+  | columnref json_ref {
+    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, $1->name(), $2);
+  }
   // Logical expression.
   | NOT a_expr {
     $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, QL_OP_NOT, $2);
@@ -4069,6 +4074,23 @@ columnref:
     PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
     $2->Prepend(name_node);
     $$ = MAKE_NODE(@1, PTRef, $2);
+  }
+;
+
+json_ref:
+  SINGLE_ARROW Sconst {
+    PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_OBJECT, $2);
+    $$ = MAKE_NODE(@1, PTJsonOpListNode, node);
+  }
+  | SINGLE_ARROW Sconst json_ref {
+    PTJsonOperator::SharedPtr json_op = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_OBJECT,
+      $2);
+    $3->Prepend(json_op);
+    $$ = $3;
+  }
+  | DOUBLE_ARROW Sconst {
+    PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_TEXT, $2);
+    $$ = MAKE_NODE(@1, PTJsonOpListNode, node);
   }
 ;
 
