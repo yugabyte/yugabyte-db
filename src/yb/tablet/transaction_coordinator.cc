@@ -55,7 +55,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_uint64(transaction_timeout_usec, 1500000, "Transaction expiration timeout in usec.");
+DEFINE_int64(transaction_timeout_usec, 1500000, "Transaction expiration timeout in usec.");
 DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
 DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
@@ -149,7 +149,7 @@ class TransactionState {
     if (ShouldBeCommitted()) {
       return false;
     }
-    auto passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
+    const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
     return passed > FLAGS_transaction_timeout_usec;
   }
 
