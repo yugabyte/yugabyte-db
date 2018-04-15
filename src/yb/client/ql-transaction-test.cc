@@ -42,7 +42,7 @@
 
 using namespace std::literals; // NOLINT
 
-DECLARE_uint64(transaction_timeout_usec);
+DECLARE_int64(transaction_timeout_usec);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transaction_table_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
