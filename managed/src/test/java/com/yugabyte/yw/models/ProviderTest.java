@@ -58,6 +58,14 @@ public class ProviderTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetMaskedConfig() {
+    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
+            "Amazon", ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
+    assertNotNull(provider.uuid);
+    assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{AWS_ACCESS_KEY_ID=Ba********ar}")));
+  }
+
+  @Test
   public void testCreateProviderWithSameName() {
     Provider p1 = ModelFactory.awsProvider(defaultCustomer);
     Provider p2 = Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");

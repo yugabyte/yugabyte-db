@@ -232,7 +232,7 @@ public class CloudProviderController extends AuthenticatedController {
         // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
         // store it somewhere and the config is the easiest place to put it. As such, since all the
         // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getConfig();
+        Map<String, String> config = provider.getUnmaskedConfig();
         config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
         provider.setConfig(config);
         provider.save();
@@ -296,5 +296,33 @@ public class CloudProviderController extends AuthenticatedController {
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
     return ApiResponse.success(resultNode);
+  }
+
+  public Result edit(UUID customerUUID, UUID providerUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
+    }
+    JsonNode formData =  request().body().asJson();
+    String hostedZoneID = formData.get("hostedZoneId").asText();
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    if (!provider.code.equals("aws")) {
+      return ApiResponse.error(BAD_REQUEST, "Expected aws found providers with code: " + provider.code);
+    }
+    if (hostedZoneID == null || hostedZoneID.length() == 0) {
+      return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
+    }
+    try {
+      provider.updateHostedZoneId(hostedZoneID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("hostedZoneID", hostedZoneID);
+    return ApiResponse.success(resultNode);
+
   }
 }
