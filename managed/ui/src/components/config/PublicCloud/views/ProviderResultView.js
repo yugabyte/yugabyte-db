@@ -7,11 +7,12 @@ import { DescriptionList } from '../../../common/descriptors';
 import { RegionMap, YBMapLegend } from '../../../maps';
 import { YBConfirmModal } from '../../../modals';
 import {reduxForm} from 'redux-form';
+import EditProviderFormContainer from './EditProvider/EditProviderFormContainer';
 
 class ProviderResultView extends Component {
   constructor(props) {
     super(props);
-    this.state = {refreshing: false};
+    this.state = {refreshing: false, currentView: 'success'};
   }
 
   deleteProviderConfig(provider) {
@@ -22,6 +23,10 @@ class ProviderResultView extends Component {
     this.props.initializeMetadata(provider.uuid);
     this.setState({refreshing: true});
   };
+
+  editProviderView = (provider) => {
+    this.setState({currentView: 'edit'});
+  }
 
   showDeleteProviderModal = () => {
     const {providerType, showDeleteProviderModal} = this.props;
@@ -36,7 +41,22 @@ class ProviderResultView extends Component {
     if (nextProps.refreshSucceeded === true && this.props.refreshSucceeded === false) {
       this.setState({refreshing: false});
     }
-  }
+  };
+
+  getCurrentProviderPayload = () => {
+    const {currentProvider, providerInfo} = this.props;
+    const payload = {};
+    payload.uuid = currentProvider.uuid;
+    payload.code = currentProvider.code;
+    payload.hostedZoneId = currentProvider.code === "aws" ? currentProvider.config.AWS_HOSTED_ZONE_ID : "";
+    payload.accountName = providerInfo.find((a)=>(a.name === "Name")).data;
+    payload.sshKey = providerInfo.find((a)=>(a.name === "SSH Key")).data;
+    return payload;
+  };
+
+  switchToResultView = () => {
+    this.setState({currentView: 'success'});
+  };
 
   render() {
     const { regions, deleteButtonTitle, currentProvider, handleSubmit,
@@ -49,11 +69,17 @@ class ProviderResultView extends Component {
     if (refreshing) {
       refreshPricingLabel = "Refreshing...";
     }
+    const editProviderPayload = this.getCurrentProviderPayload();
+    if (this.state.currentView === "edit") {
+      return <EditProviderFormContainer {...editProviderPayload} switchToResultView={this.switchToResultView}/>;
+    }
     return (
       <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
             <span className="pull-right buttons" title={deleteButtonTitle}>
+              <YBButton btnText="Edit Configuration"
+                        onClick={this.editProviderView.bind(this, currentProvider)}/>
               <YBButton btnText="Delete Configuration" disabled={deleteDisabled}
                         btnClass={deleteButtonClassName} onClick={this.showDeleteProviderModal}/>
               <YBButton btnText={refreshPricingLabel} btnClass={buttonBaseClassName} disabled={refreshing}

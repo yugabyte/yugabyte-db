@@ -84,6 +84,9 @@ export const GET_SUGGESTED_SPOT_PRICE_RESPONSE = 'GET_SUGGESTED_SPOT_PRICE_RESPO
 
 export const RESET_SUGGESTED_SPOT_PRICE = 'RESET_SUGGESTED_SPOT_PRICE';
 
+export const EDIT_PROVIDER = 'EDIT_PROVIDER';
+export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -497,4 +500,21 @@ export function deleteInstanceResponse(response) {
     type: DELETE_INSTANCE_RESPONSE,
     payload: response
   };
+}
+
+export function editProvider(payload) {
+  const cUUID = localStorage.getItem("customer_id");
+  const pUUID = payload.accountUUID;
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/edit`, payload);
+  return {
+    type: EDIT_PROVIDER,
+    payload: request
+  }
+}
+
+export function editProviderResponse(response) {
+  return {
+    type: EDIT_PROVIDER_RESPONSE,
+    payload: response
+  }
 }

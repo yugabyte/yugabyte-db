@@ -26,6 +26,7 @@ POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controller
 DELETE  /api/customers/:cUUID/providers/:pUUID        com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/bootstrap  com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/cleanup    com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/providers/:pUUID/edit          com.yugabyte.yw.controllers.CloudProviderController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
 GET     /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/providers/:pUUID/regions/:rUUID          com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
