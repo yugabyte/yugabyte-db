@@ -1,14 +1,14 @@
 ---
-title: Multi-Node Cluster
-linkTitle: Multi-Node Cluster
-description: Multi-Node Cluster
+title: Private DC
+linkTitle: Private DC
+description: Private DC
 aliases:
   - /deploy/multi-node-cluster/
 menu:
   latest:
     identifier: multi-node-cluster
     parent: deploy
-    weight: 610
+    weight: 620
 ---
 
 Multi-node clusters of YugaByte DB CE can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.
