@@ -53,15 +53,17 @@
   min-width: 240px !important; }
 
 .nav-tabs a {
+  position: relative;
+  top: 1px;
   font-family: Montserrat, sans-serif;
   font-size: 20px;
   font-weight: 500 !important;
   border-radius: 0 !important;
-  padding: 18px 24px !important;
+  padding: 16px 24px 20px !important;
   height: 66px;
   margin-top: 2px;
 }
-.nav-tabs li.active a {
+.nav-tabs li a.active {
   border-top: 3px solid #f75821 !important;
   border-left: 1px solid #f75821 !important;
   border-right: 1px solid #f75821 !important;

@@ -28,32 +28,32 @@ The prerequisites here are same as that of the [Community Edition](../../multi-n
 ## Configure your cloud provider in YugaWare
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li class="active">
-    <a href="#configure-aws">
+  <li>
+    <a href="#configure-aws" class="nav-link active" id="configure-aws-tab" data-toggle="tab" role="tab" aria-controls="configure-aws" aria-selected="true">
       <i class="icon-aws"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="#configure-gcp">
+    <a href="#configure-gcp" class="nav-link" id="configure-gcp-tab" data-toggle="tab" role="tab" aria-controls="configure-gcp" aria-selected="false">
       <i class="icon-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
   <li>
-    <a href="#configure-azure">
+    <a href="#configure-azure" class="nav-link" id="configure-azure-tab" data-toggle="tab" role="tab" aria-controls="configure-azure" aria-selected="false">
       <i class="icon-google" aria-hidden="true"></i>
       Azure
     </a>
   </li>
   <li>
-    <a href="#configure-docker">
+    <a href="#configure-docker" class="nav-link" id="configure-docker-tab" data-toggle="tab" role="tab" aria-controls="configure-docker" aria-selected="false">
       <i class="icon-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="#configure-onprem">
+    <a href="#configure-onprem" class="nav-link" id="configure-onprem-tab" data-toggle="tab" role="tab" aria-controls="configure-onprem" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       On-Premises
     </a>
@@ -61,19 +61,19 @@ The prerequisites here are same as that of the [Community Edition](../../multi-n
 </ul>
 
 <div class="tab-content">
-  <div id="configure-aws" class="tab-pane fade in active">
+  <div id="configure-aws" class="tab-pane fade show active" role="tabpanel" aria-labelledby="configure-aws-tab">
     {{% includeMarkdown "configure-cloud/aws.md" /%}}
   </div>
-  <div id="configure-gcp" class="tab-pane fade in active">
+  <div id="configure-gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-gcp-tab">
     {{% includeMarkdown "configure-cloud/gcp.md" /%}}
   </div>
-  <div id="configure-azure" class="tab-pane fade in active">
+  <div id="configure-azure" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-azure-tab">
     {{% includeMarkdown "configure-cloud/azure.md" /%}}
   </div>
-  <div id="configure-docker" class="tab-pane fade in active">
+  <div id="configure-docker" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-docker-tab">
     {{% includeMarkdown "configure-cloud/docker.md" /%}}
   </div>
-  <div id="configure-onprem" class="tab-pane fade in active">
+  <div id="configure-onprem" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-onprem-tab">
     {{% includeMarkdown "configure-cloud/onprem.md" /%}}
   </div>
 </div>

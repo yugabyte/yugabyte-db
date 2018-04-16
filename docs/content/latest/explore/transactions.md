@@ -23,26 +23,26 @@ You can [read more about transactions](../../architecture/transactions/) in our 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li class="active">
-    <a href="#docker">
+  <li>
+    <a href="#docker" class="nav-link active" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
       <i class="icon-docker"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="#kubernetes">
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li >
-    <a href="#macos">
+    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="false">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux">
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -50,16 +50,16 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 </ul>
 
 <div class="tab-content">
-  <div id="docker" class="tab-pane fade in active">
+  <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/transactions.md" /%}}
   </div>
-  <div id="kubernetes" class="tab-pane fade">
+  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/transactions.md" /%}}
   </div>
-  <div id="macos" class="tab-pane fade">
+  <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
     {{% includeMarkdown "binary/transactions.md" /%}}
   </div>
-  <div id="linux" class="tab-pane fade">
+  <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/transactions.md" /%}}
   </div> 
 </div>

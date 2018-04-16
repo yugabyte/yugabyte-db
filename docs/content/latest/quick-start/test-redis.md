@@ -17,26 +17,26 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 1. Connect with redis-cli
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li class="active">
-    <a href="#docker">
+  <li>
+    <a href="#docker" class="nav-link active" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
       <i class="icon-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="#kubernetes">
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li>
-    <a href="#macos">
+    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="false">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux">
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -44,16 +44,16 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 </ul>
 
 <div class="tab-content">
-  <div id="docker" class="tab-pane fade in active">
+  <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/test-redis.md" /%}}
   </div>
-  <div id="kubernetes" class="tab-pane fade">
+  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/test-redis.md" /%}}
   </div>
-  <div id="macos" class="tab-pane fade">
+  <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
     {{% includeMarkdown "binary/test-redis.md" /%}}
   </div>
-  <div id="linux" class="tab-pane fade">
+  <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/test-redis.md" /%}}
   </div> 
 </div>

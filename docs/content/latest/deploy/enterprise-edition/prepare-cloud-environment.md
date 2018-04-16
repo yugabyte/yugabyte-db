@@ -12,16 +12,8 @@ menu:
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <!--
-  <li class="active">
-    <a href="#prepare-cloud-aws">
-      <i class="icon-aws"></i>
-      AWS
-    </a>
-  </li>
-  !-->
-  <li class="active">
-    <a href="#prepare-cloud-gcp">
+  <li>
+    <a href="#prepare-cloud-gcp" class="nav-link active" id="prepare-cloud-gcp-tab" data-toggle="tab" role="tab" aria-controls="prepare-cloud-gcp" aria-selected="true">
       <i class="icon-google" aria-hidden="true"></i>
       GCP
     </a>
@@ -29,12 +21,7 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <!--
-  <div id="prepare-cloud-aws" class="tab-pane fade">
-    {{% includeMarkdown "prepare-cloud/aws.md" /%}}
-  </div>
-  !-->
-  <div id="prepare-cloud-gcp" class="tab-pane fade in active">
+  <div id="prepare-cloud-gcp" class="tab-pane fade show active" role="tabpanel" aria-labelledby="prepare-cloud-gcp-tab">
     {{% includeMarkdown "prepare-cloud/gcp.md" /%}}
   </div>
 </div>

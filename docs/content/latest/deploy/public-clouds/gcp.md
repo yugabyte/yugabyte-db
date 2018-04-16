@@ -12,8 +12,8 @@ menu:
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#gke">
+  <li>
+    <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
       <i class="icon-docker" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>
@@ -21,7 +21,7 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <div id="gke" class="tab-pane fade in active">
+  <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
     {{% includeMarkdown "gcp/gke.md" /%}}
   </div>
 </div>
