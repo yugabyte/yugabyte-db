@@ -13,7 +13,7 @@ This tutorial will cover how to deploy YugaByte DB on Kubernetes StatefulSets us
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#gke">
+    <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
       <i class="icon-shell"></i>
       GKE
     </a>
@@ -21,7 +21,7 @@ This tutorial will cover how to deploy YugaByte DB on Kubernetes StatefulSets us
 </ul>
 
 <div class="tab-content">
-  <div id="gke" class="tab-pane fade in active">
+  <div id="gke" class="tab-pane fade show active" role="tabpanel" aria-labelledby="gke-tab">
     {{% includeMarkdown "local-ssd/gke.md" /%}}
   </div>
 </div>
