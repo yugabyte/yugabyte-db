@@ -110,6 +110,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID, customer.createAuthToken());
   }
 
+  private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT",
+            "/api/customers/" + customer.uuid + "/providers/"+ providerUUID + "/edit", customer.createAuthToken(), bodyJson);
+  }
+
   @Test
   public void testListEmptyProviders() {
     Result result = listProviders();
@@ -287,5 +292,34 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.uuid);
     assertOk(result);
     assertFalse(new File(scriptFile).exists());
+  }
+
+  @Test
+  public void testEditProviderWithAWSProviderType() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("hostedZoneId", "1234");
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("hostedZoneID").asText(), "1234");
+  }
+
+  @Test
+  public void testEditProviderWithInvalidProviderType()  {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("hostedZoneId", "1234");
+    Result result = editProvider(bodyJson, p.uuid);
+    assertBadRequest(result, "Expected aws found providers with code: onprem");
+  }
+
+  @Test
+  public void testEditProviderWithEmptyHostedZoneId() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("hostedZoneId", "");
+    Result result = editProvider(bodyJson, p.uuid);
+    assertBadRequest(result, "Required field hosted zone id");
   }
 }
