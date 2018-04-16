@@ -1,46 +1,62 @@
-<div class="container">
-  <div class="row">
-    <div class="col-md-4">
-      <img alt="YugaByte" src="/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
-    </div>
-    <div class="col-md-8">
-      <div class="social-icons">
-        <a class="social" href="http://www.github.com/yugabyte/yugabyte-db">
-          <i class="fa fa-github"></i>
-        </a>
-        <a class="social" href="https://gitter.im/YugaByte/Lobby">
-          <img class="gitter-icon" src="/images/gitter.svg" />
-        </a>
-        <a class="social" href="http://www.twitter.com/yugabyte">
-          <i class="fa fa-twitter-square"></i>
-        </a>
-        <a class="social" href="http://www.linkedin.com/company/yugabyte">
-          <i class="fa fa-linkedin-square"></i>
-        </a>
-        <a class="social" href="http://www.facebook.com/yugabyte">
-          <i class="fa fa-facebook-square"></i>
-        </a>
-        <a class="social" href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw">
-          <i class="fa fa-youtube-square"></i>
-        </a>
+<footer class="footer">
+  <div class="container">
+    <div class="row">
+      <div class="col-sm-6 col-md-4">
+        <img alt="YugaByte" src="/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
+        <br clear="all" />
+
+        <div class="social-icons">
+          <a class="social" href="https://github.com/yugabyte/yugabyte-db">
+            <i class="fa fa-github"></i>
+          </a>
+          <a class="social" href="https://gitter.im/YugaByte/Lobby">
+            <img class="gitter-icon" src="/images/gitter.svg"></i>
+          </a>
+          <a class="social" href="https://www.twitter.com/yugabyte">
+            <i class="fa fa-twitter-square"></i>
+          </a>
+          <a class="social" href="https://www.linkedin.com/company/yugabyte">
+            <i class="fa fa-linkedin-square"></i>
+          </a>
+          <a class="social" href="https://www.facebook.com/yugabyte">
+            <i class="fa fa-facebook-square"></i>
+          </a>
+          <a class="social" href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw">
+            <i class="fa fa-youtube-square"></i>
+          </a>
+        </div>
+      </div>
+      <div class="col-sm-6 col-md-4 newsletter-signup">
+        <h3>SUBSCRIBE TO NEWS</h3>
+        <p>The latest<span class="d-sm-none d-lg-inline"> news,</span> tips<span class="d-sm-none d-lg-inline">,</span><span class="d-inline d-sm-none d-xl-inline"> blog posts,</span> and resources.</p>
+        <form id="footerSubscribeForm" class="submit-replace">
+          <input type="hidden" id="action_type" name="action_type" value="blog-subscribe">
+          <input type="hidden" id="action_payload" name="action_payload" value='{"from": "footer"}'>
+          <input type="text" name="email" placeholder="Email" />
+          <button class="orange" type="submit">Subscribe</button>
+        </form>
+      </div>
+      <div class="col-md-4">
+        <p class="copyright">
+          Copyright &copy; 2017-2018 YugaByte, Inc. <nobr>All rights reserved.</nobr>
+
+          <!---
+            <a href="/terms/">Terms of Use</a>
+            <a href="/privacy/">Privacy Policy</a> -->
+        </p>
+        <p class="disclaimers">
+          Apache and Apache Cassandra are trademarks of the Apache Software Foundation in the United States and/or other countries. Redis and the Redis logo are the trademarks of Salvatore Sanfilippo in the United States and other countries. No endorsement by these organizations is implied by the use of these marks.
+        </p>
       </div>
     </div>
   </div>
+</section>
 
-  <div class="row">
-    <div class="col-sm-5">
-      <p>
-        <br><br>Copyright &copy; 2017-2018 YugaByte, Inc. All rights reserved.
-      </p>
-    </div>  
-  
-    <div class="col-md-5 col-md-offset-2 col-sm-6 col-sm-offset-1">
-      <p class="disclaimers">
-        Apache and Apache Cassandra are trademarks of the Apache Software Foundation in the United States and/or other countries. Redis and the Redis logo are the trademarks of Salvatore Sanfilippo in the United States and other countries. No endorsement by these organizations is implied by the use of these marks.
-      </p>
-    </div>  
+<script>
+  $(function () {
+    setupRegistrationForm('#footerSubscribeForm', 'Thanks, we\'ll keep you posted!');
+  });
+</script>
+
   </div>
-
-</div>
-
 </div>

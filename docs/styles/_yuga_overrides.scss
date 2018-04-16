@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "./_colors.scss";
+@import "./_layout.scss";
 
 @media (max-width: 1200px) {
   .container {
@@ -47,42 +48,13 @@ a {
 
   .wrapper {
     padding-top: 36px !important;
-    padding-bottom: 90px !important;
-  }
-}
-
-@media screen and (max-width: 767px) {
-  .article .wrapper {
-    padding-bottom: 200px !important;
-  }
-}
-
-@media screen and (max-width: 559px) {
-  .article .wrapper {
-    padding-bottom: 0 !important;
+    padding-bottom: 50px !important;
   }
 }
 
 .project .logo img {
   border-radius: 0px;
   background: transparent !important;
-}
-
-body {
-  position: absolute;
-  width: 100%;
-  top: 0;
-  bottom: 0;
-  overflow-x: hidden;
-}
-
-#root {
-  position: relative;
-  min-height: 100%;
-  padding-bottom: 120px;
-  @media only screen and (max-width: 559px) {
-    padding-bottom: 0px;
-  }
 }
 
 @media only screen and (max-width: 959px) {
@@ -122,7 +94,7 @@ body {
     float: none;
     position: relative !important;
     margin-bottom: 0;
-    padding: 0 0 40px;
+    padding: 0 0 5px 8px;
     width: 250px;
     flex-basis: auto;
   }
@@ -377,15 +349,18 @@ body {
   position: static !important;
   color: $YB_ORANGE !important;
 }
+
+.pagination {
+  display: flex !important;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 30px;
+  margin-bottom: -30px;
+}
 .pagination a .button,
 .pagination a .title {
   position: static !important;
   color: $YB_ORANGE !important;
-}
-.pagination {
-  width: 100%;
-  margin-top: 50px;
-  margin-bottom: -40px;
 }
 .pagination a,
 .pagination a:hover {
@@ -403,9 +378,6 @@ body {
   @media screen and (max-width: 559px) {
     height: 50px !important;
   }
-}
-.pagination .next {
-  float: right;
 }
 .pagination .page {
   top: 16px !important;

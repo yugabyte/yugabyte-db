@@ -8,23 +8,6 @@
 {{ if .IsPage }}
 {{ if $PrevLink | or $NextLink }}
 <nav class="pagination" aria-label="Footer">
-  {{ if $NextLink }}
-    <div class="next">
-      <a href="{{ $NextLink.URL }}" title="{{ $NextLink.Title }}">
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ $NextLink.Page.Description }}
-            </div>
-          </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
-    </div>
-  {{ end }}
-
   {{ if $PrevLink }}
     <div class="previous">
       <a href="{{ $PrevLink.URL }}" title="{{ $PrevLink.Title }}">
@@ -36,6 +19,23 @@
             <div class="title">
               {{ $PrevLink.Page.Description }}
             </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  {{ end }}
+
+  {{ if $NextLink }}
+    <div class="next">
+      <a href="{{ $NextLink.URL }}" title="{{ $NextLink.Title }}">
+        <div class="page">
+          <div class="stretch">
+            <div class="title">
+              {{ $NextLink.Page.Description }}
+            </div>
+          </div>
+          <div class="button button-next" role="button" aria-label="Next">
+            <i class="icon icon-forward"></i>
           </div>
         </div>
       </a>

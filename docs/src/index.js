@@ -66,3 +66,74 @@ $(() => {
   });
 });
 
+function setupForm(selector, callback) {
+  $(selector).submit(event => {
+    event.preventDefault();
+    const form = $(event.target);
+    if (form.valid()) {
+      const formJson = form.serializeJSON();
+      $.ajax({
+        type: 'POST',
+        crossDomain: true,
+        url: 'https://lcruke0kba.execute-api.us-west-2.amazonaws.com/prod/leads',
+        data: JSON.stringify(formJson),
+        dataType: 'json',
+        contentType: 'application/json',
+      }).always((formResponse, s) => {
+        if (!callback) return;
+        return callback(event, form, formResponse, s);
+      });
+    }
+  });
+}
+window.setupForm = setupForm;
+
+function setupRegistrationForm(selector, message = 'Thanks! We\'ll email you soon.') {
+  const formValidator = $(selector).validate({
+    rules: {
+      email: { minlength: 2, required: true },
+      first_name: { minlength: 2, required: true },
+      last_name: { minlength: 2, required: true },
+    },
+  });
+  formValidator.resetForm();
+  setupForm(selector, event => {
+    const thankYouNode = $('<div class="submit-thank-you" />').text(message);
+    const eventTarget = $(event.target);
+    const submitReplaceNode = eventTarget.closest('.submit-replace');
+    if (submitReplaceNode.length) {
+      submitReplaceNode.text('');
+      thankYouNode.appendTo(submitReplaceNode);
+    } else {
+      thankYouNode.appendTo(eventTarget.parent());
+      eventTarget.hide();
+    }
+  });
+}
+window.setupRegistrationForm = setupRegistrationForm;
+
+function setupContactUsModal(selector) {
+  $('#contactUsModal')
+    .on('show.bs.modal', event => {
+      $('.contact-sales-button').hide();
+      const button = $(event.relatedTarget);
+      const downloadType = button.data('type');
+      const formValidator = $(selector).validate({
+        rules: {
+          email: { minlength: 2, required: true },
+          first_name: { minlength: 2, required: true },
+          last_name: { minlength: 2, required: true },
+          company: { minlength: 2, required: true },
+          phone: { minlength: 10, required: true },
+          'action_payload[notes]': { minlength: 2, required: true },
+
+        },
+      });
+      formValidator.resetForm();
+      $('#action_type').val(downloadType);
+      sessionStorage.setItem('action_type', downloadType);
+    })
+    .on('hide.bs.modal', () => {
+      $('.contact-sales-button').show();
+    });
+}

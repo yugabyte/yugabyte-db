@@ -1,134 +1,130 @@
-<div id="root">
-<nav id="nav_bar" class="nav-bar navbar navbar-inverse navbar-fixed-top scrolled">
-  <div class="container-fluid">
-    <div class="container">
-      <div id="nav_bar_content">
-        <div class="navbar-header">
-          <a href="http://www.yugabyte.com/" class="navbar-link">
-            <span class="navbar-brand">
-              <img alt="YugaByte" src="/images/yblogo_whitebg.3fea4ef9.png" class="nav-logo scrolled"/>
-            </span>
-          </a>
-          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse"
-            data-target=".navbar-collapse">
-            <span class="sr-only">
-              Toggle navigation
-            </span>
-            <span class="icon-bar">
-            </span>
-            <span class="icon-bar">
-            </span>
-            <span class="icon-bar">
-            </span>
-          </button>
-        </div>
-        <div class="navbar-collapse collapse">
-          <div class="navbar-page-links">
-            <div class="navbar-text">
-              <div class="dropdown">
-                <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_product_dropdown" href="http://www.yugabyte.com/product/">
-                  PRODUCT
-                </a>
-                <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
-                  <a class="dropdown-item" href="http://www.yugabyte.com/product/yugabytedb/">YugaByte DB</a>
-                  <a class="dropdown-item" href="http://www.yugabyte.com/product/enterprise/">Enterprise Edition</a>
-                  <a class="dropdown-item" href="http://www.yugabyte.com/product/compare/">Compare</a>
-                </div>
-              </div>
-            </div>
-            <div class="navbar-text">
-              <div class="dropdown">
-                <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="http://www.yugabyte.com/solutions/">
-                  SOLUTIONS
-                </a>
-                <div class="dropdown-menu text-center clearfix" aria-labelledby="navbar_solutions_dropdown">
-                  <div class="dropdown-row">
-                    <div class="dropdown-column">
-                      <h3>Use Cases</h3>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/use-cases/distributed-apps">Distributed OLTP Apps</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/use-cases/fast-data">Fast Data Infrastructure</a>
-                      <h3>Deployment Options</h3>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/deployments/microservices">Microservices &amp; Containers</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/deployments/multi-region">Multi-Region &amp; Multi-Cloud</a>
-                    </div>
-                    <div class="dropdown-column">
-                      <h3>Roles</h3>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/roles/app-dev">App Development</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/roles/cloud-ops">Cloud Operations</a>
-                      <h3>Industries</h3>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/industries/saas">Software-as-a-Service</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/industries/financial-services">Financial Services</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/industries/iot">Internet of Things</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/solutions/industries/e-commerce">E-Commerce</a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-           <div class="navbar-text">
-              <div class="dropdown">
-                <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_docs_dropdown" href="/">
-                  DOCS
-                </a>
-                <div class="dropdown-menu" aria-labelledby="navbar_docs_dropdown">
-                  <a class="dropdown-item" href="/quick-start/install/">Install</a>
-                  <a class="dropdown-item" href="/explore/">Explore</a>
-                  <a class="dropdown-item" href="/develop/">Develop</a>
-                  <a class="dropdown-item" href="/faq/">FAQ</a>
-                </div>
-              </div>
-            </div>
-            <div class="navbar-text">
-              <div class="dropdown">
-                <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_resources_dropdown" href="http://www.yugabyte.com/resources/">
-                  RESOURCES
-                </a>
-                <div class="dropdown-menu text-center clearfix" aria-labelledby="navbar_resources_dropdown">
-                  <div class="dropdown-row">
-                    <div class="dropdown-column">
-                      <h3>Meet Us</h3>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/resources/events/">Events</a>
-                      <a class="dropdown-item" href="http://www.yugabyte.com/resources/online-talks/">Online Talks</a>
-                    </div>
-                    <div class="dropdown-column">
-                      <h3>Request Help</h3>
-                      <a class="dropdown-item" target="_blank" href="https://github.com/YugaByte/yugabyte-db/issues/new">GitHub</a>
-                      <a class="dropdown-item" target="_blank" href="https://forum.yugabyte.com/">Forum</a>
-                      <a class="dropdown-item" target="_blank" href="https://gitter.im/YugaByte/Lobby">Gitter</a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-             <div class="navbar-text">
-              <div class="dropdown">
-                <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_about_dropdown" href="http://www.yugabyte.com/about/">
-                  ABOUT
-                </a>
-                <div class="dropdown-menu" aria-labelledby="navbar_about_dropdown">
-                  <a class="dropdown-item" href="http://www.yugabyte.com/about/">Team</a>
-                  <a class="dropdown-item" href="http://www.yugabyte.com/about/careers/">Careers</a>
-                  <a class="dropdown-item" href="http://www.yugabyte.com/about/news/">In the News</a>
-                  <a class="dropdown-item" href="http://www.yugabyte.com/about/contact/">Contact Us</a>
-                </div>
-              </div>
-            </div>
-            <div class="navbar-text">
-              <a href="https://blog.yugabyte.com" target="_blank" class="navbar-link">
-                BLOG
-              </a>
-            </div>
-          </div>
+<div class="yb-header">
 
-          <div class="navbar-text github-star-button">
-            <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star&count=true" frameborder="0" scrolling="0" width="90px" height="20px"></iframe>
-          </div>
-
+  <nav id="nav_bar" class="navbar navbar-expand-lg navbar-inverse d-print scrolled">
+    <div class="container-fluid" class="d-flex">
+      <a href="/" class="navbar-brand">
+        <img alt="YugaByte" src="https://www.yugabyte.com/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
+        <img alt="YugaByte" src="https://www.yugabyte.com/images/yblogo_whitebg.3fea4ef9.png" class="nav-logo scrolled"/>
+      </a>
+      <button type="button" class="navbar-toggler collapsed" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="sr-only">
+          Toggle navigation
+        </span>
+        <i class="fa fa-bars"></i>
+      </button>
+      <div class="navbar-collapse collapse">
+        <div class="navbar-page-links">
           <div class="navbar-text">
-            <a href="/quick-start/install/" class="btn cta-button download-btn">Download</a>
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_product_dropdown" href="/product/">
+                PRODUCT
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
+                <a class="dropdown-item" href="/product/yugabytedb/">YugaByte DB</a>
+                <a class="dropdown-item" href="/product/enterprise/">Enterprise Edition</a>
+                <a class="dropdown-item" href="/product/compare/">Compare</a>
+              </div>
+            </div>
           </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="/solutions/">
+                SOLUTIONS
+              </a>
+              <div class="dropdown-menu text-center clearfix" aria-labelledby="navbar_solutions_dropdown">
+                <div class="dropdown-row">
+                  <div class="dropdown-column">
+                    <h3>Use Cases</h3>
+                    <a class="dropdown-item" href="/solutions/use-cases/distributed-apps">Distributed OLTP Apps</a>
+                    <a class="dropdown-item" href="/solutions/use-cases/fast-data">Fast Data Infrastructure</a>
+                    <h3>Deployment Options</h3>
+                    <a class="dropdown-item" href="/solutions/deployments/microservices">Microservices &amp; Containers</a>
+                    <a class="dropdown-item" href="/solutions/deployments/multi-region">Multi-Region &amp; Multi-Cloud</a>
+                  </div>
+                  <div class="dropdown-column">
+                    <h3>Roles</h3>
+                    <a class="dropdown-item" href="/solutions/roles/app-dev">App Development</a>
+                    <a class="dropdown-item" href="/solutions/roles/cloud-ops">Cloud Operations</a>
+                    <h3>Industries</h3>
+                    <a class="dropdown-item" href="/solutions/industries/saas">Software-as-a-Service</a>
+                    <a class="dropdown-item" href="/solutions/industries/financial-services">Financial Services</a>
+                    <a class="dropdown-item" href="/solutions/industries/iot">Internet of Things</a>
+                    <a class="dropdown-item" href="/solutions/industries/e-commerce">E-Commerce</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_docs_dropdown" href="https://docs.yugabyte.com">
+                DOCS
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_docs_dropdown">
+                <a class="dropdown-item" href="https://docs.yugabyte.com/quick-start/install/">Install</a>
+                <a class="dropdown-item" href="https://docs.yugabyte.com/explore/">Explore</a>
+                <a class="dropdown-item" href="https://docs.yugabyte.com/develop/">Develop</a>
+                <a class="dropdown-item" href="https://docs.yugabyte.com/faq/">FAQ</a>
+              </div>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_resources_dropdown" href="/resources/">
+                RESOURCES
+              </a>
+              <div class="dropdown-menu text-center clearfix" aria-labelledby="navbar_resources_dropdown">
+                <div class="dropdown-row">
+                  <div class="dropdown-column">
+                    <h3>Meet Us</h3>
+                    <a class="dropdown-item" href="/resources/events/">Events</a>
+                    <a class="dropdown-item" href="/resources/online-talks/">Online Talks</a>
+                  </div>
+                  <div class="dropdown-column">
+                    <h3>Request Help</h3>
+                    <a class="dropdown-item" target="_blank" href="https://github.com/YugaByte/yugabyte-db/issues/new">GitHub</a>
+                    <a class="dropdown-item" target="_blank" href="https://forum.yugabyte.com/">Forum</a>
+                    <a class="dropdown-item" target="_blank" href="https://gitter.im/YugaByte/Lobby">Gitter</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+           <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_about_dropdown" href="/about/">
+                ABOUT
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_about_dropdown">
+                <a class="dropdown-item" href="/about/team/">Team</a>
+                <a class="dropdown-item" href="/about/careers/">Careers</a>
+                <a class="dropdown-item" href="/about/news/">In the News</a>
+                <a class="dropdown-item" href="/about/contact/">Contact Us</a>
+              </div>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <a href="https://blog.yugabyte.com" data-hover="dropdown" target="_blank" class="navbar-link">
+              BLOG
+            </a>
+          </div>
+        </div>
+
+        <div class="flex-spacer"></div>
+
+        <div class="navbar-text github-star-button">
+          <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star&count=true" frameborder="0" scrolling="0" width="90px" height="20px"></iframe>
+        </div>
+
+        <div id="download-button" class="navbar-text">
+          <a href="https://docs.yugabyte.com/quick-start/install/" class="btn cta-button">
+            Download
+          </a>
         </div>
       </div>
     </div>
-  </div>
-</nav>
+  </nav>
+</div>
+
+<div id="root">
+  <div class="main-footer-layout">

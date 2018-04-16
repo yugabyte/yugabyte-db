@@ -9,34 +9,43 @@ body {
   margin-top: 0 !important;
 }
 
-a.anchor {
-  display: block;
-  height: $ANCHOR_HEIGHT;
-  margin-top: -$ANCHOR_HEIGHT;
+.yb-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10000;
 }
 
 @media (min-width: 992px) {
   .container-fluid > .navbar-collapse {
     float: right;
-    margin: 0 10px;
+    margin: 0;
   }
 }
 
 .nav-logo {
-  height: 33px;
+  height: 38px;
   width: auto;
   display: inline-block;
+}
 
+.navbar .nav-logo {
+  height: 33px;
   @media screen and (max-width: 991px) {
     height: 28px;
   }
+}
+
+.navbar-page-links {
+  display: flex;
 }
 
 @media (max-width: 839px) {
   .navbar-header {
     float: none;
   }
-  .navbar-toggle {
+  .navbar-toggler {
     display: block;
     float: right;
   }
@@ -76,7 +85,32 @@ a.anchor {
   }
 }
 
-.nav-bar {
+.top-banner {
+  border-bottom: 1px solid #fff;
+  padding: 6px 0;
+  background-color: $YB_ORANGE;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+
+  a {
+    color: #fff !important;
+  }
+
+  @media screen and (max-width: 767px) {
+    display: none;
+  }
+}
+.top-banner-close {
+  display: block;
+  float: right;
+  margin: 0 10px;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.navbar {
   margin-bottom: 0 !important;
   border: none;
   border-bottom: 1px solid $YB_INVISIBLE_WHITE;
@@ -123,9 +157,11 @@ a.anchor {
       color: $YB_ORANGE !important;
     }
 
-    .navbar-toggle {
+    .navbar-toggler {
       border-color: $YB_ORANGE !important;
       transform: scale(0.8, 0.8);
+      border-color: $YB_ORANGE !important;
+      color: $YB_ORANGE !important;
 
       .icon-bar {
         background-color: $YB_ORANGE !important;
@@ -135,24 +171,31 @@ a.anchor {
 
   .navbar-brand {
     height: $HEADER_HEIGHT;
-    padding: 19px 6px;
+    padding: 15px 0;
 
     @media screen and (max-width: 991px) {
       height: 58px;
-      padding: 15px 6px;
     }
   }
 
-  .navbar-toggle {
+  .flex-spacer {
+    flex-grow: 1;
+  }
+
+  .navbar-toggler {
+    border: 1px solid #444 !important;
     margin-top: 12px;
+    font-size: 21px;
+    color: #fff !important;
   }
 
   .navbar-text {
+    display: block;
     margin: 10px 4px;
     padding: 12px 0px;
     line-height: 18px;
     font-size: 18px;
-    font-weight: 900;
+    font-weight: 700;
 
     .dropdown {
       display: inline-block;
@@ -163,19 +206,18 @@ a.anchor {
       display: flex;
       flex-direction: row;
       align-content: start;
+      margin-top: -5px;
       padding: 0 10px 5px;
-
     }
 
     .dropdown-column {
-
       margin: 0 10px 10px;
       text-align: left;
       white-space: nowrap;
 
       h3 {
         border-bottom: 1px solid $YB_ORANGE;
-        padding: 0 0 15px;
+        padding: 0 0 10px;
         margin: 35px 16px 5px;
         font-size: 16px;
         font-weight: 500;
@@ -208,7 +250,7 @@ a.anchor {
       text-decoration: none;
 
       &:hover {
-        text-decoration: underline;
+        color: $YB_ORANGE !important;
       }
 
       &[aria-expanded=true] {
@@ -262,15 +304,25 @@ a.anchor {
         &:hover {
           color: #fff !important;
           background-color: $YB_ORANGE;
+          text-shadow: 0 0 1px #fff;
         }
       }
     }
 
     .cta-button {
       font-weight: 500;
-      margin: -5px 6px -9px;
+      margin: -5px -4px -9px 6px;
       padding: 8px 10px 10px;
       border: none;
+      color: #fff !important;
+    }
+
+    @media screen and (max-width: 1199px) {
+      a {
+        margin: -4px -5px;
+        padding: 2px 12px 6px;
+        font-size: 14px;
+      }
     }
 
     @media screen and (max-width: 991px) {
@@ -285,7 +337,7 @@ a.anchor {
       .cta-button {
         font-size: 13px;
         font-weight: 500;
-        margin: -12px 0 -9px 6px;
+        margin: -12px 0 -9px;
         padding: 4px 12px 6px;
         border: none;
       }
@@ -294,7 +346,27 @@ a.anchor {
 
   .navbar-collapse {
     float: right;
-    margin-right: -15px;
+
+    @media screen and (max-width: 991px) {
+      background-color: #fff;
+      border-radius: 10px;
+      flex-direction: column;
+      text-align: center;
+      box-shadow: 0 5px 35px rgba(0, 0, 0, 0.3);
+
+      a.navbar-link {
+        color: $YB_ORANGE !important;
+      }
+
+      .navbar-page-links {
+        display: flex;
+        flex-direction: column;
+
+        * {
+          text-align: center;
+        }
+      }
+    }
   }
 
   @media screen and (max-width: 839px) {
@@ -303,14 +375,9 @@ a.anchor {
       padding-right: 5px;
     }
   }
+}
 
-  .navbar-page-links {
-    @media screen and (min-width: 840px) {
-      position: absolute;
-      left: 184px;
-    }
-    @media screen and (min-width: 992px) {
-      left: 230px;
-    }
-  }
+.open > .dropdown-menu {
+  display: block;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.175);
 }
