@@ -63,6 +63,9 @@ SELECT pg_catalog.pg_extension_config_dump('part_config_sub', '');
 ALTER TABLE @extschema@.part_config ADD CONSTRAINT control_constraint_col_chk CHECK ((constraint_cols @> ARRAY[control]) <> true);
 ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT control_constraint_col_chk CHECK ((sub_constraint_cols @> ARRAY[sub_control]) <> true);
 
+ALTER TABLE @extschema@.part_config ADD CONSTRAINT retention_schema_not_empty_chk CHECK (retention_schema <> '');
+ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT retention_schema_not_empty_chk CHECK (sub_retention_schema <> '');
+
 CREATE TABLE custom_time_partitions (
     parent_table text NOT NULL
     , child_table text NOT NULL
@@ -101,7 +104,7 @@ CREATE OR REPLACE VIEW @extschema@.table_privs AS
                OR grantee.rolname = 'PUBLIC' );
 
 
--- Put constraint functions & definitions here because having them separate makes the ordering of their creation harder to control. Some require the above tables to exist first.
+-- Put constraint functions & definitions here because having them in a separate file makes the ordering of their creation harder to control. Some require the above tables to exist first.
 
 /* 
  * Check for valid config values for automatic maintenance

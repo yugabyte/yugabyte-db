@@ -1,3 +1,10 @@
+3.1.3
+-- Allow tablespace inheritance from the template table in PostgreSQL 10+. Note that PG10 currently completely ignores the TABLESPACE flag to the CREATE TABLE command on a native partition parent table. So a natively partitioned parent can never live in a different tablespace other than the default. Tablespaces must be declared for each child table and pg_partman can now do that using the template table the same way it does for indexes and foreign keys (Github Issue #212).
+-- Obey the inherit_fk config option for natively partitioned tables. Previously foreign keys would always be inherited even if this was set to false.
+-- Do not allow empty string value for retention_schema in configuration tables. If this update causes an error related to this, please ensure your retention schema is actually set or leave the column value NULL (Github #214).
+-- Moved the pg_partman github repository to its own dedicated organization at http://github.com/pgpartman. Please update all links that previously referred to the keithf4 personal repository.
+
+
 3.1.2
 -- Fixed reapply_indexes.py to work properly with native partitioning. Previously it would recreate all indexes on the template table. If you've run this script on a natively partitioned set already, please review the indexes that exist on your template table and ensure only the ones you need exist. You will likely have to re-run the script again to get the child indexes set properly and you will need to set the the --recreate_all option. If your primary key has changed, also set the --primary option. Thanks to Jawshua on Github for finding the bug and providing a fix. (Github Pull Request #206).
 
