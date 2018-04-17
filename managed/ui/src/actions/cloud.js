@@ -509,12 +509,12 @@ export function editProvider(payload) {
   return {
     type: EDIT_PROVIDER,
     payload: request
-  }
+  };
 }
 
 export function editProviderResponse(response) {
   return {
     type: EDIT_PROVIDER_RESPONSE,
     payload: response
-  }
+  };
 }
