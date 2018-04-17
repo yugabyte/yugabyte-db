@@ -124,7 +124,7 @@ class ListTableGrid extends Component {
         return (
           <ButtonGroup>
             <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-              <TableAction currentRow={row} actionType="backup" />
+              <TableAction currentRow={row} actionType="create-backup" />
               <TableAction currentRow={row} actionType="import" />
               <TableAction currentRow={row} actionType="drop" />
             </DropdownButton>

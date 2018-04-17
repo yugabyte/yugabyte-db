@@ -2,7 +2,7 @@
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { BulkImportContainer, DropTableContainer, CreateBackupContainer } from '../../tables';
+import { BulkImportContainer, DropTableContainer, CreateBackupContainer, RestoreBackupContainer } from '../../tables';
 import {  MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBButton } from '../../common/forms/fields';
@@ -22,7 +22,7 @@ export default class TableAction extends Component {
   static propTypes = {
     currentRow: PropTypes.object,
     isMenuItem: PropTypes.bool,
-    actionType: PropTypes.oneOf(['drop', 'import', 'backup'])
+    actionType: PropTypes.oneOf(['drop', 'import', 'create-backup', 'restore-backup'])
   };
 
   static defaultProps = {
@@ -67,13 +67,21 @@ export default class TableAction extends Component {
         onHide = {this.closeModal}
         tableInfo = {currentRow}
       />);
-    } else if (actionType === "backup") {
+    } else if (actionType === "create-backup") {
       btnLabel = "Create Backup";
       btnIcon = "fa fa-upload";
       modalContainer = (<CreateBackupContainer
         visible={this.state.showModal}
         onHide={this.closeModal}
         tableInfo={currentRow}
+      />);
+    } else if (actionType === "restore-backup") {
+      btnLabel = "Restore Backup";
+      btnIcon = "fa fa-download";
+      modalContainer = (<RestoreBackupContainer
+        visible={this.state.showModal}
+        onHide={this.closeModal}
+        backupInfo={currentRow}
       />);
     }
 

@@ -502,7 +502,7 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, customer.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupTable, taskType.getValue());
-    String storageRegex = "s3://foo/univ-" + universe.universeUUID + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+";
+    String storageRegex = "s3://foo/univ-" + universe.universeUUID + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
     assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
