@@ -56,13 +56,13 @@ sudo service yugaware stop
 
 # DEFAULT SETTING
 cd $itest_yw_repo
-unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify
+USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --perform_upgrade --notify
 
 # Setting to use when testing local yw/devops changes
 # unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --local_path $code_root
 
 # Setting to use existing latest build but still notify!
-# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --use_latest_deploy
+# "$itest_yw_repo"/run_itest --perform_edits --notify --use_latest_deploy
 
 # For testing without notify and with existing latest build on gcp only!
-# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --use_latest_build --run_universe_test gcp
+# "$itest_yw_repo"/run_itest --perform_edits --use_latest_deploy --run_universe_test gcp
