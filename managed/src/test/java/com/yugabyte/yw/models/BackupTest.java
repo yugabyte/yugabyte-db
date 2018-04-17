@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
@@ -40,6 +41,9 @@ public class BackupTest extends FakeDBApplication {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = s3StorageConfig.configUUID;
     params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    params.tableUUID = UUID.randomUUID();
     return Backup.create(defaultCustomer.uuid, params);
   }
 
@@ -49,9 +53,43 @@ public class BackupTest extends FakeDBApplication {
     Backup b = createBackup(universeUUID);
     assertNotNull(b);
     String storageRegex = "s3://foo/univ-" + universeUUID +
-        "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+";
+        "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(s3StorageConfig.configUUID, b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.state);
+  }
+
+  @Test
+  public void testCreateWithoutTableUUID() {
+    UUID universeUUID = UUID.randomUUID();
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = s3StorageConfig.configUUID;
+    params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    Backup b = Backup.create(defaultCustomer.uuid, params);
+    String storageRegex = "s3://foo/univ-" + universeUUID +
+        "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
+    assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertEquals(s3StorageConfig.configUUID, b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.state);
+  }
+
+  @Test
+  public void testCreateWithNonS3StorageUUID() {
+    JsonNode formData = Json.parse("{\"name\": \"FILE\", \"type\": \"STORAGE\", \"data\": \"{}\"}");
+    CustomerConfig customerConfig = CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+    UUID universeUUID = UUID.randomUUID();
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = customerConfig.configUUID;
+    params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    Backup b = Backup.create(defaultCustomer.uuid, params);
+    String storageRegex = "univ-" + universeUUID +
+        "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
+    assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertEquals(customerConfig.configUUID, b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.state);
   }
 

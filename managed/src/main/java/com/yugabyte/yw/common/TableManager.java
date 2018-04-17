@@ -76,9 +76,11 @@ public class TableManager extends DevopsBase {
         commandArgs.add(accessKey.getKeyInfo().privateKey);
         commandArgs.add("--s3bucket");
         commandArgs.add(backupTableParams.storageLocation);
-        commandArgs.add("--table_uuid");
-        commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
-
+        if (taskParams.tableUUID != null) {
+          commandArgs.add("--table_uuid");
+          commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
+        }
+        commandArgs.add("--no_auto_name");
         commandArgs.add(backupTableParams.actionType.name().toLowerCase());
         extraVars = customerConfig.dataAsMap();
 

@@ -3,7 +3,8 @@
 import { FETCH_TABLES_LIST, FETCH_TABLES_LIST_SUCCESS, FETCH_TABLES_LIST_FAILURE, RESET_TABLES_LIST,
   FETCH_TABLE_DETAIL, FETCH_TABLE_DETAIL_SUCCESS, FETCH_TABLE_DETAIL_FAILURE, RESET_TABLE_DETAIL,
   FETCH_COLUMN_TYPES, FETCH_COLUMN_TYPES_SUCCESS, FETCH_COLUMN_TYPES_FAILURE, TOGGLE_TABLE_VIEW,
-  BULK_IMPORT, BULK_IMPORT_RESPONSE, DROP_TABLE, DROP_TABLE_RESPONSE
+  BULK_IMPORT, BULK_IMPORT_RESPONSE, DROP_TABLE, DROP_TABLE_RESPONSE, CREATE_BACKUP_TABLE,
+  CREATE_BACKUP_TABLE_RESPONSE, RESTORE_TABLE_BACKUP, RESTORE_TABLE_BACKUP_RESPONSE
 } from '../actions/tables';
 import { getInitialState, setLoadingState, setPromiseResponse } from '../utils/PromiseUtils';
 
@@ -13,7 +14,9 @@ const INITIAL_STATE = {
   columnDataTypes: {},
   currentTableView: 'list',
   bulkImport: getInitialState({}),
-  dropTable: getInitialState({})
+  dropTable: getInitialState({}),
+  createBackup: getInitialState({}),
+  restoreBackup: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -52,6 +55,14 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "dropTable", {});
     case DROP_TABLE_RESPONSE:
       return setPromiseResponse(state, "dropTable", action);
+    case CREATE_BACKUP_TABLE:
+      return setLoadingState(state, "createBackup", {});
+    case CREATE_BACKUP_TABLE_RESPONSE:
+      return setPromiseResponse(state, "createBackup", action);
+    case RESTORE_TABLE_BACKUP:
+      return setLoadingState(state, "restoreBackup", {});
+    case RESTORE_TABLE_BACKUP_RESPONSE:
+      return setPromiseResponse(state, "restoreBackup", action);
     default:
       return state;
   }

@@ -35,7 +35,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
-public class TableManagerTest extends FakeDBApplication {
+  public class TableManagerTest extends FakeDBApplication {
 
   @Mock
   play.Configuration mockAppConfig;
@@ -102,7 +102,9 @@ public class TableManagerTest extends FakeDBApplication {
 
   private BackupTableParams getBackupTableParams(BackupTableParams.ActionType actionType) {
     BackupTableParams backupTableParams = new BackupTableParams();
-    backupTableParams.tableUUID = UUID.randomUUID();
+    if (actionType.equals(BackupTableParams.ActionType.CREATE)) {
+      backupTableParams.tableUUID = UUID.randomUUID();
+    }
     backupTableParams.tableName = "mock_table";
     backupTableParams.keyspace = "mock_ks";
     backupTableParams.actionType = actionType;
@@ -161,8 +163,11 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add(pkPath);
     cmd.add("--s3bucket");
     cmd.add(backupTableParams.storageLocation);
-    cmd.add("--table_uuid");
-    cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
+    if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)) {
+      cmd.add("--table_uuid");
+      cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
+    }
+    cmd.add("--no_auto_name");
     cmd.add(backupTableParams.actionType.name().toLowerCase());
     return cmd;
   }
@@ -208,6 +213,18 @@ public class TableManagerTest extends FakeDBApplication {
   public void testCreateBackup() {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testRestoreBackup() {
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);

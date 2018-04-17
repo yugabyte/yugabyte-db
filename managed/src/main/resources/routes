@@ -84,6 +84,7 @@ DELETE  /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte
 PUT     /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID/bulk_import  com.yugabyte.yw.controllers.TablesController.bulkImport(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 PUT     /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID/create_backup  com.yugabyte.yw.controllers.TablesController.createBackup(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/backups            com.yugabyte.yw.controllers.BackupsController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universes/:uniUUID/backups/:backupUUID/restore com.yugabyte.yw.controllers.BackupsController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID, backupUUID: java.util.UUID)
 
 # Task History API
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)

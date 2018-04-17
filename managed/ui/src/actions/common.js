@@ -19,7 +19,12 @@ export function getCustomerEndpoint() {
   return `${ROOT_URL}/customers/${customerUUID}`;
 }
 
-export function getTablesEndpoint(universeUUID) {
+export function getUniverseEndpoint(universeUUID) {
   const baseUrl = getCustomerEndpoint();
-  return `${baseUrl}/universes/${universeUUID}/tables`;
+  return `${baseUrl}/universes/${universeUUID}`;
+}
+
+export function getTablesEndpoint(universeUUID, tableUUID) {
+  const baseUrl = getUniverseEndpoint(universeUUID);
+  return `${baseUrl}/tables/${tableUUID}`;
 }

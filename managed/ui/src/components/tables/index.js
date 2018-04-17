@@ -16,3 +16,5 @@ export { default as ListBackupsContainer } from './ListBackups/ListBackupsContai
 export { default as TableAction } from './TableAction/TableAction';
 export { default as CreateBackup } from './CreateBackup/CreateBackup';
 export { default as CreateBackupContainer } from './CreateBackup/CreateBackupContainer';
+export { default as RestoreBackup } from './RestoreBackup/RestoreBackup';
+export { default as RestoreBackupContainer } from './RestoreBackup/RestoreBackupContainer';
