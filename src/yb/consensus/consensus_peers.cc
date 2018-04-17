@@ -211,6 +211,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   if (last_exchange_successful &&
       (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
     if (PREDICT_TRUE(consensus_)) {
+      auto uuid = peer_pb_.permanent_uuid();
       sem_.Release();
       consensus::ChangeConfigRequestPB req;
       consensus::ChangeConfigResponsePB resp;
@@ -226,8 +227,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       LOG(INFO) << "Sending ChangeConfig request";
       auto status = consensus_->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
       if (PREDICT_FALSE(!status.ok())) {
-        LOG(WARNING) << "Unable to change role for peer " << peer_pb_.permanent_uuid()
-            << ": " << status.ToString(false);
+        LOG(WARNING) << "Unable to change role for peer " << uuid << ": " << status.ToString(false);
         // Since we released the semaphore, we need to call SignalRequest again to send a message
         status = SignalRequest(RequestTriggerMode::kAlwaysSend);
         if (PREDICT_FALSE(!status.ok())) {
