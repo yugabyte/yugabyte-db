@@ -21,6 +21,7 @@ import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
@@ -128,7 +129,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testListProviders() {
     Provider p1 = ModelFactory.awsProvider(customer);
+    p1.setConfig(ImmutableMap.of("MY_KEY_DATA", "SENSITIVE_DATA", "MY_SECRET_DATA", "SENSITIVE_DATA"));
+    p1.save();
     Provider p2 = ModelFactory.gcpProvider(customer);
+    p2.setConfig(ImmutableMap.of("FOO", "BAR"));
+    p2.save();
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -136,6 +141,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(2, json.size());
     assertValues(json, "uuid", (List) ImmutableList.of(p1.uuid.toString(), p2.uuid.toString()));
     assertValues(json, "name", (List) ImmutableList.of(p1.name, p2.name));
+    json.forEach((providerJson) -> {
+      JsonNode config = providerJson.get("config");
+      if (UUID.fromString(providerJson.get("uuid").asText()).equals(p1.uuid)) {
+        assertValue(config, "MY_KEY_DATA", "SE**********TA");
+        assertValue(config, "MY_SECRET_DATA", "SE**********TA");
+      } else {
+        assertValue(config, "FOO", "BAR");
+      }
+    });
   }
 
   @Test
@@ -302,7 +316,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = editProvider(bodyJson, p.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(json.get("hostedZoneID").asText(), "1234");
+    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    p.refresh();
+    assertEquals("1234", p.getConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
   @Test

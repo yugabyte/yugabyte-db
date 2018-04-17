@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Iterator;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -17,9 +16,8 @@ import javax.persistence.UniqueConstraint;
 
 import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +25,8 @@ import org.slf4j.LoggerFactory;
 import com.avaje.ebean.Model;
 import play.data.validation.Constraints;
 import play.libs.Json;
+
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
 
 @Table(
@@ -70,25 +70,17 @@ public class Provider extends Model {
 
   public void setConfig(Map<String, String> configMap) { this.config = Json.toJson(configMap); }
 
-  public Map<String, String> getConfig() {
+  @JsonIgnore
+  public JsonNode getMaskedConfig() {
     if (this.config == null) {
-      return new HashMap();
+      return Json.newObject();
     } else {
-      JsonNode maskedData = this.config.deepCopy();
-      for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
-        String key = it.next();
-        if (key.contains("KEY") || key.contains("SECRET")) {
-          ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll("(?<!^.?).(?!.?$)", "*"));
-        }
-      }
-      ObjectMapper mapper = new ObjectMapper();
-      Map<String, String> result = mapper.convertValue(maskedData, Map.class);
-      return result;
+      return maskConfig(this.config);
     }
   }
-  
-  // Method returns unmasked config values for provider
-  public Map<String, String> getUnmaskedConfig() {
+
+  @JsonIgnore
+  public Map<String, String> getConfig() {
     if (this.config == null) {
       return new HashMap();
     } else {
@@ -175,13 +167,9 @@ public class Provider extends Model {
 
   // Update host zone if for aws provider
   public void updateHostedZoneId(String hostedZoneId) {
-    try {
-      Map<String, String> currentProviderConfig = getUnmaskedConfig();
-      currentProviderConfig.put("AWS_HOSTED_ZONE_ID", hostedZoneId);
-      this.setConfig(currentProviderConfig);
-      this.save();
-    } catch (RuntimeException e) {
-      throw e;
-    }
+    Map<String, String> currentProviderConfig = getConfig();
+    currentProviderConfig.put("AWS_HOSTED_ZONE_ID", hostedZoneId);
+    this.setConfig(currentProviderConfig);
+    this.save();
   }
 }
