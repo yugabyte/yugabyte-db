@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
-import { getCustomerEndpoint, getTablesEndpoint } from "./common";
+import { getCustomerEndpoint, getTablesEndpoint, getUniverseEndpoint } from "./common";
 
 export const FETCH_TABLES_LIST = 'FETCH_TABLES_LIST';
 export const FETCH_TABLES_LIST_SUCCESS = 'FETCH_TABLES_LIST_SUCCESS';
@@ -25,6 +25,9 @@ export const DROP_TABLE = 'DROP_TABLE';
 export const DROP_TABLE_RESPONSE = 'DROP_TABLE_RESPONSE';
 export const CREATE_BACKUP_TABLE = 'CREATE_BACKUP_TABLE';
 export const CREATE_BACKUP_TABLE_RESPONSE = 'CREATE_BACKUP_TABLE_RESPONSE';
+export const RESTORE_TABLE_BACKUP = 'RESTORE_TABLE_BACKUP';
+export const RESTORE_TABLE_BACKUP_RESPONSE = 'RESTORE_TABLE_BACKUP_RESPONSE';
+
 
 export function fetchUniverseTables(universeUUID) {
   const customerId = localStorage.getItem("customer_id");
@@ -178,9 +181,9 @@ export function dropTableResponse(response) {
 }
 
 export function createTableBackup(universeUUID, tableUUID, formValues) {
-  const baseUrl = getTablesEndpoint(universeUUID);
+  const baseUrl = getTablesEndpoint(universeUUID, tableUUID);
   const request = axios.put(
-    `${baseUrl}/${tableUUID}/create_backup`, formValues
+    `${baseUrl}/create_backup`, formValues
   );
   return {
     type: CREATE_BACKUP_TABLE,
@@ -191,6 +194,24 @@ export function createTableBackup(universeUUID, tableUUID, formValues) {
 export function createTableBackupResponse(response) {
   return {
     type: CREATE_BACKUP_TABLE_RESPONSE,
+    payload: response
+  };
+}
+
+export function restoreTableBackup(universeUUID, backupUUID, formValues) {
+  const baseUrl = getUniverseEndpoint(universeUUID);
+  const request = axios.post(
+    `${baseUrl}/backups/${backupUUID}/restore`, formValues
+  );
+  return {
+    type: RESTORE_TABLE_BACKUP,
+    payload: request
+  };
+}
+
+export function restoreTableBackupResponse(response) {
+  return {
+    type: RESTORE_TABLE_BACKUP_RESPONSE,
     payload: response
   };
 }

@@ -68,7 +68,10 @@ public class CustomerTask extends Model {
     UpgradeGflags,
 
     @EnumValue("BulkImportData")
-    BulkImportData;
+    BulkImportData,
+
+    @EnumValue("Restore")
+    Restore;
 
     public String toString(boolean completed) {
       switch(this) {
@@ -84,6 +87,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
           return completed ? "Bulk imported data" : "Bulk importing data";
+        case Restore:
+          return completed ? "Restored " : "Restoring ";
         default:
           return null;
       }

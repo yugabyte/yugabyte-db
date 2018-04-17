@@ -77,11 +77,18 @@ public class Backup extends Model {
 
   // For creating new backup we would set the storage location based on
   // universe UUID and backup UUID.
-  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>
+  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace.table_name.table_uuid
   private void updateStorageLocation(BackupTableParams params) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
-    params.storageLocation = String.format("univ-%s/backup-%s-%d",
-        params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()));
+    params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
+        params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
+        params.keyspace, params.tableName);
+    if (params.tableUUID != null) {
+      params.storageLocation = String.format("%s-%s",
+          params.storageLocation,
+          params.tableUUID.toString().replace("-", "")
+      );
+    }
     if (customerConfig != null && customerConfig.name.equals("S3")) {
       params.storageLocation = String.format("%s/%s",
           customerConfig.getData().get("S3_BUCKET").asText(),
@@ -96,8 +103,10 @@ public class Backup extends Model {
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
     backup.createTime = new Date();
-    // We would derive the storage location based on the parameters
-    backup.updateStorageLocation(params);
+    if (params.storageLocation == null) {
+      // We would derive the storage location based on the parameters
+      backup.updateStorageLocation(params);
+    }
     backup.setBackupInfo(params);
     backup.save();
     return backup;

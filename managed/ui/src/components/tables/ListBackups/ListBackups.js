@@ -2,6 +2,7 @@
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
+import { DropdownButton } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -35,21 +36,34 @@ export default class ListBackups extends Component {
         getPromiseState(universeBackupList).isInit()) {
       return <YBLoadingIcon size="medium" />;
     }
-
     const backupInfos = universeBackupList.data.map((b) => {
       const backupInfo = b.backupInfo;
       backupInfo.backupUUID = b.backupUUID;
       backupInfo.status = b.state;
       backupInfo.createTime = b.createTime;
+      // Show action button to restore/delete only when the backup is
+      // create and which has completed successfully.
+      backupInfo.showActions = (backupInfo.actionType === "CREATE" &&
+                                backupInfo.status === "Completed");
       return backupInfo;
     });
+
+    const formatActionButtons = function(item, row) {
+      if (row.showActions) {
+        return (
+          <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+            <TableAction currentRow={row} actionType="restore-backup" />
+          </DropdownButton>
+        );
+      }
+    };
 
     return (
       <YBPanelItem
         header={
           <Fragment>
             <h2 className="task-list-header content-title pull-left">{title}</h2>
-            <TableAction actionType="backup" isMenuItem={false} className="pull-right"/>
+            <TableAction actionType="create-backup" isMenuItem={false} className="pull-right"/>
           </Fragment>
 
         }
@@ -78,6 +92,10 @@ export default class ListBackups extends Component {
                               columnClassName="no-border storage-cell"
                               className="no-border storage-cell" >
               Storage Location
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"}
+                               dataFormat={formatActionButtons}>
+              Actions
             </TableHeaderColumn>
           </BootstrapTable>
         }
