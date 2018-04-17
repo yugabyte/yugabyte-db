@@ -252,6 +252,8 @@ class ClusterLoadBalancer {
   // Get the total number of extra replicas.
   int get_total_over_replication() const;
 
+  int get_total_under_replication() const;
+
   // Convenience methods for getting totals of starting or running tablets.
   int get_total_starting_tablets() const;
   int get_total_running_tablets() const;

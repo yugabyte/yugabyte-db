@@ -123,40 +123,47 @@ class TestLoadBalancerBase {
     std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");
     std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "c");
 
-    TSDescriptorVector ts_descs = {ts0, ts1, ts2};
+    std::shared_ptr<TSDescriptor> ts1_a = SetupTS("1111", "a");
+    std::shared_ptr<TSDescriptor> ts2_a = SetupTS("2222", "a");
 
-    PrepareTestState(ts_descs);
+    TSDescriptorVector ts_descs_multi_az = {ts0, ts1, ts2};
+    TSDescriptorVector ts_descs_single_az = {ts0, ts1_a, ts2_a};
+
+    PrepareTestState(ts_descs_multi_az);
     TestNoPlacement();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestWithPlacement();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestWithMissingPlacement();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestOverReplication();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestWithBlacklist();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestWithMissingTabletServers();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestMovingMultipleTabletsFromSameServer();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestWithMissingPlacementAndLoadImbalance();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestBalancingLeaders();
 
+    PrepareTestState(ts_descs_single_az);
+    TestMissingPlacementSingleAz();
+
     gflags::SetCommandLineOption("leader_balance_threshold", "2");
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestBalancingLeadersWithThreshold();
 
-    PrepareTestState(ts_descs);
+    PrepareTestState(ts_descs_multi_az);
     TestLeaderOverReplication();
   }
 
@@ -714,6 +721,43 @@ class TestLoadBalancerBase {
 
     // The distribution is as balanced as it can be so there shouldn't be any move.
     ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+  }
+
+  void TestMissingPlacementSingleAz() {
+    LOG(INFO) << "Testing single az deployment where min_num_replicas different from num_replicas";
+    // Setup cluster level placement to single AZ.
+    SetupClusterConfig(/* multi_az = */ false);
+
+    // Under-replicate tablets 0, 1, 2.
+    RemoveReplica(tablets_[0].get(), ts_descs_[0]);
+    RemoveReplica(tablets_[1].get(), ts_descs_[1]);
+    RemoveReplica(tablets_[2].get(), ts_descs_[2]);
+
+    ResetState();
+    AnalyzeTablets();
+
+    string placeholder, expected_tablet_id, expected_from_ts, expected_to_ts;
+
+    // Make sure a replica is added for tablet 0 to ts 0.
+    expected_tablet_id = tablets_[0]->tablet_id();
+    expected_to_ts = ts_descs_[0]->permanent_uuid();
+
+    TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+
+    // Make sure a replica is added for tablet 1 to ts 1.
+    expected_tablet_id = tablets_[1]->tablet_id();
+    expected_to_ts = ts_descs_[1]->permanent_uuid();
+
+    TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+
+    // Make sure a replica is added for tablet 2 to ts 2.
+    expected_tablet_id = tablets_[2]->tablet_id();
+    expected_to_ts = ts_descs_[2]->permanent_uuid();
+
+    TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+
+    // Everything is normal now, load balancer shouldn't do anything.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
   }
 
   // Methods to prepare the state of the current test.
