@@ -75,7 +75,13 @@ public class CloudProviderController extends AuthenticatedController {
    */
   public Result list(UUID customerUUID) {
     List<Provider> providerList = Provider.getAll(customerUUID);
-    return ok(Json.toJson(providerList));
+    ArrayNode providers = Json.newArray();
+    providerList.forEach((provider) -> {
+      ObjectNode providerJson = (ObjectNode) Json.toJson(provider);
+      providerJson.set("config", provider.getMaskedConfig());
+      providers.add(providerJson);
+    });
+    return ApiResponse.success(providers);
   }
 
   // This endpoint we are using only for deleting provider for integration test purpose. our
@@ -232,7 +238,7 @@ public class CloudProviderController extends AuthenticatedController {
         // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
         // store it somewhere and the config is the easiest place to put it. As such, since all the
         // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getUnmaskedConfig();
+        Map<String, String> config = provider.getConfig();
         config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
         provider.setConfig(config);
         provider.save();
@@ -320,9 +326,6 @@ public class CloudProviderController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    ObjectNode resultNode = Json.newObject();
-    resultNode.put("hostedZoneID", hostedZoneID);
-    return ApiResponse.success(resultNode);
-
+    return ApiResponse.success(provider);
   }
 }

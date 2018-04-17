@@ -4,7 +4,7 @@ import React, {Component} from 'react';
 import { Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isNonEmptyObject, convertSpaceToDash, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 
 export default class EditProviderForm extends Component {
@@ -58,4 +58,3 @@ export default class EditProviderForm extends Component {
     );
   }
 }
-

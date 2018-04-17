@@ -12,7 +12,9 @@ import com.yugabyte.yw.common.FakeDBApplication;
 
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
 
 public class ProviderTest extends FakeDBApplication {
@@ -58,11 +60,21 @@ public class ProviderTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetMaskedConfig() {
+  public void testGetMaskedConfigWithSensitiveData() {
     Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
             "Amazon", ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{AWS_ACCESS_KEY_ID=Ba********ar}")));
+    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_KEY_ID", "Ba********ar");
+    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
+  }
+
+  @Test
+  public void testGetMaskedConfigWithoutSensitiveData() {
+    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
+        "Amazon", ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
+    assertNotNull(provider.uuid);
+    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_ID", "BarBarBarBar");
+    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
   }
 
   @Test
