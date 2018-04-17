@@ -110,6 +110,10 @@ int ClusterLoadBalancer::get_total_over_replication() const {
   return state_->tablets_over_replicated_.size();
 }
 
+int ClusterLoadBalancer::get_total_under_replication() const {
+  return state_->tablets_missing_replicas_.size();
+}
+
 int ClusterLoadBalancer::get_total_starting_tablets() const { return state_->total_starting_; }
 
 int ClusterLoadBalancer::get_total_running_tablets() const { return state_->total_running_; }
@@ -294,9 +298,9 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
 
   VLOG(1) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
-      "Wrong placement: $3. BlackListed: $4.",
+      "Wrong placement: $3. BlackListed: $4. Total underreplication: $5",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
-      get_total_wrong_placement(), get_total_blacklisted_servers());
+      get_total_wrong_placement(), get_total_blacklisted_servers(), get_total_under_replication());
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet->id();
@@ -334,16 +338,16 @@ bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
         // No need to check placement info, as there is none.
         can_choose_ts = state_->CanAddTabletToTabletServer(tablet_id, ts_uuid);
       } else {
-        // We add a tablet to the set with missing replicas both if it is under-replicated, or if
-        // it has placements with fewer replicas than the minimum. If no placement information, we
-        // just deem it under-replicated and handle it in the first branch of the if. Here we take
-        // care of actual placement problems.
-        DCHECK(!missing_placements.empty());
-
+        // We added a tablet to the set with missing replicas both if it is under-replicated, and we
+        // added a placement to the tablet_meta under_replicated_placements if the num replicas in
+        // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
+        // placement that is under-replicated and the the ts is not in that placement, then that ts
+        // isn't valid.
         const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
         // We have specific placement blocks that are under-replicated, so confirm that this TS
         // matches.
-        if (missing_placements.count(ts_meta.descriptor->placement_id())) {
+        if (missing_placements.empty() ||
+            missing_placements.count(ts_meta.descriptor->placement_id())) {
           // Don't check placement information anymore.
           can_choose_ts = state_->CanAddTabletToTabletServer(tablet_id, ts_uuid);
         }
