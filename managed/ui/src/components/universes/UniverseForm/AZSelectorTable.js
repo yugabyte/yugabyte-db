@@ -7,6 +7,7 @@ import _ from 'lodash';
 import { isNonEmptyArray, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from '../../../utils/UniverseUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Starting"],
@@ -278,24 +279,26 @@ export default class AZSelectorTable extends Component {
 
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate}} = nextProps;
-    const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
-    const azGroups = placementInfo.groups;
-    if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)) {
-      this.setState({azItemState: azGroups});
-    }
-    const primaryCluster = isNonEmptyObject(universeConfigTemplate.data) ?
-      getPrimaryCluster(universeConfigTemplate.data.clusters) :
-      null;
-    if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.placementInfo) &&
-        !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
-      const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
-      if (isNonEmptyObject(uniqueAZs)) {
-        const placementStatusObject = {
-          numUniqueRegions: placementInfo.uniqueRegions,
-          numUniqueAzs: placementInfo.uniqueAzs,
-          replicationFactor: primaryCluster.userIntent.replicationFactor
-        };
-        this.props.setPlacementStatus(placementStatusObject);
+    if (getPromiseState(universeConfigTemplate).isSuccess()) {
+      const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
+      const azGroups = placementInfo.groups;
+      if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)) {
+        this.setState({azItemState: azGroups});
+      }
+      const primaryCluster = isNonEmptyObject(universeConfigTemplate.data) ?
+        getPrimaryCluster(universeConfigTemplate.data.clusters) :
+        null;
+      if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.placementInfo) &&
+          !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
+        const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
+        if (isNonEmptyObject(uniqueAZs)) {
+          const placementStatusObject = {
+            numUniqueRegions: placementInfo.uniqueRegions,
+            numUniqueAzs: placementInfo.uniqueAzs,
+            replicationFactor: primaryCluster.userIntent.replicationFactor
+          };
+          this.props.setPlacementStatus(placementStatusObject);
+        }
       }
     }
   }

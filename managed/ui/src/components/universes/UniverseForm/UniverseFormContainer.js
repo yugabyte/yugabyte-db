@@ -191,10 +191,10 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP',
+      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP',
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
       'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }
