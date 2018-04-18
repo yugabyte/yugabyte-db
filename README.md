@@ -11,7 +11,7 @@ Optional retention policy can automatically drop partitions no longer needed for
 
 A background worker (BGW) process is included to automatically run partition maintenance without the need of an external scheduler (cron, etc) in most cases.
 
-All bug reports, feature requests and general questions can be directed to the Issues section on Github. Please feel free to post here no matter how minor you may feel your issue or question may be. - https://github.com/keithf4/pg_partman/issues
+All bug reports, feature requests and general questions can be directed to the Issues section on Github. Please feel free to post here no matter how minor you may feel your issue or question may be. - https://github.com/pgpartman/pg_partman/issues
 
 If you're looking for a partitioning system that handles any range type beyond just time & serial, the new native partitioning features in PostgreSQL 10 are likely the best method for the foreseeable future. If this is something critical to your environment, start planning your upgrades now!
 
