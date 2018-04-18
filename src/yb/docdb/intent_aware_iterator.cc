@@ -16,7 +16,6 @@
 #include <future>
 #include <thread>
 #include <boost/optional/optional_io.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
@@ -267,26 +266,24 @@ void IntentAwareIterator::SeekForward(const Slice& key) {
 }
 
 void IntentAwareIterator::SeekForward(KeyBytes* key_bytes) {
-  const auto key = key_bytes->AsSlice();
-  BOOST_SCOPE_EXIT(key_bytes, &key) {
-    key_bytes->Truncate(key.size());
-  } BOOST_SCOPE_EXIT_END;
-  VLOG(4) << "SeekForward(" << SubDocKey::DebugSliceToString(key) << ")";
+  VLOG(4) << "SeekForward(" << SubDocKey::DebugSliceToString(*key_bytes) << ")";
   DOCDB_DEBUG_SCOPE_LOG(
-      SubDocKey::DebugSliceToString(key),
+      SubDocKey::DebugSliceToString(*key_bytes),
       std::bind(&IntentAwareIterator::DebugDump, this));
   if (!status_.ok()) {
     return;
   }
 
+  const size_t key_size = key_bytes->size();
   AppendEncodedDocHt(encoded_read_time_global_limit_, key_bytes);
   SeekForwardRegular(*key_bytes);
+  key_bytes->Truncate(key_size);
   if (intent_iter_ && status_.ok()) {
     status_ = SetIntentUpperbound();
     if (!status_.ok()) {
       return;
     }
-    GetIntentPrefixForKeyWithoutHt(key, &seek_key_buffer_);
+    GetIntentPrefixForKeyWithoutHt(*key_bytes, &seek_key_buffer_);
     SeekForwardToSuitableIntent(seek_key_buffer_);
   }
 }
