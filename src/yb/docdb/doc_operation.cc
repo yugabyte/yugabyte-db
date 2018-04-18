@@ -1199,6 +1199,8 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
   const auto request_type = request_.get_collection_range_request().request_type();
   switch (request_type) {
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME:
+      FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE: FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
       if(!request_.has_subkey_range() || !request_.subkey_range().has_lower_bound() ||
@@ -1281,9 +1283,14 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
         data.limit = request_.range_request_limit();
+        bool is_reverse = true;
+        if (request_type == RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME) {
+          // If reverse is false, newest element is the first element returned.
+          is_reverse = false;
+        }
         RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesGeneric, data,
             ValueType::kRedisTS, request_, &response_,
-            /* add_keys */ true, /* add_values */ true, /* reverse */ true));
+            /* add_keys */ true, /* add_values */ true, is_reverse));
       }
       break;
     }
