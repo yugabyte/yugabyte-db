@@ -7,7 +7,7 @@ import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
          isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
-import { YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
+import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
          YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -358,6 +358,7 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
       updateFormField(`${clusterType}.diskIops`, null);
       updateFormField(`${clusterType}.ebsType`, volumeDetail.volumeType === "EBS" ? "GP2" : null);
+      updateFormField(`${clusterType}.mountPoints`, mountPoints);
       this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
   }
@@ -973,6 +974,7 @@ export default class ClusterFields extends Component {
                 {spotPriceToggle}
                 {spotPriceField}
                 {assignPublicIP}
+                <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>
             {deviceDetail &&
