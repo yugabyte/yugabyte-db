@@ -484,6 +484,8 @@ CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
   } else {
     bound_pb->set_is_exclusive(exclusive);
     switch (request_type) {
+      case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME:
+        FALLTHROUGH_INTENDED;
       case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
         auto ts_bound = util::CheckedStoll(slice);
         RETURN_NOT_OK(ts_bound);
@@ -583,6 +585,48 @@ CHECKED_STATUS ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& a
       RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME));
 
   op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_get_collection_range_request(
+      new RedisCollectionGetRangeRequestPB());
+  op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME);
+
+  const auto& key = args[1];
+      RETURN_NOT_OK(ParseTsSubKeyBound(
+      args[2],
+      op->mutable_request()->mutable_subkey_range()->mutable_lower_bound(),
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME));
+      RETURN_NOT_OK(ParseTsSubKeyBound(
+      args[3],
+      op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME));
+
+  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+
+  if (args.size() > 4) {
+    if (args.size() != 6) {
+      return STATUS_SUBSTITUTE(InvalidCommand,
+                               "Invalid number of arguments. Command should have 4 or 6 arguments");
+    }
+    string upper_arg;
+    ToUpperCase(args[4].ToBuffer(), &upper_arg);
+    if (upper_arg != "LIMIT") {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+                               "Invalid argument $0. Expecting $1", args[4].ToBuffer(), "limit");
+    }
+    auto limit = ParseInt32(args[5], "limit");
+    RETURN_NOT_OK(limit);
+    if ((*limit) <= 0) {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+                               "$0 field $1 is not within valid bounds", "limit",
+                               args[5].ToDebugString());
+    }
+    op->mutable_request()->set_range_request_limit(*limit);
+  }
+
   return Status::OK();
 }
 
