@@ -254,6 +254,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
     params.universeUUID = taskParams().universeUUID;
     // Add the az uuid.
     params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
     // Add task type
     params.type = type;
     params.setProperty("processType", processType.toString());
