@@ -91,6 +91,10 @@ public class YBClient implements AutoCloseable {
   // Log info after these many iterations.
   private static final int LOG_EVERY_NUM_ITERS = 200;
 
+  // Simple way to inject an error on Wait based APIs. If enabled, after first inject,
+  // it will be turned off. We can enhance it to use more options like every-N etc.
+  private boolean injectWaitError = false;
+
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
@@ -450,7 +454,7 @@ public class YBClient implements AutoCloseable {
       }
 
       Thread.sleep(asyncClient.SLEEP_TIME);
-    } while (System.currentTimeMillis() < start + timeoutMs);
+    } while (System.currentTimeMillis() - start < timeoutMs);
 
     LOG.error("Timed out getting leader uuid.");
 
@@ -697,6 +701,14 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Quick and dirty error injection on Wait based API's.
+   * After every use, for now, will get automatically disabled.
+   */
+  public void injectWaitError() {
+    injectWaitError = true;
+  }
+
+  /**
    * Helper method that loops on a condition every 500ms until it returns true or the
    * operation times out.
    * @param condition the Condition which implements a boolean get() method.
@@ -711,6 +723,13 @@ public class YBClient implements AutoCloseable {
     String errorMessage = null;
     do {
       try {
+        if (injectWaitError) {
+          Thread.sleep(AsyncYBClient.SLEEP_TIME);
+          injectWaitError = false;
+          String msg = "Simulated expection due to injected error.";
+          LOG.info(msg);
+          throw new RuntimeException(msg);
+        }
         if (condition.get()) {
           return true;
         }
@@ -737,7 +756,7 @@ public class YBClient implements AutoCloseable {
       try {
         Thread.sleep(AsyncYBClient.SLEEP_TIME);
       } catch (Exception e) {}
-    } while (System.currentTimeMillis() < start + timeoutMs);
+    } while (System.currentTimeMillis() - start < timeoutMs);
 
     if (errorMessage == null) {
       LOG.error("Timed out waiting for operation. Final exception was {}.",
