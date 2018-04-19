@@ -113,6 +113,17 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test Waiting for load balance, with simulated errors.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testWaitForLoadBalance() throws Exception {
+    syncClient.injectWaitError();
+    boolean isBalanced = syncClient.waitForLoadBalance(Long.MAX_VALUE, 0);
+    assertTrue(isBalanced);
+  }
+
+  /**
    * Test Master Configuration Change operation going from A,B,C to D,E,F.
    * @throws Exception
    */
