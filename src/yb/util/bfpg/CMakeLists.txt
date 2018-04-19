@@ -18,14 +18,14 @@ add_executable(bfpg_codegen
 target_link_libraries(bfpg_codegen yb_util yb_common_proto consensus_metadata_proto)
 
 # Use ${CMAKE_BINARY_DIR}/bin/bfpg_codegen to generate builtin function files.
-SET(BF_GENERATED_FILES
+SET(BFPG_GENERATED_FILES
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opcode_table.cc
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opspec_table.cc
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opcodes.h
     ${CMAKE_CURRENT_BINARY_DIR}/gen_operator.h
     ${CMAKE_CURRENT_BINARY_DIR}/gen_bfunc_table.h)
 
-add_custom_command(OUTPUT ${BF_GENERATED_FILES}
+add_custom_command(OUTPUT ${BFPG_GENERATED_FILES}
                    DEPENDS bfpg_codegen
                    COMMAND bfpg_codegen ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -33,7 +33,7 @@ add_custom_command(OUTPUT ${BF_GENERATED_FILES}
 set(YB_BFPG_SRCS
     directory.cc
     bfpg.cc
-    ${BF_GENERATED_FILES})
+    ${BFPG_GENERATED_FILES})
 
 set(YB_BFPG_LIBS
     yb_util)
