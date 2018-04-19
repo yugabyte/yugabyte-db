@@ -208,6 +208,7 @@ class Executor : public QLExprExecutor {
   // Column types.
   CHECKED_STATUS PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb);
   CHECKED_STATUS PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *ref_pb);
+  CHECKED_STATUS PTExprToPB(const PTJsonColumnWithOperators *ref_pt, QLExpressionPB *ref_pb);
   CHECKED_STATUS PTExprToPB(const PTAllColumns *ref_all, QLReadRequestPB *req);
 
   // Operators.

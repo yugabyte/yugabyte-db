@@ -228,6 +228,63 @@ void PushBackNumericMember(rapidjson::Document* document, T value) {
 }
 } // anonymous namespace
 
+Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_value,
+                             string* result) {
+  switch (GetJEType(element_metadata)) {
+    case kJEIsString: {
+      // Need to quote strings in json.
+      *result = "\"" + json_value.ToBuffer() + "\"";
+      break;
+    }
+    case kJEIsInt: {
+      int32_t value = DecodeInt32FromKey(json_value);
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsUInt: {
+      uint32_t value = BigEndian::Load32(json_value.data());
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsInt64: {
+      int64_t value = DecodeInt64FromKey(json_value);
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsUInt64: {
+      uint64_t value = BigEndian::Load64(json_value.data());
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsDouble: {
+      double value = DecodeDoubleFromKey(json_value);
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsFloat: {
+      float value = DecodeFloatFromKey(json_value);
+      *result = std::to_string(value);
+      break;
+    }
+    case kJEIsBoolFalse: {
+      *result = "false";
+      break;
+    }
+    case kJEIsBoolTrue: {
+      *result = "true";
+      break;
+    }
+    case kJEIsNull: {
+      *result = "null";
+      break;
+    }
+    case kJEIsObject: FALLTHROUGH_INTENDED;
+    case kJEIsArray:
+      return STATUS(InvalidArgument, "Arrays and Objects not supported for this method");
+  }
+  return Status::OK();
+}
+
 Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
                                      const JsonbHeader& jsonb_header,
                                      rapidjson::Document* document) {
@@ -534,11 +591,11 @@ pair<size_t, size_t> Jsonb::GetOffsetAndLength(size_t element_metadata_offset,
 
 }
 
-Status Jsonb::FromJsonb(const std::string& jsonb, rapidjson::Document* document) {
-  return FromJsonbInternal(Slice(jsonb), document);
+Status Jsonb::FromJsonb(const Slice& jsonb, rapidjson::Document* document) {
+  return FromJsonbInternal(jsonb, document);
 }
 
-Status Jsonb::FromJsonb(const std::string& jsonb, std::string* json) {
+Status Jsonb::FromJsonb(const Slice& jsonb, std::string* json) {
   rapidjson::Document document;
   RETURN_NOT_OK(FromJsonb(jsonb, &document));
   rapidjson::StringBuffer buffer;

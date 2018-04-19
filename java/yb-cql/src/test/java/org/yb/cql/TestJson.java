@@ -17,9 +17,20 @@ import com.datastax.driver.core.Row;
 import org.junit.Test;
 import org.json.*;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class TestJson extends BaseCQLTest {
+
+  private void verifyEmptyRows(ResultSet rs, int expected_rows) {
+    List<Row> rows = rs.all();
+    assertEquals(expected_rows, rows.size());
+    for (Row row : rows) {
+      assertTrue(row.isNull(0));
+    }
+  }
 
   private void verifyResultSet(ResultSet rs) {
     assertEquals(1, rs.getAvailableWithoutFetching());
@@ -92,9 +103,11 @@ public class TestJson extends BaseCQLTest {
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = 'null'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'c' = 'false'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'f' = '\"hello\"'"));
-    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'x' = '2.0'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'x' = '2.000000'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q' = " +
         "'{\"r\": -2147483648, \"p\": 4294967295,  \"s\": 2147483647}'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'q' = " +
+        "'{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}'"));
 
     testScalar("\"abc\"", 2);
     testScalar("3", 3);
@@ -125,5 +138,60 @@ public class TestJson extends BaseCQLTest {
         .getAvailableWithoutFetching());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->2 = '1'")
         .getAvailableWithoutFetching());
+
+    // Test json operators in select clause.
+    assertEquals("4294967295",
+        session.execute(
+            "SELECT c2->'a'->'q'->>'p' FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("200",
+        session.execute(
+            "SELECT c2->'a1'->5->'k2'->1 FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("true",
+        session.execute(
+            "SELECT c2->'a1'->5->'k3' FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("2.000000",
+        session.execute(
+            "SELECT c2->'a'->>'x' FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}",
+        session.execute(
+            "SELECT c2->'a'->'q' FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}",
+        session.execute(
+            "SELECT c2->'a'->>'q' FROM test_json WHERE c1 = 1").one().getString(0));
+    assertEquals("\"abc\"",
+        session.execute(
+            "SELECT c2 FROM test_json WHERE c1 = 2").one().getString(0));
+    assertEquals("true",
+        session.execute(
+            "SELECT c2 FROM test_json WHERE c1 = 4").one().getString(0));
+    assertEquals("false",
+        session.execute(
+            "SELECT c2 FROM test_json WHERE c1 = 5").one().getString(0));
+
+    // Json operators in both select and where clause.
+    assertEquals("4294967295",
+        session.execute(
+            "SELECT c2->'a'->'q'->>'p' FROM test_json WHERE c2->'a1'->5->'k2'->1 = '200'").one()
+            .getString(0));
+    assertEquals("{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}",
+        session.execute(
+            "SELECT c2->'a'->'q' FROM test_json WHERE c2->'a1'->5->'k3' = 'true'").one()
+            .getString(0));
+
+    assertEquals("{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}",
+        session.execute(
+            "SELECT c2->'a'->'q' FROM test_json WHERE c2->'a1'->5->'k3' = 'true'").one()
+            .getJson("expr"));
+
+    // Test select with invalid operators, which should result in empty rows.
+    verifyEmptyRows(session.execute("SELECT c2->'b'->'c' FROM test_json WHERE c1 = 1"), 1);
+    verifyEmptyRows(session.execute("SELECT c2->'z' FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->2 FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a'->2 FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a1'->'b' FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a1'->6 FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a1'->'a' FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a3'->'a' FROM test_json"), 8);
+    verifyEmptyRows(session.execute("SELECT c2->'a3'->2 FROM test_json"), 8);
   }
 }
