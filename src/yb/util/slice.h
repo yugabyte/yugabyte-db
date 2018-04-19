@@ -190,9 +190,17 @@ class Slice {
     return (this->size() >= size) && MemEqual(begin_, data, size);
   }
 
+  bool starts_with(char c) const {
+    return (size() >= 1) && (*begin_ == c);
+  }
+
   bool ends_with(const Slice& x) const {
     size_t xsize = x.size();
     return (size() >= xsize) && MemEqual(end_ - xsize, x.begin_, xsize);
+  }
+
+  bool ends_with(char c) const {
+    return (size() >= 1) && *(end_ - 1) == c;
   }
 
   // Comparator struct, useful for ordered collections (like STL maps).

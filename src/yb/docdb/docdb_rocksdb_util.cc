@@ -203,8 +203,16 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
 }
 
 void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter) {
-  KeyBytes key_bytes(key, ValueTypeAsChar::kMaxByte);
-  SeekForward(key_bytes, iter);
+  KeyBytes key_bytes;
+  key_bytes.Reserve(key.size() + 1);
+  key_bytes.AppendRawBytes(key);
+  SeekOutOfSubKey(&key_bytes, iter);
+}
+
+void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
+  key_bytes->AppendValueType(ValueType::kMaxByte);
+  SeekForward(*key_bytes, iter);
+  key_bytes->RemoveValueTypeSuffix(ValueType::kMaxByte);
 }
 
 void PerformRocksDBSeek(
