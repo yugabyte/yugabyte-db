@@ -98,13 +98,17 @@ class IntentAwareIterator {
   void SeekForward(const Slice& key);
   void SeekForward(KeyBytes* key);
 
-  // Seek past specified subdoc key (it is responsibility of caller to make sure it
-  // doesn't have hybrid time).
+  // Seek past specified subdoc key (it is responsibility of caller to make sure it doesn't have
+  // hybrid time).
   void SeekPastSubKey(const Slice& key);
 
-  // Seek out of subdoc key (it is responsibility of caller to make sure it
-  // doesn't have hybrid time).
+  // Seek out of subdoc key (it is responsibility of caller to make sure it doesn't have hybrid
+  // time).
   void SeekOutOfSubDoc(const Slice& key);
+  // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
+  // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
+  // appended byte is removed when the method returns.
+  void SeekOutOfSubDoc(KeyBytes* key_bytes);
 
   // Seek to last doc key.
   void SeekToLastDocKey();
@@ -120,8 +124,9 @@ class IntentAwareIterator {
   // if new top prefix is a prefix of currently pointed value.
   void PopPrefix();
 
-  // Fetches currently pointed key and also updates max_seen_ht to ht of this key.
-  Result<Slice> FetchKey();
+  // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
+  // contain the DocHybridTime but is returned separately and optionally.
+  Result<Slice> FetchKey(DocHybridTime* doc_ht = nullptr);
 
   bool valid();
   Slice value();
@@ -211,6 +216,9 @@ class IntentAwareIterator {
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   // kIntentPrefix + SubDocKey (no HT).
   KeyBytes resolved_intent_key_prefix_;
+  // SubDocKey (no kIntentPrefix nor HT).
+  Slice resolved_intent_sub_doc_key_;
+
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
   DocHybridTime resolved_intent_txn_dht_;

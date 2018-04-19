@@ -61,7 +61,11 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter);
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
 
+// Seek out of the given SubDocKey. For efficiency, the method that takes a non-const KeyBytes
+// pointer avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to by
+// appending an extra byte. The appended byte is removed when the method returns.
 void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter);
+void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter);
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
 

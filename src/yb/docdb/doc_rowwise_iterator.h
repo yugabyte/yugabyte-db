@@ -170,11 +170,14 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   mutable bool done_;
 
-  // HasNext constructs the whole row SubDocument.
+  // HasNext constructs the whole row's SubDocument.
   mutable SubDocument row_;
 
-  // The current row's Primary key. It is set to lower bound in the beginning.
+  // The current row's primary key. It is set to lower bound in the beginning.
   mutable DocKey row_key_;
+
+  // The current row's iterator key.
+  mutable KeyBytes iter_key_;
 
   // When HasNext constructs a row, row_ready_ is set to true.
   // When NextRow consumes the row, this variable is set to false.

@@ -409,19 +409,14 @@ CHECKED_STATUS BuildSubDocument(
   while (iter->valid()) {
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    auto key = VERIFY_RESULT(iter->FetchKey());
+    DocHybridTime doc_ht;
+    auto key = VERIFY_RESULT(iter->FetchKey(&doc_ht));
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
             << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
     DCHECK(key.starts_with(data.subdocument_key))
         << "iter: " << SubDocKey::DebugSliceToString(key)
         << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
 
-    auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
-    if (key.empty() || static_cast<ValueType>(key[key.size() - 1]) != ValueType::kHybridTime) {
-      return STATUS_FORMAT(Corruption, "Key missing value type for hybrid time: $0",
-                           key.ToDebugHexString());
-    }
-    key.remove_suffix(1);
     // Key could be invalidated because we could move iterator, so back it up.
     KeyBytes key_copy(key);
     key = key_copy.AsSlice();
@@ -514,7 +509,7 @@ CHECKED_STATUS BuildSubDocument(
             ? write_time.hybrid_time().GetPhysicalValueMicros()
             : doc_value.user_timestamp());
         if (!data.high_index->CanInclude(current_values_observed)) {
-          iter->SeekOutOfSubDoc(key);
+          iter->SeekOutOfSubDoc(&key_copy);
           return Status::OK();
         }
         if (data.low_index->CanInclude(*num_values_observed)) {
@@ -522,7 +517,7 @@ CHECKED_STATUS BuildSubDocument(
         }
         (*num_values_observed)++;
         VLOG(3) << "SeekOutOfSubDoc: " << SubDocKey::DebugSliceToString(key);
-        iter->SeekOutOfSubDoc(key);
+        iter->SeekOutOfSubDoc(&key_copy);
         return Status::OK();
       }
     }
