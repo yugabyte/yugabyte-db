@@ -870,7 +870,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // So we should restart it in server in case of failure.
     read_time.read = safe_ht_to_read;
     if (transactional) {
-      read_time.local_limit = server_->Clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec);
+      read_time.local_limit = server_->Clock()->MaxGlobalNow();
       read_time.global_limit = read_time.local_limit;
 
       VLOG(1) << "Read time: " << read_time.ToString();

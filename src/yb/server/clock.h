@@ -64,9 +64,6 @@ class Clock : public ClockBase {
   // Initializes the clock.
   virtual CHECKED_STATUS Init() = 0;
 
-  // Obtains a new transaction timestamp corresponding to the current instant.
-  virtual HybridTime Now() = 0;
-
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,
   // if elected leader, they are guaranteed to generate timestamps

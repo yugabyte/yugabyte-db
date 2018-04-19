@@ -19,9 +19,19 @@
 
 namespace yb {
 
+typedef std::pair<HybridTime, HybridTime> HybridTimeRange;
+
 class ClockBase : public RefCountedThreadSafe<ClockBase> {
  public:
-  virtual HybridTime Now() = 0;
+  // Obtains a new transaction timestamp corresponding to the current instant.
+  HybridTime Now() { return NowRange().first; }
+
+  // Obtains the hybrid_time corresponding to the current time,
+  // that is maximally possible in cluster.
+  HybridTime MaxGlobalNow() { return NowRange().second; }
+
+  virtual HybridTimeRange NowRange() = 0;
+
   virtual void Update(const HybridTime& to_update) = 0;
 
   virtual ~ClockBase() {}
