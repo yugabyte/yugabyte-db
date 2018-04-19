@@ -119,11 +119,11 @@ string Value::Encode() const {
 
 void Value::EncodeAndAppend(std::string *value_bytes) const {
   if (!ttl_.Equals(kMaxTtl)) {
-    value_bytes->push_back(static_cast<char>(ValueType::kTtl));
+    value_bytes->push_back(ValueTypeAsChar::kTtl);
     yb::util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
-    value_bytes->push_back(static_cast<char>(ValueType::kUserTimestamp));
+    value_bytes->push_back(ValueTypeAsChar::kUserTimestamp);
     util::AppendBigEndianUInt64(user_timestamp_, value_bytes);
   }
   value_bytes->append(primitive_value_.ToValue());

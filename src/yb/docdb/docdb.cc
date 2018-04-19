@@ -83,8 +83,7 @@ void AddIntent(
     const SliceParts& key,
     const SliceParts& value,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  char reverse_key_prefix[2] = { static_cast<char>(ValueType::kIntentPrefix),
-                                 static_cast<char>(ValueType::kTransactionId) };
+  char reverse_key_prefix[2] = { ValueTypeAsChar::kIntentPrefix, ValueTypeAsChar::kTransactionId };
   size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
   auto doc_ht_slice = key.parts[key.num_parts - 1];
   memcpy(doc_ht_buffer, doc_ht_slice.data(), doc_ht_slice.size());
@@ -265,11 +264,13 @@ class PrepareTransactionWriteBatchHelper {
   PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
-                                     IsolationLevel isolation_level)
+                                     IsolationLevel isolation_level,
+                                     IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
-        intent_types_(GetWriteIntentsForIsolationLevel(isolation_level)) {
+        intent_types_(GetWriteIntentsForIsolationLevel(isolation_level)),
+        intra_txn_write_id_(intra_txn_write_id) {
   }
 
   // Using operator() to pass this object conveniently to EnumerateIntents.
@@ -279,15 +280,20 @@ class PrepareTransactionWriteBatchHelper {
       return Status::OK();
     }
 
-    const char transaction_value_type = static_cast<char>(ValueType::kTransactionId);
-    std::array<Slice, 3> value = {{
+    const auto transaction_value_type = ValueTypeAsChar::kTransactionId;
+    const auto write_id_value_type = ValueTypeAsChar::kWriteId;
+    IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
+    std::array<Slice, 5> value = {{
         Slice(&transaction_value_type, 1),
         Slice(transaction_id_.data, transaction_id_.size()),
+        Slice(&write_id_value_type, 1),
+        Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
         value_slice
     }};
 
-    char intent_type[2] = { static_cast<char>(ValueType::kIntentType),
-                            static_cast<char>(intent_types_.strong) };
+    ++*intra_txn_write_id_;
+
+    char intent_type[2] = { ValueTypeAsChar::kIntentType, static_cast<char>(intent_types_.strong) };
 
     DocHybridTimeBuffer doc_ht_buffer;
 
@@ -302,9 +308,8 @@ class PrepareTransactionWriteBatchHelper {
   }
 
   void Finish() {
-    char transaction_id_value_type = static_cast<char>(ValueType::kTransactionId);
-    char intent_type[2] = { static_cast<char>(ValueType::kIntentType),
-                            static_cast<char>(intent_types_.weak) };
+    char transaction_id_value_type = ValueTypeAsChar::kTransactionId;
+    char intent_type[2] = { ValueTypeAsChar::kIntentType, static_cast<char>(intent_types_.weak) };
 
     DocHybridTimeBuffer doc_ht_buffer;
 
@@ -333,6 +338,7 @@ class PrepareTransactionWriteBatchHelper {
   IntentTypePair intent_types_;
   std::unordered_set<std::string> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
+  IntraTxnWriteId* intra_txn_write_id_;
 };
 
 // We have the following distinct types of data in this "intent store":
@@ -350,9 +356,12 @@ void PrepareTransactionWriteBatch(
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
-    IsolationLevel isolation_level) {
+    IsolationLevel isolation_level,
+    IntraTxnWriteId* write_id) {
+  VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
+
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level);
+      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, write_id);
 
   // We cannot recover from failures here, because it means that we cannot apply replicated
   // operation.
@@ -518,7 +527,7 @@ CHECKED_STATUS BuildSubDocument(
       }
     }
 
-    SubDocument descendant{PrimitiveValue(ValueType::kInvalidValueType)};
+    SubDocument descendant{PrimitiveValue(ValueType::kInvalid)};
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
@@ -526,7 +535,7 @@ CHECKED_STATUS BuildSubDocument(
       RETURN_NOT_OK(BuildSubDocument(
           iter, data.Adjusted(key, &descendant), low_ts, num_values_observed));
     }
-    if (descendant.value_type() == ValueType::kInvalidValueType) {
+    if (descendant.value_type() == ValueType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
@@ -656,12 +665,12 @@ yb::Status GetSubDocument(
   // subdocument_key.
 
   // Check for init-marker / tombstones at the top level, update max_deleted_ts.
-  Value doc_value = Value(PrimitiveValue(ValueType::kInvalidValueType));
+  Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
   RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts, &doc_value));
   const ValueType value_type = doc_value.value_type();
 
   if (data.return_type_only) {
-    *data.doc_found = value_type != ValueType::kInvalidValueType;
+    *data.doc_found = value_type != ValueType::kInvalid;
     // Check for ttl.
     if (*data.doc_found) {
       const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
@@ -683,11 +692,11 @@ yb::Status GetSubDocument(
   }
 
   if (projection == nullptr) {
-    *data.result = SubDocument(ValueType::kInvalidValueType);
+    *data.result = SubDocument(ValueType::kInvalid);
     int64 num_values_observed = 0;
     IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts, &num_values_observed));
-    *data.doc_found = data.result->value_type() != ValueType::kInvalidValueType;
+    *data.doc_found = data.result->value_type() != ValueType::kInvalid;
     if (*data.doc_found) {
       if (value_type == ValueType::kRedisSet) {
         RETURN_NOT_OK(data.result->ConvertToRedisSet());
@@ -718,11 +727,11 @@ yb::Status GetSubDocument(
     IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
     db_iter->SeekForward(&key_bytes);
 
-    SubDocument descendant(ValueType::kInvalidValueType);
+    SubDocument descendant(ValueType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
         db_iter, data.Adjusted(key_bytes, &descendant), max_deleted_ts, &num_values_observed));
-    if (descendant.value_type() != ValueType::kInvalidValueType) {
+    if (descendant.value_type() != ValueType::kInvalid) {
       *data.doc_found = true;
     }
     data.result->SetChild(subkey, std::move(descendant));
@@ -808,10 +817,19 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
 Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_type) {
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
-    Result<TransactionId> txn_id_res = DecodeTransactionIdFromIntentValue(&value_slice);
-    RETURN_NOT_OK_PREPEND(txn_id_res, "Error: failed to decode transaction ID for intent");
-    prefix = Substitute("TransactionId($0) ", yb::ToString(*txn_id_res));
+    auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
+    prefix = Format("TransactionId($0) ", txn_id_res);
+    if (!value_slice.empty()) {
+          RETURN_NOT_OK(value_slice.consume_byte(ValueTypeAsChar::kWriteId));
+      if (value_slice.size() < sizeof(IntraTxnWriteId)) {
+        return STATUS_FORMAT(Corruption, "Not enought bytes for write id: $0", value_slice.size());
+      }
+      auto write_id = BigEndian::Load32(value_slice.data());
+      value_slice.remove_prefix(sizeof(write_id));
+      prefix += Format("WriteId($0) ", write_id);
+    }
   }
+
   // Empty values are allowed for weak intents.
   if (!value_slice.empty() || key_type != KeyType::kIntentKey) {
     Value v;
@@ -900,22 +918,13 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
 }
 
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
-  buffer_[0] = static_cast<char>(ValueType::kHybridTime);
+  buffer_[0] = ValueTypeAsChar::kHybridTime;
 }
 
 Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
   auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
   return Slice(buffer_.data(), end);
 }
-
-#define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
-  BOOST_PP_CAT(SCHECK_, op)(lhs, \
-                            rhs, \
-                            Corruption, \
-                            Format("Bad intent value, $0 in $1, transaction: $2", \
-                                   msg, \
-                                   intent_iter->value().ToDebugHexString(), \
-                                   transaction_id_slice.ToDebugHexString()))
 
 Status PrepareApplyIntentsBatch(
     const TransactionId& transaction_id, HybridTime commit_ht,
@@ -963,13 +972,15 @@ Status PrepareApplyIntentsBatch(
       auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
 
       if (IsStrongIntent(intent.type)) {
-        Slice intent_value(intent_iter->value());
-        INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
-                            "prefix expected");
-        intent_value.consume_byte();
-        INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
-                            "wrong transaction id");
-        intent_value.remove_prefix(transaction_id_slice.size());
+        IntraTxnWriteId stored_write_id;
+        Slice intent_value;
+        RETURN_NOT_OK(DecodeIntentValue(
+            intent_iter->value(), transaction_id_slice, &stored_write_id, &intent_value));
+
+        // Write id should match to one that were calculated during append of intents.
+        // Doing it just for sanity check.
+        DCHECK_EQ(stored_write_id, write_id)
+            << "Value: " << intent_iter->value().ToDebugHexString();
 
         // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
         // Time will be added when writing batch to rocks db.

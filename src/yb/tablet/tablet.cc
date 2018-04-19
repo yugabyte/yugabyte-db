@@ -567,14 +567,16 @@ void Tablet::PrepareTransactionWriteBatch(
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
   }
-  auto transaction_id = FullyDecodeTransactionId(put_batch.transaction().transaction_id());
-  CHECK_OK(transaction_id);
-  auto metadata = transaction_participant()->Metadata(*transaction_id);
-  CHECK(metadata) << "Transaction metadata missing: " << *transaction_id;
+  auto transaction_id = CHECK_RESULT(
+      FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
+  auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
+  CHECK(metadata_with_write_id) << "Transaction metadata missing: " << transaction_id;
 
-  auto isolation_level = metadata->isolation;
+  auto isolation_level = metadata_with_write_id->first.isolation;
+  auto write_id = metadata_with_write_id->second;
   yb::docdb::PrepareTransactionWriteBatch(
-      put_batch, hybrid_time, rocksdb_write_batch, *transaction_id, isolation_level);
+      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, &write_id);
+  transaction_participant()->UpdateLastWriteId(transaction_id, write_id);
 }
 
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,

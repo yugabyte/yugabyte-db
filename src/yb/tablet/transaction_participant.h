@@ -23,6 +23,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -94,6 +95,11 @@ class TransactionParticipant : public TransactionStatusManager {
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
+
+  boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
+      const TransactionId& id);
+
+  void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value);
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 

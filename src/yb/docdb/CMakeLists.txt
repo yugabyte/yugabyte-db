@@ -52,7 +52,6 @@ set(DOCDB_SRCS
     shared_lock_manager.cc
     subdocument.cc
     value.cc
-    value_type.cc
 )
 
 set(DOCDB_DEPS

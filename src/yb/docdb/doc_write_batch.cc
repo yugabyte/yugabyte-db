@@ -161,7 +161,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
       // (We replicate key/value pairs without the HybridTime and only add it before writing to
       // RocksDB.)
       put_batch_.emplace_back(std::move(*parent_key.mutable_data()),
-                              string(1, static_cast<char>(ValueType::kObject)));
+                              string(1, ValueTypeAsChar::kObject));
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
