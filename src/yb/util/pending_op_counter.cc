@@ -26,7 +26,7 @@ uint64_t PendingOperationCounter::Update(uint64_t delta) {
   const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   // Ensure that there is no underflow in either counter.
-  DCHECK_EQ((result & (1ull << 63)), 0); // Counter of Disable() calls.
+  DCHECK_EQ((result & (1ull << 63)), 0); // Counter of DisableAndWaitForOps() calls.
   DCHECK_EQ((result & (kDisabledDelta >> 1)), 0); // Counter of pending operations.
   return result;
 }

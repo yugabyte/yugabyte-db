@@ -470,7 +470,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const boost::optional<TransactionId>& transaction_id) const;
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
-  Result<util::ScopedPendingOperationPause> PauseReadWriteOperations();
+  util::ScopedPendingOperationPause PauseReadWriteOperations();
 
   // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
   // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
