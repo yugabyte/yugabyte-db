@@ -59,9 +59,9 @@ class Jsonb {
   // Creates a serialized jsonb string from plaintext json.
   static CHECKED_STATUS ToJsonb(const std::string& json, std::string* jsonb);
   // Builds a json document from serialized jsonb.
-  static CHECKED_STATUS FromJsonb(const std::string& jsonb, rapidjson::Document* document);
+  static CHECKED_STATUS FromJsonb(const Slice& jsonb, rapidjson::Document* document);
   // Returns a json string for serialized jsonb
-  static CHECKED_STATUS FromJsonb(const std::string& jsonb, std::string* json);
+  static CHECKED_STATUS FromJsonb(const Slice& jsonb, std::string* json);
 
   // Given a jsonb slice, it applies the given operator to the slice and returns the result as a
   // Slice and the element's metadata.
@@ -72,6 +72,9 @@ class Jsonb {
   // (which is a single element within an array). This is required for comparison purposes.
   static CHECKED_STATUS CreateScalar(const Slice& scalar, const JEntry& original_jentry,
                                      std::string* scalar_jsonb);
+  // Given a serialized json scalar and its metadata, return a string representation of it.
+  static CHECKED_STATUS ScalarToString(const JEntry& element_metadata, const Slice& json_value,
+                                       std::string* result);
 
  private:
   static size_t ComputeDataOffset(const size_t num_entries, const uint32_t container_type);

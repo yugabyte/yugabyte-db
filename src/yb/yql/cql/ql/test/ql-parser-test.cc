@@ -197,6 +197,9 @@ TEST_F(QLTestParser, TestQLParser) {
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->>'a'->'b' = '1';");
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->>a = '1';");
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->a = '1';");
+  PARSE_INVALID_STMT("SELECT c2->>'a'->'b' FROM t;");
+  PARSE_INVALID_STMT("SELECT c2->>a  FROM t;");
+  PARSE_INVALID_STMT("SELECT c2->a FROM t;");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {

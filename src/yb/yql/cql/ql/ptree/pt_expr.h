@@ -957,7 +957,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
   PTJsonColumnWithOperators(MemoryContext *memctx,
                             YBLocation::SharedPtr loc,
                             const PTQualifiedName::SharedPtr& name,
-                            const PTExprListNode::SharedPtr& args);
+                            const PTExprListNode::SharedPtr& operators);
   virtual ~PTJsonColumnWithOperators();
 
   // Support for shared_ptr.
@@ -976,7 +976,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
   }
 
   const PTExprListNode::SharedPtr& operators() const {
-    return args_;
+    return operators_;
   }
 
   // Access function for descriptor.
@@ -994,7 +994,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
 
  private:
   PTQualifiedName::SharedPtr name_;
-  PTExprListNode::SharedPtr args_;
+  PTExprListNode::SharedPtr operators_;
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_ = nullptr;

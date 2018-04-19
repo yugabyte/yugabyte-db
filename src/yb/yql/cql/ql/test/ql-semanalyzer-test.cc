@@ -28,10 +28,11 @@ class QLTestAnalyzer: public QLTestBase {
   QLTestAnalyzer() : QLTestBase() {
   }
 
-  PTJsonColumnWithOperators* RetrieveJsonColumn(const ParseTree::UniPtr& parse_tree) {
+  PTJsonColumnWithOperators* RetrieveJsonColumn(const ParseTree::UniPtr& parse_tree,
+                                                const DataType& expected_type) {
     auto select_stmt = std::dynamic_pointer_cast<PTSelectStmt>(parse_tree->root());
     auto ptrelation2 = std::dynamic_pointer_cast<PTRelation2>(select_stmt->where_clause());
-    EXPECT_EQ(DataType::JSONB, ptrelation2->op1()->ql_type()->main());
+    EXPECT_EQ(expected_type, ptrelation2->op1()->ql_type()->main());
     return std::dynamic_pointer_cast<PTJsonColumnWithOperators>(ptrelation2->op1()).get();
   }
 
@@ -116,7 +117,7 @@ TEST_F(QLTestAnalyzer, TestJsonColumn) {
   ParseTree::UniPtr parse_tree;
 
   ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->'a'->'b'->>'c' = '1'", &parse_tree);
-  auto jsoncolumn = RetrieveJsonColumn(parse_tree);
+  auto jsoncolumn = RetrieveJsonColumn(parse_tree, DataType::STRING);
   EXPECT_TRUE(jsoncolumn != nullptr);
   EXPECT_TRUE(jsoncolumn->name()->IsSimpleName());
   EXPECT_EQ("c1", jsoncolumn->name()->first_name());
@@ -138,14 +139,14 @@ TEST_F(QLTestAnalyzer, TestJsonColumn) {
   EXPECT_EQ("c", RetrieveJsonElement(jsoncolumn, 2));
 
   ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->>'a' = '1'", &parse_tree);
-  auto jsoncolumn1 = RetrieveJsonColumn(parse_tree);
+  auto jsoncolumn1 = RetrieveJsonColumn(parse_tree, DataType::STRING);
   EXPECT_EQ(1, jsoncolumn1->operators()->size());
   EXPECT_EQ(JsonOperator::JSON_TEXT,
             dynamic_pointer_cast<PTJsonOperator>(
             jsoncolumn1->operators()->element(0))->json_operator());
   EXPECT_EQ("a", RetrieveJsonElement(jsoncolumn1, 0));
   ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->'a' = '1'", &parse_tree);
-  auto jsoncolumn2 = RetrieveJsonColumn(parse_tree);
+  auto jsoncolumn2 = RetrieveJsonColumn(parse_tree, DataType::JSONB);
   EXPECT_EQ(1, jsoncolumn2->operators()->size());
   EXPECT_EQ(JsonOperator::JSON_OBJECT,
             dynamic_pointer_cast<PTJsonOperator>(
