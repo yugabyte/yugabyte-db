@@ -194,6 +194,7 @@ class DocDBRocksDBUtil {
   rocksdb::WriteOptions write_options_;
   Schema schema_;
   boost::optional<TransactionId> current_txn_id_;
+  mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
 

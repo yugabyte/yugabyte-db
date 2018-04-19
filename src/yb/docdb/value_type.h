@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include <glog/logging.h>
 
 #include "yb/util/enums.h"
@@ -25,112 +27,112 @@
 namespace yb {
 namespace docdb {
 
-// ValueType determines the first byte of PrimitiveValue encoding. There are also some special value
-// types, such as kGroupEnd, that are used to indicate where one part of a key ends and the next
-// part begins. This is used in RocksDB key and value encoding. Changes to this enum may invalidate
-// persistent data.
-enum class ValueType : char {
-  // This ValueType is used as -infinity for scanning purposes only.
-  kLowest = 0,
+#define DOCDB_VALUE_TYPES \
+    /* This ValueType is used as -infinity for scanning purposes only. */\
+    ((kLowest, 0)) \
+    /* All intents are stored in the beginning of the keyspace to be able to read them without */ \
+    /* polluting cache with other values. Later we'll put intents in a separate rocksdb. */ \
+    ((kIntentPrefix, 10)) \
+    /* We use ASCII code 20 in order to have it before all other value types which can occur in */ \
+    /* key, so intents will be written in the same order as original keys for which intents are */ \
+    /* written. */ \
+    ((kIntentType, 20)) \
+    /* This indicates the end of the "hashed" or "range" group of components of the primary */ \
+    /* key. This needs to sort before all other value types, so that a DocKey that has a prefix */ \
+    /* of the sequence of components of another key sorts before the other key. kGroupEnd is */ \
+    /* also used as the end marker for a frozen value. */ \
+    ((kGroupEnd, '!')) /* ASCII code 33 -- we pick the lowest code graphic character. */ \
+    /* HybridTime must be lower than all other primitive types (other than kGroupEnd) so that */ \
+    /* SubDocKeys that have fewer subkeys within a document sort above those that have all the */ \
+    /* same subkeys and more. In our MVCC document model layout the hybrid time always appears */ \
+    /* at the end of the key. */ \
+    ((kHybridTime, '#')) /* ASCII code 35 (34 is double quote, which would be a bit confusing */ \
+                         /* here). */ \
+    /* Primitive value types */ \
+    \
+    /* Null must be lower than the other primitive types so that it compares as smaller than */ \
+    /* them. It is used for frozen CQL user-defined types (which can contain null elements) on */ \
+    /* ASC columns. */ \
+    ((kNull, '$')) /* ASCII code 36 */ \
+    /* Counter to check cardinality. */ \
+    ((kCounter, '%')) /* ASCII code 37 */ \
+    /* Forward and reverse mappings for sorted sets. */ \
+    ((kSSForward, '&')) /* ASCII code 38 */ \
+    ((kSSReverse, '\'')) /* ASCII code 39 */ \
+    ((kRedisSet, '(')) /* ASCII code 40 */ \
+    /* This is the redis timeseries type. */ \
+    ((kRedisTS, '+')) /* ASCII code 43 */ \
+    ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
+    ((kInetaddress, '-'))  /* ASCII code 45 */ \
+    ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
+    ((kJsonb, '2')) /* ASCII code 50 */ \
+    ((kFrozen, '<')) /* ASCII code 60 */ \
+    ((kFrozenDescending, '>')) /* ASCII code 62 */ \
+    ((kArray, 'A'))  /* ASCII code 65 */ \
+    ((kVarInt, 'B')) /* ASCII code 66 */ \
+    ((kFloat, 'C'))  /* ASCII code 67 */ \
+    ((kDouble, 'D'))  /* ASCII code 68 */ \
+    ((kDecimal, 'E'))  /* ASCII code 69 */ \
+    ((kFalse, 'F'))  /* ASCII code 70 */ \
+    ((kUInt16Hash, 'G'))  /* ASCII code 71 */ \
+    ((kInt32, 'H'))  /* ASCII code 72 */ \
+    ((kInt64, 'I'))  /* ASCII code 73 */ \
+    ((kSystemColumnId, 'J'))  /* ASCII code 74 */ \
+    ((kColumnId, 'K'))  /* ASCII code 75 */ \
+    ((kDoubleDescending, 'L'))  /* ASCII code 76 */ \
+    ((kFloatDescending, 'M')) /* ASCII code 77 */ \
+    ((kString, 'S'))  /* ASCII code 83 */ \
+    ((kTrue, 'T'))  /* ASCII code 84 */ \
+    ((kTombstone, 'X'))  /* ASCII code 88 */ \
+    ((kArrayIndex, '['))  /* ASCII code 91 */ \
+    \
+    /* We allow putting a 32-bit hash in front of the document key. This hash is computed based */ \
+    /* on the "hashed" components of the document key that precede "range" components. */ \
+    \
+    ((kUuid, '_')) /* ASCII code 95 */ \
+    ((kUuidDescending, '`')) /* ASCII code 96 */ \
+    ((kStringDescending, 'a'))  /* ASCII code 97 */ \
+    ((kInt64Descending, 'b'))  /* ASCII code 98 */ \
+    ((kTimestampDescending, 'c'))  /* ASCII code 99 */ \
+    ((kDecimalDescending, 'd'))  /* ASCII code 100 */ \
+    ((kInt32Descending, 'e'))  /* ASCII code 101 */ \
+    ((kVarIntDescending, 'f'))  /* ASCII code 102 */ \
+    \
+    /* Timestamp value in microseconds */ \
+    ((kTimestamp, 's'))  /* ASCII code 115 */ \
+    /* TTL value in milliseconds, optionally present at the start of a value. */ \
+    ((kTtl, 't'))  /* ASCII code 116 */ \
+    ((kUserTimestamp, 'u'))  /* ASCII code 117 */ \
+    ((kWriteId, 'w')) /* ASCII code 119 */ \
+    ((kTransactionId, 'x')) /* ASCII code 120 */ \
+    \
+    ((kObject, '{'))  /* ASCII code 123 */ \
+    \
+    /* Null desc must be higher than the other descending primitive types so that it compares */ \
+    /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
+    /* null elements) on DESC columns. */ \
+    ((kNullDescending, '|')) /* ASCII code 124 */ \
+    \
+    /* This is only needed when used as the end marker for a frozen value on a DESC column. */ \
+    ((kGroupEndDescending, '}')) /* ASCII code 125 -- we pick the highest value below kHighest. */ \
+    \
+    /* This ValueType is used as +infinity for scanning purposes only. */ \
+    ((kHighest, '~')) /* ASCII code 126 */ \
+    \
+    /* This is used for sanity checking. TODO: rename to kInvalid since this is an enum class. */ \
+    ((kInvalid, 127)) \
+    \
+    /* ValueType which lexicographically higher than any other byte and is not used for */ \
+    /* encoding value type. */ \
+    ((kMaxByte, '\xff'))
 
-  // All intents are stored in the beginning of the keyspace to be able to read them without
-  // polluting cache with other values. Later we'll put intents in a separate rocksdb.
-  kIntentPrefix = 10,
+YB_DEFINE_ENUM(ValueType, DOCDB_VALUE_TYPES);
 
-  // We use ASCII code 20 in order to have it before all other value types which can occur in key,
-  // so intents will be written in the same order as original keys for which intents are written.
-  kIntentType = 20,
+#define DOCDB_VALUE_TYPE_AS_CHAR_IMPL(name, value) static constexpr char name = value;
+#define DOCDB_VALUE_TYPE_AS_CHAR(i, data, entry) DOCDB_VALUE_TYPE_AS_CHAR_IMPL entry
 
-  // This indicates the end of the "hashed" or "range" group of components of the primary key. This
-  // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
-  // of components of another key sorts before the other key.
-  // kGroupEnd is also used as the end marker for a frozen value.
-  kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
-
-  // HybridTime must be lower than all other primitive types (other than kGroupEnd) so that
-  // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
-  // subkeys and more. In our MVCC document model layout the hybrid time always appears at the end
-  // of the key.
-  kHybridTime = '#',  // ASCII code 35 (34 is double quote, which would be a bit confusing here).
-
-  // Primitive value types
-
-  // Null must be lower than the other primitive types so that it compares as smaller than them.
-  // It is used for frozen CQL user-defined types (which can contain null elements) on ASC columns.
-  kNull = '$',  // ASCII code 36
-
-  // Counter to check cardinality.
-  kCounter = '%',  // ASCII code 37
-
-  // Forward and reverse mappings for sorted sets.
-  kSSForward = '&', // ASCII code 38
-  kSSReverse = '\'', // ASCII code 39
-
-  kRedisSet = '(', // ASCII code 40
-  // This is the redis timeseries type.
-  kRedisTS = '+', // ASCII code 43
-  kRedisSortedSet = ',', // ASCII code 44
-  kInetaddress = '-',  // ASCII code 45
-  kInetaddressDescending = '.',  // ASCII code 46
-  kJsonb = '2', // ASCII code 50
-  kFrozen = '<', // ASCII code 60
-  kFrozenDescending = '>', // ASCII code 62
-  kArray = 'A',  // ASCII code 65.
-  kVarInt = 'B', // ASCII code 66
-  kFloat = 'C',  // ASCII code 67
-  kDouble = 'D',  // ASCII code 68
-  kDecimal = 'E',  // ASCII code 69
-  kFalse = 'F',  // ASCII code 70
-  kUInt16Hash = 'G',  // ASCII code 71
-  kInt32 = 'H',  // ASCII code 72
-  kInt64 = 'I',  // ASCII code 73
-  kSystemColumnId = 'J',  // ASCII code 74
-  kColumnId = 'K',  // ASCII code 75
-  kDoubleDescending = 'L',  // ASCII code 76
-  kFloatDescending = 'M', // ASCII code 77
-  kString = 'S',  // ASCII code 83
-  kTrue = 'T',  // ASCII code 84
-  kTombstone = 'X',  // ASCII code 88
-  kArrayIndex = '[',  // ASCII code 91.
-
-  // We allow putting a 32-bit hash in front of the document key. This hash is computed based on
-  // the "hashed" components of the document key that precede "range" components.
-
-  kUuid = '_', // ASCII code 95
-  kUuidDescending = '`', // ASCII code 96
-  kStringDescending = 'a',  // ASCII code 97
-  kInt64Descending = 'b',  // ASCII code 98
-  kTimestampDescending = 'c',  // ASCII code 99
-  kDecimalDescending = 'd',  // ASCII code 100
-  kInt32Descending = 'e',  // ASCII code 101
-  kVarIntDescending = 'f',  // ASCII code 102
-
-  // Timestamp value in microseconds
-  kTimestamp = 's',  // ASCII code 115
-  // TTL value in milliseconds, optionally present at the start of a value.
-  kTtl = 't',  // ASCII code 116
-  kUserTimestamp = 'u',  // ASCII code 117
-  kTransactionId = 'x', // ASCII code 120
-
-  kObject = '{',  // ASCII code 123
-
-  // Null desc must be higher than the other descending primitive types so that it compares as
-  // bigger than them.
-  // It is used for frozen CQL user-defined types (which can contain null elements) on DESC columns.
-  kNullDescending = '|', // ASCII code 124
-
-  // This is only needed when used as the end marker for a frozen value on a DESC column.
-  kGroupEndDescending = '}',  // ASCII code 125 -- we pick the highest value below kHighest.
-
-  // This ValueType is used as +infinity for scanning purposes only.
-  kHighest = '~', // ASCII code 126
-
-  // This is used for sanity checking. TODO: rename to kInvalid since this is an enum class.
-  kInvalidValueType = 127,
-
-  // ValueType which lexicographically higher than any other byte and is not used for encoding
-  // value type.
-  kMaxByte = '\xff',
+struct ValueTypeAsChar {
+  BOOST_PP_SEQ_FOR_EACH(DOCDB_VALUE_TYPE_AS_CHAR, ~, DOCDB_VALUE_TYPES)
 };
 
 // "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
@@ -199,8 +201,6 @@ inline bool IsSerializableIntent(IntentType intent) {
 constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
 constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
 
-std::string ToString(ValueType value_type);
-
 // kArray is handled slightly differently and hence we only have kObject, kRedisTS and kRedisSet.
 constexpr inline bool IsObjectType(const ValueType value_type) {
   return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
@@ -220,17 +220,13 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
 
 // Decode the first byte of the given slice as a ValueType.
 inline ValueType DecodeValueType(const rocksdb::Slice& value) {
-  return value.empty() ? ValueType::kInvalidValueType : static_cast<ValueType>(value.data()[0]);
+  return value.empty() ? ValueType::kInvalid: static_cast<ValueType>(value.data()[0]);
 }
 
 // Decode the first byte of the given slice as a ValueType and consume it.
 inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
-  return slice->empty() ? ValueType::kInvalidValueType
+  return slice->empty() ? ValueType::kInvalid
                         : static_cast<ValueType>(slice->consume_byte());
-}
-
-inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {
-  return out << ToString(value_type);
 }
 
 inline ValueType DecodeValueType(char value_type_byte) {

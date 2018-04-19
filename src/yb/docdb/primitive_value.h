@@ -46,7 +46,7 @@ enum class SystemColumnIds : ColumnIdRep {
 
 class PrimitiveValue {
  public:
-  static const PrimitiveValue kInvalidPrimitiveValue;
+  static const PrimitiveValue kInvalid;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
   // Flags for jsonb.

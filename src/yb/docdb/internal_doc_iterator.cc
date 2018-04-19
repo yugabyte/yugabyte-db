@@ -98,7 +98,7 @@ Status InternalDocIterator::SeekToKeyPrefix() {
   const auto prev_key_prefix_only_lacks_ht = found_exact_key_prefix_;
 
   subdoc_exists_ = Trilean::kFalse;
-  subdoc_type_ = ValueType::kInvalidValueType;
+  subdoc_type_ = ValueType::kInvalid;
 
   DOCDB_DEBUG_LOG("key_prefix=$0", BestEffortDocDBKeyToStr(key_prefix_));
   boost::optional<DocWriteBatchCache::Entry> cached_ht_and_type =

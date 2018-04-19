@@ -127,8 +127,7 @@ class ConflictResolver {
       if (!existing_key.starts_with(intent_key_prefix->data())) {
         break;
       }
-      if (existing_value.empty() ||
-          existing_value[0] != static_cast<uint8_t>(ValueType::kTransactionId)) {
+      if (existing_value.empty() || existing_value[0] != ValueTypeAsChar::kTransactionId) {
         return STATUS_FORMAT(Corruption,
             "Transaction prefix expected in intent: $0 => $1",
             existing_key.ToDebugHexString(),
@@ -521,10 +520,10 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentType,
                     "intent type value type expected");
   result.type = static_cast<IntentType>(intent_type_and_doc_ht[1]);
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
                     "hybrid time value type expected");
   result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
   return result;

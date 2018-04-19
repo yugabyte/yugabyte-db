@@ -27,6 +27,10 @@ namespace docdb {
 CHECKED_STATUS DecodeIntentKey(const Slice &encoded_intent_key, Slice* intent_prefix,
                                IntentType* intent_type, DocHybridTime* doc_ht);
 
+CHECKED_STATUS DecodeIntentValue(
+    const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
+    Slice* body);
+
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
@@ -57,38 +61,6 @@ inline void AppendIntentKeySuffix(
   AppendIntentType(intent_type, key);
   AppendDocHybridTime(doc_ht, key);
 }
-
-// The intent class is a wrapper around transaction id, (optional value) and
-// type of intent (which includes isolation level)
-class Intent {
- public:
-  Intent() {}
-  Intent(
-      SubDocKey subdoc_key, IntentType intent_type, const Uuid& transaction_id, Value&& value)
-      : subdoc_key_(subdoc_key),
-        intent_type_(intent_type),
-        transaction_id_(transaction_id),
-        value_(std::move(value)) {}
-
-  std::string ToString() const;
-
-  // Encode the intent into the rocksdb-key and rocksdb-value:
-  // respectively (SubDocKey, IntentType) in key, and (TransactionId, Value) in value.
-  // The EncodeKey() function changes the internal state only temporarily.
-  std::string EncodeKey();
-  std::string EncodeValue() const;
-
-  // DecodeFromKey only partially decodes the Intent, the fields (SubDocKey, IntentType).
-  CHECKED_STATUS DecodeFromKey(const Slice &encoded_intent);
-  // DecodeFromValue only partially decodes the Intent, the fields (TransactionId, Value).
-  CHECKED_STATUS DecodeFromValue(const Slice &encoded_intent);
- private:
-
-  SubDocKey subdoc_key_;
-  IntentType intent_type_;
-  Uuid transaction_id_;
-  Value value_;
-};
 
 }  // namespace docdb
 }  // namespace yb

@@ -62,7 +62,7 @@ SubDocument::~SubDocument() {
 
 SubDocument::SubDocument(const SubDocument& other) {
   if (IsPrimitiveValueType(other.type_) ||
-      other.type_ == ValueType::kInvalidValueType ||
+      other.type_ == ValueType::kInvalid ||
       other.type_ == ValueType::kTombstone) {
     new(this) PrimitiveValue(other);
   } else {
@@ -255,7 +255,7 @@ void SubDocumentToStreamInternal(ostream& out,
                                  const SubDocument& subdoc,
                                  const int indent) {
   if (subdoc.IsPrimitive() ||
-      subdoc.value_type() == ValueType::kInvalidValueType ||
+      subdoc.value_type() == ValueType::kInvalid ||
       subdoc.value_type() == ValueType::kTombstone) {
     out << static_cast<const PrimitiveValue*>(&subdoc)->ToString();
     return;

@@ -74,7 +74,7 @@ class InternalDocIterator {
   void SetDocumentKey(const KeyBytes& encoded_doc_key) {
     key_prefix_ = encoded_doc_key;
     subdoc_exists_ = Trilean::kUnknown;
-    subdoc_type_ = ValueType::kInvalidValueType;
+    subdoc_type_ = ValueType::kInvalid;
   }
 
   // Go one level deeper in the document hierarchy. This assumes the iterator is already positioned

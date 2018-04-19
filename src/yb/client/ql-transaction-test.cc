@@ -65,7 +65,7 @@ const auto kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
 const std::string kKeyColumn = "k";
 const std::string kValueColumn = "v";
 
-YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE));
+YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type) {
@@ -74,6 +74,8 @@ int32_t GetMultiplier(const WriteOpType op_type) {
       return 1;
     case WriteOpType::UPDATE:
       return -1;
+    case WriteOpType::DELETE:
+      return 0; // Value is not used in delete path.
   }
   FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
 }
@@ -84,6 +86,8 @@ QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
       return QLWriteRequestPB::QL_STMT_INSERT;
     case WriteOpType::UPDATE:
       return QLWriteRequestPB::QL_STMT_UPDATE;
+    case WriteOpType::DELETE:
+      return QLWriteRequestPB::QL_STMT_DELETE;
   }
   FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
 }
@@ -162,6 +166,7 @@ class QLTransactionTest : public QLDmlTestBase {
   // has been applied.
   // op_type == WriteOpType::INSERT: insert into t values (key, value);
   // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
+  // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
   Result<shared_ptr<YBqlWriteOp>> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
       const WriteOpType op_type = WriteOpType::INSERT) {
@@ -171,12 +176,19 @@ class QLTransactionTest : public QLDmlTestBase {
     const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
-    table_.AddInt32ColumnValue(req, kValueColumn, value);
+    if (op_type != WriteOpType::DELETE) {
+      table_.AddInt32ColumnValue(req, kValueColumn, value);
+    }
     RETURN_NOT_OK(session->Apply(op));
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
     }
     return op;
+  }
+
+  Result<shared_ptr<YBqlWriteOp>> DeleteRow(
+      const YBSessionPtr& session, int32_t key) {
+    return WriteRow(session, key, 0 /* value */, WriteOpType::DELETE);
   }
 
   Result<shared_ptr<YBqlWriteOp>> UpdateRow(
@@ -349,7 +361,6 @@ TEST_F(QLTransactionTest, WriteSameKey) {
 }
 
 TEST_F(QLTransactionTest, WriteSameKeyWithIntents) {
-  google::FlagSaver saver;
   DisableApplyingIntents();
 
   ASSERT_NO_FATALS(WriteDataWithRepetition());
@@ -582,7 +593,7 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
 TEST_F(QLTransactionTest, InsertUpdate) {
   google::FlagSaver flag_saver;
 
-  SetIgnoreApplyingProbability(1.0);
+  DisableApplyingIntents();
   WriteData(); // Add data
   WriteData(); // Update data
   VerifyData();
@@ -662,7 +673,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
 TEST_F(QLTransactionTest, ResendApplying) {
   google::FlagSaver flag_saver;
 
-  SetIgnoreApplyingProbability(1.0);
+  DisableApplyingIntents();
   WriteData();
   std::this_thread::sleep_for(5s); // Transaction should not be applied here.
   ASSERT_NE(0, CountTransactions());
@@ -1204,6 +1215,54 @@ TEST_F(QLTransactionTest, WaitRead) {
   stop = true;
   for (auto& thread : threads) {
     thread.join();
+  }
+}
+
+TEST_F(QLTransactionTest, InsertDelete) {
+  DisableApplyingIntents();
+
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  ASSERT_OK(WriteRow(session, 1 /* key */, 10 /* value */, WriteOpType::INSERT));
+  ASSERT_OK(DeleteRow(session, 1 /* key */));
+  ASSERT_OK(txn->CommitFuture().get());
+
+  session = CreateSession();
+  auto row = SelectRow(session, 1 /* key */);
+  ASSERT_FALSE(row.ok()) << "Row: " << row;
+}
+
+TEST_F(QLTransactionTest, InsertDeleteWithClusterRestart) {
+  DisableApplyingIntents();
+  // Divided to avoid overflow
+  FLAGS_transaction_timeout_usec = std::numeric_limits<int64_t>::max() / 4;
+  constexpr int kKeys = 100;
+
+  for (int i = 0; i != kKeys; ++i) {
+    WriteRow(CreateSession(), i /* key */, i * 2 /* value */, WriteOpType::INSERT);
+  }
+
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  for (int i = 0; i != kKeys; ++i) {
+    SCOPED_TRACE(Format("Key: $0", i));
+    ASSERT_OK(WriteRow(session, i /* key */, i * 3 /* value */, WriteOpType::UPDATE));
+  }
+
+  std::this_thread::sleep_for(1s); // Wait some time for intents to populate.
+  ASSERT_OK(cluster_->RestartSync());
+
+  for (int i = 0; i != kKeys; ++i) {
+    SCOPED_TRACE(Format("Key: $0", i));
+    ASSERT_OK(DeleteRow(session, i /* key */));
+  }
+  ASSERT_OK(txn->CommitFuture().get());
+
+  session = CreateSession();
+  for (int i = 0; i != kKeys; ++i) {
+    SCOPED_TRACE(Format("Key: $0", i));
+    auto row = SelectRow(session, 1 /* key */);
+    ASSERT_FALSE(row.ok()) << "Row: " << row;
   }
 }
 
