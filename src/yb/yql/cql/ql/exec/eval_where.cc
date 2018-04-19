@@ -64,6 +64,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops,
+                                         const MCList<JsonColumnOp>& jsoncol_where_ops,
                                          const MCList<PartitionKeyOp>& partition_key_ops,
                                          const MCList<FuncOp>& func_ops,
                                          bool *no_results) {
@@ -189,7 +190,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   exec_context().set_partitions_count(partitions_count);
 
   // Skip generation of query condition if where clause is empty.
-  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
+  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty() &&
+      jsoncol_where_ops.empty()) {
     return Status::OK();
   }
 
@@ -201,6 +203,9 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   }
   for (const auto& col_op : subcol_where_ops) {
     RETURN_NOT_OK(WhereSubColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
+  }
+  for (const auto& col_op : jsoncol_where_ops) {
+    RETURN_NOT_OK(WhereJsonColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
   }
   for (const auto& func_op : func_ops) {
     RETURN_NOT_OK(FuncOpToPB(where_pb->add_operands()->mutable_condition(), func_op));
@@ -219,6 +224,26 @@ CHECKED_STATUS Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& c
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   expr_pb->set_column_id(col_desc->id());
 
+  // Operand 2: The expression.
+  expr_pb = condition->add_operands();
+  return PTExprToPB(col_op.expr(), expr_pb);
+}
+
+CHECKED_STATUS Executor::WhereJsonColOpToPB(QLConditionPB *condition,
+                                            const JsonColumnOp& col_op) {
+  // Set the operator.
+  condition->set_op(col_op.yb_op());
+
+  // Operand 1: The column.
+  const ColumnDesc *col_desc = col_op.desc();
+  QLExpressionPB *expr_pb = condition->add_operands();
+  VLOG(3) << "WHERE condition, sub-column with id = " << col_desc->id();
+  auto col_pb = expr_pb->mutable_json_column();
+  col_pb->set_column_id(col_desc->id());
+  for (auto& arg : col_op.args()->node_list()) {
+    RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(arg),
+                                     col_pb->add_json_operations()));
+  }
   // Operand 2: The expression.
   expr_pb = condition->add_operands();
   return PTExprToPB(col_op.expr(), expr_pb);

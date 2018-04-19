@@ -238,6 +238,7 @@ set(UTIL_LIBS
   histogram_proto
   pb_util_proto
   protobuf
+  ql_protocol_proto
   version_info_proto
   zlib)
 

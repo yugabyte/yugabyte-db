@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
 import org.json.*;
@@ -20,11 +21,31 @@ import static org.junit.Assert.assertEquals;
 
 public class TestJson extends BaseCQLTest {
 
+  private void verifyResultSet(ResultSet rs) {
+    assertEquals(1, rs.getAvailableWithoutFetching());
+    Row row = rs.one();
+    JSONObject jsonObject = new JSONObject(row.getJson("c2"));
+    assertEquals(1, jsonObject.getInt("b"));
+    assertEquals(false, jsonObject.getJSONArray("a1").getBoolean(3));
+    assertEquals(3.0, jsonObject.getJSONArray("a1").getDouble(2), 1e-9);
+    assertEquals(200, jsonObject.getJSONArray("a1").getJSONObject(5).getJSONArray("k2").getInt(1));
+    assertEquals(2147483647, jsonObject.getJSONObject("a").getJSONObject("q").getInt("s"));
+    assertEquals("hello", jsonObject.getJSONObject("a").getString("f"));
+  }
+
+  private void testScalar(String json, int c1) {
+    Row row = session.execute(String.format("SELECT * FROM test_json WHERE c2 = '%s'", json)).one();
+    assertEquals(c1, row.getInt("c1"));
+    assertEquals(json, row.getJson("c2"));
+  }
+
   @Test
   public void testJson() throws Exception {
     String json =
     "{ " +
       "\"b\" : 1," +
+      "\"a2\" : {}," +
+      "\"a3\" : \"\"," +
       "\"a1\" : [1, 2, 3.0, false, true, { \"k1\" : 1, \"k2\" : [100, 200, 300], \"k3\" : true}]," +
       "\"a\" :" +
       "{" +
@@ -49,13 +70,60 @@ public class TestJson extends BaseCQLTest {
 
     session.execute("CREATE TABLE test_json(c1 int, c2 jsonb, PRIMARY KEY(c1))");
     session.execute(String.format("INSERT INTO test_json(c1, c2) values (1, '%s');", json));
-    Row row = session.execute("SELECT * FROM test_json").one();
-    JSONObject jsonObject = new JSONObject(row.getJson("c2"));
-    assertEquals(1, jsonObject.getInt("b"));
-    assertEquals(false, jsonObject.getJSONArray("a1").getBoolean(3));
-    assertEquals(3.0, jsonObject.getJSONArray("a1").getDouble(2), 1e-9);
-    assertEquals(200, jsonObject.getJSONArray("a1").getJSONObject(5).getJSONArray("k2").getInt(1));
-    assertEquals(2147483647, jsonObject.getJSONObject("a").getJSONObject("q").getInt("s"));
-    assertEquals("hello", jsonObject.getJSONObject("a").getString("f"));
+    session.execute("INSERT INTO test_json(c1, c2) values (2, '\"abc\"');");
+    session.execute("INSERT INTO test_json(c1, c2) values (3, '3');");
+    session.execute("INSERT INTO test_json(c1, c2) values (4, 'true');");
+    session.execute("INSERT INTO test_json(c1, c2) values (5, 'false');");
+    session.execute("INSERT INTO test_json(c1, c2) values (6, 'null');");
+    session.execute("INSERT INTO test_json(c1, c2) values (7, '2.0');");
+    session.execute("INSERT INTO test_json(c1, c2) values (8, '{\"b\" : 1}');");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c1 = 1"));
+
+    // Test operators.
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'4294967295'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->>'p' = " +
+        "'4294967295'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->5->'k2'->1 = '200'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->5->'k3' = 'true'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->0 = '1'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a2' = '{}'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a3' = '\"\"'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = 'null'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'c' = 'false'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'f' = '\"hello\"'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'x' = '2.0'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q' = " +
+        "'{\"r\": -2147483648, \"p\": 4294967295,  \"s\": 2147483647}'"));
+
+    testScalar("\"abc\"", 2);
+    testScalar("3", 3);
+    testScalar("true", 4);
+    testScalar("false", 5);
+    testScalar("null", 6);
+    testScalar("2.0", 7);
+    assertEquals(2, session.execute("SELECT * FROM test_json WHERE c2->'b' = '1'")
+        .getAvailableWithoutFetching());
+
+    // Test invalid operators. We should never return errors, just return an empty result (this
+    // is what postgres does).
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'b'->'c' = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'z' = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->2 = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->2 = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a1'->'b' = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a1'->6 = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a2'->'a' = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->'a' = '1'")
+        .getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->2 = '1'")
+        .getAvailableWithoutFetching());
   }
 }

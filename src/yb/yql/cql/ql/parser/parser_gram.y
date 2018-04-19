@@ -140,7 +140,6 @@ typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
 typedef PTBaseType::SharedPtr          PType;
 typedef PTCharBaseType::SharedPtr      PCharBaseType;
-typedef PTJsonOpListNode::SharedPtr    PJsonOpListNode;
 
 // Inactive parsing node types.
 typedef UndefTreeNode::SharedPtr       UndefType;
@@ -300,7 +299,7 @@ using namespace yb::ql;
 
 %type <PExprListNode>     // A list of expressions.
                           target_list opt_target_list
-                          ctext_row ctext_expr_list func_arg_list col_arg_list
+                          ctext_row ctext_expr_list func_arg_list col_arg_list json_ref
 
 %type <PRoleOptionListNode>   RoleOptionList optRoleOptionList
 
@@ -346,8 +345,6 @@ using namespace yb::ql;
 
 %type <PTypeField>         TypeField
 %type <PTypeFieldListNode> TypeFieldList
-
-%type <PJsonOpListNode>    json_ref
 
 // Name nodes.
 %type <PName>             indirection_el columnElem
@@ -4078,19 +4075,19 @@ columnref:
 ;
 
 json_ref:
-  SINGLE_ARROW Sconst {
+  SINGLE_ARROW AexprConst {
     PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_OBJECT, $2);
-    $$ = MAKE_NODE(@1, PTJsonOpListNode, node);
+    $$ = MAKE_NODE(@1, PTExprListNode, node);
   }
-  | SINGLE_ARROW Sconst json_ref {
+  | SINGLE_ARROW AexprConst json_ref {
     PTJsonOperator::SharedPtr json_op = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_OBJECT,
       $2);
     $3->Prepend(json_op);
     $$ = $3;
   }
-  | DOUBLE_ARROW Sconst {
+  | DOUBLE_ARROW AexprConst {
     PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_TEXT, $2);
-    $$ = MAKE_NODE(@1, PTJsonOpListNode, node);
+    $$ = MAKE_NODE(@1, PTExprListNode, node);
   }
 ;
 

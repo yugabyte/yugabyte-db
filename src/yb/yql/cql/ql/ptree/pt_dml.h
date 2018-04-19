@@ -66,6 +66,7 @@ class WhereExprState {
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
                  MCList<SubscriptedColumnOp> *subscripted_col_ops,
+                 MCList<JsonColumnOp> *json_col_ops,
                  MCList<PartitionKeyOp> *partition_key_ops,
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
@@ -74,6 +75,7 @@ class WhereExprState {
     : ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
+      json_col_ops_(json_col_ops),
       partition_key_ops_(partition_key_ops),
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
@@ -108,6 +110,9 @@ class WhereExprState {
 
   // Operators on subscripted columns (e.g. mp['x'] or lst[2]['x'])
   MCList<SubscriptedColumnOp> *subscripted_col_ops_;
+
+  // Operators on json columns (e.g. c1->'a'->'b'->>'c')
+  MCList<JsonColumnOp> *json_col_ops_;
 
   MCList<PartitionKeyOp> *partition_key_ops_;
 
@@ -215,6 +220,10 @@ class PTDmlStmt : public PTCollection {
 
   const MCList<SubscriptedColumnOp>& subscripted_col_where_ops() const {
     return subscripted_col_where_ops_;
+  }
+
+  const MCList<JsonColumnOp>& json_col_where_ops() const {
+    return json_col_where_ops_;
   }
 
   const MCList<PartitionKeyOp>& partition_key_ops() const {
@@ -394,6 +403,7 @@ class PTDmlStmt : public PTCollection {
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
   MCList<SubscriptedColumnOp> subscripted_col_where_ops_;
+  MCList<JsonColumnOp> json_col_where_ops_;
 
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;

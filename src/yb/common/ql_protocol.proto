@@ -86,6 +86,22 @@ message QLSubscriptedColPB {
   repeated QLExpressionPB subscript_args = 2;
 }
 
+// Represents operations applied to a json column.
+message QLJsonColumnOperationsPB {
+  optional int32 column_id = 1;
+  repeated QLJsonOperationPB json_operations = 2;
+}
+
+enum JsonOperatorPB {
+    JSON_OBJECT = 0; // The -> operator applied to a column.
+    JSON_TEXT = 1; // The ->> operator applied to a column.
+}
+
+message QLJsonOperationPB {
+    required JsonOperatorPB json_operator = 1;
+    required QLExpressionPB operand = 2;
+}
+
 // An expression in a WHERE condition
 message QLExpressionPB {
   oneof expr {
@@ -97,6 +113,7 @@ message QLExpressionPB {
     QLBCallPB bfcall = 6;                   // Regular builtin calls.
     QLBCallPB tscall = 7;                   // Tablet server builtin calls.
     QLBCallPB bocall = 8;                   // Builtin operator calls.
+    QLJsonColumnOperationsPB json_column = 9; // Json column operators.
   }
 }
 

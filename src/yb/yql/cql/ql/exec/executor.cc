@@ -581,8 +581,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   bool no_results = false;
   req->set_is_aggregate(tnode->is_aggregate());
   Status st = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
-                              tnode->func_ops(), &no_results);
+                              tnode->subscripted_col_where_ops(), tnode->json_col_where_ops(),
+                              tnode->partition_key_ops(), tnode->func_ops(), &no_results);
   if (PREDICT_FALSE(!st.ok())) {
     return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -1109,6 +1109,7 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
             break;
           case QLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kJsonColumn: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kTscall: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;

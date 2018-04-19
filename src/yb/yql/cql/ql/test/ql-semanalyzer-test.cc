@@ -21,6 +21,7 @@ namespace ql {
 using std::make_shared;
 using std::string;
 using strings::Substitute;
+using std::dynamic_pointer_cast;
 
 class QLTestAnalyzer: public QLTestBase {
  public:
@@ -32,6 +33,12 @@ class QLTestAnalyzer: public QLTestBase {
     auto ptrelation2 = std::dynamic_pointer_cast<PTRelation2>(select_stmt->where_clause());
     EXPECT_EQ(DataType::JSONB, ptrelation2->op1()->ql_type()->main());
     return std::dynamic_pointer_cast<PTJsonColumnWithOperators>(ptrelation2->op1()).get();
+  }
+
+  std::string RetrieveJsonElement(const PTJsonColumnWithOperators* const jsoncolumn, int index) {
+    auto element = dynamic_pointer_cast<PTJsonOperator>(jsoncolumn->operators()->element(index));
+    auto text = dynamic_pointer_cast<PTConstText>(element->arg());
+    return string(text->value()->c_str());
   }
 };
 
@@ -115,25 +122,35 @@ TEST_F(QLTestAnalyzer, TestJsonColumn) {
   EXPECT_EQ("c1", jsoncolumn->name()->first_name());
 
   EXPECT_EQ(3, jsoncolumn->operators()->size());
-  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn->operators()->element(0)->json_operator());
-  EXPECT_EQ("a", jsoncolumn->operators()->element(0)->arg());
+  EXPECT_EQ(JsonOperator::JSON_OBJECT,
+            dynamic_pointer_cast<PTJsonOperator>(
+            jsoncolumn->operators()->element(0))->json_operator());
+  EXPECT_EQ("a", RetrieveJsonElement(jsoncolumn, 0));
 
-  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn->operators()->element(1)->json_operator());
-  EXPECT_EQ("b", jsoncolumn->operators()->element(1)->arg());
+  EXPECT_EQ(JsonOperator::JSON_OBJECT,
+            dynamic_pointer_cast<PTJsonOperator>(
+            jsoncolumn->operators()->element(1))->json_operator());
+  EXPECT_EQ("b", RetrieveJsonElement(jsoncolumn, 1));
 
-  EXPECT_EQ(JsonOperator::JSON_TEXT, jsoncolumn->operators()->element(2)->json_operator());
-  EXPECT_EQ("c", jsoncolumn->operators()->element(2)->arg());
+  EXPECT_EQ(JsonOperator::JSON_TEXT,
+            dynamic_pointer_cast<PTJsonOperator>(
+            jsoncolumn->operators()->element(2))->json_operator());
+  EXPECT_EQ("c", RetrieveJsonElement(jsoncolumn, 2));
 
   ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->>'a' = '1'", &parse_tree);
   auto jsoncolumn1 = RetrieveJsonColumn(parse_tree);
   EXPECT_EQ(1, jsoncolumn1->operators()->size());
-  EXPECT_EQ(JsonOperator::JSON_TEXT, jsoncolumn1->operators()->element(0)->json_operator());
-  EXPECT_EQ("a", jsoncolumn1->operators()->element(0)->arg());
+  EXPECT_EQ(JsonOperator::JSON_TEXT,
+            dynamic_pointer_cast<PTJsonOperator>(
+            jsoncolumn1->operators()->element(0))->json_operator());
+  EXPECT_EQ("a", RetrieveJsonElement(jsoncolumn1, 0));
   ANALYZE_VALID_STMT("SELECT * FROM t WHERE c1->'a' = '1'", &parse_tree);
   auto jsoncolumn2 = RetrieveJsonColumn(parse_tree);
   EXPECT_EQ(1, jsoncolumn2->operators()->size());
-  EXPECT_EQ(JsonOperator::JSON_OBJECT, jsoncolumn2->operators()->element(0)->json_operator());
-  EXPECT_EQ("a", jsoncolumn2->operators()->element(0)->arg());
+  EXPECT_EQ(JsonOperator::JSON_OBJECT,
+            dynamic_pointer_cast<PTJsonOperator>(
+            jsoncolumn2->operators()->element(0))->json_operator());
+  EXPECT_EQ("a", RetrieveJsonElement(jsoncolumn2, 0));
 
   // Comparing string and integer.
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE c1->'a'->'b'->>'c' = 1", &parse_tree);
