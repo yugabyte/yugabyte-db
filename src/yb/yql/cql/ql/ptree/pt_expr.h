@@ -82,45 +82,6 @@ enum class JsonOperator {
   JSON_TEXT
 };
 
-// Class representing a json operator.
-class PTJsonOperator : public TreeNode {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTJsonOperator> SharedPtr;
-  typedef MCSharedPtr<const PTJsonOperator> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructors and destructor.
-  PTJsonOperator(MemoryContext *memctx,
-                 YBLocation::SharedPtr loc,
-                 const JsonOperator& json_operator,
-                 const MCSharedPtr<MCString>& arg);
-
-  virtual ~PTJsonOperator();
-
-  template<typename... TypeArgs>
-  inline static PTJsonOperator::SharedPtr MakeShared(MemoryContext *memctx,
-                                                     TypeArgs&&... args) {
-    return MCMakeShared<PTJsonOperator>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
-
-  const MCString& arg() const {
-    return *arg_;
-  }
-
-  JsonOperator json_operator() const {
-    return json_operator_;
-  }
-
- protected:
-  JsonOperator json_operator_;
-  MCSharedPtr<MCString> arg_;
-};
-
 //--------------------------------------------------------------------------------------------------
 // Base class for all expressions.
 class PTExpr : public TreeNode {
@@ -316,7 +277,6 @@ class PTExpr : public TreeNode {
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
-using PTJsonOpListNode = TreeListNode<PTJsonOperator>;
 
 //--------------------------------------------------------------------------------------------------
 // Tree Nodes for Collections -- treated as expressions with flexible arity
@@ -782,6 +742,47 @@ using PTConstDouble = PTExprConst<InternalType::kDoubleValue,
                                   DataType::DOUBLE,
                                   long double>;
 
+// Class representing a json operator.
+class PTJsonOperator : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTJsonOperator> SharedPtr;
+  typedef MCSharedPtr<const PTJsonOperator> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructors and destructor.
+  PTJsonOperator(MemoryContext *memctx,
+                 YBLocation::SharedPtr loc,
+                 const JsonOperator& json_operator,
+                 const PTExpr::SharedPtr& arg);
+
+  virtual ~PTJsonOperator();
+
+  template<typename... TypeArgs>
+  inline static PTJsonOperator::SharedPtr MakeShared(MemoryContext *memctx,
+                                                     TypeArgs&&... args) {
+    return MCMakeShared<PTJsonOperator>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
+
+  const PTExpr::SharedPtr& arg() const {
+    return arg_;
+  }
+
+  JsonOperator json_operator() const {
+    return json_operator_;
+  }
+
+ protected:
+  JsonOperator json_operator_;
+  PTExpr::SharedPtr arg_;
+};
+
+
+
 //--------------------------------------------------------------------------------------------------
 // Tree node for logical expressions (AND, OR, NOT, ...).
 //--------------------------------------------------------------------------------------------------
@@ -956,7 +957,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
   PTJsonColumnWithOperators(MemoryContext *memctx,
                             YBLocation::SharedPtr loc,
                             const PTQualifiedName::SharedPtr& name,
-                            const PTJsonOpListNode::SharedPtr& args);
+                            const PTExprListNode::SharedPtr& args);
   virtual ~PTJsonColumnWithOperators();
 
   // Support for shared_ptr.
@@ -974,7 +975,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
     return name_;
   }
 
-  const PTJsonOpListNode::SharedPtr& operators() const {
+  const PTExprListNode::SharedPtr& operators() const {
     return args_;
   }
 
@@ -993,7 +994,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
 
  private:
   PTQualifiedName::SharedPtr name_;
-  PTJsonOpListNode::SharedPtr args_;
+  PTExprListNode::SharedPtr args_;
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_ = nullptr;

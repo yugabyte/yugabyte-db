@@ -214,6 +214,8 @@ class Executor : public QLExprExecutor {
   // There's only one, so call it PTUMinus for now.
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
+  CHECKED_STATUS PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
+                                    QLJsonOperationPB *op_pb);
 
   // Builtin calls.
   // Even though BFCall and TSCall are processed similarly in executor at this point because they
@@ -261,6 +263,7 @@ class Executor : public QLExprExecutor {
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops,
+                                 const MCList<JsonColumnOp>& jsoncol_where_ops,
                                  const MCList<PartitionKeyOp>& partition_key_ops,
                                  const MCList<FuncOp>& func_ops,
                                  bool *no_results);
@@ -274,6 +277,7 @@ class Executor : public QLExprExecutor {
   // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op);
   CHECKED_STATUS WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
+  CHECKED_STATUS WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& jsoncol_op);
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------

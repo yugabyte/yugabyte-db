@@ -602,6 +602,11 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     } else if (op1->expr_op() == ExprOperator::kSubColRef) {
       const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(op1.get());
       return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2, ref->args());
+    } else if (op1->expr_op() == ExprOperator::kJsonOperatorRef) {
+      const PTJsonColumnWithOperators *ref =
+          static_cast<const PTJsonColumnWithOperators*>(op1.get());
+
+      return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2, ref->operators());
     } else if (op1->expr_op() == ExprOperator::kBcall) {
       const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
       if (strcmp(bcall->name()->c_str(), "token") == 0) {
@@ -747,8 +752,10 @@ void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {
 PTJsonOperator::PTJsonOperator(MemoryContext *memctx,
                                YBLocation::SharedPtr loc,
                                const JsonOperator& json_operator,
-                               const MCSharedPtr<MCString>& arg)
-    : TreeNode(memctx, loc),
+                               const PTExpr::SharedPtr& arg)
+    : PTExpr(memctx, loc, ExprOperator::kJsonOperatorRef, yb::QLOperator::QL_OP_NOOP,
+             (json_operator == JsonOperator::JSON_OBJECT) ?
+                 InternalType::kJsonbValue : InternalType::kStringValue, DataType::JSONB),
       json_operator_(json_operator),
       arg_(arg) {
 }
@@ -757,7 +764,7 @@ PTJsonOperator::~PTJsonOperator() {
 }
 
 Status PTJsonOperator::Analyze(SemContext *sem_context) {
-  return Status::OK();
+  return arg_->Analyze(sem_context);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -765,7 +772,7 @@ Status PTJsonOperator::Analyze(SemContext *sem_context) {
 PTJsonColumnWithOperators::PTJsonColumnWithOperators(MemoryContext *memctx,
                                                      YBLocation::SharedPtr loc,
                                                      const PTQualifiedName::SharedPtr& name,
-                                                     const PTJsonOpListNode::SharedPtr& args)
+                                                     const PTExprListNode::SharedPtr& args)
     : PTOperator0(memctx, loc, ExprOperator::kJsonOperatorRef, yb::QLOperator::QL_OP_NOOP),
       name_(name),
       args_(args) {
@@ -795,11 +802,7 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
   // Without any CASTs, json columns are considered as strings.
   ql_type_ = QLType::Create(DataType::JSONB);
-  if (args_->element(args_->size() - 1)->json_operator() == JsonOperator::JSON_OBJECT) {
-    internal_type_ = InternalType::kJsonbValue;
-  } else {
-    internal_type_ = InternalType::kStringValue;
-  }
+  internal_type_ = InternalType::kJsonbValue;
 
   return Status::OK();
 }

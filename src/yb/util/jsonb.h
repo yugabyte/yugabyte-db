@@ -16,6 +16,7 @@
 
 #include <rapidjson/document.h>
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -61,31 +62,71 @@ class Jsonb {
   static CHECKED_STATUS FromJsonb(const std::string& jsonb, rapidjson::Document* document);
   // Returns a json string for serialized jsonb
   static CHECKED_STATUS FromJsonb(const std::string& jsonb, std::string* json);
+
+  // Given a jsonb slice, it applies the given operator to the slice and returns the result as a
+  // Slice and the element's metadata.
+  static CHECKED_STATUS ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& json_op,
+                                           Slice* result, JEntry* element_metadata);
+  static bool IsScalar(const JEntry& jentry);
+  // Given a scalar value retrieved from a serialized jsonb, this method creates a jsonb scalar
+  // (which is a single element within an array). This is required for comparison purposes.
+  static CHECKED_STATUS CreateScalar(const Slice& scalar, const JEntry& original_jentry,
+                                     std::string* scalar_jsonb);
+
  private:
+  static size_t ComputeDataOffset(const size_t num_entries, const uint32_t container_type);
   static CHECKED_STATUS ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb);
   static CHECKED_STATUS ToJsonbProcessObject(const rapidjson::Value& document,
                                              std::string* jsonb);
   static CHECKED_STATUS ToJsonbProcessArray(const rapidjson::Value& document,
+                                            bool is_scalar,
                                             std::string* jsonb);
   static CHECKED_STATUS ProcessJsonValue(const rapidjson::Value& value,
                                          const size_t data_begin_offset,
-                                         std::string* jsonb,
                                          size_t* metadata_offset);
+  static CHECKED_STATUS ProcessJsonValueAndMetadata(const rapidjson::Value& value,
+                                                    const size_t data_begin_offset,
+                                                    std::string* jsonb,
+                                                    size_t* metadata_offset);
 
   // Method to recursively build the json object from serialized jsonb. The offset denotes the
   // starting position in the jsonb from which we need to start processing.
-  static CHECKED_STATUS FromJsonbInternal(const std::string& jsonb, size_t offset,
-                                          rapidjson::Document* document);
-  static CHECKED_STATUS FromJsonbProcessObject(const std::string& jsonb, size_t offset,
+  static CHECKED_STATUS FromJsonbInternal(const Slice& jsonb, rapidjson::Document* document);
+  static CHECKED_STATUS FromJsonbProcessObject(const Slice& jsonb,
                                                const JsonbHeader& jsonb_header,
                                                rapidjson::Document* document);
-  static CHECKED_STATUS FromJsonbProcessArray(const std::string& jsonb, size_t offset,
+  static CHECKED_STATUS FromJsonbProcessArray(const Slice& jsonb,
                                               const JsonbHeader& jsonb_header,
                                               rapidjson::Document* document);
 
   static pair<size_t, size_t> ComputeOffsetsAndJsonbHeader(size_t num_entries,
                                                            uint32_t container_type,
                                                            std::string* jsonb);
+  // Retrieves an element in serialized jsonb array with the provided index. The result is a
+  // slice pointing to a section of the serialized jsonb string provided. The parameters
+  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+  // data in the serialized jsonb. The method also returns a JEntry for the specified element, if
+  // metadata information for that element is required.
+  static CHECKED_STATUS GetArrayElement(size_t index, const Slice& jsonb,
+                                        size_t metadata_begin_offset, size_t data_begin_offset,
+                                        Slice* result, JEntry* element_metadata);
+
+  // Retrieves the key from a serialized jsonb object at the given index. The result is a
+  // slice pointing to a section of the serialized jsonb string provided. The parameters
+  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+  // data in the serialized jsonb.
+  static CHECKED_STATUS GetObjectKey(size_t index, const Slice& jsonb, size_t metadata_begin_offset,
+                                     size_t data_begin_offset, Slice *result);
+
+  // Retrieves the value from a serialized jsonb object at the given index. The result is a
+  // slice pointing to a section of the serialized jsonb string provided. The parameters
+  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+  // data in the serialized jsonb. The parameter num_kv_pairs indicates the total number of kv
+  // pairs in the json object. The method also returns a JEntry for the specified element, if
+  // metadata information for that element is required.
+  static CHECKED_STATUS GetObjectValue(size_t index, const Slice& jsonb,
+                                       size_t metadata_begin_offset, size_t data_begin_offset,
+                                       size_t num_kv_pairs, Slice *result, JEntry* value_metadata);
 
   // Helper method to retrieve the (offset, length) of a key/value serialized in jsonb format.
   // element_metadata_offset denotes the offset for the JEntry of the key/value,
@@ -93,10 +134,28 @@ class Jsonb {
   // denotes the offset from which the data portion of jsonb starts, metadata_begin_offset is the
   // offset from which all the JEntry fields begin.
   static pair<size_t, size_t> GetOffsetAndLength(size_t element_metadata_offset,
-                                                 const std::string& jsonb,
+                                                 const Slice& jsonb,
                                                  size_t element_end_offset,
                                                  size_t data_begin_offset,
                                                  size_t metadata_begin_offset);
+
+  static CHECKED_STATUS ApplyJsonbOperatorToArray(const Slice& jsonb,
+                                                  const QLJsonOperationPB& json_op,
+                                                  const JsonbHeader& jsonb_header,
+                                                  Slice* result,
+                                                  JEntry* element_metadata);
+
+  static CHECKED_STATUS ApplyJsonbOperatorToObject(const Slice& jsonb,
+                                                   const QLJsonOperationPB& json_op,
+                                                   const JsonbHeader& jsonb_header,
+                                                   Slice* result,
+                                                   JEntry* element_metadata);
+
+  static inline size_t GetOffset(JEntry metadata) { return metadata & kJEOffsetMask; }
+
+  static inline uint32_t GetJEType(JEntry metadata) { return metadata & kJETypeMask; }
+
+  static inline uint32_t GetCount(JsonbHeader jsonb_header) { return jsonb_header & kJBCountMask; }
 
   // Bit masks for jsonb header fields.
   static constexpr uint32_t kJBCountMask = 0x0FFFFFFF; // mask for number of kv pairs.

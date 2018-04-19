@@ -286,6 +286,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
     key_where_ops_.clear();
     where_ops_.clear();
     subscripted_col_where_ops_.clear();
+    json_col_where_ops_.clear();
     partition_key_ops_.clear();
     hash_col_bindvars_.clear();
     column_refs_.clear();

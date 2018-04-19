@@ -44,6 +44,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     key_where_ops_(memctx),
     where_ops_(memctx),
     subscripted_col_where_ops_(memctx),
+    json_col_where_ops_(memctx),
     partition_key_ops_(memctx),
     hash_col_bindvars_(memctx),
     column_refs_(memctx),
@@ -94,7 +95,8 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
   op_counters.resize(num_columns());
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
-      &partition_key_ops_, &op_counters, &partition_key_counter, opcode(), &func_ops_);
+                             &json_col_where_ops_, &partition_key_ops_, &op_counters,
+                             &partition_key_counter, opcode(), &func_ops_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -318,11 +320,13 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           if (col_desc->is_hash()) {
             (*key_ops_)[col_desc->index()].Init(col_desc, value, QLOperator::QL_OP_EQUAL);
           } else if (col_args != nullptr) {
-            SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
-            subscripted_col_ops_->push_back(subcol_op);
+            if (col_desc->ql_type()->IsJson()) {
+              json_col_ops_->emplace_back(col_desc, col_args, value, expr->ql_op());
+            } else {
+              subscripted_col_ops_->emplace_back(col_desc, col_args, value, expr->ql_op());
+            }
           } else {
-            ColumnOp col_op(col_desc, value, QLOperator::QL_OP_EQUAL);
-            ops_->push_back(col_op);
+            ops_->emplace_back(col_desc, value, QLOperator::QL_OP_EQUAL);
           }
           break;
         }
@@ -374,18 +378,19 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                 "Non primary key cannot be used in where clause for write requests",
                 ErrorCode::CQL_STATEMENT_INVALID);
           }
-          ColumnOp col_op(col_desc, value, expr->ql_op());
-          ops_->push_back(col_op);
+          ops_->emplace_back(col_desc, value, expr->ql_op());
           break;
         }
         case TreeNodeOpcode::kPTSelectStmt: {
           // Cache the column operator for execution.
           if (col_args != nullptr) {
-            SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
-            subscripted_col_ops_->push_back(subcol_op);
+            if (col_desc->ql_type()->IsJson()) {
+              json_col_ops_->emplace_back(col_desc, col_args, value, expr->ql_op());
+            } else {
+              subscripted_col_ops_->emplace_back(col_desc, col_args, value, expr->ql_op());
+            }
           } else {
-            ColumnOp col_op(col_desc, value, expr->ql_op());
-            ops_->push_back(col_op);
+            ops_->emplace_back(col_desc, value, expr->ql_op());
           }
           break;
         }
@@ -423,8 +428,7 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       if (expr->ql_op() == QL_OP_IN && col_desc->is_hash()) {
         (*key_ops_)[col_desc->index()].Init(col_desc, value, QLOperator::QL_OP_IN);
       } else {
-        ColumnOp col_op(col_desc, value, expr->ql_op());
-        ops_->push_back(col_op);
+        ops_->emplace_back(col_desc, value, expr->ql_op());
       }
       break;
     }
@@ -447,8 +451,7 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
     case QL_OP_EQUAL:
     case QL_OP_GREATER_THAN_EQUAL:
     case QL_OP_GREATER_THAN: {
-      FuncOp func_op(value, call, expr->ql_op());
-      func_ops_->push_back(func_op);
+      func_ops_->emplace_back(value, call, expr->ql_op());
       break;
     }
 
@@ -497,8 +500,7 @@ CHECKED_STATUS WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  PartitionKeyOp pkey_op(expr->ql_op(), value);
-  partition_key_ops_->push_back(std::move(pkey_op));
+  partition_key_ops_->emplace_back(expr->ql_op(), value);
   return Status::OK();
 }
 

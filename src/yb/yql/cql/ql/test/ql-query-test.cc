@@ -1821,6 +1821,12 @@ TEST_F(TestQLQuery, TestJson) {
   CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data='{\"b\" : 2,\"a\" : 1}'"));
   verifyJson(processor->row_block());
 
+  CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data->'a' = '1'"));
+  verifyJson(processor->row_block());
+
+  CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data->>'a' = '1'"));
+  verifyJson(processor->row_block());
+
   ASSERT_NOK(processor->Run("CREATE TABLE test_json1 (k1 jsonb PRIMARY KEY, data jsonb)"));
   ASSERT_NOK(processor->Run("CREATE TABLE test_json2 (h1 int, r1 jsonb, c1 int, PRIMARY KEY ((h1)"
                                 ", r1))"));

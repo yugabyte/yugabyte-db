@@ -137,6 +137,34 @@ class FuncOp {
   yb::QLOperator yb_op_;
 };
 
+// This class represents a json column argument (e.g. "WHERE c1->'a'->'b'->>'c' = 'b'")
+class JsonColumnArg : public ColumnArg {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<JsonColumnArg> SharedPtr;
+  typedef std::shared_ptr<const JsonColumnArg> SharedPtrConst;
+
+  JsonColumnArg(const ColumnDesc *desc = nullptr,
+                const PTExprListNode::SharedPtr& args = nullptr,
+                const PTExpr::SharedPtr& expr = nullptr)
+      : ColumnArg(desc, expr), args_(args) {
+  }
+
+  JsonColumnArg(const JsonColumnArg &sval)
+      : JsonColumnArg(sval.desc_, sval.args_, sval.expr_) { }
+
+  virtual ~JsonColumnArg() {
+  }
+
+  const PTExprListNode::SharedPtr& args() const {
+    return args_;
+  }
+
+ protected:
+  PTExprListNode::SharedPtr args_;
+};
+
 // This class represents a sub-column argument (e.g. "SET l[1] = 'b'")
 class SubscriptedColumnArg : public ColumnArg {
  public:
@@ -163,6 +191,42 @@ class SubscriptedColumnArg : public ColumnArg {
 
  protected:
   PTExprListNode::SharedPtr args_;
+};
+
+// This class represents an operation on a json column (e.g. "WHERE c1->'a'->'b'->>'c' = 'b'").
+class JsonColumnOp : public JsonColumnArg {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<JsonColumnOp> SharedPtr;
+  typedef std::shared_ptr<const JsonColumnOp> SharedPtrConst;
+
+  JsonColumnOp(const ColumnDesc *desc = nullptr,
+                      const PTExprListNode::SharedPtr& args = nullptr,
+                      const PTExpr::SharedPtr& expr = nullptr,
+                      yb::QLOperator yb_op = yb::QLOperator::QL_OP_NOOP)
+      : JsonColumnArg(desc, args, expr), yb_op_(yb_op) {
+  }
+  JsonColumnOp(const JsonColumnOp &subcol_op)
+      : JsonColumnOp(subcol_op.desc_, subcol_op.args_, subcol_op.expr_, subcol_op.yb_op_) {
+  }
+  virtual ~JsonColumnOp() {
+  }
+
+  void Init(const ColumnDesc *desc, const PTExprListNode::SharedPtr& args,
+            const PTExpr::SharedPtr& expr, yb::QLOperator yb_op) {
+    desc_ = desc;
+    args_ = args;
+    expr_ = expr;
+    yb_op_ = yb_op;
+  }
+
+  yb::QLOperator yb_op() const {
+    return yb_op_;
+  }
+
+ private:
+  yb::QLOperator yb_op_;
 };
 
 // This class represents an operation on a sub-column (e.g. "WHERE l[1] = 'b'").
