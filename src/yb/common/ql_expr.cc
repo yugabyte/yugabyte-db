@@ -59,6 +59,20 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
         operand = jsonop_result;
       }
 
+      // In case of '->>', we need to return a string result.
+      if (num_ops > 0 &&
+          json_op.json_operations().Get(num_ops - 1).json_operator() == JsonOperatorPB::JSON_TEXT) {
+        if (util::Jsonb::IsScalar(element_metadata)) {
+          RETURN_NOT_OK(util::Jsonb::ScalarToString(element_metadata, jsonop_result,
+                                                    result->mutable_string_value()));
+        } else {
+          string str_result;
+          RETURN_NOT_OK(util::Jsonb::FromJsonb(jsonop_result, &str_result));
+          result->set_string_value(std::move(str_result));
+        }
+        break;
+      }
+
       string jsonb_result = jsonop_result.ToBuffer();
       if (util::Jsonb::IsScalar(element_metadata)) {
         // In case of a scalar that is received from an operation, convert it to a jsonb scalar.
@@ -66,7 +80,8 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
                                                 element_metadata,
                                                 &jsonb_result));
       }
-      result->set_jsonb_value(jsonb_result);
+
+      result->set_jsonb_value(std::move(jsonb_result));
       break;
     }
 

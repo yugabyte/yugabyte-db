@@ -246,6 +246,9 @@ class QLValue {
   virtual void set_jsonb_value(const std::string& val) {
     pb_.set_jsonb_value(val);
   }
+  virtual void set_jsonb_value(const std::string&& val) {
+    pb_.set_jsonb_value(std::move(val));
+  }
   virtual void set_uuid_value(const Uuid& val) {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));

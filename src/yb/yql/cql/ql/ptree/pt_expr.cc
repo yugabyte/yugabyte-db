@@ -754,8 +754,7 @@ PTJsonOperator::PTJsonOperator(MemoryContext *memctx,
                                const JsonOperator& json_operator,
                                const PTExpr::SharedPtr& arg)
     : PTExpr(memctx, loc, ExprOperator::kJsonOperatorRef, yb::QLOperator::QL_OP_NOOP,
-             (json_operator == JsonOperator::JSON_OBJECT) ?
-                 InternalType::kJsonbValue : InternalType::kStringValue, DataType::JSONB),
+             InternalType::kJsonbValue, DataType::JSONB),
       json_operator_(json_operator),
       arg_(arg) {
 }
@@ -772,10 +771,10 @@ Status PTJsonOperator::Analyze(SemContext *sem_context) {
 PTJsonColumnWithOperators::PTJsonColumnWithOperators(MemoryContext *memctx,
                                                      YBLocation::SharedPtr loc,
                                                      const PTQualifiedName::SharedPtr& name,
-                                                     const PTExprListNode::SharedPtr& args)
+                                                     const PTExprListNode::SharedPtr& operators)
     : PTOperator0(memctx, loc, ExprOperator::kJsonOperatorRef, yb::QLOperator::QL_OP_NOOP),
       name_(name),
-      args_(args) {
+      operators_(operators) {
 }
 
 PTJsonColumnWithOperators::~PTJsonColumnWithOperators() {
@@ -797,12 +796,28 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  // Analyze each operator.
-  RETURN_NOT_OK(args_->Analyze(sem_context));
+  if (operators_->size() == 0) {
+    return sem_context->Error(this, "No operators provided.",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
 
-  // Without any CASTs, json columns are considered as strings.
-  ql_type_ = QLType::Create(DataType::JSONB);
-  internal_type_ = InternalType::kJsonbValue;
+  // Analyze each operator.
+  RETURN_NOT_OK(operators_->Analyze(sem_context));
+
+  // Check the last operator to determine type.
+  auto json_operator = std::dynamic_pointer_cast<PTJsonOperator>(
+      operators_->element(operators_->size() - 1))->json_operator();
+
+  if (json_operator == JsonOperator::JSON_OBJECT) {
+    ql_type_ = QLType::Create(DataType::JSONB);
+    internal_type_ = InternalType::kJsonbValue;
+  } else if (json_operator == JsonOperator::JSON_TEXT) {
+    ql_type_ = QLType::Create(DataType::STRING);
+    internal_type_ = InternalType::kStringValue;
+  } else {
+    return sem_context->Error(this, "Invalid operator.",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
 
   return Status::OK();
 }

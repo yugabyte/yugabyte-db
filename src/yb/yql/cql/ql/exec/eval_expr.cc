@@ -45,6 +45,9 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
     case ExprOperator::kSubColRef:
       return PTExprToPB(static_cast<const PTSubscriptedColumn*>(expr.get()), expr_pb);
 
+    case ExprOperator::kJsonOperatorRef:
+      return PTExprToPB(static_cast<const PTJsonColumnWithOperators*>(expr.get()), expr_pb);
+
     case ExprOperator::kBindVar:
       return PTExprToPB(static_cast<const PTBindVar*>(expr.get()), expr_pb);
 
@@ -113,6 +116,19 @@ CHECKED_STATUS Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpress
   col_pb->set_column_id(col_desc->id());
   for (auto& arg : ref_pt->args()->node_list()) {
     RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
+                                    QLExpressionPB *expr_pb) {
+  const ColumnDesc *col_desc = ref_pt->desc();
+  auto col_pb = expr_pb->mutable_json_column();
+  col_pb->set_column_id(col_desc->id());
+  for (auto& arg : ref_pt->operators()->node_list()) {
+    RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(arg),
+                                     col_pb->add_json_operations()));
   }
 
   return Status::OK();
