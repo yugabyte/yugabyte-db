@@ -219,6 +219,12 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) 
   return DoDecode(slice, part_to_decode, DecodeFromCallback(this));
 }
 
+Result<size_t> DocKey::DecodeFrom(const rocksdb::Slice& slice, DocKeyPart part_to_decode) {
+  rocksdb::Slice copy = slice;
+  RETURN_NOT_OK(DecodeFrom(&copy, part_to_decode));
+  return slice.size() - copy.size();
+}
+
 template<class Callback>
 yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
                             DocKeyPart part_to_decode,

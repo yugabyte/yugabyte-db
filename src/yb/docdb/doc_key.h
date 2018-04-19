@@ -111,6 +111,11 @@ class DocKey {
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
       DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
 
+  // Decodes a document key from the given RocksDB key similar to the above but return the number
+  // of bytes decoded from the input slice.
+  Result<size_t> DecodeFrom(const rocksdb::Slice& slice,
+      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
+
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
   static CHECKED_STATUS PartiallyDecode(rocksdb::Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);

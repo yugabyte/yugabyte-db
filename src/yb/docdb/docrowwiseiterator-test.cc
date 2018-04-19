@@ -941,12 +941,13 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 
       rocksdb(), rocksdb::ReadOptions(), ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
-  Result<Slice> key = iter.FetchKey();
+  DocHybridTime doc_ht;
+  Result<Slice> key = iter.FetchKey(&doc_ht);
   ASSERT_OK(key);
   SubDocKey subdoc_key;
-  ASSERT_OK(subdoc_key.FullyDecodeFrom(*key));
-  ASSERT_EQ(subdoc_key.ToString(),
-            R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]))#");
+  ASSERT_OK(subdoc_key.FullyDecodeFrom(*key, HybridTimeRequired::kFalse));
+  ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
+  ASSERT_EQ(doc_ht.ToString(), "HT{ physical: 1000 }");
 }
 
 }  // namespace docdb

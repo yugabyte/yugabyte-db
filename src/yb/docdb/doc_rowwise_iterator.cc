@@ -213,12 +213,25 @@ bool DocRowwiseIterator::HasNext() const {
       status_ = fetched_key.status();
       return true;
     }
-    {
-      Slice key_copy = *fetched_key;
-      status_ = row_key_.DecodeFrom(&key_copy);
+
+    // The iterator is positioned by the previous GetSubDocument call (which places the iterator
+    // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
+    // check it here instead of after GetSubDocument() below because we want to avoid the extra
+    // expensive FetchKey() call just to fetch and validate the key.
+    if (!iter_key_.data().empty() &&
+        (is_forward_scan_ ? iter_key_.CompareTo(*fetched_key) >= 0
+                          : iter_key_.CompareTo(*fetched_key) <= 0)) {
+      status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
+                                  FormatRocksDBSliceAsStr(*fetched_key));
+      VLOG(1) << status_;
+      return true;
     }
-    if (!status_.ok()) {
+    iter_key_.Reset(*fetched_key);
+
+    const Result<size_t> dockey_size = row_key_.DecodeFrom(iter_key_);
+    if (!dockey_size.ok()) {
       // Defer error reporting to NextRow().
+      status_ = dockey_size.status();
       return true;
     }
 
@@ -227,10 +240,8 @@ bool DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    KeyBytes old_key(*fetched_key);
-    // The iterator is positioned by the previous GetSubDocument call
-    // (which places the iterator outside the previous doc_key).
-    auto sub_doc_key = SubDocKey(row_key_).EncodeWithoutHt();
+    // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
+    Slice sub_doc_key(iter_key_.data().data(), *dockey_size);
     GetSubDocumentData data = { sub_doc_key, &row_, &doc_found };
     data.table_ttl = TableTTL(schema_);
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
@@ -250,20 +261,6 @@ bool DocRowwiseIterator::HasNext() const {
       status_ = GetSubDocument(db_iter_.get(), data);
       if (!status_.ok()) {
         // Defer error reporting to NextRow().
-        return true;
-      }
-    }
-    // GetSubDocument must ensure that iterator is pushed forward, to avoid loops.
-    if (db_iter_->valid()) {
-      auto iter_key = db_iter_->FetchKey();
-      if (!iter_key.ok()) {
-        status_ = iter_key.status();
-        return true;
-      }
-      if (old_key.AsSlice().compare(*iter_key) >= 0) {
-        status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-            FormatRocksDBSliceAsStr(old_key.AsSlice()));
-        VLOG(1) << status_;
         return true;
       }
     }
