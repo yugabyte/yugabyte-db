@@ -40,18 +40,19 @@ using namespace std::placeholders;
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
-DEFINE_uint64(max_clock_skew_usec, 50000,
-              "Transaction read clock skew in usec. Is maximum allowed time delta between servers "
-              "of a single cluster.");
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace client {
 
 namespace {
 
-TransactionMetadata CreateMetadata(TransactionManager* manager, IsolationLevel isolation) {
+TransactionMetadata CreateMetadata(TransactionManager* manager, IsolationLevel isolation,
+                                   HybridTime* local_limit) {
+  auto range = manager->NowRange();
+  *local_limit = range.second;
   return {GenerateTransactionId(), isolation, TabletId(), RandomUniformInt<uint64_t>(),
-          manager->Now()};
+          range.first};
 }
 
 YB_STRONGLY_TYPED_BOOL(Child);
@@ -73,16 +74,21 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
-      : Impl(manager, transaction, CreateMetadata(manager, isolation), Child::kFalse) {
+      : manager_(manager),
+        transaction_(transaction),
+        child_(Child::kFalse) {
+    metadata_ = CreateMetadata(manager, isolation, &read_time_.local_limit);
+    Init();
     VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
     read_time_.read = metadata_.start_time;
-    read_time_.local_limit = read_time_.read.AddMicroseconds(FLAGS_max_clock_skew_usec);
     read_time_.global_limit = read_time_.local_limit;
     restart_read_ht_ = read_time_.read;
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
-      : Impl(manager, transaction, std::move(data.metadata), Child::kTrue) {
+      : manager_(manager), transaction_(transaction), child_(Child::kTrue) {
+    metadata_ = std::move(data.metadata);
+    Init();
     VLOG_WITH_PREFIX(1) << "Started child, metadata: " << metadata_;
     ready_ = true;
     read_time_ = data.read_time;
@@ -357,16 +363,11 @@ class YBTransaction::Impl final {
   }
 
  private:
-  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionMetadata metadata,
-       Child child)
-      : manager_(manager),
-        transaction_(transaction),
-        metadata_(std::move(metadata)),
-        log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
-        child_(child),
-        heartbeat_handle_(manager->rpcs().InvalidHandle()),
-        commit_handle_(manager->rpcs().InvalidHandle()),
-        abort_handle_(manager->rpcs().InvalidHandle()) {
+  void Init() {
+    log_prefix_ = Format("$0: ", to_string(metadata_.transaction_id));
+    heartbeat_handle_ = manager_->rpcs().InvalidHandle();
+    commit_handle_ = manager_->rpcs().InvalidHandle();
+    abort_handle_ = manager_->rpcs().InvalidHandle();
   }
 
   CHECKED_STATUS CheckIncomplete(std::unique_lock<std::mutex>* lock) {
@@ -613,7 +614,7 @@ class YBTransaction::Impl final {
   TransactionMetadata metadata_;
   ReadHybridTime read_time_;
 
-  const std::string log_prefix_;
+  std::string log_prefix_;
   bool requested_status_tablet_ = false;
   internal::RemoteTabletPtr status_tablet_;
   internal::RemoteTabletPtr status_tablet_holder_;

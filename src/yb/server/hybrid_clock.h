@@ -58,15 +58,14 @@ class HybridClock : public Clock {
   explicit HybridClock(PhysicalClockPtr clock);
   explicit HybridClock(const std::string& time_source);
 
-  virtual CHECKED_STATUS Init() override;
+  CHECKED_STATUS Init() override;
 
-  // Obtains the hybrid_time corresponding to the current time.
-  virtual HybridTime Now() override;
+  HybridTimeRange NowRange() override;
 
   // Updates the clock with a hybrid_time originating on another machine.
-  virtual void Update(const HybridTime& to_update) override;
+  void Update(const HybridTime& to_update) override;
 
-  virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
+  void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 
   // Obtains the hybrid_time corresponding to the current time and the associated
   // error in micros. This may fail if the clock is unsynchronized or synchronized

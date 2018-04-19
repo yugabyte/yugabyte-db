@@ -36,6 +36,10 @@ Result<PhysicalTime> SkewedClock::Now() {
   return result;
 }
 
+MicrosTime SkewedClock::MaxGlobalTime(PhysicalTime time) {
+  return impl_->MaxGlobalTime(time);
+}
+
 SkewedClockDeltaChanger::SkewedClockDeltaChanger(SkewedClockDeltaChanger&& rhs)
     : skewed_clock_(std::move(rhs.skewed_clock_)),
       old_delta_(rhs.old_delta_) {

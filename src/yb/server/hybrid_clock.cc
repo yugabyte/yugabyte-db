@@ -115,12 +115,14 @@ Status HybridClock::Init() {
   return Status::OK();
 }
 
-HybridTime HybridClock::Now() {
+HybridTimeRange HybridClock::NowRange() {
   HybridTime now;
   uint64_t error;
 
   NowWithError(&now, &error);
-  return now;
+  auto max_global_now = HybridTimeFromMicroseconds(
+      clock_->MaxGlobalTime({now.GetPhysicalValueMicros(), error}));
+  return std::make_pair(now, max_global_now);
 }
 
 void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec) {

@@ -42,6 +42,7 @@ class SkewedClock : public PhysicalClock {
 
  private:
   Result<PhysicalTime> Now() override;
+  MicrosTime MaxGlobalTime(PhysicalTime time) override;
 
   PhysicalClockPtr impl_;
   std::atomic<DeltaTime> delta_{0};

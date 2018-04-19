@@ -19,6 +19,7 @@
 
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -31,6 +32,10 @@ DEFINE_bool(disable_clock_sync_error, true,
 TAG_FLAG(disable_clock_sync_error, advanced);
 TAG_FLAG(max_clock_sync_error_usec, advanced);
 TAG_FLAG(max_clock_sync_error_usec, runtime);
+
+DEFINE_uint64(max_clock_skew_usec, 50000,
+              "Transaction read clock skew in usec. "
+              "This is the maximum allowed time delta between servers of a single cluster.");
 
 namespace yb {
 
@@ -52,6 +57,10 @@ class WallClockImpl : public PhysicalClock {
     // We use a fixed small clock error for Mac OS X builds.
     const MicrosTime kFixedError = 1000;
     return CheckClockSyncError({ static_cast<MicrosTime>(GetCurrentTimeMicros()), kFixedError });
+  }
+
+  MicrosTime MaxGlobalTime(PhysicalTime time) override {
+    return time.time_point + GetAtomicFlag(&FLAGS_max_clock_skew_usec);
   }
 };
 
@@ -100,6 +109,10 @@ class WallClockImpl : public PhysicalClock {
     return CheckClockSyncError(
         { tx.time.tv_sec * kMicrosPerSec + tx.time.tv_usec,
           static_cast<yb::MicrosTime>(tx.maxerror) });
+  }
+
+  MicrosTime MaxGlobalTime(PhysicalTime time) override {
+    return time.time_point + GetAtomicFlag(&FLAGS_max_clock_skew_usec);
   }
 };
 #endif

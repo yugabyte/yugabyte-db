@@ -50,8 +50,9 @@ using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using base::subtle::NoBarrier_CompareAndSwap;
 
-HybridTime LogicalClock::Now() {
-  return HybridTime(++now_);
+HybridTimeRange LogicalClock::NowRange() {
+  auto result = HybridTime(++now_);
+  return std::make_pair(result, result);
 }
 
 HybridTime LogicalClock::Peek() {

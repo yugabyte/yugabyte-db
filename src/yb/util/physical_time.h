@@ -28,6 +28,7 @@ struct PhysicalTime {
 class PhysicalClock {
  public:
   virtual Result<PhysicalTime> Now() = 0;
+  virtual MicrosTime MaxGlobalTime(PhysicalTime time) = 0;
   virtual ~PhysicalClock() {}
 };
 
@@ -38,6 +39,10 @@ typedef std::function<PhysicalClockPtr()> PhysicalClockProvider;
 class MockClock : public PhysicalClock {
  public:
   Result<PhysicalTime> Now() override;
+
+  MicrosTime MaxGlobalTime(PhysicalTime time) override {
+    return time.time_point;
+  }
 
   void Set(const PhysicalTime& value);
 
