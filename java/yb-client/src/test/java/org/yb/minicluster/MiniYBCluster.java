@@ -67,7 +67,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int REDIS_PORT = 6379;
 
-  private static final int PGSQL_PORT = 5432;
+  private static final int PGSQL_PORT = 5433;
 
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
