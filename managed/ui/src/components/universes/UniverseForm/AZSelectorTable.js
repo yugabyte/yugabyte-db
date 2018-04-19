@@ -193,7 +193,7 @@ export default class AZSelectorTable extends Component {
     if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
       currentClusterNodes =
       universeConfigTemplate.nodeDetailsSet.filter(function (nodeItem) {
-        return nodeItem.placementUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Running");
+        return nodeItem.placementUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Live");
       });
     }
 
