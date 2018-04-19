@@ -57,9 +57,7 @@ namespace server {
 class LogicalClock : public Clock {
  public:
 
-  virtual CHECKED_STATUS Init() override { return Status::OK(); }
-
-  virtual HybridTime Now() override;
+  CHECKED_STATUS Init() override { return Status::OK(); }
 
   // Returns the current value of the clock without incrementing it.
   HybridTime Peek();
@@ -78,6 +76,8 @@ class LogicalClock : public Clock {
 
   // Used to get the hybrid_time for metrics.
   uint64_t NowForMetrics();
+
+  HybridTimeRange NowRange() override;
 
   std::atomic<uint64_t> now_;
 

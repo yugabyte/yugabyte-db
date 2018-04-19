@@ -146,6 +146,10 @@ class TransactionManager::Impl {
     return clock_->Now();
   }
 
+  HybridTimeRange NowRange() const {
+    return clock_->NowRange();
+  }
+
   void UpdateClock(HybridTime time) {
     clock_->Update(time);
   }
@@ -186,6 +190,10 @@ rpc::Rpcs& TransactionManager::rpcs() {
 
 HybridTime TransactionManager::Now() const {
   return impl_->Now();
+}
+
+HybridTimeRange TransactionManager::NowRange() const {
+  return impl_->NowRange();
 }
 
 void TransactionManager::UpdateClock(HybridTime time) {

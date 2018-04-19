@@ -115,6 +115,8 @@ else ()
   set(SEMAPHORE_CC "semaphore.cc")
 endif()
 
+YB_INCLUDE_EXTENSIONS()
+
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
@@ -215,6 +217,7 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  ${UTIL_SRCS_EXTENSIONS}
   )
 
 if(NOT APPLE)
@@ -441,5 +444,3 @@ if(NOT "${NO_TESTS}")
   target_link_libraries(pb_util-test
     proto_container_test_proto)
 endif()
-
-YB_INCLUDE_EXTENSIONS()

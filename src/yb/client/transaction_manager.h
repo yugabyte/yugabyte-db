@@ -45,6 +45,8 @@ class TransactionManager {
   const YBClientPtr& client() const;
 
   HybridTime Now() const;
+  HybridTimeRange NowRange() const;
+
   void UpdateClock(HybridTime time);
 
  private:
