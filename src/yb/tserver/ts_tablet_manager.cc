@@ -842,7 +842,7 @@ Status TSTabletManager::DeleteTablet(
                          meta->table_type(),
                          meta->data_root_dir(),
                          meta->wal_root_dir());
-}
+  }
 
   return Status::OK();
 }

@@ -124,6 +124,13 @@ TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
 
 METRIC_DEFINE_entity(tablet);
 
+// TODO: use a lower default for truncate / snapshot restore Raft operations. The one-minute timeout
+// is probably OK for shutdown.
+DEFINE_int32(tablet_rocksdb_ops_quiet_down_timeout_ms, 60000,
+             "Max amount of time we can wait for read/write operations on RocksDB to finish "
+             "so that we can perform exclusive-ownership operations on RocksDB, such as removing "
+             "all data in the tablet by replacing the RocksDB instance with an empty one.");
+
 using namespace std::placeholders;
 
 using std::shared_ptr;
@@ -464,6 +471,12 @@ void Tablet::Shutdown() {
   // Shutdown the RocksDB instance for this table, if present.
   rocksdb_.reset();
   state_ = kShutdown;
+
+  // Release the mutex that prevents snapshot restore / truncate operations from running. Such
+  // operations are no longer possible because the tablet has shut down. When we start the
+  // "read/write operation pause", we incremented the "exclusive operation" counter. This will
+  // prevent us from decrementing that counter back, disabling read/write operations permanently.
+  op_pause.ReleaseMutexButKeepDisabled();
 }
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
@@ -665,6 +678,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data) 
 Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
+  // TODO: move this locking to the top-level read request handler in TabletService.
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1080,12 +1094,14 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   return Status::OK();
 }
 
-Result<ScopedPendingOperationPause> Tablet::PauseReadWriteOperations() {
+ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
-    return ScopedPendingOperationPause(&pending_op_counter_, 60s);
+    return ScopedPendingOperationPause(
+        &pending_op_counter_,
+        MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms));
   }
-  return STATUS(InternalError, "unexpected return"); // should not happen
+  FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
 
 Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {

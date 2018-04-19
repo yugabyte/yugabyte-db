@@ -23,30 +23,34 @@
 namespace yb {
 namespace util {
 
-// This is used to track the number of pending operations using a certain resource (e.g.
-// a RocksDB database) so we can safely wait for all operations to complete and destroy the
-// resource.
+// This is used to track the number of pending operations using a certain resource (as of Apr 2018
+// just the RocksDB database within a tablet) so we can safely wait for all operations to complete
+// and destroy or replace the resource. This is similar to a shared mutex, but allows fine-grained
+// control, such as preventing new operations from being started.
 class PendingOperationCounter {
  public:
   // Using upper bits of counter as special flags.
-  static constexpr uint64_t kDisabledDelta = 0x0001000000000000;
+  static constexpr uint64_t kDisabledDelta = 1ull << 48;
   static constexpr uint64_t kOpCounterMask = kDisabledDelta - 1;
   static constexpr uint64_t kDisabledCounterMask = ~kOpCounterMask;
-
-  PendingOperationCounter() : counters_(0) {}
 
   CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout) {
     Update(kDisabledDelta);
     return WaitForOpsToFinish(timeout);
   }
 
-  // Due to the thread restriction of "timed_mutex::.unlock()", this Unlock method must be called
-  // in the same thread that invoked DisableAndWaitForOps().
+  // Due to the thread restriction of "timed_mutex::unlock()", this Unlock method must be called
+  // in the same thread that invoked DisableAndWaitForOps(). This is fine for truncate, snapshot
+  // restore, and tablet shutdown operations.
   void Enable(const bool unlock) {
     Update(-kDisabledDelta);
     if (unlock) {
-      disable_.unlock();
+      UnlockExclusiveOpMutex();
     }
+  }
+
+  void UnlockExclusiveOpMutex() {
+    disable_.unlock();
   }
 
   uint64_t Increment() { return Update(1); }
@@ -69,14 +73,22 @@ class PendingOperationCounter {
 
   uint64_t Update(uint64_t delta);
 
-  // Upper bits are used for storing number of Disable() calls.
-  std::atomic<uint64_t> counters_;
+  // The upper 16 bits are used for storing the number of separate operations that have disabled the
+  // resource. E.g. tablet shutdown running at the same time with Truncate/RestoreSnapshot.
+  // The lower 48 bits are used to keep track of the number of concurrent read/write operations.
+  std::atomic<uint64_t> counters_{0};
 
-  // Mutex to disable the resource exclusively.
+  // Mutex to disable the resource exclusively. This mutex is locked by DisableAndWaitForOps after
+  // waiting for all shared-ownership operations to complete. We need this to avoid a race condition
+  // between Raft operations that replace RocksDB (apply snapshot / truncate) and tablet shutdown.
   std::timed_mutex disable_;
 };
 
-// A convenience class to automatically increment/decrement a PendingOperationCounter.
+// A convenience class to automatically increment/decrement a PendingOperationCounter. This is used
+// for regular RocksDB read/write operations that are allowed to proceed in parallel. Constructing
+// a ScopedPendingOperation might fail because the counter is in the disabled state. An instance
+// of this class resembles a Result or a Status, because it can be used with the RETURN_NOT_OK
+// macro.
 class ScopedPendingOperation {
  public:
   // Object is not copyable, but movable.
@@ -84,20 +96,22 @@ class ScopedPendingOperation {
   ScopedPendingOperation(const ScopedPendingOperation&) = delete;
 
   explicit ScopedPendingOperation(PendingOperationCounter* counter)
-      : counter_(counter),
-        orig_counter_value_(0) {
+      : counter_(counter), ok_(false) {
     if (counter != nullptr) {
       if (counter_->IsReady()) {
-        orig_counter_value_ = counter->Increment();
+        // The race condition between IsReady() and Increment() is OK, because we are checking if
+        // anyone has started an exclusive operation since we did the increment, and don't proceed
+        // with this shared-ownership operation in that case.
+        ok_ = (counter->Increment() & PendingOperationCounter::kDisabledCounterMask) == 0;
       } else {
-        orig_counter_value_ = PendingOperationCounter::kDisabledDelta;
+        ok_ = false;
         counter_ = nullptr; // Avoid decrementing the counter.
       }
     }
   }
 
   ScopedPendingOperation(ScopedPendingOperation&& op)
-      : counter_(op.counter_),  orig_counter_value_(op.orig_counter_value_) {
+      : counter_(op.counter_), ok_(op.ok_) {
     op.counter_ = nullptr; // Moved ownership.
   }
 
@@ -108,16 +122,18 @@ class ScopedPendingOperation {
   }
 
   bool ok() const {
-    return (orig_counter_value_ & PendingOperationCounter::kDisabledCounterMask) == 0;
+    return ok_;
   }
 
  private:
   PendingOperationCounter* counter_;
-  // Store in constructor original counter value to be able checking it later in ok().
-  uint64_t orig_counter_value_;
+
+  bool ok_;
 };
 
 // RETURN_NOT_OK macro support.
+// The error message currently mentions RocksDB because that is the only type of resource that
+// this framework is used to protect as of Apr 2018.
 inline Status MoveStatus(const ScopedPendingOperation& scoped) {
   return scoped.ok() ? Status::OK() : STATUS(Busy, "RocksDB store is busy");
 }
@@ -139,6 +155,18 @@ class ScopedPendingOperationPause {
   ScopedPendingOperationPause(ScopedPendingOperationPause&& p)
       : counter_(p.counter_), status_(std::move(p.status_)) {
     p.counter_ = nullptr; // Moved ownership.
+  }
+
+  // This is called during tablet shutdown to release the mutex that we took to prevent concurrent
+  // exclusive-ownership operations on the RocksDB instance, such as truncation and snapshot
+  // restoration. It is fine to release the mutex because these exclusive operations are not allowed
+  // to happen after tablet shutdown anyway.
+  void ReleaseMutexButKeepDisabled() {
+    CHECK_OK(status_);
+    CHECK_NOTNULL(counter_);
+    counter_->UnlockExclusiveOpMutex();
+    // Make sure the destructor has no effect when it runs.
+    counter_ = nullptr;
   }
 
   // See PendingOperationCounter::Enable() for the thread restriction.
