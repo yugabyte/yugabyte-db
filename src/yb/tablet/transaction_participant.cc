@@ -119,10 +119,12 @@ class Delayer {
 class RunningTransaction {
  public:
   RunningTransaction(TransactionMetadata metadata,
+                     IntraTxnWriteId last_write_id,
                      rpc::Rpcs* rpcs,
                      TransactionParticipantContext* context,
                      std::atomic<int64_t>* request_serial)
       : metadata_(std::move(metadata)),
+        last_write_id_(last_write_id),
         rpcs_(*rpcs),
         context_(*context),
         request_serial_(request_serial),
@@ -140,6 +142,14 @@ class RunningTransaction {
 
   const TransactionMetadata& metadata() const {
     return metadata_;
+  }
+
+  IntraTxnWriteId last_write_id() const {
+    return last_write_id_;
+  }
+
+  void UpdateLastWriteId(IntraTxnWriteId value) {
+    last_write_id_ = value;
   }
 
   HybridTime local_commit_time() const {
@@ -366,6 +376,7 @@ class RunningTransaction {
   }
 
   TransactionMetadata metadata_;
+  IntraTxnWriteId last_write_id_ = 0;
   rpc::Rpcs& rpcs_;
   TransactionParticipantContext& context_;
   std::atomic<int64_t>* request_serial_;
@@ -406,7 +417,7 @@ class TransactionParticipant::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
-        transactions_.emplace(*metadata, &rpcs_, &context_, &request_serial_);
+        transactions_.emplace(*metadata, 0, &rpcs_, &context_, &request_serial_);
         store = true;
       } else {
         DCHECK_EQ(it->metadata(), *metadata);
@@ -436,6 +447,28 @@ class TransactionParticipant::Impl {
       return boost::none;
     }
     return it->metadata();
+  }
+
+  boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
+      const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = FindOrLoad(id);
+    if (it == transactions_.end()) {
+      return boost::none;
+    }
+    return std::make_pair(it->metadata(), it->last_write_id());
+  }
+
+  void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      DCHECK(false) << "Update last write id for unknown transaction: " << id;
+      return;
+    }
+    transactions_.modify(it, [value](RunningTransaction& transaction) {
+      transaction.UpdateLastWriteId(value);
+    });
   }
 
   void RequestStatusAt(const StatusRequest& request) {
@@ -550,7 +583,7 @@ class TransactionParticipant::Impl {
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
-    iter->Seek(key.data());
+    iter->Seek(key.AsSlice());
     if (!iter->Valid() || iter->key() != key.data()) {
       LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id;
       return it;
@@ -569,7 +602,38 @@ class TransactionParticipant::Impl {
       return it;
     }
 
-    it = transactions_.emplace(std::move(*metadata), &rpcs_, &context_, &request_serial_).first;
+    key.AppendValueType(docdb::ValueType::kMaxByte);
+    iter->Seek(key.AsSlice());
+    if (iter->Valid()) {
+      iter->Prev();
+    } else {
+      iter->SeekToLast();
+    }
+    key.Truncate(key.size() - 1);
+    IntraTxnWriteId next_write_id = 0;
+    while (iter->Valid() && iter->key().starts_with(key)) {
+      Slice intent_prefix;
+      docdb::IntentType intent_type;
+      DocHybridTime doc_ht;
+      auto status = docdb::DecodeIntentKey(iter->value(), &intent_prefix, &intent_type, &doc_ht);
+      LOG_IF(DFATAL, !status.ok()) << "Failed to decode intent: " << status;
+      if (status.ok() && docdb::IsStrongIntent(intent_type)) {
+        iter->Seek(iter->value());
+        if (iter->Valid()) {
+          VLOG(1) << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
+                  << " => " << iter->value().ToDebugHexString();
+          status = docdb::DecodeIntentValue(
+              iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
+          LOG_IF(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
+          ++next_write_id;
+        }
+        break;
+      }
+      iter->Prev();
+    }
+
+    it = transactions_.emplace(
+        std::move(*metadata), next_write_id, &rpcs_, &context_, &request_serial_).first;
 
     return it;
   }
@@ -606,6 +670,16 @@ void TransactionParticipant::Add(const TransactionMetadataPB& data,
 
 boost::optional<TransactionMetadata> TransactionParticipant::Metadata(const TransactionId& id) {
   return impl_->Metadata(id);
+}
+
+boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>>
+    TransactionParticipant::MetadataWithWriteId(
+    const TransactionId& id) {
+  return impl_->MetadataWithWriteId(id);
+}
+
+void TransactionParticipant::UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
+  return impl_->UpdateLastWriteId(id, value);
 }
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {

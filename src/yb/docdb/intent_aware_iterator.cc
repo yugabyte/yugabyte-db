@@ -166,16 +166,24 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
      intent_iter->key(), &result.intent_prefix, &result.intent_type, &intent_ht));
   if (IsStrongWriteIntent(result.intent_type)) {
     result.intent_value = intent_iter->value();
-    Result<TransactionId> txn_id = DecodeTransactionIdFromIntentValue(&result.intent_value);
-    RETURN_NOT_OK(txn_id);
-    result.same_transaction = *txn_id == txn_op_context.transaction_id;
+    auto txn_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&result.intent_value));
+    result.same_transaction = txn_id == txn_op_context.transaction_id;
+    if (result.intent_value.size() < 1 + sizeof(IntraTxnWriteId) ||
+        result.intent_value[0] != ValueTypeAsChar::kWriteId) {
+      return STATUS_FORMAT(
+          Corruption, "Write id is missing in $0", intent_iter->value().ToDebugHexString());
+    }
+    result.intent_value.consume_byte();
+    IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
+    result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
     if (result.same_transaction) {
       result.value_time = intent_ht;
     } else {
-      Result<HybridTime> commit_ht = transaction_status_cache->GetCommitTime(*txn_id);
-      RETURN_NOT_OK(commit_ht);
-      VLOG(4) << "Transaction id: " << *txn_id << " commit time: " << *commit_ht;
-      result.value_time = DocHybridTime(*commit_ht);
+      auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(txn_id));
+      result.value_time = DocHybridTime(
+          commit_ht, commit_ht != HybridTime::kMin ? in_txn_write_id : 0);
+      VLOG(4) << "Transaction id: " << txn_id << ", value time: " << result.value_time
+              << ", value: " << result.intent_value.ToDebugHexString();
     }
   } else {
     result.value_time = DocHybridTime::kMin;
@@ -188,7 +196,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
   return key.starts_with(intent_prefix)
       && key.size() > intent_prefix.size()
-      && key[intent_prefix.size()] == static_cast<char>(ValueType::kIntentType);
+      && key[intent_prefix.size()] == ValueTypeAsChar::kIntentType;
 }
 
 std::string DebugDumpKeyToStr(const Slice &key) {
@@ -303,7 +311,7 @@ void IntentAwareIterator::SeekPastSubKey(const Slice& key) {
     }
     KeyBytes intent_prefix = GetIntentPrefixForKeyWithoutHt(key);
     // Skip all intents for subdoc_key.
-    intent_prefix.mutable_data()->push_back(static_cast<char>(ValueType::kIntentType) + 1);
+    intent_prefix.mutable_data()->push_back(ValueTypeAsChar::kIntentType + 1);
     SeekForwardToSuitableIntent(intent_prefix);
   }
 }
@@ -448,7 +456,11 @@ void IntentAwareIterator::ProcessIntent() {
     if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
       resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
       auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
-      decode_result->intent_prefix.consume_byte(static_cast<char>(ValueType::kIntentPrefix));
+      status_ = decode_result->intent_prefix.consume_byte(ValueTypeAsChar::kIntentPrefix);
+      if (!status_.ok()) {
+        status_ = status_.CloneAndPrepend("Bad intent prefix");
+        return;
+      }
       resolved_intent_state_ =
           decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
                                                            : ResolvedIntentState::kInvalidPrefix;
@@ -501,7 +513,11 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
         !IsIntentForTheSameKey(intent_key, resolved_intent_key_prefix_)) {
       break;
     }
-    intent_key.consume_byte(static_cast<char>(ValueType::kIntentPrefix));
+    status_ = intent_key.consume_byte(ValueTypeAsChar::kIntentPrefix);
+    if (!status_.ok()) {
+      status_ = status_.CloneAndPrepend("Bad intent key");
+      return;
+    }
     if (!intent_key.starts_with(prefix)) {
       break;
     }
@@ -570,6 +586,8 @@ Status IntentAwareIterator::FindLastWriteTime(
         resolved_intent_txn_dht_ > *max_deleted_ts &&
         resolved_intent_key_prefix_.CompareTo(intent_prefix) == 0) {
       *max_deleted_ts = resolved_intent_txn_dht_;
+      VLOG(4) << "Max deleted time for " << key_without_ht.ToDebugHexString() << ": "
+              << *max_deleted_ts;
       max_seen_ht_.MakeAtLeast(max_deleted_ts->hybrid_time());
       found_later_intent_result = true;
     }
@@ -598,6 +616,8 @@ Status IntentAwareIterator::FindLastWriteTime(
       RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter_->key(), &doc_ht));
       if (doc_ht > *max_deleted_ts) {
         *max_deleted_ts = doc_ht;
+        VLOG(4) << "Max deleted time for " << key_without_ht.ToDebugHexString() << ": "
+                << *max_deleted_ts;
         max_seen_ht_.MakeAtLeast(doc_ht.hybrid_time());
         found_later_regular_result = true;
       }
@@ -681,10 +701,15 @@ void IntentAwareIterator::SkipFutureIntents() {
   }
   auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
-    VLOG(4) << "Checking resolved intent: " << resolved_intent_key_prefix_.ToString()
+    VLOG(4) << "Checking resolved intent: "
+            << resolved_intent_key_prefix_.AsSlice().ToDebugHexString()
             << ", against new prefix: " << prefix.ToDebugHexString();
     auto resolved_intent_key_prefix = resolved_intent_key_prefix_.AsSlice();
-    resolved_intent_key_prefix.consume_byte(static_cast<char>(ValueType::kIntentPrefix));
+    status_ = resolved_intent_key_prefix.consume_byte(ValueTypeAsChar::kIntentPrefix);
+    if (!status_.ok()) {
+      status_ = status_.CloneAndPrepend("Bad resolved intent key");
+      return;
+    }
     auto compare_result = resolved_intent_key_prefix.compare_prefix(prefix);
     if (compare_result == 0) {
       resolved_intent_state_ = ResolvedIntentState::kValid;

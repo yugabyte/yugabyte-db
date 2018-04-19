@@ -125,4 +125,14 @@ Slice::Slice(const SliceParts& parts, std::string* buf) {
   *this = Slice(*buf);
 }
 
+Status Slice::consume_byte(char c) {
+  char consumed = consume_byte();
+  if (consumed != c) {
+    return STATUS_FORMAT(Corruption, "Wrong first byte, expected $0 but found $1",
+                         static_cast<int>(c), static_cast<int>(consumed));
+  }
+
+  return Status::OK();
+}
+
 }  // namespace yb

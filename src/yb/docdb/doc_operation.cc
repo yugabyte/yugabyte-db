@@ -176,7 +176,7 @@ Result<RedisDataType> GetRedisValueType(
   }
 
   switch (doc.value_type()) {
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone:
       return REDIS_TYPE_NONE;
     case ValueType::kObject:

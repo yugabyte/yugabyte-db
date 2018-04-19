@@ -226,7 +226,7 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
   if (slice->empty()) {
     return STATUS(Corruption, "Document key is empty");
   }
-  if ((*slice)[0] == static_cast<uint8_t>(ValueType::kIntentPrefix)) {
+  if ((*slice)[0] == ValueTypeAsChar::kIntentPrefix) {
     slice->consume_byte();
   }
 
@@ -434,7 +434,7 @@ Result<bool> SubDocKey::DecodeSubkey(Slice* slice) {
 
 template<class Callback>
 Result<bool> SubDocKey::DecodeSubkey(Slice* slice, const Callback& callback) {
-  if (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
+  if (!slice->empty() && *slice->data() != ValueTypeAsChar::kHybridTime) {
     RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, callback.AddSubkey()));
     return true;
   }

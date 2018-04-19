@@ -738,23 +738,23 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
 SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT{ physical: 4000 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303032) DEL
+    TransactionId(30303030-3030-3030-3030-303030303032) WriteId(5) DEL
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) "row1_c_t1"
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) 40000
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) 40000
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) "row1_e_t1"
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
 SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) 42000
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(3) 42000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) "row2_e_t2"
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(6) "row2_e_t2"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(4) "row2_e_t1"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
@@ -924,7 +924,7 @@ TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
 SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) "row1_c_txn"
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_txn"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \

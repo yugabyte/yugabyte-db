@@ -29,7 +29,7 @@ Status DecodeIntentKey(const Slice& encoded_intent_key, Slice* intent_prefix,
   if (intent_prefix->empty()) {
     return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, but it is "
         "empty", ValueType::kIntentPrefix);
-  } else if (*intent_prefix->data() != static_cast<char>(ValueType::kIntentPrefix)) {
+  } else if (*intent_prefix->data() != ValueTypeAsChar::kIntentPrefix) {
     return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, found $1",
         ValueType::kIntentPrefix, static_cast<ValueType>(*intent_prefix->data()));
   }
@@ -64,7 +64,7 @@ Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value) {
   if (intent_value->empty()) {
     return STATUS_FORMAT(Corruption, "Expecting intent value to start with ValueType $0, but it is "
         "empty", ValueType::kTransactionId);
-  } else if (*intent_value->data() != static_cast<char>(ValueType::kTransactionId)) {
+  } else if (*intent_value->data() != ValueTypeAsChar::kTransactionId) {
     return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, found $1",
         ValueType::kTransactionId, static_cast<ValueType>(*intent_value->data()));
   } else {
@@ -87,56 +87,37 @@ IntentTypePair GetWriteIntentsForIsolationLevel(IsolationLevel level) {
   FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
 }
 
-Status Intent::DecodeFromKey(const rocksdb::Slice& encoded_intent) {
-  Slice slice = encoded_intent;
-  ValueType value_type = DecodeValueType(slice);
+#define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
+  BOOST_PP_CAT(SCHECK_, op)(lhs, \
+                            rhs, \
+                            Corruption, \
+                            Format("Bad intent value, $0 in $1, transaction: $2", \
+                                   msg, \
+                                   encoded_intent_value.ToDebugHexString(), \
+                                   transaction_id_slice.ToDebugHexString()))
 
-  if (value_type != ValueType::kGroupEnd) {
-    return STATUS_FORMAT(Corruption, "Expecting intent to start with ValueType $0, found $1",
-                         ValueType::kGroupEnd, value_type);
+CHECKED_STATUS DecodeIntentValue(
+    const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
+    Slice* body) {
+  Slice intent_value = encoded_intent_value;
+  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
+  INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+      "wrong transaction id");
+  intent_value.remove_prefix(TransactionId::static_size());
+
+  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
+  INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
+  if (write_id) {
+    *write_id = BigEndian::Load32(intent_value.data());
   }
+  intent_value.remove_prefix(sizeof(IntraTxnWriteId));
 
-  slice.consume_byte();
-
-  RETURN_NOT_OK(subdoc_key_.DecodeFrom(&slice, HybridTimeRequired::kTrue));
-  intent_type_ = static_cast<IntentType> (subdoc_key_.last_subkey().GetUInt16());
-  subdoc_key_.RemoveLastSubKey();
+  if (body) {
+    *body = intent_value;
+  }
 
   return Status::OK();
 }
-
-Status Intent::DecodeFromValue(const rocksdb::Slice& encoded_intent) {
-  Slice slice = encoded_intent;
-  ValueType value_type = DecodeValueType(slice);
-  if (value_type != ValueType::kTransactionId) {
-    return STATUS_FORMAT(Corruption, "Expecting ValueType $0, found $1",
-        ValueType::kTransactionId, value_type);
-  }
-  slice.consume_byte();
-  RETURN_NOT_OK(transaction_id_.DecodeFromComparableSlice(slice, kUuidSize));
-  slice.remove_prefix(kUuidSize);
-  return value_.Decode(slice);
-}
-
-string Intent::EncodeKey() {
-  KeyBytes encoded_key;
-  encoded_key.AppendValueType(ValueType::kGroupEnd);
-  subdoc_key_.AppendSubKeysAndMaybeHybridTime(PrimitiveValue::IntentTypeValue(intent_type_));
-  encoded_key.Append(subdoc_key_.Encode());
-  subdoc_key_.RemoveLastSubKey();
-  return encoded_key.AsStringRef();
-}
-
-string Intent::EncodeValue() const {
-  string result = PrimitiveValue::TransactionId(transaction_id_).ToValue();
-  value_.EncodeAndAppend(&result);
-  return result;
-}
-
-string Intent::ToString() const {
-  return yb::Format("Intent($0, $1, $2, $3)", subdoc_key_, intent_type_, transaction_id_, value_);
-}
-
 
 }  // namespace docdb
 }  // namespace yb

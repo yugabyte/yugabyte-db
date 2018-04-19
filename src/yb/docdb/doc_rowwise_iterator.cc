@@ -375,7 +375,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 bool DocRowwiseIterator::LivenessColumnExists() const {
   const SubDocument* subdoc = row_.GetChild(
       PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-  return subdoc != nullptr && subdoc->value_type() != ValueType::kInvalidValueType;
+  return subdoc != nullptr && subdoc->value_type() != ValueType::kInvalid;
 }
 
 CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {

@@ -20,8 +20,8 @@ namespace docdb {
 KeyType GetKeyType(const Slice& slice) {
   if (slice.empty()) {
     return KeyType::kEmpty;
-  } else if (*slice.data() == static_cast<char>(ValueType::kIntentPrefix)) {
-    if (slice.size() > 1 && slice[1] == static_cast<char>(ValueType::kTransactionId)) {
+  } else if (*slice.data() == ValueTypeAsChar::kIntentPrefix) {
+    if (slice.size() > 1 && slice[1] == ValueTypeAsChar::kTransactionId) {
       if (slice.size() == TransactionId::static_size() + 2) {
         return KeyType::kTransactionMetadata;
       } else {

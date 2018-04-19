@@ -154,7 +154,8 @@ void PrepareTransactionWriteBatch(
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
-    IsolationLevel isolation_level);
+    IsolationLevel isolation_level,
+    IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(
     const TransactionId& transaction_id, HybridTime commit_ht,

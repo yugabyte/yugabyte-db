@@ -55,7 +55,7 @@ using yb::util::Jsonb;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED; \
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
+    case ValueType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
@@ -88,8 +88,7 @@ string RealToString(T val) {
 
 } // anonymous namespace
 
-const PrimitiveValue PrimitiveValue::kInvalidPrimitiveValue =
-    PrimitiveValue(ValueType::kInvalidValueType);
+const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueType::kInvalid);
 const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueType::kTombstone);
 const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject);
 
@@ -108,7 +107,7 @@ string PrimitiveValue::ToString() const {
       return "false";
     case ValueType::kTrue:
       return "true";
-    case ValueType::kInvalidValueType:
+    case ValueType::kInvalid:
       return "invalid";
     case ValueType::kStringDescending:
     case ValueType::kString:
@@ -196,6 +195,8 @@ string PrimitiveValue::ToString() const {
       return "[]";
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
+    case ValueType::kWriteId:
+      return Format("WriteId($0)", int32_val_);
     case ValueType::kIntentType:
       return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
@@ -240,7 +241,8 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendInt64(int64_val_);
       return;
 
-    case ValueType::kInt32:
+    case ValueType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId:
       key_bytes->AppendInt32(int32_val_);
       return;
 
@@ -385,7 +387,8 @@ string PrimitiveValue::ToValue() const {
       return result;
 
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32:
+    case ValueType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId:
       AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
@@ -485,7 +488,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte:
@@ -632,7 +635,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     }
 
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32:
+    case ValueType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId:
       if (slice->size() < sizeof(int32_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode a 32-bit integer: $0",
@@ -896,6 +900,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kInt32: FALLTHROUGH_INTENDED;
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
       if (slice.size() != sizeof(int32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -992,7 +997,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -1141,6 +1146,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kFrozen: return *frozen_val_ == *other.frozen_val_;
 
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId: FALLTHROUGH_INTENDED;
     case ValueType::kInt32: return int32_val_ == other.int32_val_;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -1209,7 +1215,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(other.int64_val_, int64_val_);
     case ValueType::kInt32Descending:
       return CompareUsingLessThan(other.int32_val_, int32_val_);
-    case ValueType::kInt32:
+    case ValueType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kWriteId:
       return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
@@ -1388,7 +1395,7 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
   // to be set to Null in QLValue.
   if (primitive_value.value_type() == ValueType::kNull ||
       primitive_value.value_type() == ValueType::kNullDescending ||
-      primitive_value.value_type() == ValueType::kInvalidValueType) {
+      primitive_value.value_type() == ValueType::kInvalid) {
     SetNull(ql_value);
     return;
   }
