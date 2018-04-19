@@ -24,11 +24,9 @@ namespace enterprise {
 
 using strings::Substitute;
 using yb::util::ScopedPendingOperation;
-using yb::util::ScopedPendingOperationPause;
 using yb::util::PendingOperationCounter;
 
 Status Tablet::PrepareForSnapshotOp(SnapshotOperationState* tx_state) {
-  // Create snapshot must run when no reads/writes are in progress.
   tx_state->AcquireSchemaLock(&schema_lock_);
 
   return Status::OK();
