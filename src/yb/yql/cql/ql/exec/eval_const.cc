@@ -289,7 +289,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     }
 
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << "Illegal datatype conversion: " << const_pt->expected_internal_type();
   }
   return Status::OK();
 }

@@ -2,6 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include <yb/util/jsonb.h>
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_bfunc.h"
 
@@ -28,6 +29,46 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
     case QLExpressionPB::ExprCase::kColumnId:
       RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
       break;
+
+    case QLExpressionPB::ExprCase::kJsonColumn: {
+      QLValue jsonb;
+      QLJsonColumnOperationsPB json_op = ql_expr.json_column();
+      RETURN_NOT_OK(table_row.ReadColumn(json_op.column_id(), &jsonb));
+      const int num_ops = json_op.json_operations().size();
+
+      Slice jsonop_result;
+      Slice operand(jsonb.jsonb_value());
+      util::JEntry element_metadata;
+      for (int i = 0; i < num_ops; i++) {
+        const QLJsonOperationPB &op = json_op.json_operations().Get(i);
+        const Status s = util::Jsonb::ApplyJsonbOperator(operand, op, &jsonop_result,
+                                                         &element_metadata);
+        if (s.IsNotFound()) {
+          // We couldn't apply the operator to the operand and hence return null as the result.
+          result->SetNull();
+          return Status::OK();
+        }
+        RETURN_NOT_OK(s);
+
+        if (util::Jsonb::IsScalar(element_metadata) && i != num_ops - 1) {
+          // We have to apply another operation after this, but we received a scalar intermediate
+          // result.
+          result->SetNull();
+          return Status::OK();
+        }
+        operand = jsonop_result;
+      }
+
+      string jsonb_result = jsonop_result.ToBuffer();
+      if (util::Jsonb::IsScalar(element_metadata)) {
+        // In case of a scalar that is received from an operation, convert it to a jsonb scalar.
+        RETURN_NOT_OK(util::Jsonb::CreateScalar(jsonop_result,
+                                                element_metadata,
+                                                &jsonb_result));
+      }
+      result->set_jsonb_value(jsonb_result);
+      break;
+    }
 
     case QLExpressionPB::ExprCase::kSubscriptedCol:
       if (table_row.IsEmpty()) {

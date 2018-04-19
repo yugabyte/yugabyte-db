@@ -33,5 +33,19 @@ CHECKED_STATUS Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const
   return Status::OK();
 }
 
+CHECKED_STATUS Executor::PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
+                                            QLJsonOperationPB *op_pb) {
+  switch (json_pt->json_operator()) {
+    case JsonOperator::JSON_TEXT:
+      op_pb->set_json_operator(JsonOperatorPB::JSON_TEXT);
+      break;
+    case JsonOperator::JSON_OBJECT:
+      op_pb->set_json_operator(JsonOperatorPB::JSON_OBJECT);
+      break;
+  }
+  return PTExprToPB(json_pt->arg(), op_pb->mutable_operand());
+}
+
+
 }  // namespace ql
 }  // namespace yb
