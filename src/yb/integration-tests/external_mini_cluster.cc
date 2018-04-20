@@ -979,8 +979,8 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   rpcs.Shutdown();
   bool found = false;
   for (int i = 0; i < masters_.size(); i++) {
-    if (is_leader && masters_[i]->bound_rpc_hostport().port() == leader_master_hp.port() ||
-        !is_leader && masters_[i]->bound_rpc_hostport().port() != leader_master_hp.port()) {
+    bool matches_leader = masters_[i]->bound_rpc_hostport().port() == leader_master_hp.port();
+    if (is_leader == matches_leader) {
       found = true;
       *idx = i;
       break;

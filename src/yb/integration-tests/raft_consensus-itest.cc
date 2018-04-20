@@ -1261,7 +1261,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   while (workload.rows_inserted() < kNumWrites &&
          (sw.elapsed().wall_seconds() < 30 ||
           // If no rows are inserted, run a little longer.
-          workload.rows_inserted() == 0 && sw.elapsed().wall_seconds() < 90)) {
+          (workload.rows_inserted() == 0 && sw.elapsed().wall_seconds() < 90))) {
     SleepFor(MonoDelta::FromMilliseconds(10));
     ASSERT_NO_FATALS(AssertNoTabletServersCrashed());
   }

@@ -97,8 +97,8 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
   // rely on non-empty "column_ref" alone to decide if a read is required because "IF EXISTS" and
   // "IF NOT EXISTS" do not involve a column reference explicitly.
   return request.has_if_expr() ||
-         request.has_column_refs() && (!request.column_refs().ids().empty() ||
-         !request.column_refs().static_ids().empty());
+         (request.has_column_refs() &&
+             (!request.column_refs().ids().empty() || !request.column_refs().static_ids().empty()));
 }
 
 // If range key portion is missing and there are no targeted columns this is a range operation

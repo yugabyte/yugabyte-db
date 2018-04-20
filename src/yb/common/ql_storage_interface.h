@@ -20,10 +20,12 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
-#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace common {
+
+class PgsqlScanSpec;
+class QLScanSpec;
 
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
@@ -67,7 +69,7 @@ class YQLStorageIf {
   virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
                                           const ReadHybridTime& read_time,
                                           const Schema& schema,
-                                          PgsqlScanSpec::UniPtr* spec,
+                                          std::unique_ptr<PgsqlScanSpec>* spec,
                                           ReadHybridTime* req_read_time) const = 0;
 };
 
