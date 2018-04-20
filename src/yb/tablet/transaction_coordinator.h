@@ -57,6 +57,9 @@ class TransactionIntentApplier;
 class TransactionParticipant;
 class UpdateTxnOperationState;
 
+// Get current transaction timeout.
+std::chrono::microseconds GetTransactionTimeout();
+
 // Context for transaction coordinator. I.e. access to external facilities required by
 // transaction coordinator to do its job.
 class TransactionCoordinatorContext {

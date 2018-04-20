@@ -55,7 +55,12 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_int64(transaction_timeout_usec, 1500000, "Transaction expiration timeout in usec.");
+DEFINE_double(transaction_max_missed_heartbeat_periods, 6.0,
+              "Maximum heartbeat periods that a pending transaction can miss before the "
+              "transaction coordinator expires the transaction. The total expiration time in "
+              "microseconds is transaction_heartbeat_usec times "
+              "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
+              "fractional.");
 DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
 DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
@@ -65,6 +70,14 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace tablet {
+
+std::chrono::microseconds GetTransactionTimeout() {
+  const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
+                         GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
+  return timeout >= std::chrono::microseconds::max().count()
+      ? std::chrono::microseconds::max()
+      : std::chrono::microseconds(static_cast<int64_t>(timeout));
+}
 
 namespace {
 
@@ -150,7 +163,7 @@ class TransactionState {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
-    return passed > FLAGS_transaction_timeout_usec;
+    return std::chrono::microseconds(passed) > GetTransactionTimeout();
   }
 
   // Whether this transaction has completed.
