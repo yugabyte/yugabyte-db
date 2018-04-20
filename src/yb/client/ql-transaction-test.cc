@@ -42,8 +42,10 @@
 
 using namespace std::literals; // NOLINT
 
-DECLARE_int64(transaction_timeout_usec);
+using yb::tablet::GetTransactionTimeout;
+
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_uint64(transaction_table_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -120,6 +122,11 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
   });
   txn->reset();
   latch.Wait();
+}
+
+void DisableTransactionTimeout() {
+  SetAtomicFlag(std::numeric_limits<double>::max(),
+                &FLAGS_transaction_max_missed_heartbeat_periods);
 }
 
 } // namespace
@@ -450,7 +457,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
 
   FLAGS_max_clock_skew_usec = 1000000;
   FLAGS_transaction_table_num_tablets = 3;
-  FLAGS_transaction_timeout_usec = FLAGS_max_clock_skew_usec * 1000;
+  DisableTransactionTimeout();
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
   constexpr size_t kTotalTransactions = 10;
@@ -615,7 +622,7 @@ TEST_F(QLTransactionTest, Heartbeat) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   WriteRows(session);
-  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
+  std::this_thread::sleep_for(GetTransactionTimeout() * 2);
   CountDownLatch latch(1);
   txn->Commit([&latch](const Status& status) {
     EXPECT_OK(status);
@@ -631,7 +638,7 @@ TEST_F(QLTransactionTest, Expire) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   WriteRows(session);
-  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
+  std::this_thread::sleep_for(GetTransactionTimeout() * 2);
   CountDownLatch latch(1);
   txn->Commit([&latch](const Status& status) {
     EXPECT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
@@ -646,7 +653,7 @@ TEST_F(QLTransactionTest, Expire) {
 TEST_F(QLTransactionTest, PreserveLogs) {
   google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
-  FLAGS_transaction_timeout_usec = std::chrono::microseconds(60s).count();
+  DisableTransactionTimeout();
   std::vector<std::shared_ptr<YBTransaction>> transactions;
   constexpr size_t kTransactions = 20;
   for (size_t i = 0; i != kTransactions; ++i) {
@@ -1234,8 +1241,7 @@ TEST_F(QLTransactionTest, InsertDelete) {
 
 TEST_F(QLTransactionTest, InsertDeleteWithClusterRestart) {
   DisableApplyingIntents();
-  // Divided to avoid overflow
-  FLAGS_transaction_timeout_usec = std::numeric_limits<int64_t>::max() / 4;
+  DisableTransactionTimeout();
   constexpr int kKeys = 100;
 
   for (int i = 0; i != kKeys; ++i) {
