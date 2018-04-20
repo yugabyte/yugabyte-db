@@ -1062,7 +1062,7 @@ class PTBindVar : public PTExpr {
       const YBLocation& l1 = v1->loc();
       const YBLocation& l2 = v2->loc();
       return (l1.BeginLine() < l2.BeginLine() ||
-              l1.BeginLine() == l2.BeginLine() && l1.BeginColumn() < l2.BeginColumn());
+              (l1.BeginLine() == l2.BeginLine() && l1.BeginColumn() < l2.BeginColumn()));
     }
   };
 

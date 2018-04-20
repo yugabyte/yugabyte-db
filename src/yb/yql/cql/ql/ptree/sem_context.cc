@@ -121,7 +121,7 @@ Status SemContext::LookupTable(const YBTableName& name,
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
   *table = GetTableDesc(name);
-  if (*table == nullptr || (*table)->IsIndex() && !FLAGS_allow_index_table_read_write) {
+  if (*table == nullptr || ((*table)->IsIndex() && !FLAGS_allow_index_table_read_write)) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*table);

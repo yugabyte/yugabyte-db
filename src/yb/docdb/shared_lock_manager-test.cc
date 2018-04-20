@@ -303,7 +303,7 @@ TEST_F(SharedLockManagerTest, CombineIntentsTest) {
 
       // serializable read + serializable write = snapshot isolation
       if (IsSerializableIntent(i1) && IsSerializableIntent(i2) &&
-          (IsReadIntent(i1) && IsWriteIntent(i2) || IsReadIntent(i2) && IsWriteIntent(i1))) {
+          ((IsReadIntent(i1) && IsWriteIntent(i2)) || (IsReadIntent(i2) && IsWriteIntent(i1)))) {
         ASSERT_TRUE(IsSnapshotIntent(combined));
       }
 

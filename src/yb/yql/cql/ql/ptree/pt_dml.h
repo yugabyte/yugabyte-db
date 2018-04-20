@@ -333,7 +333,7 @@ class PTDmlStmt : public PTCollection {
   bool ReadsHashKey(const bool has_usertimestamp) const {
     // A DML reads from the hash key if it reads a static column, or it modifies the hash key and
     // has a user-defined timestamp (which DocDB will require a read-modify-write by the timestamp).
-    return !static_column_refs_.empty() || modifies_hash_key_ && has_usertimestamp;
+    return !static_column_refs_.empty() || (modifies_hash_key_ && has_usertimestamp);
   }
   bool ReadsPrimaryKey(const bool has_usertimestamp) const {
     // A DML reads from the primary key if there is a IF clause (TODO differentiate the case where
@@ -341,7 +341,7 @@ class PTDmlStmt : public PTCollection {
     // counter update), or it modifies the primary key and has a user-defined timestamp (which
     // DocDB will require a read-modify-write by the timestamp).
     return if_clause_ != nullptr || !column_refs_.empty() ||
-        modifies_primary_key_ && has_usertimestamp;
+        (modifies_primary_key_ && has_usertimestamp);
   }
 
  protected:

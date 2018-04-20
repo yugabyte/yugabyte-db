@@ -126,11 +126,11 @@ class HybridClock : public Clock {
     HybridClockComponents(const HybridClockComponents& other) = default;
 
     bool operator< (const HybridClockComponents& o) const {
-      return last_usec < o.last_usec || last_usec == o.last_usec && logical < o.logical;
+      return last_usec < o.last_usec || (last_usec == o.last_usec && logical < o.logical);
     }
 
     bool operator<= (const HybridClockComponents& o) const {
-      return last_usec < o.last_usec || last_usec == o.last_usec && logical <= o.logical;
+      return last_usec < o.last_usec || (last_usec == o.last_usec && logical <= o.logical);
     }
 
     void HandleLogicalComponentOverflow();
