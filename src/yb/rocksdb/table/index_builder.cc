@@ -174,8 +174,8 @@ void MultiLevelIndexBuilder::AddIndexEntry(
 
 bool MultiLevelIndexBuilder::ShouldFlush() const {
   return current_level_block_.is_ready ||
-      next_level_.block_to_add.IsReadyAndLast() ||
-      next_level_index_builder_ && next_level_index_builder_->ShouldFlush();
+         next_level_.block_to_add.IsReadyAndLast() ||
+         (next_level_index_builder_ && next_level_index_builder_->ShouldFlush());
 }
 
 Status MultiLevelIndexBuilder::FlushCurrentLevel(IndexBlocks* index_blocks) {

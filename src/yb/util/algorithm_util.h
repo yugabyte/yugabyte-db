@@ -33,7 +33,7 @@ void SortByKey(Iterator begin,
   using Value = typename Iterator::value_type;
   const bool invert_order = sort_order == SortOrder::kDescending;
   std::sort(begin, end, [invert_order, &f](const Value& a, const Value& b){
-    return f(a) < f(b) != invert_order;
+    return (f(a) < f(b)) != invert_order;
   });
 }
 

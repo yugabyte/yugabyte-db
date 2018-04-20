@@ -203,8 +203,8 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
     // operations bound to different terms, so as not to fail unrelated operations
     // unnecessarily in case of a bound term mismatch.
     if (leader_side_batch_.size() >= FLAGS_max_group_replicate_batch_size ||
-        !leader_side_batch_.empty() &&
-            bound_term != leader_side_batch_.back()->consensus_round()->bound_term()) {
+        (!leader_side_batch_.empty() &&
+            bound_term != leader_side_batch_.back()->consensus_round()->bound_term())) {
       ProcessAndClearLeaderSideBatch();
     }
     leader_side_batch_.push_back(item);

@@ -60,7 +60,7 @@ class QLRocksDBStorage : public common::YQLStorageIf {
   virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
                                           const ReadHybridTime& read_time,
                                           const Schema& schema,
-                                          common::PgsqlScanSpec::UniPtr* spec,
+                                          std::unique_ptr<common::PgsqlScanSpec>* spec,
                                           ReadHybridTime* req_read_time) const override;
 
  private:

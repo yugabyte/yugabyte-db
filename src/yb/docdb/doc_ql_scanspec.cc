@@ -110,17 +110,24 @@ std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bou
 
 namespace {
 
+template <class Predicate>
+bool KeySatisfiesBound(const DocKey& key, const DocKey& bound_key, const Predicate& predicate) {
+  if (bound_key.empty()) {
+    return true;
+  }
+  if (bound_key.range_group().empty() && key.HashedComponentsEqual(bound_key)) {
+    return true;
+  }
+  return predicate(bound_key, key);
+}
+
 bool KeyWithinRange(const DocKey& key, const DocKey& lower_key, const DocKey& upper_key) {
   // Verify that the key is within the lower/upper bound, which is either:
   // 1. the bound is empty,
   // 2. the bound has no range component and the key's hash components are the same as the bound's,
   // 3. the key is <= or >= the fully-specified bound.
-  return ((lower_key.empty() ||
-      lower_key.range_group().empty() && key.HashedComponentsEqual(lower_key) ||
-      lower_key <= key) &&
-      (upper_key.empty() ||
-          upper_key.range_group().empty() && key.HashedComponentsEqual(upper_key) ||
-          upper_key >= key));
+  return KeySatisfiesBound(key, lower_key, std::less_equal<>()) &&
+         KeySatisfiesBound(key, upper_key, std::greater_equal<>());
 }
 
 } // namespace

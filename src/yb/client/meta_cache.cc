@@ -332,8 +332,8 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers,
   auto status = local_failed_replica->ts->proxy()->GetTabletStatus(req, &resp, &rpc);
   if (!status.ok() || resp.has_error()) {
     LOG(ERROR) << "Received error from GetTabletStatus: "
-               << !status.ok() ? status.ToString() :
-                                 StatusFromPB(resp.error().status()).ToString();
+               << (!status.ok() ? status.ToString() :
+                                  StatusFromPB(resp.error().status()).ToString());
     return;
   }
 

@@ -14,10 +14,20 @@
 #ifndef YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
 #define YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
 
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_scanspec.h"
+#include <memory>
+
+#include "yb/util/status.h"
 
 namespace yb {
+
+class HybridTime;
+class PgsqlReadRequestPB;
+class PgsqlResponsePB;
+class QLReadRequestPB;
+class QLResponsePB;
+class QLTableRow;
+class Schema;
+
 namespace common {
 
 class YQLRowwiseIteratorIf {

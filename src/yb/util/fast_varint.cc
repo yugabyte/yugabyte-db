@@ -192,7 +192,7 @@ Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(const uint8_t* src, si
   // n_bytes                   : 10
   //
   // Argument of __builtin_clz is always unsigned int.
-  size_t n_bytes = __builtin_clz(~header & 0x7fff | 0x20) - 16;
+  size_t n_bytes = __builtin_clz((~header & 0x7fff) | 0x20) - 16;
   if (src_size < n_bytes) {
     return NotEnoughEncodedBytes(n_bytes, src_size);
   }

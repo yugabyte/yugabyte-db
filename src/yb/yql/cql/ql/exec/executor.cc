@@ -1263,8 +1263,8 @@ bool Executor::DeferOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) 
   // the prior one.
   const bool has_usertimestamp = op->request().has_user_timestamp_usec();
   const bool defer =
-      tnode->ReadsPrimaryKey(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0 ||
-      tnode->ReadsHashKey(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0;
+      (tnode->ReadsPrimaryKey(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0) ||
+      (tnode->ReadsHashKey(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0);
 
   if (!defer) {
     if (tnode->ModifiesPrimaryKey()) batched_writes_by_primary_key_.insert(op);

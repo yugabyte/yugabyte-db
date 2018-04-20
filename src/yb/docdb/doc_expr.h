@@ -7,7 +7,6 @@
 #ifndef YB_DOCDB_DOC_EXPR_H_
 #define YB_DOCDB_DOC_EXPR_H_
 
-#include "yb/common/ql_bfunc.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
