@@ -81,8 +81,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universeDetails.universeUUID = taskParams().universeUUID;
         Cluster cluster = taskParams().getPrimaryCluster();
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
-        universeDetails.clusters.removeIf(c -> c.clusterType.equals(ClusterType.ASYNC));
-        universeDetails.clusters.addAll(taskParams().getReadOnlyClusters());
+
+        taskParams().getReadOnlyClusters().stream().forEach((async) -> {
+          universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
+        });
         universe.setUniverseDetails(universeDetails);
       }
     };

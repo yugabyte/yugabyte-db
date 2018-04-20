@@ -135,7 +135,8 @@ export default class ClusterFields extends Component {
             this.setState({useSpotPrice: false, spotPrice: 0.0});
           }
           if (formValues[clusterType].assignPublicIP) {
-            this.setState({assignPublicIP: formValues[clusterType].assignPublicIP});
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({assignPublicIP: formValues['primary'].assignPublicIP});
           }
         }
       } else {
@@ -445,8 +446,13 @@ export default class ClusterFields extends Component {
 
   toggleAssignPublicIP(event) {
     const {updateFormField, clusterType} = this.props;
-    updateFormField(`${clusterType}.assignPublicIP`, event.target.checked);
-    this.setState({assignPublicIP: event.target.checked});
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.assignPublicIP', event.target.checked);
+      updateFormField('async.assignPublicIP', event.target.checked);
+      this.setState({assignPublicIP: event.target.checked});
+    }
   }
 
   spotPriceChanged(val, normalize) {
@@ -783,9 +789,13 @@ export default class ClusterFields extends Component {
 
     if (isDefinedNotNull(currentProvider) &&
         (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
+      // Assign public ip would be only enabled for primary and that same
+      // value will be used for async as well.
+      const disableOnChange = clusterType !== "primary";
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
                component={YBToggle} isReadOnly={isFieldReadOnly}
+               disableOnChange={disableOnChange}
                checkedVal={this.state.assignPublicIP}
                onToggle={this.toggleAssignPublicIP}
                label="Assign Public IP"

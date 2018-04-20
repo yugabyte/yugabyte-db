@@ -142,6 +142,12 @@ function mapStateToProps(state, ownProps) {
       "spotPrice": "0.00",
       "useSpotPrice": IN_DEVELOPMENT_MODE,
       "assignPublicIP":  true
+    },
+    "async": {
+      "numNodes": 3,
+      "spotPrice": "0.00",
+      "useSpotPrice": IN_DEVELOPMENT_MODE,
+      "assignPublicIP":  true
     }
   };
 

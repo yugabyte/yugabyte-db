@@ -30,6 +30,9 @@ public class CloudSpecificInfo {
   public String region = null;
   // The cloud provider where the node is located.
   public String cloud = null;
+  
+  public double spotPrice = 0.0;
+  public boolean assignPublicIP = true;
 
   public CloudSpecificInfo() {
   }

@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.YBClient;
 
-import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
@@ -54,9 +53,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       updateNodeNames();
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet, userIntent.deviceInfo,
-                             userIntent.instanceType, userIntent.spotPrice,
-                             userIntent.assignPublicIP)
+      createSetupServerTasks(taskParams().nodeDetailsSet, userIntent.deviceInfo)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
