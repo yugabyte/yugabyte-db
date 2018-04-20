@@ -15,8 +15,10 @@ export default class YBToggle extends Component {
       input, label, onToggle, isReadOnly, meta, insetError, subLabel, infoContent, infoTitle, checkedVal
     } = this.props;
     const onChange = (event) => {
-      input.onChange(event);
-      if (isValidObject(onToggle)) onToggle(event);
+      if (!this.props.disableOnChange) {
+        input.onChange(event);
+        if (isValidObject(onToggle)) onToggle(event);
+      }
     };
 
     // TODO: Investigate separating this into a Controlled and Uncontrolled component. This is
@@ -34,9 +36,11 @@ export default class YBToggle extends Component {
 }
 
 YBToggle.propTypes = {
-  checkedVal: PropTypes.bool
+  checkedVal: PropTypes.bool,
+  disableOnChange: PropTypes.bool
 };
 
 YBToggle.defaultProps = {
-  checkedVal: true
+  checkedVal: true,
+  disableOnChange: false
 };
