@@ -74,8 +74,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       // First spawn an instance for Decommissioned node.
       boolean wasDecommissioned = currentNode.state == NodeDetails.NodeState.Decommissioned;
       if (wasDecommissioned) {
-        createSetupServerTasks(node, userIntent.deviceInfo, userIntent.instanceType,
-                               userIntent.spotPrice, userIntent.assignPublicIP)
+        createSetupServerTasks(node, userIntent.deviceInfo)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
         createServerInfoTasks(node, userIntent.deviceInfo)

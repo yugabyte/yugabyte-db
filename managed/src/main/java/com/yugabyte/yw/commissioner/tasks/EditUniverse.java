@@ -74,9 +74,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       if (!nodesToProvision.isEmpty()) {
         // Create the required number of nodes in the appropriate locations.
-        createSetupServerTasks(nodesToProvision, userIntent.deviceInfo,
-                               userIntent.instanceType, userIntent.spotPrice,
-                               userIntent.assignPublicIP)
+        createSetupServerTasks(nodesToProvision, userIntent.deviceInfo)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
         // Get all information about the nodes of the cluster. This includes the public ip address,

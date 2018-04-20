@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
 
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -776,13 +777,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, DeviceInfo deviceInfo,
-      String instanceType, double spotPrice, boolean assignPublicIP) {
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, DeviceInfo deviceInfo) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
 
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
+      CloudSpecificInfo cloudInfo = node.cloudInfo;
       params.deviceInfo = deviceInfo;
       // Set the region code.
       params.azUuid = node.azUuid;
@@ -792,13 +793,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Pick one of the subnets in a round robin fashion.
-      params.subnetId = node.cloudInfo.subnet_id;
+      params.subnetId = cloudInfo.subnet_id;
       // Set the instance type.
-      params.instanceType = instanceType;
+      params.instanceType = cloudInfo.instance_type;
       // Set the spot price.
-      params.spotPrice = spotPrice;
+      params.spotPrice = cloudInfo.spotPrice;
       // set the assign public ip param
-      params.assignPublicIP = assignPublicIP;
+      params.assignPublicIP = cloudInfo.assignPublicIP;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);
