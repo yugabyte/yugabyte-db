@@ -11,31 +11,14 @@
 # under the License.
 #
 
-# RPC service / connection.
-add_subdirectory(server)
+add_library(pgsql_test pg_psql_test.cc)
+target_link_libraries(pgsql_test
+                      yb-pgsql
+                      yb_client
+                      yb_client_test_util
+                      integration-tests)
+add_dependencies(pgsql_test yb-pgserver)
 
-# Entry for all proxy processing tasks.
-add_subdirectory(processor)
-
-# Syntax analysis.
-add_subdirectory(syn)
-
-# Semantic analysis.
-add_subdirectory(sem)
-add_subdirectory(ptree)
-
-# Code definition
-add_subdirectory(proto)
-
-# Code generation.
-add_subdirectory(pbgen)
-
-# Code execution.
-add_subdirectory(pbexec)
-
-# Utility.
-add_subdirectory(util)
-add_subdirectory(ybpostgres)
-
-# Test.
-add_subdirectory(test)
+set(YB_TEST_LINK_LIBS pgsql_test ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_run_test)
+ADD_COMMON_YB_TEST_DEPENDENCIES(pg_run_test)

@@ -32,6 +32,8 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include <sys/stat.h>
+
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -76,7 +78,7 @@
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;  // NOLINT
-using namespace yb::size_literals;
+using namespace yb::size_literals;  // NOLINT
 
 using std::atomic;
 using std::lock_guard;
@@ -202,6 +204,17 @@ Status ExternalMiniCluster::HandleOptions() {
   if (data_root_.empty()) {
     // If they don't specify a data root, use the current gtest directory.
     data_root_ = JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
+
+    // If "data_root_counter" is non-negative, and the auto-generated "data_root_" directory already
+    // exists, create a subdirectory using the counter value as its name. The caller should maintain
+    // this counter and increment it for each test run.
+    if (opts_.data_root_counter >= 0) {
+      struct stat sb;
+      if (stat(data_root_.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+        data_root_ = Substitute("$0/$1", data_root_, opts_.data_root_counter);
+        CHECK_EQ(mkdir(data_root_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH), 0);
+      }
+    }
   }
 
   return Status::OK();
@@ -1057,6 +1070,11 @@ vector<ExternalDaemon*> ExternalMiniCluster::daemons() const {
     results.push_back(master.get());
   }
   return results;
+}
+
+HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
+  return HostPort(tablet_servers_[node_index]->bind_host(),
+                  tablet_servers_[node_index]->pgsql_rpc_port());
 }
 
 std::shared_ptr<rpc::Messenger> ExternalMiniCluster::messenger() {
