@@ -2248,5 +2248,91 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 
 }
 
+TEST_F(DocDBTest, CompactionWithTransactions) {
+
+  const DocKey doc_key(PrimitiveValues("mydockey", 123456));
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, 4000_usec_ht));
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+  Result<TransactionId> txn1 = FullyDecodeTransactionId("0000000000000001");
+  ASSERT_OK(txn1);
+  SetCurrentTransactionId(*txn1);
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, 5000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value4"), 5000_usec_ht));
+
+  Result<TransactionId> txn2 = FullyDecodeTransactionId("0000000000000002");
+  ASSERT_OK(txn2);
+  SetCurrentTransactionId(*txn2);
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, 5000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), 5000_usec_ht));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
+      )#");
+  FullyCompactHistoryBefore(3500_usec_ht);
+  AssertDocDbDebugDumpStrEq(
+      R"#(
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
+      )#");
+}
+
+
 }  // namespace docdb
 }  // namespace yb
