@@ -28,7 +28,7 @@ namespace pgserver {
 PgServerOptions::PgServerOptions() {
   server_type = "tserver";
   rpc_opts.default_port = PgServer::kDefaultPort;
-  // rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
+  rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
 }
 
 } // namespace pgserver

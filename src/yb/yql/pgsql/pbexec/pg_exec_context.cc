@@ -42,7 +42,9 @@ CHECKED_STATUS PgExecContext::Apply(std::shared_ptr<client::YBPgsqlOp> op) {
 CHECKED_STATUS PgExecContext::CreateDatabase(const std::string& db_name) {
   CHECK(pg_env_) << "Execution env is not defined";
   RETURN_NOT_OK(pg_env_->CreateDatabase(db_name));
-  pg_session_->set_current_database(db_name);
+
+  // Remove auto-connect during creation.
+  // pg_session_->set_current_database(db_name);
   return Status::OK();
 }
 
