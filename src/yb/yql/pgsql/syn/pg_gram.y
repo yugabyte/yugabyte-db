@@ -2767,8 +2767,13 @@ opt_ordinality:
 ;
 
 opt_where_clause:
-  /*EMPTY*/                     { $$ = nullptr; }
-  | where_clause                { $$ = $1; }
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | where_clause {
+    PARSER_UNSUPPORTED(@1);
+    $$ = $1;
+  }
 ;
 
 where_clause:

@@ -89,6 +89,14 @@ struct ExternalMiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   std::string data_root;
 
+  // Set data_root_counter to non-negative number if your test run need to create an new and empty
+  // cluster every time ExternalMiniCluster() is constructed.
+  // - During a test run, data_root will stay the same until the run is finished, so recreating a
+  //   brand new cluster from scratch is not possible because the database location stays the same.
+  // - When data_root_counter is non-negative, a new "data_root" is generated every time
+  //   ExternalMiniCluster() is constructed.
+  int data_root_counter = -1;
+
   // If true, binds each tablet server to a different loopback address.  This affects the server's
   // RPC server, and also forces the server to only use this IP address for outgoing socket
   // connections as well.  This allows the use of iptables on the localhost to simulate network
@@ -250,6 +258,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return all tablet servers and masters.
   std::vector<ExternalDaemon*> daemons() const;
+
+  // Get tablet server host.
+  HostPort pgsql_hostport(int node_index) const;
 
   int num_tablet_servers() const {
     return tablet_servers_.size();
@@ -556,6 +567,14 @@ class ExternalTabletServer : public ExternalDaemon {
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(bool start_cql_proxy = true);
+
+  // Postgres addresses.
+  const string& bind_host() const {
+    return bind_host_;
+  }
+  uint16_t pgsql_rpc_port() const {
+    return pgsql_rpc_port_;
+  }
 
  protected:
   CHECKED_STATUS DeleteServerInfoPaths() override;

@@ -332,7 +332,7 @@ void PgInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code
                                    const Status& status) {
   // Write error message.
   StringInfo pg_msg;
-  conn_context_->pgsend().WriteErrorMessage(-1, status.ToString(), &pg_msg);
+  conn_context_->pgsend().WriteErrorMessage(-1, status.ToUserMessage(), &pg_msg);
   Respond(pg_msg->data, false);
 }
 

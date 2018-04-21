@@ -106,7 +106,7 @@ CHECKED_STATUS PgTBcall::Analyze(PgCompileContext *compile_context) {
       got_first_arg = true;
     }
     err_msg += ")'. ";
-    err_msg += s.ToString();
+    err_msg += s.ToUserMessage();
     LOG(INFO) << err_msg;
     return compile_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
   }
@@ -256,7 +256,7 @@ CHECKED_STATUS PgTBcall::Analyze(PgCompileContext *compile_context) {
       if (!s.ok()) {
         LOG(ERROR) << "Arguments to builtin call " << name_->c_str() << "() is compatible with "
                    << "its signature but converting the argument to the desired type failed";
-        string err_msg = (s.ToString() + "CAST " + expr->ql_type()->ToString() + " AS " +
+        string err_msg = (s.ToUserMessage() + "CAST " + expr->ql_type()->ToString() + " AS " +
             QLType::ToCQLString(formal_types[pindex]) + " failed");
         return compile_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
       }
