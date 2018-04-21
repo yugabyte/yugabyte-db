@@ -63,6 +63,11 @@ bool DocDBCompactionFilter::Filter(int level,
     filter_usage_logged_ = true;
   }
 
+  // Skip transaction metadata.
+  if (DecodeValueType(key) == ValueType::kIntentPrefix) {
+    return false;
+  }
+
   SubDocKey subdoc_key;
 
   // TODO: Find a better way for handling of data corruption encountered during compactions.
