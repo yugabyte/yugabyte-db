@@ -207,8 +207,8 @@ std::string GetToolPath(const std::string& tool_name);
 
 int CalcNumTablets(int num_tablet_servers);
 
-template <class T>
-void SetAtomicFlag(T value, T* flag) {
+template <class U, class T>
+void SetAtomicFlag(U value, T* flag) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
   atomic_flag.store(value);
 }

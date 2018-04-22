@@ -379,7 +379,7 @@ TEST_F(QLTransactionTest, WriteSameKeyWithIntents) {
 void QLTransactionTest::TestReadRestart(bool commit) {
   google::FlagSaver saver;
 
-  FLAGS_max_clock_skew_usec = 250000;
+  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   {
     auto write_txn = CreateTransaction();
@@ -455,7 +455,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   const auto kClockSkew = 500ms;
   google::FlagSaver saver;
 
-  FLAGS_max_clock_skew_usec = 1000000;
+  SetAtomicFlag(1000000ULL, &FLAGS_max_clock_skew_usec);
   FLAGS_transaction_table_num_tablets = 3;
   DisableTransactionTimeout();
 
@@ -481,7 +481,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
 TEST_F(QLTransactionTest, WriteRestart) {
   google::FlagSaver saver;
 
-  FLAGS_max_clock_skew_usec = 250000;
+  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   const std::string kExtraColumn = "v2";
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -552,7 +552,7 @@ TEST_F(QLTransactionTest, Child) {
 TEST_F(QLTransactionTest, ChildReadRestart) {
   google::FlagSaver saver;
 
-  FLAGS_max_clock_skew_usec = 250000;
+  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   {
     auto write_txn = CreateTransaction();
@@ -771,7 +771,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
   google::FlagSaver flag_saver;
-  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -812,7 +812,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   google::FlagSaver flag_saver;
-  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -859,7 +859,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 
 TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   google::FlagSaver flag_saver;
-  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -925,7 +925,7 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
   FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
   FLAGS_transaction_table_num_tablets = 3;
   FLAGS_log_segment_size_bytes = 0;
-  FLAGS_max_clock_skew_usec = std::chrono::microseconds(kClockSkew).count() * 3;
+  SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
 
@@ -1161,7 +1161,7 @@ TEST_F(QLTransactionTest, WaitRead) {
   constexpr size_t kCycles = 100;
   constexpr size_t kConcurrentReads = 4;
 
-  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
 
   std::atomic<bool> stop(false);
   std::vector<std::thread> threads;
