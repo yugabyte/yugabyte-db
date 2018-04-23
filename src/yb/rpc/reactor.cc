@@ -296,18 +296,18 @@ void Reactor::CheckReadyToStop() {
   if (waiting_conns_.empty()) {
     VLOG(4) << "Reactor ready to stop, breaking loop: " << this;
 
-    LOG(INFO) << "Marking reactor as closed: " << thread_.get()->ToString();
+    VLOG(2) << "Marking reactor as closed: " << thread_.get()->ToString();
     ReactorTasks final_tasks;
     {
       std::lock_guard<simple_spinlock> lock(pending_tasks_mtx_);
       state_.store(ReactorState::kClosed, std::memory_order_release);
       final_tasks.swap(pending_tasks_);
     }
-    LOG(INFO) << "Running final pending task aborts: " << thread_.get()->ToString();;
+    VLOG(2) << "Running final pending task aborts: " << thread_.get()->ToString();;
     for (auto task : final_tasks) {
       task->Abort(ServiceUnavailableError());
     }
-    LOG(INFO) << "Breaking reactor loop: " << thread_.get()->ToString();;
+    VLOG(2) << "Breaking reactor loop: " << thread_.get()->ToString();;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
