@@ -118,7 +118,12 @@ Status SetupRootDir(
 
 Status CheckODirectTempFileCreationInDir(Env* env,
                                          const std::string& dir_path) {
-  string name_template = dir_path + kTmpTemplateSuffix;
+  std::string name_template;
+  if (!dir_path.empty() && dir_path.back() == '/') {
+    name_template = dir_path + kTmpTemplateSuffix;
+  } else {
+    name_template = dir_path + '/' + kTmpTemplateSuffix;
+  }
   ThreadRestrictions::AssertIOAllowed();
   std::unique_ptr<char[]> fname(new char[name_template.size() + 1]);
   ::snprintf(fname.get(), name_template.size() + 1, "%s", name_template.c_str());
