@@ -34,7 +34,7 @@ void InitCommonFlags() {
     } else if (std::thread::hardware_concurrency() <= 2) {
       value = 4;
     }
-    LOG(INFO) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
+    VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
     FLAGS_yb_num_shards_per_tserver = value;
   }
 }
