@@ -131,6 +131,7 @@ set(COMMON_LIBS
   pgsql_protocol_proto
   yb_util
   yb_bfql
+  yb_bfpg
   gutil)
 
 if (NOT APPLE)
@@ -144,7 +145,7 @@ endif()
 ADD_YB_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
-add_dependencies(yb_common yb_bfql)
+add_dependencies(yb_common yb_bfql yb_bfpg)
 
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
