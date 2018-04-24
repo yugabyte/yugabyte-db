@@ -171,6 +171,10 @@ class Status {
   // Declares set of Is* functions
   BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_IS_FUNC, YB_STATUS_CODES)
 
+  // Returns a text message of this status to be reported to users.
+  // Returns empty string for success.
+  std::string ToUserMessage(bool include_file_and_line = false) const;
+
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString(bool include_file_and_line = true) const;
