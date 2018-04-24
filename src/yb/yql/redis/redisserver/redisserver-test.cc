@@ -2598,6 +2598,9 @@ TEST_F(TestRedisService, TestHMGetTiming) {
       string sj = std::to_string(j);
       DoRedisTestInt(__LINE__, {"HSET", "parent_" + si, "subkey_" + sj, "value_" + sj}, 1);
     }
+    if (IsSanitizer() || ((i & 0x7) == 0)) {
+      SyncClient();
+    }
   }
 
   SyncClient();
