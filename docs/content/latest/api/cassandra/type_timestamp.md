@@ -130,5 +130,5 @@ cqlsh:example> SELECT * FROM sensor_data;
  ```
 
 ## See Also
-
+[Date and Time Functions](../function_datetime)
 [Data Types](..#datatypes)
