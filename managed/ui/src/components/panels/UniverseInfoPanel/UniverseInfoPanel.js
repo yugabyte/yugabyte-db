@@ -14,10 +14,11 @@ export default class UniverseInfoPanel extends Component {
   };
 
   render() {
-    const { universeInfo, universeInfo: {universeDetails: {clusters}}, customerId } = this.props;
+    const { universeInfo, universeInfo: {universeDetails: {clusters}}, currentCustomer } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster.userIntent;
     const universeId = universeInfo.universeUUID;
+    const customerId = currentCustomer.data.uuid;
     const formattedCreationDate = (
       <FormattedDate value={universeInfo.creationDate} year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />

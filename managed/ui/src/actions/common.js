@@ -3,10 +3,10 @@ import { ROOT_URL } from '../config';
 
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [
-  { code: "aws", name: "Amazon" },
-  { code: "docker", name: "Docker Localhost" },
-  { code: "gcp", name: "Google" },
-  { code: "onprem", name: "On Premises"}
+  { code: "aws", name: "Amazon", label: "Amazon Web Services" },
+  { code: "docker", name: "Docker Localhost", label: "Docker" },
+  { code: "gcp", name: "Google", label: "Google Cloud" },
+  { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"}
 ];
 
 export function getProviderEndpoint(providerUUID) {

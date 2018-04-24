@@ -4,13 +4,14 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { Icon, divIcon }  from 'leaflet';
-import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon, RootMarkerShadowIcon } from './images';
+import { DefaultMarkerIcon, DefaultMarkerShadowIcon,
+  RootMarkerIcon, RootMarkerShadowIcon, ReadReplicaMarkerIcon } from './images';
 
 export default class MapMarker extends Component {
   static propTypes = {
     latitude: PropTypes.number.isRequired,
     longitude: PropTypes.number.isRequired,
-    type: PropTypes.oneOf(['Default', 'AZMarker', 'Region', 'Table', 'Universe', 'All'])
+    type: PropTypes.oneOf(['Default', 'ReadReplica', 'AZMarker', 'Region', 'Table', 'Universe', 'All'])
   };
 
   static defaultProps = {
@@ -43,6 +44,16 @@ export default class MapMarker extends Component {
     else if (type === "AZMarker") {
       opts['icon'] = new Icon({
         iconUrl: RootMarkerIcon,
+        shadowUrl: RootMarkerShadowIcon,
+        iconSize: [30, 32],
+        shadowSize: [40, 42],
+        popupAnchor: [10, -4],
+        iconAnchor: [12, 20],
+        shadowAnchor: [10, 30]
+      });
+    } else if (type === "ReadReplica") {
+      opts['icon'] = new Icon({
+        iconUrl: ReadReplicaMarkerIcon,
         shadowUrl: RootMarkerShadowIcon,
         iconSize: [30, 32],
         shadowSize: [40, 42],

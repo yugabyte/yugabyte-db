@@ -1,45 +1,63 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { Image, ListGroupItem } from 'react-bootstrap';
-import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
+import { Image, Label } from 'react-bootstrap';
+import { RootMarkerIcon, ReadReplicaMarkerIcon, CacheMarkerIcon } from './images';
 import './stylesheets/YBMapLegendItem.scss';
-import {isNonEmptyArray} from 'utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
+import { PROVIDER_TYPES } from '../../actions/common';
+
 
 export default class YBMapLegendItem extends Component {
+  formatPlural = (count, text) => {
+    return count > 0 ? `${count} ${text}s` : `${count} ${text}`;
+  }
+
   render() {
-    const {regions, title, type} = this.props;
+    const {regions, provider, title, type} = this.props;
     let legendItemIcon = "";
+    let legendText = "";
     if (type === "Root") {
       legendItemIcon = <Image src={RootMarkerIcon} className="legend-img"/>;
     } else if( type === "Cache") {
       legendItemIcon = <Image src={CacheMarkerIcon} className="legend-img"/>;
-    } else if (type === "Async") {
-      legendItemIcon = <Image src={AsyncMarkerIcon} className="legend-img"/>;
+    } else if (type === "ReadReplica") {
+      legendItemIcon = <Image src={ReadReplicaMarkerIcon} className="legend-img"/>;
     } else if (type === "Region") {
       legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>;
     }
-    let regionList = <span/>;
+    let regionInfo = <span/>;
     if (type !== "Region") {
       if (isNonEmptyArray(regions)) {
-        regionList = regions.map(function(region, rIdx){
-          if (isNonEmptyArray(region.azList)) {
-            return (
-              <ListGroupItem key={`${region.name}.${rIdx}`}>
-                <div className="region-item-cell">{region.name}</div>
-                {
-                  region.azList.map(function (az, azIdx) {
-                    const azNodeCount = az.numNodesInAZ === 1 ? `(${az.numNodesInAZ} Node)` : `(${az.numNodesInAZ} Nodes)`;
-                    return <ListGroupItem key={az.uuid + "" + azIdx} className="az-item-cell">{`${az.name} ${azNodeCount}`}</ListGroupItem>;
-                  })
-                }
-              </ListGroupItem>
-            );
-          } else {
-            return <ListGroupItem key={`${region.name}.${rIdx}`}>{region.name}</ListGroupItem>;
-          }
-        });
+        const legendSubTexts = [this.formatPlural(regions.length, 'Region')];
+        if (isNonEmptyObject(provider)) {
+          const providerInfo = PROVIDER_TYPES.find( (providerType) => providerType.code === provider.code );
+          legendText = providerInfo.label;
+        }
+        const azList = regions.reduce((zones, region) => zones.concat(region.azList), []);
+        const nodeCount = azList.reduce((nodeCnt, az) => nodeCnt += az.numNodesInAZ, 0);
+
+        if (azList.length > 0) {
+          legendSubTexts.push(this.formatPlural(azList.length, 'AZ'));
+        }
+
+        if (nodeCount > 0) {
+          legendSubTexts.push(this.formatPlural(nodeCount, 'Node'));
+        }
+
+        regionInfo = (
+          <Fragment>
+            <Label bsStyle="primary">{legendText}</Label>
+            <p>{legendSubTexts.join(", ")}</p>
+          </Fragment>
+        );
+      } else {
+        regionInfo = (
+          <Fragment>
+            {"None"}
+          </Fragment>
+        );
       }
     }
     return (
@@ -48,17 +66,23 @@ export default class YBMapLegendItem extends Component {
           {legendItemIcon}
         </div>
         <h5 className="map-legend-heading">{title}</h5>
-        {regionList}
+        <div className="map-legend-text">
+          {regionInfo}
+        </div>
       </div>
     );
   }
 }
 
 YBMapLegendItem.defaultProps = {
-  type: 'Region'
+  type: 'Region',
+  regions: [],
+  provider: {}
 };
 
 YBMapLegendItem.propTypes = {
   title: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(['Root', 'Async', 'Cache', 'Region'])
+  type: PropTypes.oneOf(['Root', 'ReadReplica', 'Cache', 'Region']),
+  regions: PropTypes.array,
+  providerCode: PropTypes.object
 };
