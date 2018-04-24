@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
@@ -14,9 +15,15 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
@@ -24,12 +31,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -67,6 +76,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   Customer customer;
 
   AccessManager mockAccessManager;
+  DnsManager mockDnsManager;
   NetworkManager mockNetworkManager;
   TemplateManager mockTemplateManager;
 
@@ -74,12 +84,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
     mockAccessManager = mock(AccessManager.class);
+    mockDnsManager = mock(DnsManager.class);
     mockNetworkManager = mock(NetworkManager.class);
     mockTemplateManager = mock(TemplateManager.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
         .build();
@@ -313,7 +325,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
+    mockDnsManagerListSuccess();
     Result result = editProvider(bodyJson, p.uuid);
+    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
@@ -327,6 +341,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
     Result result = editProvider(bodyJson, p.uuid);
+    verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Expected aws found providers with code: onprem");
   }
 
@@ -336,6 +351,78 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "");
     Result result = editProvider(bodyJson, p.uuid);
+    verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Required field hosted zone id");
+  }
+
+  @Test
+  public void testCreateAwsProviderWithValidHostedZoneId() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode configJson = Json.newObject();
+    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
+
+    mockDnsManagerListSuccess("test");
+    Result result = createProvider(bodyJson);
+    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    assertNotNull(provider);
+    assertEquals("1234", provider.getAwsHostedZoneId());
+    assertEquals("test", provider.getAwsHostedZoneName());
+    assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
+    assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));
+  }
+
+  @Test
+  public void testCreateAwsProviderWithInvalidDevopsReply() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode configJson = Json.newObject();
+    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
+
+    mockDnsManagerListFailure("fail", 0);
+    Result result = createProvider(bodyJson);
+    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
+    assertInternalServerError(result, "Invalid devops API response: ");
+  }
+
+  @Test
+  public void testCreateAwsProviderWithInvalidHostedZoneId() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode configJson = Json.newObject();
+    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
+
+    mockDnsManagerListFailure("fail", 1);
+    Result result = createProvider(bodyJson);
+    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
+    assertInternalServerError(result, "Invalid devops API response: ");
+  }
+
+  private void mockDnsManagerListSuccess() {
+    mockDnsManagerListSuccess("test");
+  }
+
+  private void mockDnsManagerListSuccess(String mockDnsName) {
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"name\": \"" + mockDnsName + "\"}";
+    shellResponse.code = 0;
+    when(mockDnsManager.listDnsRecord(any(), any())).thenReturn(shellResponse);
+  }
+
+  private void mockDnsManagerListFailure(String mockFailureMessage, int successCode) {
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"wrong_key\": \"" + mockFailureMessage + "\"}";
+    shellResponse.code = successCode;
+    when(mockDnsManager.listDnsRecord(any(), any())).thenReturn(shellResponse);
   }
 }

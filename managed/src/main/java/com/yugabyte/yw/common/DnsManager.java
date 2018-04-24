@@ -14,7 +14,8 @@ public class DnsManager extends DevopsBase {
   public enum DnsCommandType {
     Create,
     Edit,
-    Delete
+    Delete,
+    List
   }
 
   @Override
@@ -33,6 +34,14 @@ public class DnsManager extends DevopsBase {
     commandArgs.add("--node_ips");
     commandArgs.add(nodeIpCsv);
     return execCommand(null, providerUUID, null, type.toString().toLowerCase(),
+        commandArgs, new ArrayList<>());
+  }
+
+  public ShellProcessHandler.ShellResponse listDnsRecord(UUID providerUUID, String hostedZoneId) {
+    List<String> commandArgs = new ArrayList<>();
+    commandArgs.add("--hosted_zone_id");
+    commandArgs.add(hostedZoneId);
+    return execCommand(null, providerUUID, null, DnsCommandType.List.toString().toLowerCase(),
         commandArgs, new ArrayList<>());
   }
 }

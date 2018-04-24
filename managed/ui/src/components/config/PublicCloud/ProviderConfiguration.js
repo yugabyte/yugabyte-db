@@ -121,6 +121,9 @@ class ProviderConfiguration extends Component {
       if (currentProvider.code === "aws" && isNonEmptyString(currentProvider.config.AWS_HOSTED_ZONE_ID)) {
         providerInfo.push({"name": "Hosted Zone ID", "data": currentProvider.config.AWS_HOSTED_ZONE_ID});
       }
+      if (currentProvider.code === "aws" && isNonEmptyString(currentProvider.config.AWS_HOSTED_ZONE_NAME)) {
+        providerInfo.push({"name": "Hosted Zone Name", "data": currentProvider.config.AWS_HOSTED_ZONE_NAME});
+      }
       if (isNonEmptyObject(hostInfo)) {
         if (currentProvider.code === "aws" && isNonEmptyObject(hostInfo["aws"])) {
           const awsHostInfo = hostInfo["aws"];
