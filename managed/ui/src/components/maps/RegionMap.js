@@ -11,7 +11,7 @@ import MarkerClusterLayer from './MarkerClusterLayer';
 import UniverseRegionMarkerLayer from './UniverseRegionMarkerLayer';
 import {MAP_SERVER_URL} from '../../config';
 import './stylesheets/RegionMap.scss';
-import { getPrimaryCluster } from '../../utils/UniverseUtils';
+import { getPrimaryCluster, getReadOnlyCluster } from '../../utils/UniverseUtils';
 import { isNonEmptyArray, isDefinedNotNull } from '../../utils/ObjectUtils';
 
 export default class RegionMap extends Component {
@@ -42,14 +42,18 @@ export default class RegionMap extends Component {
     if (type === "Universe") {
       const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
       if (isDefinedNotNull(primaryCluster)) regionData = primaryCluster.regions;
+      const readreplicaCluster = getReadOnlyCluster(universe.universeDetails.clusters);
+      if (isDefinedNotNull(readreplicaCluster)) {
+        regionData = regionData.concat(readreplicaCluster.regions);
+      }
     }
     const regionLatLngs = regionData.map(function (region, idx) {
       let markerType = type;
       if (isDefinedNotNull(region.providerCode)) {
         markerType = region.providerCode;
       }
-      const numChildren = region.zones.length;
       if (type === "Region") {
+        const numChildren = region.zones.length;
         regionMarkers.push(
           <MapMarker key={idx} latitude={region.latitude}
                      longitude={region.longitude} type={markerType}
@@ -77,7 +81,8 @@ export default class RegionMap extends Component {
       'Copyright &copy; MapBox All rights reserved';
 
     const regionMap = (
-      <Map bounds={bounds} center={[-1, 0]} zoom={1}
+      <Map bounds={bounds} boundsOptions={{padding: [50, 50]}}
+           center={[-1, 0]} zoom={1}
            zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false}
            draggable={false} onzoomend={this.onMapZoomEnd}>

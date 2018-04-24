@@ -50,7 +50,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    
+
     resetTablesList: () => {
       dispatch(resetTablesList());
     },

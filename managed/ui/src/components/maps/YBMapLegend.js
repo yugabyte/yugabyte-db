@@ -2,22 +2,34 @@
 
 import React, { Component } from 'react';
 import { YBMapLegendItem } from '.';
+import PropTypes from 'prop-types';
+import { getPrimaryCluster, getReadOnlyCluster, getPlacementRegions, getPlacementCloud } from '../../utils/UniverseUtils';
 
 export default class YBMapLegend extends Component {
   static defaultProps = {
-    type: "Region"
+    type: "Region",
+    clusters: []
   }
 
+  static propTypes = {
+    clusters: PropTypes.array
+  };
+
   render() {
-    const {regions, type} = this.props;
-    const rootRegions = regions;
-    const asyncRegions = [{"name": "No read replicas added."}];
+    const {type, clusters} = this.props;
     let mapLegendItems = <span/>;
     if (type === "Universe") {
+      const primaryCluster = getPrimaryCluster(clusters);
+      const primaryCloud = getPlacementCloud(primaryCluster);
+      const readreplicaCluster = getReadOnlyCluster(clusters);
+      const readreplicaCloud = getPlacementCloud(readreplicaCluster);
+
       mapLegendItems = (
         <span>
-          <YBMapLegendItem regions={rootRegions} title={"Primary Data"} type="Root"/>
-          <YBMapLegendItem regions={asyncRegions} title={"Read Replica"} type="Async"/>
+          <YBMapLegendItem regions={getPlacementRegions(primaryCluster)} provider={primaryCloud}
+                           title={"Primary Data"} type="Root"/>
+          <YBMapLegendItem regions={getPlacementRegions(readreplicaCluster)} provider={readreplicaCloud}
+                           title={"Read Replica"} type="ReadReplica"/>
         </span>
       );
     } else if (type === "Region") {
@@ -35,4 +47,3 @@ export default class YBMapLegend extends Component {
     );
   }
 }
-

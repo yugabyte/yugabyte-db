@@ -4,25 +4,19 @@ import React, { Component } from 'react';
 import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
-import { UniverseInfoPanel, ResourceStringPanel } from '../../panels';
-import { CustomerMetricsPanel, OverviewMetricsContainer } from '../../metrics';
+import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
-         DeleteUniverseContainer, UniverseAppsModal } from '../../universes';
-import { UniverseResources } from '../UniverseResources';
+         DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { YBTabsPanel, YBPanelItem, YBWidget } from '../../panels';
-import { RegionMap } from '../../maps';
+import { YBTabsPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
-import { YBMapLegend } from '../../maps';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
-import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
 import './UniverseDetail.scss';
 
@@ -82,7 +76,7 @@ class UniverseDetail extends Component {
       showGFlagsModal,
       showDeleteUniverseModal,
       closeModal,
-      providers
+      currentCustomer
     } = this.props;
     if (pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
@@ -102,83 +96,9 @@ class UniverseDetail extends Component {
 
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
-    let placementInfoRegionList = [];
-    if (isNonEmptyObject(currentUniverse.data)) {
-      const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-      if (isNonEmptyObject(primaryCluster) &&
-          isNonEmptyObject(primaryCluster.placementInfo) &&
-          isNonEmptyArray(primaryCluster.placementInfo.cloudList) &&
-          isNonEmptyObject(primaryCluster.placementInfo.cloudList[0])) {
-        placementInfoRegionList = primaryCluster.placementInfo.cloudList[0].regionList;
-      }
-    }
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <YBPanelItem noBackground
-          header={
-            <FlexContainer>
-              <FlexGrow>
-                <UniverseResources split='left' resources={currentUniverse.data.resources} renderType={"Display"}/>
-              </FlexGrow>
-              <FlexShrink>
-                <div className="operating-costs">
-                  <UniverseResources split='right' resources={currentUniverse.data.resources} renderType={"Display"}/>
-                </div>
-              </FlexShrink>
-            </FlexContainer>
-          }
-          body={
-            <div>
-              <Row>
-                <Col lg={4} md={12} sm={12} xs={12} >
-                  <Row>
-                    <Col lg={12} md={6} sm={6} xs={12} >
-                      <YBWidget
-                        headerLeft={
-                          "resource info"
-                        }
-                        body={
-                          <UniverseInfoPanel universeInfo={currentUniverse.data}
-                          customerId={localStorage.getItem("customer_id")} />
-                        }
-                      />
-                    </Col>
-                    <Col lg={12} md={6} sm={6} xs={12} >
-                      <YBWidget
-                        headerLeft={
-                          "universe details"
-                        }
-                        body={
-                          <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                          universeInfo={currentUniverse.data} providers={providers} />
-                        }
-                      />
-                    </Col>
-                  </Row>
-                </Col>
-                <Col lg={8} xs={12}>
-                  <YBWidget
-                    noMargin
-                    size={2}
-                    headerLeft={
-                      "universe nodes"
-                    }
-                    headerRight={
-                      currentUniverse.data.resources.numNodes+" nodes"
-                    }
-                    body={
-                      <div>
-                        <RegionMap universe={currentUniverse.data} type={"Universe"} />
-                        <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
-                      </div>
-                    }
-                  />
-                </Col>
-                <OverviewMetricsContainer type={"overview"} origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
-              </Row>
-            </div>
-          }
-        />
+        <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />
       </Tab>,
       <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
         <ListTablesContainer/>
