@@ -208,8 +208,9 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
+    UserIntent ui = getDefaultUserIntent(customer);
     UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
-    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(getDefaultUserIntent(customer)));
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID;
     Result result = doRequestWithAuthToken("GET", url, authToken);
@@ -939,9 +940,9 @@ public class UniverseControllerTest extends WithApplication {
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
+    Provider p = ModelFactory.awsProvider(customer);
     Universe u = createUniverse(customer.getCustomerId());
 
-    Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");

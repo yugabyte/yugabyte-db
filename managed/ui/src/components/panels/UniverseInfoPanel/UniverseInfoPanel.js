@@ -24,7 +24,6 @@ export default class UniverseInfoPanel extends Component {
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
     );
     const universeIdData = <FlexContainer><FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>{universeId}</FlexGrow><FlexShrink><YBCopyButton text={universeId}/></FlexShrink></FlexContainer>;
-    const customerIdData = <FlexContainer><FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>{customerId}</FlexGrow><FlexShrink><YBCopyButton text={customerId}/></FlexShrink></FlexContainer>;
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
                         "/universes/" + universeId + "/yqlservers";
     const endpoint = (
@@ -34,11 +33,23 @@ export default class UniverseInfoPanel extends Component {
     );
     const universeInfoItems = [
       {name: "Universe ID", data: universeIdData},
-      {name: "Customer ID", data: customerIdData},
       {name: "Launch Time", data: formattedCreationDate},
       {name: "CQL Service", data: endpoint},
       {name: "YugaByte Version", data: userIntent.ybSoftwareVersion || 'n/a'},
     ];
+
+    if (userIntent.providerType === "aws") {
+      const dnsNameData = (
+        <FlexContainer>
+          <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
+            {universeInfo.dnsName}
+          </FlexGrow>
+          <FlexShrink>
+            <YBCopyButton text={universeInfo.dnsName}/>
+          </FlexShrink>
+        </FlexContainer>);
+      universeInfoItems.push({name: "Hosted Zone Name", data: dnsNameData });
+    }
 
     return (
       <DescriptionList listItems={universeInfoItems} />

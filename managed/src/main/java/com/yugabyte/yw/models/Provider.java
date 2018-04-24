@@ -152,7 +152,7 @@ public class Provider extends Model {
     List<Provider> providerList = find.where().eq("customer_uuid", customerUUID)
             .eq("code", code.toString()).findList();
     int size = providerList.size();
-    
+
     if (size == 0) {
       return null;
     } else if (size > 1) {
@@ -165,10 +165,19 @@ public class Provider extends Model {
     return find.byId(providerUuid);
   }
 
+  public String getAwsHostedZoneId() {
+    return getConfig().get("AWS_HOSTED_ZONE_ID");
+  }
+
+  public String getAwsHostedZoneName() {
+    return getConfig().get("AWS_HOSTED_ZONE_NAME");
+  }
+
   // Update host zone if for aws provider
-  public void updateHostedZoneId(String hostedZoneId) {
+  public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
     Map<String, String> currentProviderConfig = getConfig();
     currentProviderConfig.put("AWS_HOSTED_ZONE_ID", hostedZoneId);
+    currentProviderConfig.put("AWS_HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
     this.save();
   }

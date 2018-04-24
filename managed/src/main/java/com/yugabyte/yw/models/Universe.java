@@ -84,12 +84,26 @@ public class Universe extends Model {
     return universeDetails;
   }
 
+  public String getDnsName() {
+    Provider p = Provider.get(
+        UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
+    String dnsSuffix = p.getAwsHostedZoneName();
+    if (dnsSuffix == null) {
+      return dnsSuffix;
+    }
+    return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
+  }
+
   public JsonNode toJson() {
     ObjectNode json = Json.newObject()
         .put("universeUUID", universeUUID.toString())
         .put("name", name)
         .put("creationDate", creationDate.toString())
         .put("version", version);
+    String dnsName = getDnsName();
+    if (dnsName != null) {
+      json.put("dnsName", dnsName);
+    }
     UniverseDefinitionTaskParams params = getUniverseDetails();
     try {
       json.set("resources", Json.toJson(UniverseResourceDetails.create(getNodes(), params)));

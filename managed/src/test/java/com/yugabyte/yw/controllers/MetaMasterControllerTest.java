@@ -12,8 +12,11 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -42,9 +45,13 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetWithValidUniverse() {
+    Customer customer = ModelFactory.testCustomer();
     Universe u = createUniverse();
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
+    ui.provider = Provider.get(customer.uuid, Common.CloudType.aws).uuid.toString();
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     // Read the value back.
     Result result = route(fakeRequest("GET", "/metamaster/universe/" + u.universeUUID.toString()));

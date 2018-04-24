@@ -9,6 +9,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -298,12 +299,16 @@ public class UniverseTest extends FakeDBApplication {
     assertThat(regionsNode, is(notNullValue()));
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
+    assertNull(universeJson.get("dnsName"));
   }
 
   @Test
   public void testToJSONWithNullRegionList() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
@@ -321,6 +326,7 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -350,6 +356,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
@@ -365,6 +372,9 @@ public class UniverseTest extends FakeDBApplication {
   public void testToJSONOfGFlags() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(),

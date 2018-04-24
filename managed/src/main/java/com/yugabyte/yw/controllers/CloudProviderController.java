@@ -13,6 +13,8 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
@@ -65,6 +67,9 @@ public class CloudProviderController extends AuthenticatedController {
   
   @Inject
   AccessManager accessManager;
+
+  @Inject
+  DnsManager dnsManager;
 
   @Inject
   TemplateManager templateManager;
@@ -158,6 +163,11 @@ public class CloudProviderController extends AuthenticatedController {
 
         provider.setConfig(newConfig);
         provider.save();
+      } else if (provider.code.equals("aws") && !config.isEmpty()) {
+        String hostedZoneId = provider.getAwsHostedZoneId();
+        if (hostedZoneId != null) {
+          return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+        }
       }
       return ApiResponse.success(provider);
     } catch (PersistenceException e) {
@@ -310,7 +320,7 @@ public class CloudProviderController extends AuthenticatedController {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
     JsonNode formData =  request().body().asJson();
-    String hostedZoneID = formData.get("hostedZoneId").asText();
+    String hostedZoneId = formData.get("hostedZoneId").asText();
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
@@ -318,11 +328,30 @@ public class CloudProviderController extends AuthenticatedController {
     if (!provider.code.equals("aws")) {
       return ApiResponse.error(BAD_REQUEST, "Expected aws found providers with code: " + provider.code);
     }
-    if (hostedZoneID == null || hostedZoneID.length() == 0) {
+    if (hostedZoneId == null || hostedZoneId.length() == 0) {
       return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
     }
+    return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+  }
+
+  private Result validateAwsHostedZoneUpdate(Provider provider, String hostedZoneId) {
+    // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
+    ShellProcessHandler.ShellResponse response = dnsManager.listDnsRecord(
+        provider.uuid, hostedZoneId);
+    if (response.code != 0) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
+    }
+    // The result returned from devops should be of the form
+    // {
+    //    "name": "dev.yugabyte.com."
+    // }
+    JsonNode hostedZoneData = Json.parse(response.message);
+    hostedZoneData = hostedZoneData.get("name");
+    if (hostedZoneData == null || hostedZoneData.asText().isEmpty()) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
+    }
     try {
-      provider.updateHostedZoneId(hostedZoneID);
+      provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());
     } catch (RuntimeException e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }

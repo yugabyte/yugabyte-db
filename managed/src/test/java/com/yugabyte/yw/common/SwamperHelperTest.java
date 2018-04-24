@@ -3,9 +3,13 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -30,6 +34,8 @@ import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SwamperHelperTest extends FakeDBApplication {
+  private Customer defaultCustomer;
+
   @Mock
   Configuration appConfig;
 
@@ -38,9 +44,10 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   static String SWAMPER_TMP_PATH = "/tmp/swamper/";
 
-  @BeforeClass
-  public static void setUp() {
+  @Before
+  public void setUp() {
     new File(SWAMPER_TMP_PATH).mkdir();
+    defaultCustomer = ModelFactory.testCustomer();
   }
 
   @AfterClass
@@ -52,8 +59,11 @@ public class SwamperHelperTest extends FakeDBApplication {
   @Test
   public void testWriteUniverseTargetJson() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
-    Universe u = createUniverse();
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
+    UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     try {
       swamperHelper.writeUniverseTargetJson(u.universeUUID);
