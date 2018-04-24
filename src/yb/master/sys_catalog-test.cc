@@ -719,6 +719,121 @@ class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
   vector<UDTypeInfo*> udtypes;
 };
 
+class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
+ public:
+  TestRedisConfigLoader() {}
+  ~TestRedisConfigLoader() { Reset(); }
+
+  void Reset() {
+    for (RedisConfigInfo* rci : config_entries) {
+      rci->Release();
+    }
+    config_entries.clear();
+  }
+
+  Status Visit(const std::string& key, const SysRedisConfigEntryPB& metadata) override {
+    // Setup the redis config info
+    RedisConfigInfo* const rci = new RedisConfigInfo(key);
+    auto l = rci->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    l->Commit();
+    rci->AddRef();
+    config_entries.push_back(rci);
+    return Status::OK();
+  }
+
+  vector<RedisConfigInfo*> config_entries;
+};
+
+// Test the sys-catalog redis config basic operations (add, visit, drop)
+TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestRedisConfigLoader> loader(new TestRedisConfigLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // Set redis config information
+  SysRedisConfigEntryPB config_entry;
+  config_entry.set_key("key1");
+  config_entry.add_args("value1.1");
+  config_entry.add_args("value1.2");
+
+  // 1. CHECK Add entry
+  scoped_refptr<RedisConfigInfo> rci = new RedisConfigInfo("key1");
+  {
+    auto l = rci->LockForWrite();
+    l->mutable_data()->pb = std::move(config_entry);
+    // Add the redis config
+    ASSERT_OK(sys_catalog->AddItem(rci.get()));
+    l->Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  // The default config is empty
+  ASSERT_EQ(1, loader->config_entries.size());
+  ASSERT_TRUE(MetadatasEqual(rci.get(), loader->config_entries[0]));
+
+  // Update the same config.
+  SysRedisConfigEntryPB* metadata;
+  rci->mutable_metadata()->StartMutation();
+  metadata = &rci->mutable_metadata()->mutable_dirty()->pb;
+
+  metadata->clear_args();
+  metadata->add_args("value1b");
+
+  ASSERT_OK(sys_catalog->UpdateItem(rci.get()));
+  rci->mutable_metadata()->CommitMutation();
+
+  // Verify config entries.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  //  The default config is empty.
+  ASSERT_EQ(1, loader->config_entries.size());
+  ASSERT_TRUE(MetadatasEqual(rci.get(), loader->config_entries[0]));
+
+  // Add another key
+  {
+    // Set redis config information
+    SysRedisConfigEntryPB config_entry;
+    config_entry.set_key("key2");
+    config_entry.add_args("value2.1");
+    config_entry.add_args("value2.2");
+
+    // 1. CHECK Add entry
+    scoped_refptr<RedisConfigInfo> rci2 = new RedisConfigInfo("key2");
+    {
+      auto l = rci2->LockForWrite();
+      l->mutable_data()->pb = std::move(config_entry);
+      // Add the redis config
+      ASSERT_OK(sys_catalog->AddItem(rci2.get()));
+      l->Commit();
+    }
+
+    // Verify it showed up.
+    loader->Reset();
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    // The default config is empty
+    ASSERT_EQ(2, loader->config_entries.size());
+    ASSERT_TRUE(MetadatasEqual(rci2.get(), loader->config_entries[1]));
+
+    // 2. CHECK DELETE RedisConfig
+    ASSERT_OK(sys_catalog->DeleteItem(rci2.get()));
+
+    // Verify the result.
+    loader->Reset();
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    ASSERT_EQ(1, loader->config_entries.size());
+  }
+  // 2. CHECK DELETE RedisConfig
+  ASSERT_OK(sys_catalog->DeleteItem(rci.get()));
+
+  // Verify the result.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->config_entries.size());
+}
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
  public:

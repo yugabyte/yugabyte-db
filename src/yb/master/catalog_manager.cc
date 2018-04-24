@@ -60,9 +60,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include <glog/logging.h>
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include <glog/logging.h>
 #include "yb/common/flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -488,6 +488,29 @@ class ClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
   DISALLOW_COPY_AND_ASSIGN(ClusterConfigLoader);
 };
 
+class RedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
+ public:
+  explicit RedisConfigLoader(CatalogManager* catalog_manager)
+      : catalog_manager_(catalog_manager) {}
+
+  Status Visit(const std::string& key, const SysRedisConfigEntryPB& metadata) override {
+    CHECK(!ContainsKey(catalog_manager_->redis_config_map_, key))
+        << "Redis Config with key already exists: " << key;
+    // Prepare the config object.
+    RedisConfigInfo* config = new RedisConfigInfo(key);
+    auto l = config->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    catalog_manager_->redis_config_map_[key] = config;
+    l->Commit();
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager* catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(RedisConfigLoader);
+};
+
 ////////////////////////////////////////////////////////////
 // Role Loader
 ////////////////////////////////////////////////////////////
@@ -869,6 +892,9 @@ Status CatalogManager::RunLoaders() {
   // Clear the roles mapping.
   roles_map_.clear();
 
+  // Clear redis config mapping.
+  redis_config_map_.clear();
+
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   for (const auto& ts_desc : descs) {
@@ -908,6 +934,12 @@ Status CatalogManager::RunLoaders() {
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(role_loader.get()),
       "Failed while visiting roles in sys catalog");
+
+  LOG(INFO) << __func__ << ": Loading Redis config into memory.";
+  unique_ptr<RedisConfigLoader> redis_config_loader(new RedisConfigLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(redis_config_loader.get()),
+      "Failed while visiting redis config in sys catalog");
 
   return Status::OK();
 }
@@ -3680,6 +3712,51 @@ Status CatalogManager::GrantRole(const GrantRoleRequestPB* req,
                           req->granted_role(), req->recipient_role()));
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
+  return Status::OK();
+}
+
+Status CatalogManager::RedisConfigSet(
+    const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext* rpc) {
+  DCHECK(req->has_keyword());
+  const auto& key = req->keyword();
+  SysRedisConfigEntryPB config_entry;
+  config_entry.set_key(key);
+  *config_entry.mutable_args() = req->args();
+  bool created = false;
+
+  TRACE("Acquired catalog manager lock");
+  std::lock_guard<LockType> l_big(lock_);
+  scoped_refptr<RedisConfigInfo> cfg = FindPtrOrNull(redis_config_map_, req->keyword());
+  if (cfg == nullptr) {
+    created = true;
+    cfg = new RedisConfigInfo(key);
+    redis_config_map_[key] = cfg;
+  }
+
+  auto wl = cfg->LockForWrite();
+  wl->mutable_data()->pb = std::move(config_entry);
+  if (created) {
+    CHECK_OK(sys_catalog_->AddItem(cfg.get()));
+  } else {
+    CHECK_OK(sys_catalog_->UpdateItem(cfg.get()));
+  }
+  wl->Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::RedisConfigGet(
+    const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext* rpc) {
+  DCHECK(req->has_keyword());
+  resp->set_keyword(req->keyword());
+  TRACE("Acquired catalog manager lock");
+  std::lock_guard<LockType> l_big(lock_);
+  scoped_refptr<RedisConfigInfo> cfg = FindPtrOrNull(redis_config_map_, req->keyword());
+  if (cfg == nullptr) {
+    Status s = STATUS(NotFound, Substitute("Redis config for $0 does not exists", req->keyword()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::REDIS_CONFIG_NOT_FOUND, s);
+  }
+  auto rci = cfg->LockForRead();
+  resp->mutable_args()->CopyFrom(rci->data().pb.args());
   return Status::OK();
 }
 

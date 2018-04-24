@@ -299,6 +299,10 @@ void RedisInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
   output->push_back(SerializeResponses(responses_));
 }
 
+RedisConnectionContext& RedisInboundCall::connection_context() const {
+  return static_cast<RedisConnectionContext&>(connection()->context());
+}
+
 void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
                                       const Status& status) {
   for (size_t i = 0; i != client_batch_.size(); ++i) {

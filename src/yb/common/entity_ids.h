@@ -41,6 +41,8 @@ using SystemTableSet = std::set<NamespaceIdTableNamePair>;
 
 using FlushRequestId = std::string;
 
+using RedisConfigKey = std::string;
+
 }  // namespace yb
 
 #endif  // YB_COMMON_ENTITY_IDS_H

@@ -83,7 +83,8 @@ typedef std::shared_ptr<RedisCommandInfo> RedisCommandInfoPtr;
 void RespondWithFailure(
     std::shared_ptr<RedisInboundCall> call,
     size_t idx,
-    const std::string& error);
+    const std::string& error,
+    const char* error_code = "ERR");
 
 void FillRedisCommands(const scoped_refptr<MetricEntity>& metric_entity,
                        const std::function<void(const RedisCommandInfo& info)>& setup_method);

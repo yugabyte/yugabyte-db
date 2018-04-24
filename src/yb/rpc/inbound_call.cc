@@ -119,6 +119,10 @@ ConnectionPtr InboundCall::connection() const {
   return conn_;
 }
 
+ConnectionContext& InboundCall::connection_context() const {
+  return conn_->context();
+}
+
 Trace* InboundCall::trace() {
   return trace_.get();
 }

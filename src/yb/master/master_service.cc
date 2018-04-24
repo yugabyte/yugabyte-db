@@ -340,6 +340,16 @@ void MasterServiceImpl::GrantRole(const GrantRoleRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::GrantRole);
 }
 
+void MasterServiceImpl::RedisConfigSet(
+    const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigSet);
+}
+
+void MasterServiceImpl::RedisConfigGet(
+    const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigGet);
+}
+
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
                                      rpc::RpcContext rpc) {

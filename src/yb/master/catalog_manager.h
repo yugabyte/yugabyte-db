@@ -584,8 +584,26 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {
+struct PersistentRedisConfigInfo
+    : public Persistent<SysRedisConfigEntryPB, SysRowEntry::REDIS_CONFIG> {};
+
+class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
+                        public MetadataCowWrapper<PersistentRedisConfigInfo> {
+ public:
+  explicit RedisConfigInfo(const std::string key) : config_key_(key) {}
+
+  virtual const std::string& id() const override { return config_key_; }
+
+ private:
+  friend class RefCountedThreadSafe<RedisConfigInfo>;
+  ~RedisConfigInfo() = default;
+
+  const std::string config_key_;
+
+  DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
+
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -884,6 +902,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GrantRole(const GrantRoleRequestPB* req,
                            GrantRoleResponsePB* resp,
                            rpc::RpcContext* rpc);
+  // Set Redis Config
+  CHECKED_STATUS RedisConfigSet(
+      const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext* rpc);
+  // Get Redis Config
+  CHECKED_STATUS RedisConfigGet(
+      const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext* rpc);
 
   // Create a new User-Defined Type with the specified attributes.
   //
@@ -1090,6 +1114,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class UDTypeLoader;
   friend class ClusterConfigLoader;
   friend class RoleLoader;
+  friend class RedisConfigLoader;
 
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
@@ -1456,7 +1481,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
   RoleInfoMap roles_map_;
 
-  // TODO (Bristy) : Implement (resource) --> (role->permissions) map.
+  // TODO (Bristy) : Implement (resource) --> (role->permissions) map
+
+  // RedisConfig map: RedisConfigKey -> RedisConfigInfo
+  typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
+  RedisConfigInfoMap redis_config_map_;
 
   // Config information.
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;
