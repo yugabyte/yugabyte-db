@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import { isNonEmptyArray } from "./ObjectUtils";
+import { isNonEmptyArray, isNonEmptyObject } from "./ObjectUtils";
 
 export function isNodeRemovable(nodeState) {
   return nodeState === "To Be Added";
@@ -34,6 +34,23 @@ export function getClusterByType(clusters, clusterType) {
     if (foundClusters.length === 1) {
       return foundClusters[0];
     }
+  }
+  return null;
+}
+
+export function getPlacementRegions(cluster) {
+  const placementCloud = getPlacementCloud(cluster);
+  if (isNonEmptyObject(placementCloud)) {
+    return placementCloud.regionList;
+  }
+  return [];
+}
+
+export function getPlacementCloud(cluster) {
+  if (isNonEmptyObject(cluster) &&
+      isNonEmptyObject(cluster.placementInfo) &&
+      isNonEmptyArray(cluster.placementInfo.cloudList)) {
+    return cluster.placementInfo.cloudList[0];
   }
   return null;
 }
