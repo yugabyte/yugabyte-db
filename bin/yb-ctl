@@ -573,15 +573,34 @@ class ClusterControl:
                              "--master_addresses",
                              self.options.master_addresses,
                              "list_all_tablet_servers"]
+        max_num_tservers = self.get_number_of_servers(DAEMON_TYPE_TSERVER)
+        num_alive_ts = None
+        num_yb_admin_ts = None
         while wait_count < MAX_WAIT_ITERS:
             try:
-                result = subprocess.check_output(cmd_list_tservers)
-                if len(result.splitlines()) - 1 == self.options.replication_factor:
+                num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) > 0
+                                    for i in xrange(1, max_num_tservers + 1)])
+                logging.info("Waiting until we have {} Tablet Servers".format(num_alive_ts))
+                # TODO: enhance this to tell us live vs dead.
+                # Tablet Server UUID                      RPC Host/Port
+                # 5d6cd15e0a6e48aba1c5128869f51328        127.0.0.5:9100
+                # d0ed49b225c744f392b95b9d3eb32e64        127.0.0.1:9100
+                # 8a46cace5d904423bf80bf1a6fc10d30        127.0.0.3:9100
+                # 2dac590eefb3429bb4d315c51e20f774        127.0.0.2:9100
+                # cb703e947033465a80c85577501cc93c        127.0.0.4:9100
+                output = subprocess.check_output(cmd_list_tservers)
+                num_yb_admin_ts = len(output.splitlines()) - 1
+                # This will not work if you have stopped/removed a node and the master is still
+                # aware of it because we do not have a yb-admin API to return only live tablet
+                # servers.
+                if num_yb_admin_ts == num_alive_ts:
                     return True
             except subprocess.CalledProcessError:
                 pass
             wait_count += 1
             time.sleep(SLEEP_TIME_IN_SEC)
+        logging.error("Failed waiting for {} tservers, got {}".format(
+            num_alive_ts, num_yb_admin_ts))
         return False
 
     def show_node_status(self, daemon_id):
@@ -711,6 +730,8 @@ class ClusterControl:
             cmd_setup_redis_table = [yb_admin_binary_path,
                                      "--master_addresses",
                                      self.options.master_addresses,
+                                     "--yb_num_shards_per_tserver",
+                                     str(self.options.num_shards_per_tserver),
                                      "setup_redis_table"]
             result = ""
             try:
