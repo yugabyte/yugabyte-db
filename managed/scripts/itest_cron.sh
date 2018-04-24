@@ -48,15 +48,9 @@ rebase_repos
 
 export ITEST_USER=sched
 
-# TODO(bogdan): figure out how to remove the PID file as well on stop!
-# currently added a manual tweak to the service file for YW for PIDFile=
-#
-# Currently stopping the service before running itest, so that build doesn't OOM due to YW.
-sudo service yugaware stop
-
 # DEFAULT SETTING
 cd $itest_yw_repo
-USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --perform_upgrade --notify
+USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --perform_upgrade --perform_backup --notify
 
 # Setting to use when testing local yw/devops changes
 # unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --local_path $code_root
