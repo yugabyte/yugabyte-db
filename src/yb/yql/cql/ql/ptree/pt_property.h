@@ -27,7 +27,7 @@ static const auto invalid_argument_len = std::strlen("Invalid argument: ");
 #define RETURN_SEM_CONTEXT_ERROR_NOT_OK(s) do {                     \
     ::yb::Status _s = (s);                                          \
     if (PREDICT_FALSE(!_s.ok())) {                                  \
-      auto err_str = s.ToString(false);                             \
+      auto err_str = s.ToUserMessage();                             \
       err_str.replace(0, invalid_argument_len, "");                 \
       return sem_context->Error(this, err_str.c_str(),              \
                                 ErrorCode::INVALID_TABLE_PROPERTY); \

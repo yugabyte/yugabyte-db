@@ -425,20 +425,20 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
       } else if (ql_errcode < ErrorCode::SUCCESS) {
         if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
           // System errors, internal errors, or crashes.
-          return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToString());
+          return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
         } else if (ql_errcode > ErrorCode::SEM_ERROR) {
           // Limitation, lexical, or parsing errors.
-          return new ErrorResponse(*request_, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
+          return new ErrorResponse(*request_, ErrorResponse::Code::SYNTAX_ERROR, s.ToUserMessage());
         } else {
           // Semantic or execution errors.
-          return new ErrorResponse(*request_, ErrorResponse::Code::INVALID, s.ToString());
+          return new ErrorResponse(*request_, ErrorResponse::Code::INVALID, s.ToUserMessage());
         }
       }
 
       LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
       return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
     }
-    return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToString());
+    return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
   }
   if (result == nullptr) {
     return new VoidResultResponse(*request_);
