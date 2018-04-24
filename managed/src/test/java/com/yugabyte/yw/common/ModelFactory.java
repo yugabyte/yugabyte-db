@@ -65,14 +65,24 @@ public class ModelFactory {
     return createUniverse("Test Universe", customerId);
   }
   public static Universe createUniverse(String universeName, long customerId) {
-    return createUniverse(universeName, UUID.randomUUID(), customerId);
+    return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
   public static Universe createUniverse(String universeName, UUID universeUUID) {
-    return createUniverse(universeName, universeUUID, 1L);
+    return createUniverse(universeName, universeUUID, 1L, Common.CloudType.aws);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId) {
+  public static Universe createUniverse(String universeName, long customerId, Common.CloudType cloudType) {
+    return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
+  }
+  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType) {
+    Customer c = Customer.get(customerId);
+    // Custom setup a default AWS provider, can be overridden later.
+    Provider p = Provider.get(c.uuid, cloudType);
+    if (p == null) {
+      p = newProvider(c, cloudType);
+    }
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
+    userIntent.provider = p.uuid.toString();
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.universeUUID = universeUUID;
     params.nodeDetailsSet = new HashSet<>();

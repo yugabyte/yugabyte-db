@@ -27,8 +27,8 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
     Region r = Region.create(p, "r-1", "r-1", "yb-image");
     AccessKey.create(p.uuid, "demo-key", accessKeyInfo);
     AvailabilityZone az = AvailabilityZone.create(r, "az-1", "az-1", "subnet-1");
-    Universe u = ModelFactory.createUniverse(cloudType.name() + "-universe",
-                                           defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(
+        cloudType.name() + "-universe", defaultCustomer.getCustomerId(), cloudType);
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();

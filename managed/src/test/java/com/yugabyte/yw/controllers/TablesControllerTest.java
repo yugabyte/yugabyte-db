@@ -403,12 +403,12 @@ public class TablesControllerTest extends WithApplication {
         Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
 
     Customer customer = ModelFactory.testCustomer();
+    ModelFactory.awsProvider(customer);
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
-    ModelFactory.awsProvider(customer);
 
     String method = "PUT";
     String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
@@ -428,12 +428,12 @@ public class TablesControllerTest extends WithApplication {
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
     Customer customer = ModelFactory.testCustomer();
+    ModelFactory.awsProvider(customer);
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
-    ModelFactory.awsProvider(customer);
 
     String method = "PUT";
     String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
