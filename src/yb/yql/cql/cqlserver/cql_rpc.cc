@@ -85,7 +85,7 @@ Status CQLConnectionContext::HandleCall(
   Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
     LOG(WARNING) << connection->ToString() << ": received bad data: " << s.ToString();
-    return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToString());
+    return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToUserMessage());
   }
 
   s = Store(call.get());

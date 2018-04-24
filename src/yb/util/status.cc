@@ -135,6 +135,14 @@ std::string Status::CodeAsString() const {
   return cstr != nullptr ? cstr : "Incorrect status code " + std::to_string(code);
 }
 
+std::string Status::ToUserMessage(bool include_file_and_line) const {
+  if (error_code() == 0) {
+    // Return empty string for success.
+    return "";
+  }
+  return ToString(include_file_and_line);
+}
+
 std::string Status::ToString(bool include_file_and_line) const {
   std::string result(CodeAsString());
   if (state_ == nullptr) {

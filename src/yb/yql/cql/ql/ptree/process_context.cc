@@ -204,7 +204,7 @@ CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
 CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
                                          const Status& s,
                                          ErrorCode error_code) {
-  return Error(tnode->loc(), s.ToString().c_str(), error_code);
+  return Error(tnode->loc(), s.ToUserMessage().c_str(), error_code);
 }
 
 CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
@@ -221,7 +221,7 @@ CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
 CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
                                          const Status& s,
                                          ErrorCode error_code) {
-  return Error(tnode->loc(), s.ToString().c_str(), error_code);
+  return Error(tnode->loc(), s.ToUserMessage().c_str(), error_code);
 }
 
 //--------------------------------------------------------------------------------------------------
