@@ -300,7 +300,7 @@ public class TestYBJedis extends BaseJedisTest {
     config.setMaxTotal(16);
     config.setTestOnBorrow(true);
     JedisPool pool = new JedisPool(
-        config, address.getHostName(), address.getPort(), 10000, "password");
+        config, address.getHostName(), address.getPort(), 10000);
     Jedis jedis = pool.getResource();
     assertEquals("OK", jedis.set("k1", "v1"));
     assertEquals("v1", jedis.get("k1"));

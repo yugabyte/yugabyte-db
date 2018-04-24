@@ -98,6 +98,7 @@ class InboundCall : public RpcCall {
   virtual const Endpoint& local_address() const;
 
   ConnectionPtr connection() const;
+  ConnectionContext& connection_context() const;
 
   Trace* trace();
 

@@ -46,14 +46,15 @@ DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
 DECLARE_bool(enable_backpressure_mode_for_testing);
+DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
 DECLARE_int32(redis_max_value_size);
 DECLARE_int32(redis_max_command_size);
+DECLARE_int32(redis_password_caching_duration_ms);
 DECLARE_int32(rpc_max_message_size);
 DECLARE_int32(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
-DECLARE_bool(yedis_enable_flush);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
@@ -366,11 +367,17 @@ class TestRedisService : public RedisTableTestBase {
   RedisClient& client() {
     if (!test_client_) {
       io_thread_pool_.emplace(1);
-      test_client_.emplace("127.0.0.1", server_port());
+      test_client_ = std::make_shared<RedisClient>("127.0.0.1", server_port());
     }
     return *test_client_;
   }
 
+  void UseClient(shared_ptr<RedisClient> client) {
+    VLOG(1) << "Using " << client.get() << " replacing " << test_client_.get();
+    test_client_ = client;
+  }
+
+  void CloseRedisClient();
   void TestAbort(const std::string& command);
 
  protected:
@@ -390,7 +397,7 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
   boost::optional<rpc::IoThreadPool> io_thread_pool_;
-  boost::optional<RedisClient> test_client_;
+  std::shared_ptr<RedisClient> test_client_;
   boost::optional<google::FlagSaver> flag_saver_;
 };
 
@@ -462,6 +469,18 @@ void TestRedisService::RestartClient() {
   StartClient();
 }
 
+void TestRedisService::CloseRedisClient() {
+  if (test_client_) {
+    test_client_->Disconnect();
+    test_client_.reset();
+  }
+  if (io_thread_pool_) {
+    io_thread_pool_->Shutdown();
+    io_thread_pool_->Join();
+  }
+  StopClient();
+}
+
 void TestRedisService::TearDown() {
   size_t allocated_sessions = CountSessions(METRIC_redis_allocated_sessions);
   if (!expected_no_sessions_) {
@@ -471,13 +490,7 @@ void TestRedisService::TearDown() {
   }
   EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
 
-  if (test_client_) {
-    test_client_->Disconnect();
-    test_client_.reset();
-    io_thread_pool_->Shutdown();
-    io_thread_pool_->Join();
-  }
-  StopClient();
+  CloseRedisClient();
   StopServer();
   RedisTableTestBase::TearDown();
 
@@ -1179,6 +1192,122 @@ TEST_F(TestRedisService, TestEmptyValue) {
   DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s1"}, "");
 
   SyncClient();
+  VerifyCallbacks();
+}
+
+void ConnectWithPassword(
+    TestRedisService* test, const char* password, bool auth_should_succeed,
+    bool get_should_succeed) {
+  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
+  test->UseClient(rc1);
+
+  if (auth_should_succeed) {
+    if (password != nullptr) test->DoRedisTestOk(__LINE__, {"AUTH", password});
+  } else {
+    if (password != nullptr) test->DoRedisTestExpectError(__LINE__, {"AUTH", password});
+  }
+
+  if (get_should_succeed) {
+    test->DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
+    test->DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
+  } else {
+    test->DoRedisTestExpectError(__LINE__, {"SET", "k1", "5"});
+    test->DoRedisTestExpectError(__LINE__, {"GET", "k1"});
+  }
+
+  test->SyncClient();
+  test->UseClient(nullptr);
+}
+
+TEST_F(TestRedisService, TestAuth) {
+  FLAGS_redis_password_caching_duration_ms = 0;
+  const char* kRedisAuthPassword = "redis-password";
+  // Expect new connections to require authentication
+  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  UseClient(rc1);
+  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  SyncClient();
+  UseClient(rc2);
+  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  SyncClient();
+
+  // Set require pass using one connection
+  UseClient(rc1);
+  DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});
+  SyncClient();
+  UseClient(nullptr);
+  // Other pre-established connections should still be able to work, without re-authentication.
+  UseClient(rc2);
+  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  SyncClient();
+
+  // Ensure that new connections need the correct password to authenticate.
+  ConnectWithPassword(this, nullptr, false, false);
+  ConnectWithPassword(this, "wrong-password", false, false);
+  ConnectWithPassword(this, kRedisAuthPassword, true, true);
+
+  // Set multiple passwords.
+  UseClient(rc1);
+  DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", "passwordA,passwordB"});
+  SyncClient();
+  UseClient(nullptr);
+
+  ConnectWithPassword(this, nullptr, false, false);
+  ConnectWithPassword(this, "wrong-password", false, false);
+  // Old password should no longer work.
+  ConnectWithPassword(this, kRedisAuthPassword, false, false);
+  ConnectWithPassword(this, "passwordA", true, true);
+  ConnectWithPassword(this, "passwordB", true, true);
+  ConnectWithPassword(this, "passwordC", false, false);
+  // Need to provide one. Not both while authenticating.
+  ConnectWithPassword(this, "passwordA,passwordB", false, false);
+
+  // Setting more than 2 passwords should fail.
+  UseClient(rc1);
+  DoRedisTestExpectError(
+      __LINE__, {"CONFIG", "SET", "REQUIREPASS", "passwordA,passwordB,passwordC"});
+  SyncClient();
+
+  // Now set no password.
+  DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", ""});
+  SyncClient();
+  UseClient(nullptr);
+
+  // Setting wrong/old password(s) should fail. But set/get commands after that should succeed
+  // regardless.
+  ConnectWithPassword(this, "wrong-password", false, true);
+  ConnectWithPassword(this, kRedisAuthPassword, false, true);
+  ConnectWithPassword(this, "passwordA", false, true);
+  ConnectWithPassword(this, "passwordB", false, true);
+  ConnectWithPassword(this, nullptr, true, true);
+
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
+  constexpr uint32 kCachingDurationMs = 1000;
+  FLAGS_redis_password_caching_duration_ms = kCachingDurationMs;
+  const char* kRedisAuthPassword = "redis-password";
+  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+
+  UseClient(rc1);
+  DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});
+  SyncClient();
+  UseClient(nullptr);
+
+  // Proxy may not realize the password change immediately.
+  ConnectWithPassword(this, nullptr, true, true);
+  ConnectWithPassword(this, kRedisAuthPassword, false, true);
+
+  // Wait for the cached redis credentials in the redis proxy to expire.
+  constexpr uint32 kDelayMs = 100;
+  std::this_thread::sleep_for(std::chrono::milliseconds(kCachingDurationMs + kDelayMs));
+
+  // Expect the proxy to realize the effect of the password change.
+  ConnectWithPassword(this, nullptr, false, false);
+  ConnectWithPassword(this, kRedisAuthPassword, true, true);
+
   VerifyCallbacks();
 }
 
@@ -2539,9 +2668,11 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
   DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val2"});
 
-  // AUTH/CONFIG should be dummy implementations, that respond OK irrespective of the arguments
-  DoRedisTestOk(__LINE__, {"AUTH", "foo", "subkey5", "19", "subkey6", "14"});
-  DoRedisTestOk(__LINE__, {"AUTH"});
+  // AUTH accepts 1 argument.
+  DoRedisTestExpectError(__LINE__, {"AUTH", "foo", "subkey5", "19", "subkey6", "14"});
+  DoRedisTestExpectError(__LINE__, {"AUTH"});
+  DoRedisTestOk(__LINE__, {"AUTH", "foo"});
+  // CONFIG should be dummy implementations, that respond OK irrespective of the arguments
   DoRedisTestOk(__LINE__, {"CONFIG", "foo", "subkey5", "19", "subkey6", "14"});
   DoRedisTestOk(__LINE__, {"CONFIG"});
   // Commands are pipelined and only sent when client.commit() is called.
