@@ -490,6 +490,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
         break;
       case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::SNAPSHOT:
