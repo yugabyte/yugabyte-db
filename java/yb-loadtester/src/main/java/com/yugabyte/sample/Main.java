@@ -204,7 +204,8 @@ public class Main {
     long actualNumToWrite = AppBase.appConfig.numKeysToWrite;
     AppBase.appConfig.numKeysToWrite = NUM_PURE_READ_SETUP_KEYS;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
-    int num_writers = cmdLineOpts.appName().startsWith("Cassandra") ? 16 : 100;
+    boolean isBatch = cmdLineOpts.appName().contains("Batch");
+    int num_writers = cmdLineOpts.appName().startsWith("Cassandra") ? (isBatch ? 8 : 16) : 100;
     LOG.info("Using " + num_writers + " writer threads for pure read setup.");
     for (int idx = 0; idx < num_writers; idx++) {
       writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false),
