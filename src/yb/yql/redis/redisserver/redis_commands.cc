@@ -13,6 +13,7 @@
 
 #include "yb/yql/redis/redisserver/redis_commands.h"
 
+#include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
@@ -26,8 +27,10 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/crypt.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
@@ -36,7 +39,20 @@
 using namespace std::literals;
 using yb::client::YBTableName;
 
+namespace {
+static bool ValidateRedisPasswordSeparator(const char* flagname, const string& value) {
+  if (value.size() != 1) {
+    LOG(INFO) << "Expect " << flagname << " to be 1 character long";
+    return false;
+  }
+  return true;
+}
+}
+
 DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
+DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
+DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
 
 namespace yb {
 namespace redisserver {
@@ -87,7 +103,7 @@ namespace redisserver {
     ((incr, Incr, 2, WRITE)) \
     ((incrby, IncrBy, 3, WRITE)) \
     ((echo, Echo, 2, LOCAL)) \
-    ((auth, Auth, -1, LOCAL)) \
+    ((auth, Auth, 2, LOCAL)) \
     ((config, Config, -1, LOCAL)) \
     ((info, Info, -1, LOCAL)) \
     ((role, Role, 1, LOCAL)) \
@@ -307,14 +323,6 @@ void HandleEcho(LocalCommandData data) {
   data.Respond(&response);
 }
 
-void HandleAuth(LocalCommandData data) {
-  data.Respond();
-}
-
-void HandleConfig(LocalCommandData data) {
-  data.Respond();
-}
-
 void AddElements(const RefCntBuffer& buffer, RedisArrayPB* array) {
   array->add_elements(buffer.data(), buffer.size());
 }
@@ -356,6 +364,74 @@ void HandleCommand(LocalCommandData data) {
 void HandleQuit(LocalCommandData data) {
   data.call()->MarkForClose();
   data.Respond();
+}
+
+bool AcceptPassword(const vector<string>& allowed, const string& candidate) {
+  for (auto& stored_hash_or_pwd : allowed) {
+    if (FLAGS_use_hashed_redis_password
+            ? (0 == yb::util::bcrypt_checkpw(candidate.c_str(), stored_hash_or_pwd.c_str()))
+            : (stored_hash_or_pwd == candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void HandleConfig(LocalCommandData data) {
+  RedisResponsePB resp;
+  if (data.arg_size() != 4 ||
+      !(boost::iequals(data.arg(1).ToBuffer(), "SET") &&
+        boost::iequals(data.arg(2).ToBuffer(), "REQUIREPASS"))) {
+    data.Respond(&resp);
+    return;
+  }
+
+  // Handle Config Set Requirepass <passwords>
+  DCHECK_EQ(FLAGS_redis_passwords_separator.size(), 1);
+  vector<string> passwords =
+      yb::StringSplit(data.arg(3).ToBuffer(), FLAGS_redis_passwords_separator[0]);
+  Status status;
+  if (passwords.size() > 2) {
+    status = STATUS(InvalidArgument, "Only maximum of 2 passwords are supported");
+  } else if (FLAGS_use_hashed_redis_password) {
+    std::vector<string> hashes;
+    for (const auto& pwd : passwords) {
+      char hash[yb::util::kBcryptHashSize];
+      if (yb::util::bcrypt_hashpw(pwd.c_str(), hash) != 0) {
+        resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        resp.set_error_message("ERR: Error while hashing the password.");
+        data.Respond(&resp);
+        return;
+      }
+      hashes.emplace_back(hash, yb::util::kBcryptHashSize);
+    }
+    status = data.client()->SetRedisPasswords(hashes);
+  } else {
+    status = data.client()->SetRedisPasswords(passwords);
+  }
+
+  if (!status.ok()) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(StrCat("ERR: ", status.ToString()));
+  } else {
+    resp.set_code(RedisResponsePB::OK);
+  }
+  data.Respond(&resp);
+}
+
+void HandleAuth(LocalCommandData data) {
+  vector<string> passwords;
+  auto status = data.client()->GetRedisPasswords(&passwords);
+  RedisResponsePB resp;
+  if (!status.ok() || !AcceptPassword(passwords, data.arg(1).ToBuffer())) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(strings::Substitute("ERR: Bad Password. $0", status.ToString()));
+  } else {
+    RedisConnectionContext& context = data.call()->connection_context();
+    context.set_authenticated(true);
+    resp.set_code(RedisResponsePB::OK);
+  }
+  data.Respond(&resp);
 }
 
 void HandleFlushDB(LocalCommandData data) {
@@ -429,7 +505,8 @@ void HandleDebugSleep(LocalCommandData data) {
 void RespondWithFailure(
     std::shared_ptr<RedisInboundCall> call,
     size_t idx,
-    const std::string& error) {
+    const std::string& error,
+    const char* redis_code) {
   // process the request
   DVLOG(4) << " Processing request from client ";
   const auto& command = call->client_batch()[idx];
@@ -441,7 +518,7 @@ void RespondWithFailure(
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
   std::string cmd = command[0].ToBuffer();
-  call->RespondFailure(idx, STATUS_FORMAT(InvalidCommand, "ERR $0: $1", cmd, error));
+  call->RespondFailure(idx, STATUS_FORMAT(InvalidCommand, "$0 $1: $2", redis_code, cmd, error));
 }
 
 void FillRedisCommands(const scoped_refptr<MetricEntity>& metric_entity,

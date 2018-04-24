@@ -69,6 +69,7 @@ class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
 
 class Connection;
+class ConnectionContext;
 typedef std::shared_ptr<Connection> ConnectionPtr;
 
 class InboundCall;

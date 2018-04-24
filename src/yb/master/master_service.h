@@ -120,6 +120,12 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void GrantRole(const GrantRoleRequestPB* req,
                          GrantRoleResponsePB* resp,
                          rpc::RpcContext rpc) override;
+  virtual void RedisConfigSet(const RedisConfigSetRequestPB* req,
+                              RedisConfigSetResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+  virtual void RedisConfigGet(const RedisConfigGetRequestPB* req,
+                              RedisConfigGetResponsePB* resp,
+                              rpc::RpcContext rpc) override;
 
   virtual void CreateUDType(const CreateUDTypeRequestPB* req,
                             CreateUDTypeResponsePB* resp,

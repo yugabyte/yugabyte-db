@@ -38,6 +38,13 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
       rpc::GrowableBufferAllocator* allocator,
       const MemTrackerPtr& call_tracker);
   ~RedisConnectionContext();
+  bool is_authenticated() const {
+    return authenticated_.load(std::memory_order_acquire);
+  }
+  void set_authenticated(bool flag) {
+    authenticated_.store(flag, std::memory_order_release);
+  }
+
 
   static std::string Name() { return "Redis"; }
 
@@ -61,6 +68,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   std::unique_ptr<RedisParser> parser_;
   size_t commands_in_batch_ = 0;
   size_t end_of_batch_ = 0;
+  std::atomic<bool> authenticated_{false};
 
   MemTrackerPtr call_mem_tracker_;
 };
@@ -88,6 +96,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   MonoTime GetClientDeadline() const override;
 
   RedisClientBatch& client_batch() { return client_batch_; }
+  RedisConnectionContext& connection_context() const;
 
   const std::string& service_name() const override;
   const std::string& method_name() const override;

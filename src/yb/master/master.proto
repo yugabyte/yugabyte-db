@@ -120,6 +120,8 @@ message MasterErrorPB {
 
     // Indicator to client that the are leaders on preferred only operation can be retried.
     CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK = 30;
+
+    REDIS_CONFIG_NOT_FOUND = 31;
   }
 
   // The error code.
@@ -222,6 +224,7 @@ message SysRowEntry {
     UDTYPE = 5;
     ROLE = 6;
     SNAPSHOT = 7;
+    REDIS_CONFIG = 8;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -349,6 +352,13 @@ message SysUDTypeEntryPB {
   optional string name = 2;
   repeated string field_names = 3;
   repeated QLTypePB field_types = 4;
+}
+
+
+// The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
+message SysRedisConfigEntryPB {
+  optional string key = 1;
+  repeated bytes args = 2;
 }
 
 // The on-disk entry in the sys.catalog table for configuration information
@@ -1077,6 +1087,26 @@ message GrantRoleResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
+
+message RedisConfigSetRequestPB {
+  optional string keyword = 1;
+  repeated bytes args = 2;
+}
+
+message RedisConfigSetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RedisConfigGetRequestPB {
+  optional string keyword = 1;
+}
+
+message RedisConfigGetResponsePB {
+  optional string keyword = 1;
+  repeated bytes args = 2;
+  optional MasterErrorPB error = 3;
+}
+
 // ============================================================================
 //  (User-Defined) Type
 // ============================================================================
@@ -1205,6 +1235,10 @@ service MasterService {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  // Redis Config
+  rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
+  rpc RedisConfigGet(RedisConfigGetRequestPB) returns (RedisConfigGetResponsePB);
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);

@@ -100,6 +100,7 @@ DEFINE_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
+DEFINE_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -823,6 +824,19 @@ class RedisServiceImpl::Impl {
     return true;
   }
 
+  vector<string> GetRedisPasswords() {
+    vector<string> ret;
+    CHECK_OK(client_->GetRedisPasswords(&ret));
+    return ret;
+  }
+
+  bool CheckAuthentication(RedisConnectionContext* conn_context) {
+    if (!conn_context->is_authenticated()) {
+      conn_context->set_authenticated(!FLAGS_enable_redis_auth || GetRedisPasswords().empty());
+    }
+    return conn_context->is_authenticated();
+  }
+
   constexpr static int kRpcTimeoutSec = 5;
 
   void PopulateHandlers();
@@ -957,6 +971,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       client_, server_, table_, &session_pool_, call, metrics_internal_,
       server_->mem_tracker());
   const auto& batch = call->client_batch();
+  RedisConnectionContext* conn_context = &(call->connection_context());
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
 
@@ -985,6 +1000,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       RespondWithFailure(call, idx, "Wrong number of arguments.");
     } else if (!CheckArgumentSizeOK(c)) {
       RespondWithFailure(call, idx, "Redis argument too long.");
+    } else if (!CheckAuthentication(conn_context) && cmd_info->name != "auth") {
+      RespondWithFailure(call, idx, "Authentication required.", "NOAUTH");
     } else {
       // Handle the call.
       cmd_info->functor(*cmd_info, idx, context.get());

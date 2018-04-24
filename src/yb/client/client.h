@@ -347,6 +347,14 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Delete a role.
   CHECKED_STATUS DeleteRole(const std::string& role_name);
 
+  CHECKED_STATUS SetRedisPasswords(const vector<string>& passwords);
+  // Fetches the password from the local cache, or from the master if the local cached value
+  // is too old.
+  CHECKED_STATUS GetRedisPasswords(vector<string>* passwords);
+
+  CHECKED_STATUS SetRedisConfig(const string& key, const vector<string>& values);
+  CHECKED_STATUS GetRedisConfig(const string& key, vector<string>* values);
+
   // Grants a role to another role.
   CHECKED_STATUS GrantRole(const std::string& granted_role_name,
                            const std::string& recipient_role_name);
@@ -531,6 +539,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // instance and is used in cases such as the load tester, for binding reads and writes from the
   // same client to the same data.
   const std::string client_id_;
+
+  std::mutex redis_password_mutex_;
+  MonoTime redis_cached_password_validity_expiry_;
+  vector<string> redis_cached_passwords_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

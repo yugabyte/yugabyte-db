@@ -83,6 +83,7 @@ using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
 using yb::master::GetTableSchemaRequestPB;
+using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
@@ -123,6 +124,10 @@ using yb::master::GrantPermissionRequestPB;
 using yb::master::MasterServiceProxy;
 using yb::master::ReplicationInfoPB;
 using yb::master::TabletLocationsPB;
+using yb::master::RedisConfigSetRequestPB;
+using yb::master::RedisConfigSetResponsePB;
+using yb::master::RedisConfigGetRequestPB;
+using yb::master::RedisConfigGetResponsePB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -136,9 +141,10 @@ using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;
 
+DEFINE_int32(redis_password_caching_duration_ms, 5000,
+             "The duration for which we will cache the redis passwords. 0 to disable.");
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
-
 DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
@@ -612,6 +618,59 @@ CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
   DeleteRoleResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteRole);
   return Status::OK();
+}
+
+static const string kRequirePass = "requirepass";
+CHECKED_STATUS YBClient::SetRedisPasswords(const std::vector<string>& passwords) {
+  // TODO: Store hash instead of the password?
+  return SetRedisConfig(kRequirePass, passwords);
+}
+
+CHECKED_STATUS YBClient::SetRedisConfig(const string& key, const vector<string>& values) {
+  // Setting up request.
+  RedisConfigSetRequestPB req;
+  req.set_keyword(key);
+  for (const auto& value : values) {
+    req.add_args(value);
+  }
+  RedisConfigSetResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, RedisConfigSet);
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::GetRedisConfig(const string& key, vector<string>* values) {
+  // Setting up request.
+  RedisConfigGetRequestPB req;
+  RedisConfigGetResponsePB resp;
+  req.set_keyword(key);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, RedisConfigGet);
+  values->clear();
+  for (const auto& arg : resp.args())
+    values->push_back(arg);
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::GetRedisPasswords(vector<string>* passwords) {
+  MonoTime now = MonoTime::Now();
+  {
+    std::lock_guard<std::mutex> lock(redis_password_mutex_);
+    if (redis_cached_password_validity_expiry_.Initialized() &&
+        now < redis_cached_password_validity_expiry_) {
+      *passwords = redis_cached_passwords_;
+      return Status::OK();
+    }
+
+    redis_cached_password_validity_expiry_ =
+        now + MonoDelta::FromMilliseconds(FLAGS_redis_password_caching_duration_ms);
+    Status s = GetRedisConfig(kRequirePass, &redis_cached_passwords_);
+    if (s.IsNotFound()) {
+      // If the redis config has no kRequirePass key.
+      redis_cached_passwords_.clear();
+      s = Status::OK();
+    }
+    *passwords = redis_cached_passwords_;
+    return s;
+  }
 }
 
 CHECKED_STATUS YBClient::GrantRole(const std::string& granted_role_name,
