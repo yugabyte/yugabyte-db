@@ -20,6 +20,7 @@
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/size_literals.h"
 
 namespace yb {
 
@@ -93,7 +94,8 @@ class ConnectionContextBase : public ConnectionContext {
 class ConnectionContextFactory {
  public:
   ConnectionContextFactory(
-      size_t block_size, size_t memory_limit,
+      size_t block_size, int64_t memory_limit,
+      const std::string& name,
       const std::shared_ptr<MemTracker>& parent_mem_tracker);
 
   virtual std::unique_ptr<ConnectionContext> Create() = 0;
@@ -109,8 +111,8 @@ class ConnectionContextFactory {
  protected:
   ~ConnectionContextFactory() {}
 
-  std::unique_ptr<GrowableBufferAllocator> allocator_;
   std::shared_ptr<MemTracker> parent_tracker_;
+  std::unique_ptr<GrowableBufferAllocator> allocator_;
   std::shared_ptr<MemTracker> call_tracker_;
 };
 
@@ -118,9 +120,10 @@ template <class ContextType>
 class ConnectionContextFactoryImpl : public ConnectionContextFactory {
  public:
   ConnectionContextFactoryImpl(
-      size_t block_size, size_t memory_limit,
+      size_t block_size = 1_MB, int64_t memory_limit = 0,
       const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr)
-      : ConnectionContextFactory(block_size, memory_limit, parent_mem_tracker) {}
+      : ConnectionContextFactory(
+          block_size, memory_limit, ContextType::Name(), parent_mem_tracker) {}
 
   std::unique_ptr<ConnectionContext> Create() override {
     return std::make_unique<ContextType>(allocator_.get(), call_tracker_);
@@ -128,6 +131,11 @@ class ConnectionContextFactoryImpl : public ConnectionContextFactory {
 
   virtual ~ConnectionContextFactoryImpl() {}
 };
+
+template <class ContextType, class... Args>
+std::shared_ptr<ConnectionContextFactory> CreateConnectionContextFactory(Args&&... args) {
+  return std::make_shared<ConnectionContextFactoryImpl<ContextType>>(std::forward<Args>(args)...);
+}
 
 } // namespace rpc
 } // namespace yb

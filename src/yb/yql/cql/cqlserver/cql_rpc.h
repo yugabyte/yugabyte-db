@@ -48,6 +48,8 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
     compression_scheme_ = compression_scheme;
   }
 
+  static std::string Name() { return "CQL"; }
+
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
 
