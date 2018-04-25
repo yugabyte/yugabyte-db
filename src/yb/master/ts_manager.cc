@@ -154,7 +154,6 @@ void TSManager::GetDescriptors(std::function<bool(const TSDescSharedPtr&)> condi
   }
 }
 
-
 void TSManager::GetAllDescriptors(TSDescriptorVector* descs) const {
   GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return !ts->IsRemoved(); }, descs);
 }
@@ -171,6 +170,23 @@ void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs) const {
 void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
   GetDescriptors([](const TSDescSharedPtr& ts)
                    -> bool { return IsTSLive(ts) && ts->has_tablet_report(); }, descs);
+}
+
+bool TSManager::IsTsInCluster(const TSDescSharedPtr& ts, string cluster_uuid) {
+  return cluster_uuid.empty() || ts->placement_uuid() == cluster_uuid;
+}
+
+void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
+                                               string placement_uuid) const {
+  descs->clear();
+  boost::shared_lock<rw_spinlock> l(lock_);
+  descs->reserve(servers_by_id_.size());
+  for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
+    const TSDescSharedPtr& ts = entry.second;
+    if (IsTSLive(ts) && IsTsInCluster(ts, placement_uuid)) {
+      descs->push_back(ts);
+    }
+  }
 }
 
 const TSDescSharedPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) const {

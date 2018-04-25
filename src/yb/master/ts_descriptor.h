@@ -113,6 +113,8 @@ class TSDescriptor {
   // Return the pre-computed placement_id, comprised of the cloud_info data.
   std::string placement_id() const;
 
+  std::string placement_uuid() const;
+
   bool IsRunningOn(const HostPortPB& hp) const;
 
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
@@ -271,6 +273,9 @@ class TSDescriptor {
 
   gscoped_ptr<TSRegistrationPB> registration_;
   std::string placement_id_;
+
+  // The (read replica) cluster uuid to which this tserver belongs.
+  std::string placement_uuid_;
 
   YB_EDITION_NS_PREFIX ProxyTuple proxies_;
 

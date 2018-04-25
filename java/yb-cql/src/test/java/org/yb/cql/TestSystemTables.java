@@ -427,8 +427,7 @@ public class TestSystemTables extends BaseCQLTest {
     List<Row> partitions = session.execute("SELECT * FROM system.partitions WHERE " +
                                            "keyspace_name = 'test_keyspace' AND " +
                                            "table_name = 'test_table';").all();
-    // Add 1 to account for tserver started in testSystemPeersTable().
-    assertEquals(miniCluster.getNumShardsPerTserver() * (NUM_TABLET_SERVERS + 1),
+    assertEquals(miniCluster.getNumShardsPerTserver() * NUM_TABLET_SERVERS,
                  partitions.size());
 
     HashSet<InetAddress> contactPoints = new HashSet<>();
