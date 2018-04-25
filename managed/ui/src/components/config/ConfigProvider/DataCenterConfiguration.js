@@ -2,14 +2,14 @@
 
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
-import { AzureProviderConfigurationContainer, DockerProviderConfigurationContainer,
+import { AzureProviderConfigurationContainer, KubernetesProviderConfiguration,
          OnPremConfigurationContainer, ProviderConfigurationContainer, StorageConfigurationContainer } from '../../config';
 import {Tab} from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
 import awsLogo from './images/aws.png';
 import azureLogo from './images/azure.png';
-import dockerLogo from './images/docker.png';
+import kubernetesLogo from './images/kubernetes.png';
 import gcpLogo from './images/gcp.png';
 
 class DataCenterConfiguration extends Component {
@@ -42,8 +42,8 @@ class DataCenterConfiguration extends Component {
               <Tab eventKey="azure" title={<img src={azureLogo} alt="Azure" className="azure-logo" />} key="azure-tab" unmountOnExit={true}>
                 <AzureProviderConfigurationContainer />
               </Tab>
-              <Tab eventKey="docker" title={<img src={dockerLogo} alt="Docker" className="docker-logo" />} key="docker-tab" unmountOnExit={true}>
-                <DockerProviderConfigurationContainer />
+              <Tab eventKey="kubernetes" title={<img src={kubernetesLogo} alt="Kubernetes" className="kubernetes-logo" />} key="kubernetes-tab" unmountOnExit={true}>
+                <KubernetesProviderConfiguration />
               </Tab>
               <Tab eventKey="onprem" title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
                 <OnPremConfigurationContainer params={this.props.params} />

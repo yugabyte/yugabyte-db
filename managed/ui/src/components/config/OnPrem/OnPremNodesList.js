@@ -117,7 +117,7 @@ class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit} = this.props;
+    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit, showProviderView} = this.props;
     const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
@@ -186,7 +186,7 @@ class OnPremNodesList extends Component {
           <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList}/>
         </span>
 
-        <YBBreadcrumb to="/config/onprem">
+        <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
           On-Premises Datacenter Config
         </YBBreadcrumb>
         <h3 className="no-top-margin">Instances</h3>

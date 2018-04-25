@@ -10,6 +10,7 @@ export { default as DataCenterConfigurationContainer } from './ConfigProvider/Da
 
 export { default as AzureProviderConfigurationContainer } from './PublicCloud/Azure/AzureProviderConfigurationContainer';
 export { default as DockerProviderConfigurationContainer } from './PublicCloud/Docker/DockerProviderConfigurationContainer';
+export { default as KubernetesProviderConfiguration } from './PublicCloud/Kubernetes/KubernetesProviderConfiguration';
 
 export { default as OnPremConfigWizardContainer } from './OnPrem/wizard/OnPremConfigWizardContainer';
 export { default as OnPremConfigJSONContainer } from './OnPrem/json/OnPremConfigJSONContainer';
