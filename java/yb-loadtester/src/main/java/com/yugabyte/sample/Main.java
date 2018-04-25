@@ -80,6 +80,7 @@ public class Main {
     // It will be enabled after the setup step is done in run().
     this.app = cmdLineOpts.createAppInstance(cmdLineOpts.getNumWriterThreads() != 0 &&
                                              cmdLineOpts.shouldDropTable());
+    this.app.setMainInstance(true);
   }
 
   /**

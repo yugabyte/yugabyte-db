@@ -85,6 +85,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private static volatile SimpleLoadGenerator simpleLoadGenerator = null;
   private static volatile RedisHashLoadGenerator redisHashLoadGenerator = null;
 
+  // Is this app instance the main instance?
+  private boolean mainInstance = false;
+
   // Keyspace name.
   private static String keyspace = "ybdemo_keyspace";
 
@@ -328,6 +331,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return true;
   }
 
+  public void setMainInstance(boolean mainInstance) {
+    this.mainInstance = mainInstance;
+  }
+
   ///////////////////// The following methods are overridden by the apps ///////////////////////////
 
   /**
@@ -567,11 +574,13 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   protected synchronized void destroyClients() {
-    if (cassandra_session != null) {
+    // Only the main app instance should close the shared Cassandra cluster and session and at the
+    // end of the workload.
+    if (mainInstance && cassandra_session != null) {
       cassandra_session.close();
       cassandra_session = null;
     }
-    if (cassandra_cluster != null) {
+    if (mainInstance && cassandra_cluster != null) {
       cassandra_cluster.close();
       cassandra_cluster = null;
     }
