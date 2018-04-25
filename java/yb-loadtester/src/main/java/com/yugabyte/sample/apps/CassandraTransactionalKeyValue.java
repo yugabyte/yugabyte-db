@@ -128,6 +128,16 @@ public class CassandraTransactionalKeyValue extends AppBase {
     super.destroyClients();
   }
 
+  private void verifyValue(Key key, ByteBuffer value) {
+    if (appConfig.valueSize == 0) {
+      key.verify(new String(value.array()));
+    } else {
+      byte[] bytes = new byte[value.capacity()];
+      value.get(bytes);
+      verifyRandomValue(key, bytes);
+    }
+  }
+
   @Override
   public long doRead() {
     Key key = getSimpleLoadGenerator().getKeyToRead();
@@ -145,29 +155,8 @@ public class CassandraTransactionalKeyValue extends AppBase {
       LOG.fatal("Read key: " + key.asString() + " expected 2 row in result, got " + rows.size());
       return 1;
     }
-    if (appConfig.valueSize == 0) {
-      ByteBuffer buf = rows.get(0).getBytes(1);
-      String value1 = new String(buf.array());
-      key.verify(value1);
-
-      buf = rows.get(1).getBytes(1);
-      String value2 = new String(buf.array());
-      if (!value1.equals(value2)) {
-       LOG.fatal("Value mismatch for key: " + key.toString() + ", " +
-                 value1 + " vs " + value2);
-      }
-    } else {
-      ByteBuffer value = rows.get(0).getBytes(1);
-      byte[] bytes1 = new byte[value.capacity()];
-      value.get(bytes1);
-      verifyRandomValue(key, bytes1);
-
-      value = rows.get(1).getBytes(1);
-      byte[] bytes2 = new byte[value.capacity()];
-      if (!bytes1.equals(bytes2)) {
-        LOG.fatal("Value mismatch for key: " + key.toString());
-      }
-    }
+    verifyValue(key, rows.get(0).getBytes(1));
+    verifyValue(key, rows.get(1).getBytes(1));
     if (rows.get(0).getLong(2) != rows.get(1).getLong(2)) {
       LOG.fatal("Writetime mismatch for key: " + key.toString() + ", " +
                 rows.get(0).getLong(2) + " vs " + rows.get(1).getLong(2));
