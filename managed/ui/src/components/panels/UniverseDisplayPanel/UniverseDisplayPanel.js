@@ -10,7 +10,7 @@ import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
-import { getPrimaryCluster } from "../../../utils/UniverseUtils";
+import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 const moment = require('moment');
 
 class CreateUniverseButtonComponent extends Component {
@@ -42,10 +42,19 @@ class UniverseDisplayItem extends Component {
     if (!isNonEmptyObject(primaryCluster) || !isNonEmptyObject(primaryCluster.userIntent)) {
       return <span/>;
     }
-    const provider = providers.data.find((p) => p.uuid === primaryCluster.userIntent.provider);
+    const readOnlyCluster = getReadOnlyCluster(universe.universeDetails.clusters);
+    const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+    const clusterProviders = providers.data.filter((p) => clusterProviderUUIDs.includes(p.uuid));
     const replicationFactor = <span>{`${primaryCluster.userIntent.replicationFactor}`}</span>;
-    const universeProvider = isNonEmptyObject(provider) ? <span>{`${provider.name}`}</span> : <span/>;
-    const numNodes = <span>{primaryCluster.userIntent.numNodes}</span>;
+    const universeProviders = clusterProviders.map((provider) => {
+      return getProviderMetadata(provider).name;
+    });
+    const universeProviderText = universeProviders.join(", ");
+    let nodeCount = primaryCluster.userIntent.numNodes;
+    if (isNonEmptyObject(readOnlyCluster)) {
+      nodeCount += readOnlyCluster.userIntent.numNodes;
+    }
+    const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
@@ -62,7 +71,7 @@ class UniverseDisplayItem extends Component {
               {universe.name}
             </div>
             <div className="provider-name">
-              {universeProvider}
+              {universeProviderText}
             </div>
             <div className="description-item-list">
               <DescriptionItem title="Nodes">

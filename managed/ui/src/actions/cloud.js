@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import { ROOT_URL } from '../config';
+import { ROOT_URL, PROVIDER_TYPES } from '../config';
 
-import { PROVIDER_TYPES, getProviderEndpoint, getCustomerEndpoint } from './common';
+import { getProviderEndpoint, getCustomerEndpoint } from './common';
 
 // Get Region List
 export const GET_REGION_LIST = 'GET_REGION_LIST';

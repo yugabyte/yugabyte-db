@@ -32,7 +32,8 @@ function mapStateToProps(state) {
   return {
     universe: state.universe,
     graph: state.graph,
-    tasks: state.tasks
+    tasks: state.tasks,
+    providers: state.cloud.providers
   };
 }
 

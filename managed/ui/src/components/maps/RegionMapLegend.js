@@ -34,7 +34,7 @@ export default class RegionMapLegend extends Component{
               <span className="map-menu-selector" onClick={value => self.setState({selectedProviderList: []})}>None</span>
             </small>
           </span>
-          <SelectList data={self.props.providers} valueField={"code"} textField={"name"}
+          <SelectList data={self.props.providers} valueField={"code"} textField={"label"}
                       value={self.state.selectedProviderList} multiple={true}
                       onChange={value => self.setState({selectedProviderList: value})} />
         </div>

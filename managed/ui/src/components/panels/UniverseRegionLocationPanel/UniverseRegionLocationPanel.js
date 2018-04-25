@@ -5,7 +5,7 @@ import { RegionMap } from '../../maps';
 import { RegionMapLegend } from '../../maps';
 import { isNonEmptyArray, isValidObject, isEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
-import {getPrimaryCluster} from 'utils/UniverseUtils';
+import { getPrimaryCluster, getProviderMetadata } from 'utils/UniverseUtils';
 
 export default class UniverseRegionLocationPanel extends Component {
   constructor(props) {
@@ -58,7 +58,7 @@ export default class UniverseRegionLocationPanel extends Component {
       });
     });
     const completeProviderList = cloud.providers.data.map( (provider) => {
-      return {code: provider.code, name: provider.name};
+      return getProviderMetadata(provider);
     });
 
     return (
