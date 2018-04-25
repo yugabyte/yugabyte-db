@@ -61,6 +61,8 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/threadpool.h"
 
+using namespace std::literals;
+
 DEFINE_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
@@ -502,12 +504,14 @@ Status SetPermanentUuidForRemotePeer(
     const shared_ptr<Messenger>& messenger,
     std::chrono::steady_clock::duration timeout,
     RaftPeerPB* remote_peer) {
+
   DCHECK(!remote_peer->has_permanent_uuid());
   HostPort hostport = HostPortFromPB(remote_peer->last_known_addr());
   auto deadline = std::chrono::steady_clock::now() + timeout;
   ConsensusServiceProxyPtr proxy;
 
-  BackoffWaiter waiter(deadline);
+  const auto kMaxWait = 10s;
+  BackoffWaiter waiter(deadline, kMaxWait);
   for (;;) {
     auto proxy_future = MakeFuture<Result<ConsensusServiceProxyPtr>>(
         [messenger, hostport](auto callback) {
