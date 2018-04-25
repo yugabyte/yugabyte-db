@@ -11,6 +11,8 @@ aliases:
   - api/cql/ddl_create_index
 ---
 
+[ **_The CREATE INDEX statement is currently in beta_** ]
+
 ## Synopsis
 The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and covering columns.
 

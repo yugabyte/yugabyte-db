@@ -11,6 +11,8 @@ aliases:
   - api/cql/dml_insert
 ---
 
+[ **_The transaction statement block is currently in beta_** ]
+
 ## Synopsis
 
 The transaction statement block makes changes to multiple rows in one or more tables in a [distributed ACID transaction](../../../explore/transactions).

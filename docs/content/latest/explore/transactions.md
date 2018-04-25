@@ -11,6 +11,8 @@ menu:
     weight: 230
 ---
 
+[ **_Distributed ACID transactions are currently in beta_** ]
+
 Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
 
 YugaByte DB is designed to support transactions at the following isolation levels:
