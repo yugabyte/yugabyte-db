@@ -1128,6 +1128,7 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
   // Create entry.
   SysNamespaceEntryPB ns_entry;
   ns_entry.set_name(name);
+  ns_entry.set_database_type(YQL_DATABASE_CQL);
 
   // Create in memory object.
   scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
