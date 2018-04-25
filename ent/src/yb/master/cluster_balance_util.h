@@ -30,7 +30,7 @@ class ClusterLoadState : public yb::master::ClusterLoadState {
   virtual ~ClusterLoadState() {}
 
   bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
-    return ts_desc->GetPlacementUuid() == GetEntOptions()->live_placement_uuid;
+    return ts_desc->placement_uuid() == GetEntOptions()->live_placement_uuid;
   }
 
   void UpdateTabletServer(std::shared_ptr<yb::master::TSDescriptor> ts_desc) override {
@@ -52,7 +52,7 @@ class ClusterLoadState : public yb::master::ClusterLoadState {
           // READ_ONLY cb run with LIVE ts, ignore this ts
           sorted_load_.pop_back();
         } else {
-          string placement_uuid = down_cast<TSDescriptor*>(ts_desc.get())->GetPlacementUuid();
+          string placement_uuid = down_cast<TSDescriptor*>(ts_desc.get())->placement_uuid();
           if (placement_uuid == "") {
             LOG(WARNING) << "Read only ts " << ts_desc->permanent_uuid()
                          << " does not have placement uuid";
@@ -100,7 +100,7 @@ class ClusterLoadState : public yb::master::ClusterLoadState {
       if (is_replica_live && options_ent->type == LIVE) {
         InsertIfNotPresent(replica_locations, it->first, replica);
       } else if (!is_replica_live && options_ent->type  == READ_ONLY) {
-        const string& placement_uuid = ts_desc_ent->GetPlacementUuid();
+        const string& placement_uuid = ts_desc_ent->placement_uuid();
         if (placement_uuid == options_ent->placement_uuid) {
           InsertIfNotPresent(replica_locations, it->first, replica);
         }
