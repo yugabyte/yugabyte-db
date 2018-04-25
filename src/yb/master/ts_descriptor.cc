@@ -103,7 +103,17 @@ Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
 
   proxies_.reset();
 
+  placement_uuid_ = "";
+  if (registration.common().has_placement_uuid()) {
+    placement_uuid_ = registration.common().placement_uuid();
+  }
+
   return Status::OK();
+}
+
+std::string TSDescriptor::placement_uuid() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return placement_uuid_;
 }
 
 std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {

@@ -361,7 +361,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
-  CHECKED_STATUS TabletServerCount(int *tserver_count);
+  // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false);
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 

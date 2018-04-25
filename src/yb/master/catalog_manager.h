@@ -1025,6 +1025,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp);
 
+  // Return the placement uuid of the primary cluster containing this master.
+  string placement_uuid() const;
+
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.

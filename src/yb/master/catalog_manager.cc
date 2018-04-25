@@ -1550,15 +1550,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // }
   }
 
+  // Get cluster level placement info.
+  ReplicationInfoPB replication_info;
+  {
+    auto l = cluster_config_->LockForRead();
+    replication_info = l->data().pb.replication_info();
+  }
+
   // Calculate number of tablets to be used.
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  int num_live_tservers = ts_descs.size();
   int num_tablets = req.num_tablets();
   if (num_tablets <= 0) {
-    // Try to use default: client could have gotten the value before any tserver had heartbeated
+    // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    num_tablets = num_live_tservers * FLAGS_yb_num_shards_per_tserver;
+    TSDescriptorVector ts_descs;
+    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+        &ts_descs, replication_info.live_replicas().placement_uuid());
+    num_tablets = ts_descs.size() * FLAGS_yb_num_shards_per_tserver;
+    LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
+              << ts_descs.size() << " primary servers";
   }
 
   // Create partitions.
@@ -1587,13 +1596,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   s = ValidateTableReplicationInfo(req.replication_info());
   if (PREDICT_FALSE(!s.ok())) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-  }
-
-  // Default to the cluster placement object.
-  ReplicationInfoPB replication_info;
-  {
-    auto l = cluster_config_->LockForRead();
-    replication_info = l->data().pb.replication_info();
   }
 
   TSDescriptorVector all_ts_descs;
@@ -5295,6 +5297,13 @@ Status CatalogManager::GetReplicationFactor(int* num_replicas) {
   const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
   *num_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
   return Status::OK();
+}
+
+string CatalogManager::placement_uuid() const {
+  DCHECK(cluster_config_) << "Missing cluster config for master!";
+  auto l = cluster_config_->LockForRead();
+  const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
+  return replication_info.live_replicas().placement_uuid();
 }
 
 Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,

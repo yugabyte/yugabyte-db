@@ -366,7 +366,14 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
   }
 
   std::vector<std::shared_ptr<TSDescriptor> > descs;
-  server_->ts_manager()->GetAllDescriptors(&descs);
+  if (!req->primary_only()) {
+    server_->ts_manager()->GetAllDescriptors(&descs);
+  } else {
+    server_->ts_manager()->GetAllLiveDescriptorsInCluster(
+        &descs,
+        server_->catalog_manager()->placement_uuid());
+  }
+
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
     desc->GetNodeInstancePB(entry->mutable_instance_id());

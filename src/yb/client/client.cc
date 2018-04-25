@@ -630,9 +630,10 @@ CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
   return Status::OK();
 }
 
-Status YBClient::TabletServerCount(int *tserver_count) {
+Status YBClient::TabletServerCount(int *tserver_count, bool primary_only) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
+  req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
   *tserver_count = resp.servers_size();
   return Status::OK();
@@ -1165,7 +1166,7 @@ Status YBTableCreator::Create() {
                 << ": --yb_num_total_tablets is specified.";
       } else {
         int tserver_count = 0;
-        RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
+        RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count, true /* primary_only */));
         data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
         VLOG(1) << "num_tablets = " << data_->num_tablets_ << ": "
                 << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("

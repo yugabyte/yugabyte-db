@@ -810,6 +810,8 @@ message GetTableSchemaResponsePB {
 // ============================================================================
 
 message ListTabletServersRequestPB {
+  // If set to true, return only the tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
 }
 
 message ListTabletServersResponsePB {

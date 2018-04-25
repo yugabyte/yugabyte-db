@@ -98,6 +98,10 @@ class TSManager {
   // heartbeat recently, indicating that they're alive and well.
   void GetAllLiveDescriptors(TSDescriptorVector* descs) const;
 
+  // Return all of the currently registered TS descriptors that have sent a heartbeat
+  // recently and are in the same 'cluster' with given placement uuid.
+  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid) const;
+
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat, indicating that they're alive and well, recently and have given
   // full report of their tablets as well.
@@ -110,6 +114,9 @@ class TSManager {
   const TSDescSharedPtr GetTSDescriptor(const HostPortPB& host_port) const;
 
   static bool IsTSLive(const TSDescSharedPtr& ts);
+
+  // Check if the placement uuid of the tserver is same as given cluster uuid.
+  static bool IsTsInCluster(const TSDescSharedPtr& ts, string cluster_uuid);
 
  private:
 
