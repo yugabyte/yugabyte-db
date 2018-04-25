@@ -1335,7 +1335,7 @@ read_file_and_trim() {
 
 # In our internal environment we build third-party dependencies in separate directories on NFS
 # so that we can use them across many builds.
-find_shared_thirdparty_dir() {
+find_thirdparty_dir() {
   found_shared_thirdparty_dir=false
   local parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
   if [[ ! -d $parent_dir_for_shared_thirdparty ]]; then

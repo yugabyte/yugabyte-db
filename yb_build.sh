@@ -881,7 +881,7 @@ if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
 fi
 
 if "$use_shared_thirdparty" || [[ -f $YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use ]]; then
-  find_shared_thirdparty_dir
+  find_thirdparty_dir
 fi
 
 configure_remote_build
