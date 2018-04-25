@@ -57,8 +57,8 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     const string& keyspace_name = nsInfo->name();
     const string& table_name = table->name();
 
-    // Hide redis table from YQL.
-    if (keyspace_name == common::kRedisKeyspaceName && table_name == common::kRedisTableName) {
+    // Skip non-CQL tables.
+    if (nsInfo->database_type() != YQL_DATABASE_CQL) {
       continue;
     }
 
