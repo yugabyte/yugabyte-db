@@ -104,8 +104,11 @@ Result<size_t> PgConnectionContext::ProcessCalls(const rpc::ConnectionPtr& conne
       // Analyze the command to extract the SQL statement.
       RETURN_NOT_OK(pgrecv_.ReadInstr(postgres_command, &pginstr));
     }
-    // Queue the command.
-    RETURN_NOT_OK(HandleInboundCall(connection, command_bytes, pginstr));
+
+    if (pginstr != nullptr) {
+      // If there is an instruction, queue the command.
+      RETURN_NOT_OK(HandleInboundCall(connection, command_bytes, pginstr));
+    }
     consumed += command_bytes;
   }
   return consumed;
