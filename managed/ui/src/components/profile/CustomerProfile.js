@@ -36,7 +36,7 @@ export default class CustomerProfile extends Component {
               <h3>Profile Info</h3>
               <Field name="name" type="text" component={YBInputField} label="Full Name" placeHolder="Full Name"/>
               <Field name="email" type="text" component={YBInputField} isReadOnly={true} label="Email" placeHolder="Email Address"/>
-              <Field name="code" type="text" component={YBInputField} isReadOnly={true} label="Code" placeHolder="Customer Code"/>
+              <Field name="code" type="text" component={YBInputField} isReadOnly={true} label="Environment" placeHolder="Customer Code"/>
             </Col>
             <Col md={6} sm={12}>
               <h3>Change Password</h3>

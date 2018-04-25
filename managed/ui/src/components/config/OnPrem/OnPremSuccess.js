@@ -43,6 +43,10 @@ class OnPremSuccess extends Component {
     this.setState({manageInstances: true});
   };
 
+  showProviderView = () => {
+    this.setState({manageInstances: false});
+  }
+
   componentWillReceiveProps(nextProps) {
     const {
       accessKeys,
@@ -113,11 +117,11 @@ class OnPremSuccess extends Component {
   }
 
   render() {
-    const {configuredRegions, configuredProviders, accessKeys, universeList, 
+    const {configuredRegions, configuredProviders, accessKeys, universeList,
       cloud: {nodeInstanceList}} = this.props;
 
     if (this.state.manageInstances) {
-      return <OnPremNodesListContainer {...this.props}/>;
+      return <OnPremNodesListContainer {...this.props} showProviderView={this.showProviderView.bind(this)}/>;
     }
     const currentProvider = configuredProviders.data.find(provider => provider.code === PROVIDER_TYPE);
     if (!currentProvider) {
