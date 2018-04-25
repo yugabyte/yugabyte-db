@@ -12,11 +12,6 @@ namespace enterprise {
 Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration) {
   RETURN_NOT_OK(super::RegisterUnlocked(instance, registration));
-  if (registration.common().has_placement_uuid()) {
-    placement_uuid_ = registration.common().placement_uuid();
-  } else {
-    placement_uuid_ = "";
-  }
   return Status::OK();
 }
 
