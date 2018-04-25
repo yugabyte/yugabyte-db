@@ -977,10 +977,10 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
     TSDescriptor* ts_desc_ent = down_cast<TSDescriptor*>(ts_desc.get());
     if (placement_info.has_placement_uuid()) {
       string placement_uuid = placement_info.placement_uuid();
-      if (ts_desc_ent->GetPlacementUuid() == placement_uuid) {
+      if (ts_desc_ent->placement_uuid() == placement_uuid) {
         ts_descs->push_back(ts_desc);
       }
-    } else if (ts_desc_ent->GetPlacementUuid() == "") {
+    } else if (ts_desc_ent->placement_uuid() == "") {
       // Since the placement info has no placement id, we know it is live, so we add this ts.
       ts_descs->push_back(ts_desc);
     }

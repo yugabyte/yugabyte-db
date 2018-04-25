@@ -41,11 +41,6 @@ class TSDescriptor : public yb::master::TSDescriptor {
   explicit TSDescriptor(const std::string& perm_id) : super(perm_id) {}
   virtual ~TSDescriptor() {}
 
-  std::string GetPlacementUuid() const {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return placement_uuid_;
-  }
-
  protected:
   CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                   const TSRegistrationPB& registration) override;
