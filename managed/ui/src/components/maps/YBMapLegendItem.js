@@ -6,14 +6,10 @@ import { Image, Label } from 'react-bootstrap';
 import { RootMarkerIcon, ReadReplicaMarkerIcon, CacheMarkerIcon } from './images';
 import './stylesheets/YBMapLegendItem.scss';
 import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
-import { PROVIDER_TYPES } from '../../actions/common';
-
+import { PROVIDER_TYPES } from '../../config';
+const pluralize = require('pluralize');
 
 export default class YBMapLegendItem extends Component {
-  formatPlural = (count, text) => {
-    return count > 0 ? `${count} ${text}s` : `${count} ${text}`;
-  }
-
   render() {
     const {regions, provider, title, type} = this.props;
     let legendItemIcon = "";
@@ -30,7 +26,7 @@ export default class YBMapLegendItem extends Component {
     let regionInfo = <span/>;
     if (type !== "Region") {
       if (isNonEmptyArray(regions)) {
-        const legendSubTexts = [this.formatPlural(regions.length, 'Region')];
+        const legendSubTexts = [pluralize('Node', regions.length, true)];
         if (isNonEmptyObject(provider)) {
           const providerInfo = PROVIDER_TYPES.find( (providerType) => providerType.code === provider.code );
           legendText = providerInfo.label;
@@ -39,11 +35,11 @@ export default class YBMapLegendItem extends Component {
         const nodeCount = azList.reduce((nodeCnt, az) => nodeCnt += az.numNodesInAZ, 0);
 
         if (azList.length > 0) {
-          legendSubTexts.push(this.formatPlural(azList.length, 'AZ'));
+          legendSubTexts.push(pluralize('AZ', azList.length, true));
         }
 
         if (nodeCount > 0) {
-          legendSubTexts.push(this.formatPlural(nodeCount, 'Node'));
+          legendSubTexts.push(pluralize('Node', nodeCount, true));
         }
 
         regionInfo = (

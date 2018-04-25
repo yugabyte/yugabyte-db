@@ -10,8 +10,10 @@ import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
 import {UniverseStatusContainer} from '../../universes';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { getUniverseNodes, getPlacementRegions,
+        getClusterProviderUUIDs, getProviderMetadata } from '../../../utils/UniverseUtils';
 const moment = require('moment');
+const pluralize = require('pluralize');
 
 export default class UniverseTable extends Component {
 
@@ -106,20 +108,36 @@ class YBUniverseItem extends Component {
 
 class CellLocationPanel extends Component {
   render() {
-    const {universe, universe: {universeDetails}} = this.props;
-    const regionList = universe.regions && universe.regions.map((item) => item.name).join(", ");
-    const userIntent = getPrimaryCluster(universeDetails.clusters).userIntent;
+    const {universe, universe: {universeDetails}, providers} = this.props;
+    const numNodes = getUniverseNodes(universeDetails.clusters);
+    const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+    const clusterProviders = providers.data.filter((p) => clusterProviderUUIDs.includes(p.uuid));
+    const universeProviders = clusterProviders.map((provider) => {
+      return getProviderMetadata(provider).name;
+    });
+
+    const regionList = universeDetails.clusters.reduce((regions, cluster) => {
+      const placementRegions = getPlacementRegions(cluster);
+      return regions.concat(placementRegions);
+    }, []);
+
+    const regionListText = regionList.map((region) => region.code).join(", ");
+    const providersText = universeProviders.join(", ");
     return (
       <div >
         <Row className={"cell-position-detail"}>
-          <Col sm={3} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
+          <Col sm={3} className={"cell-num-nodes"}>
+            {pluralize('Node', numNodes, true)}
+          </Col>
           <Col sm={9}>
-            <span className={"cell-provider-name"}>{universe.provider && universe.provider.name}</span>
+            <span className={"cell-provider-name"}>{providersText}</span>
           </Col>
         </Row>
         <Row className={"cell-position-detail"}>
-          <Col sm={3} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
-          <Col sm={9}>{regionList}</Col>
+          <Col sm={3} className={"cell-num-nodes"}>
+            {pluralize('Region', regionList.length, true)}
+          </Col>
+          <Col sm={9}>{regionListText}</Col>
         </Row>
       </div>
     );
