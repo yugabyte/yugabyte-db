@@ -165,11 +165,13 @@ RaftPeerPB::Role GetConsensusRole(const std::string& permanent_uuid,
         case RaftPeerPB::VOTER:
           return RaftPeerPB::FOLLOWER;
 
-        // PRE_VOTER, PRE_OBSERVER, and OBSERVER peers are considered LEARNERs.
+        // PRE_VOTER, PRE_OBSERVER peers are considered LEARNERs.
         case RaftPeerPB::PRE_VOTER:
         case RaftPeerPB::PRE_OBSERVER:
-        case RaftPeerPB::OBSERVER:
           return RaftPeerPB::LEARNER;
+
+        case RaftPeerPB::OBSERVER:
+          return RaftPeerPB::READ_REPLICA;
 
         case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
          return RaftPeerPB::UNKNOWN_ROLE;
