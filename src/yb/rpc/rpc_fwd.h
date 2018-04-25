@@ -50,6 +50,8 @@ class RpcController;
 class RpcService;
 class Rpcs;
 class Scheduler;
+class ServicePoolImpl;
+class ThreadPool;
 
 struct RpcMethodMetrics;
 
@@ -67,6 +69,9 @@ typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
 
 class ServerEventList;
 typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
+
+class ServiceIf;
+typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 
 class ErrorStatusPB;
 

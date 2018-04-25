@@ -182,7 +182,9 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   auto server_messenger = ASSERT_RESULT(bld.Build());
 
   Endpoint server_addr;
-  ASSERT_OK(server_messenger->ListenAddress(Endpoint(), &server_addr));
+  ASSERT_OK(server_messenger->ListenAddress(
+      CreateConnectionContextFactory<YBInboundConnectionContext>(),
+      Endpoint(), &server_addr));
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();

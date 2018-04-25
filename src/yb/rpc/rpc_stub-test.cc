@@ -122,7 +122,9 @@ class RpcStubTest : public RpcTestBase {
         ? IpAddress(boost::asio::ip::address_v6::loopback())
         : IpAddress(boost::asio::ip::address_v4::loopback());
     // To have outbound calls with appropriate address
-    EXPECT_OK(messenger->ListenAddress(Endpoint(local_address, 0)));
+    EXPECT_OK(messenger->ListenAddress(
+        CreateConnectionContextFactory<YBInboundConnectionContext>(),
+        Endpoint(local_address, 0)));
     EXPECT_OK(messenger->StartAcceptor());
     std::unique_ptr<CalculatorServiceProxy> result(new CalculatorServiceProxy(messenger, remote));
     return result;

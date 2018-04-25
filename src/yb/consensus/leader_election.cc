@@ -231,10 +231,12 @@ void LeaderElection::Run() {
 
   auto deadline = std::chrono::steady_clock::now() + timeout_.ToSteadyDuration();
   size_t voters_left = voting_follower_uuids_.size();
-  while (voters_left > 0 && TrySendRequestToVoters(deadline, &voters_left)) {}
+  while (voters_left > 0) {
+    TrySendRequestToVoters(deadline, &voters_left);
+  }
 }
 
-bool LeaderElection::TrySendRequestToVoters(
+void LeaderElection::TrySendRequestToVoters(
     std::chrono::steady_clock::time_point deadline, size_t* voters_left) {
   const auto kStepTimeout = 100ms;
 
@@ -260,16 +262,17 @@ bool LeaderElection::TrySendRequestToVoters(
       continue;
     }
 
-    if (state->proxy_future.wait_until(step_deadline) != std::future_status::ready) {
-      if (last_step) {
-        LOG_WITH_PREFIX(WARNING) << "Timed out trying to resolve host for " << voter_uuid
-                                 << ", host: " << state->address.ToString();
-      }
+    bool ready = state->proxy_future.wait_until(step_deadline) == std::future_status::ready;
+    if (!ready && !last_step) {
       continue;
     }
 
     --*voters_left;
-    auto proxy_result = state->proxy_future.get();
+    auto proxy_result = ready
+        ? state->proxy_future.get()
+        : STATUS_FORMAT(TimedOut, "Timed out trying to resolve host: $0, timeout: $1",
+                        state->address, timeout_);
+
     // If we failed to construct the proxy, just record a 'NO' vote with the status
     // that indicates why it failed.
     if (!proxy_result.ok()) {
@@ -303,8 +306,6 @@ bool LeaderElection::TrySendRequestToVoters(
       VoteResponseRpcCallback(voter_uuid, retained_self);
     }
   }
-
-  return !last_step;
 }
 
 void LeaderElection::CheckForDecision() {

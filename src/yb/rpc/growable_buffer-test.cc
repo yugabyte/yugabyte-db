@@ -24,11 +24,10 @@ namespace rpc {
 
 constexpr size_t kBlockSize = 0x100;
 constexpr size_t kSizeLimit = 0x1000;
-constexpr size_t kMemoryLimit = 0x10000;
 
 class GrowableBufferTest : public YBTest {
  protected:
-  GrowableBufferAllocator allocator_{kBlockSize, kMemoryLimit, MemTrackerPtr()};
+  GrowableBufferAllocator allocator_{kBlockSize, MemTrackerPtr()};
 };
 
 TEST_F(GrowableBufferTest, TestLimit) {

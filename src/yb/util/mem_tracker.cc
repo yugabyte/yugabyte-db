@@ -148,12 +148,7 @@ void MemTracker::CreateRootTracker() {
     limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
   }
 
-  ConsumptionFunction f;
-#ifdef TCMALLOC_ENABLED
-  f = &GetTCMallocCurrentAllocatedBytes;
-#endif
-  root_tracker.reset(new MemTracker(f, limit, "root",
-                                    shared_ptr<MemTracker>()));
+  root_tracker = std::make_shared<MemTracker>(limit, "root", nullptr /* parent */);
   LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
                             (static_cast<float>(limit) / (1024.0 * 1024.0 * 1024.0)));
   LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
@@ -178,8 +173,7 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
       return result;
     }
   }
-  auto result = std::make_shared<MemTracker>(
-      ConsumptionFunction(), byte_limit, id, shared_from_this());
+  auto result = std::make_shared<MemTracker>(byte_limit, id, shared_from_this());
   auto p = child_trackers_.emplace(id, result);
   if (!p.second) {
     auto existing = p.first->second.lock();
@@ -193,21 +187,16 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   return result;
 }
 
-MemTracker::MemTracker(ConsumptionFunction consumption_func, int64_t byte_limit,
-                       const string& id, shared_ptr<MemTracker> parent)
+MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTracker> parent)
     : limit_(byte_limit),
       id_(id),
       descr_(Substitute("memory consumption for $0", id)),
       parent_(std::move(parent)),
-      consumption_(0),
-      consumption_func_(std::move(consumption_func)),
       rand_(GetRandomSeed32()),
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace) {
   VLOG(1) << "Creating tracker " << ToString();
-  if (consumption_func_) {
-    UpdateConsumption();
-  }
+  UpdateConsumption();
   soft_limit_ = (limit_ == -1)
       ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100;
 
@@ -304,10 +293,15 @@ void MemTracker::ListDescendantTrackers(std::vector<MemTrackerPtr>* out) {
   }
 }
 
-void MemTracker::UpdateConsumption() {
-  DCHECK(consumption_func_);
-  DCHECK(parent_.get() == NULL);
-  consumption_.set_value(consumption_func_());
+bool MemTracker::UpdateConsumption() {
+#if TCMALLOC_ENABLED
+  if (!parent_) {
+    consumption_.set_value(GetTCMallocCurrentAllocatedBytes());
+    return true;
+  }
+#endif
+
+  return false;
 }
 
 void MemTracker::Consume(int64_t bytes) {
@@ -316,8 +310,7 @@ void MemTracker::Consume(int64_t bytes) {
     return;
   }
 
-  if (consumption_func_) {
-    UpdateConsumption();
+  if (UpdateConsumption()) {
     return;
   }
   if (bytes == 0) {
@@ -327,17 +320,15 @@ void MemTracker::Consume(int64_t bytes) {
     LogUpdate(true, bytes);
   }
   for (auto& tracker : all_trackers_) {
-    tracker->consumption_.IncrementBy(bytes);
-    if (tracker->consumption_func_) {
+    if (!tracker->UpdateConsumption()) {
+      tracker->consumption_.IncrementBy(bytes);
       DCHECK_GE(tracker->consumption_.current_value(), 0);
     }
   }
 }
 
 bool MemTracker::TryConsume(int64_t bytes) {
-  if (consumption_func_) {
-    UpdateConsumption();
-  }
+  UpdateConsumption();
   if (bytes <= 0) {
     return true;
   }
@@ -399,8 +390,7 @@ void MemTracker::Release(int64_t bytes) {
     GcTcmalloc();
   }
 
-  if (consumption_func_) {
-    UpdateConsumption();
+  if (UpdateConsumption()) {
     return;
   }
 
@@ -412,14 +402,14 @@ void MemTracker::Release(int64_t bytes) {
   }
 
   for (auto& tracker : all_trackers_) {
-    tracker->consumption_.IncrementBy(-bytes);
-    // If a UDF calls FunctionContext::TrackAllocation() but allocates less than the
-    // reported amount, the subsequent call to FunctionContext::Free() may cause the
-    // process mem tracker to go negative until it is synced back to the tcmalloc
-    // metric. Don't blow up in this case. (Note that this doesn't affect non-process
-    // trackers since we can enforce that the reported memory usage is internally
-    // consistent.)
-    if (tracker->consumption_func_) {
+    if (!tracker->UpdateConsumption()) {
+      tracker->consumption_.IncrementBy(-bytes);
+      // If a UDF calls FunctionContext::TrackAllocation() but allocates less than the
+      // reported amount, the subsequent call to FunctionContext::Free() may cause the
+      // process mem tracker to go negative until it is synced back to the tcmalloc
+      // metric. Don't blow up in this case. (Note that this doesn't affect non-process
+      // trackers since we can enforce that the reported memory usage is internally
+      // consistent.)
       DCHECK_GE(tracker->consumption_.current_value(), 0) << "Tracker: " << tracker->ToString();
     }
   }
@@ -499,23 +489,35 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   }
 
   {
-    std::lock_guard<simple_spinlock> l(gc_lock_);
-    if (consumption_func_) {
-      UpdateConsumption();
-    }
-    uint64_t pre_gc_consumption = consumption();
     // Check if someone gc'd before us
-    if (pre_gc_consumption < max_consumption) {
+    if (GetUpdatedConsumption() < max_consumption) {
       return false;
     }
 
-    // Try to free up some memory
-    for (const auto& gc_function : gc_functions_) {
-      gc_function();
-      if (consumption_func_) {
-        UpdateConsumption();
+    // Create vector of alive garbage collectors. Also remove stale garbage collectors.
+    std::vector<std::shared_ptr<GarbageCollector>> collectors;
+    {
+      std::lock_guard<simple_spinlock> l(gc_mutex_);
+      collectors.reserve(gcs_.size());
+      auto w = gcs_.begin();
+      for (auto i = gcs_.begin(); i != gcs_.end(); ++i) {
+        auto gc = i->lock();
+        if (!gc) {
+          continue;
+        }
+        collectors.push_back(gc);
+        if (w != i) {
+          *w = *i;
+        }
+        ++w;
       }
-      if (consumption() <= max_consumption) {
+      gcs_.erase(w, gcs_.end());
+    }
+
+    // Try to free up some memory
+    for (const auto& gc : collectors) {
+      gc->CollectGarbage();
+      if (GetUpdatedConsumption() <= max_consumption) {
         break;
       }
     }
@@ -537,7 +539,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
 
     for (const auto& child : children) {
-      if (child->GcMemory(max_consumption) && consumption() <= max_consumption) {
+      if (child->GcMemory(max_consumption) && GetUpdatedConsumption() <= max_consumption) {
         return true;
       }
     }
