@@ -52,13 +52,14 @@ class Socket;
 
 namespace rpc {
 
-class Messenger;
+// Take ownership of the socket via Socket::Release
+typedef std::function<void(Socket *new_socket, const Endpoint& remote)> NewSocketHandler;
 
 // A acceptor that calls accept() to create new connections.
 class Acceptor {
  public:
   // Create a new acceptor pool.
-  explicit Acceptor(Messenger *messenger);
+  Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler);
   ~Acceptor();
 
   // Setup acceptor to listen address.
@@ -79,7 +80,7 @@ class Acceptor {
     Endpoint endpoint;
   };
 
-  Messenger *messenger_;
+  NewSocketHandler handler_;
   scoped_refptr<yb::Thread> thread_;
   std::mutex mutex_;
   std::unordered_map<ev::io*, AcceptingSocket> sockets_;

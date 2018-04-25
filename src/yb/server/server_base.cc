@@ -120,15 +120,13 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
 
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                              const string& metric_namespace,
-                             rpc::ConnectionContextFactoryPtr connection_context_factory)
+                             MemTrackerPtr mem_tracker)
     : name_(std::move(name)),
-      mem_tracker_(connection_context_factory->parent_tracker()),
+      mem_tracker_(std::move(mem_tracker)),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
-      rpc_server_(new RpcServer(name_, options.rpc_opts)),
       is_first_run_(false),
-      connection_context_factory_(std::move(connection_context_factory)),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -139,9 +137,16 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   }
 }
 
+void RpcServerBase::SetConnectionContextFactory(
+    rpc::ConnectionContextFactoryPtr connection_context_factory) {
+  rpc_server_.reset(new RpcServer(name_, options_.rpc_opts, std::move(connection_context_factory)));
+}
+
 RpcServerBase::~RpcServerBase() {
   Shutdown();
-  mem_tracker_->UnregisterFromParent();
+  if (mem_tracker_->parent()) {
+    mem_tracker_->UnregisterFromParent();
+  }
 }
 
 Endpoint RpcServerBase::first_rpc_address() const {
@@ -183,7 +188,6 @@ Status RpcServerBase::Init() {
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
   builder.set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
-  builder.UseConnectionContextFactory(connection_context_factory_);
   RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_));
@@ -237,7 +241,7 @@ Status RpcServerBase::DumpServerInfo(const string& path,
 }
 
 Status RpcServerBase::RegisterService(size_t queue_limit,
-                                      std::unique_ptr<rpc::ServiceIf> rpc_impl,
+                                      rpc::ServiceIfPtr rpc_impl,
                                       ServicePriority priority) {
   return rpc_server_->RegisterService(queue_limit, std::move(rpc_impl), priority);
 }
@@ -321,13 +325,14 @@ void RpcServerBase::Shutdown() {
     metrics_logging_thread_->Join();
   }
   rpc_server_->Shutdown();
+  messenger_->Shutdown();
 }
 
 RpcAndWebServerBase::RpcAndWebServerBase(
     std::string name, const ServerBaseOptions& options,
     const std::string& metric_namespace,
-    rpc::ConnectionContextFactoryPtr connection_context_factory)
-    : RpcServerBase(name, options, metric_namespace, std::move(connection_context_factory)),
+    MemTrackerPtr mem_tracker)
+    : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker)),
       web_server_(new Webserver(options.webserver_opts, name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;

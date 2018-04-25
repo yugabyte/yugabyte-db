@@ -25,25 +25,37 @@ namespace rpc {
 
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
-  explicit YBConnectionContext(
-      GrowableBufferAllocator* allocator,
-      const MemTrackerPtr& call_tracker);
+  YBConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker);
   ~YBConnectionContext();
+
+  const MemTrackerPtr& call_tracker() const { return call_tracker_; }
+
+ protected:
+  BinaryCallParser& parser() { return parser_; }
 
  private:
   uint64_t ExtractCallId(InboundCall* call) override;
 
   size_t BufferLimit() override;
 
+  BinaryCallParser parser_;
+
+  const MemTrackerPtr call_tracker_;
+};
+
+class YBInboundConnectionContext : public YBConnectionContext {
+ public:
+  YBInboundConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker)
+      : YBConnectionContext(allocator, call_tracker) {}
+
+  static std::string Name() { return "Inbound RPC"; }
+ private:
+  // Takes ownership of call_data content.
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
+  void Connected(const ConnectionPtr& connection) override;
   Result<size_t> ProcessCalls(const ConnectionPtr& connection,
                               const IoVecs& data,
                               ReadBufferFull read_buffer_full) override;
-
-  void Connected(const ConnectionPtr& connection) override;
-  void AssignConnection(const ConnectionPtr& connection) override;
-
-  // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
 
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
@@ -51,10 +63,6 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
   RpcConnectionPB::StateType State() override { return state_; }
 
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
-
-  BinaryCallParser parser_;
-
-  const MemTrackerPtr call_tracker_;
 };
 
 class YBInboundCall : public InboundCall {
@@ -164,6 +172,27 @@ class YBInboundCall : public InboundCall {
   RemoteMethod remote_method_;
 
   ScopedTrackedConsumption consumption_;
+};
+
+class YBOutboundConnectionContext : public YBConnectionContext {
+ public:
+  YBOutboundConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker)
+      : YBConnectionContext(allocator, call_tracker) {}
+
+  static std::string Name() { return "Outbound RPC"; }
+
+ private:
+  RpcConnectionPB::StateType State() override {
+    return RpcConnectionPB::OPEN;
+  }
+
+  // Takes ownership of call_data content.
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
+  void Connected(const ConnectionPtr& connection) override;
+  void AssignConnection(const ConnectionPtr& connection) override;
+  Result<size_t> ProcessCalls(const ConnectionPtr& connection,
+                              const IoVecs& data,
+                              ReadBufferFull read_buffer_full) override;
 };
 
 } // namespace rpc
