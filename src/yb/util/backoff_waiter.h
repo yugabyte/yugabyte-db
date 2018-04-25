@@ -22,7 +22,10 @@ namespace yb {
 // It tracks number of attempts and exponentially increase sleep timeout.
 class BackoffWaiter {
  public:
-  explicit BackoffWaiter(std::chrono::steady_clock::time_point deadline) : deadline_(deadline) {}
+  explicit BackoffWaiter(
+      std::chrono::steady_clock::time_point deadline,
+      std::chrono::steady_clock::duration max_wait = std::chrono::steady_clock::duration::max())
+      : deadline_(deadline), max_wait_(max_wait) {}
 
   bool Wait();
 
@@ -38,6 +41,7 @@ class BackoffWaiter {
  private:
   int attempt_ = 0;
   std::chrono::steady_clock::time_point deadline_;
+  std::chrono::steady_clock::duration max_wait_;
 };
 
 } // namespace yb
