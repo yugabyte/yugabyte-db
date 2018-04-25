@@ -39,6 +39,9 @@
 
 . "${BASH_SOURCE%/*}/../../../build-support/common-build-env.sh"
 
+# In case we are on NFS, try to use the shared thirdparty, if possible.
+find_thirdparty_dir
+
 PROTOC_BIN=$YB_THIRDPARTY_DIR/installed/uninstrumented/bin/protoc
 if [[ ! -f $PROTOC_BIN ]]; then
   if which protoc > /dev/null; then

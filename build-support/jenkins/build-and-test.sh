@@ -287,7 +287,7 @@ fi
 configure_remote_build
 
 if "$using_default_thirdparty_dir"; then
-  find_shared_thirdparty_dir
+  find_thirdparty_dir
   if ! "$found_shared_thirdparty_dir"; then
     if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
       log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
