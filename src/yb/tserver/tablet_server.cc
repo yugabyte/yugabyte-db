@@ -112,15 +112,18 @@ DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
 
-DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
-DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
+DECLARE_int64(inbound_rpc_block_size);
+DECLARE_int64(inbound_rpc_memory_limit);
 
 namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
     : RpcAndWebServerBase(
-          "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
+          "TabletServer", opts, "yb.tabletserver",
+          std::make_shared<rpc::ConnectionContextFactoryImpl<rpc::YBConnectionContext>>(
+              FLAGS_inbound_rpc_block_size, FLAGS_inbound_rpc_memory_limit,
+              server::CreateMemTrackerForServer())),
       initted_(false),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
@@ -129,8 +132,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
       tablet_server_service_(nullptr) {
-  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      FLAGS_inbound_rpc_block_size, FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 }
 
 TabletServer::~TabletServer() {
@@ -234,7 +235,7 @@ Status TabletServer::RegisterServices() {
                                                                         tablet_manager_.get()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
                                                      std::move(consensus_service),
-                                                     server::ServicePriority::kHigh));
+                                                     ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
       std::make_unique<YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl>(fs_manager_.get(),

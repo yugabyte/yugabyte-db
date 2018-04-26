@@ -229,7 +229,8 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   // Log the reason for a denied vote and record it.
   void HandleVoteDeniedUnlocked(const std::string& voter_uuid, const VoterState& state);
 
-  void TrySendRequestToVoters(std::chrono::steady_clock::time_point deadline, size_t* voters_left);
+  bool TrySendRequestToVoters(
+    std::chrono::steady_clock::time_point deadline, size_t* voters_left);
 
   // Returns a string to be prefixed to all log entries.
   // This method accesses const members and is thread safe.

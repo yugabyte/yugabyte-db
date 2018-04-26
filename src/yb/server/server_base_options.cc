@@ -171,9 +171,9 @@ Status ServerBaseOptions::DetermineMasterAddresses(
   if (addrs.size() > master_replication_factor) {
     return STATUS_FORMAT(
         ConfigurationError, "Expected $0 master endpoints, but got: $1",
-        master_replication_factor, yb::ToString(addrs));
+        master_replication_factor, ToString(addrs));
   }
-  LOG(INFO) << Format("Resolved master addresses: $0", yb::ToString(addrs));
+  LOG(INFO) << Format("Resolved master addresses: $0", ToString(addrs));
   master_addresses->clear();
   vector<string> master_addr_strings(addrs.size());
   for (const auto& addr : addrs) {

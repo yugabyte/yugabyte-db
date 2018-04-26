@@ -47,14 +47,10 @@ class CQLMetrics;
 class CQLProcessor;
 class CQLServer;
 
-class CQLServiceImpl : public CQLServerServiceIf,
-                       public GarbageCollector,
-                       public std::enable_shared_from_this<CQLServiceImpl> {
+class CQLServiceImpl : public CQLServerServiceIf {
  public:
   // Constructor.
   CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts);
-
-  void CompleteInit();
 
   void Shutdown() override;
 
@@ -115,7 +111,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   void DeletePreparedStatementUnlocked(const std::shared_ptr<const CQLStatement> stmt);
 
   // Delete the least recently used prepared statement from the cache to free up memory.
-  void CollectGarbage() override;
+  void DeleteLruPreparedStatement();
 
   // CQLServer of this service.
   CQLServer* const server_;

@@ -787,14 +787,13 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // More Reactor class members
 // ------------------------------------------------------------------------------------------------
 
-void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                                    std::unique_ptr<ConnectionContext> connection_context) {
+void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
   auto conn = std::make_shared<Connection>(this,
                                            remote,
                                            socket->Release(),
                                            ConnectionDirection::SERVER,
-                                           std::move(connection_context));
+                                           messenger_->connection_context_factory_->Create());
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   });

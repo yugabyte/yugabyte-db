@@ -27,7 +27,7 @@ DEFINE_int32(pgsql_service_queue_length, 1000, "RPC queue length for PostgreSQL 
 TAG_FLAG(pgsql_service_queue_length, advanced);
 
 DEFINE_int64(pg_rpc_block_size, 1_MB, "Redis RPC block size");
-DEFINE_int64(pg_rpc_memory_limit, 0, "PostgresQL RPC memory limit");
+DEFINE_int64(pg_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
 
 namespace yb {
 namespace pgserver {
@@ -35,11 +35,10 @@ namespace pgserver {
 PgServer::PgServer(const PgServerOptions& opts, const tserver::TabletServer* const tserver)
     : RpcAndWebServerBase(
           "PgServer", opts, "yb.pgserver",
-          MemTracker::CreateTracker(
-              "PG", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
+          std::make_shared<rpc::ConnectionContextFactoryImpl<PgConnectionContext>>(
+              FLAGS_pg_rpc_block_size, FLAGS_pg_rpc_memory_limit,
+              MemTracker::CreateTracker("PG", tserver ? tserver->mem_tracker() : nullptr))),
       opts_(opts), tserver_(tserver) {
-  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<PgConnectionContext>(
-      FLAGS_pg_rpc_block_size, FLAGS_pg_rpc_memory_limit, mem_tracker()->parent()));
 }
 
 Status PgServer::Start() {

@@ -720,14 +720,12 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
 // Simple test to ensure we can destroy an RpcServer in different states of
 // initialization before Start()ing it.
 TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
-  server::RpcServerOptions opts;
+  RpcServerOptions opts;
   {
-    server::RpcServer server1(
-        "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+    RpcServer server1("server1", opts);
   }
   {
-    server::RpcServer server2(
-        "server2", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+    RpcServer server2("server2", opts);
     MessengerBuilder mb("foo");
     auto messenger = mb.Build();
     ASSERT_OK(messenger);
@@ -738,7 +736,7 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
 // Simple test to ensure we can create RpcServer with different bind address options.
 TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000";
-  server::RpcServerOptions opts;
+  RpcServerOptions opts;
   ServerRegistrationPB reg;
   auto tbo = TabletServerOptions::CreateTabletServerOptions();
   ASSERT_OK(tbo);
@@ -746,20 +744,17 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   auto messenger = mb.Build();
   ASSERT_OK(messenger);
 
-  server::RpcServer server1(
-      "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+  RpcServer server1("server1", opts);
   ASSERT_OK(server1.Init(*messenger));
 
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
-  server::RpcServerOptions opts2;
-  server::RpcServer server2(
-      "server2", opts2, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+  RpcServerOptions opts2;
+  RpcServer server2("server2", opts2);
   ASSERT_OK(server2.Init(*messenger));
 
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
-  server::RpcServerOptions opts3;
-  server::RpcServer server3(
-      "server3", opts3, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+  RpcServerOptions opts3;
+  RpcServer server3("server3", opts3);
   ASSERT_OK(server3.Init(*messenger));
 
   reg.Clear();
@@ -774,7 +769,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
 
   reg.Clear();
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
-  server::RpcServerOptions opts4;
+  RpcServerOptions opts4;
   tbo->rpc_opts = opts4;
   YB_EDITION_NS_PREFIX TabletServer tserver2(*tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));

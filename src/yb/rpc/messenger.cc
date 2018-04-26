@@ -72,7 +72,6 @@
 #include "yb/util/trace.h"
 
 using namespace std::literals;
-using namespace std::placeholders;
 using namespace yb::size_literals;
 
 using std::string;
@@ -86,8 +85,10 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
+DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
+DEFINE_int64(inbound_rpc_memory_limit, 2_GB, "Inbound RPC memory limit");
 DEFINE_int64(outbound_rpc_block_size, 1_MB, "Outbound RPC block size");
-DEFINE_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
+DEFINE_int64(outbound_rpc_memory_limit, 2_GB, "Outbound RPC memory limit");
 
 namespace yb {
 namespace rpc {
@@ -105,7 +106,7 @@ MessengerBuilder::MessengerBuilder(std::string name)
       num_reactors_(4),
       coarse_timer_granularity_(100ms),
       connection_context_factory_(
-          rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
+          std::make_shared<rpc::ConnectionContextFactoryImpl<YBConnectionContext>>(
               FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit)) {
 }
 
@@ -196,15 +197,12 @@ void Messenger::Shutdown() {
   io_thread_pool_.Join();
 }
 
-Status Messenger::ListenAddress(
-    ConnectionContextFactoryPtr factory, const Endpoint& accept_endpoint,
-    Endpoint* bound_endpoint) {
+Status Messenger::ListenAddress(const Endpoint& accept_endpoint, Endpoint* bound_endpoint) {
   Acceptor* acceptor;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     if (!acceptor_) {
-      acceptor_.reset(new Acceptor(
-          metric_entity_, std::bind(&Messenger::RegisterInboundSocket, this, factory, _1, _2)));
+      acceptor_.reset(new Acceptor(this));
     }
     auto accept_host = accept_endpoint.address();
     auto& outbound_address = accept_host.is_v6() ? outbound_address_v6_
@@ -364,8 +362,7 @@ void Messenger::Handle(InboundCallPtr call) {
   service->Handle(std::move(call));
 }
 
-void Messenger::RegisterInboundSocket(
-    const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
+void Messenger::RegisterInboundSocket(Socket *new_socket, const Endpoint& remote) {
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     auto status = new_socket->Close();
     LOG(INFO) << "TEST: Rejected connection from " << remote
@@ -375,7 +372,7 @@ void Messenger::RegisterInboundSocket(
 
   int idx = num_connections_accepted_.fetch_add(1) % FLAGS_num_connections_to_server;
   Reactor *reactor = RemoteToReactor(remote, idx);
-  reactor->RegisterInboundSocket(new_socket, remote, factory->Create());
+  reactor->RegisterInboundSocket(new_socket, remote);
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)

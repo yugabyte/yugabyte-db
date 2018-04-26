@@ -15,39 +15,20 @@
 
 #include "yb/rpc/growable_buffer.h"
 
-#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
-
-DEFINE_int64(read_buffer_memory_limit, -5,
-             "Overall limit for read buffers. "
-             "Positive value - limit in bytes. "
-             "Negative value - percents of RAM. "
-             "Zero - unlimited.");
 
 namespace yb {
 namespace rpc {
 
 ConnectionContextFactory::ConnectionContextFactory(
-    size_t block_size, int64_t memory_limit,
-    const std::string& name,
+    size_t block_size, size_t memory_limit,
     const std::shared_ptr<MemTracker>& parent_mem_tracker)
-    : parent_tracker_(parent_mem_tracker) {
-  int64_t root_limit = AbsRelMemLimit(FLAGS_read_buffer_memory_limit, [] {
-    int64_t total_ram;
-    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
-    return total_ram;
-  });
-
-  auto root_buffer_tracker = MemTracker::FindOrCreateTracker(
-      root_limit, "Read Buffer", parent_mem_tracker);
-  memory_limit = AbsRelMemLimit(memory_limit, [&root_buffer_tracker] {
-    return root_buffer_tracker->limit();
-  });
-  auto buffer_tracker = MemTracker::FindOrCreateTracker(memory_limit, name, root_buffer_tracker);
-  allocator_ = std::make_unique<GrowableBufferAllocator>(block_size, buffer_tracker);
-  auto root_call_tracker = MemTracker::FindOrCreateTracker("Call", parent_mem_tracker);
-  call_tracker_ = MemTracker::FindOrCreateTracker(name, root_call_tracker);
+    : allocator_(new GrowableBufferAllocator(
+          block_size, memory_limit,
+          MemTracker::FindOrCreateTracker("Read Buffer", parent_mem_tracker))),
+      parent_tracker_(parent_mem_tracker),
+      call_tracker_(MemTracker::FindOrCreateTracker("Call", parent_mem_tracker)) {
 }
 
 } // namespace rpc
