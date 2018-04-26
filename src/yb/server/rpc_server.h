@@ -46,7 +46,6 @@
 #include "yb/util/enums.h"
 
 namespace yb {
-namespace server {
 
 struct RpcServerOptions {
   RpcServerOptions();
@@ -62,15 +61,14 @@ YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
 
 class RpcServer {
  public:
-  RpcServer(const std::string& name, RpcServerOptions opts,
-            rpc::ConnectionContextFactoryPtr connection_context_factory);
+  explicit RpcServer(const std::string& name, RpcServerOptions opts);
   ~RpcServer();
 
   CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
   CHECKED_STATUS RegisterService(
-      size_t queue_limit, rpc::ServiceIfPtr service,
+      size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service,
       ServicePriority priority = ServicePriority::kNormal);
   CHECKED_STATUS Bind();
   CHECKED_STATUS Start();
@@ -121,12 +119,9 @@ class RpcServer {
   // This saves the rpc host port flag's ip and port information (and no dns name lookup is done).
   std::vector<HostPort> rpc_host_port_;
 
-  rpc::ConnectionContextFactoryPtr connection_context_factory_;
-
   DISALLOW_COPY_AND_ASSIGN(RpcServer);
 };
 
-} // namespace server
 } // namespace yb
 
 #endif // YB_SERVER_RPC_SERVER_H

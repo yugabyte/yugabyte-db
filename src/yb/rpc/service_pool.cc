@@ -116,7 +116,7 @@ class ServicePoolImpl {
  public:
   ServicePoolImpl(size_t max_tasks,
        ThreadPool* thread_pool,
-       ServiceIfPtr service,
+       std::unique_ptr<ServiceIf> service,
        const scoped_refptr<MetricEntity>& entity)
       : thread_pool_(thread_pool),
         service_(std::move(service)),
@@ -238,7 +238,7 @@ class ServicePoolImpl {
   }
 
   ThreadPool* thread_pool_;
-  ServiceIfPtr service_;
+  std::unique_ptr<ServiceIf> service_;
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
@@ -259,7 +259,7 @@ void InboundCallTask::Done(const Status& status) {
 
 ServicePool::ServicePool(size_t max_tasks,
                          ThreadPool* thread_pool,
-                         ServiceIfPtr service,
+                         std::unique_ptr<ServiceIf> service,
                          const scoped_refptr<MetricEntity>& metric_entity)
     : impl_(new ServicePoolImpl(max_tasks, thread_pool, std::move(service), metric_entity)) {
 }

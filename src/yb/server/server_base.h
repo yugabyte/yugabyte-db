@@ -52,14 +52,14 @@ class MemTracker;
 class MetricEntity;
 class MetricRegistry;
 class NodeInstancePB;
+class RpcServer;
 class ScopedGLogMetrics;
 class Thread;
 class Webserver;
 
 namespace server {
-
 class Clock;
-class RpcServer;
+
 class ServerBaseOptions;
 class ServerStatusPB;
 
@@ -96,17 +96,16 @@ class RpcServerBase {
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
                 const std::string& metrics_namespace,
-                std::shared_ptr<MemTracker> mem_tracker);
+                rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
   CHECKED_STATUS RegisterService(
-      size_t queue_limit, rpc::ServiceIfPtr rpc_impl,
+      size_t queue_limit, std::unique_ptr<rpc::ServiceIf> rpc_impl,
       ServicePriority priority = ServicePriority::kNormal);
   CHECKED_STATUS Start();
   CHECKED_STATUS StartRpcServer();
   void Shutdown();
-  void SetConnectionContextFactory(rpc::ConnectionContextFactoryPtr connection_context_factory);
 
   const std::string name_;
 
@@ -116,6 +115,8 @@ class RpcServerBase {
   gscoped_ptr<RpcServer> rpc_server_;
   std::shared_ptr<rpc::Messenger> messenger_;
   bool is_first_run_;
+
+  const rpc::ConnectionContextFactoryPtr connection_context_factory_;
 
   scoped_refptr<Clock> clock_;
 
@@ -163,7 +164,7 @@ class RpcAndWebServerBase : public RpcServerBase {
   RpcAndWebServerBase(
       std::string name, const ServerBaseOptions& options,
       const std::string& metrics_namespace,
-      std::shared_ptr<MemTracker> mem_tracker);
+      rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual ~RpcAndWebServerBase();
 
   virtual Status HandleDebugPage(const Webserver::WebRequest& req, std::stringstream* output);

@@ -78,7 +78,7 @@ std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
   bld.set_connection_keepalive_time(options.keep_alive_timeout);
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
-  bld.CreateConnectionContextFactory<YBOutboundConnectionContext>(
+  bld.CreateConnectionContextFactory<YBConnectionContext>(
       FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker(name));
   auto messenger = bld.Build();
@@ -321,9 +321,7 @@ TestServer::TestServer(std::unique_ptr<ServiceIf> service,
                                       std::move(service),
                                       messenger_->metric_entity()));
 
-  EXPECT_OK(messenger_->ListenAddress(
-      rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(),
-      options.endpoint, &bound_endpoint_));
+  EXPECT_OK(messenger_->ListenAddress(options.endpoint, &bound_endpoint_));
   EXPECT_OK(messenger_->RegisterService(service_name_, service_pool_));
   EXPECT_OK(messenger_->StartAcceptor());
 }

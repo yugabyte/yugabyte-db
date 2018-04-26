@@ -54,16 +54,11 @@ namespace yb {
 
 class MaintenanceManager;
 class RpcServer;
+struct RpcServerOptions;
 class ServerEntryPB;
 class ThreadPool;
 
 using yb::consensus::RaftConfigPB;
-
-namespace server {
-
-struct RpcServerOptions;
-
-}
 
 namespace master {
 

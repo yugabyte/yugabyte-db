@@ -104,9 +104,9 @@ size_t YBConnectionContext::BufferLimit() {
   return FLAGS_rpc_max_message_size;
 }
 
-Result<size_t> YBInboundConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                                        const IoVecs& data,
-                                                        ReadBufferFull read_buffer_full) {
+Result<size_t> YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
+                                                 const IoVecs& data,
+                                                 ReadBufferFull read_buffer_full) {
   if (state_ == RpcConnectionPB::NEGOTIATING) {
     // We assume that header is fully contained in the first block.
     if (data[0].iov_len < kConnectionHeaderSize) {
@@ -123,20 +123,32 @@ Result<size_t> YBInboundConnectionContext::ProcessCalls(const ConnectionPtr& con
     IoVecs data_copy(data);
     data_copy[0].iov_len -= kConnectionHeaderSize;
     data_copy[0].iov_base = const_cast<uint8_t*>(slice.data() + kConnectionHeaderSize);
-    return VERIFY_RESULT(parser().Parse(connection, data_copy)) + kConnectionHeaderSize;
+    return VERIFY_RESULT(parser_.Parse(connection, data_copy)) + kConnectionHeaderSize;
   }
 
-  return parser().Parse(connection, data);
+  return parser_.Parse(connection, data);
 }
 
-Status YBInboundConnectionContext::HandleCall(
+Status YBConnectionContext::HandleCall(
+    const ConnectionPtr& connection, std::vector<char>* call_data) {
+  const auto direction = connection->direction();
+  switch (direction) {
+    case ConnectionDirection::CLIENT:
+      return connection->HandleCallResponse(call_data);
+    case ConnectionDirection::SERVER:
+      return HandleInboundCall(connection, call_data);
+  }
+  FATAL_INVALID_ENUM_VALUE(ConnectionDirection, direction);
+}
+
+Status YBConnectionContext::HandleInboundCall(
     const ConnectionPtr& connection, std::vector<char>* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
   auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener());
 
-  Status s = call->ParseFrom(call_tracker(), call_data);
+  Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
     return s;
   }
@@ -155,10 +167,16 @@ uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
   return down_cast<YBInboundCall*>(call)->call_id();
 }
 
-void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
-  DCHECK_EQ(connection->direction(), Connection::Direction::SERVER);
+void YBConnectionContext::Connected(const ConnectionPtr& connection) {
+  auto direction = connection->direction();
+  state_ = direction == ConnectionDirection::SERVER ? RpcConnectionPB::NEGOTIATING
+                                                    : RpcConnectionPB::OPEN;
+}
 
-  state_ = RpcConnectionPB::NEGOTIATING;
+void YBConnectionContext::AssignConnection(const ConnectionPtr& connection) {
+  if (connection->direction() == ConnectionDirection::CLIENT) {
+    connection->QueueOutboundData(ConnectionHeader::Instance());
+  }
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
@@ -393,25 +411,6 @@ void YBInboundCall::Respond(const MessageLite& response, bool is_success) {
   TRACE_EVENT_ASYNC_END1("rpc", "InboundCall", this, "method", method_name());
 
   QueueResponse(is_success);
-}
-
-Status YBOutboundConnectionContext::HandleCall(
-    const ConnectionPtr& connection, std::vector<char>* call_data) {
-  return connection->HandleCallResponse(call_data);
-}
-
-void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
-  DCHECK_EQ(connection->direction(), Connection::Direction::CLIENT);
-}
-
-void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
-  connection->QueueOutboundData(ConnectionHeader::Instance());
-}
-
-Result<size_t> YBOutboundConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                                         const IoVecs& data,
-                                                         ReadBufferFull read_buffer_full) {
-  return parser().Parse(connection, data);
 }
 
 } // namespace rpc

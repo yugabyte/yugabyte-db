@@ -127,23 +127,17 @@ TEST(MemTrackerTest, TrackerHierarchy) {
   c2->Release(60);
 }
 
-namespace {
-
-class GcTest : public GarbageCollector {
+class GcFunctionHelper {
  public:
   static const int NUM_RELEASE_BYTES = 1;
 
-  explicit GcTest(MemTracker* tracker) : tracker_(tracker) {}
+  explicit GcFunctionHelper(MemTracker* tracker) : tracker_(tracker) { }
 
-  void CollectGarbage() { tracker_->Release(NUM_RELEASE_BYTES); }
-
-  virtual ~GcTest() {}
+  void GcFunc() { tracker_->Release(NUM_RELEASE_BYTES); }
 
  private:
   MemTracker* tracker_;
 };
-
-} // namespace
 
 TEST(MemTrackerTest, GcFunctions) {
   shared_ptr<MemTracker> t = MemTracker::CreateTracker(10, "");
@@ -158,8 +152,8 @@ TEST(MemTrackerTest, GcFunctions) {
   EXPECT_FALSE(t->LimitExceeded());
 
   // Attach GcFunction that releases 1 byte
-  auto gc = std::make_shared<GcTest>(t.get());
-  t->AddGarbageCollector(gc);
+  GcFunctionHelper gc_func_helper(t.get());
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper));
   EXPECT_TRUE(t->TryConsume(2));
   EXPECT_EQ(t->consumption(), 10);
   EXPECT_FALSE(t->LimitExceeded());
@@ -182,10 +176,10 @@ TEST(MemTrackerTest, GcFunctions) {
 
   // Add more GcFunctions, test that we only call them until the limit is no longer
   // exceeded
-  auto gc2 = std::make_shared<GcTest>(t.get());
-  t->AddGarbageCollector(gc2);
-  auto gc3 = std::make_shared<GcTest>(t.get());
-  t->AddGarbageCollector(gc3);
+  GcFunctionHelper gc_func_helper2(t.get());
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper2));
+  GcFunctionHelper gc_func_helper3(t.get());
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper3));
   t->Consume(1);
   EXPECT_EQ(t->consumption(), 11);
   EXPECT_FALSE(t->LimitExceeded());
