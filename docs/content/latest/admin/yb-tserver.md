@@ -44,6 +44,8 @@ Flag | Mandatory | Default | Description
 `--cql_proxy_webserver_port`| N | 12000 | CQL metrics monitoring port
 `--redis_proxy_bind_address`| N | 6379  | Redis port
 `--redis_proxy_webserver_port`| N | 11000 | Redis metrics monitoring port
+`--pgsql_proxy_bind_address`| N | 5433  | PostgreSQL port
+`--pgsql_proxy_webserver_port`| N | 13000 | PostgreSQL metrics monitoring port
 `--placement_cloud`| N |`cloud1`  | Name of the cloud where this instance is deployed
 `--placement_region`| N |`datacenter1`  | Name of the region or datacenter where this instance is deployed
 `--placement_zone`| N |`rack1`  | Name of the availability zone or rack where this instance is deployed

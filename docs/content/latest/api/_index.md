@@ -18,7 +18,7 @@ YugaByte DB's YCQL and YEDIS APIs are wire-compatible with Apache Cassandra and 
       <img src="/images/section_icons/api/cql.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Yugabyte Cloud Query Language (YCQL)
+      YugaByte Cloud Query Language (YCQL)
       <div class="caption">Complete reference for Cassandra-compatible YCQL.</div>
     </div>
   </a>
@@ -28,8 +28,18 @@ YugaByte DB's YCQL and YEDIS APIs are wire-compatible with Apache Cassandra and 
       <img src="/images/section_icons/api/redis.png" aria-hidden="true" />
     </div>
     <div class="text">
-      YugabytE DIrectory Server (YEDIS)
+      YugabytE DIctionary Service (YEDIS)
       <div class="caption">Complete reference for Redis-compatible YEDIS.</div>
+    </div>
+  </a>
+
+  <a class="section-link icon-offset" href="postgresql/">
+    <div class="icon">
+      <img src="/images/section_icons/api/pgsql.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      PostgreSQL (Beta)
+      <div class="caption">Complete reference on YugaByte's support for PostgreSQL.</div>
     </div>
   </a>
 </div>

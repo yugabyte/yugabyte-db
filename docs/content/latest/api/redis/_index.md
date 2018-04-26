@@ -1,7 +1,7 @@
 ---
 title: YEDIS API
 linkTitle: YEDIS
-description: YugabytE DIrectory Server (YEDIS)
+description: YugabytE DIctionary Service (YEDIS)
 summary: Reference for Redis-compatible YEDIS API
 menu:
   latest:

@@ -1,7 +1,7 @@
 ---
 title: YCQL
 linkTitle: YCQL
-description: Yugabyte Cloud Query Language (YCQL)
+description: YugaByte Cloud Query Language (YCQL)
 summary: Reference for Cassandra-compatible YCQL API
 menu:
   latest:

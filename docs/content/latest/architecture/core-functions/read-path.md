@@ -16,7 +16,7 @@ Let us take the case of a single key read.
 ## Step 1. Identify Tablet Leader
 
 The user-issued read request first hits the YQL query layer on a port with the appropriate protocol
-(Cassandra, Redis, etc). This user request is translated by the YQL layer into an internal key. The
+(Cassandra, Redis, PostgreSQL(beta), etc). This user request is translated by the YQL layer into an internal key. The
 YQL layer then finds this tablet as well as the YB-TServers hosting it by making an RPC call to the
 YB-Master, and caches the response for future. The YQL layer then issues the read to the YB-TServer
 that hosts the leader tablet-peer. The read is handled by the leader of the RAFT group of the tablet

@@ -12,8 +12,7 @@ menu:
 ---
 
 The YQL layer implements the server-side of multiple protocols/APIs that YugaByte supports.
-Currently, YugaByte supports Apache Cassandra & Redis wire-protocols natively, and SQL is in the
-roadmap.
+Currently, YugaByte supports Apache Cassandra, Redis, PostgreSQL(beta) wire-protocols natively, and other SQL services are in the roadmap.
 
 Every YB-TServer is configured to support these protocols, on different ports. Port 9042 is the
 default port for CQL wire protocol and 6379 is the default port used for Redis wire protocol.

@@ -48,7 +48,7 @@ The easiest way to get started with the YugaByte DB is to create a multi-node lo
       <img src="/images/section_icons/quick_start/test_redis.png" aria-hidden="true" />
     </div>
     <div class="text">
-      4. Test YugaBytE DIrectory Server (YEDIS) API
+      4. Test YugabytE DIctionary Service (YEDIS) API
       <div class="caption">Test Redis-compatible YEDIS API.</div>
     </div>
   </a>

@@ -49,10 +49,12 @@ services:
       ports:
       - "9042:9042"
       - "6379:6379"
+      - "5433:5433"
       - "9000:9000"
       environment:
         SERVICE_9042_NAME: cassandra
         SERVICE_6379_NAME: redis
+        SERVICE_5433_NAME: postgresql
         SERVICE_9000_NAME: yb-tserver
       depends_on:
       - yb-master
@@ -64,19 +66,23 @@ services:
 $ docker-compose up -d
 ```
 
-Clients can now connect to YugaByte’s CQL service at http://localhost:9042 and to YugaByte’s Redis service at http://localhost:6379. The yb-master admin service is available at http://localhost:7000.
+Clients can now connect to YugaByte’s Cassandra service at localhost:9042, to YugaByte’s Redis service at localhost:6379, and to YugaByte’s PostgreSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
 
-## Connect to YCQL and YEDIS APIs
+## Connect to YCQL, YEDIS APIs, and PostgreSQL(Beta) APIs
 
 ```{.sh .copy .separator-dollar}
 # connect to cassandra service on port 9042 via cqlsh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
 ```
 
-
 ```{.sh .copy .separator-dollar}
 # connect to redis service on port 6379 via redis-cli
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
+```
+
+```{.sh .copy .separator-dollar}
+# connect to PostgreSQL service on port 5433 via psql
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/psql
 ```
 
 ## Stop the cluster

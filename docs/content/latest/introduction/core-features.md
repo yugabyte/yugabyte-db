@@ -61,7 +61,7 @@ YugaByte DB is inspired by [Google Cloud Spanner](https://cloud.google.com/spann
 
 ## 7. Multi-API
 
-YugaByte DB supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis](https://redis.io/commands) command library. Additionally, it extends both these APIs with native datatypes and operations with the goal of simplifying geo-distributed, transactional, high performance application development.
+YugaByte DB supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis](https://redis.io/commands) command library. Additionally, it extends these APIs with native datatypes and operations with the goal of simplifying geo-distributed, transactional, high performance application development.
 
 PostgreSQL API support is in Beta.
 
