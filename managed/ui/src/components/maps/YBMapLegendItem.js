@@ -26,7 +26,7 @@ export default class YBMapLegendItem extends Component {
     let regionInfo = <span/>;
     if (type !== "Region") {
       if (isNonEmptyArray(regions)) {
-        const legendSubTexts = [pluralize('Node', regions.length, true)];
+        const legendSubTexts = [pluralize('Region', regions.length, true)];
         if (isNonEmptyObject(provider)) {
           const providerInfo = PROVIDER_TYPES.find( (providerType) => providerType.code === provider.code );
           legendText = providerInfo.label;
