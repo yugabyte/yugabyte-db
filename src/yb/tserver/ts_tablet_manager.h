@@ -56,6 +56,7 @@
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 #include "yb/tablet/tablet_options.h"
@@ -225,6 +226,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Get all of the tablets currently hosted on this server.
   void GetTabletPeers(TabletPeers* tablet_peers) const;
   TabletPeers GetTabletPeers() const;
+  void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const;
 
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.
@@ -353,8 +355,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
       RegisterTabletPeerMode mode);
 
   // Helper to generate the report for a single tablet.
-  void CreateReportedTabletPB(const std::string& tablet_id,
-                              const scoped_refptr<tablet::TabletPeer>& tablet_peer,
+  void CreateReportedTabletPB(const scoped_refptr<tablet::TabletPeer>& tablet_peer,
                               master::ReportedTabletPB* reported_tablet);
 
   // Mark that the provided TabletPeer's state has changed. That should be taken into
@@ -372,7 +373,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<tablet::TabletPeer> TabletToFlush();
 
   TSTabletManagerStatePB state() const {
-    boost::shared_lock<rw_spinlock> lock(lock_);
+    boost::shared_lock<RWMutex> lock(lock_);
     return state_;
   }
 
@@ -397,7 +398,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, and
   // transition_in_progress_.
-  mutable rw_spinlock lock_;
+  mutable RWMutex lock_;
 
   // Map from tablet ID to tablet
   TabletMap tablet_map_;
@@ -456,7 +457,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 // when tablet boostrap, create, and delete operations complete.
 class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProgressDeleter> {
  public:
-  TransitionInProgressDeleter(TransitionInProgressMap* map, rw_spinlock* lock,
+  TransitionInProgressDeleter(TransitionInProgressMap* map, RWMutex* lock,
                               string entry);
 
  private:
@@ -464,7 +465,7 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
   ~TransitionInProgressDeleter();
 
   TransitionInProgressMap* const in_progress_;
-  rw_spinlock* const lock_;
+  RWMutex* const lock_;
   const std::string entry_;
 };
 
