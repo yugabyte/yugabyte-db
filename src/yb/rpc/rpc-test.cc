@@ -125,9 +125,7 @@ TEST_F(TestRpc, TestAcceptorPoolStartStop) {
   for (int i = 0; i < n_iters; i++) {
     shared_ptr<Messenger> messenger(CreateMessenger("TestAcceptorPoolStartStop"));
     Endpoint bound_endpoint;
-    ASSERT_OK(messenger->ListenAddress(
-        CreateConnectionContextFactory<YBInboundConnectionContext>(),
-        Endpoint(), &bound_endpoint));
+    ASSERT_OK(messenger->ListenAddress(Endpoint(), &bound_endpoint));
     ASSERT_OK(messenger->StartAcceptor());
     ASSERT_NE(0, bound_endpoint.port());
     messenger->Shutdown();

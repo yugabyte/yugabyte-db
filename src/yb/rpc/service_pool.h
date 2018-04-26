@@ -39,7 +39,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/mutex.h"
@@ -55,13 +54,18 @@ class Socket;
 
 namespace rpc {
 
+class Messenger;
+class ServiceIf;
+class ThreadPool;
+class ServicePoolImpl;
+
 // A pool of threads that handle new incoming RPC calls.
 // Also includes a queue that calls get pushed onto for handling by the pool.
 class ServicePool : public RpcService {
  public:
   ServicePool(size_t max_tasks,
               ThreadPool* thread_pool,
-              ServiceIfPtr service,
+              std::unique_ptr<ServiceIf> service,
               const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
 

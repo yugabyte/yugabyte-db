@@ -39,8 +39,6 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
       const MemTrackerPtr& call_tracker);
   ~RedisConnectionContext();
 
-  static std::string Name() { return "Redis"; }
-
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
 

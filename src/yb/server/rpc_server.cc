@@ -72,7 +72,6 @@ DEFINE_int32(rpc_workers_limit, 128, "Workers limit for rpc server");
 DECLARE_int32(rpc_default_keepalive_time_ms);
 
 namespace yb {
-namespace server {
 
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
@@ -82,13 +81,11 @@ RpcServerOptions::RpcServerOptions()
     connection_keepalive_time_ms(FLAGS_rpc_default_keepalive_time_ms) {
 }
 
-RpcServer::RpcServer(const std::string& name, RpcServerOptions opts,
-                     rpc::ConnectionContextFactoryPtr connection_context_factory)
+RpcServer::RpcServer(const std::string& name, RpcServerOptions opts)
     : name_(name),
       server_state_(UNINITIALIZED),
       options_(std::move(opts)),
-      normal_thread_pool_(CreateThreadPool(name, ServicePriority::kNormal)),
-      connection_context_factory_(std::move(connection_context_factory)) {}
+      normal_thread_pool_(CreateThreadPool(name, ServicePriority::kNormal)) {}
 
 RpcServer::~RpcServer() {
   Shutdown();
@@ -129,7 +126,7 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
 }
 
 Status RpcServer::RegisterService(size_t queue_limit,
-                                  rpc::ServiceIfPtr service,
+                                  unique_ptr<rpc::ServiceIf> service,
                                   ServicePriority priority) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
@@ -155,8 +152,7 @@ Status RpcServer::Bind() {
 
   rpc_bound_addresses_.resize(rpc_bind_addresses_.size());
   for (size_t i = 0; i != rpc_bind_addresses_.size(); ++i) {
-    RETURN_NOT_OK(messenger_->ListenAddress(
-        connection_context_factory_, rpc_bind_addresses_[i], &rpc_bound_addresses_[i]));
+    RETURN_NOT_OK(messenger_->ListenAddress(rpc_bind_addresses_[i], &rpc_bound_addresses_[i]));
   }
 
   server_state_ = BOUND;
@@ -205,5 +201,4 @@ unique_ptr<rpc::ThreadPool> RpcServer::CreateThreadPool(
   return make_unique<rpc::ThreadPool>(name, options_.queue_limit, options_.workers_limit);
 }
 
-} // namespace server
 } // namespace yb

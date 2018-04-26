@@ -105,8 +105,6 @@ class PgConnectionContext : public rpc::ConnectionContextWithQueue {
 
   const pgapi::PGPort& pgport() const;
 
-  static std::string Name() { return "PG"; }
-
  private:
   //------------------------------------------------------------------------------------------------
   rpc::RpcConnectionPB::StateType state_ = rpc::RpcConnectionPB::NEGOTIATING;

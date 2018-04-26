@@ -123,7 +123,11 @@ namespace master {
 
 Master::Master(const MasterOptions& opts)
   : RpcAndWebServerBase(
-        "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
+        "Master", opts, "yb.master",
+        std::make_shared<rpc::ConnectionContextFactoryImpl<rpc::YBConnectionContext>>(
+            GetAtomicFlag(&FLAGS_inbound_rpc_block_size),
+            GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
+            server::CreateMemTrackerForServer())),
     state_(kStopped),
     ts_manager_(new TSManager()),
     catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
@@ -135,10 +139,6 @@ Master::Master(const MasterOptions& opts)
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
                                                              "yb.cluster")),
     master_tablet_server_(new MasterTabletServer(metric_entity())) {
-  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_block_size),
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
-      mem_tracker()));
 }
 
 Master::~Master() {
@@ -188,7 +188,7 @@ Status Master::RegisterServices() {
       new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
                                                      std::move(consensus_service),
-                                                     server::ServicePriority::kHigh));
+                                                     ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service(
       new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));

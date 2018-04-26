@@ -336,8 +336,7 @@ class Reactor {
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
-  void RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                             std::unique_ptr<ConnectionContext> connection_context);
+  void RegisterInboundSocket(Socket *socket, const Endpoint& remote);
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
