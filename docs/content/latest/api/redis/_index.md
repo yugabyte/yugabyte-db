@@ -65,15 +65,16 @@ Command | Description |
 [`SISMEMBER`](sismember/) | Check if the members are present in a set |
 [`SMEMBERS`](smembers/) | Read all members of a set |
 [`SREM`](srem/) | Remove members from a set |
-[`STRLEN`](strlen/) | Read the length of a string|
-[`TSADD`](tsadd/) | Add a time series entry|
-[`TSGET`](tsget/) | Retrieve a time series entry|
-[`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range|
-[`TSLASTN`](tslastn/) | Retrieve the latest N time series entries for a given time series|
-[`TSCARD`](tscard/) | Retrieve the number of elements in the given time series|
-[`TSREM`](tsrem/) | Delete a time series entry|
-[`ZADD`](zadd/) | Add a sorted set entry|
-[`ZCARD`](zcard/) | Get cardinality of a sorted set|
-[`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given score range|
-[`ZREM`](zrem/) | Delete a sorted set entry|
+[`STRLEN`](strlen/) | Read the length of a string |
+[`TSADD`](tsadd/) | Add a time series entry |
+[`TSCARD`](tscard/) | Retrieve the number of elements in the given time series |
+[`TSGET`](tsget/) | Retrieve a time series entry |
+[`TSLASTN`](tslastn/) | Retrieve the latest N time series entries for a given time series |
+[`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range |
+[`TSREM`](tsrem/) | Delete a time series entry |
+[`TSREVRANGEBYTIME`](tsrevrangebytime/) | Retrieve time series entries for a given time range ordered from newest to oldest |
+[`ZADD`](zadd/) | Add a sorted set entry |
+[`ZCARD`](zcard/) | Get cardinality of a sorted set |
+[`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given score range |
+[`ZREM`](zrem/) | Delete a sorted set entry |
 [`ZREVRANGE`](zrevrange/) | Retrieve sorted set entries for given index range ordered from highest to lowest score |

@@ -5,7 +5,7 @@ description: ZCARD
 menu:
   latest:
     parent: api-redis
-    weight: 2380
+    weight: 2510
 aliases:
   - api/redis/zcard
 ---
@@ -33,13 +33,13 @@ $ ZADD z_key 3.0 v2
 (integer) 0
 ```
 ```{.sh .copy .separator-dollar}
-$ ZCARD z_key 
+$ ZCARD z_key
 ```
 ```sh
 (integer) 2
 ```
 ```{.sh .copy .separator-dollar}
-$ ZCARD ts_key 
+$ ZCARD ts_key
 ```
 ```sh
 (integer) 0

@@ -22,7 +22,6 @@ Returns the length of the resulted string after overwriting.
 
 ## EXAMPLES
 ```{.sh .copy .separator-dollar}
-```
 $ SET yugakey "YugaKey"
 ```
 ```sh

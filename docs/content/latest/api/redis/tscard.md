@@ -5,7 +5,7 @@ description: TSCARD
 menu:
   latest:
     parent: api-redis
-    weight: 2410
+    weight: 2420
 aliases:
   - api/redis/tscard
 ---
@@ -22,37 +22,38 @@ Returns the number of entries in the given time series.
 
 ## EXAMPLES
 ```{.sh .copy .separator-dollar}
-$ TSAdd ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
+$ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
 ```sh
 “OK”
 ```
 ```{.sh .copy .separator-dollar}
-$ TSCard ts_key
+$ TSCARD ts_key
 ```
 ```sh
 (integer) 5
 ```
 ```{.sh .copy .separator-dollar}
-$ TSAdd ts_key1 10 v1 20 v2 30 v3
+$ TSADD ts_key1 10 v1 20 v2 30 v3
 ```
 ```sh
 “OK”
 ```
 ```{.sh .copy .separator-dollar}
-$ TSCard ts_key1
+$ TSCARD ts_key1
 ```
 ```sh
 (integer) 3
 ```
 ```{.sh .copy .separator-dollar}
 # non-existent key returns 0
-$ TSCard ts_key2
+$ TSCARD ts_key2
 ```
 ```sh
 (integer) 0
 ```
 
 ## SEE ALSO
-[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/), 
-[`tsrangebytime`](../tsrangebytime), [`tslastn`](../tslastn)
+[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/),
+[`tsrangebytime`](../tsrangebytime), [`tsrevrangebytime`](../tsrevrangebytime),
+[`tslastn`](../tslastn)

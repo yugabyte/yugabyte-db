@@ -7,10 +7,9 @@ To build your Java application using the YugaByte Redis driver, add the followin
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jedis</artifactId>
-  <version>2.9.0-yb-2</version>
+  <version>2.9.0-yb-9</version>
 </dependency>
 ```
-
 
 ## Working Example
 
@@ -20,7 +19,6 @@ This tutorial assumes that you have:
 
 - installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
 - installed JDK version 1.8+ and maven 3.3+
-
 
 ### Creating the maven build file
 
@@ -44,7 +42,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jedis</artifactId>
-      <version>2.9.0-yb-2</version>
+      <version>2.9.0-yb-9</version>
     </dependency>
   </dependencies>
 
@@ -75,10 +73,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-
 ### Writing a HelloWorld Redis app
-
-
 
 Create the appropriate directory structure as expected by maven.
 
@@ -125,7 +120,6 @@ public class YBRedisHelloWorld {
   }
 }
 ```
-
 
 ### Building and running the app
 

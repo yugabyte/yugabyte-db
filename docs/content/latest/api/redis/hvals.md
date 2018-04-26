@@ -1,6 +1,7 @@
 ---
 title: HVALS
 linkTitle: HVALS
+description: HVALS
 menu:
   latest:
     parent: api-redis

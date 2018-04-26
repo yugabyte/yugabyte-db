@@ -5,19 +5,18 @@ description: ZRANGEBYSCORE
 menu:
   latest:
     parent: api-redis
-    weight: 2390
+    weight: 2520
 aliases:
   - api/redis/zrangebyscore
 ---
 
 ## SYNOPSIS
 <b>`ZRANGEBYSCORE key min max [WITHSCORES]`</b><br>
-This command fetches `members` for which `score` is in the given `min` `max` range. `min` and `max` are doubles. 
+This command fetches `members` for which `score` is in the given `min` `max` range. `min` and `max` are doubles.
 If `key` does not exist, an empty range is returned. If `key` corresponds to a non
 sorted-set, an error is raised. Special bounds `-inf` and `+inf` are also supported to retrieve an entire range.
 `min` and `max` are inclusive unless they are prefixed with `(`, in which case they are
 exclusive.
-
 
 ## RETURN VALUE
 Returns a list of `members` found in the range specified by `min`, `max`, unless the WITHSCORES option is specified (see below).

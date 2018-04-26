@@ -5,7 +5,7 @@ description: TSLASTN
 menu:
   latest:
     parent: api-redis
-    weight: 2400
+    weight: 2430
 aliases:
   - api/redis/tslastn
 ---
@@ -23,13 +23,13 @@ Returns a list of timestamp, value pairs for the latest N entries in the time se
 
 ## EXAMPLES
 ```{.sh .copy .separator-dollar}
-$ TSAdd ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
+$ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
 ```sh
 “OK”
 ```
 ```{.sh .copy .separator-dollar}
-$ TSLastN ts_key 2
+$ TSLASTN ts_key 2
 ```
 ```sh
 1) "40"
@@ -38,7 +38,7 @@ $ TSLastN ts_key 2
 4) "v5"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSLastN ts_key 3
+$ TSLASTN ts_key 3
 ```
 ```sh
 1) "30"
@@ -49,24 +49,24 @@ $ TSLastN ts_key 3
 6) "v5"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSLastN ts_key 9999999999
+$ TSLASTN ts_key 9999999999
 ```
 ```sh
 (error) ERR tslastn: limit field 9999999999 is not within valid bounds
 ```
 ```{.sh .copy .separator-dollar}
-$ TSLastN ts_key 0
+$ TSLASTN ts_key 0
 ```
 ```sh
 (error) ERR tslastn: limit field 0 is not within valid bounds
 ```
 ```{.sh .copy .separator-dollar}
-$ TSLastN ts_key -1
-	```
+$ TSLASTN ts_key -1
+```
 ```sh
 (error) ERR tslastn: limit field -1 is not within valid bounds
 ```
 
 ## SEE ALSO
-[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/), 
-[`tsrangebytime`](../tsrangebytime), [`tscard`](../tscard)
+[`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/),
+[`tsrangebytime`](../tsrangebytime), [`tsrangebytime`](../tsrangebytime), [`tscard`](../tscard)

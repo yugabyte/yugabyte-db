@@ -5,17 +5,17 @@ description: ZADD
 menu:
   latest:
     parent: api-redis
-    weight: 2370
+    weight: 2500
 aliases:
   - api/redis/zadd
 ---
 
 ## SYNOPSIS
 <b>`ZADD key [NX|XX] [CH] [INCR] score member [score member ...]`</b><br>
-This command sets all specified `members` with their respective `scores` in the sorted set 
+This command sets all specified `members` with their respective `scores` in the sorted set
 specified by `key`, with multiple `score` `member` pairs possible. If a specified `member` is already in
 the sorted set, this command updates that `member` with the new `score`. If the `key` does not exist, a new sorted set
-is created, with the specified pairs as the only elements in the set. A `score` should be a double, 
+is created, with the specified pairs as the only elements in the set. A `score` should be a double,
 while a `member` can be any string.
 
 ## RETURN VALUE
@@ -75,7 +75,7 @@ $ ZADD z_key XX 1.0 v1 4.0 v4
 ```
 
 With the NX option specified, only add new members. Here only v4 is added.
-```{.sh .copy .separator-dollar} 
+```{.sh .copy .separator-dollar}
 $ ZADD z_key NX 0.0 v1 4.0 v4
 ```
 ```sh
@@ -87,7 +87,7 @@ With the CH option specified, return number of new and updated members.
 $ ZADD z_key CH 0.0 v1 5.0 v5
 ```
 ```sh
-(integer) 2 
+(integer) 2
 ```
 
 With the INCR option specified, increment by score. Score of v5 should now be 6.0.

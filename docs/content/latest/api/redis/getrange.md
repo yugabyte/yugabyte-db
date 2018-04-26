@@ -34,6 +34,8 @@ $ GETRANGE yugakey 0 3
 ```
 ```{.sh .copy .separator-dollar}
 $ GETRANGE yugakey -4 -1
+```
+```sh
 "Byte"
 ```
 
