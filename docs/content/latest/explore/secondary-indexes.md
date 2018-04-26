@@ -1,6 +1,6 @@
 ---
-title: 4. Secondary Indexes
-linkTitle: 4. Secondary Indexes
+title: 5. Secondary Indexes
+linkTitle: 5. Secondary Indexes
 description: Secondary Indexes
 aliases:
   - /explore/secondary-indexes/

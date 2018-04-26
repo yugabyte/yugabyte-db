@@ -33,6 +33,16 @@ You can use your [local cluster](../quick-start/) to explore all the core featur
     </div>
   </a>
 
+  <a class="section-link icon-offset" href="json-documents/">
+    <div class="icon">
+      <img src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      JSON Documents
+      <div class="caption">Working with JSON document data type.</div>
+    </div>
+  </a>
+  
   <a class="section-link icon-offset" href="transactions/">
     <div class="icon">
       <img src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
@@ -42,7 +52,7 @@ You can use your [local cluster](../quick-start/) to explore all the core featur
       <div class="caption">Multi-row and multi-shard transactions at any scale.</div>
     </div>
   </a>
-  
+
   <a class="section-link icon-offset" href="secondary-indexes/">
     <div class="icon">
       <i class="fa fa-sitemap"></i>

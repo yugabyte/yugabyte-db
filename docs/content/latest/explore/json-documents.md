@@ -1,26 +1,19 @@
 ---
-title: 4. ACID Transactions
-linkTitle: 4. ACID Transactions
-description: Distributed ACID Transactions
+title: 3. JSON Documents
+linkTitle: 3. JSON Documents
+description: Working with JSON Documents
 aliases:
-  - /explore/transactions/
+  - /explore/json-documents/
 menu:
   latest:
-    identifier: transactions
+    identifier: json-documents
     parent: explore
-    weight: 230
+    weight: 229
 ---
 
-[ **_Distributed ACID transactions are currently in beta_** ]
+The JSON document data type makes it very easy to model use-cases which require a flexible schema. YugaByte DB supports a `JSONB` data type that parse, store and query JSON documents natively.
 
-Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
-
-YugaByte DB is designed to support transactions at the following isolation levels:
-
-- Snapshot Isolation (currently supported)
-- Serializable (work in progress)
-
-You can [read more about transactions](../../architecture/transactions/) in our architecture docs.
+In this tutorial, we are going to look the example of an online bookstore. The bookstore has a number of books, each of these books has a number of attributes describing it like the name, the author, and so on. We are going to model these book details as a JSON object using the JSONB datatype.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
@@ -53,15 +46,15 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 
 <div class="tab-content">
   <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/transactions.md" /%}}
+    {{% includeMarkdown "docker/json-documents.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/transactions.md" /%}}
+    {{% includeMarkdown "kubernetes/json-documents.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/transactions.md" /%}}
+    {{% includeMarkdown "binary/json-documents.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/transactions.md" /%}}
+    {{% includeMarkdown "binary/json-documents.md" /%}}
   </div> 
 </div>

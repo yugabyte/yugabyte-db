@@ -1,6 +1,6 @@
 ---
-title: 7. Tunable Reads
-linkTitle: 7. Tunable Reads
+title: 8. Tunable Reads
+linkTitle: 8. Tunable Reads
 description: Tunable Read Latency
 aliases:
   - /explore/tunable-reads/

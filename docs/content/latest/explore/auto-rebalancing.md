@@ -1,6 +1,6 @@
 ---
-title: 6. Auto Rebalancing
-linkTitle: 6. Auto Rebalancing
+title: 7. Auto Rebalancing
+linkTitle: 7. Auto Rebalancing
 description: Auto Rebalancing
 aliases:
   - /explore/auto-rebalancing/
