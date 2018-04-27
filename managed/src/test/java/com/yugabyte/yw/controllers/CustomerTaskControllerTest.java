@@ -28,6 +28,7 @@ import java.util.Calendar;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
@@ -286,6 +287,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertThat(json.get("createTime").asText(), is(notNullValue()));
     assertThat(json.get("target").asText(), allOf(notNullValue(), equalTo("Foo")));
     assertThat(json.get("type").asText(), allOf(notNullValue(), equalTo("Create")));
+    assertValue(json, "targetUUID", universe.universeUUID.toString());
     assertThat(json.get("details"), is(notNullValue()));
     JsonNode taskDetailsJson = json.get("details").get("taskDetails");
     assertThat(taskDetailsJson, is(notNullValue()));
