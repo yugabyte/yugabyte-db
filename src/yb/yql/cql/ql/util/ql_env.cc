@@ -269,7 +269,7 @@ Status QLEnv::GrantPermission(const PermissionType& permission, const ResourceTy
 }
 
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
-  return client_->CreateNamespace(keyspace_name, YQL_DATABASE_CQL);
+  return client_->CreateNamespace(keyspace_name);
 }
 
 Status QLEnv::DeleteKeyspace(const string& keyspace_name) {
