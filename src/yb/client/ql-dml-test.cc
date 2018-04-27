@@ -22,6 +22,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random.h"
@@ -1056,6 +1057,40 @@ TEST_F(QLDmlTest, TestSimultaneousReadAndWrite) {
       ASSERT_EQ((i - 1) * 2, row.column(0).int32_value());
       ASSERT_EQ("c", row.column(1).string_value());
     }
+  }
+}
+
+TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
+  constexpr int kNumIterations = 10;
+  constexpr int kNumKeys = 100;
+  const auto kOpenTimeout = 30s;
+  const auto kMaxWait = 5s;
+
+  for (int i = 0; i != kNumIterations; ++i) {
+    client::YBTableName table_name(kTableName.namespace_name(), Format("table_$0", i));
+    std::thread table_creation_thread([this, table_name] {
+      YBSchemaBuilder builder;
+      builder.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
+      builder.AddColumn("v")->Type(INT32);
+      TableHandle table;
+      ASSERT_OK(table.Create(table_name, 9, client_.get(), &builder));
+    });
+    TableHandle table;
+    BackoffWaiter waiter(std::chrono::steady_clock::now() + kOpenTimeout, kMaxWait);
+    while (!table.Open(table_name, client_.get()).ok()) {
+      ASSERT_TRUE(waiter.Wait());
+    }
+    auto session = NewSession();
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    for (int k = 0; k != kNumKeys; ++k) {
+      auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto* const req = op->mutable_request();
+      QLAddInt32HashValue(req, k);
+      table.AddInt32ColumnValue(req, "v", -k);
+      ASSERT_OK(session->Apply(op));
+    }
+    ASSERT_OK(session->Flush());
+    table_creation_thread.join();
   }
 }
 

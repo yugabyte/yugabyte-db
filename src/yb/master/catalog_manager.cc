@@ -5017,9 +5017,15 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   vector<scoped_refptr<TabletInfo>> tablets_in_range;
   table->GetTabletsInRange(req, &tablets_in_range);
 
+  bool require_tablets_runnings = req->require_tablets_running();
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
-    if (!BuildLocationsForTablet(tablet, resp->add_tablet_locations()).ok()) {
+    auto status = BuildLocationsForTablet(tablet, resp->add_tablet_locations());
+    if (!status.ok()) {
       // Not running.
+      if (require_tablets_runnings) {
+        resp->mutable_tablet_locations()->Clear();
+        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, status);
+      }
       resp->mutable_tablet_locations()->RemoveLast();
     }
   }
