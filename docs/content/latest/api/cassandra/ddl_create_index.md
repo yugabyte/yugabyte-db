@@ -67,6 +67,7 @@ Where
 ## Semantics
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed.
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
+- Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
 - Currently, when an index is created on a table, the existing data in the table is not indexed. Therefore, the index should be created before any data is inserted into the table.
 
 ### PARTITION KEY
