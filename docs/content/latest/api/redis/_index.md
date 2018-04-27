@@ -75,6 +75,7 @@ Command | Description |
 [`TSREVRANGEBYTIME`](tsrevrangebytime/) | Retrieve time series entries for a given time range ordered from newest to oldest |
 [`ZADD`](zadd/) | Add a sorted set entry |
 [`ZCARD`](zcard/) | Get cardinality of a sorted set |
+[`ZRANGE`](zrange/) | Retrieve sorted set entries for given index range
 [`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given score range |
 [`ZREM`](zrem/) | Delete a sorted set entry |
 [`ZREVRANGE`](zrevrange/) | Retrieve sorted set entries for given index range ordered from highest to lowest score |

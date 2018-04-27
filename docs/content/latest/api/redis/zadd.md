@@ -113,4 +113,4 @@ $ ZRANGEBYSCORE z_key -inf +inf
 ```
 
 ## SEE ALSO
-[`zcard`](../zcard/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)
+[`zcard`](../zcard/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

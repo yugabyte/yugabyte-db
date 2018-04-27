@@ -45,4 +45,4 @@ $ ZCARD ts_key
 (integer) 0
 ```
 ## SEE ALSO
-[`zadd`](../zadd/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)
+[`zadd`](../zadd/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)
