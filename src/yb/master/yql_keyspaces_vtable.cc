@@ -30,8 +30,8 @@ Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
-    // Skip non-CQL tables.
-    if (ns->database_type() != YQL_DATABASE_CQL) {
+    // Skip redis keyspace for YQL.
+    if (ns->name() == common::kRedisKeyspaceName) {
       continue;
     }
 
