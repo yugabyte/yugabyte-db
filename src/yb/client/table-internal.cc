@@ -94,6 +94,7 @@ Status YBTable::Data::Open() {
   deadline.AddDelta(client_->default_admin_operation_timeout());
 
   req.mutable_table()->set_table_id(info_.table_id);
+  req.set_require_tablets_running(true);
   Status s;
   // TODO: replace this with Async RPC-retrier based RPC in the next revision,
   // adding exponential backoff and allowing this to be used safely in a
