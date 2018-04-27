@@ -692,6 +692,8 @@ message GetTableLocationsRequestPB {
   optional bytes partition_key_end = 4;
 
   optional uint32 max_returned_locations = 5 [ default = 10 ];
+
+  optional bool require_tablets_running = 6;
 }
 
 message GetTableLocationsResponsePB {
