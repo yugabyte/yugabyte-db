@@ -100,6 +100,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     responseJson.put("title", task.getFriendlyDescription());
     responseJson.put("createTime", task.getCreateTime().toString());
     responseJson.put("target", targetName);
+    responseJson.put("targetUUID", targetUUID.toString());
     responseJson.put("type", taskType.name());
     return taskUUID;
   }
@@ -197,7 +198,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertTrue(task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
     assertTrue(task.get("completionTime").isNull());
     assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
-
+    assertThat(task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(universeUUID.toString())));
     JsonNode providerTasks = json.get(providerUUID.toString());
     assertTrue(providerTasks.isArray());
     assertEquals(2, providerTasks.size());

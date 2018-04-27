@@ -89,6 +89,7 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.completionTime = task.getCompletionTime();
         taskData.target = task.getTarget().name();
         taskData.type = task.getType().name();
+        taskData.targetUUID = task.getTargetUUID();
 
         List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
         taskList.add(taskData);
