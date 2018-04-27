@@ -18,6 +18,8 @@ public class CustomerTaskFormData {
 
   public String target;
 
+  public UUID targetUUID;
+
   public String type;
 
   public String status;
