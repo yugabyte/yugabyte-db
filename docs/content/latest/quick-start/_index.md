@@ -53,12 +53,22 @@ The easiest way to get started with the YugaByte DB is to create a multi-node lo
     </div>
   </a>
 
+  <a class="section-link icon-offset" href="test-postgresql/">
+    <div class="icon">
+      <img src="/images/section_icons/quick_start/test_redis.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      5. Test PostgreSQL API (beta)
+      <div class="caption">Test YugaByte DB PostgreSQL API (in beta).</div>
+    </div>
+  </a>
+
   <a class="section-link icon-offset" href="run-sample-apps/">
     <div class="icon">
       <img src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
     </div>
     <div class="text">
-      5. Run Sample Apps
+      6. Run Sample Apps
       <div class="caption">Run pre-packaged sample apps.</div>
     </div>
   </a>
