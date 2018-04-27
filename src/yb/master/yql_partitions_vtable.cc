@@ -37,8 +37,8 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(catalog_manager->FindNamespace(nsId, &nsInfo));
 
-    // Skip non-CQL tables.
-    if (nsInfo->database_type() != YQL_DATABASE_CQL) {
+    // Hide redis table from YQL.
+    if (nsInfo->name() == common::kRedisKeyspaceName && table->name() == common::kRedisTableName) {
       continue;
     }
 
