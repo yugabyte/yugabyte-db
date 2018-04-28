@@ -1364,8 +1364,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     clock_->Update(HybridTime(request->propagated_hybrid_time()));
   }
 
-  Synchronizer log_synchronizer;
-  StatusCallback sync_status_cb = log_synchronizer.AsStatusCallback();
+  auto log_synchronizer = std::make_shared<Synchronizer>();
+  StatusCallback sync_status_cb = Synchronizer::AsStatusCallback(log_synchronizer);
 
   // The ordering of the following operations is crucial, read on for details.
   //
@@ -1516,7 +1516,7 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
   // Release the lock while we wait for the log append to finish so that commits can go through.
   // We'll re-acquire it before we update the state again.
 
-  RETURN_NOT_OK(WaitWritesUnlocked(deduped_req, &log_synchronizer));
+  RETURN_NOT_OK(WaitWritesUnlocked(deduped_req, log_synchronizer.get()));
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG_WITH_PREFIX(2) << "Replica updated."
