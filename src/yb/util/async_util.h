@@ -58,39 +58,20 @@ class Synchronizer {
   void operator=(const Synchronizer&) = delete;
 
   Synchronizer() {}
+  ~Synchronizer();
 
-  void StatusCB(const Status& status) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!assigned_) {
-      assigned_ = true;
-      status_ = status;
-      cond_.notify_all();
-    } else {
-      LOG(DFATAL) << "Status already assigned, existing: " << status_ << ", new: " << status;
-    }
-  }
+  void StatusCB(const Status& status);
 
-  StatusCallback AsStatusCallback() {
-    DCHECK(!assigned_);
+  // Use this for synchronizers declared on the stack. The callback does not take a reference to
+  // its synchronizer, so the returned callback _must_ go out of scope before its synchronizer.
+  StatusCallback AsStatusCallback();
 
-    // Synchronizers are often declared on the stack, so it doesn't make
-    // sense for a callback to take a reference to its synchronizer.
-    //
-    // Note: this means the returned callback _must_ go out of scope before
-    // its synchronizer.
-    return Bind(&Synchronizer::StatusCB, Unretained(this));
-  }
+  // Same semantics as AsStatusCallback.
+  StdStatusCallback AsStdStatusCallback();
 
-  StdStatusCallback AsStdStatusCallback() {
-    DCHECK(!assigned_);
-
-    // Synchronizers are often declared on the stack, so it doesn't make
-    // sense for a callback to take a reference to its synchronizer.
-    //
-    // Note: this means the returned callback _must_ go out of scope before
-    // its synchronizer.
-    return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
-  }
+  // This version of AsStatusCallback is for cases when the callback can outlive the synchronizer.
+  // The callback holds a weak pointer to the synchronizer.
+  static StatusCallback AsStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
 
   boost::function<void(const Status&)> AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
@@ -104,28 +85,26 @@ class Synchronizer {
     return WaitUntil(std::chrono::steady_clock::now() + delta.ToSteadyDuration());
   }
 
-  CHECKED_STATUS WaitUntil(const std::chrono::steady_clock::time_point& time) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto predicate = [this] { return assigned_; };
-    if (time == std::chrono::steady_clock::time_point::max()) {
-      cond_.wait(lock, predicate);
-    } else if (!cond_.wait_until(lock, time, predicate)) {
-      return STATUS(TimedOut, "Timed out while waiting for the callback to be called.");
-    }
+  CHECKED_STATUS WaitUntil(const std::chrono::steady_clock::time_point& time);
 
-    return status_;
-  }
-
-  void Reset() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    assigned_ = false;
-    status_ = Status::OK();
-  }
+  void Reset();
 
  private:
+
+  // Invoked in the destructor and in Reset() to make sure Wait() was invoked if it had to be.
+  void EnsureWaitDone();
+
   std::mutex mutex_;
   std::condition_variable cond_;
   bool assigned_ = false;
+
+  // If we've created a callback and given it out to an asynchronous operation, we must call Wait()
+  // on the synchronizer before destroying it. Not doing any locking around this variable because
+  // Wait() is supposed to be called on the same thread as AsStatusCallback(), or with adequate
+  // synchronization after that. Most frequently Wait() is called right after creating the
+  // synchronizer.
+  bool must_wait_ = false;
+
   Status status_;
 };
 

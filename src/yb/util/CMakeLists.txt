@@ -217,6 +217,7 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  async_util.cc
   ${UTIL_SRCS_EXTENSIONS}
   )
 
