@@ -8,6 +8,7 @@ menu:
     weight: 2500
 aliases:
   - api/redis/zadd
+  - api/yedis/zadd
 ---
 
 ## SYNOPSIS

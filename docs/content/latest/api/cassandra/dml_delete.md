@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_delete
   - api/cql/ddl_delete
+  - api/ycql/ddl_delete
 ---
 
 ## Synopsis

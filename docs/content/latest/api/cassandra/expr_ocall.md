@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/expr_ocall
   - api/cql/expr_ocall
+  - api/ycql/expr_ocall
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in YugaByte.

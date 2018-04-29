@@ -1,19 +1,20 @@
 ---
-title: Redis
-linkTitle: Redis
-description: Redis
-summary: Redis overview and commands
-aliases:
-  - /api/redis
+title: YEDIS API
+linkTitle: YEDIS
+description: YugabytE DIrectory Server (YEDIS)
+summary: Reference for Redis-compatible YEDIS API
 menu:
   latest:
     identifier: api-redis
     parent: api
     weight: 2000
+aliases:
+  - /api/redis
+  - /api/yedis
 ---
 
 ## Introduction
-YugaByte supports an automatically sharded, clustered & elastic Redis-as-a-Database in a Redis driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte servers.
+YugaByte DB supports an automatically sharded, clustered & elastic Redis-as-a-Database in a Redis driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte DB.
 
 ## Data Types
 The following datatypes can be read and written via Redis service. All data are on-disk persistent in YugaByte system.<br>

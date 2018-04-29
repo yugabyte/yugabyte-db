@@ -8,6 +8,7 @@ menu:
     weight: 2020
 aliases:
   - api/redis/auth
+  - api/yedis/auth
 ---
 Early Releases: Not supported. All `AUTH` requests with any password would be accepted as valid.
 

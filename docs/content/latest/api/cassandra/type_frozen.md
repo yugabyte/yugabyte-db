@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_frozen
   - api/cql/type_frozen
+  - api/ycql/type_frozen
 ---
 
 ## Synopsis

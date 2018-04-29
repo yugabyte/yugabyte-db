@@ -3,7 +3,7 @@
   <li >
     <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
       <i class="icon-shell"></i>
-      GKE
+      Google Kubernetes Engine (GKE)
     </a>
   </li>
 </ul>

@@ -114,7 +114,7 @@ yb-tservers   ClusterIP   None         <none>        9000/TCP,9100/TCP,9042/TCP,
 
 ## 4. Connect to the cluster
 
-You can connect to the Cassandra API by running the following.
+You can connect to the YCQL API by running the following.
 
 ```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-0 bin/cqlsh
@@ -157,3 +157,7 @@ To destroy the resource we created for the AKS cluster, run the following.
 ```{.sh .copy .separator-dollar}
 $ az group delete --name yb-eastus-resource
 ```
+
+## Advanced Kubernetes Deployment
+
+More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](/deploy/kubernetes/) section.

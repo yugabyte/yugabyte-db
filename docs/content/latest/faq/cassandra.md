@@ -1,7 +1,7 @@
 ---
-title: Cassandra API
-linkTitle: Cassandra API
-description: Apache Cassandra API
+title: Cassandra Compatibility
+linkTitle: Cassandra Compatibility
+description: Apache Cassandra Compatibility in YCQL
 aliases:
   - /faq/cassandra/
 menu:

@@ -8,6 +8,7 @@ menu:
     weight: 2290
 aliases:
   - api/redis/sismember
+  - api/yedis/sismember
 ---
 ## SYNOPSIS
 <b>`SISMEMBER key member_value`</b><br>

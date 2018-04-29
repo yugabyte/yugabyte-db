@@ -2,13 +2,13 @@
 title: docker-compose
 linkTitle: docker-compose
 description: docker-compose
-aliases:
-  - admin/docker-compose
 menu:
   latest:
     identifier: docker-compose
     parent: admin
     weight: 2430
+aliases:
+  - admin/docker-compose
 ---
 
 Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters.
@@ -66,7 +66,7 @@ $ docker-compose up -d
 
 Clients can now connect to YugaByte’s CQL service at http://localhost:9042 and to YugaByte’s Redis service at http://localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
-## Connect to YugaByte DB Cassandra and Redis APIs
+## Connect to YCQL and YEDIS APIs
 
 ```{.sh .copy .separator-dollar}
 # connect to cassandra service on port 9042 via cqlsh

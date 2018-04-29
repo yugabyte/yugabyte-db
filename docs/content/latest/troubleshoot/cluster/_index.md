@@ -19,8 +19,8 @@ menu:
       <img src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Cannot Connect to Cassandra API Service
-      <div class="caption"> Troubleshoot connecting to the YugaByte DB Cassandra API service.</div>
+      Cannot Connect to Cassandra-compatible YCQL API
+      <div class="caption"> Troubleshoot connecting to the YCQL API service.</div>
     </div>
   </a>
 
@@ -29,8 +29,8 @@ menu:
       <img src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Cannot Connect to Redis API Service
-      <div class="caption">Troubleshoot connecting to the YugaByte DB Redis API service.</div>
+      Cannot Connect to Redis-compatible YEDIS API
+      <div class="caption">Troubleshoot connecting to the YEDIS API service.</div>
     </div>
   </a>
 

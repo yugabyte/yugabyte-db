@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cql/type_collection
   - api/cassandra/type_collection
+  - api/ycql/type_collection
 ---
 
 ## Synopsis

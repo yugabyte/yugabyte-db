@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/dml_select
   - api/cql/dml_select
+  - api/ycql/dml_select
 ---
 
 ## Synopsis

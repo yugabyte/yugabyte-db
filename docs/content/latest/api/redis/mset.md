@@ -8,6 +8,7 @@ menu:
     weight: 2230
 aliases:
   - api/redis/mset
+  - api/yedis/mset
 ---
 
 ## SYNOPSIS

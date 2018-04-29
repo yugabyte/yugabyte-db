@@ -8,6 +8,7 @@ menu:
     weight: 2110
 aliases:
   - api/redis/hexists
+  - api/yedis/hexists
 ---
 
 ## SYNOPSIS

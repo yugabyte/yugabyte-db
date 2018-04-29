@@ -2,13 +2,13 @@
 title: yb-ctl
 linkTitle: yb-ctl
 description: yb-ctl
-aliases:
-  - admin/yb-ctl
 menu:
   latest:
     identifier: yb-ctl
     parent: admin
     weight: 2410
+aliases:
+  - admin/yb-ctl
 ---
 
 `yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (../yb-master/) and [`yb-tserver`] (../yb-tserver/) binaries to perform the necessary administration.
@@ -24,7 +24,7 @@ Optional Argument | Default | Description
 ----------------------------|-----------|---------------------------------------
 `--binary_dir` | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries
 `--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugaByte DB
-`--replication_factor`| `3` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
+`--replication_factor` or `--rf`| `3` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
 `--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
 `--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
 
@@ -62,7 +62,7 @@ $ ./bin/yb-ctl add_node
 - Creating a 5 node cluster with replication factor 5.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl create --rf 5
+$ ./bin/yb-ctl --rf 5 create
 ```
 
 ## Checking cluster status
@@ -73,9 +73,9 @@ You can get the status of the local cluster including the URLs for the admin UIs
 $ ./bin/yb-ctl status
 ```
 
-## Initializing the Redis API
+## Initializing the YEDIS API
 
-The `setup_redis` command to initialize YugaByte's Redis API.
+The `setup_redis` command to initialize YugaByte's Redis-compatible YEDIS API.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl setup_redis

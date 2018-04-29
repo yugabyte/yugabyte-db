@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/dml_truncate
   - api/cql/dml_truncate
+  - api/ycql/dml_truncate
 ---
 
 ## Synopsis

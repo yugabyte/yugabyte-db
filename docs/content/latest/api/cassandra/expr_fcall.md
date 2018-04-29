@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/expr_fcall
   - api/cql/expr_fcall
+  - api/ycql/expr_fcall
 ---
 
 ## Synopsis

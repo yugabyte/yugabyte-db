@@ -45,9 +45,9 @@ yb-tserver-2   1/1       Running   1          12s
 ```
 
 
-## 3. Initialize the Redis API
+## 3. Initialize the Redis-compatible YEDIS API
 
-Initialize Redis API by running the following `yb-admin` command. This will initialize the Redis API and DB in the YugaByte DB kubernetes universe we just setup.
+Initialize Redis-compatible YEDIS API in the YugaByte DB Universe we just setup by running the following `yb-admin` command. 
 
 ```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table

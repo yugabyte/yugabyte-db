@@ -45,7 +45,7 @@ This section answers the most frequently asked questions regarding YugaByte.
       <img src="/images/section_icons/api/cql.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Apache Cassandra API
+      Apache Cassandra Compatibility in YCQL
    </div>
   </a>
 </div> 

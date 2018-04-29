@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/expr_simple
   - api/cql/expr_simple
+  - api/ycql/expr_simple
 ---
 
 Simple expression can be either a column, a constant, or NULL.

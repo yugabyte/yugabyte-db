@@ -8,6 +8,7 @@ menu:
     weight: 2260
 aliases:
   - api/redis/scard
+  - api/yedis/scard
 ---
 
 ## SYNOPSIS

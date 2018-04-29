@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_bool
   - api/cql/type_bool
+  - api/ycql/type_bool
 ---
 
 ## Synopsis

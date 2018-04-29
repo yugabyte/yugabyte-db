@@ -8,6 +8,7 @@ menu:
     weight: 2040
 aliases:
   - api/redis/del
+  - api/yedis/del
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 

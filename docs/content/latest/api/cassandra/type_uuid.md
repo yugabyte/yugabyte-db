@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_uuid
   - api/cql/type_uuid
+  - api/ycql/type_uuid
 ---
 
 ## Synopsis

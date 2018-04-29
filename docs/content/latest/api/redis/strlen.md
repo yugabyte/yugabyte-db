@@ -8,6 +8,7 @@ menu:
     weight: 2320
 aliases:
   - api/redis/strlen
+  - api/yedis/strlen
 ---
 
 ## SYNOPSIS

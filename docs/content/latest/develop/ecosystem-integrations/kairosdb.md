@@ -11,7 +11,7 @@ menu:
     weight: 573
 ---
 
-[KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as it's underlying distributed database. This page shows how it can be integrated with YugaByte DB's Cassandra API.
+[KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as it's underlying distributed database. This page shows how it can be integrated with YugaByte DB's Cassandra-compatible YCQL API.
 
 ## 1. Start Local Cluster
 
@@ -57,7 +57,7 @@ You should see the following lines if KairosDB starts up successfully.
 
 ## 4. Verify Cassandra integration with cqlsh
 
-- Run cqlsh to connect to the YugaByte DB's Cassandra API. 
+- Run cqlsh to connect to the YugaByte DB's YCQL API. 
 
 ```sh
 # assuming you are using the macOS or Linux binary

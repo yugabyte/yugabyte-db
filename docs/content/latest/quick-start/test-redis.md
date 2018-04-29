@@ -1,7 +1,7 @@
 ---
-title: 4. Test Redis API
-linkTitle: 4. Test Redis API
-description: Test YugaByte DB Redis API
+title: 4. Test YEDIS API
+linkTitle: 4. Test YEDIS API
+description: Test YugabytE DIrectory Server (YEDIS) API
 aliases:
   - /quick-start/test-redis/
 menu:
@@ -10,7 +10,7 @@ menu:
     weight: 140
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's Redis API.
+After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's Redis-compatible YEDIS API.
 
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugaByte DB ships with the 4.0.1 version of redis-cli in its bin directory.
 

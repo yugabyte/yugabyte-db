@@ -8,6 +8,7 @@ menu:
     weight: 2200
 aliases:
   - api/redis/hvals
+  - api/yedis/hvals
 ---
 
 ## SYNOPSIS

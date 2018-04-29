@@ -8,6 +8,7 @@ menu:
     weight: 2540
 aliases:
   - api/redis/zrevrange
+  - api/yedis/zrevrange
 ---
 
 ## SYNOPSIS

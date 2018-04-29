@@ -2,13 +2,13 @@
 title: yb-master
 linkTitle: yb-master
 description: yb-master
-aliases:
-  - admin/yb-master
 menu:
   latest:
     identifier: yb-master
     parent: admin
     weight: 2440
+aliases:
+  - admin/yb-master
 ---
 
 `yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/universe/#yb-master) binary.

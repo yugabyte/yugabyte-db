@@ -8,6 +8,7 @@ menu:
     weight: 2064
 aliases:
   - api/redis/flushall
+  - api/yedis/flushall
 ---
 
 ## SYNOPSIS

@@ -7,9 +7,21 @@ menu:
     identifier: yb-docker-ctl
     parent: admin
     weight: 2420
+aliases:
+  - admin/yb-docker-ctl
 ---
 
 `yb-docker-ctl` is a simple command line interface for administering local Docker clusters. It manages the [`yb-master`] (../yb-master/) and [`yb-tserver`] (../yb-tserver/) containers to perform the necessary administration.
+
+## Download
+
+```{.sh .copy .separator-dollar}
+$ mkdir ~/yugabyte && cd ~/yugabyte
+```
+```{.sh .copy .separator-dollar}
+$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+```
+
 
 ## Help command
 
@@ -120,7 +132,7 @@ $ ./yb-docker-ctl remove_node --help
 usage: yb-docker-ctl remove_node [-h] node
 
 positional arguments:
-  node        Node to remove
+  node_id        Index of the node to remove
 
 optional arguments:
   -h, --help  show this help message and exit
@@ -129,7 +141,7 @@ optional arguments:
 ### Example
 
 ```{.sh .copy .separator-dollar}
-$ ./yb-docker-ctl remove_node yb-tserver-n3
+$ ./yb-docker-ctl remove_node 3
 ```
 ```sh
 Stopping node :yb-tserver-n3

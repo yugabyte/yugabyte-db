@@ -8,6 +8,7 @@ menu:
     weight: 2310
 aliases:
   - api/redis/srem
+  - api/yedis/srem
 ---
 
 ## SYNOPSIS

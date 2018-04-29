@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/dml_update
   - api/cql/dml_update
+  - api/ycql/dml_update
 ---
 
 ## Synopsis

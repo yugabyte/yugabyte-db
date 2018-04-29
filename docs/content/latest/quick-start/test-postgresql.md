@@ -1,7 +1,7 @@
 ---
 title: 5. Test PostgreSQL API
 linkTitle: 5. Test PostgreSQL API
-description: Test YugaByte DB PostgreSQL API (beta)
+description: Test PostgreSQL API (Beta)
 aliases:
   - /quick-start/test-postgresql/
 menu:
@@ -34,7 +34,7 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
   </li>
 -->
   <li >
-    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>

@@ -38,8 +38,8 @@ The easiest way to get started with the YugaByte DB is to create a multi-node lo
       <img src="/images/section_icons/quick_start/test_cql.png" aria-hidden="true" />
     </div>
     <div class="text">
-      3. Test Cassandra API
-      <div class="caption">Test YugaByte DB Cassandra API.</div>
+      3. Test YugaByte Cloud QL (YCQL) API
+      <div class="caption">Test Cassandra-compatible YCQL API.</div>
     </div>
   </a>
 
@@ -48,8 +48,8 @@ The easiest way to get started with the YugaByte DB is to create a multi-node lo
       <img src="/images/section_icons/quick_start/test_redis.png" aria-hidden="true" />
     </div>
     <div class="text">
-      4. Test Redis API
-      <div class="caption">Test YugaByte DB Redis API.</div>
+      4. Test YugaBytE DIrectory Server (YEDIS) API
+      <div class="caption">Test Redis-compatible YEDIS API.</div>
     </div>
   </a>
 
@@ -59,7 +59,7 @@ The easiest way to get started with the YugaByte DB is to create a multi-node lo
     </div>
     <div class="text">
       5. Test PostgreSQL API (beta)
-      <div class="caption">Test YugaByte DB PostgreSQL API (in beta).</div>
+      <div class="caption">Test YugaByte DB PostgreSQL API (Beta).</div>
     </div>
   </a>
 

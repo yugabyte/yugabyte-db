@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_timestamp
   - api/cql/type_timestamp
+  - api/ycql/type_timestamp
 ---
 
 ## Synopsis

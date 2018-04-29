@@ -1,7 +1,7 @@
 ---
 title: Redis Connection Issues
 linkTitle: Redis Connection Issues
-description: Cannot Connect to Redis API Service
+description: Cannot Connect to Redis-compatible YEDIS API
 aliases:
   - /troubleshoot/cluster/connect-redis/
 menu:
@@ -17,9 +17,9 @@ At a minimum, the tserver process needs to be running to be able to connect to t
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [Check Processes](/troubleshoot/nodes/check-processes/) page.
 
-## 2. Is the YugaByte DB Redis server running?
+## 2. Is YugaByte DB's Redis-compatible YEDIS service running?
 
-If the tserver process is running, make sure the YugaByte Redis server is enabled and listening on the Redis port (default `6379`).
+If the tserver process is running, make sure the the YEDIS service is enabled and listening on the Redis port (default `6379`).
 
 ```
 $ lsof -i :6379

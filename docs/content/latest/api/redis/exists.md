@@ -8,6 +8,7 @@ menu:
     weight: 2060
 aliases:
   - api/redis/exist
+  - api/yedis/exist
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 

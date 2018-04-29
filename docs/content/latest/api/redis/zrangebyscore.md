@@ -8,6 +8,7 @@ menu:
     weight: 2520
 aliases:
   - api/redis/zrangebyscore
+  - api/yedis/zrangebyscore
 ---
 
 ## SYNOPSIS

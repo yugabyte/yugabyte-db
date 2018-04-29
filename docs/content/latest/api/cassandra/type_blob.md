@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_blob
   - api/cql/type_blob
+  - api/ycql/type_blob
 ---
 
 ## Synopsis

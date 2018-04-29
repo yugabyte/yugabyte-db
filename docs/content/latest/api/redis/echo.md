@@ -8,6 +8,7 @@ menu:
     weight: 2050
 aliases:
   - api/redis/echo
+  - api/yedis/del
 ---
 
 ## SYNOPSIS

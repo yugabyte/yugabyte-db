@@ -8,5 +8,6 @@ menu:
     weight: 2030
 aliases:
   - api/redis/config
+  - api/yedis/config
 ---
 Early Releases: Not supported. All <code>CONFIG</code> requests would be accepted as valid command without further processing.

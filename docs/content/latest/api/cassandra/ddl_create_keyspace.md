@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_create_keyspace
   - api/cql/ddl_create_keyspace
+  - api/ycql/ddl_create_keyspace
 ---
 
 ## Synopsis

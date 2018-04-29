@@ -1,20 +1,21 @@
 ---
-title: Apache Cassandra
-summary: CQL features
-description: Apache Cassandra Query Language (CQL)
-aliases:
-  - api/cassandra/
+title: YCQL
+linkTitle: YCQL
+description: Yugabyte Cloud Query Language (YCQL)
+summary: Reference for Cassandra-compatible YCQL API
 menu:
   latest:
     identifier: api-cassandra
     parent: api
     weight: 1300
 aliases:
-  - api/cql
+  - api/cassandra/
+  - api/cql/
+  - api/ycql/
 ---
 
 ## Introduction
-YugaByte supports the following CQL features.
+YugaByte DB's YCQL API supports the following CQL features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

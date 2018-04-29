@@ -8,6 +8,7 @@ menu:
     weight: 2300
 aliases:
   - api/redis/smembers
+  - api/yedis/smembers
 ---
 ## SYNOPSIS
 <b>`SMEMBERS key`</b><br>

@@ -8,6 +8,7 @@ menu:
     weight: 2420
 aliases:
   - api/redis/tsget
+  - api/yedis/tsget
 ---
 
 ## SYNOPSIS

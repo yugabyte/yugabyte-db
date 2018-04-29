@@ -71,7 +71,7 @@ The sections below describe the architecture / data model for the various featur
 
 ### Product catalog management
 
-The inventory of products is modeled as a table using the Cassandra API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is co-located in the database.
+The inventory of products is modeled as a table using the Cassandra-compatible YCQL API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is co-located in the database.
 
 ```
 cqlsh> DESCRIBE TABLE yugastore.products;
@@ -130,7 +130,7 @@ insert_batch.push({
 });
 ```
 
-The dynamic attributes are loaded using the Redis API into YugaByte DB.
+The dynamic attributes are loaded using the Redis-compatible YEDIS API into YugaByte DB.
 
 ```
 ybRedisClient.zadd("allproducts:num_reviews", e.num_reviews, e.id);

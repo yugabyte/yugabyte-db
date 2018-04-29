@@ -2,13 +2,13 @@
 title: yb-tserver
 linkTitle: yb-tserver
 description: yb-tserver
-aliases:
-  - admin/yb-tserver
 menu:
   latest:
     identifier: yb-tserver
     parent: admin
     weight: 2450
+aliases:
+  - admin/yb-tserver
 ---
 
 `yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.

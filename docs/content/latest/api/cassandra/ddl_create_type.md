@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_create_type
   - api/cql/ddl_create_type
+  - api/ycql/ddl_create_type
 ---
 
 ## Synopsis

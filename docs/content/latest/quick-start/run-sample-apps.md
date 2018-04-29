@@ -41,7 +41,7 @@ $ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 ```
 
 
-## Key-Value Workload using Cassandra API
+## Key-Value Workload using YCQL API
 
 ### 1. Run the app
 
@@ -148,7 +148,7 @@ cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ```
 
 
-## Key-Value Workload using Redis API
+## Key-Value Workload using YEDIS API
 
 ### 1. Run the app
 

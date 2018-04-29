@@ -8,6 +8,7 @@ menu:
     weight: 2440
 aliases:
   - api/redis/tsrangebytime
+  - api/yedis/tsrangebytime
 ---
 
 ## SYNOPSIS

@@ -8,6 +8,7 @@ menu:
     weight: 2450
 aliases:
   - api/redis/tsrem
+  - api/yedis/tsrem
 ---
 
 ## SYNOPSIS

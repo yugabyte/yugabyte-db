@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: multi-node-cluster
     parent: deploy
-    weight: 620
+    weight: 610
 ---
 
 Multi-node clusters of YugaByte DB CE can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.

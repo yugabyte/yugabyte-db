@@ -14,13 +14,13 @@ menu:
 
 ## 1. Linear scalability
 
-The figure below represents a single YugaByte DB cluster, also known as a Universe. Each node in the universe runs the YugaByte Tablet Server (aka YB-TServer) and optionally the YugaByte Master Server (aka the YB-Master). Note that the number of YB-Masters in an universe equals the replication factor configured for the universe. More details can be found in the [Architecture](../../architecture/concepts/universe/) section.
+The figure below represents a single YugaByte DB cluster, also known as a Universe. Each node in the universe runs the YugaByte Tablet Server (aka YB-TServer) and optionally the YugaByte Master Server (aka the YB-Master). Note that the number of YB-Masters in an universe equals the replication factor configured for the universe. More details can be found in the [Architecture](/architecture/concepts/universe/) section.
 
 Each node runs on top of a instance that provides a Linux-based compute and a set of persistent disks, preferably locally attached SSDs. The cloud provider can be any of the major public cloud providers, an on-premises datacenter or even Docker engine. Universes can be linearly expanded to add new nodes in an existing availability zone, or a new availabilty zone or even new regions at any point of time. They can also be shrinked to remove unused nodes as per business needs all without taking any downtime or performance slowdown.
 
 ![YugaByte DB Architecture](/images/intro/linear-scalability.png)
 
-Shards of tables, also known as [tablets](../../architecture/concepts/sharding/), are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API](https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in [DocDB](../../architecture/concepts/persistence/), YugaByte DB's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is [consistently replicated](../../architecture/concepts/replication/) onto other nodes using the [Raft distributed consensus algorithm](https://raft.github.io/raft.pdf).
+Shards of tables, also known as [tablets](/architecture/concepts/sharding/), are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API](https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in [DocDB](../../architecture/concepts/persistence/), YugaByte DB's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is [consistently replicated](/architecture/concepts/replication/) onto other nodes using the [Raft distributed consensus algorithm](https://raft.github.io/raft.pdf).
 
 ## 2. Fault tolerance
 
@@ -61,9 +61,9 @@ YugaByte DB is inspired by [Google Cloud Spanner](https://cloud.google.com/spann
 
 ## 7. Multi-API
 
-YugaByte DB currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. Additionally, it extends both these APIs with native datatypes and operations with the goal of simplifying geo-distributed, transactional, high performance application development.
+YugaByte DB supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis](https://redis.io/commands) command library. Additionally, it extends both these APIs with native datatypes and operations with the goal of simplifying geo-distributed, transactional, high performance application development.
 
-PostgreSQL support is in the works.
+PostgreSQL API support is in Beta.
 
 ## 8. Multi-model
 

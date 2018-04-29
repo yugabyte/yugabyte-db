@@ -8,6 +8,7 @@ menu:
     weight: 2250
 aliases:
   - api/redis/sadd
+  - api/yedis/sadd
 ---
 ## SYNOPSIS
 <b>`SADD key value [value ...]`</b><br>

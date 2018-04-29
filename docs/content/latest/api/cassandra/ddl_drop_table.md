@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_drop_table
   - api/cql/ddl_drop_table
+  - api/ycql/ddl_drop_table
 ---
 
 ## Synopsis

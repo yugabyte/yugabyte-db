@@ -12,10 +12,10 @@ Download the YugaByte CE package as shown below.
 
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.9.0-linux.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.10.0-linux.tar.gz
 ```
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-0.9.9.0-linux.tar.gz && cd yugabyte-0.9.9.0/
+$ tar xvfz yugabyte-ce-0.9.10.0-linux.tar.gz && cd yugabyte-0.9.10.0/
 ```
 
 ## Configure

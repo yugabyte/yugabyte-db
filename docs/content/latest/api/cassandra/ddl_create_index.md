@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_create_index
   - api/cql/ddl_create_index
+  - api/ycql/ddl_create_index
 ---
 
 [ **_The CREATE INDEX statement is currently in beta_** ]

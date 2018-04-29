@@ -8,6 +8,7 @@ menu:
     weight: 2130
 aliases:
   - api/redis/hgetall
+  - api/yedis/hgetall
 ---
 
 ## SYNOPSIS

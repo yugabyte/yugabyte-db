@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/type_number
   - api/cql/type_number
+  - api/ycql/type_number
 ---
 
 ## Synopsis

@@ -8,8 +8,9 @@ menu:
     weight: 2240
 aliases:
   - api/redis/role
+  - api/yedis/role
 ---
-YugaByte DB only has `master` role for Redis services during the Beta releases.
+YugaByte DB only has `master` role for the Redis API.
 
 ## SYNOPSIS
 <b>`ROLE`</b><br>

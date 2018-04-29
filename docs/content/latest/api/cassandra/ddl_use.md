@@ -9,6 +9,7 @@ menu:
 aliases:
   - api/cassandra/ddl_use
   - api/cql/ddl_use
+  - api/ycql/ddl_use
 ---
 
 ## Synopsis

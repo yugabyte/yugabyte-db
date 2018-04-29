@@ -8,6 +8,7 @@ menu:
     weight: 2280
 aliases:
   - api/redis/setrange
+  - api/yedis/setrange
 ---
 ## SYNOPSIS
 <b>`SETRANGE key offset value`</b><br>

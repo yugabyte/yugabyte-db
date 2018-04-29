@@ -8,6 +8,7 @@ menu:
     weight: 2150
 aliases:
   - api/redis/hlen
+  - api/yedis/hlen
 ---
 
 ## SYNOPSIS
