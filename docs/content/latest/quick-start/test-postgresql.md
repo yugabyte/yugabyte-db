@@ -48,13 +48,15 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 </ul>
 
 <div class="tab-content">
+<!--
   <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/test-postgresql.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/test-postgresql.md" /%}}
   </div>
-  <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
+-->
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
     {{% includeMarkdown "binary/test-postgresql.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
