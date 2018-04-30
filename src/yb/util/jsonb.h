@@ -17,6 +17,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_value.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -56,27 +57,54 @@ using JEntry = JsonbMetadata;
 // 4. We store information about whether a container is an array or an object in the JEntry.
 class Jsonb {
  public:
+
+  Jsonb();
+
+  // Creates an object from a serialized jsonb payload.
+  explicit Jsonb(const std::string& jsonb);
+
+  explicit Jsonb(std::string&& jsonb);
+
   // Creates a serialized jsonb string from plaintext json.
-  static CHECKED_STATUS ToJsonb(const std::string& json, std::string* jsonb);
+  CHECKED_STATUS FromString(const std::string& json);
+
   // Builds a json document from serialized jsonb.
-  static CHECKED_STATUS FromJsonb(const Slice& jsonb, rapidjson::Document* document);
+  CHECKED_STATUS ToRapidJson(rapidjson::Document* document) const;
+
   // Returns a json string for serialized jsonb
-  static CHECKED_STATUS FromJsonb(const Slice& jsonb, std::string* json);
+  CHECKED_STATUS ToJsonString(std::string* json) const;
+
+  CHECKED_STATUS ApplyJsonbOperators(const QLJsonColumnOperationsPB& json_ops,
+                                     QLValue* result) const;
+
+  const std::string& SerializedJsonb() const;
+
+  // Use with extreme care since this destroys the internal state of the object. The only purpose
+  // for this method is to allow for efficiently moving the serialized jsonb.
+  std::string&& MoveSerializedJsonb();
+
+  bool operator==(const Jsonb& other) const;
+
+ private:
+  std::string serialized_jsonb_;
 
   // Given a jsonb slice, it applies the given operator to the slice and returns the result as a
   // Slice and the element's metadata.
   static CHECKED_STATUS ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& json_op,
                                            Slice* result, JEntry* element_metadata);
+
   static bool IsScalar(const JEntry& jentry);
+
   // Given a scalar value retrieved from a serialized jsonb, this method creates a jsonb scalar
   // (which is a single element within an array). This is required for comparison purposes.
   static CHECKED_STATUS CreateScalar(const Slice& scalar, const JEntry& original_jentry,
                                      std::string* scalar_jsonb);
+
   // Given a serialized json scalar and its metadata, return a string representation of it.
   static CHECKED_STATUS ScalarToString(const JEntry& element_metadata, const Slice& json_value,
                                        std::string* result);
 
- private:
+  static CHECKED_STATUS ToJsonStringInternal(const Slice& jsonb, std::string* json);
   static size_t ComputeDataOffset(const size_t num_entries, const uint32_t container_type);
   static CHECKED_STATUS ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb);
   static CHECKED_STATUS ToJsonbProcessObject(const rapidjson::Value& document,
@@ -84,9 +112,6 @@ class Jsonb {
   static CHECKED_STATUS ToJsonbProcessArray(const rapidjson::Value& document,
                                             bool is_scalar,
                                             std::string* jsonb);
-  static CHECKED_STATUS ProcessJsonValue(const rapidjson::Value& value,
-                                         const size_t data_begin_offset,
-                                         size_t* metadata_offset);
   static CHECKED_STATUS ProcessJsonValueAndMetadata(const rapidjson::Value& value,
                                                     const size_t data_begin_offset,
                                                     std::string* jsonb,

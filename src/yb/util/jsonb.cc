@@ -34,7 +34,30 @@ size_t Jsonb::ComputeDataOffset(const size_t num_entries, const uint32_t contain
   return sizeof(JsonbHeader) + num_jentries * sizeof(JEntry);
 }
 
-Status Jsonb::ToJsonb(const std::string& json, std::string* jsonb) {
+Jsonb::Jsonb() {
+}
+
+Jsonb::Jsonb(const std::string& jsonb) :
+  serialized_jsonb_(jsonb) {
+}
+
+Jsonb::Jsonb(std::string&& jsonb) :
+    serialized_jsonb_(std::move(jsonb)) {
+}
+
+std::string&& Jsonb::MoveSerializedJsonb() {
+  return std::move(serialized_jsonb_);
+}
+
+const std::string& Jsonb::SerializedJsonb() const {
+  return serialized_jsonb_;
+}
+
+bool Jsonb::operator==(const Jsonb& other) const {
+  return serialized_jsonb_ == other.serialized_jsonb_;
+}
+
+Status Jsonb::FromString(const std::string& json) {
   // Parse the json document.
   rapidjson::Document document;
   document.Parse<0>(json.c_str());
@@ -42,7 +65,7 @@ Status Jsonb::ToJsonb(const std::string& json, std::string* jsonb) {
     return STATUS(Corruption, "JSON text is corrupt",
                   rapidjson::GetParseError_En(document.GetParseError()));
   }
-  return ToJsonbInternal(document, jsonb);
+  return ToJsonbInternal(document, &serialized_jsonb_);
 }
 
 std::pair<size_t, size_t> Jsonb::ComputeOffsetsAndJsonbHeader(size_t num_entries,
@@ -591,13 +614,17 @@ pair<size_t, size_t> Jsonb::GetOffsetAndLength(size_t element_metadata_offset,
 
 }
 
-Status Jsonb::FromJsonb(const Slice& jsonb, rapidjson::Document* document) {
-  return FromJsonbInternal(jsonb, document);
+Status Jsonb::ToRapidJson(rapidjson::Document* document) const {
+  return FromJsonbInternal(serialized_jsonb_, document);
 }
 
-Status Jsonb::FromJsonb(const Slice& jsonb, std::string* json) {
+Status Jsonb::ToJsonString(std::string* json) const {
+  return ToJsonStringInternal(serialized_jsonb_, json);
+}
+
+Status Jsonb::ToJsonStringInternal(const Slice& jsonb, std::string* json) {
   rapidjson::Document document;
-  RETURN_NOT_OK(FromJsonb(jsonb, &document));
+  RETURN_NOT_OK(FromJsonbInternal(jsonb, &document));
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   document.Accept(writer);
@@ -665,6 +692,57 @@ Status Jsonb::ApplyJsonbOperatorToObject(const Slice& jsonb, const QLJsonOperati
     }
   }
   return STATUS_SUBSTITUTE(NotFound, "Couldn't find key $0 in json document", search_key);
+}
+
+Status Jsonb::ApplyJsonbOperators(const QLJsonColumnOperationsPB& json_ops, QLValue* result) const {
+  const int num_ops = json_ops.json_operations().size();
+
+  Slice jsonop_result;
+  Slice operand(serialized_jsonb_);
+  JEntry element_metadata;
+  for (int i = 0; i < num_ops; i++) {
+    const QLJsonOperationPB &op = json_ops.json_operations().Get(i);
+    const Status s = ApplyJsonbOperator(operand, op, &jsonop_result,
+                                        &element_metadata);
+    if (s.IsNotFound()) {
+      // We couldn't apply the operator to the operand and hence return null as the result.
+      result->SetNull();
+      return Status::OK();
+    }
+    RETURN_NOT_OK(s);
+
+    if (IsScalar(element_metadata) && i != num_ops - 1) {
+      // We have to apply another operation after this, but we received a scalar intermediate
+      // result.
+      result->SetNull();
+      return Status::OK();
+    }
+    operand = jsonop_result;
+  }
+
+  // In case of '->>', we need to return a string result.
+  if (num_ops > 0 &&
+      json_ops.json_operations().Get(num_ops - 1).json_operator() == JsonOperatorPB::JSON_TEXT) {
+    if (IsScalar(element_metadata)) {
+      RETURN_NOT_OK(ScalarToString(element_metadata, jsonop_result,
+                                   result->mutable_string_value()));
+    } else {
+      string str_result;
+      RETURN_NOT_OK(ToJsonStringInternal(jsonop_result, &str_result));
+      result->set_string_value(std::move(str_result));
+    }
+    return Status::OK();
+  }
+
+  string jsonb_result = jsonop_result.ToBuffer();
+  if (IsScalar(element_metadata)) {
+    // In case of a scalar that is received from an operation, convert it to a jsonb scalar.
+    RETURN_NOT_OK(CreateScalar(jsonop_result,
+                               element_metadata,
+                               &jsonb_result));
+  }
+  result->set_jsonb_value(std::move(jsonb_result));
+  return Status::OK();
 }
 
 Status Jsonb::ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& json_op,

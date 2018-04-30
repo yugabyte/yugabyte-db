@@ -25,12 +25,12 @@ namespace yb {
 namespace util {
 
 void ParseJson(const std::string& json, rapidjson::Document* document) {
-  std::string jsonb;
+  Jsonb jsonb;
   LOG(INFO) << "Parsing json...";
-  ASSERT_OK(Jsonb::ToJsonb(json, &jsonb));
-  ASSERT_FALSE(jsonb.empty());
+  ASSERT_OK(jsonb.FromString(json));
+  ASSERT_FALSE(jsonb.SerializedJsonb().empty());
 
-  ASSERT_OK(Jsonb::FromJsonb(jsonb, document));
+  ASSERT_OK(jsonb.ToRapidJson(document));
 
   rapidjson::StringBuffer buffer;
   rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
