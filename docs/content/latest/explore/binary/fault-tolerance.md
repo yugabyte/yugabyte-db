@@ -74,7 +74,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node 5.
 
 ```{.sh .copy .separator-dollar}
-./bin/cqlsh 127.0.0.5
+$ ./bin/cqlsh 127.0.0.5
 ```
 ```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
@@ -107,7 +107,7 @@ $ ./bin/yb-ctl status
 Let us simulate a node failure by removing node 5.
 
 ```{.sh .copy .separator-dollar}
-./bin/yb-ctl remove_node 5
+$ ./bin/yb-ctl remove_node 5
 ```
 
 Now running the status command should show only 4 nodes:
@@ -127,7 +127,7 @@ $ ./bin/yb-ctl status
 Now connect to node 4.
 
 ```{.sh .copy .separator-dollar}
-./bin/cqlsh 127.0.0.4
+$ ./bin/cqlsh 127.0.0.4
 ```
 
 Let us insert some data.
@@ -159,7 +159,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 This cluster was created with replication factor 5 and hence needs only 3 replicas to make consensus. Therefore, it is resilient to 2 failures without any data loss. Let us simulate another node failure.
 
 ```{.sh .copy .separator-dollar}
-./bin/yb-ctl remove_node 1
+$ ./bin/yb-ctl remove_node 1
 ```
 
 We can check the status to verify:
@@ -179,7 +179,7 @@ $ ./bin/yb-ctl status
 Now let us connect to node 2.
 
 ```{.sh .copy .separator-dollar}
-./bin/cqlsh 127.0.0.2
+$ ./bin/cqlsh 127.0.0.2
 ```
 
 Insert some data.
