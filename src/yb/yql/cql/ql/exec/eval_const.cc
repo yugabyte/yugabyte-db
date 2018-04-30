@@ -279,11 +279,11 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     case InternalType::kJsonbValue: {
       std::string value;
       RETURN_NOT_OK(const_pt->ToString(&value));
-      std::string jsonb;
-      RETURN_NOT_OK(util::Jsonb::ToJsonb(value, &jsonb));
+      util::Jsonb jsonb;
+      RETURN_NOT_OK(jsonb.FromString(value));
 
       QLValue ql_const;
-      ql_const.set_jsonb_value(std::move(jsonb));
+      ql_const.set_jsonb_value(jsonb.MoveSerializedJsonb());
       *const_pb = std::move(*ql_const.mutable_value());
       break;
     }

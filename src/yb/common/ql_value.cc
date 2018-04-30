@@ -293,7 +293,8 @@ void QLValue::Serialize(
     }
     case JSONB: {
       std::string json;
-      CHECK_OK(util::Jsonb::FromJsonb(jsonb_value(), &json));
+      util::Jsonb jsonb(jsonb_value());
+      CHECK_OK(jsonb.ToJsonString(&json));
       CQLEncodeBytes(json, buffer);
       return;
     }
@@ -509,7 +510,10 @@ Status QLValue::Deserialize(
     case JSONB: {
       string json;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &json));
-      return util::Jsonb::ToJsonb(json, mutable_jsonb_value());
+      util::Jsonb jsonb;
+      RETURN_NOT_OK(jsonb.FromString(json));
+      set_jsonb_value(jsonb.MoveSerializedJsonb());
+      return Status::OK();
     }
     case UUID: {
       string bytes;
