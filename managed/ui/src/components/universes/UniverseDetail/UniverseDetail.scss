@@ -242,6 +242,20 @@
       }
     }
   }
+  .readonly-node-details {
+      margin-top: 24px !important;
+  }
+
+
+
+  .yb-actions-cell {
+    overflow: inherit !important;
+
+    div {
+      overflow: inherit !important;
+    }
+  }
+
   .universe-resources {
     justify-content: flex-start;
     padding: 13px 0 0;

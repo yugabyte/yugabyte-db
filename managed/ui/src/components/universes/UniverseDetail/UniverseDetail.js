@@ -7,7 +7,7 @@ import Measure from 'react-measure';
 import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
-import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
+import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
          DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -31,7 +31,6 @@ class UniverseDetail extends Component {
   componentWillUnmount() {
     this.props.resetUniverseInfo();
     this.props.resetUniverseTasks();
-    this.props.resetMasterLeader();
     this.props.resetTablesList();
   }
 
@@ -104,7 +103,7 @@ class UniverseDetail extends Component {
         <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
-        <NodeDetails {...this.props}/>
+        <NodeDetailsContainer  />
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
         <div className="universe-detail-content-container">

@@ -5,6 +5,12 @@ export { default as DeleteUniverseContainer } from './DeleteUniverse/DeleteUnive
 export { default as ListUniverse } from './ListUniverse/ListUniverse';
 export { default as ListUniverseContainer } from './ListUniverse/ListUniverseContainer';
 export { default as NodeDetails } from './NodeDetails/NodeDetails';
+export { default as NodeDetailsContainer } from './NodeDetails/NodeDetailsContainer';
+export { default as NodeConnectModal } from './NodeDetails/NodeConnectModal';
+export { default as NodeDetailsTable } from './NodeDetails/NodeDetailsTable';
+export { default as NodeAction } from './NodeDetails/NodeAction';
+export { default as NodeActionModal } from './NodeDetails/NodeActionModal';
+export { default as NodeActionModalContainer } from './NodeDetails/NodeActionModalContainer';
 export { default as UniverseDetail } from './UniverseDetail/UniverseDetail';
 export { default as UniverseDetailMetrics } from './UniverseDetail/UniverseDetail';
 export { default as UniverseDetailContainer } from './UniverseDetail/UniverseDetailContainer';
