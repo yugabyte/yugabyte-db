@@ -3,9 +3,7 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
-  fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader,
-  performUniverseNodeAction, performUniverseNodeActionResponse
+  fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog
 } from '../../../actions/universe';
 
 import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
@@ -17,27 +15,6 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseInfo(uuid))
       .then((response) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
-      });
-    },
-
-    getMasterLeader: (uuid) => {
-      dispatch(getMasterLeader(uuid)).then((response) => {
-        dispatch(getMasterLeaderResponse(response.payload));
-      });
-    },
-
-    resetMasterLeader: () => {
-      dispatch(resetMasterLeader());
-    },
-
-    /**
-     * Get per-node status for a universe.
-     *
-     * uuid: UUID of the universe to get the per-node status of.
-     */
-    getUniversePerNodeStatus: (uuid) => {
-      dispatch(getUniversePerNodeStatus(uuid)).then((perNodeResponse) => {
-        dispatch(getUniversePerNodeStatusResponse(perNodeResponse.payload));
       });
     },
 
@@ -81,11 +58,6 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
-    },
-    performUniverseNodeAction: (universeUUID, nodeName, actionType) => {
-      dispatch(performUniverseNodeAction(universeUUID, nodeName, actionType)).then((response) => {
-        dispatch(performUniverseNodeActionResponse(response.payload));
-      });
     }
   };
 };

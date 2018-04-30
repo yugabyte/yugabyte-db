@@ -128,8 +128,10 @@ public class NodeDetails {
       state == NodeState.Stopping);
   }
 
-  @JsonIgnore
   public Set<NodeActionType> getAllowedActions() {
+    if (state == null) {
+      return new HashSet<>();
+    }
     switch (state) {
       case ToBeAdded:
         return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
@@ -150,7 +152,7 @@ public class NodeDetails {
   public boolean isRemovable() {
     return state == NodeState.ToBeAdded || state == NodeState.Removed;
   }
-  
+
   @JsonIgnore
   public boolean isInPlacement(UUID placementUuid) {
     return this.placementUuid != null && this.placementUuid.equals(placementUuid);

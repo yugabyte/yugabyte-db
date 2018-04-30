@@ -23,7 +23,9 @@ export class YBUnControlledSelect extends Component {
     const { input, options, onInputChanged, readOnlySelect } = this.props;
 
     function onChange(event) {
-      input.onChange(event.target.value);
+      if (input) {
+        input.onChange(event.target.value);
+      }
       if (isFunction(onInputChanged)) {
         onInputChanged(event.target.value);
       }
