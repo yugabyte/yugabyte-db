@@ -1788,7 +1788,8 @@ void verifyJson(std::shared_ptr<QLRowBlock> row_block) {
   QLRow &row = returned_rows.at(0);
   // All spaces are removed by rapidjson writer.
   string json;
-  ASSERT_OK(util::Jsonb::FromJsonb(row.column(1).jsonb_value(), &json));
+  util::Jsonb jsonb(row.column(1).jsonb_value());
+  ASSERT_OK(jsonb.ToJsonString(&json));
   EXPECT_EQ("{\"a\":1,\"b\":2}", json);
   faststring buffer;
   row.column(1).Serialize(QLType::Create(DataType::JSONB), YQL_CLIENT_CQL, &buffer);

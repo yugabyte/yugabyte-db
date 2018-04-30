@@ -31,57 +31,11 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       break;
 
     case QLExpressionPB::ExprCase::kJsonColumn: {
-      QLValue jsonb;
-      QLJsonColumnOperationsPB json_op = ql_expr.json_column();
-      RETURN_NOT_OK(table_row.ReadColumn(json_op.column_id(), &jsonb));
-      const int num_ops = json_op.json_operations().size();
-
-      Slice jsonop_result;
-      Slice operand(jsonb.jsonb_value());
-      util::JEntry element_metadata;
-      for (int i = 0; i < num_ops; i++) {
-        const QLJsonOperationPB &op = json_op.json_operations().Get(i);
-        const Status s = util::Jsonb::ApplyJsonbOperator(operand, op, &jsonop_result,
-                                                         &element_metadata);
-        if (s.IsNotFound()) {
-          // We couldn't apply the operator to the operand and hence return null as the result.
-          result->SetNull();
-          return Status::OK();
-        }
-        RETURN_NOT_OK(s);
-
-        if (util::Jsonb::IsScalar(element_metadata) && i != num_ops - 1) {
-          // We have to apply another operation after this, but we received a scalar intermediate
-          // result.
-          result->SetNull();
-          return Status::OK();
-        }
-        operand = jsonop_result;
-      }
-
-      // In case of '->>', we need to return a string result.
-      if (num_ops > 0 &&
-          json_op.json_operations().Get(num_ops - 1).json_operator() == JsonOperatorPB::JSON_TEXT) {
-        if (util::Jsonb::IsScalar(element_metadata)) {
-          RETURN_NOT_OK(util::Jsonb::ScalarToString(element_metadata, jsonop_result,
-                                                    result->mutable_string_value()));
-        } else {
-          string str_result;
-          RETURN_NOT_OK(util::Jsonb::FromJsonb(jsonop_result, &str_result));
-          result->set_string_value(std::move(str_result));
-        }
-        break;
-      }
-
-      string jsonb_result = jsonop_result.ToBuffer();
-      if (util::Jsonb::IsScalar(element_metadata)) {
-        // In case of a scalar that is received from an operation, convert it to a jsonb scalar.
-        RETURN_NOT_OK(util::Jsonb::CreateScalar(jsonop_result,
-                                                element_metadata,
-                                                &jsonb_result));
-      }
-
-      result->set_jsonb_value(std::move(jsonb_result));
+      QLValue ql_value;
+      const QLJsonColumnOperationsPB& json_ops = ql_expr.json_column();
+      RETURN_NOT_OK(table_row.ReadColumn(json_ops.column_id(), &ql_value));
+      util::Jsonb jsonb(std::move(ql_value.jsonb_value()));
+      RETURN_NOT_OK(jsonb.ApplyJsonbOperators(json_ops, result));
       break;
     }
 
