@@ -852,6 +852,56 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Make sure rd_replidindex is set */
 	RelationGetIndexList(relation);
 
+	/* Filter tables, if available */
+	if (list_length(data->filter_tables) > 0)
+	{
+		ListCell	*lc;
+
+		foreach(lc, data->filter_tables)
+		{
+			SelectTable	*t = lfirst(lc);
+
+			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+			{
+				if (t->alltables || strcmp(t->tablename, tablename) == 0)
+				{
+					elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
+								((t->allschemas) ? "*" : t->schemaname),
+								((t->alltables) ? "*" : t->tablename));
+					return;
+				}
+			}
+		}
+	}
+
+	/* Add tables */
+	if (list_length(data->add_tables) > 0)
+	{
+		ListCell	*lc;
+		bool		skip = true;
+
+		/* all tables in all schemas are added by default */
+		foreach(lc, data->add_tables)
+		{
+			SelectTable	*t = lfirst(lc);
+
+			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
+			{
+				if (t->alltables || strcmp(t->tablename, tablename) == 0)
+				{
+					elog(DEBUG2, "\"%s\".\"%s\" was added",
+								((t->allschemas) ? "*" : t->schemaname),
+								((t->alltables) ? "*" : t->tablename));
+					skip = false;
+				}
+			}
+		}
+
+		/* table was not found */
+		if (skip)
+			return;
+	}
+
 	/* Sanity checks */
 	switch (change->action)
 	{
@@ -912,56 +962,6 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			break;
 		default:
 			Assert(false);
-	}
-
-	/* Filter tables, if available */
-	if (list_length(data->filter_tables) > 0)
-	{
-		ListCell	*lc;
-
-		foreach(lc, data->filter_tables)
-		{
-			SelectTable	*t = lfirst(lc);
-
-			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
-			{
-				if (t->alltables || strcmp(t->tablename, tablename) == 0)
-				{
-					elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
-								((t->allschemas) ? "*" : t->schemaname),
-								((t->alltables) ? "*" : t->tablename));
-					return;
-				}
-			}
-		}
-	}
-
-	/* Add tables */
-	if (list_length(data->add_tables) > 0)
-	{
-		ListCell	*lc;
-		bool		skip = true;
-
-		/* all tables in all schemas are added by default */
-		foreach(lc, data->add_tables)
-		{
-			SelectTable	*t = lfirst(lc);
-
-			if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
-			{
-				if (t->alltables || strcmp(t->tablename, tablename) == 0)
-				{
-					elog(DEBUG2, "\"%s\".\"%s\" was added",
-								((t->allschemas) ? "*" : t->schemaname),
-								((t->alltables) ? "*" : t->tablename));
-					skip = false;
-				}
-			}
-		}
-
-		/* table was not found */
-		if (skip)
-			return;
 	}
 
 	/* Change counter */
