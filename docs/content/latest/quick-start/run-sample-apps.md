@@ -122,7 +122,7 @@ cqlsh> use ybdemo_keyspace;
 ```{.sql .copy .separator-gt}
 cqlsh:ybdemo_keyspace> DESCRIBE cassandrakeyvalue;
 ```
-```{.sql .copy .separator-gt}
+```sql
 cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
     v blob

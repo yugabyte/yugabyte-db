@@ -6,16 +6,22 @@ One of the following operating systems
 
 <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
+Verify you have python2 installed
+
+```{.sh .copy .separator-dollar}
+$ python --version
+```
+
 ## Download
 
 Download the YugaByte CE package as shown below.
 
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.10.0-linux.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.0.0-linux.tar.gz
 ```
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-0.9.10.0-linux.tar.gz && cd yugabyte-0.9.10.0/
+$ tar xvfz yugabyte-ce-1.0.0.0-linux.tar.gz && cd yugabyte-1.0.0.0/
 ```
 
 ## Configure
