@@ -7,11 +7,12 @@ $ ./yb-docker-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
+We set the number of [shards](../../architecture/concepts/sharding/) per tserver to 4 so we can better observe the load balancing during scaling.
+Considering there are 3 tservers and replication factor 3, there will be 36 total shards per table.
 
 ```{.sh .copy .separator-dollar}
-$ ./yb-docker-ctl create
+$ ./yb-docker-ctl create --num_shards_per_tserver 4
 ```
-
 
 ## 2. Run sample key-value app
 

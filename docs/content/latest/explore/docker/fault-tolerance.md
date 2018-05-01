@@ -112,7 +112,7 @@ $ ./yb-docker-ctl status
 Now connect to node 4.
 
 ```{.sh .copy .separator-dollar}
-docker exec -it yb-tserver-n4 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/cqlsh
 ```
 
 Let us insert some data.

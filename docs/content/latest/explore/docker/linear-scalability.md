@@ -7,9 +7,11 @@ $ ./yb-docker-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
+We set the number of [shards](../../architecture/concepts/sharding/) per tserver to 4 so we can better observe the load balancing during scaling.
+Considering there are 3 tservers and replication factor 3, there will be 36 total shards per table.
 
 ```{.sh .copy .separator-dollar}
-$ ./yb-docker-ctl create
+$ ./yb-docker-ctl create --num_shards_per_tserver 4
 ```
 
 
@@ -70,7 +72,7 @@ Now we should have 5 nodes. Refresh the <a href='http://localhost:7000/tablet-se
 
 YugaByte DB automatically lets the client know to use the newly added nodes for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes. 
 
-## S6. Clean up (optional)
+## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

@@ -7,9 +7,11 @@ $ ./bin/yb-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
+We set the number of [shards](../../architecture/concepts/sharding/) per tserver to 8 so we can better observe the load balancing during scaling.
+Considering there are 3 tservers and replication factor 3, there will be 72 total shards per table.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl create
+$ ./bin/yb-ctl --num_shards_per_tserver 8 create
 ```
 
 
