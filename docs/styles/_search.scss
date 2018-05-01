@@ -55,26 +55,29 @@
 
 .search-container {
   position: relative;
-  padding: 8px 0 20px;
-  margin: -5px 30px 0 15px;
+  padding: 0;
+  margin: 0;
+  margin-right: 15px;
+  line-height: 42px;
 
   .search-icon {
     position: absolute;
-    top: 19px;
+    top: 12px;
     left: 15px;
     font-size: 18px;
     z-index: 1000;
     color: $YB_ORANGE;
   }
   .search-input {
-    text-indent: 30px;
-    background: $YB_LIGHT_GRAY;
+    text-indent: 40px;
     width: 200px;
-    padding: 7px 10px;
-    font-size: 16px;
+    padding: 0;
+    line-height: 42px;
+    border: none;
+    font-weight: 300;
+    font-size: 15.5px;
   }
   .search-input::-webkit-input-placeholder {
-     font-size: 16px;
      text-align: left;
   }
 

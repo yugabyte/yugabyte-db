@@ -13,23 +13,15 @@
   {{ end }}
   {{ $currentVersion := (.Scratch.Get "currentVersionTitle") }}
 {{ end }} 
-
-<div id="version-switcher">
-  <a class="current-version">
-    <span>Version:</span>
-    {{ if $currentVersion }}
-      <h4>{{ $currentVersion }}</h4>
-    {{ else }}
-      <h4>Prod</h4>
-    {{ end }}
-  </a>
-  <ul>
-    <li>
-      <a href="/">Latest version</a>
-    </li>
-    {{ range where (readDir (relURL "/content/")) ".Name" "ne" "_index.html"}}
-      <li>
-        <a href="{{.Name}}/">{{ .Name }} version</a>
-      </li>
-    {{ end }}
-</div>
+{{ if gt (len (where (readDir (relURL "content/")) ".IsDir" "ne" false)) 1 }}
+<div class="dropdown" id="version-switcher">
+    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        {{ $currentVersion }} version
+    </button>
+    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+        {{ range where (readDir (relURL "content/")) ".IsDir" "ne" false}}
+            <a class="dropdown-item" href="/{{.Name}}/">{{ .Name }} version</a>
+        {{ end }}
+    </div>
+  </div>
+{{ end }}

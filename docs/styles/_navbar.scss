@@ -2,7 +2,7 @@
 
 @import "./colors.scss";
 
-$HEADER_HEIGHT: 70px;
+$HEADER_HEIGHT: 75px;
 $ANCHOR_HEIGHT: $HEADER_HEIGHT + 20px;
 
 body {
@@ -14,6 +14,7 @@ body {
   top: 0;
   left: 0;
   width: 100%;
+  height: 75px;
   z-index: 10000;
 }
 
@@ -31,7 +32,7 @@ body {
 }
 
 .navbar .nav-logo {
-  height: 33px;
+  height: 30px;
   @media screen and (max-width: 991px) {
     height: 28px;
   }
@@ -39,6 +40,10 @@ body {
 
 .navbar-page-links {
   display: flex;
+  margin: 0 -8px;
+  @media screen and (max-width: 1199px) {
+    margin: 0 -3px;
+  }
 }
 
 @media (max-width: 839px) {
@@ -113,29 +118,27 @@ body {
 .navbar {
   margin-bottom: 0 !important;
   border: none;
-  border-bottom: 1px solid $YB_INVISIBLE_WHITE;
+  border-bottom: 1px solid rgba($YB_INVISIBLE_WHITE, 0.3);
+  border-bottom: none;
+  box-shadow: 0 1px 2px rgba(#202951, 0.16);
   background: $YB_INVISIBLE_WHITE;
   transition: all 0.3s;
+  padding: 0;
 
   .container {
     position: relative;
     width: 100%;
   }
 
-  .github-star-button {
-    padding-top: 10px !important;
-
-    @media screen and (min-width: 992px) {
-      padding-top: 18px !important;
+  @media screen and (max-width: 991px) {
+    .container-fluid, .container {
+      padding-left: 30px;
+      padding-right: 30px;
     }
   }
 
   img.scrolled {
     display: none !important;
-  }
-
-  &.scrolled {
-    border-bottom: 1px solid $YB_SILVER;
   }
 
   &.scrolled,
@@ -156,25 +159,35 @@ body {
     .navbar-text a {
       color: $YB_ORANGE !important;
     }
+  }
 
-    .navbar-toggler {
-      border-color: $YB_ORANGE !important;
-      transform: scale(0.8, 0.8);
-      border-color: $YB_ORANGE !important;
-      color: $YB_ORANGE !important;
+  .navbar-search-small {
+    width: auto;
+    flex-grow: 1;
+    margin: 0 23px 0 20px;
 
-      .icon-bar {
-        background-color: $YB_ORANGE !important;
+    @media screen and (min-width: 992px) {
+      display: none;
+    }
+    .search-container {
+      margin-right: 5px;
+
+      .search-input {
+        width: 100%;
       }
     }
   }
 
   .navbar-brand {
     height: $HEADER_HEIGHT;
-    padding: 15px 0;
+    line-height: 70px;
+    padding: 0;
+    width: 215px;
+    margin-right: 0;
 
     @media screen and (max-width: 991px) {
-      height: 58px;
+      max-width: 35px;
+      overflow: hidden;
     }
   }
 
@@ -183,19 +196,61 @@ body {
   }
 
   .navbar-toggler {
-    border: 1px solid #444 !important;
-    margin-top: 12px;
+    margin-top: 3px;
     font-size: 21px;
+    width: 26px;
+    padding: 0;
     color: #fff !important;
+
+    &, &:focus, &:hover {
+      outline: none;
+      box-shadow: none;
+    }
+    .bar {
+      width: 26px;
+      height: 4px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      background-color: $YB_ORANGE;
+      transform-origin: 50% 50%;
+      @include transition(0.125s);
+    }
+    &:not(.collapsed) {
+      .bar {
+        @include transition(0.35s);
+        &:nth-child(1) {
+          transform: rotate(45deg) translate(5px,6px);
+        }
+        &:nth-child(2) {
+          opacity: 0;
+        }
+        &:nth-child(3) {
+          transform: rotate(-45deg) translate(5px,-6px);
+        }
+      }
+    }
   }
 
   .navbar-text {
     display: block;
-    margin: 10px 4px;
-    padding: 12px 0px;
+    margin: 0;
+    padding: 0;
     line-height: 18px;
     font-size: 18px;
     font-weight: 700;
+
+    &.github-star-button {
+      margin-right: 10px;
+      @media screen and (min-width: 992px) and (max-width: 1100px) {
+        display: none !important;
+      }
+    }
+
+    @media screen and (max-width: 991px) {
+      &.navbar-search-main {
+        display: none;
+      }
+    }
 
     .dropdown {
       display: inline-block;
@@ -244,8 +299,8 @@ body {
       padding: 6px 8px 8px;
       margin-bottom: -4px;
       font-family: "Open Sans", sans-serif;
-      font-weight: 400;
-      font-size: 15px;
+      font-weight: 300;
+      font-size: 13.5px;
       color: #e4e8ec !important;
       text-decoration: none;
 
@@ -268,6 +323,20 @@ body {
           background: #d66a02;
         }
       }
+    }
+
+    & > a, .dropdown > a {
+      cursor: pointer;
+      display: inline-block;
+      padding: 0 8px;
+      line-height: 75px;
+      font-family: "Open Sans", sans-serif;
+      font-weight: 400;
+      font-size: 13.5px;
+      margin-bottom: 0;
+      margin-top: -4px;
+      color: $YB_VIOLET;
+      text-decoration: none;
     }
 
     .dropdown.open > a {
@@ -319,18 +388,24 @@ body {
 
     @media screen and (max-width: 1199px) {
       a {
-        margin: -4px -5px;
-        padding: 2px 12px 6px;
+        padding: 0px 12px 6px;
         font-size: 14px;
+      }
+
+      & > a, .dropdown > a {
+        padding: 0 3px;
       }
     }
 
     @media screen and (max-width: 991px) {
       font-size: 12px;
+
+      & > a, .dropdown > a {
+        padding: 0 3px;
+      }
       
       a {
-        margin: -4px -5px;
-        padding: 2px 12px 6px;
+        padding: 0px 12px 6px;
         font-size: 13px;
       }
 
@@ -346,13 +421,25 @@ body {
 
   .navbar-collapse {
     float: right;
+    justify-content: space-between;
+
+    .navbar-misc {
+      display: flex;
+      flex-grow: 0;
+      justify-content: flex-start;
+      flex-direction: row;
+      align-items: center;
+    }
 
     @media screen and (max-width: 991px) {
       background-color: #fff;
-      border-radius: 10px;
       flex-direction: column;
       text-align: center;
-      box-shadow: 0 5px 35px rgba(0, 0, 0, 0.3);
+      margin: 0 -30px;
+      padding: 0 30px;
+      border-top: 1px solid #e4e6ea;
+      border-radius: 0;
+      padding-bottom: 30px;
 
       a.navbar-link {
         color: $YB_ORANGE !important;
@@ -360,19 +447,20 @@ body {
 
       .navbar-page-links {
         display: flex;
-        flex-direction: column;
+        justify-content: space-around;
 
         * {
           text-align: center;
         }
       }
+      .navbar-misc {
+        justify-content: center;
+      }
     }
-  }
-
-  @media screen and (max-width: 839px) {
-    .container-fluid, .container {
-      padding-left: 5px;
-      padding-right: 5px;
+    @media screen and (max-width: 659px) {
+      .navbar-page-links {
+        flex-direction: column;
+      }
     }
   }
 }

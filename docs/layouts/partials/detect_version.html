@@ -1,6 +1,7 @@
 {{ $context := . }}
 {{ $path := split .Dir "/" }}
 {{ $title := (index $path 0) }}
+{{ $title := cond (and (not $title) (eq .Type "search")) "latest" $title }}
 {{ range $index,$value := .Site.Menus }}
   {{ if eq $index $title }}
     {{ $context.Scratch.Set "currentVersionMenu" $value }}

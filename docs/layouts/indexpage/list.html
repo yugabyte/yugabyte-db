@@ -15,45 +15,27 @@
 
 {{ partial "header" . }}
 
-<main class="main">
-	<div class="drawer">
-		
-		{{ partial "drawer" (dict "context" .) }}
-	</div>
-
-	<article class="article">
-		<div class="wrapper">
-			{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
-
-				<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
-
-				{{ .TableOfContents }}
-
-				{{ .Content }}
-				
-			<!--<aside class="copyright" role="note">
-				{{ with .Site.Params.copyright }}
-				&copy; {{ now.Format "2006" }} {{ . }} &ndash;
-				{{ end }}
-				Documentation built with
-				<a href="https://www.gohugo.io" target="_blank">Hugo</a>
-				using the
-				<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
-			</aside>-->
-
-			{{ partial "pagination" . }}
-		</div>
-	</article>
-
-	<div class="results" role="status" aria-live="polite">
-		<div class="scrollable">
-			<div class="wrapper">
-				<div class="meta"></div>
-				<div class="list"></div>
+<div class="container indexpage">
+		<div id="particles-js"></div>
+		<div class="row justify-content-center hero-wrapper">
+			<div class="col-12 col-lg-12 col-xl-10">
+				<section class="hero">
+						<h1>
+								YugaByte DB <em>Docs</em>
+						</h1>
+						Welcome to YugaByte - the transactional, high-performance database for planet-scale cloud applications! Get familiar with the YugaByte products and explore their features.
+						<a href="https://docs.yugabyte.com/quick-start/install/" class="btn cta-button">Download YugaByte</a>
+				</section>
+				<article class="article">
+					<div class="wrapper row">
+						{{ .Content }}
+					</div>
+			</article>
 			</div>
 		</div>
-	</div>
-</main>
+</div>
 
+{{ partial "subscribe" . }}
 {{ partial "footer" . }}
+{{ partial "indexpage_js" . }}
 {{ partial "footer_js" . }}

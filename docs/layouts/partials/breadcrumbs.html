@@ -8,7 +8,7 @@
       <label class="toggle-button" for="toggle-drawer">
         Docs
       </label>
-      <i class="fa fa-angle-right"></i>
+      <i>/</i>
     </span>
 
     {{ if ($foundBreadcrumb) }}
@@ -16,5 +16,8 @@
         {{ partial "breadcrumb_links" $foundBreadcrumb }}
       {{ end }}
     {{ end }}
+
+    <a title="{{ .Name }}" href="{{ .URL | relURL}}">
+        {{ .Name }}</a>
   </div>
 {{ end }}

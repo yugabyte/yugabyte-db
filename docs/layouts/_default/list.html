@@ -15,43 +15,51 @@
 
 {{ partial "header" . }}
 
-<main class="main">
-	<div class="drawer">
-		{{ partial "drawer" (dict "context" .) }}
-	</div>
-	<article class="article">
-		<div class="wrapper">
-			{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
-
-			<h1>{{ .Description }}  {{ if .IsDraft }} (Draft){{ end }}</h1>
-
-			{{ .TableOfContents }}
-
-			{{ .Content }}
-
-			<!--<aside class="copyright" role="note">
-				{{ with .Site.Params.copyright }}
-				&copy; {{ now.Format "2006" }} {{ . }} &ndash;
-				{{ end }}
-				Documentation built with
-				<a href="https://www.gohugo.io" target="_blank">Hugo</a>
-				using the
-				<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
-			</aside>-->
-
-			{{ partial "pagination" . }}
+<div class="container-fluid listpage">
+	<main class="main">
+		<div class="drawer">
+			{{ partial "drawer" (dict "context" .) }}
 		</div>
-	</article>
-
-	<div class="results" role="status" aria-live="polite">
-		<div class="scrollable">
+		<article class="article">
 			<div class="wrapper">
-				<div class="meta"></div>
-				<div class="list"></div>
+				<div class="image">
+					<img alt="{{ .Description }}" title="{{ .Description }}" src="{{ .Page.Params.image }}">
+					</div>
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
+
+				<h1>{{ .Description }}  {{ if .IsDraft }} (Draft){{ end }}</h1>
+
+				<div class="head-content clearfix">{{ .Page.Params.headcontent }} </div>
+
+
+				{{ .Content }}
+
+				<!--<aside class="copyright" role="note">
+					{{ with .Site.Params.copyright }}
+					&copy; {{ now.Format "2006" }} {{ . }} &ndash;
+					{{ end }}
+					Documentation built with
+					<a href="https://www.gohugo.io" target="_blank">Hugo</a>
+					using the
+					<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
+				</aside>-->
+				</div>
+				
+				{{ partial "feedback" . }}
+
+			</article>
+
+		<div class="results" role="status" aria-live="polite">
+			<div class="scrollable">
+				<div class="wrapper">
+					<div class="meta"></div>
+					<div class="list"></div>
+				</div>
 			</div>
 		</div>
-	</div>
-</main>
+	</main>
+</div>
 
+{{ partial "subscribe" . }}
 {{ partial "footer" . }}
 {{ partial "footer_js" . }}

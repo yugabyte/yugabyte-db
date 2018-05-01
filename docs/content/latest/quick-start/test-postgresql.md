@@ -2,6 +2,7 @@
 title: 5. Test PostgreSQL API
 linkTitle: 5. Test PostgreSQL API
 description: Test PostgreSQL API
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /quick-start/test-postgresql/
 menu:
@@ -9,8 +10,6 @@ menu:
     parent: quick-start
     weight: 145
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 
 After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's PostgreSQL API.

@@ -76,7 +76,7 @@ ResultSet resultSet = client.execute(txn1);
 
 ## Sample Java Application
 
-You can find a working example of using transactions with YugaByte in our [sample applications](http://localhost:1313/quick-start/run-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
+You can find a working example of using transactions with YugaByte in our [sample applications](/quick-start/run-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
 
 Here is how you can try out this sample application.
 

@@ -2,6 +2,8 @@
 title: Kubernetes
 linkTitle: Kubernetes
 description: Kubernetes
+headcontent: This section describes how to deploy YugaByte DB natively inside Kubernetes.
+image: /images/section_icons/deploy/community.png
 aliases:
   - /deploy/kubernetes/
 menu:
@@ -10,8 +12,6 @@ menu:
     parent: deploy
     weight: 620
 ---
-
-This section describes how to deploy YugaByte DB natively inside Kubernetes.
 
 <h2>Local vs remote SSDs</h2>
 
@@ -68,15 +68,23 @@ Below is a table that summarizes the features and when to use local vs remote st
 
 Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The following section explains how to deploy YugaByte DB on Kubernetes using local SSDs.
 
-<a class="section-link icon-offset" href="local-ssd/">
-  <div class="icon">
-    <i class="icon-google"></i>
+
+<div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="local-ssd/">
+      <div class="head">
+        <div class="icon">
+          <i class="icon-google"></i>
+        </div>
+        <div class="articles">Deploy</div>
+        <div class="title">Local SSDs</div>
+      </div>
+      <div class="body">
+        Achieve high performance by configuring YugaByte DB pods managed by Kubernetes to use instance local SSDs.
+      </div>
+    </a>
   </div>
-  <div class="text">
-    Local SSDs
-    <div class="caption">Achieve high performance by configuring YugaByte DB pods managed by Kubernetes to use instance local SSDs.</div>
-  </div>
-</a>
+</div>
 
 <!-- 
 <a class="section-link icon-offset" href="multi-zone/">

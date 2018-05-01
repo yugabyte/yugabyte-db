@@ -66,8 +66,7 @@ Some best practices are:
 - Use comparison operators on the clustering columns (tighter restrictions are more valuable for left-most clustering columns).
 - Generally, the closer a column is to the beginning of the primary key, the higher the performance gain for setting tighter restrictions on it. 
 
-Ideally, these performance considerations should be taken into account when creating the table schema.
-{{< /note >}}
+Ideally, these performance considerations should be taken into account when creating the table schema.{{< /note >}}
 
 ## Examples
 ### Select all rows from a table

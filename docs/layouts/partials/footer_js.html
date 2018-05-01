@@ -14,18 +14,85 @@
     {{ end }}
 
     <script>
-      {{ "/* Add permanent link next to the headers */" | safeJS }}
-      var headers = document.querySelectorAll("h1, h2, h3, h4, h5, h6");
-
-      for(var i = 0; i < headers.length; i++) {
-          var a = document.createElement("a");
-          a.setAttribute("class", "headerlink");
-          a.setAttribute("href", "#" + headers[i].id);
-          a.setAttribute("title", "Permanent link")
-          a.innerHTML = {{ or .Site.Params.permalink "¶" }};
-          headers[i].appendChild(a);
-      }
+      const offset = {{ cond (gt (len (where (readDir (relURL "content/")) ".IsDir" "ne" false)) 1) 30 105 }}
+      const $ = window.jQuery;
+      $(document).ready(() => {
+        $('#side-navigation').stick_in_parent({
+          offset_top: offset,
+        });
+        $('#drawerMenu a.node-toggle').click(() => {
+          setTimeout(() => {
+            $('#side-navigation').trigger('sticky_kit:recalc');
+          }, 300);
+        });
+      });
     </script>
+
+    <script>
+      {{ "/* Add permanent link next to the headers */" | safeJS }}
+      var headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");
+
+      for(let i = 0; i < headers.length; i++) {
+        let cnt = document.createElement("div");
+        cnt.setAttribute("class", "links");
+        let a = document.createElement("a");
+        a.setAttribute("class", "headerlink");
+        a.setAttribute("href", "#" + headers[i].id);
+        a.setAttribute("title", "Permanent link")
+        a.innerHTML = {{ or .Site.Params.permalink "¶" }};
+        headers[i].appendChild(a);
+        let b = document.createElement("a");
+        b.setAttribute("class", "issuelink");
+        b.setAttribute("title", "I found an issue")
+        b.innerHTML = "!";
+        cnt.appendChild(a);
+        cnt.appendChild(b);
+        headers[i].appendChild(cnt);
+      };
+  </script>
+    
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      "use strict";
+      
+      const issuelinks = $('.article:not(#feedback) .issuelink');
+      const feedback_widget = $('.feedback_widget');
+      const feedback_widget_payload = $('.feedback_widget #action_payload_from');
+      const feedback_widget_wrapper = $('.widget-wrapper');
+
+      $(document).on('feedback:reset', function(e) {
+        const headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");  
+        $(headers).removeClass('expanded');
+        issuelinks.removeClass('active');
+        feedback_widget.removeClass('active active_section').css('top', '');
+        feedback_widget_payload.val('footer');
+        // grammarly fallback
+        $("[class^=gr-top-]").remove();
+      });
+      
+      issuelinks.on('click', function(e) {
+        const self = $(this);
+        const isActive = self.hasClass('active');
+        const coeff = parseInt(self.parent().parent()[0].tagName.substr(1,1));
+        $(document).trigger('feedback:reset');
+        if(!isActive) {
+          self.parent().parent().addClass('expanded');
+          self.addClass('active');
+          feedback_widget.addClass('active active_section').css('top', -$(feedback_widget_wrapper).offset().top + self.offset().top + 45 + 15*($(window).outerWidth()<992?0:1));
+          feedback_widget_payload.val(self.parent().parent()[0].innerText.slice(0, -2));
+
+          $(window).on('resize', function() {
+            if(feedback_widget.hasClass('active_section')){
+              feedback_widget.addClass('active active_section').css('top', -$(feedback_widget_wrapper).offset().top + self.offset().top + 45 + 15*($(window).outerWidth()<992?0:1));
+            } else {
+              $(window).off('resize', this);
+            }
+          });
+        }
+      });
+    });
+  
+  </script>
 
     {{ with .Site.GoogleAnalytics }}
       <script>

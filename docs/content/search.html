@@ -2,7 +2,7 @@
 title: Search Results
 linkTitle: Search Results
 description: Search Results
-type: page
+type: search
 ---
 
 <div class="search-by-algolia">
@@ -10,46 +10,51 @@ type: page
 </div>
 <div class="search-results-container" id="search-results"/>
 <script>
-  var queryStr = document.URL.split('?')[1];
-  var urlParams = new URLSearchParams(window.location.search)
-  if (urlParams.has('q')) {
-    var client = algoliasearch("4LBMOWH4F9", "76cc3c40acc9719f5cd0d45bc07e2aeb");
-    var index = client.initIndex('docs');
-    index.search(urlParams.get('q'), function(err, content) {
-      var formattedHits = docsearch.formatHits(content.hits);
-      var previousResult = null;
-      var collatedResults = [];
-      formattedHits.forEach(hit => {
-        if (!hit.category || !hit.title) return;
-        if (!previousResult || previousResult.category !== hit.category) {
-          previousResult = {
-            category: hit.category,
-            hits: [],
-            url: hit.url
-          };
-          collatedResults.push(previousResult);
-        }
-        hit.text = hit.title
-          .replace(hit.category, '')
-          .replace('<span class="aa-suggestion-title-separator" aria-hidden="true"> › </span>', '');
-        if (hit.text) {
-          const previousHit = previousResult.hits[previousResult.hits.length - 1];
-          if (!previousHit || previousHit.text !== hit.text) {
-            previousResult.hits.push(hit);
+  $(document).ready(function() {
+    let queryStr = document.URL.split('?')[1];
+    let urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.has('q')) {
+      let client = algoliasearch("4LBMOWH4F9", "76cc3c40acc9719f5cd0d45bc07e2aeb");
+      let index = client.initIndex('docs');
+      index.search(urlParams.get('q'), function(err, content) {
+        let formattedHits = docsearch.formatHits(content.hits);
+        let previousResult = null;
+        let collatedResults = [];
+        formattedHits.forEach(hit => {
+          if (!hit.category || !hit.title) return;
+          if (!previousResult || previousResult.category !== hit.category) {
+            previousResult = {
+              category: hit.category,
+              hits: [],
+              url: hit.url
+            };
+            collatedResults.push(previousResult);
           }
-        }
+          hit.text = hit.title
+            .replace(hit.category, '')
+            .replace('<span class="aa-suggestion-title-separator" aria-hidden="true"> › </span>', '');
+          if (hit.text) {
+            const previousHit = previousResult.hits[previousResult.hits.length - 1];
+            if (!previousHit || previousHit.text !== hit.text) {
+              previousResult.hits.push(hit);
+            }
+          }
+        });
+        $('#search-results').append(collatedResults.map(result => (
+          '<div class="search-result">\
+            <div class="search-title">\
+              <a href="' + result.url + '">' + result.category + '</a>\
+            </div>\
+            <div class="search-text">' +
+            result.hits.map(hit => (
+              '<p>' + hit.text + ' <a href="' + hit.url + '">[more&hellip;]</a></p>'
+            )).join('') +
+          '</div></div>'
+        )).join(''));
+        $('#side-navigation').trigger('sticky_kit:recalc');
       });
-      $('#search-results')[0].innerHTML = collatedResults.map(result => (
-        '<div class="search-result">\
-          <div class="search-title">\
-            <a href="' + result.url + '">' + result.category + '</a>\
-          </div>\
-          <div class="search-text">' +
-          result.hits.map(hit => (
-            '<p>' + hit.text + ' <a href="' + hit.url + '">[more&hellip;]</a></p>'
-          )).join('') +
-        '</div></div>'
-      )).join('');
-    });
-  }
+    }
+  });
 </script>
+<br>
+</div>

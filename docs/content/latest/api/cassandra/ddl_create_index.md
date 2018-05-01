@@ -2,6 +2,7 @@
 title: CREATE INDEX
 summary: Create a new index on a table
 description: CREATE INDEX
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: api-cassandra
@@ -11,8 +12,6 @@ aliases:
   - api/cql/ddl_create_index
   - api/ycql/ddl_create_index
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 ## Synopsis
 The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and covering columns.

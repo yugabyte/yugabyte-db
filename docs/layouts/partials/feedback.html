@@ -1,0 +1,52 @@
+<div id="feedback" class="wrapper">
+  <h2>Questions?</h2>
+  <p>We're always happy to help with code or other questions you might have! Search our documentation, <a href="https://www.yugabyte.com/about/contact/">contact support</a>, or connect with our sales team. You can also visit our <a href="https://blog.yugabyte.com/">blog.</a></p>
+  <div class="survey">
+      <div class="caption">Was this page helpful?</div>
+      <div class="buttons">
+          <button class="button_yes small">Yes</button>
+          <button class="button_no small">No</button>
+      </div>
+    </div>
+    
+  <div class="widget-wrapper">
+    {{ partial "feedback_widget" . }}
+  </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+      "use strict";
+      
+      const widget = $('.feedback_widget');
+      const caption = $('#feedback .survey .caption');
+      const buttons = $('#feedback .survey .buttons');
+      const widgetwrapper = $('#feedback .widget-wrapper');
+      const survey = $('#feedback .survey');
+      
+
+      $(document).on('feedback:reset', function(e) {
+        widgetwrapper.removeClass('active');
+        widget.removeClass('active');
+      });
+
+      buttons.find('button').on('click', (e) => {
+          const action = e.target.className.split(' ')[0].substr(7);
+          switch (action) {
+            case 'yes':
+              caption.html('Thanks for your feedback!');
+              break;
+          
+            case 'no':
+              $(document).trigger('feedback:reset');
+              widget.addClass('active');
+              widgetwrapper.addClass('active');
+              break;
+          
+            default:
+              break;
+          }
+        })
+    });
+  
+</script>

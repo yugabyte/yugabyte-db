@@ -2,6 +2,7 @@
 title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /explore/json-documents/
 menu:
@@ -10,8 +11,6 @@ menu:
     parent: explore
     weight: 229
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 The JSON document data type makes it very easy to model use-cases which require a flexible schema. YugaByte DB supports a `JSONB` data type that parse, store and query JSON documents natively.
 

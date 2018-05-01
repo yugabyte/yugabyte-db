@@ -15,43 +15,46 @@
 
 {{ partial "header" . }}
 
-<main class="main">
-	<div class="drawer">
-		{{ partial "drawer" (dict "context" .) }}
-	</div>
+<div class="container-fluid">
+	<main class="main">
+		<div class="drawer">
+			{{ partial "drawer" (dict "context" .) }}
+		</div>
 
-	<article class="article">
-		<div class="wrapper">
-			{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
+		<article class="article">
+			<div class="wrapper">
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
-			<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}</h1>
+				<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
 
-			{{ .TableOfContents }}
-			{{ .Content }}
+				{{ .TableOfContents }}
+				{{ .Content }}
 
-			<!--<aside class="copyright" role="note">
-				{{ with .Site.Params.copyright }}
-				&copy; {{ now.Format "2006" }} {{ . }} &ndash;
-				{{ end }}
-				Documentation built with
-				<a href="https://www.gohugo.io" target="_blank">Hugo</a>
-				using the
-				<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
-			</aside>-->
+				<!--<aside class="copyright" role="note">
+					{{ with .Site.Params.copyright }}
+					&copy; {{ now.Format "2006" }} {{ . }} &ndash;
+					{{ end }}
+					Documentation built with
+					<a href="https://www.gohugo.io" target="_blank">Hugo</a>
+					using the
+					<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
+				</aside>-->
+			</div>
 
 			{{ partial "pagination" . }}
-		</div>
-	</article>
+			{{ partial "feedback" . }}
+		</article>
 
-	<div class="results" role="status" aria-live="polite">
-		<div class="scrollable">
-			<div class="wrapper">
-				<div class="meta"></div>
-				<div class="list"></div>
+		<div class="results" role="status" aria-live="polite">
+			<div class="scrollable">
+				<div class="wrapper">
+					<div class="meta"></div>
+					<div class="list"></div>
+				</div>
 			</div>
 		</div>
-	</div>
-</main>
+	</main>
+</div>
 
-{{ partial "footer" . }}
+{{ partial "footer_content" . }}
 {{ partial "footer_js" . }}

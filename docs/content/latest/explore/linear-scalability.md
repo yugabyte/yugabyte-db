@@ -1,5 +1,5 @@
 ---
-title: 1. Linear Scalability
+title: Linear Scalability
 linkTitle: 1. Linear Scalability
 description: Linear Scalability
 aliases:

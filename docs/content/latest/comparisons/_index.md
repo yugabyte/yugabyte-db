@@ -2,6 +2,8 @@
 title: Comparisons
 linkTitle: Comparisons
 description: Comparisons
+image: /images/section_icons/index/comparisons.png
+headcontent: This page highlights how YugaByte DB compares against other operational databases in the NoSQL and distributed SQL categories. Click on the database name in the table header to see a more detailed comparison.
 aliases:
   - /comparisons/
 menu:
@@ -9,8 +11,6 @@ menu:
     identifier: comparisons
     weight: 1070
 ---
-
-This page highlights how YugaByte DB compares against other operational databases in the NoSQL and distributed SQL categories. Click on the database name in the table header to see a more detailed comparison. 
 
 ## NoSQL Databases
 

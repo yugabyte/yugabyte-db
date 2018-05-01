@@ -2,6 +2,7 @@
 title: TRANSACTION
 summary: Make changes to multiple rows in a transaction
 description: TRANSACTION
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: api-cassandra
@@ -11,8 +12,6 @@ aliases:
   - api/cql/dml_insert
   - api/ycql/dml_insert
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 ## Synopsis
 

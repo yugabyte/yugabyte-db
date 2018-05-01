@@ -1,22 +1,35 @@
 // Copyright (c) YugaByte, Inc.
 
-body {
-  position: absolute;
-  width: 100%;
-  top: 0;
-  bottom: 0;
-  overflow-x: hidden;
-  margin: 0;
-  padding: 0;
+@import "./colors.scss";
+
+html {
   background: #fff;
+  height: auto;
+  &:after {
+    position: fixed;
+    bottom: -499.95px;
+    height: 500px;
+    width: 100%;
+    background: #202951;
+    content: '';
+    z-index: -1;
+  }
+}
+
+*, .ios {
+  body {
+    font-size: 15.5px;
+    background: $YB_LIGHT_GRAY_BACK;
+  }
 }
 
 #root {
-  position: relative;
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 100%;
+  /* mozilla required */
+  overflow: hidden;
+}
+
+.results {
+  display: none;
 }
 
 .main {
@@ -30,4 +43,20 @@ body {
   justify-content: space-between;
   flex-direction: column;
   min-height: 100%;
+}
+
+.container-fluid {
+  width: 100%;
+  padding-right: 40px;
+  padding-left: 40px;
+  margin-right: auto;
+  margin-left: auto;
+  @media screen and (max-width: 991px) {
+    padding-right: 30px;
+    padding-left: 30px;
+  }
+  @media screen and (max-width: 767px) {
+    padding-right: 0px;
+    padding-left: 0px;
+  }
 }

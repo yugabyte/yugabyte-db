@@ -3,6 +3,7 @@ title: PostgreSQL (Beta)
 linkTitle: PostgreSQL (Beta)
 description: PostgreSQL (Beta)
 summary: PostgreSQL overview and features
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - api/postgresql
 menu:
@@ -13,8 +14,6 @@ menu:
 aliases:
   - api/pgsql
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 ## Introduction
 PostgreSQL support is under active development in YugaByte. We will keep updating this page as features are added.

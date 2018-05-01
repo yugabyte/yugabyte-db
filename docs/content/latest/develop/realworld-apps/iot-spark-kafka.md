@@ -1,7 +1,7 @@
 ---
 title: IoT - Spark & Kafka
 linkTitle: IoT Fleet Management
-Description: IoT Fleet Management - Spark and Kafka
+description: IoT Fleet Management - Spark and Kafka
 aliases:
   - /develop/realworld-apps/iot-spark-kafka/
 menu:

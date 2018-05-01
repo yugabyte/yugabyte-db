@@ -4,43 +4,66 @@
 
 {{ $PrevLink := .Scratch.Get "neededPrevLink" }}
 {{ $NextLink := .Scratch.Get "neededNextLink" }}
+{{ $PrevLinkParent := .Scratch.Get "neededPrevLinkParent" }}
+{{ $NextLinkParent := .Scratch.Get "neededNextLinkParent" }}
+{{ $foundBreadcrumb := .Scratch.Get "foundBreadcrumb" }}
 
 {{ if .IsPage }}
 {{ if $PrevLink | or $NextLink }}
-<nav class="pagination" aria-label="Footer">
-  {{ if $PrevLink }}
-    <div class="previous">
-      <a href="{{ $PrevLink.URL }}" title="{{ $PrevLink.Title }}">
-        <div class="page">
-          <div class="button button-previous" role="button" aria-label="Previous">
-            <i class="icon icon-back"></i>
-          </div>
-          <div class="stretch">
-            <div class="title">
-              {{ $PrevLink.Page.Description }}
+<div class="pagination" aria-label="Footer">
+  <div class="row">
+    <div class="previous col">
+      {{ if $PrevLink }}
+        <a href="{{ $PrevLink.URL }}" title="{{ $PrevLink.Title }}">
+          <div class="page">
+            <div class="button button-previous" role="button" aria-label="Previous">
+              <i class="fa fa-arrow-left"></i>
+            </div>
+            <div class="stretch">
+              <div class="section">
+                {{ if $PrevLinkParent.Page.Title }}
+                  {{ $PrevLinkParent.Page.Title }}
+                {{ else if $foundBreadcrumb }}
+                  {{ if (gt (len $foundBreadcrumb) 0 ) }}
+                    {{ with (index $foundBreadcrumb 0) }}{{.Name}}{{ end }}
+                  {{ end }}
+                {{ end }}
+              </div>
+              <div class="title">
+                {{ $PrevLink.Page.Description }}
+              </div>
             </div>
           </div>
-        </div>
-      </a>
+        </a>
+      {{ end }}
     </div>
-  {{ end }}
 
-  {{ if $NextLink }}
-    <div class="next">
-      <a href="{{ $NextLink.URL }}" title="{{ $NextLink.Title }}">
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ $NextLink.Page.Description }}
+    <div class="next col">
+      {{ if $NextLink }}
+        <a href="{{ $NextLink.URL }}" title="{{ $NextLink.Title }}">
+          <div class="page">
+            <div class="stretch">
+              <div class="section">
+                {{ if $NextLinkParent.Page.Title }}
+                  {{ $NextLinkParent.Page.Title }}
+                {{ else if $foundBreadcrumb }}
+                  {{ if (gt (len $foundBreadcrumb) 0 ) }}
+                    {{ with (index $foundBreadcrumb 0) }}{{.Name}}{{ end }}
+                  {{ end }}
+                {{ end }}
+              </div>
+              <div class="title">
+                {{ $NextLink.Page.Description }}
+              </div>
+            </div>
+            <div class="button button-next" role="button" aria-label="Next">
+              <i class="fa fa-arrow-right"></i>
             </div>
           </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
+        </a>
+      {{ end }}
     </div>
-  {{ end }}
-</nav>
+  </div>
+</div>
 {{ end }}
 {{ end }}

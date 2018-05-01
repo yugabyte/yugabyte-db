@@ -48,7 +48,7 @@ npm run publish
 export ALGOLIA_WRITE_KEY=<Admin Key>
 npm run publish-index
 ```
-The last command above starts high performance web server that continuously watches the entire docs directory. Go to [http://localhost:1313/](http://localhost:1313/)to see the docs.
+The last command above starts high performance web server that continuously watches the entire docs directory. Go to [Home page](/)to see the docs.
 
 Simply running "hugo" will create a directory called public that has all the html content necessary to deploy to production behind an existing web server.
 

@@ -5,6 +5,10 @@
 {{ if $PrevLink }}
   {{ if $PrevLink.HasChildren }}
     {{ .Scratch.Set "neededPrevLink" (index $PrevLink.Children (add (len $PrevLink.Children) -1)) }}
+    {{ if (.Scratch.Get "neededPrevLinkParent") }}
+    {{ else }}
+      {{ .Scratch.Set "neededPrevLinkParent" $PrevLink }}
+    {{ end }}
   {{ end }}
   {{ .Scratch.Set "needsIterationPrev" $PrevLink.HasChildren }}
 {{ end }}
@@ -12,6 +16,10 @@
 {{ if $NextLink }}
   {{ if $NextLink.HasChildren }}
     {{ .Scratch.Set "neededNextLink" (index $NextLink.Children 0) }}
+    {{ if (.Scratch.Get "neededNextLinkParent") }}
+    {{ else }}
+      {{ .Scratch.Set "neededNextLinkParent" $NextLink }}
+    {{ end }}
   {{ end }}
   {{ .Scratch.Set "needsIterationNext" $NextLink.HasChildren }}
 {{ end }}

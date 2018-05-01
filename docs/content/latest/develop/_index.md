@@ -2,6 +2,8 @@
 title: Develop
 linkTitle: Develop
 description: Develop Apps on YugaByte DB
+headcontent: This section will help you get started with building apps on top of YugaByte DB.
+image: /images/section_icons/index/develop.png
 aliases:
   - /develop/
 menu:
@@ -11,50 +13,57 @@ menu:
 
 ---
 
-This section will help you get started with building apps on top of YugaByte DB.
+<div class="contents-title">In this section:</div>
 
-<div>
-  <a class="section-link icon-offset" href="client-drivers/">
-    <div class="icon">
-      <img src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-    </div>
-    <div class="text">
-      Client Drivers
-      <div class="caption">Develop apps using the appropriate client drivers in the language of your choice.</div>
-    </div>
-  </a>
-
-  <a class="section-link icon-offset" href="learn/">
-    <div class="icon">
-      <i class="fa fa-map-o" aria-hidden="true"></i>
-    </div>
-    <div class="text">
-      Learn
-      <div class="caption">Learn how to build cloud services and applications on YugaByte DB.</div>
-    </div>
-  </a>
-
-<a class="section-link icon-offset" href="ecosystem-integrations/">
-    <div class="icon">
-      <img src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
-    </div>
-    <div class="text">
-      Ecosystem Integrations
-      <div class="caption">Get started with the various ecosystem integrations including Apache Spark.</div>
-    </div>
-  </a>
-
-
-  <a class="section-link icon-offset" href="realworld-apps/">
-<div class="icon">
-      <img src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-    </div>
-    <div class="text">
-      Real World Examples
-      <div class="caption">A walk-through of real world, end-to-end applications build on top of YugaByte DB.</div>
-    </div>
-  </a>
-
+<div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="client-drivers/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="articles">Develop</div>
+        <div class="title">Client Drivers</div>
+      </div>
+      <div class="body">
+        Develop apps using the appropriate client drivers in the language of your choice.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="learn/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">Develop</div>
+        <div class="title">Learn</div>
+      </div>
+      <div class="body">
+        Learn how to build cloud services and applications on YugaByte DB.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ecosystem-integrations/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
+        <div class="articles">Develop</div>
+        <div class="title">Ecosystem Integrations</div>
+      </div>
+      <div class="body">
+        Get started with the various ecosystem integrations including Apache Spark.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="realworld-apps/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
+        <div class="articles">Develop</div>
+        <div class="title">Real World Examples</div>
+      </div>
+      <div class="body">
+        A walk-through of real world, end-to-end applications build on top of YugaByte DB.
+      </div>
+    </a>
+  </div>
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">
     <div class="icon">
       <i class="fa fa-sign-in" aria-hidden="true"></i>
@@ -64,4 +73,4 @@ This section will help you get started with building apps on top of YugaByte DB.
       <div class="caption">How you can port your existing applications to run on top of YugaByte-DB.</div>
     </div>
   </a>-->
-</div> 
+</div>

@@ -40,6 +40,7 @@
     "hugo-algolia": "^1.2.11",
     "node-sass": "^4.5.3",
     "npm-run-all": "^4.1.1",
+    "particles.js": "^2.0.0",
     "react-dev-tools": "0.0.1",
     "react-dev-utils": "^4.2.1",
     "webpack": "^3.8.1",

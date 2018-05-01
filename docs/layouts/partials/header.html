@@ -6,11 +6,18 @@
         <img alt="YugaByte" src="https://www.yugabyte.com/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
         <img alt="YugaByte" src="https://www.yugabyte.com/images/yblogo_whitebg.3fea4ef9.png" class="nav-logo scrolled"/>
       </a>
+
+      <div class="navbar-search-small">
+        {{ partial "search" . }}
+      </div>
       <button type="button" class="navbar-toggler collapsed" data-toggle="collapse" data-target=".navbar-collapse">
+        
+        <i class="bar"></i>
+        <i class="bar"></i>
+        <i class="bar"></i>
         <span class="sr-only">
           Toggle navigation
         </span>
-        <i class="fa fa-bars"></i>
       </button>
       <div class="navbar-collapse collapse">
         <div class="navbar-page-links">
@@ -112,14 +119,20 @@
 
         <div class="flex-spacer"></div>
 
-        <div class="navbar-text github-star-button">
-          <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star&count=true" frameborder="0" scrolling="0" width="90px" height="20px"></iframe>
-        </div>
+        <div class="navbar-misc">
+          <div class="navbar-text github-star-button">
+            <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star&count=true" frameborder="0" scrolling="0" width="90px" height="20px"></iframe>
+          </div>
 
-        <div id="download-button" class="navbar-text">
-          <a href="https://docs.yugabyte.com/quick-start/install/" class="btn cta-button">
-            Download
-          </a>
+          <div class="navbar-text navbar-search-main">
+            {{ partial "search" . }}
+          </div>
+
+          <div id="download-button">
+            <a href="https://docs.yugabyte.com/quick-start/install/" class="btn cta-button">
+              Download
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -9,33 +9,41 @@ h1 {
 
 #TableOfContents {
   margin-bottom: 40px;
-  padding: 10px;
+  padding: 15px 25px;
   background: $YB_LIGHT_GRAY;
-  border-radius: 12px;
+  border-radius: 7px;
   line-height: 1.8;
 }
 #TableOfContents:before {
   content: 'On this page';
-  margin-left: 10px;
   font-family: Montserrat, sans-serif;
-  font-weight: 500;
+  margin-bottom: 7px;
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
   color: $YB_DARK_BLUE;
 }
 #TableOfContents > ul {
-  margin: 0 0 10px;
+  margin: 0 0 10px 12px;
 }
 #TableOfContents > ul > li {
   margin-left: 7px;
+  font-weight: 400;
+  &:before {
+    content: none;
+  }
 }
 #TableOfContents a {
   border-bottom: none !important;
 }
-#TableOfContents > ul > li:before {
-  content: '';
-}
 #TableOfContents ul,
 #TableOfContents li {
   margin-top: 2px;
+}
+#TableOfContents ul > li {
+  &:before {
+    background-color: $YB_DARK_BLUE;
+  }
 }
 #TableOfContents ul {
   margin-bottom: 6px;
@@ -56,6 +64,7 @@ pre code.copy + textarea + button.copy {
   top: 0;
   width: auto;
   font-size: 12px;
+  line-height: inherit;
   font-weight: 600;
   text-align: center;
   padding: 3px 8px;

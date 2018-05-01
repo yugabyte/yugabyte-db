@@ -1,5 +1,5 @@
 ---
-title: 2. Fault Tolerance
+title: Fault Tolerance
 linkTitle: 2. Fault Tolerance
 description: Fault Tolerance
 aliases:

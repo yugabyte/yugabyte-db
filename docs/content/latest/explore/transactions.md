@@ -2,6 +2,7 @@
 title: 4. ACID Transactions
 linkTitle: 4. ACID Transactions
 description: Distributed ACID Transactions
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /explore/transactions/
 menu:
@@ -10,8 +11,6 @@ menu:
     parent: explore
     weight: 230
 ---
-
-**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
 
