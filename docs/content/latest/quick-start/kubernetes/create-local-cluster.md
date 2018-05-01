@@ -79,7 +79,7 @@ yb-tservers   ClusterIP   None         <none>        9042/TCP,6379/TCP,9000/TCP,
 In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the `yb-master` service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). Let us set up a network route to access `yb-master-0` on port 7000 from our localhost. You can do this by running the following command.
 
 ```{.sh .copy .separator-dollar}
-kubectl port-forward yb-master-0 7000
+$ kubectl port-forward yb-master-0 7000
 ```
 
 Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at http://localhost:7000.
