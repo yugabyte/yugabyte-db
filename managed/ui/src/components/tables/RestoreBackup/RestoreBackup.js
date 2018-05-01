@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { Field, change } from 'redux-form';
 import { YBModal, YBSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
 
 export default class RestoreBackup extends Component {
   static propTypes = {
@@ -43,11 +43,14 @@ export default class RestoreBackup extends Component {
     }
   }
 
-  componentDidMount() {
-    const { backupInfo : { universeUUID, keyspace, tableName }} = this.props;
-    this.updateFormField("restoreUniverseUUID", universeUUID);
-    this.updateFormField("restoreTableName", tableName);
-    this.updateFormField("restoreKeyspace", keyspace);
+  componentDidUpdate(prevProps, prevState, snapshot) {
+    if (isNonEmptyObject(this.props.backupInfo) &&
+        this.props.backupInfo !== prevProps.backupInfo) {
+      const { backupInfo : { universeUUID, keyspace, tableName }} = this.props;
+      this.updateFormField("restoreUniverseUUID", universeUUID);
+      this.updateFormField("restoreTableName", tableName);
+      this.updateFormField("restoreKeyspace", keyspace);
+    }
   }
 
   render() {

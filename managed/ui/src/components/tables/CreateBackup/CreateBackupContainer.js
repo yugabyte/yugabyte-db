@@ -4,7 +4,6 @@ import { connect } from 'react-redux';
 import { CreateBackup } from '../';
 import { createTableBackup, createTableBackupResponse } from '../../../actions/tables';
 import { reduxForm } from 'redux-form';
-import { isNonEmptyArray, isNonEmptyObject } from "../../../utils/ObjectUtils";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -18,33 +17,12 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const { customer: { configs } } = state;
-  const { tableInfo } = ownProps;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
-  let universeTables = [];
-  if (isNonEmptyArray(state.tables.universeTablesList)) {
-    universeTables = state.tables.universeTablesList.filter((tableInfo) => {
-      return tableInfo.tableType !== "REDIS_TABLE_TYPE";
-    });
-  }
-
-  const initialFormValues = {
-    storageConfigUUID: null,
-    backupTableUUID: null
-  };
-  if (isNonEmptyArray(storageConfigs)) {
-    initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
-  }
-  // If the tableInfo object is not set, and we have tables for the universe
-  // lets set the first tableUUID as the defaultUUID.
-  if (!isNonEmptyObject(tableInfo) && isNonEmptyArray(universeTables)) {
-    initialFormValues.backupTableUUID = universeTables[0].tableUUID;
-  }
-
   return {
-    customerConfigs: state.customer.configs,
+    storageConfigs: storageConfigs,
     universeDetails: state.universe.currentUniverse.data.universeDetails,
-    universeTables: universeTables,
-    initialValues: initialFormValues
+    universeTables: state.tables.universeTablesList,
+    initialFormValues: {}
   };
 }
 

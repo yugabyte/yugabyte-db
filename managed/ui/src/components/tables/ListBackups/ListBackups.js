@@ -38,15 +38,18 @@ export default class ListBackups extends Component {
     }
     const backupInfos = universeBackupList.data.map((b) => {
       const backupInfo = b.backupInfo;
-      backupInfo.backupUUID = b.backupUUID;
-      backupInfo.status = b.state;
-      backupInfo.createTime = b.createTime;
-      // Show action button to restore/delete only when the backup is
-      // create and which has completed successfully.
-      backupInfo.showActions = (backupInfo.actionType === "CREATE" &&
-                                backupInfo.status === "Completed");
-      return backupInfo;
-    });
+      if (backupInfo.actionType === "CREATE") {
+        backupInfo.backupUUID = b.backupUUID;
+        backupInfo.status = b.state;
+        backupInfo.createTime = b.createTime;
+        // Show action button to restore/delete only when the backup is
+        // create and which has completed successfully.
+        backupInfo.showActions = (backupInfo.actionType === "CREATE" &&
+                                  backupInfo.status === "Completed");
+        return backupInfo;
+      }
+      return null;
+    }).filter(Boolean);
 
     const formatActionButtons = function(item, row) {
       if (row.showActions) {
@@ -94,7 +97,7 @@ export default class ListBackups extends Component {
               Storage Location
             </TableHeaderColumn>
             <TableHeaderColumn dataField={"actions"} columnClassName={"yb-actions-cell"}
-                               dataFormat={formatActionButtons}>
+                               dataFormat={formatActionButtons} headerAlign='center' dataAlign='center' >
               Actions
             </TableHeaderColumn>
           </BootstrapTable>

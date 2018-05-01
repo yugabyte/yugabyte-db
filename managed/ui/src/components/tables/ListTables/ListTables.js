@@ -120,19 +120,24 @@ class ListTableGrid extends Component {
     };
 
     const formatActionButtons = function(item, row) {
-      if (item === true) {
-        return (
-          <ButtonGroup>
-            <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-              <TableAction currentRow={row} actionType="create-backup" />
-              <TableAction currentRow={row} actionType="import" />
-              <TableAction currentRow={row} actionType="drop" />
-            </DropdownButton>
-          </ButtonGroup>
-        );
-      };
+      const actions = [
+        <TableAction key={`${row.tableName}-backup-btn`} currentRow={row} actionType="create-backup" />
+      ];
+      if (row.tableType !== "REDIS_TABLE_TYPE") {
+        actions.push([
+          <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import" />,
+          <TableAction key={`${row.tableName}-drop-btn`} currentRow={row} actionType="drop" />
+        ]);
+      }
+      return (
+        <ButtonGroup>
+          <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+            {actions}
+          </DropdownButton>
+        </ButtonGroup>
+      );
     };
-    
+
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
     const formatTableStatus = function(item, row) {
@@ -160,7 +165,6 @@ class ListTableGrid extends Component {
           "tableType": item.tableType,
           "tableName": item.tableName,
           "status": "success",
-          "actions": item.tableType !== "REDIS_TABLE_TYPE",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write
         };

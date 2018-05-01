@@ -3,13 +3,17 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { Field } from 'redux-form';
+import { Field, change } from 'redux-form';
 import { YBModal, YBSelectWithLabel } from '../../common/forms/fields';
-import { isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 
 export default class CreateBackup extends Component {
   static propTypes = {
     tableInfo: PropTypes.object
+  };
+
+  updateFormField = (field, value) => {
+    this.props.dispatch(change("CreateBackup", field, value));
   };
 
   createBackup = values => {
@@ -45,9 +49,21 @@ export default class CreateBackup extends Component {
     browserHistory.push('/universes/' + universeUUID + "?tab=backups");
   };
 
+  componentDidUpdate(prevProps, prevState, snapshot) {
+    if (!this.props.submitSucceeded) {
+      const { storageConfigs, universeTables } = this.props;
+      if (isNonEmptyArray(storageConfigs)) {
+        this.updateFormField("storageConfigUUID", storageConfigs[0].configUUID);
+      }
+      if (isNonEmptyArray(universeTables)) {
+        this.updateFormField("backupTableUUID", universeTables[0].tableUUID);
+      }
+    }
+  }
+
   render() {
-    const { visible, onHide, handleSubmit, tableInfo, customerConfigs, universeTables } = this.props;
-    const storageOptions = customerConfigs.data.map((config, idx) => {
+    const { visible, onHide, handleSubmit, tableInfo, storageConfigs, universeTables } = this.props;
+    const storageOptions = storageConfigs.map((config, idx) => {
       return <option key={idx} value={config.configUUID}>{config.name + " Storage"}</option>;
     });
     let tableOptions = [];
