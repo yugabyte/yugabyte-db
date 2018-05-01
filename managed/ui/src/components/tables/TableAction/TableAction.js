@@ -32,7 +32,7 @@ export default class TableAction extends Component {
   openModal() {
     this.setState((prevState, props) => {
       return {
-        selectedRow: props.row,
+        selectedRow: props.currentRow,
         showModal: true
       };
     });
@@ -47,7 +47,7 @@ export default class TableAction extends Component {
   }
 
   render() {
-    const { currentRow, actionType, isMenuItem } = this.props;
+    const { actionType, isMenuItem } = this.props;
     let modalContainer = null;
     let btnLabel = null;
     let btnIcon = null;
@@ -57,7 +57,7 @@ export default class TableAction extends Component {
       modalContainer = (<DropTableContainer
         visible = {this.state.showModal}
         onHide = { this.closeModal}
-        tableInfo = {currentRow}
+        tableInfo = {this.state.selectedRow}
       />);
     } else if (actionType === "import") {
       btnLabel = "Bulk Import";
@@ -65,7 +65,7 @@ export default class TableAction extends Component {
       modalContainer = (<BulkImportContainer
         visible = {this.state.showModal}
         onHide = {this.closeModal}
-        tableInfo = {currentRow}
+        tableInfo = {this.state.selectedRow}
       />);
     } else if (actionType === "create-backup") {
       btnLabel = "Create Backup";
@@ -73,7 +73,7 @@ export default class TableAction extends Component {
       modalContainer = (<CreateBackupContainer
         visible={this.state.showModal}
         onHide={this.closeModal}
-        tableInfo={currentRow}
+        tableInfo={this.state.selectedRow}
       />);
     } else if (actionType === "restore-backup") {
       btnLabel = "Restore Backup";
@@ -81,7 +81,7 @@ export default class TableAction extends Component {
       modalContainer = (<RestoreBackupContainer
         visible={this.state.showModal}
         onHide={this.closeModal}
-        backupInfo={currentRow}
+        backupInfo={this.state.selectedRow}
       />);
     }
 

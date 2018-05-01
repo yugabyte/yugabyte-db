@@ -4,10 +4,11 @@ import React, { Component } from 'react';
 import { YBModal } from '../../common/forms/fields';
 import { browserHistory } from 'react-router';
 import PropTypes from 'prop-types';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 
 export default class DropTable extends Component {
   static propTypes = {
-    tableInfo: PropTypes.object.isRequired
+    tableInfo: PropTypes.object
   }
 
   confirmDropTable = () => {
@@ -23,6 +24,9 @@ export default class DropTable extends Component {
   };
 
   render() {
+    if (!isNonEmptyObject(this.props.tableInfo)) {
+      return <span />;
+    }
     const { visible, onHide, tableInfo: { keySpace, tableName } } = this.props;
 
     return (

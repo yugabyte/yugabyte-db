@@ -46,6 +46,7 @@ export default class NodeDetails extends Component {
                              universeMasterLeader.data.privateIP === nodeDetail.cloudInfo.private_ip;
 
       return {
+        nodeIdx: nodeDetail.nodeIdx,
         name: nodeDetail.nodeName,
         cloudItem: `${nodeDetail.cloudInfo.cloud}`,
         regionItem: `${nodeDetail.cloudInfo.region}`,

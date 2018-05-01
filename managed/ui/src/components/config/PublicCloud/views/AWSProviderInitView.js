@@ -20,7 +20,7 @@ class AWSProviderInitView extends Component {
 
   createProviderConfig = formValues => {
     const {hostInfo} = this.props;
-    let awsProviderConfig = {
+    const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
       'AWS_SECRET_ACCESS_KEY': formValues.secretKey
     };

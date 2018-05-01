@@ -54,7 +54,7 @@
     "leaflet": "1.0.2",
     "leaflet.markercluster": "^1.0.0",
     "lodash": "^3.10.1",
-    "node-sass": "^4.7.2",
+    "node-sass": "^4.9.0",
     "npm": "^5.0.4",
     "react": "^16.2.0",
     "react-ace": "^5.9.0",
