@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { YBModal } from '../../common/forms/fields';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
+import { browserHistory } from 'react-router';
 
 export default class NodeActionModal extends Component {
   static propTypes = {
@@ -20,9 +21,9 @@ export default class NodeActionModal extends Component {
       onHide
     } = this.props;
     const universeUUID = currentUniverse.data.universeUUID;
-    console.log(universeUUID, nodeInfo.name, actionType);
     performUniverseNodeAction(universeUUID, nodeInfo.name, actionType);
     onHide();
+    browserHistory.push('/universes/' + universeUUID + "?tab=nodes");
   };
 
   render() {

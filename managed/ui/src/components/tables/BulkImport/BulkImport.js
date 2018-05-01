@@ -10,7 +10,7 @@ import PropTypes from 'prop-types';
 
 export default class BulkImport extends Component {
   static propTypes = {
-    tableInfo: PropTypes.object.isRequired
+    tableInfo: PropTypes.object
   }
 
   confirmBulkImport = values => {
@@ -35,6 +35,9 @@ export default class BulkImport extends Component {
   };
 
   render() {
+    if (!isNonEmptyObject(this.props.tableInfo)) {
+      return <span />;
+    }
     const { visible, onHide, tableInfo: { keySpace, tableName},
             handleSubmit, universeDetails } = this.props;
     const s3label = "S3 Bucket with data to be loaded into " + keySpace + "." + tableName;
