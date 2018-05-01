@@ -29,7 +29,19 @@ YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP
 
 ## Can I deploy YugaByte DB to production?
 
-YugaByte DB is currently in 0.9 beta release with multiple pre-production deployments. Production deployments are not recommended until the planned 1.0 release in 2018.
+Yes, YugaByte DB is production-ready starting with the 1.0 release in May 2018.
+
+## What is the definition of the "Beta" feature tag?
+
+Some features are marked Beta in every release. Following are the points to consider:
+
+- Code is well tested. Enabling the feature is considered safe. Enabled by default.
+
+- Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release. 
+
+- Recommended only for non-production use.
+
+Please do try our beta features and give feedback on them.
 
 ## Any performance benchmarks available?
 
@@ -49,7 +61,7 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 ## How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with tradtional DevOps tools. 
+[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools. 
 
 [Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 

@@ -1,7 +1,7 @@
 ---
 title: 5. Test PostgreSQL API
 linkTitle: 5. Test PostgreSQL API
-description: Test PostgreSQL API (Beta)
+description: Test PostgreSQL API
 aliases:
   - /quick-start/test-postgresql/
 menu:
@@ -10,11 +10,13 @@ menu:
     weight: 145
 ---
 
+**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
+
+
 After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's PostgreSQL API.
 
 [**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with the 10.3 version of psql in its bin directory.
 
-**NOTE:** this feature is still in beta and is not recommended for production use.
 
 ## 1. Connect with psql
 
@@ -25,14 +27,12 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
       Docker
     </a>
   </li>
-<!--
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
--->
   <li >
     <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="false">
       <i class="fa fa-apple" aria-hidden="true"></i>
@@ -51,11 +51,9 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
   <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/test-postgresql.md" /%}}
   </div>
-<!--
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/test-postgresql.md" /%}}
   </div>
--->
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
     {{% includeMarkdown "binary/test-postgresql.md" /%}}
   </div>

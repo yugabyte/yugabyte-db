@@ -11,7 +11,7 @@ menu:
     weight: 231
 ---
 
-[ **_Secondary indexes are currently in beta_** ]
+**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 A database index is a data structure that improves the speed of data retrieval operations on a database table. Secondary indexes require additional writes and storage space to maintain the index data structure. They can be created using one or more columns of a database table, providing the basis for both rapid random lookups and efficient access of ordered records.
 

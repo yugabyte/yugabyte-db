@@ -12,7 +12,7 @@ aliases:
   - api/ycql/ddl_create_index
 ---
 
-[ **_The CREATE INDEX statement is currently in beta_** ]
+**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 ## Synopsis
 The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and covering columns.

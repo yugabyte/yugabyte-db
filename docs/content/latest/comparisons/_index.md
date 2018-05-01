@@ -27,7 +27,7 @@ Multiple Read Consistency Levels | <i class="fa fa-check"></i> |<i class="fa fa-
 Low, Predictable p99 Latencies | <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 High Data Density| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
 Cloud-Native Reconfigurability | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
-Open API | CQL   |Redis| MongoQL |HBase| Proprietary | CQL, MongoQL | CQL, Redis
+Open API | CQL   |Redis| MongoQL |HBase| Proprietary | CQL, MongoQL | Cassandra-compatible YCQL, Redis-compatible YEDIS
 Open Source | Apache 2.0 | 3-Clause BSD| AGPL 3.0 | Apache 2.0| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | Apache 2.0
 
 
@@ -47,7 +47,7 @@ Global Consistency Across Multi-DC/Regions |<i class="fa fa-times"></i>| <i clas
 Multiple Read Consistency Levels | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
 Cloud-Native Reconfigurability |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Low, Predictable p99 Latencies | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> 
-SQL Compatibility |MySQL| PostgreSQL | MySQL, PostgreSQL |Read Only| Read Only| NoSQL APIs today, PostgreSQL soon
+SQL Compatibility |MySQL| PostgreSQL | MySQL, PostgreSQL |Read Only| Read Only| PostgreSQL (BETA)
 Open Source | <i class="fa fa-times"></i>| Apache 2.0 | <i class="fa fa-times"></i> | <i class="fa fa-times"></i>| <i class="fa fa-times"></i> | Apache 2.0
 
 

@@ -18,7 +18,7 @@ YugaByte DB is an open source, transactional, high performance database for plan
 
 In terms of data model and APIs, YugaByte DB currently supports 3 APIs. 
 
-1. [Cassandra-compatible YCQL](/api/cassandra/) - YCQL is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](/explore/transactions/), strongly consistent secondary indexes and a native JSON data type. 
+1. [Cassandra-compatible YCQL](/api/cassandra/) - YCQL is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](/explore/transactions/), [strongly consistent secondary indexes](/explore/secondary-indexes/) and a [native JSON data type](/explore/json-documents/). 
 
 2. [Redis-compatible YEDIS](/api/redis/) - YugaByte DB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 

@@ -1,7 +1,7 @@
 ---
-title: Private DC
-linkTitle: Private DC
-description: Private DC
+title: Private Datacenter
+linkTitle: Private Datacenter
+description: Private Datacenter
 aliases:
   - /deploy/multi-node-cluster/
 menu:

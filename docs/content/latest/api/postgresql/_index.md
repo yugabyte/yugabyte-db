@@ -14,6 +14,8 @@ aliases:
   - api/pgsql
 ---
 
+**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
+
 ## Introduction
 PostgreSQL support is under active development in YugaByte. We will keep updating this page as features are added.
 

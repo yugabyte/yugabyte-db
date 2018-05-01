@@ -14,7 +14,7 @@ aliases:
 ---
 
 ## Introduction
-YugaByte DB supports an automatically sharded, clustered & elastic Redis-as-a-Database in a Redis driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte DB.
+The YEDIS API allows YugaByte DB to become an auto-sharded, clustered & elastic Redis-as-a-Database in a Redis-driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte DB.
 
 ## Data Types
 The following datatypes can be read and written via Redis service. All data are on-disk persistent in YugaByte system.<br>

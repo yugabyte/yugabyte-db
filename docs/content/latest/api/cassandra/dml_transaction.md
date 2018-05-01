@@ -12,7 +12,7 @@ aliases:
   - api/ycql/dml_insert
 ---
 
-[ **_The transaction statement block is currently in beta_** ]
+**FEATURE STATE:** [Beta](/faq/product/#what-is-the-definition-of-the-beta-feature-tag)
 
 ## Synopsis
 

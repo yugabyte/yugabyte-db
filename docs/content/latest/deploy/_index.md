@@ -18,7 +18,7 @@ You can deploy YugaByte DB to any public cloud or private datacenter of your cho
       <img src="/images/section_icons/deploy/community.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Private DC
+      Private Datacenter
       <div class="caption">Manual deployments of YugaByte DB using popular DevOps tools.</div>
     </div>
   </a>
