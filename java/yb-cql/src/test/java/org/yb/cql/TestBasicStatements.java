@@ -15,6 +15,8 @@ package org.yb.cql;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import com.datastax.driver.core.Session;
+
 public class TestBasicStatements extends BaseCQLTest {
   @Test
   public void testCreateTable() throws Exception {
@@ -23,12 +25,20 @@ public class TestBasicStatements extends BaseCQLTest {
   }
 
   // We need to work on reporting error from SQL before activating this test.
-  @Ignore
+  @Test
   public void testInvalidStatement() throws Exception {
     LOG.info("Execute nothing ...");
     thrown.expect(com.datastax.driver.core.exceptions.SyntaxError.class);
-    thrown.expectMessage("unknown statement");
+    thrown.expectMessage("Invalid SQL Statement");
     session.execute("NOTHING");
   }
 
+  @Test
+  public void testUnsupportedProtocol() throws Exception {
+    thrown.expect(com.datastax.driver.core.exceptions.UnsupportedProtocolVersionException.class);
+    Session s = getDefaultClusterBuilder()
+                .allowBetaProtocolVersion()
+                .build()
+                .connect();
+  }
 }

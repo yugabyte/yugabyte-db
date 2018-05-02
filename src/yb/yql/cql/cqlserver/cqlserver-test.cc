@@ -159,9 +159,10 @@ TEST_F(TestCQLService, StartupRequest) {
       BINARY_STRING("\x05\x00\x00\x00\x01" "\x00\x00\x00\x16"
                     "\x00\x01" "\x00\x0b" "CQL_VERSION"
                                "\x00\x05" "3.0.0"),
-      BINARY_STRING("\x84\x00\x00\x00\x00" "\x00\x00\x00\x4f"
-                    "\x00\x00\x00\x0a" "\x00\x49"
-                    "Protocol version 5 not supported. Supported versions are between 3 and 4."));
+      BINARY_STRING("\x84\x00\x00\x00\x00" "\x00\x00\x00\x58"
+                    "\x00\x00\x00\x0a" "\x00\x52"
+                    "Invalid or unsupported protocol version 5. "
+                    "Supported versions are between 3 and 4."));
 
   // Send STARTUP request with compression
   SendRequestAndExpectResponse(
