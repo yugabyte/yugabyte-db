@@ -1365,7 +1365,8 @@ std::string Tablet::DocDBDumpStrInTest() {
 
 void Tablet::LostLeadership() {
   if (transaction_coordinator_) {
-    transaction_coordinator_->ClearLocks();
+    transaction_coordinator_->ClearLocks(STATUS(IllegalState,
+                                                "Transaction coordinator leader changed"));
   }
 }
 

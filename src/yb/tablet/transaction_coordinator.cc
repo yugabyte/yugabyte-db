@@ -55,7 +55,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_double(transaction_max_missed_heartbeat_periods, 6.0,
+DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0 * yb::kTimeMultiplier,
               "Maximum heartbeat periods that a pending transaction can miss before the "
               "transaction coordinator expires the transaction. The total expiration time in "
               "microseconds is transaction_heartbeat_usec times "
@@ -199,25 +199,22 @@ class TransactionState {
 
   // Clear all locks on this transaction.
   // Currently there is only one lock, but user of this function should not care about that.
-  void ClearLocks() {
+  void ClearLocks(const Status& status) {
     VLOG_WITH_PREFIX(1) << "ClearLocks";
-    if (replicating_ != nullptr || !request_queue_.empty() || !abort_waiters_.empty()) {
-      auto status = STATUS(TryAgain, "Leader changed");
-      if (replicating_ != nullptr) {
-        replicating_->completion_callback()->CompleteWithStatus(status);
-        replicating_ = nullptr;
-      }
-
-      for (auto& entry : request_queue_) {
-        entry->completion_callback()->CompleteWithStatus(status);
-      }
-      request_queue_.clear();
-
-      for (auto& waiter : abort_waiters_) {
-        waiter(status);
-      }
-      abort_waiters_.clear();
+    if (replicating_ != nullptr) {
+      replicating_->completion_callback()->CompleteWithStatus(status);
+      replicating_ = nullptr;
     }
+
+    for (auto& entry : request_queue_) {
+      entry->completion_callback()->CompleteWithStatus(status);
+    }
+    request_queue_.clear();
+
+    for (auto& waiter : abort_waiters_) {
+      waiter(status);
+    }
+    abort_waiters_.clear();
   }
 
   CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
@@ -684,10 +681,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                         << ", state: " << data.state.ShortDebugString();
   }
 
-  void ClearLocks() {
+  void ClearLocks(const Status& status) {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     for (auto it = managed_transactions_.begin(); it != managed_transactions_.end(); ++it) {
-      managed_transactions_.modify(it, std::bind(&TransactionState::ClearLocks, _1));
+      managed_transactions_.modify(it, std::bind(&TransactionState::ClearLocks, _1, status));
     }
   }
 
@@ -946,8 +943,8 @@ void TransactionCoordinator::Handle(std::unique_ptr<tablet::UpdateTxnOperationSt
   impl_->Handle(std::move(request));
 }
 
-void TransactionCoordinator::ClearLocks() {
-  impl_->ClearLocks();
+void TransactionCoordinator::ClearLocks(const Status& status) {
+  impl_->ClearLocks(status);
 }
 
 void TransactionCoordinator::Start() {
