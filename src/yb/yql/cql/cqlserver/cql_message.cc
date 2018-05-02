@@ -218,8 +218,8 @@ bool CQLRequest::ParseRequest(
     error_response->reset(
         new ErrorResponse(
             header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
-            Substitute("Protocol version $0 not supported. Supported versions are between "
-                "$1 and $2.", header.version, kMinimumVersion, kCurrentVersion)));
+            Substitute("Invalid or unsupported protocol version $0. Supported versions are between "
+                       "$1 and $2.", header.version, kMinimumVersion, kCurrentVersion)));
     return false;
   }
 
