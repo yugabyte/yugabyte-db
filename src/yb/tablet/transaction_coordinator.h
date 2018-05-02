@@ -117,7 +117,7 @@ class TransactionCoordinator {
   void ProcessAborted(const AbortedData& data);
 
   // Clears locks for transaction updates. Used when leader changes.
-  void ClearLocks();
+  void ClearLocks(const Status& status);
 
   // Handles new request for transaction update.
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
