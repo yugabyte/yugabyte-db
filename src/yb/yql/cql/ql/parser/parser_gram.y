@@ -4885,6 +4885,7 @@ unreserved_keyword:
   | CLASS { $$ = $1; }
   | CLOSE { $$ = $1; }
   | CLUSTER { $$ = $1; }
+  | CLUSTERING { $$ = $1; }
   | COMMENT { $$ = $1; }
   | COMMENTS { $$ = $1; }
   | COMMIT { $$ = $1; }
@@ -5151,11 +5152,13 @@ col_name_keyword:
   | CHARACTER { $$ = $1; }
   | COALESCE { $$ = $1; }
   | COUNTER { $$ = $1; }
+  | COVERING { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
   | DOUBLE_P { $$ = $1; }
   | EXTRACT { $$ = $1; }
   | FLOAT_P { $$ = $1; }
+  | FROZEN { $$ = $1; }
   | GREATEST { $$ = $1; }
   | GROUPING { $$ = $1; }
   | INET { $$ = $1; }
@@ -5165,6 +5168,8 @@ col_name_keyword:
   | INTEGER { $$ = $1; }
   | INTERVAL { $$ = $1; }
   | LEAST { $$ = $1; }
+  | LIST { $$ = $1; }
+  | MAP { $$ = $1; }
   | NATIONAL { $$ = $1; }
   | NCHAR { $$ = $1; }
   | NONE { $$ = $1; }
