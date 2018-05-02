@@ -200,6 +200,10 @@ TEST_F(QLTestParser, TestQLParser) {
   PARSE_INVALID_STMT("SELECT c2->>'a'->'b' FROM t;");
   PARSE_INVALID_STMT("SELECT c2->>a  FROM t;");
   PARSE_INVALID_STMT("SELECT c2->a FROM t;");
+
+  // Valid statement: unreserved keywords used as names.
+  PARSE_VALID_STMT("CREATE KEYSPACE clustering;");
+  PARSE_VALID_STMT("CREATE TABLE offset(filtering int PRIMARY KEY, login text, roles float)");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {
