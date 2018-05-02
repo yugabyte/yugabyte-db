@@ -27,38 +27,38 @@ Returns the value for the given `timestamp`
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 10 “70”
+$ TSADD cpu_usage 10 "70"
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 20 “80” 30 “60” 40 “90”
+$ TSADD cpu_usage 20 "80" 30 "60" 40 "90"
 ```
 ```sh
-“OK”
+OK
 ```
 
 We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 201710311100 “50”
+$ TSADD cpu_usage 201710311100 "50"
 ```
 ```sh
-“OK”
+OK
 ```
 
 A more common option would be to specify the timestamp as the unix timestamp.
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 1509474505 “75”
+$ TSADD cpu_usage 1509474505 "75"
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
 $ TSGET cpu_usage 10
 ```
 ```sh
-“70”
+"70"
 ```
 ```{.sh .copy .separator-dollar}
 $ TSGET cpu_usage 100
@@ -70,16 +70,17 @@ $ TSGET cpu_usage 100
 $ TSGET cpu_usage 201710311100
 ```
 ```sh
-“50”
+"50"
 ```
 ```{.sh .copy .separator-dollar}
 $ TSGET cpu_usage 1509474505
 ```
 ```sh
-“75”
+"75"
 ```
+An error is returned when the timestamp is not an int64.
 ```{.sh .copy .separator-dollar}
-$ TSGET cpu_usage xyz # timestamp is not int64.
+$ TSGET cpu_usage xyz
 ```
 ```sh
 (error) Request was unable to be processed from server.

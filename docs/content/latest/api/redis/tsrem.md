@@ -27,54 +27,59 @@ Returns the appropriate status string.
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 10 “70”
+TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 20 “80” 30 “60” 40 “90”
+TSGET ts_key 2
 ```
 ```sh
-“OK”
+"two"
 ```
-
-We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 201710311100 “50”
+TSGET ts_key 3
 ```
 ```sh
-“OK”
+"three"
 ```
-
-A more common option would be to specify the timestamp as the unix timestamp
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 1509474505 “75”
+TSRANGEBYTIME ts_key 1 4
 ```
 ```sh
-“OK”
+1) "1"
+2) "one"
+3) "2"
+4) "two"
+5) "3"
+6) "three"
+7) "4"
+8) "four"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSREM cpu_usage 20 30 40
+TSREM ts_key 2 3
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ TSRANGEBYTIME cpu_usage 10 40
+TSRANGEBYTIME ts_key 1 4
 ```
 ```sh
-1) 10
-2) “70"
+1) "1"
+2) "one"
+3) "4"
+4) "four"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSREM cpu_usage 1509474505
+TSGET ts_key 2
 ```
 ```sh
-“OK”
+(nil)
 ```
 ```{.sh .copy .separator-dollar}
-$ TSGET cpu_usage 1509474505
+TSGET ts_key 3
 ```
 ```sh
 (nil)

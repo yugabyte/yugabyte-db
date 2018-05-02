@@ -32,16 +32,16 @@ $ ZADD z_key 1.0 v1 2.0 v2
 ```sh
 (integer) 2
 ```
+Retrieve all members.
 ```{.sh .copy .separator-dollar}
-# Should retrieve all members.
 $ ZRANGEBYSCORE z_key -inf +inf
 ```
 ```sh
 1) "v1"
 2) "v2"
 ```
+Retrieve all member score pairs.
 ```{.sh .copy .separator-dollar}
-# Should retrive all member score pairs.
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
 ```sh
@@ -50,8 +50,8 @@ $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 3) "v2"
 4) "2.0"
 ```
+Bounds are inclusive.
 ```{.sh .copy .separator-dollar}
-# Bounds are inclusive.
 $ ZRANGEBYSCORE z_key 1.0 2.0
 ```
 ```sh

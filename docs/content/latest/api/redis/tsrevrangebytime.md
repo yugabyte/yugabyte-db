@@ -29,99 +29,85 @@ Returns a list of timestamp, value pairs found in the range specified by `low_ts
 
 ## EXAMPLES
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 10 “70”
+TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 20 “80” 30 “60” 40 “90”
+TSREVRANGEBYTIME ts_key 2 4
 ```
 ```sh
-“OK”
+1) "4"
+2) "four"
+3) "3"
+4) "three"
+5) "2"
+6) "two"
+```
+2 is exclusive
+```{.sh .copy .separator-dollar}
+TSREVRANGEBYTIME ts_key (2 4
+```
+```sh
+1) "4"
+2) "four"
+3) "3"
+4) "three"
+```
+2 and 4 are exclusive
+```{.sh .copy .separator-dollar}
+TSREVRANGEBYTIME ts_key (2 (4
+```
+```sh
+1) "3"
+2) "three"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 201710311100 “50”
+TSREVRANGEBYTIME ts_key -inf 3
 ```
 ```sh
-“OK”
+1) "3"
+2) "three"
+3) "2"
+4) "two"
+5) "1"
+6) "one"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 1509474505 “75”
+TSREVRANGEBYTIME ts_key 2 +inf
 ```
 ```sh
-“OK”
+ 1) "6"
+ 2) "six"
+ 3) "5"
+ 4) "five"
+ 5) "4"
+ 6) "four"
+ 7) "3"
+ 8) "three"
+ 9) "2"
+10) "two"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSREVRANGEBYTIME cpu_usage 20 40
+TSREVRANGEBYTIME ts_key -inf 3 LIMIT 2
 ```
 ```sh
-1) 40
-2) “90”
-3) 30
-4) “60”
-5) 20
-6) “80”
+1) "3"
+2) "three"
+3) "2"
+4) "two"
 ```
 ```{.sh .copy .separator-dollar}
-# 20 is exclusive
-$ TSREVRANGEBYTIME cpu_usage (20 40
+TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 ```
 ```sh
-1) 40
-2) “90”
-3) 30
-4) “60”
-```
-```{.sh .copy .separator-dollar}
-# 20 and 40 are exclusive
-$ TSREVRANGEBYTIME cpu_usage (20 (40
-```
-```sh
-1) 30
-2) “60”
-```
-```{.sh .copy .separator-dollar}
-$ TSREVRANGEBYTIME cpu_usage -inf 30
-```
-```sh
-1) 30
-2) “60”
-3) 20
-4) “80”
-5) 10
-6) “70”
-```
-```{.sh .copy .separator-dollar}
-$ TSREVRANGEBYTIME cpu_usage 20 +inf
-```
-```sh
-1) 40
-2) “90”
-3) 30
-4) “60”
-5) 20
-6) “80”
-```
-```{.sh .copy .separator-dollar}
-$ TSREVRANGEBYTIME cpu_usage 20 +inf LIMIT 2
-```
-```sh
-1) 40
-2) “90”
-3) 30
-4) “60”
-```
-```{.sh .copy .separator-dollar}
-$ TSREVRANGEBYTIME cpu_usage 20 +inf LIMIT 10
-```
-```sh
-1) 40
-2) “90”
-3) 30
-4) “60”
-5) 20
-6) “80”
+1) "3"
+2) "three"
+3) "2"
+4) "two"
+5) "1"
+6) "one"
 ```
 
 ## SEE ALSO

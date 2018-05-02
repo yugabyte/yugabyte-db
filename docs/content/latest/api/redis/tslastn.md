@@ -27,7 +27,7 @@ Returns a list of timestamp, value pairs for the latest N entries in the time se
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
 $ TSLASTN ts_key 2

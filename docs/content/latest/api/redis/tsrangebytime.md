@@ -27,79 +27,65 @@ Returns a list of timestamp, value pairs found in the range specified by `low_ts
 
 ## EXAMPLES
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 10 “70”
+TSADD ts 1 one 2 two 3 three 4 four 5 five 6 six
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 20 “80” 30 “60” 40 “90”
+TSRANGEBYTIME ts_key 2 4
 ```
 ```sh
-“OK”
+1) "2"
+2) "two"
+3) "3"
+4) "three"
+5) "4"
+6) "four"
+```
+2 is exclusive
+```{.sh .copy .separator-dollar}
+TSRANGEBYTIME ts_key (2 4
+```
+```sh
+1) "3"
+2) "three"
+3) "4"
+4) "four"
+```
+2 and 4 are exclusive
+```{.sh .copy .separator-dollar}
+TSRANGEBYTIME ts_key (2 (4
+```
+```sh
+1) "3"
+2) "three"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 201710311100 “50”
+TSRANGEBYTIME ts_key -inf 3
 ```
 ```sh
-“OK”
+1) "1"
+2) "one"
+3) "2"
+4) "two"
+5) "3"
+6) "three"
 ```
 ```{.sh .copy .separator-dollar}
-$ TSADD cpu_usage 1509474505 “75”
+TSRANGEBYTIME ts_key 2 +inf
 ```
 ```sh
-“OK”
-```
-```{.sh .copy .separator-dollar}
-$ TSRANGEBYTIME cpu_usage 20 40
-```
-```sh
-1) 20
-2) “80”
-3) 30
-4) “60”
-5) 40
-6) “90”
-```
-```{.sh .copy .separator-dollar}
-# 20 is exclusive
-$ TSRANGEBYTIME cpu_usage (20 40
-```
-```sh
-1) 30
-2) “60”
-3) 40
-4) “90”
-```
-```{.sh .copy .separator-dollar}
-# 20 and 40 are exclusive
-$ TSRANGEBYTIME cpu_usage (20 (40
-```
-```sh
-1) 30
-2) “60”
-```
-```{.sh .copy .separator-dollar}
-$ TSRANGEBYTIME cpu_usage -inf 30
-```
-```sh
-1) 10
-2) “70”
-3) 20
-4) “80”
-5) 30
-6) “60”
-```
-```{.sh .copy .separator-dollar}
-$ TSRANGEBYTIME cpu_usage 20 +inf
-```
-```sh
-1) 20
-2) “80”
-3) 30
-4) “60”
-5) 40
-6) “90”
+ 1) "2"
+ 2) "two"
+ 3) "3"
+ 4) "three"
+ 5) "4"
+ 6) "four"
+ 7) "5"
+ 8) "five"
+ 9) "6"
+10) "six"
 ```
 
 ## SEE ALSO

@@ -26,7 +26,7 @@ Returns the number of entries in the given time series.
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
 $ TSCARD ts_key
@@ -38,7 +38,7 @@ $ TSCARD ts_key
 $ TSADD ts_key1 10 v1 20 v2 30 v3
 ```
 ```sh
-“OK”
+OK
 ```
 ```{.sh .copy .separator-dollar}
 $ TSCARD ts_key1
@@ -46,8 +46,8 @@ $ TSCARD ts_key1
 ```sh
 (integer) 3
 ```
+Non-existent key returns 0.
 ```{.sh .copy .separator-dollar}
-# non-existent key returns 0
 $ TSCARD ts_key2
 ```
 ```sh
