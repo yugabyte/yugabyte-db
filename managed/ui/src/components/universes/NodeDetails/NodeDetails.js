@@ -5,36 +5,33 @@ import { NodeDetailsTable } from '../../universes';
 import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, getReadOnlyCluster, nodeComparisonFunction } from '../../../utils/UniverseUtils';
+import { hasLiveNodes } from 'utils/UniverseUtils';
 
 export default class NodeDetails extends Component {
   componentWillMount() {
     const { universe: { currentUniverse } } = this.props;
-    const uuid = currentUniverse.data.universeUUID;
-    this.props.getUniversePerNodeStatus(uuid);
-    this.props.getMasterLeader(uuid);
+    if (getPromiseState(currentUniverse).isSuccess() &&
+        hasLiveNodes(currentUniverse.data)) {
+      const uuid = currentUniverse.data.universeUUID;
+      this.props.getUniversePerNodeStatus(uuid);
+      this.props.getMasterLeader(uuid);
+    }
   }
-
-  checkTasksForUniverseCreated = () => {
-    const { universe: { currentUniverse, universeTasks } } = this.props;
-    const uuid = currentUniverse.data.universeUUID;
-    return isNonEmptyArray(universeTasks.data[uuid]) ? universeTasks.data[uuid].some((task) => {
-      return task.type === 'Create' && task.target === 'Universe' && task.status === 'Success';
-    }) : false;
-  };
 
   render() {
     const { universe: { currentUniverse, universePerNodeStatus, universeMasterLeader } } = this.props;
-    const nodeDetails = currentUniverse.data.universeDetails.nodeDetailsSet;
+    const universeDetails = currentUniverse.data.universeDetails;
+    const nodeDetails = universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
 
-    const universeCreated = this.checkTasksForUniverseCreated();
+    const universeCreated = universeDetails.updateInProgress;
     const sortedNodeDetails = nodeDetails.sort((a, b) => nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters));
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
       let nodeAlive = false;
-      let isLoading = !universeCreated;
+      let isLoading = universeCreated;
       if (getPromiseState(universePerNodeStatus).isSuccess() &&
           isNonEmptyObject(universePerNodeStatus.data) &&
           isNonEmptyObject(universePerNodeStatus.data[nodeDetail.nodeName])) {
@@ -68,11 +65,11 @@ export default class NodeDetails extends Component {
       };
     });
 
-    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    const primaryCluster = getPrimaryCluster(universeDetails.clusters);
     if (!isNonEmptyObject(primaryCluster)) {
       return <span />;
     }
-    const readOnlyCluster = getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+    const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
     const primaryNodeDetails = nodeDetailRows.filter((nodeDetail) => nodeDetail.placementUUID === primaryCluster.uuid);
     const readOnlyNodeDetails = isNonEmptyObject(readOnlyCluster) ?
       nodeDetailRows.filter((nodeDetail) => nodeDetail.placementUUID === readOnlyCluster.uuid) : [];

@@ -8,6 +8,7 @@ import { OverviewMetricsContainer } from '../../metrics';
 import { UniverseResources } from '../UniverseResources';
 import { YBPanelItem, YBWidget } from '../../panels';
 import { RegionMap, YBMapLegend} from '../../maps';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
@@ -19,6 +20,10 @@ export default class UniverseOverview extends Component {
 
   getRegionMapWidget = (universeInfo) => {
     const universeResources = universeInfo.resources;
+    let numNodes = 0;
+    if (isNonEmptyObject(universeResources)) {
+      numNodes = universeResources.numNodes;
+    }
     const mapWidget = (
       <YBWidget
         noMargin
@@ -27,7 +32,7 @@ export default class UniverseOverview extends Component {
           "universe nodes"
         }
         headerRight={
-          universeResources.numNodes +" nodes"
+          numNodes +" nodes"
         }
         body={
           <div>
