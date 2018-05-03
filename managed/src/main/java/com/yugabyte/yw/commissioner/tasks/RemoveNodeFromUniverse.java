@@ -54,7 +54,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       }
 
       if (currentNode.state != NodeDetails.NodeState.Live) {
-        String msg = "Node " + taskParams().nodeName + " is not on live state, but is in " +
+        String msg = "Node " + taskParams().nodeName + " is not in live state, but is in " +
                      currentNode.state + ", so cannot be removed.";
         LOG.error(msg);
         throw new RuntimeException(msg);
@@ -68,31 +68,43 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       if (instanceExists(taskParams())) {
-        // Remove the master on this node from master quorum and update its state from YW DB.
-        if (currentNode.isMaster) {
+        String masterAddrs = universe.getMasterAddresses();
+        // Remove the master on this node from master quorum and update its state from YW DB,
+        // only if it reachable.
+        boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
+        LOG.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
+        if (currentNode.isMaster && masterReachable) {
           createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
         }
 
-        // Mark the tserver as blacklisted on the backend and wait for data move.
+        // Mark the tserver as blacklisted on the master leader.
         UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
         createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)),
                                 userIntent.replicationFactor)
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-        createWaitForDataMoveTask()
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-        // Stop the tserver process and remove it as tserver in DB.
-        createTServerTaskForNode(currentNode, "stop")
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        // Wait for data move and stop the tserver process only if it is reachable.
+        boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
+        LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
+        if (tserverReachable) {
+          createWaitForDataMoveTask()
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+          createTServerTaskForNode(currentNode, "stop")
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
       }
+
+      // Remove master status (even when it does not exists or is not reachable).
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      // Remove its tserver status in DB.
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
       // Update Node State to Removed
       createSetNodeStateTask(currentNode, NodeState.Removed)

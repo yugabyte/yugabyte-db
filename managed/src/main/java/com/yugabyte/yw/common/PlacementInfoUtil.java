@@ -1538,7 +1538,9 @@ public class PlacementInfoUtil {
             case REDIS_EXPORT: // Ignore results from the Redis port
               break;
             default:
-              LOG.error("Invalid port " + name[1]);
+              if (Integer.valueOf(name[1]) != 0) {
+                LOG.error("Invalid port " + name[1]);
+              }
               break;
           }
         }

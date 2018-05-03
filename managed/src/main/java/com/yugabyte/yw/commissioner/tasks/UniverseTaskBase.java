@@ -13,12 +13,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
 
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.commons.lang3.StringUtils;
 import org.yb.Common;
+import org.yb.client.YBClient;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -60,6 +62,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -928,5 +931,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       exists = false;
     }
     return exists;
+  }
+
+  private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
+    YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
+    YBClient client = ybService.getClient(masterAddrs);
+    HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
+        server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
+    return client.waitForServer(hp, 5000);
+  }
+
+  public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {
+	if (!node.isMaster) {
+      return false;
+	}
+    return isServerAlive(node, ServerType.MASTER, masterAddrs);
+  }
+
+  public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
+    return isServerAlive(node, ServerType.TSERVER, masterAddrs);
   }
 }
