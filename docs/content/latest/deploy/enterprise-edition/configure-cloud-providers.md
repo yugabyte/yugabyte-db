@@ -1,6 +1,6 @@
 ---
 title: Configure Cloud Providers
-linkTitle: 3. Configure Cloud Providers
+linkTitle: 4. Configure Cloud Providers
 description: Configure Cloud Providers
 aliases:
   - /deploy/enterprise-edition/configure-cloud-providers/

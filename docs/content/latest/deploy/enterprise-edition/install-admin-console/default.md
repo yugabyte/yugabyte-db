@@ -1,0 +1,83 @@
+## Step 1. Install Replicated
+
+YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
+
+- Install replicated.
+```{.sh .copy .separator-dollar}
+$ curl -sSL https://get.replicated.com/docker | sudo bash
+```
+
+
+- Install replicated behind a proxy.
+```{.sh .copy .separator-dollar}
+$ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
+```
+
+- After replicated install completes, make sure it is running
+```{.sh .copy .separator-dollar}
+$ sudo docker ps
+```
+
+You should see an output similar to the following.
+
+![Replicated successfully installed](/images/replicated/replicated-success.png)
+
+- **NOTE**: To uninstall an older version of docker, you can do:
+
+```{.sh .copy .separator-dollar}
+# uninstall any older versions of docker (ubuntu-based hosts)
+$ sudo apt-get remove docker docker-engine
+```
+
+```{.sh .copy .separator-dollar}
+# uninstall any older versions of docker (centos-based hosts)
+$ sudo yum remove docker \
+                docker-common \
+                container-selinux \
+                docker-selinux \
+                docker-engine
+```
+
+## Step 2. Install YugaWare via Replicated
+
+### Setup HTTPS for Replicated
+
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
+
+![Replicated SSL warning](/images/replicated/replicated-warning.png)
+
+You can provide your own custom SSL certificate along with a hostname.
+
+![Replicated HTTPS setup](/images/replicated/replicated-https.png)
+
+The simplest option is use a self-signed cert for now and add the custom SSL certificate later. Note that you will have to connect to the Replicated Admin Console only using IP address (as noted below).
+
+![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
+
+### Upload License File
+
+Now upload the YugaByte license file received from YugaByte Support.
+
+![Replicated License Upload](/images/replicated/replicated-license-upload.png)
+
+Two options to install YugaWare are presented.
+
+![Replicated License Online Install](/images/replicated/replicated-license-online-install-option.png)
+
+![Replicated License Online Progress](/images/replicated/replicated-license-progress.png)
+
+### Secure Replicated
+
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugaByte DB).
+
+![Replicated Password](/images/replicated/replicated-password.png)
+
+### Pre-Flight Checks
+
+Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
+
+![Replicated Checks](/images/replicated/replicated-checks.png)
+
+Clicking Continue above will bring us to YugaWare configuration.
+
+In case the pre-flight check fails, review the [Troubleshoot YugaWare](#step-5-troubleshoot-yugaware) section below to identify the resolution.

@@ -21,7 +21,38 @@ YugaWare first needs to be installed on any machine. The next step is to configu
 
 ## What are the OS requirements and permissions to run YugaWare, the YugaByte admin console?
 
-Prerequisites for YugaWare are listed [here](../../deploy/enterprise-edition/admin-console/#prerequisites).
+
+- **OS requirements**
+
+Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64bit and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). Some of the supported OS versions are:
+
+- Ubuntu 16.04+
+- Red Hat Enterprise Linux 6.5+
+- CentOS 7+
+- Amazon AMI 2014.03 / 2014.09 / 2015.03 / 2015.09 / 2016.03 / 2016.09
+
+The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
+
+- **Permissions necessary for Internet-connected host**
+
+- Connectivity to the Internet, either directly or via a http proxy
+- Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
+- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
+- Ability to pull YugaByte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
+
+- **Permissions necessary for airgapped host**
+
+An “airgapped” host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a sudo user.
+
+- **Additional requirements**
+
+For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
+
+- Following ports should be open on the YugaWare host: 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
+- Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
+- A YugaByte license file (attached to your welcome email from YugaByte Support)
+- Ability to connect from the YugaWare host to all the YugaByte DB data nodes. If this is not setup, [setup passwordless ssh](#step-5-troubleshoot-yugaware).
+
 
 ## What are the OS requirements and permissions to run the YugaByte data nodes?
 

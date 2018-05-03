@@ -10,7 +10,7 @@ Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (e
 
 ## 2. Set up a new service account
 
-Yugaware admin console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
+YugaWare admin console requires a service account with the appropriate permissions to provision and manage compute instances. Go to the `IAM & admin` -> `Service accounts` and click on `Create Service Account`. You can follow these instructions to [create a service account](https://cloud.google.com/iam/docs/creating-managing-service-accounts).
 
 Fill the form with the following values:
 
