@@ -15,6 +15,8 @@ import { YBTabsPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { hasLiveNodes } from 'utils/UniverseUtils';
+
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
@@ -44,7 +46,16 @@ class UniverseDetail extends Component {
       }
       this.props.getUniverseInfo(uuid);
       this.props.fetchUniverseTasks(uuid);
-      this.props.fetchUniverseTables(uuid);
+    }
+  }
+
+  componentDidUpdate(prevProps, prevState, snapshot) {
+    const { universe: { currentUniverse } } = this.props;
+    if (getPromiseState(currentUniverse).isSuccess() &&
+        !getPromiseState(prevProps.universe.currentUniverse).isSuccess()) {
+      if (hasLiveNodes(currentUniverse.data)) {
+        this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
+      }
     }
   }
 
