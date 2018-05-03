@@ -104,3 +104,13 @@ export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
   }
   return nodeDetailsA.nodeIdx > nodeDetailsB.nodeIdx;
 }
+
+export function hasLiveNodes(universe) {
+  if (isNonEmptyObject(universe) && isNonEmptyObject(universe.universeDetails)) {
+    const { universeDetails: { nodeDetailsSet } } = universe;
+    if (isNonEmptyArray(nodeDetailsSet)) {
+      return nodeDetailsSet.some((nodeDetail) => nodeDetail.state === 'Live');
+    }
+  }
+  return false;
+}
