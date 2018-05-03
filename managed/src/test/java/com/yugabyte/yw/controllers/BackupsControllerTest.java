@@ -151,6 +151,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("storageLocation", "s3://foo/bar");
 
     ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);;
     ArgumentCaptor<BackupTableParams> taskParams =  ArgumentCaptor.forClass(BackupTableParams.class);;
@@ -158,15 +159,17 @@ public class BackupsControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackup(defaultUniverse.universeUUID, b.backupUUID, bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.BackupTable, taskType.getValue());
+    assertEquals(TaskType.BackupUniverse, taskType.getValue());
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
     assertEquals(Restore, ct.getType());
-    Backup backup = Backup.get(defaultCustomer.uuid, ct.getTargetUUID());
+    Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
+    assertNotEquals(b.backupUUID, backup.backupUUID);
     assertNotNull(backup);
     assertValue(backup.backupInfo, "actionType", "RESTORE");
+    assertValue(backup.backupInfo, "storageLocation", "s3://foo/bar");
   }
 }

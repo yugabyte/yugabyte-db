@@ -501,7 +501,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, customer.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.BackupTable, taskType.getValue());
+    assertEquals(TaskType.BackupUniverse, taskType.getValue());
     String storageRegex = "s3://foo/univ-" + universe.universeUUID + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
     assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertOk(result);
@@ -509,7 +509,7 @@ public class TablesControllerTest extends WithApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    Backup backup = Backup.get(customer.uuid, ct.getTargetUUID());
+    Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
     assertNotNull(backup);
     assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
   }

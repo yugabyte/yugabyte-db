@@ -19,6 +19,8 @@ public enum TaskType {
 
   DeleteTable("DeleteTable"),
 
+  BackupUniverse("BackupUniverse"),
+
   EditUniverse("EditUniverse"),
 
   ImportIntoTable("ImportIntoTable"),

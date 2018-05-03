@@ -14,7 +14,6 @@ import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
-import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import play.data.validation.Constraints;
 
 @Entity

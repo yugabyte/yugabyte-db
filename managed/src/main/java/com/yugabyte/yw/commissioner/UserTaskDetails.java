@@ -94,7 +94,10 @@ public class UserTaskDetails {
     DeletingTable,
 
     // Creating Table Backup
-    CreatingTableBackup
+    CreatingTableBackup,
+
+    // Resotring Table Backup
+    RestoringTableBackup
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -208,6 +211,10 @@ public class UserTaskDetails {
       case CreatingTableBackup:
         title = "Creating Table Backup";
         description = "Creating backup for a table.";
+        break;
+      case RestoringTableBackup:
+        title = "Restoring Table Backup";
+        description = "Restoring from a backup.";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
