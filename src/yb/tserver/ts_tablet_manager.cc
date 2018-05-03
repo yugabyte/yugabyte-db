@@ -1233,6 +1233,8 @@ void TSTabletManager::GenerateFullTabletReport(TabletReportPB* report) {
   for (const auto& replica : to_report) {
     CreateReportedTabletPB(replica, report->add_updated_tablets());
   }
+
+  std::lock_guard<RWMutex> l(lock_);
   dirty_tablets_.clear();
 }
 
