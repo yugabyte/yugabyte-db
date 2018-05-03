@@ -728,6 +728,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("BackupTable", executor);
     BackupTable task = new BackupTable();
     task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;

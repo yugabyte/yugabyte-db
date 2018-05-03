@@ -8,9 +8,9 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class CreateBackup extends UniverseTaskBase {
+public class BackupUniverse extends UniverseTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(CreateBackup.class);
+  public static final Logger LOG = LoggerFactory.getLogger(BackupUniverse.class);
 
   @Override
   protected BackupTableParams taskParams() {
@@ -27,8 +27,15 @@ public class CreateBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      createTableBackupTask(taskParams())
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
+      UserTaskDetails.SubTaskGroupType groupType;
+      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+        groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
+      } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
+        groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
+      } else {
+        throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
+      }
+      createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

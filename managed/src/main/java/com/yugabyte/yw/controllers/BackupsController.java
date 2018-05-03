@@ -73,13 +73,13 @@ public class BackupsController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
-    UUID taskUUID = commissioner.submit(TaskType.BackupTable, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info("Submitted task to restore table backup {}.{} to {}.{}, task uuid = {}.",
         backup.getBackupInfo().keyspace, backup.getBackupInfo().tableName,
         taskParams.keyspace, taskParams.tableName, taskUUID);
-
+    newBackup.setTaskUUID(taskUUID);
     CustomerTask.create(customer,
-        newBackup.backupUUID,
+        universeUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Restore,

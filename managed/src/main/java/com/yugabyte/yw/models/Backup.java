@@ -55,6 +55,9 @@ public class Backup extends Model {
   @DbJson
   public JsonNode backupInfo;
 
+  @Column(unique = true)
+  public UUID taskUUID;
+
   public void setBackupInfo(BackupTableParams params) {
     this.backupInfo = Json.toJson(params);
   }
@@ -73,7 +76,7 @@ public class Backup extends Model {
   private Date updateTime;
   public Date getUpdateTime() { return updateTime; }
 
-  public static final Find<Long, Backup> find = new Find<Long, Backup>(){};
+  public static final Find<UUID, Backup> find = new Find<UUID, Backup>(){};
 
   // For creating new backup we would set the storage location based on
   // universe UUID and backup UUID.
@@ -112,6 +115,14 @@ public class Backup extends Model {
     return backup;
   }
 
+  // We need to set the taskUUID right after commissioner task is submitted.
+  public synchronized void setTaskUUID(UUID taskUUID) {
+    if (this.taskUUID == null) {
+      this.taskUUID = taskUUID;
+      save();
+    }
+  }
+
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
       List<Backup> backupList = find.where().eq("customer_uuid", customerUUID).orderBy("create_time desc").findList();
       return backupList.stream()
@@ -124,13 +135,7 @@ public class Backup extends Model {
   }
 
   public static Backup fetchByTaskUUID(UUID taskUUID) {
-    CustomerTask customerTask = CustomerTask.find.where()
-        .eq("task_uuid", taskUUID)
-        .eq("target_type", CustomerTask.TargetType.Backup.name()).findUnique();
-    if (customerTask == null) {
-      return null;
-    }
-    return Backup.find.where().eq("backup_uuid", customerTask.getTargetUUID()).findUnique();
+    return Backup.find.where().eq("task_uuid", taskUUID).findUnique();
   }
 
   public void transitionState(BackupState newState) {

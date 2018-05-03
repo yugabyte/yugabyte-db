@@ -16,6 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
 
 import java.util.UUID;
 
@@ -31,7 +32,7 @@ import static org.mockito.Mockito.when;
 
 
 @RunWith(MockitoJUnitRunner.class)
-public class CreateBackupTest extends CommissionerBaseTest {
+public class BackupUniverseTest extends CommissionerBaseTest {
 
   @InjectMocks
   Commissioner commissioner;
@@ -44,18 +45,21 @@ public class CreateBackupTest extends CommissionerBaseTest {
     defaultUniverse = ModelFactory.createUniverse();
   }
 
-  private TaskInfo submitTask() {
+  private TaskInfo submitTask(BackupTableParams.ActionType actionType ) {
     BackupTableParams backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     backupTableParams.tableName = "bar";
     backupTableParams.keyspace = "foo";
     backupTableParams.tableUUID = UUID.randomUUID();
     backupTableParams.storageConfigUUID = UUID.randomUUID();
+    backupTableParams.actionType = actionType;
     try {
       Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
-      UUID taskUUID = commissioner.submit(TaskType.BackupTable, backupTableParams);
-      CustomerTask.create(defaultCustomer, backup.backupUUID, taskUUID, CustomerTask.TargetType.Backup,
-          CustomerTask.TaskType.Create, "Create Backup");
+      UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
+      CustomerTask.create(defaultCustomer, defaultUniverse.universeUUID, taskUUID,
+          CustomerTask.TargetType.Backup, CustomerTask.TaskType.Create,
+          "bar");
+      backup.setTaskUUID(taskUUID);
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -64,14 +68,15 @@ public class CreateBackupTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testBackupTableSuccess() {
+  public void testBackupTableCreateAction() {
     ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
-    TaskInfo taskInfo = submitTask();
+    TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE);
     verify(mockTableManager, times(1)).createBackup(any());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
@@ -84,7 +89,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
-    TaskInfo taskInfo = submitTask();
+    TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE);
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
     assertNotNull(backup);
@@ -97,10 +102,33 @@ public class CreateBackupTest extends CommissionerBaseTest {
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 99;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
-    TaskInfo taskInfo = submitTask();
+    TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE);
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
+  }
+
+  @Test
+  public void testBackupTableRestoreAction() {
+    ShellProcessHandler.ShellResponse shellResponse =  new ShellProcessHandler.ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
+
+    TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.RESTORE);
+    verify(mockTableManager, times(1)).createBackup(any());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    assertNotNull(backup);
+    assertEquals(Completed, backup.state);
+  }
+
+  @Test
+  public void testBackupTableInvalidAction() {
+    TaskInfo taskInfo = submitTask(null);
+    System.out.println(Json.toJson(taskInfo));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    verify(mockTableManager, times(0)).createBackup(any());
   }
 }

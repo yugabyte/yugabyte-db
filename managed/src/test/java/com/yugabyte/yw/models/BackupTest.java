@@ -9,11 +9,13 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
 import org.junit.Before;
 import org.junit.Test;
-import play.Mode;
 import play.libs.Json;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
 import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
@@ -114,14 +116,9 @@ public class BackupTest extends FakeDBApplication {
   public void testFetchByTaskWithValidUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = createBackup(u.universeUUID);
-    CustomerTask ct = CustomerTask.create(
-        defaultCustomer,
-        b.backupUUID,
-        UUID.randomUUID(),
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Create,
-        "Demo Backup");
-    Backup fb = Backup.fetchByTaskUUID(ct.getTaskUUID());
+    UUID taskUUID = UUID.randomUUID();
+    b.setTaskUUID(taskUUID);
+    Backup fb = Backup.fetchByTaskUUID(taskUUID);
     assertNotNull(fb);
     assertEquals(fb, b);
   }
@@ -192,5 +189,44 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b.getUpdateTime());
     b.transitionState(Failed);
     assertNotEquals(Failed, b.state);
+  }
+
+  @Test
+  public void testSetTaskUUIDWhenNull() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup b = createBackup(u.universeUUID);
+    UUID taskUUID = UUID.randomUUID();
+    assertNull(b.taskUUID);
+    b.setTaskUUID(taskUUID);
+    b.refresh();
+    assertEquals(taskUUID, b.taskUUID);
+  }
+
+  @Test
+  public void testSetTaskUUID() throws InterruptedException {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup b = createBackup(u.universeUUID);
+    UUID taskUUID1 = UUID.randomUUID();
+    UUID taskUUID2 = UUID.randomUUID();
+    ExecutorService service = Executors.newFixedThreadPool(2);
+    Thread t1 = new Thread(() -> b.setTaskUUID(taskUUID1));
+    Thread t2 = new Thread(() -> b.setTaskUUID(taskUUID2));
+    service.submit(t1);
+    service.submit(t2);
+    service.awaitTermination(100, TimeUnit.MILLISECONDS);
+    b.refresh();
+    assertEquals(taskUUID1, b.taskUUID);
+  }
+
+  @Test
+  public void testSetTaskUUIDWhenNotNull() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup b = createBackup(u.universeUUID);
+    b.setTaskUUID(UUID.randomUUID());
+    UUID taskUUID = UUID.randomUUID();
+    assertNotNull(b.taskUUID);
+    b.setTaskUUID(taskUUID);
+    b.refresh();
+    assertNotEquals(taskUUID, b.taskUUID);
   }
 }
