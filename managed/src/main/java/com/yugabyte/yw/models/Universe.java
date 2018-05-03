@@ -343,7 +343,6 @@ public class Universe extends Model {
       case TSERVER:
         if (nodeDetails.isTserver) servers.add(nodeDetails); break;
       case MASTER:
-        LOG.info("MASTER " + nodeDetails.isMaster + " " + nodeDetails.nodeName);
         if (nodeDetails.isMaster) servers.add(nodeDetails); break;
       case REDISSERVER:
         if (nodeDetails.isRedisServer) servers.add(nodeDetails); break;

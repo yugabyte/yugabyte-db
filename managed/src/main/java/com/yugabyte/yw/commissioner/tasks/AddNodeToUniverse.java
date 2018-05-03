@@ -85,14 +85,14 @@ public class AddNodeToUniverse extends UniverseTaskBase {
         node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
       }
 
-      // Configures the master to start in shell mode.
-      // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-      createConfigureServerTasks(node, true /* isShell */, userIntent.deviceInfo,
-                                 userIntent.ybSoftwareVersion)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
       // Bring up any masters, as needed.
       if (areMastersUnderReplicated(currentNode, universe)) {
+        // Configures the master to start in shell mode.
+        // TODO: Remove the need for version for existing instance, NodeManger needs changes.
+        createConfigureServerTasks(node, true /* isShell */, userIntent.deviceInfo,
+                                   userIntent.ybSoftwareVersion)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
         // Start a shell master process.
         createStartMasterTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -113,6 +113,11 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       // Create a task for blacklist removal of this server.
       createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+      // Configure again for now, so that this tserver picks all the master nodes.
+      createConfigureServerTasks(node, false /* isShell */, userIntent.deviceInfo,
+                                 userIntent.ybSoftwareVersion)
+          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Add the tserver process start task.
       createTServerTaskForNode(currentNode, "start")
