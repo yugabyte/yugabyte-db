@@ -1701,7 +1701,7 @@ TEST_F(TestRedisService, TestZRange) {
 }
 
 TEST_F(TestRedisService, TestTimeSeriesTTL) {
-  int64_t ttl_sec = 5;
+  int64_t ttl_sec = 10;
   TestTSTtl("EXPIRE_IN", ttl_sec, ttl_sec, "test_expire_in");
   int64_t curr_time_sec = GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
   TestTSTtl("EXPIRE_AT", ttl_sec, curr_time_sec + ttl_sec, "test_expire_at");
@@ -1712,9 +1712,23 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(kRedisMaxTtlSeconds + 1)});
 
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_AT",
+      std::to_string(curr_time_sec - 10)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "expire_at",
+      std::to_string(curr_time_sec - 10)});
+
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_AT",
       std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "expire_at",
+      std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "exPiRe_aT",
+                                    std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_IN",
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "expire_in",
+      std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "eXpIrE_In",
+                                    std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
 TEST_F(TestRedisService, TestTsCard) {

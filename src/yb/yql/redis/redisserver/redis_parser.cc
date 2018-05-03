@@ -257,23 +257,40 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
   std::unordered_map<string, string> kv_map;
   for (int i = start_idx; i < args.size(); i += 2) {
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
-    if ((args[i] == kExpireAt || args[i] == kExpireIn) && type == REDIS_TYPE_TIMESERIES) {
-      if (i + 2 != args.size()) {
-        return STATUS_SUBSTITUTE(InvalidCommand, "$0 should be at the end of the command",
-                                 string(args[i].cdata(), args[i].size()));
-      }
-      auto temp = util::CheckedStoll(args[i + 1]);
-      RETURN_NOT_OK(temp);
-      auto ttl = args[i] == kExpireIn
-          ? *temp
-          : *temp - GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
+    if (type == REDIS_TYPE_TIMESERIES) {
+      string upper_arg;
+      ToUpperCase(args[i].ToBuffer(), &upper_arg);
+      if (upper_arg == kExpireAt || upper_arg == kExpireIn) {
+        if (i + 2 != args.size()) {
+          return STATUS_SUBSTITUTE(InvalidCommand, "$0 should be at the end of the command",
+                                   string(args[i].cdata(), args[i].size()));
+        }
+        auto temp = util::CheckedStoll(args[i + 1]);
+        RETURN_NOT_OK(temp);
+        int64_t ttl = 0;
+        if (upper_arg == kExpireIn) {
+          ttl = *temp;
+          if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
+            return STATUS_SUBSTITUTE(InvalidCommand, "TTL: $0 needs be in the range [$1, $2]", ttl,
+                                     kRedisMinTtlSeconds, kRedisMaxTtlSeconds);
+          }
+        } else {
+          auto current_time = GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
+          ttl = *temp - current_time;
+          if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
+            return STATUS_SUBSTITUTE(InvalidCommand, "EXPIRE_AT: $0 needs be in the range [$1, $2]",
+                                     *temp,
+                                     kRedisMinTtlSeconds + current_time,
+                                     kRedisMaxTtlSeconds + current_time);
+          }
+        }
 
-      if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
-        return STATUS_SUBSTITUTE(InvalidCommand, "TTL: $0 needs be in the range [$1, $2]", ttl,
-                                 kRedisMinTtlSeconds, kRedisMaxTtlSeconds);
+        // Need to pass ttl in milliseconds, user supplied values are in seconds.
+        op->mutable_request()->mutable_set_request()->set_ttl(
+            ttl * MonoTime::kMillisecondsPerSecond);
+      } else {
+        kv_map[args[i].ToBuffer()] = args[i + 1].ToBuffer();
       }
-      // Need to pass ttl in milliseconds, user supplied values are in seconds.
-      op->mutable_request()->mutable_set_request()->set_ttl(ttl * MonoTime::kMillisecondsPerSecond);
     } else if (type == REDIS_TYPE_SORTEDSET) {
       // For sorted sets, we store the mapping from values to scores, since values are distinct
       // but scores aren't.
