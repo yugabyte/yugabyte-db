@@ -678,6 +678,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // 'catalog' must outlive this object.
     explicit ScopedLeaderSharedLock(CatalogManager* catalog);
 
+    ~ScopedLeaderSharedLock() { Unlock(); }
+
+    void Unlock();
+
     // General status of the catalog manager. If not OK (e.g. the catalog
     // manager is still being initialized), all operations are illegal and
     // leader_status() should not be trusted.
@@ -727,6 +731,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     shared_lock<RWMutex> leader_shared_lock_;
     Status catalog_status_;
     Status leader_status_;
+    std::chrono::steady_clock::time_point start_;
   };
 
   explicit CatalogManager(Master *master);

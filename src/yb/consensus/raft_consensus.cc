@@ -2177,6 +2177,9 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
     {
       ReplicaState::UniqueLock lock;
       RETURN_NOT_OK(state_->LockForRead(&lock));
+      if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+        return STATUS_FORMAT(IllegalState, "Not the leader: $0", state_->GetActiveRoleUnlocked());
+      }
       leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
     }
     switch (leader_lease_status) {
