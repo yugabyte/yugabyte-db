@@ -249,6 +249,8 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       return Status::OK();
     }
+    l.Unlock();
+
     SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
     backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
   } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));

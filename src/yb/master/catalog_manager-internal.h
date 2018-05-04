@@ -93,15 +93,15 @@ template<typename RespClass, typename ErrorClass>
 bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondInternal(
     RespClass* resp,
     rpc::RpcContext* rpc) {
-  Status& s = catalog_status_;
-  if (PREDICT_TRUE(s.ok())) {
-    s = leader_status_;
-    if (PREDICT_TRUE(s.ok())) {
+  const Status* status = &catalog_status_;
+  if (PREDICT_TRUE(status->ok())) {
+    status = &leader_status_;
+    if (PREDICT_TRUE(status->ok())) {
       return true;
     }
   }
 
-  StatusToPB(s, resp->mutable_error()->mutable_status());
+  StatusToPB(*status, resp->mutable_error()->mutable_status());
   resp->mutable_error()->set_code(ErrorClass::NOT_THE_LEADER);
   rpc->RespondSuccess();
   return false;

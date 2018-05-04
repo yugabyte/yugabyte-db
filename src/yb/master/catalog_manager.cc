@@ -110,6 +110,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+
 #include "yb/util/crypt.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -123,8 +124,12 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
+
+using namespace std::literals;
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -236,6 +241,8 @@ using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;
+
+const auto kLockLongLimit = RegularBuildVsSanitizers(100ms, 750ms);
 
 constexpr const char* const kDefaultCassandraUsername = "cassandra";
 constexpr const char* const kDefaultCassandraPassword = "cassandra";
@@ -644,6 +651,7 @@ void CatalogManagerBgTasks::Run() {
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()
     //    to notify about tablets creation.
+    l.Unlock();
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
   VLOG(1) << "Catalog manager background task thread shutting down";
@@ -799,7 +807,12 @@ Status CatalogManager::VisitSysCatalog() {
 
   // Block new catalog operations, and wait for existing operations to finish.
   LOG(INFO) << __func__ << ": Wait on leader_lock_ for any existing operations to finish.";
+  auto start = std::chrono::steady_clock::now();
   std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
+  auto finish = std::chrono::steady_clock::now();
+  if (finish > start + kLockLongLimit) {
+    LOG(ERROR) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
+  }
 
   LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
   boost::lock_guard<LockType> lock(lock_);
@@ -5402,7 +5415,8 @@ void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInf
 
 CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* catalog)
   : catalog_(DCHECK_NOTNULL(catalog)),
-    leader_shared_lock_(catalog->leader_lock_, std::try_to_lock) {
+    leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
+    start_(std::chrono::steady_clock::now()) {
 
   // Check if the catalog manager is running.
   std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
@@ -5452,6 +5466,20 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
     leader_status_ = STATUS(ServiceUnavailable, "Couldn't get leader_lock_ in shared mode. "
                                                 "Leader still loading catalog tables.");
     return;
+  }
+}
+
+void CatalogManager::ScopedLeaderSharedLock::Unlock() {
+  if (leader_shared_lock_.owns_lock()) {
+    {
+      decltype(leader_shared_lock_) lock;
+      lock.swap(leader_shared_lock_);
+    }
+    auto finish = std::chrono::steady_clock::now();
+    if (finish > start_ + kLockLongLimit) {
+      LOG(ERROR) << "Long lock of catalog manager: " << yb::ToString(finish - start_) << "\n"
+                 << GetStackTrace();
+    }
   }
 }
 
