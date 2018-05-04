@@ -100,7 +100,7 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-
+      
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
       Cluster c = taskParams.currentClusterType.equals("primary") ? 
           taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);         

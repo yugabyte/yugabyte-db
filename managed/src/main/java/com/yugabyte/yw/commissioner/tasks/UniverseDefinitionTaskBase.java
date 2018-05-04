@@ -116,10 +116,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // nodes. Since universe name can be changed in the UI, and configure is not called
   // before submitting Create, we fix up the node-prefix also to latest universe name.
   public void updateNodeNames() {
+    PlacementInfoUtil.populateClusterIndices(taskParams());
     Collection<NodeDetails> nodes = taskParams().nodeDetailsSet;
     Universe universe = Universe.get(taskParams().universeUUID);
-    int iter = 0;
-    int startIndex = PlacementInfoUtil.getStartIndex(universe.getNodes());
     final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
     String nodePrefix = taskParams().nodePrefix;
     // Pick the univese name from the current in-memory state.
@@ -137,14 +136,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       LOG.info("Updating node prefix to {}.", nodePrefix);
     }
 
-    for (NodeDetails node : nodes) {
-      if (node.state == NodeDetails.NodeState.ToBeAdded) {
-        node.nodeIdx = startIndex + iter;
-        String newName = nodePrefix + "-n" + node.nodeIdx;
-        LOG.info("Changing in-memory node name from {} to {}.", node.nodeName , newName);
-        oldToNewName.put(node.nodeName, new NameAndIndex(newName, node.nodeIdx));
-        node.nodeName = newName;
-        iter++;
+    for (Cluster cluster : taskParams().clusters) {
+      Set<NodeDetails> nodesInCluster = taskParams().getNodesInCluster(cluster.uuid);
+      Set<NodeDetails> nodesInUniverse = universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
+      int startIndex = PlacementInfoUtil.getStartIndex(nodesInUniverse);
+      int iter = 0;
+      for (NodeDetails node : nodesInCluster) {
+        if (node.state == NodeDetails.NodeState.ToBeAdded) {
+          node.nodeIdx = startIndex + iter;
+          String newName = nodePrefix + "-n" + node.nodeIdx;
+          if (cluster.clusterType == ClusterType.ASYNC) {
+            newName = nodePrefix + "-readonly" + cluster.index + "-n" + node.nodeIdx;
+          }
+          LOG.info("Changing in-memory node name from {} to {}.", node.nodeName , newName);
+          oldToNewName.put(node.nodeName, new NameAndIndex(newName, node.nodeIdx));
+          node.nodeName = newName;
+          iter++;
+        }
       }
     }
 

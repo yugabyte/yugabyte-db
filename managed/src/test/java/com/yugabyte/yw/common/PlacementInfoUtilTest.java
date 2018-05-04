@@ -855,4 +855,47 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(azToNum, newAZToNum);
     }
   }
+  
+  @Test
+  public void testPopulateClusterIndices() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      
+      UUID readOnlyUuid0 = UUID.randomUUID();
+      UUID readOnlyUuid1 = UUID.randomUUID();
+      UUID readOnlyUuid2 = UUID.randomUUID();
+      UUID readOnlyUuid3 = UUID.randomUUID();
+      
+      udtp.upsertCluster(null, null, readOnlyUuid0);
+      udtp.upsertCluster(null, null, readOnlyUuid1);
+      
+      PlacementInfoUtil.populateClusterIndices(udtp);
+      
+      List<Cluster> readOnlyClusters = udtp.getReadOnlyClusters();
+      assertEquals(2, readOnlyClusters.size());
+      assertEquals(1, readOnlyClusters.get(0).index);
+      assertEquals(2, readOnlyClusters.get(1).index);
+      
+      udtp.upsertCluster(null, null, readOnlyUuid2);
+      
+      PlacementInfoUtil.populateClusterIndices(udtp);
+      
+      readOnlyClusters = udtp.getReadOnlyClusters();
+      assertEquals(3, readOnlyClusters.size());
+      assertEquals(1, readOnlyClusters.get(0).index);
+      assertEquals(2, readOnlyClusters.get(1).index);
+      assertEquals(3, readOnlyClusters.get(2).index);
+      
+      udtp.clusters.clear();
+      
+      udtp.upsertCluster(null, null, readOnlyUuid3);
+      
+      PlacementInfoUtil.populateClusterIndices(udtp);
+      
+      readOnlyClusters = udtp.getReadOnlyClusters();
+      assertEquals(1, readOnlyClusters.size());
+      assertEquals(4, readOnlyClusters.get(0).index);
+    }
+  }
 }
