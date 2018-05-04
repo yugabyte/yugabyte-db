@@ -81,7 +81,7 @@ DEFINE_REDIS_SESSION_GAUGE(available);
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
 #else
-constexpr int32_t kDefaultRedisServiceTimeoutMs = 60000;
+constexpr int32_t kDefaultRedisServiceTimeoutMs = 3000;
 #endif
 
 DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
