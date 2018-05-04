@@ -34,9 +34,12 @@ import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
+import com.datastax.driver.core.policies.DefaultRetryPolicy;
+import com.datastax.driver.core.policies.LoggingRetryPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.ContactPoint;
@@ -162,7 +165,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
         builder.withLoadBalancingPolicy(
           new PartitionAwarePolicy());
       }
-      cassandra_cluster = builder.build();
+      cassandra_cluster =
+          builder.withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
+                 .withRetryPolicy(new LoggingRetryPolicy(DefaultRetryPolicy.INSTANCE))
+                 .build();
       LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());
     }
     if (cassandra_session == null) {
