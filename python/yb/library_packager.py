@@ -309,8 +309,8 @@ class LibraryPackager:
                     with open(wrapper_script_path, 'w') as wrapper_script_file:
                         wrapper_script_file.write(
                             "#!/usr/bin/env bash\n"
-                            "LD_LIBRARY_PATH=" + ld_library_path + " exec "
-                            "${BASH_SOURCE%/*}/../lib/unwrapped/" + executable_basename + ' "$@"')
+                            "${BASH_SOURCE%/*}/../lib/ld.so --library-path " + ld_library_path +
+                            " ${BASH_SOURCE%/*}/../lib/unwrapped/" + executable_basename + ' "$@"')
                     os.chmod(wrapper_script_path, 0755)
                     elf_names_to_set_interpreter.append(executable_basename)
                 else:
