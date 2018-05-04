@@ -90,3 +90,17 @@ export function getUniverseNodes(clusters) {
 export function getProviderMetadata(provider) {
   return PROVIDER_TYPES.find((providerType) => providerType.code === provider.code);
 }
+
+export function getClusterIndex(nodeDetails, clusters) {
+  const cluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
+  return cluster.index;
+}
+
+export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
+  const aClusterIndex = getClusterIndex(nodeDetailsA, clusters);
+  const bClusterIndex = getClusterIndex(nodeDetailsB, clusters);
+  if (aClusterIndex !== bClusterIndex) {
+    return aClusterIndex > bClusterIndex;
+  }
+  return nodeDetailsA.nodeIdx > nodeDetailsB.nodeIdx;
+}

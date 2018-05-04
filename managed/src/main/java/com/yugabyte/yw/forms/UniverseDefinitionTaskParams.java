@@ -73,6 +73,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   public boolean updateSucceeded = true;
+  
+  // The next cluster index to be used when a new read-only cluster is added.
+  public int nextClusterIndex = 1;
 
   /**
    * Types of Clusters that can make up a universe.
@@ -98,6 +101,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     // The placement information computed from the user intent.
     public PlacementInfo placementInfo = null;
+    
+    // The cluster index by which node names are sorted when shown in UI.
+    public int index = 0;
 
     /**
      * Default to PRIMARY.
