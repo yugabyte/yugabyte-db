@@ -4,7 +4,7 @@ import React, { Component, Fragment } from 'react';
 import { NodeDetailsTable } from '../../universes';
 import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster, getReadOnlyCluster, nodeComparisonFunction } from '../../../utils/UniverseUtils';
 
 export default class NodeDetails extends Component {
   componentWillMount() {
@@ -30,7 +30,8 @@ export default class NodeDetails extends Component {
     }
 
     const universeCreated = this.checkTasksForUniverseCreated();
-    const nodeDetailRows = nodeDetails.map((nodeDetail) => {
+    const sortedNodeDetails = nodeDetails.sort((a, b) => nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters));
+    const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
       let nodeAlive = false;
       let isLoading = !universeCreated;

@@ -298,6 +298,17 @@ public class PlacementInfoUtil {
       throw new RuntimeException("Found duplicated node names, error info in logs just above.");
     }
   }
+  
+  // Helper API to order the read-only clusters for naming purposes.
+  public static void populateClusterIndices(UniverseDefinitionTaskParams taskParams) {
+    for (Cluster cluster : taskParams.getReadOnlyClusters()) {
+      if (cluster.index == 0) {
+        // The cluster index isn't set, which means its a new cluster, set the cluster
+        // index and increment the global max.
+        cluster.index = taskParams.nextClusterIndex++;
+      }
+    }
+  }
 
   /**
    * Helper API to set some of the non user supplied information in task params.
