@@ -53,7 +53,7 @@ DEFINE_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
              "Timeout for a batch of multiple RPCs invoked in parallel to shutdown.");
 DEFINE_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
-DEFINE_int64(retryable_rpc_single_call_timeout_ms, 5000 * yb::kTimeMultiplier,
+DEFINE_int64(retryable_rpc_single_call_timeout_ms, 2500 * yb::kTimeMultiplier,
              "Timeout of single RPC call in retryable RPC command.");
 DEFINE_int32(
     min_backoff_ms_exponent, 7,

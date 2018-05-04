@@ -44,6 +44,7 @@ DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
 DECLARE_bool(enable_backpressure_mode_for_testing);
+DECLARE_int32(redis_service_yb_client_timeout_millis);
 DECLARE_int32(redis_max_value_size);
 DECLARE_int32(redis_max_command_size);
 DECLARE_int32(rpc_max_message_size);
@@ -672,6 +673,9 @@ TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
+  // Set a larger timeout for the yql layer : 1 min vs 10 min for tsan/asan.
+  FLAGS_redis_service_yb_client_timeout_millis = 6 * kDefaultTimeoutMs;
+
   LOG(INFO) << "Creating a value of size " << FLAGS_redis_max_value_size;
   std::string value(FLAGS_redis_max_value_size, 'T');
   DoRedisTestOk(__LINE__, {"SET", "foo", value});
