@@ -3,8 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Button, Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
-import cassandraLogo from '../images/cassandra.png';
-import redisLogo from '../images/redis.png';
+import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import { CreateTableContainer, TableAction } from '../../tables';
@@ -19,18 +18,22 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
 class TableTitle extends Component {
   render() {
-    const {onCreateButtonClick, numCassandraTables, numRedisTables} = this.props;
+    const {onCreateButtonClick, numCassandraTables, numRedisTables, numPostgresTables} = this.props;
     return (
       <div className="table-container-title clearfix">
         <div className="pull-left">
           <h2>Tables</h2>
           <div className="table-type-count">
-            <Image src={cassandraLogo} className="table-type-logo"/>
-            <YBStatsBlock value={numCassandraTables} label={"Apache Cassandra"}/>
+            <Image src={tableIcon} className="table-type-logo"/>
+            <YBStatsBlock value={numCassandraTables} label={"YCQL"}/>
           </div>
           <div className="table-type-count">
-            <Image src={redisLogo} className="table-type-logo"/>
-            <YBStatsBlock value={numRedisTables} label={"Redis"}/>
+            <Image src={tableIcon} className="table-type-logo"/>
+            <YBStatsBlock value={numRedisTables} label={"YEDIS"}/>
+          </div>
+          <div className="table-type-count">
+            <Image src={tableIcon} className="table-type-logo"/>
+            <YBStatsBlock value={numPostgresTables} label={"PostgreSQL"}/>
           </div>
         </div>
         <FlexContainer className="pull-right">
@@ -78,7 +81,9 @@ export default class ListTables extends Component {
       return (
         <YBPanelItem
           header={
-            <TableTitle numRedisTables={numRedisTables} numCassandraTables={numCassandraTables}
+            <TableTitle numRedisTables={numRedisTables}
+                        numCassandraTables={numCassandraTables}
+                        numPostgresTables={0}
             onCreateButtonClick={this.showCreateTable}/>
           }
           body={
@@ -104,7 +109,13 @@ class ListTableGrid extends Component {
     const {universe: {universeTasks}} = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
     const getTableIcon = function(tableType) {
-      return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
+      if (tableType === "YQL_TABLE_TYPE") {
+        return "YCQL";
+      } else if (tableType === "REDIS_TABLE_TYPE") {
+        return "YEDIS";
+      } else {
+        return "PostgreSQL";
+      }
     };
 
     const getTableName = function (tableName, data) {
