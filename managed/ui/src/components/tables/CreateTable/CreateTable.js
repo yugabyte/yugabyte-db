@@ -6,7 +6,7 @@ import { withRouter } from 'react-router';
 import { normalizeToPositiveInt, isValidObject } from '../../../utils/ObjectUtils';
 import { Field } from 'redux-form';
 import { YBInputField, YBButton, YBRadioButton } from '../../common/forms/fields';
-import cassandraLogo from '../images/cassandra.png';
+import tableIcon from '../images/table.png';
 import './CreateTables.scss';
 import { YBConfirmModal } from '../../modals';
 import CassandraColumnSpecification from './CassandraColumnSpecification';
@@ -66,7 +66,7 @@ class CreateTable extends Component {
   render() {
     const {handleSubmit} = this.props;
     const onFormSubmit = handleSubmit(this.createTable);
-    const cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
+    const cassandraLabel = <div><img src={tableIcon} alt="Cassandra-compatible (YCQL)" className="table-type-logo"/>YCQL</div>;
     const tableNameRegex = /^[a-zA-Z0-9_]*$/;
     const tableNameTest = (value, previousValue) => tableNameRegex.test(value) ? value : previousValue;
     return (
