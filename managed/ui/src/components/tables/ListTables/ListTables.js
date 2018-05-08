@@ -127,7 +127,7 @@ class ListTableGrid extends Component {
     };
 
     const formatKeySpace = function(cell) {
-      return <div className="top-5">{cell}</div>;
+      return <div>{cell}</div>;
     };
 
     const formatActionButtons = function(item, row) {
@@ -206,15 +206,16 @@ class ListTableGrid extends Component {
     const tableListDisplay = (
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
+                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
+          Table Name</TableHeaderColumn>
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
                           columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}>
           Table Type</TableHeaderColumn>
         <TableHeaderColumn dataField={"keySpace"}
                           columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
           Keyspace</TableHeaderColumn>
-        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
-                          columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
-          Table Name</TableHeaderColumn>
+
         <TableHeaderColumn dataField={"status"}
                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
           Status</TableHeaderColumn>
