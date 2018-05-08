@@ -121,41 +121,46 @@
 .btn-copy {
   text-transform: uppercase;
   vertical-align: baseline;
-  width: 40px;
   font-size: 10px;
+  font-weight: 600;
   line-height: 16px;
-  height: 17px;
-  border: none;
+  padding: 0 6px 1px 17px;
   overflow: hidden;
   position: relative;
   top: -1px;
   margin-left: 5px;
+  color: $YB_ORANGE;
+  border: 1px solid $YB_SUCCESS_COLOR;
+  color: $YB_SUCCESS_COLOR;
+
   &, &:active, &:hover, &:focus {
-    background-color: $YB_SUCCESS_COLOR !important;
-    color: $YB_ORANGE;
+    border-color: $YB_SUCCESS_COLOR;
+    color: $YB_SUCCESS_COLOR;
+    box-shadow: none;
   }
   &:after {
     position: absolute;
-    top: 0;
-    left: 0;    
-    font: normal normal normal 14px/1 FontAwesome;
+    top: 1px;
+    left: 4px;    
+    font: normal normal normal 11px/1 FontAwesome;
     content: '\F00C';
-    color: #fff;
+    color: $YB_DARK_GRAY;
     text-align: center;
     border-radius: 2px;
-    width: 40px;
-    height: 17px;
     line-height: 16px;
     opacity: 1;
-    background-color: $YB_SUCCESS_COLOR !important;
   }
 }
 
 .btn-copy-inactive {
-  @include transition-property(0.35s, color, 0.3s);
   &, &:active, &:hover, &:focus {
-    background-color: $YB_ORANGE !important;
-    color: #fff;
+    padding-left: 6px;
+    border-color: $YB_VIOLET_TEXT;
+    color: $YB_VIOLET_TEXT;
+  }
+  &:hover {
+    border-color: $YB_ORANGE;
+    color: $YB_ORANGE;
   }
   &:after {
     content: '';
