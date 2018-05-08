@@ -1019,7 +1019,7 @@ export default class ClusterFields extends Component {
             <Col sm={5} md={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.ybSoftwareVersion`} component={YBSelectWithLabel}
-                       options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
+                       options={softwareVersionOptions} label="DB Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
             <Col lg={4}>
