@@ -29,7 +29,7 @@ export default class UniverseOverview extends Component {
         noMargin
         size={2}
         headerLeft={
-          "universe nodes"
+          "Universe Nodes"
         }
         headerRight={
           numNodes +" nodes"
@@ -63,7 +63,7 @@ export default class UniverseOverview extends Component {
     const infoWidgets = [
       <YBWidget
         headerLeft={
-          "resource info"
+          "Resource Info"
         }
         body={
           <UniverseInfoPanelContainer universeInfo={universeInfo} />
@@ -71,7 +71,7 @@ export default class UniverseOverview extends Component {
       />,
       <YBWidget
         headerLeft={
-          "primary cluster"
+          "Primary Cluster"
         }
         body={
           <ResourceStringPanelContainer universeInfo={universeInfo} type='primary'/>
@@ -82,7 +82,7 @@ export default class UniverseOverview extends Component {
       infoWidgets.push(
         <YBWidget
           headerLeft={
-            "read replica cluster"
+            "Read Replica Cluster"
           }
           body={
             <ResourceStringPanelContainer universeInfo={universeInfo} type='read-replica' />
