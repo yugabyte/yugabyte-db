@@ -60,6 +60,14 @@ export default class MetricsPanelOverview extends Component {
         family: METRIC_FONT,
         weight: 300
       };
+      metric.layout.margin = {
+        l: 0,
+        r: 0,
+        b: 16,
+        t: 0,
+      };
+      metric.layout.xaxis = {...metric.layout.xaxis, ...{ color: '#444444', zerolinecolor: '#000', gridcolor: '#eee' }};
+      metric.layout.yaxis = {...metric.layout.yaxis, ...{ color: '#444444', zerolinecolor: '#000', gridcolor: '#eee'}};
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
@@ -68,12 +76,23 @@ export default class MetricsPanelOverview extends Component {
           visible: true,
           align: "top",
           text: "No Data",
+          font: {
+            color: "#44518b",
+            family: "Open Sans",
+            size: 14,
+          },
           showarrow: false,
           x: 1,
           y: 1
         }];
-        metric.layout.xaxis = {range: [0, 2]};
-        metric.layout.yaxis = {range: [0, 5]};
+        metric.layout.margin = {
+          l: 0,
+          r: 0,
+          b: 0,
+          t: 0,
+        };
+        metric.layout.xaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
+        metric.layout.yaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
       }
 
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
