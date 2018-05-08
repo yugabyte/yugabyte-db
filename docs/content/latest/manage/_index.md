@@ -17,7 +17,7 @@ menu:
     </div>
     <div class="text">
        Enterprise Edition
-       <div class="caption">Manage YugaByte DB without any downtime using YugaByte EE's built-in orchestration and monitoring.</div>
+       <div class="caption">Manage YugaByte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.</div>
     </div>
   </a>
   <a class="section-link icon-offset" href="diagnostics-reporting/">

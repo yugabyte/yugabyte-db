@@ -25,7 +25,7 @@ If you plan to run YugaByte DB nodes on public cloud providers such as Amazon We
 
 The prerequisites here are same as that of the [Community Edition](../../multi-node-cluster/#prerequisites).
 
-## Configure your cloud provider in YugaWare
+## Configure cloud providers
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -42,8 +42,8 @@ The prerequisites here are same as that of the [Community Edition](../../multi-n
   </li>
   <li>
     <a href="#configure-azure" class="nav-link" id="configure-azure-tab" data-toggle="tab" role="tab" aria-controls="configure-azure" aria-selected="false">
-      <i class="icon-google" aria-hidden="true"></i>
-      Azure
+      <i class="icon-azure" aria-hidden="true"></i>
+       Azure
     </a>
   </li>
   <li>
@@ -54,7 +54,7 @@ The prerequisites here are same as that of the [Community Edition](../../multi-n
   </li>
   <li>
     <a href="#configure-onprem" class="nav-link" id="configure-onprem-tab" data-toggle="tab" role="tab" aria-controls="configure-onprem" aria-selected="false">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="fa fa-building"></i>
       On-Premises
     </a>
   </li>

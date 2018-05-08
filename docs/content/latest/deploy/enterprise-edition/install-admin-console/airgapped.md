@@ -1,3 +1,4 @@
+An “airgapped” host has no path to inbound or outbound Internet traffic at all. In order to install Replicated and YugaWare on such a host, we first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host.
 
 ## Step 1. Install Replicated
 
@@ -65,10 +66,7 @@ Next step is install YugaWare as described in the [section below](#step-2-instal
 
 Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
-![Replicated Browser TLS](/images/replicated/replicated-browser-tls.png)
-
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
-
 
 You can provide your own custom SSL certificate along with a hostname.
 

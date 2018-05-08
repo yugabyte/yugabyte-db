@@ -3,7 +3,7 @@ title: Configure Admin Console
 linkTitle: 3. Configure Admin Console
 description: Configure Admin Console
 aliases:
-  - /deploy/enterprise-edition/configure-admin-console/
+  - deploy/enterprise-edition/configure-admin-console/
 menu:
   latest:
     identifier: configure-admin-console
@@ -11,7 +11,7 @@ menu:
     weight: 675
 ---
 
-Configuring YugaWare is really simple. A randomly generated password for the YugaWare config database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the YugaWare host where all the YugaWare data will be stored.  Clicking Save on this page will take us to the Replicated Dashboard.
+Configuring YugaWare, the YugaByte DB Admin Console,  is really simple. A randomly generated password for the YugaWare config database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the YugaWare host where all the YugaWare data will be stored.  Clicking Save on this page will take us to the Replicated Dashboard.
 
 ![Replicated YugaWare Config](/images/replicated/replicated-yugaware-config.png)
 

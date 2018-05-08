@@ -1,6 +1,8 @@
+The default option to install YugaWare involves 
+
 ## Step 1. Install Replicated
 
-YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
+YugaByte DB clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
 
 - Install replicated.
 ```{.sh .copy .separator-dollar}
