@@ -34,11 +34,11 @@ export default class UniverseInfoPanel extends Component {
     const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
     const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
     const universeInfoItems = [
-      {name: "Universe ID", data: universeIdData},
-      {name: "Launch Time", data: formattedCreationDate},
+      {name: "DB Version", data: userIntent.ybSoftwareVersion || 'n/a'},
       {name: "YCQL Service", data: this.renderEndpointUrl(ycqlServiceUrl)},
       {name: "YEDIS Service", data: this.renderEndpointUrl(yedisServiceUrl)},
-      {name: "YugaByte DB Version", data: userIntent.ybSoftwareVersion || 'n/a'},
+      {name: "Universe ID", data: universeIdData},
+      {name: "Launch Time", data: formattedCreationDate},
     ];
 
     if (userIntent.providerType === "aws") {
