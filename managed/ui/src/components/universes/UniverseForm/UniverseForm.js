@@ -224,7 +224,7 @@ class UniverseForm extends Component {
     if (type === "Create") {
       submitTextLabel = "Create";
     } else {
-      submitTextLabel = "Edit";
+      submitTextLabel = "Save";
     };
 
     const clusterProps = {
