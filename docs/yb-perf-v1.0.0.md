@@ -1,18 +1,20 @@
 # Summary
 
-3 node, 16 vCPUs. Each write is replicated 3 ways internally. Each key-value is around 64 bytes combined. See the setup section for more info.
+3 node, 16 vCPUs. Each write is replicated 3 ways internally. Each key-value is around 64 bytes combined. See [setup details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#setup) for more info.
 
-* CassandraKeyValue
+* CassandraKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#cassandrakeyvalue))
     * 85K writes/sec at 3ms latency
     * 190K reads/sec at 1.3ms latency
-* CassandraBatchKeyValue
+* CassandraBatchKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#cassandrabatchkeyvalue))
     * 211K writes/sec at 11ms latency
-* RedisKeyValue
+* RedisKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#rediskeyvalue))
     * 76K writes/sec at 3.4ms latency
     * 151K reads/sec at 1.7ms latency
-* RedisPipelinedKeyValue
+* RedisPipelinedKeyValue (see [details](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#redispipelinedkeyvalue))
     * 537K writes/sec at 21ms
     * 468K reads/sec at 16ms
+
+See [YCSB results](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-perf-v1.0.0.md#ycsb-run-info).
 
 # Setup
 - Replication factor (num nodes): 3
