@@ -15,11 +15,11 @@ const moment = require('moment');
 
 class CTAButton extends Component {
   render() {
-    const { linkTo, labelText } = this.props;
+    const { linkTo, labelText, otherProps } = this.props;
 
     return (
       <Link to={linkTo}>
-        <div className="create-universe-button" {...this.props}>
+        <div className="create-universe-button" {...otherProps}>
           <div className="btn-icon">
             <i className="fa fa-plus"/>
           </div>
