@@ -4,7 +4,6 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
 import './TableDetail.scss';
@@ -92,34 +91,22 @@ export default class TableDetail extends Component {
 
     let universeState = <span/>;
     if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentTableDetail.tableDetails)) {
-      const currentBreadCrumb = (
-        <div className="breadcumb-container">
-          <Link to="/universes">
-            <YBLabelWithIcon>
-              Universes
-            </YBLabelWithIcon>
-          </Link>
-          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
-          </YBLabelWithIcon>
-          <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
-            {currentUniverse.data.name}
-          </Link>
-          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
-          </YBLabelWithIcon>
-          <Link to={`/universes/${currentUniverse.data.universeUUID}?tab=tables`}>
-            Tables
-          </Link>
-          <YBLabelWithIcon icon="fa fa-angle-right fa-fw"/>
-        </div>
-      );
-
       universeState = (
         <Col lg={10} sm={8} xs={6}>
           {/* UNIVERSE NAME */}
           <div className="universe-detail-status-container">
-            {currentBreadCrumb}
             <h2>
-              { tableName }
+              <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
+                {currentUniverse.data.name}
+              </Link>
+              <span>
+                <i class="fa fa-chevron-right"></i>
+                <Link to={`/universes/${currentUniverse.data.universeUUID}?tab=tables`}>
+                  Tables
+                </Link>
+                <i class="fa fa-chevron-right"></i>
+                { tableName }
+              </span>
             </h2>
             <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} refreshUniverseData={this.getUniverseInfo}/>
           </div>

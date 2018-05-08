@@ -200,11 +200,35 @@
   top: 8px;
   left: 120px;
   margin-bottom: 0;
+
   @media (max-width: 991px) {
     left: 115px;
   }
+}
+
+h2 {
+  a {
+    color: $YB_TEXT_COLOR;
+
+    &:hover, &:active {
+      color: $YB_ORANGE;
+    }
+  }
   span {
-    opacity: .35;
+    font-size: 21px;
+    color: $YB_DARK_GRAY;
+    
+    a {
+      color: $YB_DARK_GRAY;
+
+      &:hover, &:active {
+        color: $YB_ORANGE;
+      }
+    }
+  }
+  i.fa.fa-chevron-right {
+    font-size: 18px;
+    padding: 0 7px 0 9px;
   }
 }
 
