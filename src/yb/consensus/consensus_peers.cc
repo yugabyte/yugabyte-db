@@ -52,11 +52,13 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/threadpool.h"
@@ -453,10 +455,12 @@ void CreateConsensusServiceProxyForHost(const shared_ptr<Messenger>& messenger,
                                         ConsensusServiceProxyWaiter waiter) {
   typedef boost::asio::ip::tcp::resolver Resolver;
   auto resolver = std::make_shared<Resolver>(messenger->io_service());
+  ScopedLatencyMetric latency_metric(ScopedDnsTracker::active_metric(), Auto::kFalse);
   resolver->async_resolve(
       Resolver::query(hostport.host(), "" /* service */),
-      [waiter, messenger, hostport, resolver](
-          const boost::system::error_code& error, const auto& entries) {
+      [waiter, messenger, hostport, resolver, latency_metric = std::move(latency_metric)](
+          const boost::system::error_code& error, const auto& entries) mutable {
+    latency_metric.Finish();
     if (error) {
       waiter(STATUS_FORMAT(NetworkError, "Resolve failed: $0", error.message()));
       return;

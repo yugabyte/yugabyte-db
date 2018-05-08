@@ -623,6 +623,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // waiting for it to advance.
   std::function<void()> majority_replicated_listener_;
 
+  scoped_refptr<Histogram> update_raft_config_dns_latency_;
+
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
 

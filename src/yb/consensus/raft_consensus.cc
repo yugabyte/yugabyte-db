@@ -55,12 +55,14 @@
 #include "yb/server/clock.h"
 #include "yb/server/metadata.h"
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/threadpool.h"
@@ -148,6 +150,13 @@ METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           yb::MetricUnit::kUnits,
                           "Current Term of the Raft Consensus algorithm. This number increments "
                           "each time a leader election is started.");
+
+METRIC_DEFINE_histogram(
+  tablet, dns_resolve_latency_during_update_raft_config,
+  "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
+  yb::MetricUnit::kMicroseconds,
+  "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig",
+  60000000LU, 2);
 
 DEFINE_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
@@ -272,7 +281,9 @@ RaftConsensus::RaftConsensus(
                                                     cmeta->current_term())),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
-      lost_leadership_listener_(std::move(lost_leadership_listener)) {
+      lost_leadership_listener_(std::move(lost_leadership_listener)),
+      update_raft_config_dns_latency_(
+          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(metric_entity)) {
   DCHECK_NOTNULL(log_.get());
 
   state_.reset(new ReplicaState(options,
@@ -2451,6 +2462,8 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked(),
                         state_->GetCurrentTermUnlocked(),
                         active_config);
+
+  ScopedDnsTracker dns_tracker(update_raft_config_dns_latency_.get());
   peer_manager_->UpdateRaftConfig(active_config);
 }
 
