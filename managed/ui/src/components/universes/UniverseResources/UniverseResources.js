@@ -31,8 +31,8 @@ export default class UniverseResources extends Component {
       costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />;
       costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />;
       numCores = resources.numCores;
-      memSizeGB = resources.memSizeGB ? resources.memSizeGB.toFixed(2) : 0;
-      volumeSizeGB = resources.volumeSizeGB ? resources.volumeSizeGB.toFixed(2) : 0;
+      memSizeGB = resources.memSizeGB ? resources.memSizeGB : 0;
+      volumeSizeGB = resources.volumeSizeGB ? resources.volumeSizeGB : 0;
       volumeCount = resources.volumeCount;
       if (resources && resources.numNodes && renderType === "Display") {
         universeNodes = <YBResourceCount size={resources.numNodes || 0} kind="Node" pluralizeKind />;
