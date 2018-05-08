@@ -161,14 +161,14 @@ class UniverseDetail extends Component {
 
             {/* UNIVERSE EDIT */}
             <div className="universe-detail-btn-group">
-              <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
-              <YBButton btnClass=" btn btn-orange"
-                        btnText="Edit" btnIcon="fa fa-database" onClick={this.onEditUniverseButtonClick} />
+              <YBButton btnClass=" btn"
+                        btnText="Edit Universe" btnIcon="fa fa-pencil" onClick={this.onEditUniverseButtonClick} />
 
+              <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
               <DropdownButton title="More" id="bg-nested-dropdown" pullRight>
                 <MenuItem eventKey="1" onClick={showSoftwareUpgradesModal}>
 
-                  <YBLabelWithIcon icon="fa fa-refresh fa-fw">
+                  <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                     Upgrade Software
                   </YBLabelWithIcon>
                 </MenuItem>

@@ -60,9 +60,10 @@
     border-top-color: #44518b;
   }
   i {
-    color: $YB_ORANGE;
+    color: $YB_VIOLET_TEXT;
     font-size: 16px;
     line-height: 1;
+    padding-right: 3px;
   }
   &:hover {
     @include transition(0.125s);
