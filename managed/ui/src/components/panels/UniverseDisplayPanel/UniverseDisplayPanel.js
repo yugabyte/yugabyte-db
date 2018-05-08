@@ -13,21 +13,21 @@ import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 const moment = require('moment');
 
-class CreateUniverseButtonComponent extends Component {
+class CTAButton extends Component {
   render() {
+    const { linkTo, labelText } = this.props;
+
     return (
-      <Col sm={4} md={3} lg={2}>
-        <Link to="/universes/create">
-          <div className="create-universe-button" {...this.props}>
-            <div className="btn-icon">
-              <i className="fa fa-plus"/>
-            </div>
-            <div className="display-name text-center">
-            Create Universe
+      <Link to={linkTo}>
+        <div className="create-universe-button" {...this.props}>
+          <div className="btn-icon">
+            <i className="fa fa-plus"/>
           </div>
-          </div>
-        </Link>
-      </Col>
+          <div className="display-name text-center">
+          {labelText}
+        </div>
+        </div>
+      </Link>
     );
   }
 }
@@ -110,7 +110,12 @@ export default class UniverseDisplayPanel extends Component {
                                        refreshUniverseData={self.props.fetchUniverseMetadata} />);
         });
       }
-      const createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
+      const createUniverseButton = 
+        (<Col sm={4} md={3} lg={2}><CTAButton
+          linkTo={"/universes/create"}
+          labelText={"Create Universe"}
+          onClick={() => self.props.showUniverseModal()}
+        /></Col>);
       return (
         <div className="universe-display-panel-container">
           <h2>Universes</h2>
@@ -123,9 +128,11 @@ export default class UniverseDisplayPanel extends Component {
     } else if (getPromiseState(providers).isEmpty()) {
       return (
         <div className="get-started-config">
-          <span>Welcome to the <div className="yb-data-name">YugaByte Admin Console.</div></span>
+          <span className="yb-data-name">Welcome to the <div>YugaByte Admin Console.</div></span>
           <span>Before you can create a Universe, you must configure a cloud provider.</span>
-          <span><Link to="config">Click Here to Configure A Provider</Link></span>
+          <CTAButton
+            linkTo={"config"}
+            labelText={"Configure a Provider"} />
         </div>
       );
     } else {

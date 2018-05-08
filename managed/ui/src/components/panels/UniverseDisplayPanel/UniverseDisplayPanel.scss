@@ -100,22 +100,23 @@ a:hover > {
   position: relative !important;
 }
 
+
+.create-universe-button {
+  border-radius: 4px;
+  height: 178px;
+  margin-bottom: 10px;
+  padding: 50px 0 4px 0;
+  border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
+  text-align: center;
+
+  &:hover {
+    background: rgba(white, 0.5);
+  }
+}
+
 .universe-display-panel-container {
   h3 {
     margin-bottom: 10px;
-  }
-
-  .create-universe-button {
-    border-radius: 4px;
-    height: 178px;
-    margin-bottom: 10px;
-    padding: 50px 0 4px 0;
-    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
-    text-align: center;
-
-    &:hover {
-      background: rgba(white, 0.5);
-    }
   }
 
   .row {
@@ -168,21 +169,34 @@ a:hover > {
 
 .get-started-config {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 300;
   text-align: center;
   margin-bottom: 30px;
-}
+  span {
+    display: block;
+    margin-top: 10px;
+    line-height: 1.4em;
+  }
 
-.get-started-config span {
-  display: block;
-  margin-top: 10px;
-  line-height: 1.4em;
-}
-
-.yb-data-name {
-  display: inline;
-  color: $YB_ORANGE;
-  font-size: 16px;
+  .yb-data-name {
+    font-family: Montserrat, sans-serif;
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: -.02em;
+    div {
+      margin: 0 auto 20px;
+      line-height: 1.2em;
+      color: $YB_VIOLET_TEXT;
+    }
+  }
+  a {
+    max-width: 220px;
+    margin: 50px auto;
+    display: block;
+    .create-universe-button {
+    }
+  }
+  
 }
 
 .universe-create-date {
