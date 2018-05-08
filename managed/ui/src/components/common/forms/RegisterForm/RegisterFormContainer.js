@@ -63,7 +63,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     customer: state.customer,
-    validateFields: state.validateFields
+    validateFields: state.validateFields,
+    initialValues: {'code': 'dev'}
   };
 }
 
