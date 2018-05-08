@@ -66,6 +66,20 @@ class Runnable {
   virtual ~Runnable() {}
 };
 
+template <class F>
+class RunnableImpl : public Runnable {
+ public:
+  explicit RunnableImpl(const F& f) : f_(f) {}
+  explicit RunnableImpl(F&& f) : f_(std::move(f)) {}
+
+ private:
+  void Run() override {
+    f_();
+  }
+
+  F f_;
+};
+
 // Interesting thread pool metrics. Can be applied to the entire pool (see
 // ThreadPoolBuilder) or to individual tokens.
 struct ThreadPoolMetrics {
@@ -192,6 +206,27 @@ class ThreadPool {
   // Submit a function binded using std::bind(&FuncName, args...)
   CHECKED_STATUS SubmitFunc(const std::function<void()>& func);
   CHECKED_STATUS SubmitFunc(std::function<void()>&& func);
+
+  CHECKED_STATUS SubmitFunc(std::function<void()>& func) { // NOLINT
+    const auto& const_func = func;
+    return SubmitFunc(const_func);
+  }
+
+  template <class F>
+  CHECKED_STATUS SubmitFunc(F&& f) {
+    return Submit(std::make_shared<RunnableImpl<F>>(std::move(f)));
+  }
+
+  template <class F>
+  CHECKED_STATUS SubmitFunc(const F& f) {
+    return Submit(std::make_shared<RunnableImpl<F>>(f));
+  }
+
+  template <class F>
+  CHECKED_STATUS SubmitFunc(F& f) { // NOLINT
+    const auto& const_f = f;
+    return SubmitFunc(const_f);
+  }
 
   // Submit a Runnable class
   CHECKED_STATUS Submit(const std::shared_ptr<Runnable>& task);

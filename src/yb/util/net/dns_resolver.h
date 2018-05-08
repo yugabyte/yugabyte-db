@@ -42,6 +42,7 @@
 
 namespace yb {
 
+class Histogram;
 class HostPort;
 class ThreadPool;
 
@@ -72,6 +73,20 @@ class DnsResolver {
   gscoped_ptr<ThreadPool> pool_;
 
   DISALLOW_COPY_AND_ASSIGN(DnsResolver);
+};
+
+class ScopedDnsTracker {
+ public:
+  explicit ScopedDnsTracker(const scoped_refptr<Histogram>& metric);
+  ~ScopedDnsTracker();
+
+  ScopedDnsTracker(const ScopedDnsTracker&) = delete;
+  void operator=(const ScopedDnsTracker&) = delete;
+
+  static Histogram* active_metric();
+ private:
+  Histogram* old_metric_;
+  scoped_refptr<Histogram> metric_;
 };
 
 } // namespace yb

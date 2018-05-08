@@ -66,6 +66,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/net/dns_resolver.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 
@@ -101,6 +102,13 @@ DEFINE_int32(master_discovery_timeout_ms, 3600000,
              "Timeout for masters to discover each other during cluster creation/startup");
 TAG_FLAG(master_discovery_timeout_ms, hidden);
 
+METRIC_DEFINE_histogram(
+  server, dns_resolve_latency_during_sys_catalog_setup,
+  "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
+  yb::MetricUnit::kMicroseconds,
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
+  60000000LU, 2);
+
 
 namespace yb {
 namespace master {
@@ -120,6 +128,10 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
+
+  auto metric_entity = METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master");
+  setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
+      metric_entity);
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -287,6 +299,8 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   DCHECK(master_->messenger());
   RaftConfigPB resolved_config = new_config;
   resolved_config.clear_peers();
+
+  ScopedDnsTracker dns_tracker(setup_config_dns_histogram_);
   for (const RaftPeerPB& peer : new_config.peers()) {
     if (peer.has_permanent_uuid()) {
       resolved_config.add_peers()->CopyFrom(peer);
