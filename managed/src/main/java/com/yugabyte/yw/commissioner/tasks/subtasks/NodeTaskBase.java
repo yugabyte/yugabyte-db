@@ -48,20 +48,9 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
   // Helper API to update the db for the current node with the given state.
   public void setNodeState(NodeDetails.NodeState state) {
     // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        NodeDetails node = universe.getNode(taskParams().nodeName);
-        node.state = state;
-        LOG.debug("Setting node {} state to {} in universe {}.", 
-                  taskParams().nodeName, state, taskParams().universeUUID);
-        // Update the node details.
-        universeDetails.nodeDetailsSet.add(node);
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-
+    UniverseUpdater updater = nodeStateUpdater(taskParams().universeUUID,
+                                               taskParams().nodeName,
+                                               state);
     Universe.saveDetails(taskParams().universeUUID, updater);
   }
 }

@@ -41,7 +41,8 @@ public class AddNodeToUniverse extends UniverseTaskBase {
   public void run() {
     LOG.info("Started {} task for node {} in univ uuid={}", getName(),
              taskParams().nodeName, taskParams().universeUUID);
-
+    NodeDetails currentNode = null;
+    boolean hitException = false;
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -49,7 +50,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       // Update the DB to prevent other changes from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " in universe " + universe.name;
         LOG.error(msg);
@@ -110,10 +111,6 @@ public class AddNodeToUniverse extends UniverseTaskBase {
         createChangeConfigTask(currentNode, true, SubTaskGroupType.WaitForDataMigration);
       }
 
-      // Create a task for blacklist removal of this server.
-      createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
       // Configure again for now, so that this tserver picks all the master nodes.
       createConfigureServerTasks(node, false /* isShell */, userIntent.deviceInfo,
                                  userIntent.ybSoftwareVersion)
@@ -154,8 +151,14 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      hitException = true;
       throw t;
     } finally {
+      // Reset the state, on any failure, so that the actions can be retried.
+      if (currentNode != null && hitException) {
+        setNodeState(taskParams().nodeName, currentNode.state);
+      }
+
       // Mark the update of the universe as done. This will allow future updates to the universe.
       unlockUniverseForUpdate();
     }

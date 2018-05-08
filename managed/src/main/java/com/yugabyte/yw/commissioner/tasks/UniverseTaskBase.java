@@ -951,4 +951,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
     return isServerAlive(node, ServerType.TSERVER, masterAddrs);
   }
+
+  // Helper API to update the db for the node with the given state.
+  public void setNodeState(String nodeName, NodeDetails.NodeState state) {
+    // Persist the desired node information into the DB.
+    UniverseUpdater updater = nodeStateUpdater(taskParams().universeUUID, nodeName, state);
+    Universe.saveDetails(taskParams().universeUUID, updater);
+  }
 }
