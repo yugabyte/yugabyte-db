@@ -66,11 +66,12 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
+
+      // Create a task for removal of this server from blacklist on master leader.
+      createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
       if (instanceExists(taskParams())) {
-        // Create a task for removal from blacklist of this server.
-        createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
-            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      
         // Create tasks to terminate that instance.
         createDestroyServerTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)), false, false)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);

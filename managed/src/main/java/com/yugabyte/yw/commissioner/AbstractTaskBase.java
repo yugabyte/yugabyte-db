@@ -17,6 +17,10 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.libs.Json;
 
@@ -101,5 +105,27 @@ public abstract class AbstractTaskBase implements ITask {
     } else {
       throw new RuntimeException(response.message);
     }
+  }
+
+  public UniverseUpdater nodeStateUpdater(final UUID universeUUID, final String nodeName,
+                                          final NodeDetails.NodeState state) {
+    UniverseUpdater updater = new UniverseUpdater() {
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        NodeDetails node = universe.getNode(nodeName);
+        LOG.debug("Changing node {} state from {} to {} in universe {}.",
+                  nodeName, node.state, state, universeUUID);
+        node.state = state;
+        if (state == NodeDetails.NodeState.Decommissioned) {
+          node.cloudInfo.private_ip = null;
+          node.cloudInfo.public_ip = null;
+        }
+
+        // Update the node details.
+        universeDetails.nodeDetailsSet.add(node);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    return updater;
   }
 }
