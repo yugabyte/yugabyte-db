@@ -18,7 +18,8 @@
 }
 
 .dark-form {
-  padding-bottom: 10%;
+  padding-top: 50px;
+  padding-bottom: 50px;
 
   .dark-form-heading {
     color: #fff;
@@ -26,7 +27,7 @@
     text-align: center;
 
     .logo {
-      height: 50px;
+      height: 40px;
       margin: 0 auto 50px auto;
       display: block;
     }
@@ -41,6 +42,9 @@
 .dark-background {
   color: #fff;
   background: $YB_VIOLET;
+  height: auto;
+  min-height: 100%;
+  overflow: auto;
 
   .form-group,
   input {
@@ -51,17 +55,53 @@
     font-weight: 500;
     font-size: 16px;
 
-    &::-webkit-input-placeholder
-    &:-moz-placeholder,
+
+    &::-webkit-input-placeholder,
+    &::-webkit-placeholder {
+      color: $YB_SIDEBAR_ICON;
+      font-weight: 300;
+      font-size: 15px;
+    }
+
+    &:placeholder-shown,
+    &::placeholder {
+      color: $YB_SIDEBAR_ICON;
+      font-weight: 300;
+      font-size: 15px;
+    }
+    
     &::-moz-placeholder,
-    &:-ms-input-placeholder { 
-      color: $YB_VIOLET_TEXT_LIGHT;
+    &:-ms-input-placeholder,
+    &:-moz-placeholder {
+      color: $YB_SIDEBAR_ICON;
+      font-weight: 300;
+      font-size: 15px;
+    }
+  }
+
+  .form-right-aligned-labels {
+    @media screen and (max-width: 600px) {
+      display: block !important;
+      .form-group {
+        display: block !important;
+      }
+  
+      .form-item-label {
+        display: block !important;
+        padding-bottom: 5px;
+        font-size: 13px !important;
+      }
+  
+      .yb-field-group {
+        display: block !important;
+        padding-bottom: 0;
+      }
     }
   }
 
   .form-item-label {
     margin-bottom: 1px !important;
-    color: $YB_VIOLET_TEXT_LIGHT;
+    color: #fff;
   }
 
   .yb-field-group {
@@ -146,6 +186,9 @@
     display: table-cell;
     width: 100%;
     padding-bottom: 6px;
+    .yb-field-group {
+      width: 100%;
+    }
   }
 
   .yb-info-tip {
@@ -207,3 +250,65 @@
       display: inline;
     }
   }
+
+.page-register {
+  height: auto;
+  min-height: 100%;
+  overflow: auto;
+
+  .logo {
+    height: 40px;
+    margin-bottom: 20px !important;
+  }
+
+  .dark-form-heading {
+    h1 {
+      span {
+        font-size: 30px;
+        margin: 0 0 25px 0;
+      }
+    }
+  }
+
+  .form-register {
+
+    .form-item-label {
+      padding-right: 50px;
+      font-size: 14px;
+      font-weight: 300 !important;
+    }
+
+    .radio-label {
+      padding: 1px 0 7px;
+    }
+
+    .btn-group-radio {
+      margin-left: 2px;
+      width: 100%;
+
+      label {
+        width: 25% !important;
+        margin: 0;
+        text-align: left;
+
+        &.btn-default {
+          color: #ffffff;
+          background-color: #222749;
+          font-weight: 300;
+          border: 1px solid #2d3258;
+        }
+      }
+    }
+
+    input {
+      text-align: left;
+    }
+
+    @media screen and (max-width: 600px)  {      
+      button.btn[type="submit"] {
+        margin: 20px auto 0;
+        float: none !important;
+      }
+    }
+  }
+}
