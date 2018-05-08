@@ -60,20 +60,39 @@ DnsResolver::~DnsResolver() {
 }
 
 namespace {
-static void DoResolution(const HostPort &hostport,
-                         std::vector<Endpoint>* addresses,
-                         StatusCallback cb) {
-  cb.Run(hostport.ResolveAddresses(addresses));
-}
+
+thread_local Histogram* active_metric_ = nullptr;
+
 } // anonymous namespace
 
 void DnsResolver::ResolveAddresses(const HostPort& hostport,
                                    std::vector<Endpoint>* addresses,
                                    const StatusCallback& cb) {
-  Status s = pool_->SubmitFunc(std::bind(&DoResolution, hostport, addresses, cb));
+  ScopedLatencyMetric latency_metric(ScopedDnsTracker::active_metric(), Auto::kFalse);
+
+  Status s = pool_->SubmitFunc(
+      [hostport, addresses, cb, latency_metric = std::move(latency_metric)]() mutable {
+    latency_metric.Restart();
+    cb.Run(hostport.ResolveAddresses(addresses));
+    latency_metric.Finish();
+  });
   if (!s.ok()) {
     cb.Run(s);
   }
+}
+
+ScopedDnsTracker::ScopedDnsTracker(const scoped_refptr<Histogram>& metric)
+    : old_metric_(active_metric()), metric_(metric) {
+  active_metric_ = metric.get();
+}
+
+ScopedDnsTracker::~ScopedDnsTracker() {
+  DCHECK_EQ(metric_.get(), active_metric());
+  active_metric_ = old_metric_;
+}
+
+Histogram* ScopedDnsTracker::active_metric() {
+  return active_metric_;
 }
 
 } // namespace yb

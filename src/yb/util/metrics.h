@@ -255,12 +255,14 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/striped64.h"
+#include "yb/util/strongly_typed_bool.h"
 
 // Define a new entity type.
 //
@@ -1149,17 +1151,31 @@ class Histogram : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
 
+YB_STRONGLY_TYPED_BOOL(Auto);
+
 // Measures a duration while in scope. Adds this duration to specified histogram on destruction.
 class ScopedLatencyMetric {
  public:
-  // NOTE: the given histogram must live as long as this object.
   // If 'latency_hist' is NULL, this turns into a no-op.
-  explicit ScopedLatencyMetric(Histogram* latency_hist);
+  // automatic - automatically update histogram when object is destroyed.
+  explicit ScopedLatencyMetric(const scoped_refptr<Histogram>& latency_hist,
+                               Auto automatic = Auto::kTrue);
+
+  ScopedLatencyMetric(ScopedLatencyMetric&& rhs);
+  void operator=(ScopedLatencyMetric&& rhs);
+
+  ScopedLatencyMetric(const ScopedLatencyMetric&) = delete;
+  void operator=(const ScopedLatencyMetric&) = delete;
+
   ~ScopedLatencyMetric();
 
+  void Restart();
+  void Finish();
+
  private:
-  Histogram* latency_hist_;
+  scoped_refptr<Histogram> latency_hist_;
   MonoTime time_started_;
+  Auto auto_;
 };
 
 ////////////////////////////////////////////////////////////

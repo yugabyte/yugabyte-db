@@ -423,11 +423,11 @@ Status ThreadPool::SubmitClosure(const Closure& task) {
 }
 
 Status ThreadPool::SubmitFunc(const std::function<void()>& func) {
-  return Submit(std::shared_ptr<Runnable>(new FunctionRunnable(func)));
+  return Submit(std::make_shared<FunctionRunnable>(func));
 }
 
 Status ThreadPool::SubmitFunc(std::function<void()>&& func) {
-  return Submit(std::shared_ptr<Runnable>(new FunctionRunnable(std::move(func))));
+  return Submit(std::make_shared<FunctionRunnable>(std::move(func)));
 }
 
 Status ThreadPool::Submit(const std::shared_ptr<Runnable>& r) {

@@ -65,6 +65,7 @@
 
 namespace yb {
 
+class Histogram;
 class YBPartialRow;
 
 namespace tserver {
@@ -129,7 +130,7 @@ class RemoteTabletServer {
  private:
   // Internal callback for DNS resolution.
   void DnsResolutionFinished(const HostPort& hp,
-                             std::vector<Endpoint>* addrs,
+                             const std::shared_ptr<std::vector<Endpoint>>& addrs,
                              YBClient* client,
                              const StatusCallback& user_callback,
                              const Status &result_status);
@@ -140,6 +141,7 @@ class RemoteTabletServer {
   std::vector<HostPort> rpc_hostports_;
   yb::CloudInfoPB cloud_info_pb_;
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
+  scoped_refptr<Histogram> dns_resolve_histogram_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };

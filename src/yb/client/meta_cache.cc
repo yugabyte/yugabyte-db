@@ -60,6 +60,13 @@ using strings::Substitute;
 DEFINE_int32(max_concurrent_master_lookups, 500,
              "Maximum number of concurrent tablet location lookups from YB client to master");
 
+METRIC_DEFINE_histogram(
+  server, dns_resolve_latency_during_init_proxy,
+  "yb.client.MetaCache.InitProxy DNS Resolve",
+  yb::MetricUnit::kMicroseconds,
+  "Microseconds spent resolving DNS requests during MetaCache::InitProxy",
+  60000000LU, 2);
+
 namespace yb {
 
 using consensus::RaftPeerPB;
@@ -105,12 +112,10 @@ RemoteTabletServer::RemoteTabletServer(
 }
 
 void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
-                                               vector<Endpoint>* addrs,
+                                               const std::shared_ptr<std::vector<Endpoint>>& addrs,
                                                YBClient* client,
                                                const StatusCallback& user_callback,
                                                const Status &result_status) {
-  gscoped_ptr<vector<Endpoint> > scoped_addrs(addrs);
-
   Status s = result_status;
 
   if (s.ok() && addrs->empty()) {
@@ -143,6 +148,14 @@ void RemoteTabletServer::InitProxy(YBClient* client, const StatusCallback& cb) {
   {
     std::unique_lock<simple_spinlock> l(lock_);
 
+    if (!dns_resolve_histogram_) {
+      auto metric_entity = client->messenger()->metric_entity();
+      if (metric_entity) {
+        dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+            metric_entity);
+      }
+    }
+
     if (proxy_) {
       // Already have a proxy created.
       l.unlock();
@@ -156,10 +169,12 @@ void RemoteTabletServer::InitProxy(YBClient* client, const StatusCallback& cb) {
     hp = rpc_hostports_[0];
   }
 
-  auto addrs = new vector<Endpoint>();
+  ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
+
+  auto addrs = std::make_shared<std::vector<Endpoint>>();
   client->data_->dns_resolver_->ResolveAddresses(
-    hp, addrs, Bind(&RemoteTabletServer::DnsResolutionFinished,
-                    Unretained(this), hp, addrs, client, cb));
+    hp, addrs.get(),
+    Bind(&RemoteTabletServer::DnsResolutionFinished, Unretained(this), hp, addrs, client, cb));
 }
 
 void RemoteTabletServer::Update(const master::TSInfoPB& pb) {

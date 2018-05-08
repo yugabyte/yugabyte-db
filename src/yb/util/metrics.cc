@@ -814,17 +814,43 @@ double Histogram::MeanValueForTests() const {
   return histogram_->MeanValue();
 }
 
-ScopedLatencyMetric::ScopedLatencyMetric(Histogram* latency_hist)
-  : latency_hist_(latency_hist) {
+ScopedLatencyMetric::ScopedLatencyMetric(
+    const scoped_refptr<Histogram>& latency_hist, Auto automatic)
+    : latency_hist_(latency_hist), auto_(automatic) {
+  Restart();
+}
+
+ScopedLatencyMetric::ScopedLatencyMetric(ScopedLatencyMetric&& rhs)
+    : latency_hist_(std::move(rhs.latency_hist_)), time_started_(rhs.time_started_),
+      auto_(rhs.auto_) {
+}
+
+void ScopedLatencyMetric::operator=(ScopedLatencyMetric&& rhs) {
+  if (auto_) {
+    Finish();
+  }
+
+  latency_hist_ = std::move(rhs.latency_hist_);
+  time_started_ = rhs.time_started_;
+  auto_ = rhs.auto_;
+}
+
+ScopedLatencyMetric::~ScopedLatencyMetric() {
+  if (auto_) {
+    Finish();
+  }
+}
+
+void ScopedLatencyMetric::Restart() {
   if (latency_hist_) {
     time_started_ = MonoTime::Now();
   }
 }
 
-ScopedLatencyMetric::~ScopedLatencyMetric() {
+void ScopedLatencyMetric::Finish() {
   if (latency_hist_ != nullptr) {
-    MonoTime time_now = MonoTime::Now();
-    latency_hist_->Increment(time_now.GetDeltaSince(time_started_).ToMicroseconds());
+    auto passed = (MonoTime::Now() - time_started_).ToMicroseconds();
+    latency_hist_->Increment(passed);
   }
 }
 

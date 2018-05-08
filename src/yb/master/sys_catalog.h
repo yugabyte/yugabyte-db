@@ -234,6 +234,8 @@ class SysCatalogTable {
 
   consensus::RaftPeerPB local_peer_pb_;
 
+  scoped_refptr<Histogram> setup_config_dns_histogram_;
+
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };
 
