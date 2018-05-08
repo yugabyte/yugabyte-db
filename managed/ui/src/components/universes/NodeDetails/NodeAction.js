@@ -46,7 +46,7 @@ export default class NodeAction extends Component {
     let btnLabel = null;
     let btnIcon = null;
     if (actionType === "STOP") {
-      btnLabel = "Stop Node";
+      btnLabel = "Stop Processes";
       btnIcon = "fa fa-stop-circle";
     } else if (actionType === "REMOVE") {
       btnLabel = "Remove Node";
@@ -55,10 +55,10 @@ export default class NodeAction extends Component {
       btnLabel = "Delete Node";
       btnIcon = "fa fa-minus-circle";
     } else if (actionType === "RELEASE") {
-      btnLabel = "Release Node";
+      btnLabel = "Release Instance";
       btnIcon = "fa fa-trash";
     } else if (actionType === "START") {
-      btnLabel = "Start Node";
+      btnLabel = "Start Processes";
       btnIcon = "fa fa-play-circle";
     } else if (actionType === "ADD") {
       btnLabel = "Add Node";
