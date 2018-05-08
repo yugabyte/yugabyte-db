@@ -36,9 +36,9 @@ export default class YBCopyButton extends PureComponent {
 
 
   render() {
-    const { caption, additionalClassName } = this.state.clicked ? {caption: 'Copied!', additionalClassName: ''} : {caption: 'Copy', additionalClassName: 'btn-copy-inactive'};
+    const { caption, additionalClassName } = this.state.clicked ? {caption: 'Copied', additionalClassName: ''} : {caption: 'Copy', additionalClassName: 'btn-copy-inactive'};
     return (
-      <button {...this.props} className={"btn btn-orange btn-small btn-copy "+additionalClassName} onClick={this.onClick}>
+      <button {...this.props} className={"btn btn-small btn-copy " + additionalClassName} onClick={this.onClick}>
         {caption}
       </button>
     );

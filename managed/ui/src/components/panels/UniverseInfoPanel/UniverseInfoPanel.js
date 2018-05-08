@@ -47,9 +47,9 @@ export default class UniverseInfoPanel extends Component {
           <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
             {universeInfo.dnsName}
           </FlexGrow>
-          <FlexShrink>
+          <FlexGrow>
             <YBCopyButton text={universeInfo.dnsName}/>
-          </FlexShrink>
+          </FlexGrow>
         </FlexContainer>);
       universeInfoItems.push({name: "Hosted Zone Name", data: dnsNameData });
     }
