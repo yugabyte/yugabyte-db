@@ -2,11 +2,13 @@
 
 import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
-import { Field } from 'redux-form';
-import { YBButton, YBInputField } from '../fields';
+import { change, Field } from 'redux-form';
+import { YBButton, YBInputField, YBRadioButtonBarDefaultWithLabel } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
 import {browserHistory} from 'react-router';
 import {getPromiseState} from 'utils/PromiseUtils';
+
+import './RegisterForm.scss';
 
 class RegisterForm extends Component {
   componentWillReceiveProps(nextProps) {
@@ -21,22 +23,32 @@ class RegisterForm extends Component {
     registerCustomer(formValues);
   };
 
+  environmentChanged = value => {
+    this.updateFormField('code', value);
+  };
+
+
+  updateFormField = (fieldName, fieldValue) => {
+    this.props.dispatch(change("RegisterForm", fieldName, fieldValue));
+  };
+
   render() {
     const { handleSubmit, submitting, customer: {authToken} } = this.props;
 
     return (
-      <div className="container full-height dark-background flex-vertical-middle">
-        <div className="col-sm-6 dark-form">
+      <div className="container dark-background full-height page-register flex-vertical-middle">
+        <div className="col-12 col-sm-10 col-md-8 col-lg-6 dark-form">
           <PageHeader bsClass="dark-form-heading">
-            <YBLogo />
+            <YBLogo type="full"/>
             <span>Admin Console Registration</span>
           </PageHeader>
-          <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
+          <form class="form-register" onSubmit={handleSubmit(this.submitRegister.bind(this))}>
             <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
               {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
             <div className="form-right-aligned-labels">
-              <Field name="code" type="text" component={YBInputField} label="Environment" placeHolder="dev/demo/prod/stage"/>
+              <Field name="code" type="text" component={YBRadioButtonBarDefaultWithLabel} label="Environment"
+                options={["dev", "demo", "stage", "prod"]} initialValue={"dev"} onSelect={this.environmentChanged} />
               <Field name="name" type="text" component={YBInputField} label="Full Name"/>
               <Field name="email" type="email" component={YBInputField} label="Email"/>
               <Field name="password" type="password" component={YBInputField} label="Password"/>
