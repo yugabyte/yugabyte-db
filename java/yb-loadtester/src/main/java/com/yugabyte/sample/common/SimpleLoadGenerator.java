@@ -148,9 +148,10 @@ public class SimpleLoadGenerator {
   public Key getKeyToWrite() {
     Key retKey = null;
     do {
+      long maxKey = maxWrittenKey.get();
       // Return a random key to update if we have already written all keys.
-      if (maxGeneratedKey.get() != -1 && maxGeneratedKey.get() == endKey - 1) {
-        retKey = getKeyToRead();
+      if (maxKey != -1 && maxKey == endKey - 1) {
+        retKey = generateKey(ThreadLocalRandom.current().nextLong(maxKey));
       } else {
         retKey = generateKey(maxGeneratedKey.incrementAndGet());
       }
