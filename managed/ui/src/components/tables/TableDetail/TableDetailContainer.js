@@ -3,9 +3,9 @@
 import { connect } from 'react-redux';
 import { TableDetail } from '..';
 import { fetchTableDetail, fetchTableDetailFailure, fetchTableDetailSuccess, resetTableDetail }
-from '../../../actions/tables';
+  from '../../../actions/tables';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo }
-from '../../../actions/universe';
+  from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {

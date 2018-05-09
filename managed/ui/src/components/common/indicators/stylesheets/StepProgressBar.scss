@@ -3,23 +3,22 @@
 @import "_style/colors.scss";
 
 .progressbar {
+  display: flex;
+  flex-direction: row;
   margin: 0;
   padding: 0;
   counter-reset: step;
   z-index: 300;
-  position: absolute;
-  width: 100%;
 }
 
 .progressbar li {
   list-style-type: none;
-  width: 20%;
-  float: left;
   font-size: 12px;
   position: relative;
   text-align: center;
   text-transform: uppercase;
   color: #7d7d7d;
+  flex-grow: 1;
 }
 
 .progressbar li:before {
