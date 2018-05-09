@@ -29,12 +29,13 @@
     .logo {
       height: 40px;
       margin: 0 auto 50px auto;
+      margin-bottom: 20px !important;
       display: block;
     }
     span {
       color: #fff;
       display: inline-block;
-      font-size: 0.8em;
+      margin: 0 0 25px 0;
     }
   }
 }
@@ -69,7 +70,7 @@
       font-weight: 300;
       font-size: 15px;
     }
-    
+
     &::-moz-placeholder,
     &:-ms-input-placeholder,
     &:-moz-placeholder {
@@ -85,13 +86,13 @@
       .form-group {
         display: block !important;
       }
-  
+
       .form-item-label {
         display: block !important;
         padding-bottom: 5px;
         font-size: 13px !important;
       }
-  
+
       .yb-field-group {
         display: block !important;
         padding-bottom: 0;
@@ -304,7 +305,7 @@
       text-align: left;
     }
 
-    @media screen and (max-width: 600px)  {      
+    @media screen and (max-width: 600px)  {
       button.btn[type="submit"] {
         margin: 20px auto 0;
         float: none !important;

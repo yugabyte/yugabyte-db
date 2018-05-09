@@ -63,7 +63,7 @@ class ProviderResultView extends Component {
             providerInfo, buttonBaseClassName, currentModal,
             providerType, deleteButtonDisabled} = this.props;
     const {refreshing} = this.state;
-    const deleteButtonClassName = "btn btn-default manage-provider-btn delete-btn";
+    const deleteButtonClassName = "btn btn-default manage-provider-btn";
     const deleteDisabled = deleteButtonDisabled || this.state.refreshing;
     let refreshPricingLabel = "Refresh Pricing Data";
     if (refreshing) {
@@ -78,12 +78,12 @@ class ProviderResultView extends Component {
         <Row className="config-section-header">
           <Col md={12}>
             <span className="pull-right buttons" title={deleteButtonTitle}>
-              <YBButton btnText="Edit Configuration"
-                        onClick={this.editProviderView.bind(this, currentProvider)}/>
               <YBButton btnText="Delete Configuration" disabled={deleteDisabled}
                         btnClass={deleteButtonClassName} onClick={this.showDeleteProviderModal}/>
               <YBButton btnText={refreshPricingLabel} btnClass={buttonBaseClassName} disabled={refreshing}
-                        onClick={this.refreshPricingData.bind(this, currentProvider)}/>
+                      onClick={this.refreshPricingData.bind(this, currentProvider)}/>
+              <YBButton btnText="Edit Configuration"
+                        onClick={this.editProviderView.bind(this, currentProvider)}/>
               <YBConfirmModal name="deleteProvider" title={"Confirm Delete"}
                               onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, currentProvider))}
                               currentModal={currentModal} visibleModal={this.props.visibleModal}

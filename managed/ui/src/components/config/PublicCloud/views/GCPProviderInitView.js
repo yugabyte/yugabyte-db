@@ -2,13 +2,12 @@
 
 import React, {Component} from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBToggle } from '../../../common/forms/fields';
-import { YBTextInput } from '../../../common/forms/fields';
-import { Field } from 'redux-form';
+import { YBButton } from '../../../common/forms/fields';
+import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone } from '../../../common/forms/fields';
+import { change, Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
 import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
-import Dropzone from 'react-dropzone';
 import { reduxForm } from 'redux-form';
 
 class GCPProviderInitView extends Component {
@@ -20,14 +19,14 @@ class GCPProviderInitView extends Component {
       providerUUID: "",
       currentProvider: {},
       hostVpcVisible: true,
+      networkSetupType: "new_vpc"
     };
     this.hostVpcToggled = this.hostVpcToggled.bind(this);
   }
 
   createProviderConfig = vals => {
     const self = this;
-    const configText = this.state.gcpConfig;
-    const {hostInfo} = this.props;
+    const configText = vals.gcpConfig;
     if (isNonEmptyObject(configText)) {
       const providerName = vals.accountName;
       const reader = new FileReader();
@@ -38,15 +37,10 @@ class GCPProviderInitView extends Component {
           const gcpCreateConfig = {
             "config_file_contents": JSON.parse(reader.result)
           };
-          const useHostVpc = Boolean(vals.useHostVpc);
-          if (self.isHostInGCP() && useHostVpc) {
-            gcpCreateConfig["network"] = hostInfo["gcp"]["network"];
-            gcpCreateConfig["use_host_vpc"] = useHostVpc;
-          } else if (isNonEmptyString(vals.destVpcId)) {
+          if (isNonEmptyString(vals.destVpcId)) {
             gcpCreateConfig["network"] = vals.destVpcId;
             gcpCreateConfig["use_host_vpc"] = true;
           } else {
-            // This already implies useHostVpc === false, as it defaults to false outside of GCP.
             gcpCreateConfig["use_host_vpc"] = false;
           }
           self.props.createGCPProvider(providerName, gcpCreateConfig);
@@ -74,8 +68,22 @@ class GCPProviderInitView extends Component {
     this.setState({hostVpcVisible: !event.target.checked});
   }
 
+  networkSetupChanged = (value) => {
+    const { hostInfo } = this.props;
+    if (value === "host_vpc") {
+      this.updateFormField("destVpcId", hostInfo["gcp"]["network"]);
+    } else {
+      this.updateFormField("destVpcId", null);
+    }
+    this.setState({networkSetupType: value});
+  }
+
+  updateFormField = (field, value) => {
+    this.props.dispatch(change("gcpProviderConfigForm", field, value));
+  };
+
   render() {
-    const { handleSubmit, configuredProviders} = this.props;
+    const { handleSubmit, configuredProviders, submitting } = this.props;
     if (getPromiseState(configuredProviders).isLoading()) {
       return <YBLoading />;
     }
@@ -83,23 +91,36 @@ class GCPProviderInitView extends Component {
     if (isNonEmptyObject(this.state.gcpConfig)) {
       gcpConfigFileName = this.state.gcpConfig.name;
     }
-    const subLabel = "Disabled if host is not on GCP";
+
+    const network_setup_options = [
+      <option key={1} value={"new_vpc"}>{"Create a new VPC"}</option>,
+      <option key={2} value={"existing_vpc"}>{"Specify an existing VPC"}</option>
+    ];
+    if (this.isHostInGCP()) {
+      network_setup_options.push(
+        <option key={3} value={"host_vpc"}>{"Use VPC of the Admin Console instance"}</option>
+      );
+    }
+
     let destVpcField = <span />;
-    if (this.state.hostVpcVisible) {
+    if (this.state.networkSetupType !== "new_vpc") {
       destVpcField = (
         <div>
-          <Col lg={2}>
+          <Col lg={3}>
             <div className="form-item-custom-label">
-              Custom VPC Network
+              VPC Network Name
             </div>
           </Col>
-          <Col lg={10}>
-            <Field name="destVpcId" component={YBTextInput} placeHolder="VPC Network Name"
-                   className={"gcp-provider-input-field"} />
+          <Col lg={7}>
+            <Field name="destVpcId" component={YBTextInputWithLabel}
+                placeHolder="my-vpc-network-name"
+                className={"gcp-provider-input-field"}
+                isReadOnly={this.state.networkSetupType === "host_vpc"}/>
           </Col>
         </div>
       );
     }
+
     return (
       <div className="provider-config-container">
         <form name="gcpProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
@@ -107,46 +128,43 @@ class GCPProviderInitView extends Component {
             <Row>
               <Col lg={8}>
                 <Row className="config-provider-row">
-                  <Col lg={2}>
+                  <Col lg={3}>
                     <div className="form-item-custom-label">Name</div>
                   </Col>
-                  <Col lg={10}>
+                  <Col lg={7}>
                     <Field name="accountName" placeHolder="Google Cloud Platform"
-                           component={YBTextInput} className={"gcp-provider-input-field"}/>
+                           component={YBTextInputWithLabel} className={"gcp-provider-input-field"}/>
                   </Col>
                 </Row>
                 <Row className="config-provider-row">
-                  <Col lg={2}>
+                  <Col lg={3}>
                     <div className="form-item-custom-label">Provider Config</div>
                   </Col>
-                  <Col lg={6}>
-                    <Dropzone onDrop={this.uploadGCPConfig.bind(this)} className="upload-file-button">
-                      <p>Upload GCP Config json file</p>
-                    </Dropzone>
+                  <Col lg={7}>
+                    <Field name="gcpConfig" component={YBDropZone} className="upload-file-button" title={"Upload GCP Config json file"}/>
                   </Col>
                   <Col lg={4}>
                     <div className="file-label">{gcpConfigFileName}</div>
                   </Col>
                 </Row>
-                <Row className="config-provider-row">
-                  {destVpcField}
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">VPC Setup</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="network_setup" component={YBSelectWithLabel}
+                      options={network_setup_options}
+                      onInputChanged={this.networkSetupChanged} />
+                  </Col>
                 </Row>
                 <Row className="config-provider-row">
-                  <Col lg={2}>
-                    <Field name="useHostVpc"
-                           component={YBToggle}
-                           label="Use Host's VPC"
-                           subLabel={subLabel}
-                           defaultChecked={!this.state.hostVpcVisible}
-                           isReadOnly={!this.isHostInGCP()}
-                           onToggle={this.hostVpcToggled} />
-                  </Col>
+                  {destVpcField}
                 </Row>
               </Col>
             </Row>
           </div>
           <div className="form-action-button-container">
-            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"} btnType="submit"/>
+            <YBButton btnText={"Save"} btnDisabled={submitting} btnClass={"btn btn-default save-btn"} btnType="submit"/>
           </div>
         </form>
       </div>
@@ -154,6 +172,22 @@ class GCPProviderInitView extends Component {
   }
 }
 
+const validate = (values) => {
+  const errors = {};
+  if (!isNonEmptyString(values.accountName)) {
+    errors.accountName = 'Account Name is Required';
+  }
+  if (!isNonEmptyObject(values.gcpConfig)) {
+    errors.gcpConfig = 'Provider Config is Required';
+  }
+  if (!isNonEmptyString(values.destVpcId) &&
+      values.network_setup === "existing_vpc") {
+    errors.destVpcId = 'VPC Network name is Required';
+  }
+  return errors;
+};
+
 export default reduxForm({
-  form: 'gcpProviderConfigForm'
+  form: 'gcpProviderConfigForm',
+  validate
 })(GCPProviderInitView);

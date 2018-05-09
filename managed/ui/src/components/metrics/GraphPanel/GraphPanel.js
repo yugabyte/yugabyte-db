@@ -18,7 +18,7 @@ const panelTypes = {
       "network_bytes",
       "network_errors",
       "system_load_over_time"]},
-  tserver: {title: "YugaByte Server",
+  tserver: {title: "Tablet Server",
     metrics: [ "tserver_rpcs_per_sec",
       "tserver_ops_latency",
       "tserver_handler_latency",
@@ -37,7 +37,7 @@ const panelTypes = {
       "tserver_tc_malloc_stats",
       "tserver_log_stats",
       "tserver_cache_reader_num_ops"]},
-  lsmdb: {title: "LSM-DB Stats",
+  lsmdb: {title: "DocDB",
     metrics: ["lsm_rocksdb_num_seek_or_next",
       "lsm_rocksdb_num_seeks_per_node",
       "lsm_rocksdb_latencies_get",
@@ -52,11 +52,17 @@ const panelTypes = {
       "lsm_rocksdb_compaction",
       "lsm_rocksdb_compaction_time",
       "lsm_rocksdb_compaction_numfiles"]},
-  proxies: {title: "Apache Cassandra and Redis",
+  proxies: {title: "YCQL and YEDIS",
     metrics: ["cql_server_rpc_per_second",
       "cql_sql_latency",
       "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all",
+      "redis_ops_latency_all"
+    ]},
+
+  redis:  {title: "YEDIS Advanced",
+    metrics: ["redis_yb_local_vs_remote_ops",
+      "redis_yb_local_vs_remote_latency",
+      "redis_reactor_latency",
       "redis_rpcs_per_sec_hash",
       "redis_ops_latency_hash",
       "redis_rpcs_per_sec_ts",
@@ -68,16 +74,10 @@ const panelTypes = {
       "redis_rpcs_per_sec_str",
       "redis_ops_latency_str",
       "redis_rpcs_per_sec_local",
-      "redis_ops_latency_local",
+      "redis_ops_latency_local"
     ]},
 
-  redis:  {title: "Redis Advanced Graphs",
-    metrics: ["redis_yb_local_vs_remote_ops",
-      "redis_yb_local_vs_remote_latency",
-      "redis_reactor_latency",
-    ]},
-
-  cql:  {title: "Apache Cassandra Advanced Graphs",
+  cql:  {title: "YCQL Advanced",
     metrics: ["cql_sql_latency_breakdown",
       "cql_yb_local_vs_remote",
       "cql_yb_latency",
@@ -85,7 +85,7 @@ const panelTypes = {
       "response_sizes"]},
 
   tserver_table: {
-    title: "YugaByte Server",
+    title: "Tablet Server",
     metrics: ["tserver_log_latency",
       "tserver_log_bytes_written",
       "tserver_log_bytes_read",
@@ -95,7 +95,7 @@ const panelTypes = {
   },
 
   lsmdb_table: {
-    title: "LSM-DB Stats",
+    title: "DocDB",
     metrics: ["lsm_rocksdb_num_seek_or_next",
       "lsm_rocksdb_num_seeks_per_node",
       "lsm_rocksdb_latencies_get",
