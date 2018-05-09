@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import {withRouter, browserHistory} from 'react-router';
+import { Link, withRouter, browserHistory } from 'react-router';
 import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from 'utils/ObjectUtils';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
@@ -45,17 +45,10 @@ class TaskDetail extends Component {
     };
     let taskTopLevelData = <span/>;
     if (isNonEmptyObject(currentTaskData)) {
-      const taskTitle = currentTaskData.title.replace(/.*:\s*/, '');
-      taskTopLevelData =(
+      taskTopLevelData = (
         <div className={"universe-resources"}>
-          <div className="task-detail-back-button" onClick={this.gotoTaskList}><i className="fa fa-chevron-left"/>&nbsp;Back</div>
-          <div className="task-meta-container">
-            <YBResourceCount kind="Title" size={taskTitle}/>
-            <YBResourceCount kind="Status" size={currentTaskData.status}/>
-            <YBResourceCount kind="Target" size={currentTaskData.target}/>
-            <YBResourceCount kind="Type" size={currentTaskData.type}/>
-            <YBResourceCount kind="Percent Complete" size={currentTaskData.percent} unit={"%"}/>
-          </div>
+          <YBResourceCount kind="Complete" size={currentTaskData.percent} unit={"%"}/>
+          <YBResourceCount kind="Status" size={currentTaskData.status}/>
         </div>
       );
     };
@@ -76,7 +69,7 @@ class TaskDetail extends Component {
       );
     };
 
-    const getErrorMessageDisplay = function(errorString) {
+    const getErrorMessageDisplay = errorString => {
       let errorElement = getTruncatedErrorString(errorString);
       let chevronClassName = "fa fa-chevron-down";
       let displayMessage = "View More";
@@ -97,47 +90,83 @@ class TaskDetail extends Component {
     };
 
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
-      taskFailureDetails = failedTasks.data.failedSubTasks.map(function(subTask){
+      taskFailureDetails = failedTasks.data.failedSubTasks.map(subTask => {
         let errorString = <span/>;
         if (subTask.errorString !== "null") {
-          errorString =
-            (
-              <Col lg={12} className="error-string-detail-container">
-                {getErrorMessageDisplay(subTask.errorString)}
-              </Col>
-            );
+          errorString = getErrorMessageDisplay(subTask.errorString);
         }
         return (
-          <div key={subTask.creationTime}>
-            <Col lg={3}>{formatDateField(subTask.creationTime)}</Col>
-            <Col lg={3}>{subTask.subTaskType}</Col>
-            <Col lg={3}>{subTask.subTaskState}</Col>
-            <Col lg={3}>{subTask.subTaskGroupType}</Col>
-            {errorString}
+          <div className="task-detail-info" key={subTask.creationTime}>
+            <Row>
+              <Col lg={2}>
+                {subTask.subTaskGroupType}
+                <i className="fa fa-angle-right" />
+                {subTask.subTaskType}
+              </Col>
+              <Col lg={2}>{formatDateField(subTask.creationTime)}</Col>
+              <Col lg={2}>{subTask.subTaskState}</Col>
+              <Col lg={6}>{errorString}</Col>
+            </Row>
           </div>
         );
       });
     }
 
+    let universe = null;
+    if (currentTaskData.targetUUID) {
+      const universes = (this.props.universe && this.props.universe.universeList &&
+        this.props.universe.universeList.data) || [];
+      universe = _.find(universes, universe => universe.universeUUID === currentTaskData.targetUUID);
+    }
+
+    let heading;
+    if (universe) {
+      heading = (
+        <h2 className="content-title">
+          <Link to={`/universes/${universe.universeUUID}`}>
+            {universe.name}
+          </Link>
+          <span>
+            <i className="fa fa-chevron-right"></i>
+            <Link to={`/universes/${universe.universeUUID}?tab=tasks`}>
+              Tasks
+            </Link>
+            <i className="fa fa-chevron-right"></i>
+            {(currentTaskData && currentTaskData.title) || 'Task Details'}
+          </span>
+        </h2>
+      );
+    } else {
+      heading = (
+        <h2 className="content-title">
+          <Link to="/tasks/">Tasks</Link>
+          <span>
+            <i className="fa fa-chevron-right"></i>
+            {(currentTaskData && currentTaskData.title) || 'Task Details'}
+          </span>
+        </h2>
+      );
+    }
+
     return (
       <div className="task-failure-container">
-        <div className="task-failure-top-heading">
-          {taskTopLevelData}
+        {heading}
+        <div className="task-detail-overview">
+          <div className="task-failure-top-heading">
+            {taskTopLevelData}
+          </div>
+          <div className="task-step-bar-container">
+            {taskProgressBarData}
+          </div>
         </div>
-        <div className="task-step-bar-container">
-          {taskProgressBarData}
-        </div>
-        <div className="task-failure-detail-heading">Task Failure Details</div>
         <div className="task-failure-detail-container">
           <Row className="task-failure-heading-row">
-            <Col lg={3}>Created On</Col>
-            <Col lg={3}>Task Type</Col>
-            <Col lg={3}>Task State</Col>
-            <Col lg={3}>Group Type</Col>
+            <Col lg={2}>Task</Col>
+            <Col lg={2}>Started On</Col>
+            <Col lg={2}>Status</Col>
+            <Col lg={6}>Details</Col>
           </Row>
-          <Row>
-            {taskFailureDetails}
-          </Row>
+          {taskFailureDetails}
         </div>
       </div>
     );
