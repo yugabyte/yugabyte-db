@@ -736,6 +736,19 @@ CHECKED_STATUS ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+CHECKED_STATUS ParseZScore(YBRedisReadOp* op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_ZSCORE);
+
+  const auto& key = args[1];
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  auto member = args[2].ToBuffer();
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(member);
+
+  return Status::OK();
+}
+
 CHECKED_STATUS ParseHStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HSTRLEN);
 }

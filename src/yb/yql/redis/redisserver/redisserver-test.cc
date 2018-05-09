@@ -181,6 +181,16 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestDouble(int line, const std::vector<std::string>& command, double expected) {
+    DoRedisTest(line, command, RedisReplyType::kString,
+                [line, expected](const RedisReply& reply) {
+                  std::string::size_type sz;
+                  double reply_score = std::stod(reply.as_string(), &sz);
+                  ASSERT_EQ(reply_score, expected) << "Originator: " << __FILE__ << ":" << line;
+                }
+    );
+  }
+
   // Used to check pairs of doubles and strings, for range scans withscores.
   void DoRedisTestScoreValueArray(int line,
       const std::vector<std::string>& command,
@@ -1695,6 +1705,26 @@ TEST_F(TestRedisService, TestZRange) {
   // Test key with wrong type.
   DoRedisTestOk(__LINE__, {"SET", "s_key", "s_val"});
   DoRedisTestExpectError(__LINE__, {"ZRANGE", "s_key", "1", "2"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestZScore) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v0_copy", "1", "v1",
+      "2", "v2", "3", "v3", "4.5", "v4"}, 6);
+  SyncClient();
+
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v0"}, 0.0);
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v0_copy"}, 0.0);
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v1"}, 1.0);
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v2"}, 2.0);
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v3"}, 3.0);
+  DoRedisTestDouble(__LINE__, {"ZSCORE", "z_multi", "v4"}, 4.5);
+
+  DoRedisTestNull(__LINE__, {"ZSCORE", "z_no_exist", "v4"});
 
   SyncClient();
   VerifyCallbacks();
