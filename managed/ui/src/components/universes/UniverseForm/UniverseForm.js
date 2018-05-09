@@ -207,7 +207,7 @@ class UniverseForm extends Component {
       primaryUniverseName = this.props.formValues.primary.universeName;
     }
 
-    const pageTitle = this.props.type === "Create" ? createUniverseTitle : <h2 className="content-title">{primaryUniverseName}<span> <i class="fa fa-chevron-right"></i> {this.props.type} Universe </span></h2>;
+    const pageTitle = this.props.type === "Create" ? createUniverseTitle : <h2 className="content-title">{primaryUniverseName}<span> <i className="fa fa-chevron-right"></i> {this.props.type} Universe </span></h2>;
     let clusterForm = <span/>;
     let primaryReplicaBtn = <span/>;
     let asyncReplicaBtn = <span/>;
