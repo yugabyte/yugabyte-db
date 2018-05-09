@@ -192,6 +192,7 @@ message RedisGetRequestPB {
     ZCARD = 15;
     TSGET = 14;
     TSCARD = 16;
+    ZSCORE = 17;
     UNKNOWN = 99;
   }
 

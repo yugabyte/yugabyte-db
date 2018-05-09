@@ -1394,6 +1394,8 @@ Status RedisReadOperation::ExecuteGet() {
       expected_type = REDIS_TYPE_HASH; break;
     case RedisGetRequestPB_GetRequestType_SISMEMBER:
       expected_type = REDIS_TYPE_SET; break;
+    case RedisGetRequestPB_GetRequestType_ZSCORE:
+      expected_type = REDIS_TYPE_SORTEDSET; break;
     default:
       expected_type = REDIS_TYPE_NONE;
   }
@@ -1411,6 +1413,31 @@ Status RedisReadOperation::ExecuteGet() {
             VerifySuccessIfMissing::kTrue)) {
           response_.set_string_response(value->value);
         }
+      }
+      return Status::OK();
+    }
+    case RedisGetRequestPB_GetRequestType_ZSCORE: {
+      auto type = GetValueType();
+      RETURN_NOT_OK(type);
+      // If wrong type, we set the error code in the response.
+      if (!VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+        return Status::OK();
+      }
+      SubDocKey key_reverse = SubDocKey(
+          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
+          PrimitiveValue(ValueType::kSSReverse),
+          PrimitiveValue(request_.key_value().subkey(0).string_subkey()));
+      SubDocument subdoc_reverse;
+      bool subdoc_reverse_found = false;
+      auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
+      GetSubDocumentData get_data = { encoded_key_reverse, &subdoc_reverse, &subdoc_reverse_found };
+      RETURN_NOT_OK(GetSubDocument(db_, get_data, redis_query_id(),
+                                   boost::none /* txn_op_context */, read_time_));
+      if (subdoc_reverse_found) {
+        double score = subdoc_reverse.GetDouble();
+        response_.set_string_response(std::to_string(score));
+      } else {
+        response_.set_code(RedisResponsePB_RedisStatusCode_NIL);
       }
       return Status::OK();
     }

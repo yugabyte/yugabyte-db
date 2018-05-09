@@ -60,6 +60,36 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
+  public void testZScore() throws Exception {
+    Map<String, Double> pairs = new HashMap<String, Double>();
+    pairs.put("v0", 0.0);
+    pairs.put("v_neg", -5.0);
+    pairs.put("v1", 1.0);
+    pairs.put("v2", 2.5);
+    assertEquals(4L, jedis_client.zadd("z_key", pairs).longValue());
+
+    assertEquals(0.0, jedis_client.zscore("z_key", "v0"));
+    assertEquals(-5.0, jedis_client.zscore("z_key", "v_neg"));
+    assertEquals(1.0, jedis_client.zscore("z_key", "v1"));
+    assertEquals(2.5, jedis_client.zscore("z_key", "v2"));
+
+    assertNull(jedis_client.zscore("z_key", "v3"));
+    assertNull(jedis_client.zscore("z_no_exist", "v0"));
+
+    TSValuePairs tsPairs = new TSValuePairs((1));
+    assertEquals("OK", jedis_client.tsadd("ts_key", tsPairs.pairs));
+
+    try {
+      double d = jedis_client.zscore("ts_key", "v0");
+    } catch (Exception e) {
+      assertTrue(e.getMessage().contains(
+          "WRONGTYPE Operation against a key holding the wrong kind of value"));
+      return;
+    }
+    assertTrue(false);
+  }
+
+  @Test
   public void testSetCommandWithOptions() throws Exception {
     // Test with lowercase "ex" option.
     assertEquals("OK", jedis_client.set("k_ex", "v", "ex", 2));
