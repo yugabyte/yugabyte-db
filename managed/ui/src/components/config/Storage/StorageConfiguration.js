@@ -79,7 +79,6 @@ class StorageConfiguration extends Component {
 
         configs.push(
           <Col md={12} key={config.name}>
-            <h2>{config.name} Storage Configuration:</h2>
             <span className="pull-right" title={"Delete this configuration."}>
               <YBButton btnText="Delete Configuration"
                         btnClass={"btn btn-default delete-btn"}
@@ -126,11 +125,6 @@ class StorageConfiguration extends Component {
 
       configs.push(
         <Row className="config-section-header" key={configName}>
-          <Col lg={12}>
-            <Row>
-              <h2>{configName} Storage Configuration</h2>
-            </Row>
-          </Col>
           <Col lg={8}>
             {configFields}
           </Col>

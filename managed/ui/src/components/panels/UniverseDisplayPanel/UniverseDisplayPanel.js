@@ -24,8 +24,8 @@ class CTAButton extends Component {
             <i className="fa fa-plus"/>
           </div>
           <div className="display-name text-center">
-          {labelText}
-        </div>
+            {labelText}
+          </div>
         </div>
       </Link>
     );
@@ -110,7 +110,7 @@ export default class UniverseDisplayPanel extends Component {
                                        refreshUniverseData={self.props.fetchUniverseMetadata} />);
         });
       }
-      const createUniverseButton = 
+      const createUniverseButton =
         (<Col sm={4} md={3} lg={2}><CTAButton
           linkTo={"/universes/create"}
           labelText={"Create Universe"}
