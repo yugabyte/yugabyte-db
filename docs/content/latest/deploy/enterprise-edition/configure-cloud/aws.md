@@ -6,10 +6,10 @@ YugaWare ensures that YugaByte DB nodes run inside your own AWS account and are 
 
 3. Creates a new [AWS VPC](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-vpc.html) for YugaByte instances and then peers them with YugaWare's own VPC
 
-![Configure AWS](/images/ee/configure-aws-1.png)
+![Configure AWS](/images/ee/aws-setup/configure-aws-1.png)
 
-![AWS Configuration in Progress](/images/ee/configure-aws-2.png)
+![AWS Configuration in Progress](/images/ee/aws-setup/configure-aws-2.png)
 
-![AWS Configured Successfully](/images/ee/configure-aws-3.png)
+![AWS Configured Successfully](/images/ee/aws-setup/configure-aws-3.png)
 
-Now we are ready to create a YugaByte universe on AWS.
+Now we are ready to create a YugaByte DB universe on AWS.

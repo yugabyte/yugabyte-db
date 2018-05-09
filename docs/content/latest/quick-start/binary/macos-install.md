@@ -1,10 +1,19 @@
 ## Prerequisites
 
-<i class="fa fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
+a) <i class="fa fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
+
+b) Verify that you have python2 installed. Support for python3 is in the works.
+
+```{.sh .copy .separator-dollar}
+$ python --version
+```
+```sh
+Python 2.7.10
+```
 
 ## Download
 
-Download the YugaByte CE package as shown below.
+Download the YugaByte DB CE package as shown below.
 
 ```{.sh .copy .separator-dollar}
 $ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.0.0-darwin.tar.gz

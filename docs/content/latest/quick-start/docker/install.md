@@ -12,7 +12,14 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fa fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows) 
 
-b) You must have `python` installed on your localhost.
+b) Verify that you have python2 installed. Support for python3 is in the works.
+
+```{.sh .copy .separator-dollar}
+$ python --version
+```
+```sh
+Python 2.7.10
+```
 
 ## Download
 

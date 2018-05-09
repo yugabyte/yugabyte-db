@@ -17,7 +17,7 @@ YugaWare, shipped as a part of YugaByte DB Enterprise, is the Admin Console for 
 
 ## How does the installation work for YugaByte DB Enterprise?
 
-YugaWare first needs to be installed on any machine. The next step is to configure YugaWare to work with public and/or private clouds. In the case of public clouds, Yugaware spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into Yugaware. Yugaware would need ssh access into these nodes in order to manage them.
+YugaWare first needs to be installed on any machine. The next step is to configure YugaWare to work with public and/or private clouds. In the case of public clouds, YugaWare spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into YugaWare. YugaWare would need ssh access into these nodes in order to manage them.
 
 ## What are the OS requirements and permissions to run YugaWare?
 
@@ -87,10 +87,10 @@ Typically you can saturate a database machine (or three in case of replication f
 
 ## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
 
-Yes, you can control what Yugaware is spinning up. For example: 
+Yes, you can control what YugaWare is spinning up. For example: 
 
-- You can choose if Yugaware should spawn a new VPC with peering to the VPC on which application servers are running (to isolate the database machines into a separate VPC) AWS, or ask it to re-use an existing VPC.  
+- You can choose if YugaWare should spawn a new VPC with peering to the VPC on which application servers are running (to isolate the database machines into a separate VPC) AWS, or ask it to re-use an existing VPC.  
 
 - You to choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.  
 
-In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, Yugaware allows creating these machines out of band and import these as "on-premise" install.  
+In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, YugaWare allows creating these machines out of band and import these as "on-premise" install.  

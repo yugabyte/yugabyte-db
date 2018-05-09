@@ -22,16 +22,16 @@ Here is a screenshot with the above values in the form, click create once the va
 
 ![Service Account -- filled create form](/images/ee/gcp-setup/service-account-filled-create.png)
 
-**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the Yugaware Admin Console.
+**NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugaWare Admin Console.
 
 
 ## 3. Creating a firewall rule
 
-In order to access Yugaware from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
+In order to access YugaWare from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
-- Access the Yugaware instance over ssh (port tcp:22)
-- Check, manage and upgrade Yugaware (port tcp:8800)
-- View the Yugaware console ui (port tcp:80)
+- Access the YugaWare instance over ssh (port tcp:22)
+- Check, manage and upgrade YugaWare (port tcp:8800)
+- View the YugaWare console ui (port tcp:80)
 
 Let us create a firewall entry enabling all of that!
 
@@ -46,7 +46,7 @@ Go to `VPC network` -> `Firewall rules` tab:
 Click on the `CREATE FIREWALL RULE` button and fill in the following.
 
 - Enter `yugaware-firewall-rule` as the name (you can change the name if you want).
-- Add a description (eg: `Firewall setup for Yugaware Admin Console`).
+- Add a description (eg: `Firewall setup for YugaWare Admin Console`).
 - Add a tag `yugaware-server` to the `Target tags` field. This will be used later when creating instances.
 - Add the appropriate ip addresses to the `Source IP ranges` field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
 - Add the ports `tcp:22,8800,80` to the `Protocol and ports` field.
@@ -56,9 +56,9 @@ You should see something like the screenshot below, click `Create` next.
 ![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
 
 
-## 4. Provision instance for Yugaware
+## 4. Provision instance for YugaWare
 
-Create an instance to run Yugaware. In order to do so, go to `Compute Engine` -> `VM instances` and click on `Create`. Fill in the following values.
+Create an instance to run YugaWare. In order to do so, go to `Compute Engine` -> `VM instances` and click on `Create`. Fill in the following values.
 
 - Enter `yugaware-1` as the name.
 - Pick a region/zone (eg: `us-east1-b`).

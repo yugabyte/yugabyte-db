@@ -1,27 +1,30 @@
 ## Prerequisites
 
-One of the following operating systems
+a) One of the following operating systems
 
 <i class="icon-centos"></i> CentOS 7 
 
 <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-Verify you have python2 installed
+b) Verify thatyou have python2 installed. Support for python3 is in the works.
 
 ```{.sh .copy .separator-dollar}
 $ python --version
 ```
+```sh
+Python 2.7.10
+```
 
 ## Download
 
-Download the YugaByte CE package as shown below.
+Download the YugaByte DB CE package as shown below.
 
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.0.0-linux.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.1.0-linux.tar.gz
 ```
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-1.0.0.0-linux.tar.gz && cd yugabyte-1.0.0.0/
+$ tar xvfz yugabyte-ce-1.0.1.0-linux.tar.gz && cd yugabyte-1.0.1.0/
 ```
 
 ## Configure
