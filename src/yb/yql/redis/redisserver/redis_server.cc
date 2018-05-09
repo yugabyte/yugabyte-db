@@ -28,7 +28,7 @@ DEFINE_int32(redis_svc_queue_length, 5000,
 TAG_FLAG(redis_svc_queue_length, advanced);
 
 DEFINE_int64(redis_rpc_block_size, 1_MB, "Redis RPC block size");
-DEFINE_int64(redis_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
+DEFINE_int64(redis_rpc_memory_limit, 0, "Redis RPC memory limit");
 
 namespace yb {
 namespace redisserver {
@@ -36,11 +36,12 @@ namespace redisserver {
 RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
     : RpcAndWebServerBase(
           "RedisServer", opts, "yb.redisserver",
-          std::make_shared<rpc::ConnectionContextFactoryImpl<RedisConnectionContext>>(
-              FLAGS_redis_rpc_block_size, FLAGS_redis_rpc_memory_limit,
-              MemTracker::CreateTracker("Redis", tserver ? tserver->mem_tracker() : nullptr))),
+          MemTracker::CreateTracker(
+              "Redis", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
       opts_(opts),
       tserver_(tserver) {
+  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<RedisConnectionContext>(
+      FLAGS_redis_rpc_block_size, FLAGS_redis_rpc_memory_limit, mem_tracker()->parent()));
 }
 
 Status RedisServer::Start() {

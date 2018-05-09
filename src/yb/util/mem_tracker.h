@@ -56,6 +56,16 @@ class Status;
 class MemTracker;
 typedef std::shared_ptr<MemTracker> MemTrackerPtr;
 
+// Garbage collector is used by MemTracker to free memory allocated by caches when reached
+// soft memory limit.
+class GarbageCollector {
+ public:
+  virtual void CollectGarbage(size_t required) = 0;
+
+ protected:
+  ~GarbageCollector() {}
+};
+
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
 // MemTracker is also tracked by its ancestors.
@@ -110,21 +120,9 @@ typedef std::shared_ptr<MemTracker> MemTrackerPtr;
 // depending on how MemTracker ends up being used in YB.
 class MemTracker : public std::enable_shared_from_this<MemTracker> {
  public:
-  // Function signatures for gauge-style memory trackers (where consumption is
-  // periodically observed rather than explicitly tracked).
-  //
-  // Currently only used by the root tracker.
-  typedef std::function<uint64_t()> ConsumptionFunction;
-
-  // If consumption_func is not empty, uses it as the consumption value.
-  // Consume()/Release() can still be called.
   // byte_limit < 0 means no limit
   // 'id' is the label for LogUsage() and web UI.
-  MemTracker(ConsumptionFunction consumption_func, int64_t byte_limit,
-             const std::string& id, std::shared_ptr<MemTracker> parent);
-
-  // Signature for function that can be called to free some memory after limit is reached.
-  typedef std::function<void()> GcFunction;
+  MemTracker(int64_t byte_limit, const std::string& id, std::shared_ptr<MemTracker> parent);
 
   ~MemTracker();
 
@@ -218,9 +216,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Gets a shared_ptr to the "root" tracker, creating it if necessary.
   static MemTrackerPtr GetRootTracker();
 
-  // Updates consumption from the consumption function specified in the constructor.
-  // NOTE: this method will crash if 'consumption_func_' is not set.
-  void UpdateConsumption();
+  // Tries to update consumption from external source.
+  // Returns true if consumption was updated, false otherwise.
+  //
+  // Currently it uses totally allocated bytes by tcmalloc for root mem tracker when available.
+  bool UpdateConsumption();
 
   // Increases consumption of this tracker and its ancestors by 'bytes'.
   void Consume(int64_t bytes);
@@ -278,6 +278,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return consumption_.current_value();
   }
 
+  int64_t GetUpdatedConsumption() {
+    UpdateConsumption();
+    return consumption();
+  }
+
   // Note that if consumption_ is based on consumption_func_, this
   // will be the max value we've recorded in consumption(), not
   // necessarily the highest value consumption_func_ has ever
@@ -290,8 +295,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Add a function 'f' to be called if the limit is reached.
   // 'f' does not need to be thread-safe as long as it is added to only one MemTracker.
   // Note that 'f' must be valid for the lifetime of this MemTracker.
-  void AddGcFunction(GcFunction f) {
-    gc_functions_.push_back(f);
+  void AddGarbageCollector(const std::shared_ptr<GarbageCollector>& gc) {
+    std::lock_guard<simple_spinlock> lock(gc_mutex_);
+    gcs_.push_back(gc);
   }
 
   // Logs the usage of this tracker and all of its children (recursively).
@@ -348,17 +354,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // TODO: this is a stopgap.
   static const int64_t GC_RELEASE_SIZE = 128 * 1024L * 1024L;
 
-  simple_spinlock gc_lock_;
-
   int64_t limit_;
   int64_t soft_limit_;
   const std::string id_;
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
+  CoarseMonoClock::time_point last_consumption_update_ = CoarseMonoClock::time_point::min();
 
-  HighWaterMark consumption_;
-
-  ConsumptionFunction consumption_func_;
+  HighWaterMark consumption_{0};
 
   // this tracker plus all of its ancestors
   std::vector<MemTracker*> all_trackers_;
@@ -373,8 +376,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   mutable std::mutex child_trackers_mutex_;
   std::unordered_map<std::string, std::weak_ptr<MemTracker>> child_trackers_;
 
+  simple_spinlock gc_mutex_;
+
   // Functions to call after the limit is reached to free memory.
-  std::vector<GcFunction> gc_functions_;
+  std::vector<std::weak_ptr<GarbageCollector>> gcs_;
 
   ThreadSafeRandom rand_;
 
@@ -492,6 +497,17 @@ class ScopedTrackedConsumption {
   MemTrackerPtr tracker_;
   int64_t consumption_;
 };
+
+template <class F>
+int64_t AbsRelMemLimit(int64_t value, const F& f) {
+  if (value < 0) {
+    return f() * std::min<int64_t>(-value, 100) / 100;
+  }
+  if (value == 0) {
+    return -1;
+  }
+  return value;
+}
 
 } // namespace yb
 

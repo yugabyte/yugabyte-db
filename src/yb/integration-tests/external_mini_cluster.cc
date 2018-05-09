@@ -230,10 +230,6 @@ Status ExternalMiniCluster::Start() {
 
   rpc::MessengerBuilder builder("minicluster-messenger");
   builder.set_num_reactors(1);
-  builder.CreateConnectionContextFactory<rpc::YBConnectionContext>(
-      GetAtomicFlag(&FLAGS_outbound_rpc_block_size),
-      GetAtomicFlag(&FLAGS_outbound_rpc_memory_limit),
-      MemTracker::FindOrCreateTracker("minicluster"));
   RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
                         "Failed to start Messenger for minicluster");
 
