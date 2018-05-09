@@ -152,7 +152,9 @@ class Messenger {
   void Shutdown();
 
   // Setup messenger to listen connections on given address.
-  CHECKED_STATUS ListenAddress(const Endpoint& accept_endpoint, Endpoint* bound_endpoint = nullptr);
+  CHECKED_STATUS ListenAddress(
+      ConnectionContextFactoryPtr factory, const Endpoint& accept_endpoint,
+      Endpoint* bound_endpoint = nullptr);
 
   // Stop accepting connections.
   void ShutdownAcceptor();
@@ -178,9 +180,6 @@ class Messenger {
 
   // Invoke the RpcService to handle a call directly.
   void Handle(InboundCallPtr call);
-
-  // Take ownership of the socket via Socket::Release
-  void RegisterInboundSocket(Socket *new_socket, const Endpoint& remote);
 
   CHECKED_STATUS QueueEventOnAllReactors(ServerEventListPtr server_event);
 
@@ -241,6 +240,10 @@ class Messenger {
   void AllExternalReferencesDropped();
 
   bool IsArtificiallyDisconnectedFrom(const IpAddress& remote);
+
+  // Take ownership of the socket via Socket::Release
+  void RegisterInboundSocket(
+      const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote);
 
   const std::string name_;
 

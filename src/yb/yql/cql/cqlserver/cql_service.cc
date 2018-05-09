@@ -71,8 +71,6 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       FLAGS_cql_service_max_prepared_statement_size_bytes > 0 ?
       FLAGS_cql_service_max_prepared_statement_size_bytes : -1,
       "CQL prepared statements' memory usage", server->mem_tracker());
-  prepared_stmts_mem_tracker_->AddGcFunction(
-      std::bind(&CQLServiceImpl::DeleteLruPreparedStatement, this));
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
@@ -102,6 +100,10 @@ const std::shared_ptr<client::YBMetaDataCache>& CQLServiceImpl::metadata_cache()
   // Call client to wait for client and initialize metadata_cache if not already done.
   (void)client();
   return metadata_cache_;
+}
+
+void CQLServiceImpl::CompleteInit() {
+  prepared_stmts_mem_tracker_->AddGarbageCollector(shared_from_this());
 }
 
 void CQLServiceImpl::Shutdown() {
@@ -244,7 +246,7 @@ void CQLServiceImpl::DeletePreparedStatementUnlocked(
   }
 }
 
-void CQLServiceImpl::DeleteLruPreparedStatement() {
+void CQLServiceImpl::CollectGarbage(size_t required) {
   // Get exclusive lock before deleting the least recently used statement at the end of the LRU
   // list from the cache.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);

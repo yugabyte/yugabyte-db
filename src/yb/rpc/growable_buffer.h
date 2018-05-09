@@ -36,8 +36,7 @@ namespace rpc {
 // blocks_limits - max number of blocks that could be allocated in non forced mode.
 class GrowableBufferAllocator {
  public:
-  GrowableBufferAllocator(size_t block_size, size_t blocks_limit,
-                          const MemTrackerPtr& mem_tracker);
+  GrowableBufferAllocator(size_t block_size, const MemTrackerPtr& mem_tracker);
   ~GrowableBufferAllocator();
 
   size_t block_size() const;
@@ -49,7 +48,7 @@ class GrowableBufferAllocator {
 
  private:
   class Impl;
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 };
 
 // Used in conjuction with std::unique_ptr to return buffer to allocator.
