@@ -31,7 +31,7 @@ class DataCenterConfiguration extends Component {
       <div>
         <h2 className="content-title">Cloud Provider Configuration</h2>
         <YBTabsPanel defaultTab="cloud" activeTab={this.props.params.tab} routePrefix="/config/" id="config-tab-panel">
-          <Tab eventKey="cloud" title="Cloud" key="cloud-config">
+          <Tab eventKey="cloud" title="Infrastructure" key="cloud-config">
             <YBTabsPanel defaultTab="aws" activeTab={this.props.params.section} id="cloud-config-tab-panel" className="config-tabs" routePrefix="/config/cloud/">
               <Tab eventKey="aws" title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
                 <ProviderConfigurationContainer providerType="aws" />
@@ -50,8 +50,8 @@ class DataCenterConfiguration extends Component {
               </Tab>
             </YBTabsPanel>
           </Tab>
-          <Tab eventKey="storage" title="Storage" key="storage-config">
-            <YBTabsPanel defaultTab="aws" activeTab={this.props.params.section} id="storage-config-tab-panel" className="config-tabs" routePrefix="/config/storage/">
+          <Tab eventKey="backup" title="Backup" key="storage-config">
+            <YBTabsPanel defaultTab="aws" activeTab={this.props.params.section} id="storage-config-tab-panel" className="config-tabs" routePrefix="/config/backup/">
               <Tab eventKey="aws" title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
                 <StorageConfigurationContainer />
               </Tab>

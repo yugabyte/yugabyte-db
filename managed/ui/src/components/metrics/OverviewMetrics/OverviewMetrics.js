@@ -13,9 +13,10 @@ import { METRIC_COLORS } from '../MetricsConfig';
 
 const panelTypes = {
   overview: {title: "Overview",
-    metrics: ["cpu_usage",
-      "memory_usage",
-      "disk_iops"]}
+    metrics: ["cql_server_rpc_per_second",
+      "cql_sql_latency",
+      "redis_rpcs_per_sec_all",
+      "redis_ops_latency_all", "cpu_usage", "memory_usage"]}
 };
 
 class OverviewMetrics extends Component {
@@ -109,7 +110,7 @@ class OverviewMetrics extends Component {
                 }
                 headerLeft={metrics[type][metricKey].layout.title}
                 body={
-                  <MetricsPanelOverview metricKey={metricKey} 
+                  <MetricsPanelOverview metricKey={metricKey}
                                 metric={metrics[type][metricKey]}
                                 className={"metrics-panel-container"}
                                 width={width} />

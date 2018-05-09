@@ -12,4 +12,5 @@ export { default as YBRadioButtonBar, YBRadioButtonBarDefault, YBRadioButtonBarW
 export { default as YBSelectWithLabel, YBUnControlledSelect, YBControlledSelect, YBControlledSelectWithLabel, YBSelect } from './YBSelect';
 export { default as YBTextInputWithLabel, YBTextInput, YBInputField, YBControlledTextInput } from './YBTextInput';
 export { default as YBTextArea} from './YBTextArea';
-export { default as YBToggle } from './YBToggle'; 
+export { default as YBToggle } from './YBToggle';
+export { default as YBDropZone } from './YBDropZone'; 

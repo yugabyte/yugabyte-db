@@ -13,17 +13,13 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.PriceComponent.PriceDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.common.CloudQueryHelper;
 
 import play.mvc.Result;
 
@@ -124,7 +120,7 @@ public class GCPInitializer extends AbstractInitializer {
 				JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
 
 				// Set up instanceTypeDetails.
-				InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createDefault();
+				InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createGCPDefault();
         if (instanceTypeToDetailsMap.get("isShared").asBoolean()) {
           instanceTypeDetails.tenancy = PublicCloudConstants.Tenancy.Shared;
         } else {
