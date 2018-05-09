@@ -68,10 +68,9 @@ TAG_FLAG(rpc_acceptor_listen_backlog, advanced);
 namespace yb {
 namespace rpc {
 
-Acceptor::Acceptor(Messenger* messenger)
-    : messenger_(messenger),
-      rpc_connections_accepted_(METRIC_rpc_connections_accepted.Instantiate(
-          messenger->metric_entity())),
+Acceptor::Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler)
+    : handler_(std::move(handler)),
+      rpc_connections_accepted_(METRIC_rpc_connections_accepted.Instantiate(metric_entity)),
       loop_(kDefaultLibEvFlags) {
 }
 
@@ -168,7 +167,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
         continue;
       }
       rpc_connections_accepted_->Increment();
-      messenger_->RegisterInboundSocket(&new_sock, remote);
+      handler_(&new_sock, remote);
     }
   }
 }

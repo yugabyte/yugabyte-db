@@ -28,28 +28,33 @@ using namespace std::placeholders;
 namespace yb {
 namespace rpc {
 
-class GrowableBufferAllocator::Impl {
+class GrowableBufferAllocator::Impl : public GarbageCollector,
+                                      public std::enable_shared_from_this<Impl> {
  public:
-  Impl(size_t block_size, size_t memory_limit,
+  Impl(size_t block_size,
        const MemTrackerPtr& mem_tracker)
-      : block_size_(block_size), blocks_limit_(memory_limit / block_size),
+      : block_size_(block_size),
         used_tracker_(MemTracker::FindOrCreateTracker("Used", mem_tracker)),
         allocated_tracker_(MemTracker::FindOrCreateTracker("Allocated", mem_tracker)),
-        pool_(50) {
+        pool_(0) {
   }
 
-  ~Impl() {
-    GC();
+  void CompleteInit() {
+    allocated_tracker_->parent()->AddGarbageCollector(shared_from_this());
+  }
+
+  virtual ~Impl() {
+    CollectGarbage(std::numeric_limits<size_t>::max());
   }
 
   uint8_t* Allocate(bool forced) {
     uint8_t* result = nullptr;
     if (!pool_.pop(result)) {
-      if (allocated_blocks_.fetch_add(1, std::memory_order_acq_rel) >= blocks_limit_ && !forced) {
-        allocated_blocks_.fetch_sub(1, std::memory_order_release);
+      if (forced) {
+        allocated_tracker_->Consume(block_size_);
+      } else if (!allocated_tracker_->TryConsume(block_size_)) {
         return nullptr;
       }
-      allocated_tracker_->Consume(block_size_);
       result = static_cast<uint8_t*>(malloc(block_size_));
     }
     used_tracker_->Consume(block_size_);
@@ -64,7 +69,6 @@ class GrowableBufferAllocator::Impl {
     allocated_tracker_->Consume(block_size_);
     if (!pool_.push(buffer)) {
       allocated_tracker_->Release(block_size_);
-      allocated_blocks_.fetch_sub(1, std::memory_order_relaxed);
       free(buffer);
     }
     used_tracker_->Release(block_size_);
@@ -75,25 +79,26 @@ class GrowableBufferAllocator::Impl {
   }
 
  private:
-  void GC() {
+  void CollectGarbage(size_t required) override {
     uint8_t* buffer = nullptr;
-    while (pool_.pop(buffer)) {
+    size_t total = 0;
+    while (total < required && pool_.pop(buffer)) {
       free(buffer);
-      allocated_tracker_->Release(block_size_);
+      total += block_size_;
     }
+    allocated_tracker_->Release(total);
   }
 
   const size_t block_size_;
-  const size_t blocks_limit_;
-  std::atomic<size_t> allocated_blocks_{0};
   MemTrackerPtr used_tracker_;
   MemTrackerPtr allocated_tracker_;
   boost::lockfree::stack<uint8_t*> pool_;
 };
 
-GrowableBufferAllocator::GrowableBufferAllocator(size_t block_size, size_t memory_limit,
-                                                 const MemTrackerPtr& mem_tracker)
-    : impl_(new Impl(block_size, memory_limit, mem_tracker)) {
+GrowableBufferAllocator::GrowableBufferAllocator(
+    size_t block_size, const MemTrackerPtr& mem_tracker)
+    : impl_(std::make_shared<Impl>(block_size, mem_tracker)) {
+  impl_->CompleteInit();
 }
 
 GrowableBufferAllocator::~GrowableBufferAllocator() {

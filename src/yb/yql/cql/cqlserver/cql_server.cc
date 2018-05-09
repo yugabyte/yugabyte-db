@@ -31,8 +31,8 @@ DEFINE_int32(cql_nodelist_refresh_interval_secs, 60,
              "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_int64(cql_rpc_block_size, 1_MB, "Redis RPC block size");
-DEFINE_int64(cql_rpc_memory_limit, 2_GB, "Redis RPC memory limit");
+DEFINE_int64(cql_rpc_block_size, 1_MB, "CQL RPC block size");
+DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
 namespace yb {
 namespace cqlserver {
@@ -50,18 +50,21 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
                      const tserver::TabletServer* const tserver)
     : RpcAndWebServerBase(
           "CQLServer", opts, "yb.cqlserver",
-          std::make_shared<rpc::ConnectionContextFactoryImpl<CQLConnectionContext>>(
-              FLAGS_cql_rpc_block_size, FLAGS_cql_rpc_memory_limit,
-              MemTracker::CreateTracker("CQL", tserver ? tserver->mem_tracker() : nullptr))),
+          MemTracker::CreateTracker(
+              "CQL", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
       opts_(opts),
       timer_(*io, refresh_interval()),
       tserver_(tserver) {
+  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<CQLConnectionContext>(
+      FLAGS_cql_rpc_block_size, FLAGS_cql_rpc_memory_limit, mem_tracker()->parent()));
 }
 
 Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
-  std::unique_ptr<ServiceIf> cql_service(new CQLServiceImpl(this, opts_));
+  auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
+  cql_service->CompleteInit();
+
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());

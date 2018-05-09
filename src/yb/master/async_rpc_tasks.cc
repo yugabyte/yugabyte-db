@@ -286,9 +286,8 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
   }
 
   if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Async tablet task failed or was cancelled: "
-                             << status.ToString();
-    if (status.IsAborted()) {
+    LOG_WITH_PREFIX(WARNING) << "Async tablet task failed or was cancelled: " << status;
+    if (status.IsAborted() || status.IsServiceUnavailable()) {
       AbortTask();
     }
     UnregisterAsyncTask();  // May delete this.
