@@ -7,7 +7,7 @@ To build your Java application using the YugaByte Redis driver, add the followin
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jedis</artifactId>
-  <version>2.9.0-yb-10</version>
+  <version>2.9.0-yb-11</version>
 </dependency>
 ```
 
@@ -42,7 +42,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jedis</artifactId>
-      <version>2.9.0-yb-10</version>
+      <version>2.9.0-yb-11</version>
     </dependency>
   </dependencies>
 
