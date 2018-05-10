@@ -136,7 +136,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
         string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
-      if (tsop == TSOpcode::kMin || tsop == TSOpcode::kMax) {
+      if (tsop == TSOpcode::kMin || tsop == TSOpcode::kMax || tsop == TSOpcode::kAvg) {
         if (pt_result->ql_type()->IsAnyType()) {
           pt_result->set_ql_type(args_->element(0)->ql_type());
         }

@@ -42,7 +42,10 @@ CHECKED_STATUS Executor::AggregateResultSets(const PTSelectStmt* pt_select) {
       case TSOpcode::kNoOp:
         break;
       case TSOpcode::kAvg:
-        RETURN_NOT_OK(STATUS(NotSupported, "Function AVG() not yet supported"));
+        RETURN_NOT_OK(EvalAvg(row_block, column_index, expr_node->ql_type()->main(),
+                              &ql_value));
+        // Change type back from MAP to basic type for result of Avg
+        rows->set_column_schema(column_index, expr_node->ql_type());
         break;
       case TSOpcode::kCount:
         RETURN_NOT_OK(EvalCount(row_block, column_index, &ql_value));
@@ -145,6 +148,121 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
       default:
         return STATUS(RuntimeError, "Unexpected datatype for argument of SUM()");
     }
+  }
+  if (ql_value->IsNull()) {
+    switch (data_type) {
+      case DataType::INT8:
+        ql_value->set_int8_value(0);
+        break;
+      case DataType::INT16:
+        ql_value->set_int16_value(0);
+        break;
+      case DataType::INT32:
+        ql_value->set_int32_value(0);
+        break;
+      case DataType::INT64:
+        ql_value->set_int64_value(0);
+        break;
+      case DataType::VARINT:
+        {
+          int64_t tsum;
+          tsum = 0;
+          util::VarInt varint(tsum);
+          ql_value->set_varint_value(varint);
+        }
+        break;
+      case DataType::FLOAT:
+        ql_value->set_float_value(0);
+        break;
+      case DataType::DOUBLE:
+        ql_value->set_double_value(0);
+        break;
+      default:
+        return STATUS(RuntimeError, "Unexpected datatype for argument of SUM()");
+    }
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
+                                 int column_index,
+                                 DataType data_type,
+                                 QLValue *ql_value) {
+  QLValue sum, count;
+
+  for (auto row : row_block->rows()) {
+    if (row.column(column_index).IsNull()) {
+      continue;
+    }
+    QLMapValuePB map = row.column(column_index).map_value();
+    if (count.IsNull()) {
+      count = QLValue(map.keys(0));
+      sum = QLValue(map.values(0));
+      continue;
+    }
+
+    count.set_int64_value(count.int64_value() + map.keys(0).int64_value());
+    switch (data_type) {
+      case DataType::INT8:
+        sum.set_int8_value(sum.int8_value() + map.values(0).int8_value());
+        break;
+      case DataType::INT16:
+        sum.set_int16_value(sum.int16_value() + map.values(0).int16_value());
+        break;
+      case DataType::INT32:
+        sum.set_int32_value(sum.int32_value() + map.values(0).int32_value());
+        break;
+      case DataType::INT64:
+        sum.set_int64_value(sum.int64_value() + map.values(0).int64_value());
+        break;
+      case DataType::VARINT:
+        sum.set_varint_value(sum.varint_value() + QLValue(map.values(0)).varint_value());
+        break;
+      case DataType::FLOAT:
+        sum.set_float_value(sum.float_value() + map.values(0).float_value());
+        break;
+      case DataType::DOUBLE:
+        sum.set_double_value(sum.double_value() + map.values(0).double_value());
+        break;
+      default:
+        return STATUS(RuntimeError, "Unexpected datatype for argument of AVG()");
+    }
+  }
+
+  switch (data_type) {
+    case DataType::INT8:
+      ql_value->set_int8_value(sum.IsNull() ? 0 : sum.int8_value() / count.int64_value());
+      break;
+    case DataType::INT16:
+      ql_value->set_int16_value(sum.IsNull() ? 0 : sum.int16_value() / count.int64_value());
+      break;
+    case DataType::INT32:
+      ql_value->set_int32_value(sum.IsNull() ? 0 : sum.int32_value() / count.int64_value());
+      break;
+    case DataType::INT64:
+      ql_value->set_int64_value(sum.IsNull() ? 0 : sum.int64_value() / count.int64_value());
+      break;
+    case DataType::VARINT:
+      if (sum.IsNull()) {
+        util::VarInt varint(0);
+        ql_value->set_varint_value(varint);
+      } else {
+        int64_t tsum, tcount, average;
+        RETURN_NOT_OK(sum.varint_value().ToInt64(&tsum));
+        RETURN_NOT_OK(count.varint_value().ToInt64(&tcount));
+        average = tsum / tcount;
+        util::VarInt varint(average);
+        ql_value->set_varint_value(varint);
+      }
+      break;
+    case DataType::FLOAT:
+      ql_value->set_float_value(sum.IsNull() ? 0 :sum.float_value() / count.int64_value());
+      break;
+    case DataType::DOUBLE:
+      ql_value->set_double_value(sum.IsNull() ? 0 :sum.double_value() / count.int64_value());
+      break;
+    default:
+      return STATUS(RuntimeError, "Unexpected datatype for argument of AVG()");
   }
   return Status::OK();
 }

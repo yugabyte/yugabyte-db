@@ -74,6 +74,18 @@ class PTBcall : public PTExpr {
     return name_;
   }
 
+  // BCall result set column type in QL format.
+  virtual void rscol_type_PB(QLTypePB *pb_type) const override {
+    if (aggregate_opcode() == bfql::TSOpcode::kAvg) {
+      // Tablets return a map of (count, sum),
+      // so that the average can be calculated across all tablets.
+      QLType::CreateTypeMap(INT64, args_->node_list().front()->ql_type()->main())
+          ->ToQLTypePB(pb_type);
+      return;
+    }
+    ql_type()->ToQLTypePB(pb_type);
+  }
+
   virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
 
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const override;

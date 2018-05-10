@@ -130,6 +130,11 @@ class PTExpr : public TreeNode {
     return ql_type_;
   }
 
+  // Expression return result set column type in QL format.
+  virtual void rscol_type_PB(QLTypePB *pb_type ) const {
+    ql_type_->ToQLTypePB(pb_type);
+  }
+
   virtual void set_ql_type(const std::shared_ptr<QLType>& ql_type) {
     ql_type_ = ql_type;
   }
@@ -1137,6 +1142,11 @@ class PTExprAlias : public PTOperator1 {
 
   virtual string QLName() const override {
     return alias_->c_str();
+  }
+
+  // Alias result set column type in QL format.
+  virtual void rscol_type_PB(QLTypePB *pb_type) const override {
+    return op1_->rscol_type_PB(pb_type);
   }
 
   // Predicate for calls to aggregate functions.

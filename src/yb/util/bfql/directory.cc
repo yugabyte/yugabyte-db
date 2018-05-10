@@ -228,13 +228,13 @@ const vector<BFDecl> kBFDirectory = {
   { "ServerOperator", "sum", "", VARINT, {VARINT}, TSOpcode::kSum, false },
   { "ServerOperator", "sum", "", DECIMAL, {DECIMAL}, TSOpcode::kSum, false },
 
-  // Cassandra behavior: AVG() has exactly the same datatype as the input argument's type.
-  { "ServerOperator", "avg", "", INT8, {INT8}, TSOpcode::kAvg, false },
-  { "ServerOperator", "avg", "", INT16, {INT16}, TSOpcode::kAvg, false },
-  { "ServerOperator", "avg", "", INT32, {INT32}, TSOpcode::kAvg, false },
-  { "ServerOperator", "avg", "", INT64, {INT64}, TSOpcode::kAvg, false },
-  { "ServerOperator", "avg", "", FLOAT, {FLOAT}, TSOpcode::kAvg, false },
-  { "ServerOperator", "avg", "", DOUBLE, {DOUBLE}, TSOpcode::kAvg, false },
+  // Cassandra behavior: AVG() returns SUM and COUNT as a list to be aggregated in Executor::EvalAVG
+  { "ServerOperator", "avg", "", INT8, {INT8}, TSOpcode::kAvg },
+  { "ServerOperator", "avg", "", INT16, {INT16}, TSOpcode::kAvg },
+  { "ServerOperator", "avg", "", INT32, {INT32}, TSOpcode::kAvg },
+  { "ServerOperator", "avg", "", INT64, {INT64}, TSOpcode::kAvg },
+  { "ServerOperator", "avg", "", FLOAT, {FLOAT}, TSOpcode::kAvg },
+  { "ServerOperator", "avg", "", DOUBLE, {DOUBLE}, TSOpcode::kAvg },
   { "ServerOperator", "avg", "", VARINT, {VARINT}, TSOpcode::kAvg, false },
   { "ServerOperator", "avg", "", DECIMAL, {DECIMAL}, TSOpcode::kAvg, false },
 

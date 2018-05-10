@@ -133,6 +133,9 @@ class RowsResult : public ExecutedResult {
   // Accessor functions.
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
+  void set_column_schema(int col_index, const std::shared_ptr<QLType>& type) {
+    (*column_schemas_)[col_index].set_type(type);
+  }
   const std::string& rows_data() const { return rows_data_; }
   void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
   const std::string& paging_state() const { return paging_state_; }

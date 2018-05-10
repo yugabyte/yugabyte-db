@@ -232,6 +232,10 @@ class ColumnSchema {
     return type_;
   }
 
+  void set_type(const std::shared_ptr<QLType>& type) {
+    type_ = type;
+  }
+
   const TypeInfo* type_info() const {
     return type_->type_info();
   }
