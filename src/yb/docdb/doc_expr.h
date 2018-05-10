@@ -35,6 +35,7 @@ class DocExprExecutor : public QLExprExecutor {
   CHECKED_STATUS EvalSum(const QLValue& val, QLValue *aggr_sum);
   CHECKED_STATUS EvalMax(const QLValue& val, QLValue *aggr_max);
   CHECKED_STATUS EvalMin(const QLValue& val, QLValue *aggr_min);
+  CHECKED_STATUS EvalAvg(const QLValue& val, QLValue *aggr_avg);
 
  protected:
   vector<QLValue> aggr_result_;

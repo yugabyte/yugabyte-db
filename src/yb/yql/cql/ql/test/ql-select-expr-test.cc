@@ -122,12 +122,12 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
     const QLRow& sum_0_row = row_block->row(0);
-    CHECK(sum_0_row.column(0).IsNull());
-    CHECK(sum_0_row.column(1).IsNull());
-    CHECK(sum_0_row.column(2).IsNull());
-    CHECK(sum_0_row.column(3).IsNull());
-    CHECK(sum_0_row.column(4).IsNull());
-    CHECK(sum_0_row.column(5).IsNull());
+    CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(1).int32_value(), 0);
+    CHECK_EQ(sum_0_row.column(2).int16_value(), 0);
+    CHECK_EQ(sum_0_row.column(3).int8_value(), 0);
+    CHECK_EQ(sum_0_row.column(4).float_value(), 0);
+    CHECK_EQ(sum_0_row.column(5).double_value(), 0);
 
     // Test SUM() - Where condition provides full primary key.
     CHECK_VALID_STMT("SELECT sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6)"
