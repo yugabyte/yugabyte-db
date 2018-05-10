@@ -17,20 +17,8 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 1. Connect with cqlsh
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#docker" class="nav-link active" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
-      <i class="icon-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
   <li >
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-  <li >
-    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="false">
+    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -41,21 +29,33 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
       Linux
     </a>
   </li>
+  <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+      <i class="icon-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li >
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+      <i class="fa fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
-  <div id="docker" class="tab-pane fade show active" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/test-cassandra.md" /%}}
-  </div>
-  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/test-cassandra.md" /%}}
-  </div>
-  <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
     {{% includeMarkdown "binary/test-cassandra.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/test-cassandra.md" /%}}
   </div> 
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+    {{% includeMarkdown "docker/test-cassandra.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
+    {{% includeMarkdown "kubernetes/test-cassandra.md" /%}}
+  </div>
 </div>
 
 

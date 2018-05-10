@@ -24,7 +24,7 @@ We are going to enter the following values to create a multi-region universe on 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**
 - Change instance type: **n1-standard-8**
-- Add the following G-Flag for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the RPC latencies are higher because the data is globally replicated, we use this flag to increase the failure detection interval. See the screenshot below.
+- Add the following G-Flag for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
 
 Click on `Create`.
 
@@ -95,7 +95,6 @@ Export this into a shell variable on the database node `yb-dev-helloworld1-n1` w
 ```{.sh .copy .separator-dollar}
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
 ```
-
 
 ### Run the workload
 

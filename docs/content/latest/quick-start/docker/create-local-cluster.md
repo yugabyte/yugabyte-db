@@ -5,8 +5,7 @@ We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded
 ```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create
 ```
-
-Clients can now connect to YugaByte DB's Cassandra API at `localhost:9042` and to YugaByte's Redis API at  `localhost:6379`.
+Clients can now connect to YugaByte DB's Cassandra-compatible YCQL API at `localhost:9042` and to the Redis-compatible YEDIS API at  `localhost:6379`.
 
 ## 2. Check cluster status with yb-docker-ctl
 
@@ -25,10 +24,11 @@ PID        Type       Node       URL                       Status          Start
 25438      master     n1         http://172.18.0.2:7000    Running         2017-10-20T17:54:52.084772289Z
 ```
 
-
 ## 3. Check cluster status with Admin UI
 
-The [yb-master-n1 Admin UI](../../admin/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver-n1 Admin UI](../../admin/yb-tserver/#admin-ui) is available at http://localhost:9000. Other masters and tservers do not have their admin ports mapped to localhost to avoid port conflicts.
+The [yb-master-n1 Admin UI](../../admin/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver-n1 Admin UI](../../admin/yb-tserver/#admin-ui) is available at http://localhost:9000. Other masters and tservers do not have their admin ports mapped to localhost to avoid port conflicts. 
+
+**NOTE**: Clients connecting to the cluster will connect to only yb-tserver-n1. In case of Docker for Mac, routing [traffic directly to containers](https://docs.docker.com/docker-for-mac/networking/#known-limitations-use-cases-and-workarounds) is not even possible today. Since only 1 node will receive the incoming client traffic, throughput expected for Docker-based local clusters can be significantly lower than binary-based local clusters.
 
 ### 3.1 Overview and Master status
 

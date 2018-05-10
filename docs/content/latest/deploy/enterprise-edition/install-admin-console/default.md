@@ -1,24 +1,25 @@
 
-YugaByte DB clusters are created and managed from YugaWare.
+
+YugaByte DB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet. 
+
 
 ## Step 1. Install Replicated
 
 Connect to the YugaWare instance and do the following.
 
-- Install replicated.
+- Install Replicated.
 ```{.sh .copy .separator-dollar}
 $ curl -sSL https://get.replicated.com/docker | sudo bash
 ```
 
-
 **NOTE**: If you are behind a proxy, you would need to run the following:
 
+- Install Replicated behind a proxy.
 ```{.sh .copy .separator-dollar}
 $ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
 ```
 
-- After replicated install completes, make sure it is running
-
+- After Replicated install completes, make sure it is running.
 ```{.sh .copy .separator-dollar}
 $ sudo docker ps
 ```
@@ -28,7 +29,7 @@ You should see an output similar to the following.
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
 
-## Step 2. Install YugaWare via Replicated
+## Step 2. Install YugaWare
 
 ### Setup HTTPS for Replicated
 

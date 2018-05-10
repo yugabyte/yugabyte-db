@@ -193,7 +193,7 @@ Browse to the metrics tab of the universe in YugaWare. You should be able to see
 
 Stop the sample app.
 
-## Examine the data
+## 5. Examine the data
 
 You can connect to the YCQL service by running the following command.
 
