@@ -611,7 +611,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
       // Add the expression metadata (rsrow descriptor).
       QLRSColDescPB *rscol_desc_pb = rsrow_desc_pb->add_rscol_descs();
       rscol_desc_pb->set_name(expr->QLName());
-      expr->ql_type()->ToQLTypePB(rscol_desc_pb->mutable_ql_type());
+      expr->rscol_type_PB(rscol_desc_pb->mutable_ql_type());
     }
   }
 

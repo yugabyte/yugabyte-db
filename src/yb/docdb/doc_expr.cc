@@ -75,8 +75,11 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       return EvalMax(arg_result, result);
     }
 
-    case TSOpcode::kAvg:
-      return STATUS(RuntimeError, "Not yet supported");
+    case TSOpcode::kAvg: {
+      QLValue arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
+      return EvalAvg(arg_result, result);
+    }
 
     case TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
     case TSOpcode::kMapRemove: FALLTHROUGH_INTENDED;
@@ -181,6 +184,32 @@ CHECKED_STATUS DocExprExecutor::EvalMin(const QLValue& val, QLValue *aggr_min) {
   if (!val.IsNull() && (aggr_min->IsNull() || *aggr_min > val)) {
     *aggr_min = val;
   }
+  return Status::OK();
+}
+
+CHECKED_STATUS DocExprExecutor::EvalAvg(const QLValue& val, QLValue *aggr_avg) {
+  if (val.IsNull()) {
+    return Status::OK();
+  }
+
+  QLValue sum, count;
+
+  if (aggr_avg->IsNull()) {
+    sum = val;
+    count.set_int64_value(1);
+    aggr_avg->set_map_value();
+    *aggr_avg->add_map_key() = count.value();
+    *aggr_avg->add_map_value() = sum.value();
+    return Status::OK();
+  }
+
+  QLMapValuePB* map = aggr_avg->mutable_map_value();
+  sum = QLValue(map->values(0));
+  RETURN_NOT_OK(EvalSum(val, &sum));
+  count = QLValue(map->keys(0));
+  count.set_int64_value(count.int64_value() + 1);
+  *map->mutable_keys(0) = count.value();
+  *map->mutable_values(0) = sum.value();
   return Status::OK();
 }
 

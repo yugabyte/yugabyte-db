@@ -182,6 +182,10 @@ class Executor : public QLExprExecutor {
                          int column_index,
                          DataType data_type,
                          QLValue *ql_value);
+  CHECKED_STATUS EvalAvg(const std::shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         DataType data_type,
+                         QLValue *ql_value);
 
   // Reset execution state.
   void Reset();
