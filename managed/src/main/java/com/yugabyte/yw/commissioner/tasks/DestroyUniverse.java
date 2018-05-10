@@ -36,8 +36,12 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
-
+      Universe universe = null;
+      if (params().isForceDelete) {
+        universe = forceLockUniverseForUpdate(-1);
+      } else {
+        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      }
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
       // Update the DNS entry for this universe.

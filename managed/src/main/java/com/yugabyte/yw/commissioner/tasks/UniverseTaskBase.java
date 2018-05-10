@@ -85,34 +85,46 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess) {
+    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false);
+  }
+
+  private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
+                                                    boolean checkSuccess,
+                                                    boolean isForceUpdate) {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
-          String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
-            ", is different from the expected version of " + expectedUniverseVersion + ". User " +
-            "would have to sumbit the operation from a refreshed top-level universe page.";
-          LOG.error(msg);
-          throw new IllegalStateException(msg);
-        }
-
+        verifyUniverseVersion(expectedUniverseVersion, universe);
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
         // If this universe is already being edited, fail the request.
-        if (universeDetails.updateInProgress) {
+        if (!isForceUpdate && universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-
-        // Persist the updated information about the universe. Mark it as being edited.
-        universeDetails.updateInProgress = true;
-        if (checkSuccess) {
-          universeDetails.updateSucceeded = false;
-        }
-        universe.setUniverseDetails(universeDetails);
+        markUniverseUpdateInProgress(universe, checkSuccess);
       }
     };
+  }
+
+  public void markUniverseUpdateInProgress(Universe universe, boolean checkSuccess) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    // Persist the updated information about the universe. Mark it as being edited.
+    universeDetails.updateInProgress = true;
+    if (checkSuccess) {
+      universeDetails.updateSucceeded = false;
+    }
+    universe.setUniverseDetails(universeDetails);
+  }
+
+  public void verifyUniverseVersion(int expectedUniverseVersion, Universe universe) {
+    if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
+      String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
+              ", is different from the expected version of " + expectedUniverseVersion + ". User " +
+              "would have to sumbit the operation from a refreshed top-level universe page.";
+      LOG.error(msg);
+      throw new IllegalStateException(msg);
+    }
   }
 
   private Universe lockUniverseForUpdate(int expectedUniverseVersion, UniverseUpdater updater) {
@@ -147,6 +159,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
     UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true);
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
+    LOG.info("Force lock universe {} at version {}.", taskParams().universeUUID,
+             expectedUniverseVersion);
+    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true, true);
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
@@ -496,7 +515,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void createChangeConfigTask(NodeDetails node,
                                      boolean isAdd,
                                      UserTaskDetails.SubTaskGroupType subTask) {
-	  createChangeConfigTask(node, isAdd, subTask, false);
+    createChangeConfigTask(node, isAdd, subTask, false);
   }
 
   public void createChangeConfigTask(NodeDetails node,
@@ -956,9 +975,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {
-	if (!node.isMaster) {
+    if (!node.isMaster) {
       return false;
-	}
+    }
     return isServerAlive(node, ServerType.MASTER, masterAddrs);
   }
 
