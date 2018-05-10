@@ -19,6 +19,7 @@ import java.util.Calendar;
 import java.util.UUID;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.TimeZone;
 
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.ResultSet;
@@ -61,7 +62,7 @@ public class TestTimeuuidFunctions extends BaseCQLTest {
                                          int month, int date,
                                          int hourOfDay, int minute, int second) {
         ResultSet rs = session.execute("select v from "+ table_name + " where k = "+ key +";");
-        Calendar cal = new GregorianCalendar();
+        Calendar cal = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         cal.set(year, month, date, hourOfDay, minute, second);
         Date date_ = cal.getTime();
         assertTrue(Math.abs(rs.one().getTimestamp("v").getTime() -
