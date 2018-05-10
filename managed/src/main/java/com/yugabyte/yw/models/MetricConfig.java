@@ -26,6 +26,7 @@ public class MetricConfig extends Model {
       public String type;
       public Map<String, String> alias = new HashMap<>();
       public String ticksuffix;
+      public String tickformat;
     }
 
     public String title;
