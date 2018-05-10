@@ -26,6 +26,7 @@ The **Provider**, **Regions** and **Instance Type** fields were initialized base
 We are going to enter the following values to create a multi-zone universe on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider:
 
 - Enter a universe name (**helloworld1**)
+- Enter the region (**Oregon**)
 - Change instance type (**n1-standard-8**)
 
 All other options as set to the default values (replication factor = 3, number of nodes = 3). Click on create.
