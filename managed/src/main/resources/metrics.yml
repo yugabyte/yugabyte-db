@@ -1010,6 +1010,22 @@ lsm_rocksdb_num_seeks_per_node:
       alias:
         "rocksdb_number_db_seek": "Seek"
 
+lsm_rocksdb_total_sst_per_node:
+  metric: "rocksdb_total_sst_file_size"
+  function: "sum without (table_id, table_name)|avg"
+  operator: "/ 1073741824"
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "SSTable size / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_total_sst_file_size": "Size of SSTables"
+      ticksuffix: "&nbsp;GB"
+      tickformat: ".2f"
+
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
   function: "rate|sum without (table_id, table_name)|avg"
