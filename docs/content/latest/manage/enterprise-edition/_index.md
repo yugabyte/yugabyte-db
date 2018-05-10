@@ -11,14 +11,18 @@ menu:
     weight: 710
 ---
 
+Universe is a cluster of YugaByte DB instances grouped together to perform as one logical distributed database. All instances belonging to a single Universe run on the same type of cloud provider node. 
+
+The following sections describe managing universes from creating them.
+
 <div>
-  <a class="section-link icon-offset" href="create-universe/">
+  <a class="section-link icon-offset" href="create-universe-multi-zone/">
     <div class="icon">
       <img src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Create Universe
-      <div class="caption">Create YugaByte DB universes using YugaByte Admin Console's intent-driven orchestration.</div>
+      Create Universe - Multi-Zone
+      <div class="caption">Create YugaByte DB universes in one region across multiple zones using YugaByte Admin Console's intent-driven orchestration.</div>
     </div>
   </a>
 

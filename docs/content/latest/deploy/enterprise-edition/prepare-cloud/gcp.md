@@ -25,7 +25,18 @@ Here is a screenshot with the above values in the form, click create once the va
 **NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugaWare Admin Console.
 
 
-## 3. Creating a firewall rule
+## 3. Give permissions to the service account
+
+- Find the email address associated with the service account by going to `IAM & admin` -> `Service accounts`. Copy this value. The screen should look as shown below.
+
+![Service Account Email Address](/images/ee/gcp-setup/gcp-service-account-email.png)
+
+- Next, browse to `IAM & admin` -> `IAM` and click on `ADD`. Add the compute admin role for this service account. A screenshot is shown below.
+
+![Service Account Add Roles](/images/ee/gcp-setup/gcp-service-account-permissions.png)
+
+
+## 4. Creating a firewall rule
 
 In order to access YugaWare from outside the GCP environment, you would need to enable firewall rules. You will at minimum need to:
 
@@ -56,16 +67,31 @@ You should see something like the screenshot below, click `Create` next.
 ![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
 
 
-## 4. Provision instance for YugaWare
+## 5. Provision instance for YugaWare
 
 Create an instance to run YugaWare. In order to do so, go to `Compute Engine` -> `VM instances` and click on `Create`. Fill in the following values.
 
 - Enter `yugaware-1` as the name.
-- Pick a region/zone (eg: `us-east1-b`).
+- Pick a region/zone (eg: `us-west1-b`).
 - Choose `4 vCPUs` (`n1-standard-4`) as the machine type.
 - Change the boot disk image to `Ubuntu 16.04` and increase the boot disk size to `100GB`.
 - Open the `Management, disks, networking, SSH keys` -> `Networking` tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
-- Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. [Follow these instructions](https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#metadatavalues) to create a new SSH key pair, as well as the expected format for this field (eg: `ssh-rsa [KEY_VALUE] [USERNAME]`). This is important to enable `ssh` access to this machine.
+- Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. First create a key-pair.
+
+```{.sh .copy .separator-dollar}
+$ ssh-keygen -t rsa -f ~/.ssh/yugaware-1-gcp -C centos
+```
+
+Set the appropriate credentials for the ssh key.
+
+```{.sh .copy .separator-dollar}
+$ chmod 400 ~/.ssh/yugaware-1-gcp
+```
+
+Now enter the contents of `yugaware-1-gcp.pub` as the value for this field.
+
+[Here are the detailed instructions](https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#metadatavalues) to create a new SSH key pair, as well as the expected format for this field (eg: `ssh-rsa [KEY_VALUE] [USERNAME]`). This is important to enable `ssh` access to this machine.
+
 
 ![VM instances -- filled in create](/images/ee/gcp-setup/vm-create-full.png)
 
@@ -79,3 +105,14 @@ Note on networking customization:
 ![VM instances -- networking tweaks](/images/ee/gcp-setup/vm-networking.png)
 
 Finally, click `Create` to launch the YugaWare server.
+
+## 6. Connect to the YugaWare machine
+
+From the GCP web management console, find the public ip address of the instance we just launched.
+
+You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the ip address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
+
+```{.sh .copy .separator-dollar}
+$ ssh -i ~/.ssh/yugaware-1-gcp centos@XX.XX.XX.XX
+```
+

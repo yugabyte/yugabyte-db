@@ -1,8 +1,9 @@
-The default option to install YugaWare involves 
+
+YugaByte DB clusters are created and managed from YugaWare.
 
 ## Step 1. Install Replicated
 
-YugaByte DB clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
+Connect to the YugaWare instance and do the following.
 
 - Install replicated.
 ```{.sh .copy .separator-dollar}
@@ -10,12 +11,14 @@ $ curl -sSL https://get.replicated.com/docker | sudo bash
 ```
 
 
-- Install replicated behind a proxy.
+**NOTE**: If you are behind a proxy, you would need to run the following:
+
 ```{.sh .copy .separator-dollar}
 $ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
 ```
 
 - After replicated install completes, make sure it is running
+
 ```{.sh .copy .separator-dollar}
 $ sudo docker ps
 ```
@@ -24,21 +27,6 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-- **NOTE**: To uninstall an older version of docker, you can do:
-
-```{.sh .copy .separator-dollar}
-# uninstall any older versions of docker (ubuntu-based hosts)
-$ sudo apt-get remove docker docker-engine
-```
-
-```{.sh .copy .separator-dollar}
-# uninstall any older versions of docker (centos-based hosts)
-$ sudo yum remove docker \
-                docker-common \
-                container-selinux \
-                docker-selinux \
-                docker-engine
-```
 
 ## Step 2. Install YugaWare via Replicated
 
@@ -62,7 +50,7 @@ Now upload the YugaByte license file received from YugaByte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install YugaWare are presented.
+If you are asked to choose an installation type, choose `Online`.
 
 ![Replicated License Online Install](/images/replicated/replicated-license-online-install-option.png)
 

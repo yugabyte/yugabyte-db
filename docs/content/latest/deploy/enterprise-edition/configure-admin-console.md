@@ -31,7 +31,11 @@ Go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/r
 
 ![Register](/images/ee/register.png)
 
-After clicking Submit, you will be automatically logged into YugaWare. By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
+After clicking Submit, you will be automatically logged into YugaWare. You can now proceed to [configuring cloud providers in YugaWare](/deploy/enterprise-edition/configure-cloud-providers/).
+
+## Logging in
+
+By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
 
 ![Login](/images/ee/login.png)
 
