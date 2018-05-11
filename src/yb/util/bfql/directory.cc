@@ -252,7 +252,12 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertI16ToVarint",      "cast", "", VARINT,  {INT16, VARINT} },
   { "ConvertI32ToVarint",      "cast", "", VARINT,  {INT32, VARINT} },
   { "ConvertI64ToVarint",      "cast", "", VARINT,  {INT64, VARINT} },
-
+  { "ConvertToI16",            "cql_cast", "", INT16,  {ANYTYPE, INT16} },
+  { "ConvertToI32",            "cql_cast", "", INT32,  {ANYTYPE, INT32} },
+  { "ConvertToI64",            "cql_cast", "", INT64,  {ANYTYPE, INT64} },
+  { "ConvertToDouble",         "cql_cast", "", DOUBLE, {ANYTYPE, DOUBLE} },
+  { "ConvertToFloat",          "cql_cast", "", FLOAT,  {ANYTYPE, FLOAT} },
+  { "ConvertToString",         "cql_cast", "", STRING,  {ANYTYPE, STRING} },
 };
 
 } // namespace bfql

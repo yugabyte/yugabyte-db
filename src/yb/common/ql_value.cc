@@ -73,6 +73,54 @@ QLValue::~QLValue() {}
 
 //------------------------- instance methods for abstract QLValue class -----------------------
 
+DataType QLValue::FromInternalDataType(const QLValue::InternalType& internal_type) {
+  switch (internal_type) {
+    case QLValue::InternalType::kInt8Value:
+      return DataType::INT8;
+    case QLValue::InternalType::kInt16Value:
+      return DataType::INT16;
+    case QLValue::InternalType::kInt32Value:
+      return DataType::INT32;
+    case QLValue::InternalType::kInt64Value:
+      return DataType::INT64;
+    case QLValue::InternalType::kFloatValue:
+      return DataType::FLOAT;
+    case QLValue::InternalType::kDoubleValue:
+      return DataType::DOUBLE;
+    case QLValue::InternalType::kDecimalValue:
+      return DataType::DECIMAL;
+    case QLValue::InternalType::kStringValue:
+      return DataType::STRING;
+    case QLValue::InternalType::kTimestampValue:
+      return DataType::TIMESTAMP;
+    case QLValue::InternalType::kInetaddressValue:
+      return DataType::INET;
+    case QLValue::InternalType::kJsonbValue:
+      return DataType::JSONB;
+    case QLValue::InternalType::kUuidValue:
+      return DataType::UUID;
+    case QLValue::InternalType::kTimeuuidValue:
+      return DataType::TIMEUUID;
+    case QLValue::InternalType::kBoolValue:
+      return DataType::BOOL;
+    case QLValue::InternalType::kBinaryValue:
+      return DataType::BINARY;
+    case QLValue::InternalType::kMapValue:
+      return DataType::MAP;
+    case QLValue::InternalType::kSetValue:
+      return DataType::SET;
+    case QLValue::InternalType::kListValue:
+      return DataType::LIST;
+    case QLValue::InternalType::kVarintValue:
+      return DataType::VARINT;
+    case QLValue::InternalType::kFrozenValue:
+      return DataType::FROZEN;
+    default:
+      LOG(FATAL) << "Internal error: unsupported type " << internal_type;
+  }
+  return DataType::NULL_VALUE_TYPE;
+}
+
 int QLValue::CompareTo(const QLValue& other) const {
   CHECK_EQ(type(), other.type());
   CHECK(!IsNull());

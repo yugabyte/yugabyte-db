@@ -62,6 +62,11 @@ CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
 
     // Process the argument and save the result to "operand_pb".
     RETURN_NOT_OK(PTExprToPB(arg, operand_pb));
+
+    if (strcmp(bcall_pt->name()->c_str(), bfql::kCqlCastFuncName) == 0) {
+      // For cql_cast, we just need one parameter.
+      break;
+    }
   }
 
   return Status::OK();

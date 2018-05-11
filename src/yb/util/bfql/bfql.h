@@ -84,6 +84,7 @@ namespace yb {
 namespace bfql {
 
 const char *const kCastFuncName = "cast";
+const char *const kCqlCastFuncName = "cql_cast";
 
 //--------------------------------------------------------------------------------------------------
 // class BFCompileApi<PType, RType> has one main entry function - FindQLOpcode().
