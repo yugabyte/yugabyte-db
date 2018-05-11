@@ -900,4 +900,99 @@ public class TestSelect extends BaseCQLTest {
       assertEquals(1, totalMetrics.readCount());
     }
   }
+
+  private void selectAndVerify(String query, String result)  {
+    assertEquals(result, session.execute(query).one().getString(0));
+  }
+
+  private void selectAndVerify(String query, int result)  {
+    assertEquals(result, session.execute(query).one().getInt(0));
+  }
+
+  private void selectAndVerify(String query, short result)  {
+    assertEquals(result, session.execute(query).one().getShort(0));
+  }
+
+  private void selectAndVerify(String query, long result)  {
+    assertEquals(result, session.execute(query).one().getLong(0));
+  }
+
+  private void selectAndVerify(String query, float result)  {
+    assertEquals(result, session.execute(query).one().getFloat(0), 1e-13);
+  }
+
+  private void selectAndVerify(String query, double result)  {
+    assertEquals(result, session.execute(query).one().getDouble(0), 1e-13);
+  }
+
+  @Test
+  public void testCasts() throws Exception {
+    // Create test table.
+    session.execute("CREATE TABLE test_local (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +
+        "smallint, c5 bigint, c6 text);");
+    session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6) values (1, 2.5, 3.3, 4, 5, " +
+        "'100')");
+    selectAndVerify("SELECT CAST(c1 as integer) FROM test_local", 1);
+    selectAndVerify("SELECT CAST(c1 as int) FROM test_local", 1);
+    selectAndVerify("SELECT CAST(c1 as smallint) FROM test_local", (short)1);
+    selectAndVerify("SELECT CAST(c1 as bigint) FROM test_local", 1L);
+    selectAndVerify("SELECT CAST(c1 as float) FROM test_local", 1.0f);
+    selectAndVerify("SELECT CAST(c1 as double) FROM test_local", 1.0d);
+    selectAndVerify("SELECT CAST(c1 as text) FROM test_local", "1");
+
+    selectAndVerify("SELECT CAST(c2 as integer) FROM test_local", 2);
+    selectAndVerify("SELECT CAST(c2 as smallint) FROM test_local", (short)2);
+    selectAndVerify("SELECT CAST(c2 as bigint) FROM test_local", 2L);
+    selectAndVerify("SELECT CAST(c2 as double) FROM test_local", 2.5d);
+    selectAndVerify("SELECT CAST(c2 as text) FROM test_local", "2.500000");
+
+    selectAndVerify("SELECT CAST(c3 as float) FROM test_local", 3.3f);
+    selectAndVerify("SELECT CAST(c3 as integer) FROM test_local", 3);
+    selectAndVerify("SELECT CAST(c3 as bigint) FROM test_local", 3L);
+    selectAndVerify("SELECT CAST(c3 as smallint) FROM test_local", (short)3);
+    selectAndVerify("SELECT CAST(c3 as text) FROM test_local", "3.300000");
+
+    selectAndVerify("SELECT CAST(c4 as float) FROM test_local", 4f);
+    selectAndVerify("SELECT CAST(c4 as integer) FROM test_local", 4);
+    selectAndVerify("SELECT CAST(c4 as bigint) FROM test_local", 4L);
+    selectAndVerify("SELECT CAST(c4 as smallint) FROM test_local", (short)4);
+    selectAndVerify("SELECT CAST(c4 as double) FROM test_local", 4d);
+    selectAndVerify("SELECT CAST(c4 as text) FROM test_local", "4");
+
+    selectAndVerify("SELECT CAST(c5 as float) FROM test_local", 5f);
+    selectAndVerify("SELECT CAST(c5 as integer) FROM test_local", 5);
+    selectAndVerify("SELECT CAST(c5 as bigint) FROM test_local", 5L);
+    selectAndVerify("SELECT CAST(c5 as smallint) FROM test_local", (short)5);
+    selectAndVerify("SELECT CAST(c5 as double) FROM test_local", 5d);
+    selectAndVerify("SELECT CAST(c5 as text) FROM test_local", "5");
+
+    selectAndVerify("SELECT CAST(c6 as float) FROM test_local", 100f);
+    selectAndVerify("SELECT CAST(c6 as integer) FROM test_local", 100);
+    selectAndVerify("SELECT CAST(c6 as bigint) FROM test_local", 100L);
+    selectAndVerify("SELECT CAST(c6 as smallint) FROM test_local", (short)100);
+    selectAndVerify("SELECT CAST(c6 as double) FROM test_local", 100d);
+    selectAndVerify("SELECT CAST(c6 as text) FROM test_local", "100");
+
+    // Try edge cases.
+    session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6) values (2147483647, 2.5, " +
+        "3.3, 65535, 9223372036854775807, '2147483647')");
+    selectAndVerify("SELECT CAST(c1 as int) FROM test_local WHERE c1 = 2147483647", 2147483647);
+    selectAndVerify("SELECT CAST(c1 as bigint) FROM test_local WHERE c1 = 2147483647", 2147483647L);
+    selectAndVerify("SELECT CAST(c1 as smallint) FROM test_local WHERE c1 = 2147483647",
+        (short)2147483647);
+    selectAndVerify("SELECT CAST(c5 as int) FROM test_local WHERE c1 = 2147483647",
+        (int)9223372036854775807L);
+    selectAndVerify("SELECT CAST(c5 as smallint) FROM test_local WHERE c1 = 2147483647",
+        (short)9223372036854775807L);
+    selectAndVerify("SELECT CAST(c6 as smallint) FROM test_local WHERE c1 = 2147483647",
+        (short)2147483647);
+    selectAndVerify("SELECT CAST(c6 as int) FROM test_local WHERE c1 = 2147483647",
+        2147483647);
+    selectAndVerify("SELECT CAST(c6 as bigint) FROM test_local WHERE c1 = 2147483647",
+        2147483647L);
+    selectAndVerify("SELECT CAST(c6 as text) FROM test_local WHERE c1 = 2147483647",
+        "2147483647");
+    selectAndVerify("SELECT CAST(c5 as text) FROM test_local WHERE c1 = 2147483647",
+        "9223372036854775807");
+  }
 }

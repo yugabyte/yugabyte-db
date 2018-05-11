@@ -50,6 +50,8 @@ class QLValue {
   explicit QLValue(QLValuePB&& pb) : pb_(std::move(pb)) { }
   virtual ~QLValue();
 
+  static DataType FromInternalDataType(const QLValue::InternalType& internal_type);
+
   //-----------------------------------------------------------------------------------------
   // Access functions to value and type.
   virtual InternalType type() const { return pb_.value_case(); }

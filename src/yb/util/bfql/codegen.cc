@@ -301,7 +301,8 @@ class BFCodegen {
       // SPECIAL CASE: For CAST operator, at compile time, we need two input parameter for type
       // resolution. However, at runtime, the associated function would take one parameter and
       // convert the value to proper result, so break the loop here.
-      if (strcmp(entry.ql_name(), "cast") == 0) {
+      if (strcmp(entry.ql_name(), "cast") == 0 ||
+          strcmp(entry.ql_name(), "cql_cast") == 0) {
         break;
       }
     }

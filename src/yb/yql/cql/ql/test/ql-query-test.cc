@@ -1833,6 +1833,5 @@ TEST_F(TestQLQuery, TestJson) {
                                 ", r1))"));
 }
 
-
 } // namespace ql
 } // namespace yb
