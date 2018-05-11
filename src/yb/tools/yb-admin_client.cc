@@ -465,14 +465,17 @@ Status ClusterAdminClient::DropRedisTable() {
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port) {
+    int16 peer_port,
+    bool use_hostport) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string peer_uuid;
-  RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+  if (!use_hostport) {
+    RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+  }
 
   string leader_uuid;
   RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
@@ -520,6 +523,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(cc_type);
+  req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
   RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));

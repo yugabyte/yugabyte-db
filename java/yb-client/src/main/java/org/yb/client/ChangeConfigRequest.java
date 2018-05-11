@@ -41,15 +41,17 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
   private final int port;
   private final String host;
   private final String uuid;
+  private final boolean useHost;
   private final ServerType serverType;
 
   public ChangeConfigRequest(
-      YBTable masterTable, String host, int port, String uuid, boolean isAdd) {
+      YBTable masterTable, String host, int port, String uuid, boolean isAdd, boolean useHost) {
     super(masterTable);
     this.tablet_id = YBClient.getMasterTabletId();
     this.uuid = uuid;
     this.host = host;
     this.port = port;
+    this.useHost = useHost;
     this.changeType = isAdd ? Consensus.ChangeConfigType.ADD_SERVER
                             : Consensus.ChangeConfigType.REMOVE_SERVER;
     this.serverType = ServerType.MASTER;
@@ -69,10 +71,18 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
         HostPortPB.newBuilder()
                   .setPort(port)
                   .setHost(host);
+
     RaftPeerPB.Builder pbb =
         RaftPeerPB.newBuilder()
-                  .setPermanentUuid(ByteString.copyFromUtf8(uuid))
                   .setLastKnownAddr(hpb.build());
+
+    if (uuid != null) {
+      pbb.setPermanentUuid(ByteString.copyFromUtf8(uuid));
+    }
+
+    if (useHost) {
+      builder.setUseHost(true);
+    }
 
     if (this.changeType == Consensus.ChangeConfigType.ADD_SERVER) {
       pbb.setMemberType(Metadata.RaftPeerPB.MemberType.PRE_VOTER);

@@ -261,6 +261,32 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
   VerifyNonLeaderMastersPeerCount();
 }
 
+TEST_F(MasterChangeConfigTest, TestRemoveDeadMaster) {
+  int non_leader_index = -1;
+  Status s = cluster_->GetFirstNonLeaderMasterIndex(&non_leader_index);
+  ASSERT_OK_PREPEND(s, "Non-leader master lookup returned error");
+  if (non_leader_index == -1) {
+    FAIL() << "Failed to get a non-leader master index.";
+  }
+  ExternalMaster* remove_master = cluster_->master(non_leader_index);
+  remove_master->Shutdown();
+  LOG(INFO) << "Stopped and removing master at " << remove_master->bound_rpc_hostport().port();
+
+  SetCurLogIndex();
+
+  s = cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER,
+                             consensus::RaftPeerPB::PRE_VOTER, true /* use_hostport */);
+  ASSERT_OK_PREPEND(s, "Change Config returned error");
+
+  // REMOVE_SERVER causes the op index to increase by one.
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(++cur_log_index_));
+
+  --num_masters_;
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
+}
+
 TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);

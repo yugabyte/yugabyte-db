@@ -95,7 +95,8 @@ class ClusterAdminClient {
   CHECKED_STATUS ChangeMasterConfig(
       const std::string& change_type,
       const std::string& peer_host,
-      int16 peer_port);
+      int16 peer_port,
+      bool use_hostport);
 
   CHECKED_STATUS DumpMasterState();
 

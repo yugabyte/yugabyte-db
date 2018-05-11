@@ -1928,6 +1928,12 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   }
   LOG(INFO) << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
+  bool use_hostport = req.has_use_host() && req.use_host();
+
+  if (type != REMOVE_SERVER && use_hostport) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Cannot set use_host for change config type $0, "
+                             "only allowed with REMOVE_SERVER.", type);
+  }
 
   if (PREDICT_FALSE(FLAGS_return_error_on_change_config != 0.0 && type == CHANGE_ROLE)) {
     DCHECK(FLAGS_return_error_on_change_config >= 0.0 &&
@@ -1938,9 +1944,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   }
   RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();
-  if (!server.has_permanent_uuid()) {
-    return STATUS(InvalidArgument, Substitute("server must have permanent_uuid specified",
-                                              req.ShortDebugString()));
+  if (!use_hostport && !server.has_permanent_uuid()) {
+    return STATUS(InvalidArgument,
+                  Substitute("server must have permanent_uuid or use_host specified: $0",
+                             req.ShortDebugString()));
   }
   {
     ReplicaState::UniqueLock lock;
@@ -1951,7 +1958,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       return s;
     }
 
-    s = IsLeaderReadyForChangeConfigUnlocked(type, server.permanent_uuid());
+    const string& server_uuid = server.has_permanent_uuid() ? server.permanent_uuid() : "";
+    s = IsLeaderReadyForChangeConfigUnlocked(type, server_uuid);
     if (!s.ok()) {
       LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type)
                 << " due to error " << s.ToString();
@@ -1975,7 +1983,6 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
     RaftConfigPB new_config = committed_config;
     new_config.clear_opid_index();
-    const string& server_uuid = server.permanent_uuid();
     switch (type) {
       case ADD_SERVER:
         // Ensure the server we are adding is not already a member of the configuration.
@@ -2006,17 +2013,29 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         break;
 
       case REMOVE_SERVER:
+        if (use_hostport) {
+          if (!server.has_last_known_addr()) {
+            return STATUS(InvalidArgument, "Must have last_known_addr specified.",
+                          req.ShortDebugString());
+          }
+          HostPort leader_hp;
+          RETURN_NOT_OK(GetHostPortFromConfig(new_config, peer_uuid(), &leader_hp));
+          if (leader_hp.port() == server.last_known_addr().port() &&
+              leader_hp.host() == server.last_known_addr().host()) {
+            return STATUS(InvalidArgument, "Cannot remove live leader using hostport.",
+                          req.ShortDebugString());
+          }
+        }
         if (server_uuid == peer_uuid()) {
           *error_code = TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN;
           return STATUS(InvalidArgument,
               Substitute("Cannot remove peer $0 from the config because it is the leader. "
                          "Force another leader to be elected to remove this server. "
-                         "Active consensus state: $1",
-                         server_uuid,
+                         "Active consensus state: $1", server_uuid,
                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
                             .ShortDebugString()));
         }
-        if (!RemoveFromRaftConfig(&new_config, server_uuid)) {
+        if (!RemoveFromRaftConfig(&new_config, req)) {
           *error_code = TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT;
           return STATUS(NotFound,
               Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
@@ -2027,12 +2046,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       case CHANGE_ROLE:
         if (server_uuid == peer_uuid()) {
           return STATUS(InvalidArgument,
-              Substitute("Cannot change role of  peer $0 from the config because it is the leader. "
-                         "Force another leader to be elected to change the role of this server. "
-                         "Active consensus state: $1",
-                         server_uuid,
+              Substitute("Cannot change role of peer $0 because it is the leader. Force "
+                         "another leader to be elected. Active consensus state: $1", server_uuid,
                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
-                            .ShortDebugString()));
+                             .ShortDebugString()));
         }
         VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
 

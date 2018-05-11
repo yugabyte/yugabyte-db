@@ -239,12 +239,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>",
+      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>",
       [client](const CLIArguments& args) -> Status {
         int16 new_port = 0;
         string new_host;
 
-        if (args.size() != 5) {
+        if (args.size() != 5 && args.size() != 6) {
           UsageAndExit(args[0]);
         }
 
@@ -255,7 +255,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         new_host = args[3];
         new_port = atoi(args[4].c_str());
-        RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port),
+
+        bool use_hostport = false;
+        if (args.size() == 6) {
+          use_hostport = atoi(args[5].c_str()) != 0;
+        }
+        RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port,
+                                                         use_hostport),
                               "Unable to change master config");
         return Status::OK();
       });
