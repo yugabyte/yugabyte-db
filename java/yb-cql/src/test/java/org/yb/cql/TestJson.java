@@ -102,7 +102,8 @@ public class TestJson extends BaseCQLTest {
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a3' = '\"\"'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = 'null'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'c' = 'false'"));
-    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'f' = '\"hello\"'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'f' = 'hello'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'f' = '\"hello\"'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->>'x' = '2.000000'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q' = " +
         "'{\"r\": -2147483648, \"p\": 4294967295,  \"s\": 2147483647}'"));

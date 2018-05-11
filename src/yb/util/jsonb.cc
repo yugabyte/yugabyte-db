@@ -255,8 +255,7 @@ Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_v
                              string* result) {
   switch (GetJEType(element_metadata)) {
     case kJEIsString: {
-      // Need to quote strings in json.
-      *result = "\"" + json_value.ToBuffer() + "\"";
+      *result = json_value.ToBuffer();
       break;
     }
     case kJEIsInt: {
