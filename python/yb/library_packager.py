@@ -284,14 +284,6 @@ class LibraryPackager:
         dest_lib_dir = os.path.join(self.dest_dir, 'lib')
         mkdir_p(dest_lib_dir)
 
-        unwrapped_bin_dir = os.path.join(dest_lib_dir, 'unwrapped')
-        mkdir_p(unwrapped_bin_dir)
-
-        # We still need to use LD_LIBRARY_PATH because otherwise libc fails to find libresolv at
-        # runtime.
-        ld_library_path = ':'.join(
-                ["${BASH_SOURCE%/*}/../lib/" + category for category in LIBRARY_CATEGORIES])
-
         elf_names_to_set_interpreter = []
         for seed_executable_glob in self.seed_executable_patterns:
             glob_results = glob.glob(seed_executable_glob)
@@ -302,16 +294,8 @@ class LibraryPackager:
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
                 if deps:
-                    installed_binary_path = self.install_dyn_linked_binary(executable,
-                                                                           unwrapped_bin_dir)
+                    self.install_dyn_linked_binary(executable, dest_bin_dir)
                     executable_basename = os.path.basename(executable)
-                    wrapper_script_path = os.path.join(dest_bin_dir, executable_basename)
-                    with open(wrapper_script_path, 'w') as wrapper_script_file:
-                        wrapper_script_file.write(
-                            "#!/usr/bin/env bash\n"
-                            "LD_LIBRARY_PATH=" + ld_library_path + " exec "
-                            "${BASH_SOURCE%/*}/../lib/unwrapped/" + executable_basename + ' "$@"')
-                    os.chmod(wrapper_script_path, 0755)
                     elf_names_to_set_interpreter.append(executable_basename)
                 else:
                     # This is probably a script.
@@ -379,8 +363,7 @@ class LibraryPackager:
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!
             subprocess.check_call(['chmod', 'u+w', installed_binary])
-            # Remove rpath so that it does not interfere with the LD_LIBRARY_PATH mechanism,
-            # and because some libraries might also have system library directories on their rpath.
+            # Remove rpath (we will set it appropriately in post_install.sh).
             run_patchelf('--remove-rpath', installed_binary)
 
         post_install_path = os.path.join(dest_bin_dir, 'post_install.sh')

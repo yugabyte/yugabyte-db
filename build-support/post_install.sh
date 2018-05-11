@@ -22,6 +22,8 @@ set -euo pipefail
 
 bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
 distribution_dir=$( cd "$bin_dir/.." && pwd )
+lib_dir="$distribution_dir/lib"
+rpath="$lib_dir/yb:$lib_dir/yb-thirdparty:$lib_dir/linuxbrew"
 patchelf_path=$bin_dir/patchelf
 
 if [[ ! -x $patchelf_path ]]; then
@@ -36,8 +38,14 @@ if [[ ! -x $ld_path ]]; then
   exit 1
 fi
 
-cd "$bin_dir"/../lib/unwrapped
+cd "$bin_dir"
 # ${elf_names_to_set_interpreter} is substituted during packaging.
 for f in ${elf_names_to_set_interpreter}; do
-  ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
+  ( set -x;
+    "$patchelf_path" --set-interpreter "$ld_path" "$f";
+    "$patchelf_path" --set-rpath "$rpath" "$f";
+  )
 done
+
+find $lib_dir -name "*.so*" ! -name "ld.so" | xargs -I{} "$patchelf_path" --set-rpath "$rpath" {} \
+  2> >(grep -v 'warning: working around a Linux kernel bug by creating a hole' >&2)
