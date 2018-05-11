@@ -27,7 +27,7 @@ CHECKED_STATUS Executor::PTExprToPBValidated(const PTExpr::SharedPtr& expr,
                                              QLExpressionPB *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
   if (expr_pb->has_value() && IsNull(expr_pb->value())) {
-    return exec_context().Error("Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(expr, "Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
   }
   return Status::OK();
 }

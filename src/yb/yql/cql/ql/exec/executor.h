@@ -152,7 +152,9 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
 
   // Process the read/write op response.
-  CHECKED_STATUS ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context);
+  CHECKED_STATUS ProcessOpResponse(client::YBqlOp* op,
+                                   const TreeNode* tnode,
+                                   ExecContext* exec_context);
 
   // Process result of FlushAsyncDone.
   CHECKED_STATUS ProcessAsyncResults();

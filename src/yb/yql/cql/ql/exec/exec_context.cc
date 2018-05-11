@@ -53,18 +53,6 @@ bool ExecContext::SelectingAggregate() {
   return false;
 }
 
-Status ExecContext::Error(ErrorCode error_code) {
-  return ProcessContextBase::Error(tnode(), error_code);
-}
-
-Status ExecContext::Error(const char *m, ErrorCode error_code) {
-  return ProcessContextBase::Error(tnode(), m, error_code);
-}
-
-Status ExecContext::Error(const Status& s, ErrorCode error_code) {
-  return ProcessContextBase::Error(tnode(), s, error_code);
-}
-
 void ExecContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
   current_partition_index_ = start_partition;
   // Hash values before the first 'IN' condition will be already set.
