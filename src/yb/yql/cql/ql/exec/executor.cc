@@ -200,7 +200,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
       return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
 
     default:
-      return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 }
 
@@ -423,7 +423,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
         break;
       case ALTER_TYPE:
         // Not yet supported by AlterTableRequestPB.
-        return exec_context().Error(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }
   }
 
@@ -431,7 +431,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
     TableProperties table_properties;
     Status s = tnode->ToTableProperties(&table_properties);
     if(PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
     }
 
     table_alterer->SetTableProperties(table_properties);
@@ -439,7 +439,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   Status s = table_alterer->Alter();
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::EXEC_ERROR);
+    return exec_context().Error(tnode, s, ErrorCode::EXEC_ERROR);
   }
 
   result_ = std::make_shared<SchemaChangeResult>(
@@ -508,7 +508,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     }
 
     default:
-      return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context().Error(tnode->name(), ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -562,7 +562,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   if (table == nullptr) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
-    return tnode->is_system() ? Status::OK() : exec_context().Error(ErrorCode::TABLE_NOT_FOUND);
+    return tnode->is_system() ? Status::OK()
+                              : exec_context().Error(tnode, ErrorCode::TABLE_NOT_FOUND);
   }
 
   const StatementParameters& params = *exec_context().params();
@@ -570,7 +571,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !params.table_id().empty();
   if (continue_select && params.table_id() != table->id()) {
-    return exec_context().Error("Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
+    return exec_context().Error(tnode, "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
   }
 
   // Create the read request.
@@ -580,11 +581,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   bool no_results = false;
   req->set_is_aggregate(tnode->is_aggregate());
-  Status st = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->subscripted_col_where_ops(), tnode->json_col_where_ops(),
-                              tnode->partition_key_ops(), tnode->func_ops(), &no_results);
-  if (PREDICT_FALSE(!st.ok())) {
-    return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
+  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
+                             tnode->subscripted_col_where_ops(), tnode->json_col_where_ops(),
+                             tnode->partition_key_ops(), tnode->func_ops(), &no_results);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
@@ -603,11 +604,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-      st = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+      s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
     } else {
-      st = PTExprToPB(expr, req->add_selected_exprs());
-      if (PREDICT_FALSE(!st.ok())) {
-        return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
+      s = PTExprToPB(expr, req->add_selected_exprs());
+      if (PREDICT_FALSE(!s.ok())) {
+        return exec_context().Error(expr, s, ErrorCode::INVALID_ARGUMENTS);
       }
 
       // Add the expression metadata (rsrow descriptor).
@@ -618,9 +619,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (PREDICT_FALSE(!st.ok())) {
-    return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
@@ -634,13 +635,14 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
-    st = (PTExprToPB(tnode->limit(), &limit_pb));
-    if (PREDICT_FALSE(!st.ok())) {
-      return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
+    s = (PTExprToPB(tnode->limit(), &limit_pb));
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context().Error(tnode->limit(), s, ErrorCode::INVALID_ARGUMENTS);
     }
 
     if (limit_pb.has_value() && IsNull(limit_pb.value())) {
-      return exec_context().Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode->limit(), "LIMIT value cannot be null.",
+                                  ErrorCode::INVALID_ARGUMENTS);
     }
 
     // this should be ensured by checks before getting here
@@ -648,7 +650,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
         << "Integer constant expected for LIMIT clause";
 
     if (limit_pb.value().int32_value() < 0) {
-      return exec_context().Error("LIMIT value cannot be negative.", ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode->limit(), "LIMIT value cannot be negative.",
+                                  ErrorCode::INVALID_ARGUMENTS);
     }
 
     uint64_t limit = limit_pb.value().int32_value();
@@ -795,32 +798,32 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Set the ttl.
   Status s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the values for columns.
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
@@ -839,7 +842,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Set the timestamp.
   Status s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Where clause - Hash, range, and regular columns.
@@ -847,24 +850,24 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                       tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
@@ -885,38 +888,38 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                              tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the ttl.
   s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(tnode, update_op->mutable_request());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
@@ -961,7 +964,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    return exec_context().Error(s, error_code);
+    return exec_context().Error(tnode, s, error_code);
   }
 
   result_ = std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name());
@@ -974,7 +977,7 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   const Status s = exec_context().UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
-    return exec_context().Error(s, error_code);
+    return exec_context().Error(tnode, s, error_code);
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
@@ -1141,7 +1144,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
 
   // DML with TTL is not allowed if indexes are present.
   if (req->has_ttl()) {
-    return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+    return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   // If updates of pk-only indexes can be issued from CQL proxy directly, do it. Otherwise, add
@@ -1315,11 +1318,14 @@ Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Statu
   return s;
 }
 
-Status Executor::ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context) {
+Status Executor::ProcessOpResponse(client::YBqlOp* op,
+                                   const TreeNode* tnode,
+                                   ExecContext* exec_context) {
   const QLResponsePB &resp = op->response();
   CHECK(resp.has_status()) << "QLResponsePB status missing";
   if (resp.status() != QLResponsePB::YQL_STATUS_OK) {
-    return exec_context->Error(resp.error_message().c_str(), QLStatusToErrorCode(resp.status()));
+    const ErrorCode errcode = QLStatusToErrorCode(resp.status());
+    return exec_context->Error(tnode, resp.error_message().c_str(), errcode);
   }
   return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
@@ -1328,6 +1334,7 @@ Status Executor::ProcessAsyncResults() {
   Status s, ss;
   for (auto& exec_context : exec_contexts_) {
     client::YBqlOp* op = exec_context.op().get();
+    const TreeNode* tnode = exec_context.tnode();
     if (op == nullptr || exec_context.IsOperationDeferred()) {
       continue; // Skip empty or deferred op.
     }
@@ -1336,10 +1343,10 @@ Status Executor::ProcessAsyncResults() {
       // YBOperation returns not-found error when the tablet is not found.
       const auto error_code =
           ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID;
-      ss = exec_context.Error(ss, error_code);
+      ss = exec_context.Error(tnode, ss, error_code);
     }
     if (ss.ok()) {
-      ss = ProcessOpResponse(op, &exec_context);
+      ss = ProcessOpResponse(op, tnode, &exec_context);
     }
     ss = ProcessStatementStatus(*exec_context.parse_tree(), ss);
     if (PREDICT_FALSE(!ss.ok())) {

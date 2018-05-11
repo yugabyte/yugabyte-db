@@ -220,13 +220,6 @@ class ExecContext : public ProcessContextBase {
 
   bool SelectingAggregate();
 
-  // Variants of ProcessContextBase::Error() that report location of statement tnode as the error
-  // location.
-  using ProcessContextBase::Error;
-  CHECKED_STATUS Error(ErrorCode error_code);
-  CHECKED_STATUS Error(const char *m, ErrorCode error_code);
-  CHECKED_STATUS Error(const Status& s, ErrorCode error_code);
-
  private:
   // Statement parse tree to execute.
   const ParseTree *parse_tree_;
