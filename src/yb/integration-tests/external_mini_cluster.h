@@ -206,9 +206,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   void StartShellMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
+  // When use_hostport is true, the master is deemed as dead and its UUID is not used.
   CHECKED_STATUS ChangeConfig(ExternalMaster* master,
       ChangeConfigType type,
-      consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER);
+      consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER,
+      bool use_hostport = false);
 
   // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
   CHECKED_STATUS GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);

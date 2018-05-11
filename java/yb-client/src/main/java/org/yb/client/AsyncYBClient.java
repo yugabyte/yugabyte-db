@@ -430,7 +430,8 @@ public class AsyncYBClient implements AutoCloseable {
    * Change the current cluster configuration.
    * @return a deferred object that yields the response to the config change.
    */
-  public Deferred<ChangeMasterClusterConfigResponse> changeMasterClusterConfig(Master.SysClusterConfigEntryPB config) {
+  public Deferred<ChangeMasterClusterConfigResponse> changeMasterClusterConfig(
+      Master.SysClusterConfigEntryPB config) {
     checkIsClosed();
     ChangeMasterClusterConfigRequest rpc = new ChangeMasterClusterConfigRequest(
         this.masterTable, config);
@@ -524,17 +525,18 @@ public class AsyncYBClient implements AutoCloseable {
    * @param port        RPC port of the host being added or removed.
    * @param changeUuid  uuid of the master that is being added or removed.
    * @param isAdd       If we are adding or removing the master to the configuration.
+   * @param useHost     If caller wants to use host/port instead of uuid of server being removed.
    *
    * @return a deferred object that yields a change config response.
    */
   public Deferred<ChangeConfigResponse> changeMasterConfig(
-      String host, int port, String changeUuid, boolean isAdd)
+      String host, int port, String changeUuid, boolean isAdd, boolean useHost)
       throws Exception {
     checkIsClosed();
     // The sendRpcToTablet will retry to get the correct leader, so we do not set dest_uuid
     // here. Seemed very intrusive to change request's leader uuid contents during rpc retry.
     ChangeConfigRequest rpc = new ChangeConfigRequest(
-        this.masterTable, host, port, changeUuid, isAdd);
+        this.masterTable, host, port, changeUuid, isAdd, useHost);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }

@@ -178,6 +178,30 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test for Master Configuration Change operation using host/port.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testChangeMasterConfigWithHostPort() throws Exception {
+    int numBefore = miniCluster.getNumMasters();
+    List<HostAndPort> hostports = miniCluster.getMasterHostPorts();
+    HostAndPort leaderHp = BaseYBClientTest.findLeaderMasterHostPort();
+    HostAndPort nonLeaderHp = null;
+    for (HostAndPort hp : hostports) {
+      if (!hp.equals(leaderHp)) {
+        nonLeaderHp = hp;
+        break;
+      }
+    }
+    LOG.info("Using host/port {}/{}.",nonLeaderHp.getHostText(), nonLeaderHp.getPort());
+    ChangeConfigResponse resp = syncClient.changeMasterConfig(
+        nonLeaderHp.getHostText(), nonLeaderHp.getPort(), false, true);
+    assertFalse(resp.hasError());
+    ListMastersResponse listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore - 1);
+  }
+
+  /**
    * Test for Master Configuration Change which triggers a leader step down operation.
    * @throws Exception
    */
