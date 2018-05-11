@@ -116,7 +116,65 @@ cqlsh> SELECT * FROM store.books WHERE id=5;
 (1 rows)
 ```
 
+### Query based on json attributes
 
+We currently support two operators for json. The `->` operator returns a result which is a json
+document and further json operations can be applied to the result. The `->>` operator returns a
+string result and as a result no further json operations can be performed after this.
+
+If we want to query all the books whose author is `William Shakespeare`
+
+```sql
+cqlsh> SELECT * FROM store.books where details->>'author' = 'William Shakespeare';
+
+ id | details
+----+---------------------------------------------------------------
+  1 | {"author":"William Shakespeare","name":"Macbeth","year":1623}
+  2 |  {"author":"William Shakespeare","name":"Hamlet","year":1603}
+
+(2 rows)
+```
+
+If we want to retrieve the author for all entries
+
+```sql
+cqlsh> SELECT id, details->>'author' as author from store.books;
+
+ id | author
+----+---------------------
+  5 |     Stephen Hawking
+  1 | William Shakespeare
+  4 |     Charles Dickens
+  2 | William Shakespeare
+  3 |     Charles Dickens
+
+(5 rows)
+```
+
+Retrieving rows based on nested attributes
+
+```sql
+cqlsh> INSERT INTO store.books (id, details) VALUES (1,   '{ "name": "Book the First", "author": { "first_name": "Bob", "last_name": "White" } }');
+cqlsh> SELECT * FROM store.books;
+
+ id | details
+----+---------------------------------------------------------------------------------------------
+  5 | {"author":"Stephen Hawking","genre":"science","name":"A Brief History of Time","year":1988}
+  1 |                 {"author":{"first_name":"Bob","last_name":"White"},"name":"Book the First"}
+  4 |        {"author":"Charles Dickens","genre":"novel","name":"Great Expectations","year":1950}
+  2 |                                {"author":"William Shakespeare","name":"Hamlet","year":1603}
+  3 |              {"author":"Charles Dickens","genre":"novel","name":"Oliver Twist","year":1838}
+
+(5 rows)
+
+cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'Bob';
+
+ id | details
+----+-----------------------------------------------------------------------------
+  1 | {"author":{"first_name":"Bob","last_name":"White"},"name":"Book the First"}
+
+(1 rows)
+```
 
 ## 5. Clean up (optional)
 
