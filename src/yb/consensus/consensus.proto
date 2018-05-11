@@ -158,7 +158,8 @@ message ChangeConfigRequestPB {
 
   // The peer to add or remove.
   // When 'type' == ADD_SERVER, both the permanent_uuid and last_known_addr
-  // fields must be set. Otherwise, only the permanent_uuid field is required.
+  // fields must be set. For REMOVE_SERVER, either the permanent_uuid field or
+  // last_known_addr should be set - 'use_host' is for using the latter.
   optional RaftPeerPB server = 3;
 
   // The OpId index of the committed config to replace.
@@ -167,6 +168,11 @@ message ChangeConfigRequestPB {
   // parameter is specified and the committed config does not have a matching
   // opid_index. See also the definition of RaftConfigPB.
   optional int64 cas_config_opid_index = 5;
+
+  // For REMOVE case, when this is set, we assume that the peer is dead and will not
+  // affect the quorum anymore. So we skip checking/using its server uuid and remove
+  // it based on the ip/port info from 'server'.
+  optional bool use_host = 6 [default = false];
 }
 
 // The configuration change response. If any immediate error occurred

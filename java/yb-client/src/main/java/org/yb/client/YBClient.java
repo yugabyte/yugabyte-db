@@ -537,19 +537,30 @@ public class YBClient implements AutoCloseable {
    * @param host Master host that is being added or removed.
    * @param port RPC port of the host being added or removed.
    * @param isAdd true if we are adding a server to the master configuration, false if removing.
+   * @param useHost if caller wants to use host/port instead of uuid of server being removed.
    *
    * @return The change config response object.
    */
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd) throws Exception {
-    final String masterUuid = getMasterUUID(host, port);
-    if (masterUuid == null) {
-      throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
-                                          port + " - could not get it's uuid.");
+    return changeMasterConfig(host, port, isAdd, false /* useHost */);
+  }
+
+  public ChangeConfigResponse changeMasterConfig(
+      String host, int port, boolean isAdd, boolean useHost) throws Exception {
+    String masterUuid = null;
+
+    if (isAdd || !useHost) {
+      masterUuid = getMasterUUID(host, port);
+
+      if (masterUuid == null) {
+        throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
+                                            port + " - could not get it's uuid.");
+      }
     }
 
-    LOG.info("Sending changeConfig : Target host:port={}:{} at uuid={}, add={}.",
-             host, port, masterUuid, isAdd);
+    LOG.info("Sending changeConfig : Target host:port={}:{} at uuid={}, add={}, useHost={}.",
+             host, port, masterUuid, isAdd, useHost);
     long timeout = getDefaultAdminOperationTimeoutMs();
     ChangeConfigResponse resp = null;
     boolean changeConfigDone;
@@ -557,7 +568,7 @@ public class YBClient implements AutoCloseable {
       changeConfigDone = true;
       try {
         Deferred<ChangeConfigResponse> d =
-            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd);
+            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd, useHost);
         resp = d.join(timeout);
         if (!resp.hasError()) {
           asyncClient.updateMasterAdresses(host, port, isAdd);

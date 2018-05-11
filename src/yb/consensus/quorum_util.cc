@@ -96,11 +96,32 @@ Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb) 
   return GetRaftConfigMember(cstate.config(), cstate.leader_uuid(), peer_pb);
 }
 
-bool RemoveFromRaftConfig(RaftConfigPB* config, const string& uuid) {
+Status GetHostPortFromConfig(const RaftConfigPB& config, const std::string& uuid, HostPort* hp) {
+  if (!hp) {
+    return STATUS(InvalidArgument, "Need a non-null hostport.");
+  }
+  for (const RaftPeerPB& peer : config.peers()) {
+    if (peer.permanent_uuid() == uuid) {
+      *hp = HostPortFromPB(peer.last_known_addr());
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, Substitute("Consensus config did not find $0.", uuid));
+}
+
+bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req) {
   RepeatedPtrField<RaftPeerPB> modified_peers;
   bool removed = false;
+  bool use_host = req.has_use_host() && req.use_host();
+  const HostPortPB hp = req.server().last_known_addr();
+  if (use_host) {
+    LOG(INFO) << "Using host/port " << hp.ShortDebugString() << " instead of UUID";
+  }
+  const string& uuid = req.server().permanent_uuid();
   for (const RaftPeerPB& peer : config->peers()) {
-    if (peer.permanent_uuid() == uuid) {
+    if ((use_host && peer.last_known_addr().host() == hp.host() &&
+         peer.last_known_addr().port() == hp.port()) ||
+        (!use_host && peer.permanent_uuid() == uuid)) {
       removed = true;
       continue;
     }
