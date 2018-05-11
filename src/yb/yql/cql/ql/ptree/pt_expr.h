@@ -223,6 +223,10 @@ class PTExpr : public TreeNode {
     return yb::bfql::TSOpcode::kNoOp;
   }
 
+  static PTExpr::SharedPtr CreateConst(MemoryContext *memctx,
+                                       YBLocation::SharedPtr loc,
+                                       PTBaseType::SharedPtr data_type);
+
   // Predicate for updating counter.  Only '+' and '-' expression support counter update.
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const;
 
@@ -598,7 +602,19 @@ class PTLiteral {
     return std::to_string(value);
   }
 
+  virtual string ToQLName(int32_t value) const {
+    return std::to_string(value);
+  }
+
+  virtual string ToQLName(int16_t value) const {
+    return std::to_string(value);
+  }
+
   virtual string ToQLName(long double value) const {
+    return std::to_string(value);
+  }
+
+  virtual string ToQLName(float value) const {
     return std::to_string(value);
   }
 
@@ -743,9 +759,21 @@ using PTConstInt = PTExprConst<InternalType::kInt64Value,
                                DataType::INT64,
                                int64_t>;
 
+using PTConstInt32 = PTExprConst<InternalType::kInt32Value,
+                                 DataType::INT32,
+                                 int32_t>;
+
+using PTConstInt16 = PTExprConst<InternalType::kInt16Value,
+                                 DataType::INT16,
+                                 int16_t>;
+
 using PTConstDouble = PTExprConst<InternalType::kDoubleValue,
                                   DataType::DOUBLE,
                                   long double>;
+
+using PTConstFloat = PTExprConst<InternalType::kFloatValue,
+                                 DataType::FLOAT,
+                                 float>;
 
 // Class representing a json operator.
 class PTJsonOperator : public PTExpr {

@@ -194,5 +194,53 @@ public class TestJson extends BaseCQLTest {
     verifyEmptyRows(session.execute("SELECT c2->'a1'->'a' FROM test_json"), 8);
     verifyEmptyRows(session.execute("SELECT c2->'a3'->'a' FROM test_json"), 8);
     verifyEmptyRows(session.execute("SELECT c2->'a3'->2 FROM test_json"), 8);
+
+    // Test casts.
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) = 4294967295"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "text) = '4294967295'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'r' as " +
+        "integer) = -2147483648"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'r' as " +
+        "text) = '-2147483648'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'s' as " +
+        "integer) = 2147483647"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a1'->5->'k2'->>1 as " +
+        "integer) = 200"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'x' as float) =" +
+        " 2.000000"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'x' as double) " +
+        "= 2.000000"));
+
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) >= 4294967295"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) > 100"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) <= 4294967295"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) < 4294967297"));
+
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) >= 4294967297").getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) > 4294967298").getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) = 100").getAvailableWithoutFetching());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "bigint) < 99").getAvailableWithoutFetching());
+
+    // Invalid cast types.
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as boolean) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as inet) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as map) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as set) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as list) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as timestamp) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as timeuuid) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as uuid) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as varint) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as decimal) = 123");
   }
 }

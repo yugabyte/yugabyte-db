@@ -88,7 +88,7 @@ class QLType {
 
   // Create all builtin types including collection.
   static std::shared_ptr<QLType> Create(DataType data_type,
-                                         const vector<std::shared_ptr<QLType>>& params);
+                                        const vector<std::shared_ptr<QLType>>& params);
 
   // Create primitive types, all builtin types except collection.
   static std::shared_ptr<QLType> Create(DataType data_type);
@@ -98,7 +98,7 @@ class QLType {
 
   // Create map datatype.
   static std::shared_ptr<QLType> CreateTypeMap(std::shared_ptr<QLType> key_type,
-                                                std::shared_ptr<QLType> value_type);
+                                               std::shared_ptr<QLType> value_type);
   static std::shared_ptr<QLType> CreateTypeMap(DataType key_type, DataType value_type);
   static std::shared_ptr<QLType> CreateTypeMap() {
     // Create default map type: MAP <UNKNOWN -> UNKNOWN>.
@@ -438,7 +438,7 @@ class QLType {
         /* i16 */{ kIM,  kSI,  kID,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* i32 */{ kIM,  kSI,  kSI,  kID,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* i64 */{ kIM,  kSI,  kSI,  kSI,  kID,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX },
-        /* str */{ kIM,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX },
+        /* str */{ kIM,  kEX,  kEX,  kEX,  kEX,  kID,  kNA,  kEX,  kEX,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX },
         /* bln */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* flt */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kID,  kSI,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* dbl */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kID,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
@@ -476,6 +476,10 @@ class QLType {
 
   static bool IsPotentiallyConvertible(DataType left, DataType right) {
     return GetConversionMode(left, right) <= ConversionMode::kFurtherCheck;
+  }
+
+  static bool IsExplicitlyConvertible(DataType left, DataType right) {
+    return GetConversionMode(left, right) <= ConversionMode::kExplicit;
   }
 
   static bool IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,

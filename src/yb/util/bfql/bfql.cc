@@ -70,8 +70,10 @@ static bool HasExactTypeSignature(const std::vector<DataType>& signature,
 
     // Return false if one of the following is true.
     // - The number of arguments is less than the formal count.
-    // - The datatype of an argument is not an exact match of the signature type.
-    if (index >= actual_count || signature[index] != actual_types[index]) {
+    // - The datatype of an argument is not an exact match of the signature type and the
+    //   signature type is not ANYTYPE.
+    if (index >= actual_count || (signature[index] != actual_types[index] &&
+        signature[index] != DataType::NULL_VALUE_TYPE)) {
       return false;
     }
   }

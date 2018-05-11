@@ -3459,6 +3459,13 @@ func_application:
     auto name = parser_->MakeString($1);
     $$ = MAKE_NODE(@1, PTToken, name, $3);
   }
+  | CAST '(' a_expr AS Typename ')' {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
+    args->Append($3);
+    args->Append(PTExpr::CreateConst(PTREE_MEM, PTREE_LOC(@5), $5));
+    auto name = parser_->MakeString(bfql::kCqlCastFuncName);
+    $$ = MAKE_NODE(@1, PTBcall, name, args);
+  }
   | func_name '(' VARIADIC func_arg_expr opt_sort_clause ')' {
     PARSER_UNSUPPORTED(@1);
   }
@@ -3515,8 +3522,6 @@ func_expr_common_subexpr:
   | CURRENT_CATALOG {
   }
   | CURRENT_SCHEMA {
-  }
-  | CAST '(' a_expr AS Typename ')' {
   }
   | EXTRACT '(' extract_list ')' {
   }

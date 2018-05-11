@@ -161,6 +161,7 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
     case ExprOperator::kCollection: FALLTHROUGH_INTENDED;
     case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
     case ExprOperator::kBindVar: FALLTHROUGH_INTENDED;
+    case ExprOperator::kJsonOperatorRef: FALLTHROUGH_INTENDED;
     case ExprOperator::kBcall:
       break;
     default:
@@ -173,6 +174,27 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
 
 CHECKED_STATUS PTExpr::CheckCounterUpdateSupport(SemContext *sem_context) const {
   return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
+}
+
+PTExpr::SharedPtr PTExpr::CreateConst(MemoryContext *memctx,
+                                      YBLocation::SharedPtr loc,
+                                      PTBaseType::SharedPtr data_type) {
+  switch(data_type->ql_type()->main()) {
+    case DataType::DOUBLE:
+      return PTConstDouble::MakeShared(memctx, loc, 0);
+    case DataType::FLOAT:
+      return PTConstFloat::MakeShared(memctx, loc, 0);
+    case DataType::INT16:
+      return PTConstInt16::MakeShared(memctx, loc, 0);
+    case DataType::INT32:
+      return PTConstInt32::MakeShared(memctx, loc, 0);
+    case DataType::INT64:
+      return PTConstInt::MakeShared(memctx, loc, 0);
+    case DataType::STRING:
+      return PTConstText::MakeShared(memctx, loc, MCMakeShared<MCString>(memctx, ""));
+    default:
+      return nullptr;
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -618,7 +640,8 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
               ErrorCode::FEATURE_NOT_SUPPORTED);
         }
       } else if (strcmp(bcall->name()->c_str(), "ttl") == 0 ||
-                 strcmp(bcall->name()->c_str(), "writetime") == 0) {
+                 strcmp(bcall->name()->c_str(), "writetime") == 0 ||
+                 strcmp(bcall->name()->c_str(), "cql_cast") == 0) {
         PTBcall::SharedPtr ttl_shared = std::make_shared<PTBcall>(*bcall);
         return where_state->AnalyzeColumnFunction(sem_context, this, op2, ttl_shared);
       } else {
