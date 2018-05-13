@@ -208,6 +208,11 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     EXPECT_EQ(row.column(0).int32_value(), 4);
     EXPECT_EQ(row.column(1).string_value(), "d");
   }
+
+  auto used_tracker = MemTracker::GetRootTracker()->FindChild("server")->FindChild("Read Buffer")->
+                      FindChild("Inbound RPC")->FindChild("Used");
+
+  ASSERT_EQ(0, used_tracker->peak_consumption());
 }
 
 TEST_F(QLDmlTest, TestInsertWrongSchema) {

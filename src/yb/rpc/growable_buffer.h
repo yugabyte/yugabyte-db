@@ -44,7 +44,7 @@ class GrowableBufferAllocator {
   // forced - ignore blocks_limit, used when growable buffer does not have at least 2 allocated
   // blocks.
   uint8_t* Allocate(bool forced);
-  void Free(uint8_t* buffer);
+  void Free(uint8_t* buffer, bool was_forced);
 
  private:
   class Impl;
@@ -55,14 +55,17 @@ class GrowableBufferAllocator {
 class GrowableBufferDeleter {
  public:
   GrowableBufferDeleter() : allocator_(nullptr) {}
-  explicit GrowableBufferDeleter(GrowableBufferAllocator* allocator) : allocator_(allocator) {}
+  explicit GrowableBufferDeleter(
+      GrowableBufferAllocator* allocator,
+      bool was_forced) : allocator_(allocator), was_forced_(was_forced) {}
 
   void operator()(uint8_t* buffer) const {
-    allocator_->Free(buffer);
+    allocator_->Free(buffer, was_forced_);
   }
 
  private:
   GrowableBufferAllocator* allocator_;
+  bool was_forced_;
 };
 
 // Convenience circular buffer for receiving bytes.
