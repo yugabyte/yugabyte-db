@@ -49,6 +49,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -65,6 +66,9 @@ class GarbageCollector {
  protected:
   ~GarbageCollector() {}
 };
+
+YB_STRONGLY_TYPED_BOOL(MayExist);
+YB_STRONGLY_TYPED_BOOL(AddToParent);
 
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
@@ -122,7 +126,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
  public:
   // byte_limit < 0 means no limit
   // 'id' is the label for LogUsage() and web UI.
-  MemTracker(int64_t byte_limit, const std::string& id, std::shared_ptr<MemTracker> parent);
+  //
+  // add_to_parent could be set to false in cases when we want to track memory usage of
+  // some subsystem, but don't want this subsystem to take effect on parent mem tracker.
+  MemTracker(int64_t byte_limit, const std::string& id, std::shared_ptr<MemTracker> parent,
+             AddToParent add_to_parent);
 
   ~MemTracker();
 
@@ -170,12 +178,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static std::shared_ptr<MemTracker> CreateTracker(
       int64_t byte_limit,
       const std::string& id,
-      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>());
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue);
 
   static std::shared_ptr<MemTracker> CreateTracker(
       const std::string& id,
-      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>()) {
-    return CreateTracker(-1, id, parent);
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue) {
+    return CreateTracker(-1 /* byte_limit */, id, parent, add_to_parent);
   }
 
   // If a tracker with the specified 'id' and 'parent' exists in the tree, sets
@@ -194,12 +204,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static std::shared_ptr<MemTracker> FindOrCreateTracker(
       int64_t byte_limit,
       const std::string& id,
-      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>());
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue);
 
   static std::shared_ptr<MemTracker> FindOrCreateTracker(
       const std::string& id,
-      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>()) {
-    return FindOrCreateTracker(-1, id, parent);
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue) {
+    return FindOrCreateTracker(-1 /* byte_limit */, id, parent, add_to_parent);
   }
 
   void ListDescendantTrackers(std::vector<MemTrackerPtr>* trackers);
@@ -337,7 +349,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   std::shared_ptr<MemTracker> CreateChild(
       int64_t byte_limit,
       const std::string& id,
-      bool may_exist);
+      MayExist may_exist,
+      AddToParent add_to_parent);
 
   // Variant of FindTracker() that:
   // 1. Must be called with a non-NULL parent, and
@@ -388,6 +401,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // If true, log the stack as well.
   bool log_stack_;
+
+  AddToParent add_to_parent_;
 };
 
 // An std::allocator that manipulates a MemTracker during allocation

@@ -154,7 +154,8 @@ void MemTracker::CreateRootTracker() {
     limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
   }
 
-  root_tracker = std::make_shared<MemTracker>(limit, "root", nullptr /* parent */);
+  root_tracker = std::make_shared<MemTracker>(
+      limit, "root", nullptr /* parent */, AddToParent::kTrue);
   LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
                             (static_cast<float>(limit) / (1024.0 * 1024.0 * 1024.0)));
   LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
@@ -164,14 +165,16 @@ void MemTracker::CreateRootTracker() {
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
                                                  const string& id,
-                                                 const shared_ptr<MemTracker>& parent) {
+                                                 const shared_ptr<MemTracker>& parent,
+                                                 AddToParent add_to_parent) {
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
-  return real_parent->CreateChild(byte_limit, id, false);
+  return real_parent->CreateChild(byte_limit, id, MayExist::kFalse, add_to_parent);
 }
 
 shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                const string& id,
-                                               bool may_exist) {
+                                               MayExist may_exist,
+                                               AddToParent add_to_parent) {
   std::lock_guard<std::mutex> lock(child_trackers_mutex_);
   if (may_exist) {
     auto result = FindChildUnlocked(id);
@@ -179,7 +182,7 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
       return result;
     }
   }
-  auto result = std::make_shared<MemTracker>(byte_limit, id, shared_from_this());
+  auto result = std::make_shared<MemTracker>(byte_limit, id, shared_from_this(), add_to_parent);
   auto p = child_trackers_.emplace(id, result);
   if (!p.second) {
     auto existing = p.first->second.lock();
@@ -193,14 +196,16 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   return result;
 }
 
-MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTracker> parent)
+MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTracker> parent,
+                       AddToParent add_to_parent)
     : limit_(byte_limit),
       id_(id),
       descr_(Substitute("memory consumption for $0", id)),
       parent_(std::move(parent)),
       rand_(GetRandomSeed32()),
       enable_logging_(FLAGS_mem_tracker_logging),
-      log_stack_(FLAGS_mem_tracker_log_stack_trace) {
+      log_stack_(FLAGS_mem_tracker_log_stack_trace),
+      add_to_parent_(add_to_parent) {
   VLOG(1) << "Creating tracker " << ToString();
   UpdateConsumption();
   soft_limit_ = (limit_ == -1)
@@ -210,7 +215,7 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTrack
   if (has_limit()) {
     limit_trackers_.push_back(this);
   }
-  if (parent_) {
+  if (parent_ && add_to_parent) {
     all_trackers_.insert(
         all_trackers_.end(), parent_->all_trackers_.begin(), parent_->all_trackers_.end());
     limit_trackers_.insert(
@@ -222,7 +227,9 @@ MemTracker::~MemTracker() {
   VLOG(1) << "Destroying tracker " << ToString();
   if (parent_) {
     DCHECK_EQ(consumption(), 0) << "Memory tracker " << ToString();
-    parent_->Release(consumption());
+    if (add_to_parent_) {
+      parent_->Release(consumption());
+    }
   }
 }
 
@@ -274,9 +281,10 @@ MemTrackerPtr MemTracker::FindChildUnlocked(const std::string& id) {
 
 shared_ptr<MemTracker> MemTracker::FindOrCreateTracker(int64_t byte_limit,
                                                        const string& id,
-                                                       const shared_ptr<MemTracker>& parent) {
+                                                       const shared_ptr<MemTracker>& parent,
+                                                       AddToParent add_to_parent) {
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
-  return real_parent->CreateChild(byte_limit, id, true);
+  return real_parent->CreateChild(byte_limit, id, MayExist::kTrue, add_to_parent);
 }
 
 void MemTracker::ListDescendantTrackers(std::vector<MemTrackerPtr>* out) {
