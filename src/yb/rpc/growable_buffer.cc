@@ -34,6 +34,8 @@ class GrowableBufferAllocator::Impl : public GarbageCollector,
   Impl(size_t block_size,
        const MemTrackerPtr& mem_tracker)
       : block_size_(block_size),
+        mandatory_tracker_(MemTracker::FindOrCreateTracker(
+            "Mandatory", mem_tracker, AddToParent::kFalse)),
         used_tracker_(MemTracker::FindOrCreateTracker("Used", mem_tracker)),
         allocated_tracker_(MemTracker::FindOrCreateTracker("Allocated", mem_tracker)),
         pool_(0) {
@@ -49,10 +51,19 @@ class GrowableBufferAllocator::Impl : public GarbageCollector,
 
   uint8_t* Allocate(bool forced) {
     uint8_t* result = nullptr;
+
+    if (forced) {
+      if (pool_.pop(result)) {
+        allocated_tracker_->Release(block_size_);
+      } else {
+        result = static_cast<uint8_t*>(malloc(block_size_));
+      }
+      mandatory_tracker_->Consume(block_size_);
+      return result;
+    }
+
     if (!pool_.pop(result)) {
-      if (forced) {
-        allocated_tracker_->Consume(block_size_);
-      } else if (!allocated_tracker_->TryConsume(block_size_)) {
+      if (!allocated_tracker_->TryConsume(block_size_)) {
         return nullptr;
       }
       result = static_cast<uint8_t*>(malloc(block_size_));
@@ -62,16 +73,21 @@ class GrowableBufferAllocator::Impl : public GarbageCollector,
     return result;
   }
 
-  void Free(uint8_t* buffer) {
+  void Free(uint8_t* buffer, bool was_forced) {
     if (!buffer) {
       return;
     }
-    allocated_tracker_->Consume(block_size_);
-    if (!pool_.push(buffer)) {
-      allocated_tracker_->Release(block_size_);
+
+    auto* tracker = was_forced ? mandatory_tracker_.get() : used_tracker_.get();
+    tracker->Release(block_size_);
+    if (allocated_tracker_->TryConsume(block_size_)) {
+      if (!pool_.push(buffer)) {
+        allocated_tracker_->Release(block_size_);
+        free(buffer);
+      }
+    } else {
       free(buffer);
     }
-    used_tracker_->Release(block_size_);
   }
 
   size_t block_size() const {
@@ -90,7 +106,11 @@ class GrowableBufferAllocator::Impl : public GarbageCollector,
   }
 
   const size_t block_size_;
+  // Buffers that allocated with force flag, does not could in parent.
+  MemTrackerPtr mandatory_tracker_;
+  // Buffers that are in use by client of this class.
   MemTrackerPtr used_tracker_;
+  // Buffers that is contained in pool.
   MemTrackerPtr allocated_tracker_;
   boost::lockfree::stack<uint8_t*> pool_;
 };
@@ -112,8 +132,8 @@ uint8_t* GrowableBufferAllocator::Allocate(bool forced) {
   return impl_->Allocate(forced);
 }
 
-void GrowableBufferAllocator::Free(uint8_t* buffer) {
-  impl_->Free(buffer);
+void GrowableBufferAllocator::Free(uint8_t* buffer, bool was_forced) {
+  impl_->Free(buffer, was_forced);
 }
 
 namespace {
@@ -127,7 +147,8 @@ GrowableBuffer::GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit)
       block_size_(allocator->block_size()),
       limit_(limit),
       buffers_(kDefaultBuffersCapacity) {
-  buffers_.push_back(BufferPtr(allocator_.Allocate(true), GrowableBufferDeleter(&allocator_)));
+  buffers_.push_back(
+      BufferPtr(allocator_.Allocate(true), GrowableBufferDeleter(&allocator_, true)));
 }
 
 void GrowableBuffer::DumpTo(std::ostream& out) const {
@@ -202,8 +223,9 @@ Result<IoVecs> GrowableBuffer::PrepareAppend() {
       // We need at least 2 buffers for normal functioning.
       // Because with one buffer we could reach situation when our command limit is just several
       // bytes.
+      bool forced = buffers_.size() < 2;
       new_buffer = BufferPtr(
-          allocator_.Allocate(buffers_.size() < 2), GrowableBufferDeleter(&allocator_));
+          allocator_.Allocate(forced), GrowableBufferDeleter(&allocator_, forced));
     }
     if (new_buffer) {
       buffers_.push_back(std::move(new_buffer));
