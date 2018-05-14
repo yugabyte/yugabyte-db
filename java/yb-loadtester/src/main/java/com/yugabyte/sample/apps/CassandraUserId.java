@@ -32,8 +32,8 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 public class CassandraUserId extends CassandraKeyValue {
   private static final Logger LOG = Logger.getLogger(CassandraUserId.class);
 
-  // The table name.
-  private String tableName = CassandraUserId.class.getSimpleName();
+  // The default table name.
+  private final String DEFAULT_TABLE_NAME = CassandraUserId.class.getSimpleName();
 
   // The newest timestamp we have read.
   static Date maxTimestamp = new Date(0);
@@ -41,25 +41,29 @@ public class CassandraUserId extends CassandraKeyValue {
   // Lock for updating maxTimestamp.
   private Object updateMaxTimestampLock = new Object();
 
+  public String getTableName() {
+    return appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+  }
+
   /**
    * Drop the table created by this app.
    */
   @Override
   public void dropTable() {
-    dropCassandraTable(tableName);
+    dropCassandraTable(getTableName());
   }
 
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format("CREATE TABLE IF NOT EXISTS %s " +
         "(user_name varchar, password varchar, update_time timestamp, primary key (user_name));",
-      tableName);
+      getTableName());
     return Arrays.asList(create_stmt);
   }
 
   private PreparedStatement getPreparedSelect() {
     return getPreparedSelect(String.format(
-        "SELECT user_name, password, update_time FROM %s WHERE user_name = ?;", tableName),
+        "SELECT user_name, password, update_time FROM %s WHERE user_name = ?;", getTableName()),
         appConfig.localReads);
   }
 
@@ -101,7 +105,7 @@ public class CassandraUserId extends CassandraKeyValue {
 
   protected PreparedStatement getPreparedInsert()  {
     return getPreparedInsert(String.format(
-        "INSERT INTO %s (user_name, password, update_time) VALUES (?, ?, ?);", tableName));
+        "INSERT INTO %s (user_name, password, update_time) VALUES (?, ?, ?);", getTableName()));
   }
 
   @Override

@@ -70,8 +70,8 @@ public class CassandraTimeseries extends AppBase {
   // The rate at which each metric is generated in millis.
   private static long data_emit_rate_millis = 1 * 1000;
   static Random random = new Random();
-  // The table that has the raw metric data.
-  private String metricsTable = "ts_metrics_raw";
+  // The default table name that has the raw metric data.
+  private final String DEFAULT_TABLE_NAME = "ts_metrics_raw";
   // The structure to hold all the user info.
   static List<DataSource> dataSources = new CopyOnWriteArrayList<DataSource>();
   // Variable to track if verification is turned off for any datasource.
@@ -135,14 +135,18 @@ public class CassandraTimeseries extends AppBase {
     }
   }
 
+  public String getTableName() {
+    return appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+  }
+
   @Override
   public void dropTable() {
-    dropCassandraTable(metricsTable);
+    dropCassandraTable(getTableName());
   }
 
   @Override
   protected List<String> getCreateTableStatements() {
-    String create_stmt = "CREATE TABLE IF NOT EXISTS " + metricsTable + " (" +
+    String create_stmt = "CREATE TABLE IF NOT EXISTS " + getTableName() + " (" +
                          "  user_id varchar" +
                          ", metric_id varchar" +
                          ", node_id varchar" +
@@ -166,7 +170,7 @@ public class CassandraTimeseries extends AppBase {
                             " AND metric_id = :metricId" +
                             " AND node_id = :nodeId" +
                             " AND ts > :startTs AND ts < :endTs;",
-                            metricsTable);
+                            getTableName());
           preparedSelect = getCassandraClient().prepare(select_stmt);
         }
       }
@@ -250,7 +254,7 @@ public class CassandraTimeseries extends AppBase {
           String insert_stmt =
               String.format("INSERT INTO %s (user_id, metric_id, node_id, ts, value) VALUES " +
                             "(:user_id, :metric_id, :node_id, :ts, :value);",
-                            metricsTable);
+                            getTableName());
           preparedInsert = getCassandraClient().prepare(insert_stmt);
         }
       }
