@@ -174,8 +174,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       auto arg = *(++it);
 
       // list addition allows column ref to be second argument
-      if (strcmp(bfdecl->ql_name(), "+list") == 0 &&
-          col_ref->expr_op() != ExprOperator::kRef) {
+      if (bfopcode == BFOpcode::OPCODE_LIST_PREPEND && col_ref->expr_op() != ExprOperator::kRef) {
         arg = col_ref;
         col_ref = *it;
       }
@@ -206,7 +205,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       auto arg_ytype = col_ref->ql_type();
       auto arg_itype = col_ref->internal_type();
       // Subtraction from MAP takes keys to be removed as param so arg type for MAP<A,B> is SET<A>
-      if (strcmp(bfdecl->ql_name(), "map-") == 0) {
+      if (bfopcode == BFOpcode::OPCODE_MAP_REMOVE) {
         arg_ytype = QLType::CreateTypeSet(col_ref->ql_type()->param_type(0));
         arg_itype = InternalType::kSetValue;
       }
@@ -224,7 +223,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
       // For "UPDATE ... SET list = list - x ..." , the list needs to be read first in order to
       // subtract (remove) elements from it.
-      if (strcmp(bfdecl->ql_name(), "list-") == 0) {
+      if (bfopcode == BFOpcode::OPCODE_LIST_REMOVE) {
         sem_context->current_dml_stmt()->AddColumnRef(*pt_ref->desc());
       }
 
