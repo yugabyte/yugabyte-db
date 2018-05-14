@@ -4,11 +4,12 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class CloudBootstrapFormData {
   // If this is empty, we query through ybcloud for all the available regions.
-  public List<String> regionList;
+  public List<String> regionList = new ArrayList<>();
 
   // We use hostVpcId to make sure we know where YW is coming from.
   // Not required for non-AWS deployments.
