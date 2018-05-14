@@ -38,4 +38,4 @@ add_subdirectory(util)
 add_subdirectory(ybpostgres)
 
 # Test.
-add_subdirectory(test)
+# add_subdirectory(test)
