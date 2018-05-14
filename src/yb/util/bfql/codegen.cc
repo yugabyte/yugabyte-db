@@ -91,7 +91,10 @@ class BFCodegen {
     int op_index = 0;
     for (BFDecl entry : kBFDirectory) {
       // Form the opcode and print it.
-      string current_opcode = strings::Substitute("OPCODE_$0_$1", entry.cpp_name(), op_index);
+      string current_opcode = entry.bfopcode_name();
+      if (current_opcode.empty()) {
+        current_opcode = strings::Substitute("OPCODE_$0_$1", entry.cpp_name(), op_index);
+      }
       fopcode << "  " << current_opcode << "," << endl;
       if (op_index == 0) {
         min_opcode = current_opcode;
