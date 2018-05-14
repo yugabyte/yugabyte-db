@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 # Copyright (c) YugaByte, Inc.
 
 # NOTE:
@@ -49,9 +49,12 @@ rebase_repos
 export ITEST_USER=sched
 
 cd $ptest_yw_repo
-# DEFAULT
-# (Bharat) Need to create AWS loadtester or dyn create/destroy.
-# "$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify
 
-# Run all options against GCP only.
+. "$HOME/.yugabyte/ansible.env"
+
+# DEFAULT
+# Run all options against GCP only for now.
 "$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify --perf_test_provider gcp
+
+# Need to create AWS loadtester or dyn create/destroy.
+# "$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify
