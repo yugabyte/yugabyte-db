@@ -3,14 +3,17 @@
 @import "_style/colors.scss";
 
 #config-tab-panel .tab-content {
-  overflow: hidden;
   min-height: 400px;
   padding-top: 20px;
+
+  .tab-pane {
+    padding-bottom: 60px;
+  }
 }
 
 .provider-config-container {
   height: 100%;
-  min-height: 400px;
+  min-height: 450px;
 
   .list-group {
     padding: 0;

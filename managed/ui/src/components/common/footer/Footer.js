@@ -15,13 +15,13 @@ class Footer extends PureComponent {
     return (
       <footer>
         <div className="flex-grow">
-          <YBLogo type="monochrome" /> 
-          { version && 
+          <YBLogo type="monochrome" />
+          { version &&
             <span> Version: {version}</span>
           }
         </div>
         <div className="flex-grow copyright">
-          Copyright &copy; {moment().get('year')} YugaByte. All Rights Reserved. 
+          Copyright &copy; 2016 - {moment().get('year')} YugaByte. All Rights Reserved. 
         </div>
       </footer>
     );

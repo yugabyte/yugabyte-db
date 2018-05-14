@@ -1,22 +1,38 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Fragment,  Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBButton, YBTextInputWithLabel, YBToggle } from '../../../common/forms/fields';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
-import { Field } from 'redux-form';
+import { YBButton, YBTextInputWithLabel, YBSelectWithLabel, YBToggle } from '../../../common/forms/fields';
+import { isDefinedNotNull, isNonEmptyString } from 'utils/ObjectUtils';
+import { change, Field } from 'redux-form';
 import { IN_DEVELOPMENT_MODE } from '../../../../config';
-import { isValidObject, trimString, convertSpaceToDash } from '../../../../utils/ObjectUtils';
+import { isValidObject, trimString } from '../../../../utils/ObjectUtils';
 import {reduxForm} from 'redux-form';
 
 class AWSProviderInitView extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      hostVpcVisible: true,
+      networkSetupType: "new_vpc",
+      setupHostedZone: false
     };
-    this.hostVpcToggled = this.hostVpcToggled.bind(this);
   }
+
+  networkSetupChanged = (value) => {
+    const { hostInfo } = this.props;
+    if (value === "host_vpc") {
+      this.updateFormField("destVpcId", hostInfo["aws"]["vpc-id"]);
+      this.updateFormField("destVpcRegion", hostInfo["aws"]["region"]);
+    } else {
+      this.updateFormField("destVpcId", null);
+      this.updateFormField("destVpcRegion", null);
+    }
+    this.setState({networkSetupType: value});
+  }
+
+  updateFormField = (field, value) => {
+    this.props.dispatch(change("awsProviderConfigForm", field, value));
+  };
 
   createProviderConfig = formValues => {
     const {hostInfo} = this.props;
@@ -27,28 +43,17 @@ class AWSProviderInitView extends Component {
     if (isDefinedNotNull(formValues.hostedZoneId)) {
       awsProviderConfig['AWS_HOSTED_ZONE_ID'] = formValues.hostedZoneId;
     }
-    let regionFormVals = {};
-
+    const regionFormVals = {};
+    if (isNonEmptyString(formValues.destVpcId)) {
+      regionFormVals["destVpcId"] = formValues.destVpcId;
+    }
+    if (isNonEmptyString(formValues.destVpcRegion)) {
+      regionFormVals["destVpcRegion"] = formValues.destVpcRegion;
+    }
     if (this.isHostInAWS()) {
       const awsHostInfo = hostInfo["aws"];
-      regionFormVals = {
-        "regionList": [],
-        "hostedZoneId": formValues.hostedZoneId,
-        "hostVpcRegion": awsHostInfo["region"],
-        "hostVpcId": awsHostInfo["vpc-id"],
-        "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? awsHostInfo["vpc-id"] : "",
-      };
-    } else {
-      regionFormVals = {
-        "regionList": [],
-        "hostedZoneId": formValues.hostedZoneId,
-        // TODO: this should really be called destVpcRegion, but we're piggybacking on this through
-        // YW and devops.
-        // DEFAULT FOR PORTAL OR LOCAL: us-west-2
-        "hostVpcRegion": formValues.destVpcRegion,
-        // DEFAULT FOR PORTAL OR LOCAL: vpc-0fe36f6b
-        "destVpcId": formValues.destVpcId
-      };
+      regionFormVals["hostVpcRegion"] = awsHostInfo["region"];
+      regionFormVals["hostVpcId"] = awsHostInfo["vpc-id"];
     }
     this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
   };
@@ -59,48 +64,62 @@ class AWSProviderInitView extends Component {
       hostInfo["aws"]["error"] === undefined;
   }
 
-  hostVpcToggled(event) {
-    this.setState({hostVpcVisible: !event.target.checked});
+  hostedZoneToggled = (event) => {
+    this.setState({setupHostedZone: event.target.checked});
   }
 
   render() {
     const { handleSubmit, submitting, error} = this.props;
-    const subLabel = "Disabled if host is not on AWS";
-    let hostVpcRegionField = <span />;
-    let hostVpcIdField = <span />;
-    if (this.state.hostVpcVisible) {
-      hostVpcRegionField = (
-        <Field name="destVpcRegion" type="text" label="Custom VPC Region"
-               component={YBTextInputWithLabel} normalize={trimString} />
+    const network_setup_options = [
+      <option key={1} value={"new_vpc"}>{"Create a new VPC"}</option>,
+      <option key={2} value={"existing_vpc"}>{"Specify an existing VPC"}</option>
+    ];
+    if (this.isHostInAWS()) {
+      network_setup_options.push(
+        <option key={3} value={"host_vpc"}>{"Use VPC of the Admin Console instance"}</option>
       );
-      hostVpcIdField = (
-        <Field name="destVpcId" type="text" label="Custom VPC ID"
-               component={YBTextInputWithLabel} normalize={trimString} />
+    }
+
+    let customVPCFields = <span />;
+    if (this.state.networkSetupType !== "new_vpc") {
+      customVPCFields = (
+        <Fragment>
+          <Field name="destVpcRegion" type="text" label="Custom VPC Region"
+            component={YBTextInputWithLabel} normalize={trimString}
+            isReadOnly={this.state.networkSetupType === "host_vpc"} />
+          <Field name="destVpcId" type="text" label="Custom VPC ID"
+            component={YBTextInputWithLabel} normalize={trimString}
+            isReadOnly={this.state.networkSetupType === "host_vpc"} />
+        </Fragment>
+      );
+    }
+    let hostedZoneFields = <span />;
+    if (this.state.setupHostedZone) {
+      hostedZoneFields = (
+        <Field name="hostedZoneId" type="text" label="Route53 Zone ID"
+              component={YBTextInputWithLabel} normalize={trimString} />
       );
     }
     return (
-      <form name="providerConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
+      <form name="awsProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
         <Row className="config-section-header">
           <Col lg={6}>
             { error && <Alert bsStyle="danger">{error}</Alert> }
             <div className="aws-config-form form-right-aligned-labels">
               <Field name="accountName" type="text" label="Name"
-                     component={YBTextInputWithLabel} normalize={convertSpaceToDash} />
+                     component={YBTextInputWithLabel} />
               <Field name="accessKey" type="text" label="Access Key ID"
                      component={YBTextInputWithLabel} normalize={trimString} />
               <Field name="secretKey" type="text" label="Secret Access Key"
                      component={YBTextInputWithLabel} normalize={trimString} />
-              <Field name="hostedZoneId" type="text" label="Route53 Hosted Zone ID"
-                     component={YBTextInputWithLabel} normalize={trimString} />
-              {hostVpcRegionField}
-              {hostVpcIdField}
-              <Field name="useHostVpc"
-                     component={YBToggle}
-                     label="Use Host's VPC"
-                     subLabel={subLabel}
-                     defaultChecked={!this.state.hostVpcVisible}
-                     onToggle={this.hostVpcToggled}
-                     isReadOnly={!this.isHostInAWS()} />
+              <Field name="network_setup" component={YBSelectWithLabel}
+                options={network_setup_options} label="VPC Setup"
+                onInputChanged={this.networkSetupChanged} />
+              {customVPCFields}
+              <Field name="setupHostedZone" component={YBToggle}
+                     label="Enable Hosted Zone" defaultChecked={this.state.setupHostedZone}
+                     onToggle={this.hostedZoneToggled} />
+              {hostedZoneFields}
             </div>
           </Col>
         </Row>
@@ -115,30 +134,34 @@ class AWSProviderInitView extends Component {
 
 function validate(values) {
   const errors = {};
-  let hasErrors = false;
-  if (!values.accountName) {
-    errors.accountName = 'Name is required';
-    hasErrors = true;
-  }
-
-  if (/\s/.test(values.accountName)) {
-    errors.accountName = 'Name cannot have spaces';
-    hasErrors = true;
+  if (!isNonEmptyString(values.accountName)) {
+    errors.accountName = 'Account Name is required';
   }
 
   if (!values.accessKey || values.accessKey.trim() === '') {
     errors.accessKey = 'Access Key is required';
-    hasErrors = true;
   }
 
   if(!values.secretKey || values.secretKey.trim() === '') {
     errors.secretKey = 'Secret Key is required';
-    hasErrors = true;
   }
-  return hasErrors && errors;
+
+  if (values.network_setup === "existing_vpc") {
+    if (!isNonEmptyString(values.destVpcId)) {
+      errors.destVpcId = 'VPC ID is required';
+    }
+    if (!isNonEmptyString(values.destVpcRegion)) {
+      errors.destVpcRegion = 'VPC region is required';
+    }
+  }
+
+  if (values.setupHostedZone && !isNonEmptyString(values.hostedZoneId)) {
+    errors.hostedZoneId = 'Route53 Zone ID is required';
+  }
+  return errors;
 }
 
 export default reduxForm({
-  form: 'providerConfigForm',
+  form: 'awsProviderConfigForm',
   validate
 })(AWSProviderInitView);
