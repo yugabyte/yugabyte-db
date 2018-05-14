@@ -37,8 +37,6 @@ import com.yugabyte.sample.common.CmdLineOpts;
  * The metric's id can be thought of as a compound/concatenated unique id - which could include
  * user id, on a node id and device id (and id of the device). For simplicity, we use it
  * as a single metric id to cover all of them.
- *
- * The metricsTable has the metric timeseries data for all metrics.
  */
 public class CassandraBatchTimeseries extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraBatchTimeseries.class);
@@ -63,8 +61,8 @@ public class CassandraBatchTimeseries extends AppBase {
   }
 
   static Random random = new Random();
-  // The table that has the raw metric data.
-  private String metricsTable = "batch_ts_metrics_raw";
+  // The default table name that has the raw metric data.
+  private final String DEFAULT_TABLE_NAME = "batch_ts_metrics_raw";
   // The structure to hold info per metric.
   static List<DataSource> dataSources = new CopyOnWriteArrayList<DataSource>();
   // The minimum number of metrics to simulate.
@@ -109,14 +107,18 @@ public class CassandraBatchTimeseries extends AppBase {
     }
   }
 
+  public String getTableName() {
+    return appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+  }
+
   @Override
   public void dropTable() {
-    dropCassandraTable(metricsTable);
+    dropCassandraTable(getTableName());
   }
 
   @Override
   protected List<String> getCreateTableStatements() {
-    String create_stmt = "CREATE TABLE IF NOT EXISTS " + metricsTable + " (" +
+    String create_stmt = "CREATE TABLE IF NOT EXISTS " + getTableName() + " (" +
                          " metric_id varchar" +
                          ", ts bigint" +
                          ", value varchar" +
@@ -134,7 +136,7 @@ public class CassandraBatchTimeseries extends AppBase {
         if (preparedInsert == null) {
           // Create the prepared statement object.
           String insert_stmt = String.format("INSERT INTO %s (metric_id, ts, value) VALUES " +
-                                             "(:metric_id, :ts, :value);", metricsTable);
+                                             "(:metric_id, :ts, :value);", getTableName());
           preparedInsert = getCassandraClient().prepare(insert_stmt);
         }
       }
@@ -149,7 +151,7 @@ public class CassandraBatchTimeseries extends AppBase {
           // Create the prepared statement object.
           String select_stmt = String.format("SELECT * from %s WHERE metric_id = :metricId AND " +
                                              "ts > :startTs AND ts < :endTs ORDER BY ts DESC " +
-                                             "LIMIT :readBatchSize;", metricsTable);
+                                             "LIMIT :readBatchSize;", getTableName());
           preparedSelect = getCassandraClient().prepare(select_stmt);
         }
       }
