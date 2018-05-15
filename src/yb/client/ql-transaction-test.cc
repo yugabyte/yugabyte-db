@@ -253,9 +253,9 @@ class QLTransactionTest : public QLDmlTestBase {
     ASSERT_EQ(value, *row) << "Originator: " << __FILE__ << ":" << line;
   }
 
-  void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
+  void WriteData(const WriteOpType op_type = WriteOpType::INSERT, size_t transaction = 0) {
     auto txn = CreateTransaction();
-    WriteRows(CreateSession(txn), 0, op_type);
+    WriteRows(CreateSession(txn), transaction, op_type);
     ASSERT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed";
   }
@@ -1269,6 +1269,49 @@ TEST_F(QLTransactionTest, InsertDeleteWithClusterRestart) {
     SCOPED_TRACE(Format("Key: $0", i));
     auto row = SelectRow(session, 1 /* key */);
     ASSERT_FALSE(row.ok()) << "Row: " << row;
+  }
+}
+
+TEST_F(QLTransactionTest, ChangeLeader) {
+  constexpr size_t kThreads = 2;
+  constexpr auto kTestTime = 5s;
+
+  DisableTransactionTimeout();
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> stopped;
+  for (size_t i = 0; i != kThreads; ++i) {
+    threads.emplace_back([this, i, &stopped] {
+      size_t idx = i;
+      while (!stopped) {
+        WriteData(WriteOpType::INSERT, idx);
+        idx += kThreads;
+      }
+    });
+  }
+
+  auto test_finish = std::chrono::steady_clock::now() + kTestTime;
+  while (std::chrono::steady_clock::now() < test_finish) {
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      std::vector<tablet::TabletPeerPtr> peers;
+      cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+      for (const auto& peer : peers) {
+        if (peer->consensus() &&
+            peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+            peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+          consensus::LeaderStepDownRequestPB req;
+          req.set_tablet_id(peer->tablet_id());
+          consensus::LeaderStepDownResponsePB resp;
+          ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+        }
+      }
+    }
+    std::this_thread::sleep_for(3s);
+  }
+  stopped = true;
+
+  for (auto& thread : threads) {
+    thread.join();
   }
 }
 
