@@ -109,6 +109,11 @@ METRIC_DEFINE_counter(tablet, leader_memory_pressure_rejections,
   yb::MetricUnit::kRequests,
   "Number of RPC requests rejected due to memory pressure while LEADER.");
 
+METRIC_DEFINE_counter(tablet, transaction_conflicts,
+  "Distributed Transaction Conflicts",
+  yb::MetricUnit::kRequests,
+  "Number of conflicts detected among uncommitted distributed transactions.");
+
 using strings::Substitute;
 
 namespace yb {
@@ -121,7 +126,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(ql_read_latency),
     MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
-    MINIT(leader_memory_pressure_rejections) {
+    MINIT(leader_memory_pressure_rejections),
+    MINIT(transaction_conflicts) {
 }
 #undef MINIT
 
