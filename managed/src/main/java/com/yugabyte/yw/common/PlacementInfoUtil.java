@@ -353,10 +353,11 @@ public class PlacementInfoUtil {
 
     // Verify the provided edit parameters if in edit case and get the mode.
     Cluster oldCluster;
-    LOG.info("Placement={}, nodes={}.", cluster.placementInfo, taskParams.nodeDetailsSet.size());
+    LOG.info("Placement={}, nodes={}, AZ={}.", cluster.placementInfo,
+             taskParams.nodeDetailsSet.size(), taskParams.userAZSelected);
     if (isEditUniverse) {
       // If user AZ Selection is made for Edit get a new configuration from placement info
-      if (taskParams.userAZSelected && universe != null) {
+      if (taskParams.userAZSelected) {
         mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
         configureNodeStates(taskParams, universe, mode, cluster);
         return;
