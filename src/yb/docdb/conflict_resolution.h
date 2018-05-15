@@ -45,10 +45,12 @@ class KeyValueWriteBatchPB;
 // hybrid_time - current hybrid time.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
+// conflicts_metric - transaction_conflicts metric to update.
 CHECKED_STATUS ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
                                            HybridTime hybrid_time,
                                            rocksdb::DB* db,
-                                           TransactionStatusManager* status_manager);
+                                           TransactionStatusManager* status_manager,
+                                           Counter* conflicts_metric);
 
 // Resolves conflicts for doc operations.
 // Read all intents that could conflict with provided doc_ops.
