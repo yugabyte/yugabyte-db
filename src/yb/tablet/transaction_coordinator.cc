@@ -290,12 +290,16 @@ class TransactionState {
     return log_prefix_;
   }
 
-  void Poll() const {
+  void Poll(bool leader) {
     if (status_ == TransactionStatus::COMMITTED) {
-      DCHECK(!unnotified_tablets_.empty() ||
-             ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) << ToString();
-      for (auto& tablet : unnotified_tablets_) {
-        context_.NotifyApplying({tablet, id_, commit_time_});
+      if (unnotified_tablets_.empty()) {
+        if (leader && !ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) {
+          SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
+        }
+      } else {
+        for (auto& tablet : unnotified_tablets_) {
+          context_.NotifyApplying({tablet, id_, commit_time_});
+        }
       }
     }
   }
@@ -823,7 +827,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
         it = managed_transactions_.emplace(this, id, hybrid_time, log_prefix_).first;
-        LOG_WITH_PREFIX(INFO) << Format("Added: $0", *it);
+        VLOG_WITH_PREFIX(1) << Format("Added: $0", *it);
       }
     }
     return it;
@@ -887,7 +891,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
       }
       for (auto& transaction : managed_transactions_) {
-        transaction.Poll();
+        const_cast<TransactionState&>(transaction).Poll(leader);
       }
       postponed_leader_actions_.Swap(&actions);
 
