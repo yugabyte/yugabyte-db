@@ -213,28 +213,6 @@ public class YBTable {
   }
 
   /**
-   * Return the leader counts for each placement zone in the cluster.
-   * @param deadline deadline in milliseconds for this method to finish.
-   *        throws a TimeoutException if it doesn't.
-   * @return a map from placement zones to the leader count in that zone
-   */
-  public Map<String, Integer> getLeaderCountsPerPlacementZone(long deadline) throws Exception {
-    Map<String, Integer> leaderCounts = new HashMap<>();
-    List<LocatedTablet> tablets = getTabletsLocations(deadline);
-    for (LocatedTablet tablet : tablets) {
-      LocatedTablet.Replica leaderReplica = tablet.getLeaderReplica();
-      String placementZone = leaderReplica.getCloudInfo().getPlacementZone();
-      if (leaderCounts.containsKey(placementZone)) {
-        int currentLeaderCount = leaderCounts.get(placementZone);
-        leaderCounts.put(placementZone, currentLeaderCount + 1);
-      } else {
-        leaderCounts.put(placementZone, 1);
-      }
-    }
-    return leaderCounts;
-  }
-
-  /**
    * Loop through all replicas in the table and store a mapping from tserver placement uuid to
    * a list of lists, containing the live replica count per ts, followed by the read
    * replica count per ts. If there are two placement uuids, live and readOnly, and two

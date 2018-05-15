@@ -158,6 +158,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   ts_desc->UpdateHeartbeatTime();
   ts_desc->set_num_live_replicas(req->num_live_tablets());
+  ts_desc->set_leader_count(req->leader_count());
 
   // Set the TServer metrics in TS Descriptor
   if (req->has_metrics()) {
@@ -541,6 +542,12 @@ void MasterServiceImpl::IsLoadBalanced(
     const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
     RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalanced);
+}
+
+void MasterServiceImpl::AreLeadersOnPreferredOnly(
+    const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AreLeadersOnPreferredOnly);
 }
 
 void MasterServiceImpl::FlushTables(const FlushTablesRequestPB* req,

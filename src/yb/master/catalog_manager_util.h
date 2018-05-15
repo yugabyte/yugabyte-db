@@ -31,7 +31,12 @@ class CatalogManagerUtil {
  public:
   // For the given set of descriptors, checks if the load is considered balanced across AZs in
   // multi AZ setup, else checks load distribution across tservers (single AZ).
-  static CHECKED_STATUS IsLoadBalanced(const master::TSDescriptorVector& ts_descs);
+  static CHECKED_STATUS IsLoadBalanced(const TSDescriptorVector& ts_descs);
+
+  // For the given set of descriptors, checks if every tserver that shouldn't have leader load
+  // actually has no leader load.
+  static CHECKED_STATUS AreLeadersOnPreferredOnly(const TSDescriptorVector& ts_descs,
+                                                  const ReplicationInfoPB& replication_info);
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.

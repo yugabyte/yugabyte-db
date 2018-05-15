@@ -177,6 +177,10 @@ class MasterServiceImpl : public MasterServiceIf,
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
       rpc::RpcContext rpc) override;
 
+  virtual void AreLeadersOnPreferredOnly(
+      const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
   virtual void FlushTables(
       const FlushTablesRequestPB* req, FlushTablesResponsePB* resp,
       rpc::RpcContext rpc) override;

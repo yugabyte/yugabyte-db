@@ -5345,6 +5345,23 @@ Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                                 AreLeadersOnPreferredOnlyResponsePB* resp) {
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+
+  Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, config.replication_info());
+  if (!s.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK, s);
+  }
+
+  return Status::OK();
+}
+
 void BlacklistState::Reset() {
   tservers_.clear();
   initial_load_ = 0;
