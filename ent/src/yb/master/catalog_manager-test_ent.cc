@@ -9,6 +9,69 @@ namespace enterprise {
 using std::shared_ptr;
 using std::make_shared;
 
+const string read_only_placement_uuid = "read_only";
+
+std::shared_ptr<TSDescriptor> SetupTSEnt(const string& uuid,
+                                         const string& az,
+                                         const string& placement_uuid) {
+  NodeInstancePB node;
+  node.set_permanent_uuid(uuid);
+
+  TSRegistrationPB reg;
+  // Set the placement uuid field for read_only clusters.
+  reg.mutable_common()->set_placement_uuid(placement_uuid);
+  // Fake host:port combo, with uuid as host, for ease of testing.
+  auto hp = reg.mutable_common()->add_rpc_addresses();
+  hp->set_host(uuid);
+  // Same cloud info as cluster config, with modifyable AZ.
+  auto ci = reg.mutable_common()->mutable_cloud_info();
+  ci->set_placement_cloud(default_cloud);
+  ci->set_placement_region(default_region);
+  ci->set_placement_zone(az);
+
+  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
+  CHECK_OK(ts->Register(node, reg));
+
+  return ts;
+}
+
+void SetupClusterConfigEnt(const vector<string>& az_list,
+                           const vector<string>& read_only_list,
+                           const vector<string>& affinitized_leader_list,
+                           ReplicationInfoPB* replication_info) {
+  PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
+  placement_info->set_num_replicas(kNumReplicas);
+
+  for (const string& az : az_list) {
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone(az);
+    pb->set_min_num_replicas(1);
+  }
+
+  if (!read_only_list.empty()) {
+    placement_info = replication_info->add_read_replicas();
+    placement_info->set_num_replicas(1);
+  }
+
+  for (const string& read_only_az : read_only_list) {
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone(read_only_az);
+    placement_info->set_placement_uuid(read_only_placement_uuid);
+    pb->set_min_num_replicas(1);
+  }
+
+  for (const string& affinitized_az : affinitized_leader_list) {
+    CloudInfoPB* ci = replication_info->add_affinitized_leaders();
+    ci->set_placement_cloud(default_cloud);
+    ci->set_placement_region(default_region);
+    ci->set_placement_zone(affinitized_az);
+  }
+}
+
 class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {
  public:
   TestLoadBalancerEnterprise(ClusterLoadBalancerMocked* cb, const string& table_id) :
@@ -25,15 +88,15 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     TSDescriptorVector ts_descs = {ts0, ts1, ts2};
 
     PrepareTestState(ts_descs);
-    PrepareAffinitizedLeaders("a" /* affinitized zones */);
+    PrepareAffinitizedLeaders({"a"} /* affinitized zones */);
     TestAlreadyBalancedAffinitizedLeaders();
 
     PrepareTestState(ts_descs);
-    PrepareAffinitizedLeaders("a");
+    PrepareAffinitizedLeaders({"a"});
     TestBalancingOneAffinitizedLeader();
 
     PrepareTestState(ts_descs);
-    PrepareAffinitizedLeaders("bc");
+    PrepareAffinitizedLeaders({"b", "c"});
     TestBalancingTwoAffinitizedLeaders();
 
     PrepareTestState(ts_descs);
@@ -183,7 +246,8 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
     // Normal setup.
     // then create new node in az1 with all replicas.
-    SetupClusterConfigEnt(true /* multi_az = */, true /* read_only_clusters */);
+    SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {"a"} /* read only */,
+                          {} /* affinitized leaders */, &replication_info_);
     ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid /* placement_uuid */));
     ts_descs_.push_back(SetupTSEnt("4444", "a", read_only_placement_uuid /* placement_uuid */));
 
@@ -228,7 +292,8 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
   void TestLeaderBalancingWithReadOnly() {
     // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
     LOG(INFO) << "Starting TestLeaderBalancingWithReadOnly";
-    SetupClusterConfigEnt(true /* multi_az = */, true /* read_only_clusters */);
+    SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {"a"} /* read only */,
+                          {} /* affinitized leaders */, &replication_info_);
     ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid));
 
     // Adding all read_only replicas.
@@ -248,72 +313,13 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     LOG(INFO) << "Finishing TestLeaderBalancingWithReadOnly";
   }
 
-  void PrepareAffinitizedLeaders(const string& zones) {
-    for (char zone : zones) {
+  void PrepareAffinitizedLeaders(const vector<string>& zones) {
+    for (const string& zone : zones) {
       CloudInfoPB ci;
       ci.set_placement_cloud(default_cloud);
       ci.set_placement_region(default_region);
-      ci.set_placement_zone(string(1, zone));
+      ci.set_placement_zone(zone);
       affinitized_zones_.insert(ci);
-    }
-  }
-
-  std::shared_ptr<TSDescriptor> SetupTSEnt(const string& uuid,
-                                           const string& az,
-                                           const string& placement_uuid) {
-    NodeInstancePB node;
-    node.set_permanent_uuid(uuid);
-
-    TSRegistrationPB reg;
-    // Set the placement uuid and is live fields for read_only clusters.
-    reg.mutable_common()->set_placement_uuid(placement_uuid);
-    // Fake host:port combo, with uuid as host, for ease of testing.
-    auto hp = reg.mutable_common()->add_rpc_addresses();
-    hp->set_host(uuid);
-    // Same cloud info as cluster config, with modifyable AZ.
-    auto ci = reg.mutable_common()->mutable_cloud_info();
-    ci->set_placement_cloud(default_cloud);
-    ci->set_placement_region(default_region);
-    ci->set_placement_zone(az);
-
-    std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-    CHECK_OK(ts->Register(node, reg));
-
-    return ts;
-  }
-
-  void SetupClusterConfigEnt(bool multi_az, bool read_only_clusters) {
-    PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
-    placement_info->set_num_replicas(kNumReplicas);
-    auto pb = placement_info->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-    pb->mutable_cloud_info()->set_placement_region(default_region);
-    pb->mutable_cloud_info()->set_placement_zone("a");
-    pb->set_min_num_replicas(1);
-
-    if (multi_az) {
-      pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-      pb->mutable_cloud_info()->set_placement_region(default_region);
-      pb->mutable_cloud_info()->set_placement_zone("b");
-      pb->set_min_num_replicas(1);
-
-      pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-      pb->mutable_cloud_info()->set_placement_region(default_region);
-      pb->mutable_cloud_info()->set_placement_zone("c");
-      pb->set_min_num_replicas(1);
-    }
-
-    if (read_only_clusters) {
-      PlacementInfoPB* placement_info = replication_info_.add_read_replicas();
-      placement_info->set_num_replicas(1);
-      auto pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-      pb->mutable_cloud_info()->set_placement_region(default_region);
-      pb->mutable_cloud_info()->set_placement_zone("a");
-      placement_info->set_placement_uuid(read_only_placement_uuid);
-      pb->set_min_num_replicas(1);
     }
   }
 
@@ -330,8 +336,6 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
-
-  const string read_only_placement_uuid = "read_only";
 };
 
 TEST(TestLoadBalancerEnterprise, TestLoadBalancerAlgorithm) {
@@ -340,6 +344,68 @@ TEST(TestLoadBalancerEnterprise, TestLoadBalancerAlgorithm) {
   auto cb = make_shared<yb::master::enterprise::ClusterLoadBalancerMocked>(options.get());
   auto lb = make_shared<TestLoadBalancerEnterprise>(cb.get(), table_id);
   lb->TestAlgorithm();
+}
+
+
+TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
+  ReplicationInfoPB replication_info;
+  SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {} /* read only */,
+                        {"a"} /* affinitized leaders */, &replication_info);
+
+  std::shared_ptr<TSDescriptor> ts0 = SetupTSEnt("0000", "a", "");
+  std::shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "a", "");
+  std::shared_ptr<TSDescriptor> ts2 = SetupTSEnt("2222", "b", "");
+  std::shared_ptr<TSDescriptor> ts3 = SetupTSEnt("3333", "b", "");
+  std::shared_ptr<TSDescriptor> ts4 = SetupTSEnt("4444", "c", "");
+
+  ASSERT_TRUE(ts0->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_TRUE(ts1->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_FALSE(ts2->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_FALSE(ts3->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_FALSE(ts4->IsAcceptingLeaderLoad(replication_info));
+
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3, ts4};
+
+  ts0->set_leader_count(8);
+  ts1->set_leader_count(8);
+  ts2->set_leader_count(0);
+  ts3->set_leader_count(0);
+  ts4->set_leader_count(1);
+  ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+
+  ts4->set_leader_count(0);
+  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+
+  ts0->set_leader_count(12);
+  ts1->set_leader_count(4);
+  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+}
+
+TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
+  ReplicationInfoPB replication_info;
+  SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {"d"} /* read only */,
+                        {} /* affinitized leaders */, &replication_info);
+
+  std::shared_ptr<TSDescriptor> ts0 = SetupTSEnt("0000", "a", "");
+  std::shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "b", "");
+  std::shared_ptr<TSDescriptor> ts2 = SetupTSEnt("2222", "c", "");
+  std::shared_ptr<TSDescriptor> ts3 = SetupTSEnt("3333", "d", "read_only");
+
+  ASSERT_TRUE(ts0->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_TRUE(ts1->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_TRUE(ts2->IsAcceptingLeaderLoad(replication_info));
+  ASSERT_FALSE(ts3->IsAcceptingLeaderLoad(replication_info));
+
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3};
+
+  ts0->set_leader_count(8);
+  ts1->set_leader_count(8);
+  ts2->set_leader_count(8);
+  ts3->set_leader_count(0);
+  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+
+  ts3->set_leader_count(1);
+  ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
 }
 
 } // namespace enterprise
