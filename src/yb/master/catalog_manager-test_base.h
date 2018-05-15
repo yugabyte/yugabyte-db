@@ -27,6 +27,10 @@
 namespace yb {
 namespace master {
 
+const string default_cloud = "aws";
+const string default_region = "us-west-1";
+const int kNumReplicas = 3;
+
 void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
                  TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
   const int kNumSplits = split_keys.size();
@@ -58,6 +62,19 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
 }
 
+void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info) {
+
+  PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
+  placement_info->set_num_replicas(kNumReplicas);
+  for (const string& az : azs) {
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone(az);
+    pb->set_min_num_replicas(1);
+  }
+}
+
 void NewReplica(
     TSDescriptor* ts_desc, tablet::TabletStatePB state, consensus::RaftPeerPB::Role role,
     TabletReplica* replica) {
@@ -65,9 +82,6 @@ void NewReplica(
   replica->state = state;
   replica->role = role;
 }
-
-const string default_cloud = "aws";
-const string default_region = "us-west-1";
 
 std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
   NodeInstancePB node;
@@ -184,7 +198,7 @@ class TestLoadBalancerBase {
   void TestWithBlacklist() {
     LOG(INFO) << "Testing with tablet servers with blacklist";
     // Setup cluster config.
-    SetupClusterConfig(/* multi_az = */ true);
+    SetupClusterConfig({"a", "b", "c"}, &replication_info_);
 
     // Blacklist the first host in AZ "a".
     blacklist_.add_hosts()->set_host(ts_descs_[0]->permanent_uuid());
@@ -238,7 +252,7 @@ class TestLoadBalancerBase {
   void TestOverReplication() {
     LOG(INFO) << "Testing with tablet servers with over-replication";
     // Setup cluster config.
-    SetupClusterConfig(/* multi_az = */ false);
+    SetupClusterConfig({"a"}, &replication_info_);
 
     // Remove the 2 tablet peers that are wrongly placed and assign a new one that is properly
     // placed.
@@ -364,7 +378,7 @@ class TestLoadBalancerBase {
   void TestWithMissingPlacement() {
     LOG(INFO) << "Testing with tablet servers missing placement information";
     // Setup cluster level placement to multiple AZs.
-    SetupClusterConfig(/* multi_az = */ true);
+    SetupClusterConfig({"a", "b", "c"}, &replication_info_);
 
     // Remove the only tablet peer from AZ "c".
     for (const auto tablet : tablets_) {
@@ -402,7 +416,7 @@ class TestLoadBalancerBase {
   void TestWithPlacement() {
     LOG(INFO) << "Testing with placement information";
     // Setup cluster level placement to the same 3 AZs as our tablet servers.
-    SetupClusterConfig(/* multi_az = */ true);
+    SetupClusterConfig({"a", "b", "c"}, &replication_info_);
 
     // Add three TSs, one in wrong AZ, two in right AZs.
     ts_descs_.push_back(SetupTS("3333", "WRONG"));
@@ -474,7 +488,7 @@ class TestLoadBalancerBase {
 
   void TestWithMissingTabletServers() {
     LOG(INFO) << "Testing with missing tablet servers";
-    SetupClusterConfig(/* multi_az = */ false);
+    SetupClusterConfig({"a"}, &replication_info_);
 
     // Remove one of the needed tablet servers.
     ts_descs_.pop_back();
@@ -520,7 +534,7 @@ class TestLoadBalancerBase {
   void TestWithMissingPlacementAndLoadImbalance() {
     LOG(INFO) << "Testing with tablet servers missing placement and load imbalance";
     // Setup cluster level placement to multiple AZs.
-    SetupClusterConfig(/* multi_az = */ true);
+    SetupClusterConfig({"a", "b", "c"}, &replication_info_);
 
     // Remove the only tablet peer from AZ "c".
     for (const auto tablet : tablets_) {
@@ -726,7 +740,7 @@ class TestLoadBalancerBase {
   void TestMissingPlacementSingleAz() {
     LOG(INFO) << "Testing single az deployment where min_num_replicas different from num_replicas";
     // Setup cluster level placement to single AZ.
-    SetupClusterConfig(/* multi_az = */ false);
+    SetupClusterConfig({"a"}, &replication_info_);
 
     // Under-replicate tablets 0, 1, 2.
     RemoveReplica(tablets_[0].get(), ts_descs_[0]);
@@ -794,30 +808,6 @@ class TestLoadBalancerBase {
       }
       // Set the replica locations directly into the tablet map.
       tablet_map_[tablets_[i]->tablet_id()]->SetReplicaLocations(replica_map);
-    }
-  }
-
-  void SetupClusterConfig(bool multi_az) {
-    PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
-    placement_info->set_num_replicas(kNumReplicas);
-    auto pb = placement_info->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-    pb->mutable_cloud_info()->set_placement_region(default_region);
-    pb->mutable_cloud_info()->set_placement_zone("a");
-    pb->set_min_num_replicas(1);
-
-    if (multi_az) {
-      pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-      pb->mutable_cloud_info()->set_placement_region(default_region);
-      pb->mutable_cloud_info()->set_placement_zone("b");
-      pb->set_min_num_replicas(1);
-
-      pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
-      pb->mutable_cloud_info()->set_placement_region(default_region);
-      pb->mutable_cloud_info()->set_placement_zone("c");
-      pb->set_min_num_replicas(1);
     }
   }
 
@@ -905,8 +895,6 @@ class TestLoadBalancerBase {
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
     return cb_->HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
   }
-
-  const int kNumReplicas = 3;
 
   ClusterLoadBalancerMockedClass* cb_;
 

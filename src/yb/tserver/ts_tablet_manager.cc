@@ -1140,6 +1140,18 @@ int TSTabletManager::GetNumLiveTablets() const {
   return count;
 }
 
+int TSTabletManager::GetLeaderCount() const {
+  int count = 0;
+  boost::shared_lock<RWMutex> lock(lock_);
+  for (const auto& entry : tablet_map_) {
+    consensus::Consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
+    if (leader_status != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+      count++;
+    }
+  }
+  return count;
+}
+
 void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
                                         std::shared_ptr<consensus::StateChangeContext> context) {
   TabletReportState* state = FindOrNull(dirty_tablets_, tablet_id);

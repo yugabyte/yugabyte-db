@@ -384,7 +384,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       req.mutable_tablet_report());
   }
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
-
+  req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
 
   if (prev_tserver_metrics_submission_ +
       MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::Now()) {

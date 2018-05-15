@@ -251,6 +251,10 @@ Status TSDescriptor::ResolveEndpoint(Endpoint* addr) const {
   return Status::OK();
 }
 
+bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {
+  return true;
+}
+
 bool TSDescriptor::HasTabletDeletePending() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return !tablets_pending_delete_.empty();

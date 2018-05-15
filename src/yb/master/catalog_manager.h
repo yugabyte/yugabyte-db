@@ -1030,6 +1030,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp);
 
+  // API to check that all tservers that shouldn't have leader load do not.
+  CHECKED_STATUS AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                           AreLeadersOnPreferredOnlyResponsePB* resp);
+
   // Return the placement uuid of the primary cluster containing this master.
   string placement_uuid() const;
 
