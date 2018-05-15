@@ -469,6 +469,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Creates a task delete the given node name from the univers.
+   *
+   * @param nodeName name of a node in the taskparams' uuid universe.
+   */
   public SubTaskGroup deleteNodeFromUniverseTask(String nodeName) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteNode", executor);
     NodeTaskParams params = new NodeTaskParams();
@@ -486,10 +491,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node the node to add/remove master process on
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
+   * @param useHostPort indicate to server to use host/port instead of uuid.
    */
   public void createChangeConfigTask(NodeDetails node,
                                      boolean isAdd,
                                      UserTaskDetails.SubTaskGroupType subTask) {
+	  createChangeConfigTask(node, isAdd, subTask, false);
+  }
+
+  public void createChangeConfigTask(NodeDetails node,
+                                     boolean isAdd,
+                                     UserTaskDetails.SubTaskGroupType subTask,
+                                     boolean useHostPort) {
     // Create a new task list for the change config so that it happens one by one.
     String subtaskGroupName = "ChangeMasterConfig(" + node.nodeName + ", " +
       (isAdd? "add" : "remove") + ")";
@@ -505,6 +518,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // This is an add master.
     params.opType = isAdd ? ChangeMasterConfig.OpType.AddMaster :
       ChangeMasterConfig.OpType.RemoveMaster;
+    params.useHostPort = useHostPort;
     // Create the task.
     ChangeMasterConfig changeConfig = new ChangeMasterConfig();
     changeConfig.initialize(params);

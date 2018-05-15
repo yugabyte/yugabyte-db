@@ -22,6 +22,8 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
+    NodeDetails currentNode = null;
+    boolean hitException = false;
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -31,7 +33,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       LOG.info("Stop Node with name {} from universe {}", taskParams().nodeName,
                taskParams().universeUUID);
 
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
         LOG.error(msg);
@@ -69,8 +71,14 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      hitException = true;
       throw t;
     } finally {
+      // Reset the state, on any failure, so that the actions can be retried.
+      if (currentNode != null && hitException) {
+        setNodeState(taskParams().nodeName, currentNode.state);
+      }
+
       unlockUniverseForUpdate();
     }
 

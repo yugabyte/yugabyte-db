@@ -144,7 +144,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
         newTaskParams.currentClusterType = clusterType;
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
-        newTaskParams.userAZSelected = true;
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {

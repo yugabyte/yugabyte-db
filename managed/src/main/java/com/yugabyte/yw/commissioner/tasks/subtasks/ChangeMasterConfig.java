@@ -33,9 +33,11 @@ public class ChangeMasterConfig extends AbstractTaskBase {
 
   // Parameters for change master config task.
   public static class Params extends NodeTaskParams {
-    // When true, the master hostPort is added to the current universe's quorum, otherwise it is
-    // deleted.
+    // When AddMaster, the master is added to the current master quorum, otherwise it is deleted.
     public OpType opType;
+    // Use hostport to remove a master from quorum, when this is set. No errors are rethrown
+    // as this is best effort.
+    public boolean useHostPort = false;
   }
 
   @Override
@@ -76,23 +78,28 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
-    LOG.info("Starting changeMasterConfig({}:{}, {})",
-             node.cloudInfo.private_ip, node.masterRpcPort, taskParams().opType);
-    ChangeConfigResponse response;
+    LOG.info("Starting changeMasterConfig({}:{}, op={}, useHost={})",
+             node.cloudInfo.private_ip, node.masterRpcPort, taskParams().opType.toString(),
+             taskParams().useHostPort);
+    ChangeConfigResponse response = null;
     try {
       response = client.changeMasterConfig(
-          node.cloudInfo.private_ip, node.masterRpcPort, isAddMasterOp);
+          node.cloudInfo.private_ip, node.masterRpcPort, isAddMasterOp, taskParams().useHostPort);
     } catch (Exception e) {
       String msg = "Error " + e.getMessage() + " while performing change config on node " +
                    node.nodeName + ", host:port = " + node.cloudInfo.private_ip + ":" +
                    node.masterRpcPort;
       LOG.error(msg, e);
-      throw new RuntimeException(msg);
+      if (!taskParams().useHostPort) {
+        throw new RuntimeException(msg);
+      } else {
+        response = null;
+      }
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
     // If there was an error, throw an exception.
-    if (response.hasError()) {
+    if (response != null && response.hasError()) {
       String msg = "ChangeConfig response has error " + response.errorMessage();
       LOG.error(msg);
       throw new RuntimeException(msg);
