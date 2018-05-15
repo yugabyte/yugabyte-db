@@ -38,7 +38,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
   public void run() {
     LOG.info("Started {} task for node {} in univ uuid={}", getName(),
              taskParams().nodeName, taskParams().universeUUID);
-
+    NodeDetails currentNode = null;
+    boolean hitException = false;
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -46,7 +47,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
         LOG.error(msg);
@@ -73,12 +74,16 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         // only if it reachable.
         boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
         LOG.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
-        if (currentNode.isMaster && masterReachable) {
-          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
-          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+        if (currentNode.isMaster) {
+          if (masterReachable) {
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
+            createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+          } else {
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+          }
         }
 
         // Mark the tserver as blacklisted on the master leader.
@@ -95,6 +100,12 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+      } else {
+        if (currentNode.isMaster) {
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
         }
       }
 
@@ -118,8 +129,14 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      hitException = true;
       throw t;
     } finally {
+      // Reset the state, on any failure, so that the actions can be retried.
+      if (currentNode != null && hitException) {
+        setNodeState(taskParams().nodeName, currentNode.state);
+      }
+
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
