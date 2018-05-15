@@ -1561,21 +1561,30 @@ activate_virtualenv() {
     unset YB_RECREATE_VIRTUALENV
   fi
   if [[ ! -d $virtualenv_dir ]]; then
+    if [[ -n ${VIRTUAL_ENV:-} && -f $VIRTUAL_ENV/bin/activate ]]; then
+      local old_virtual_env=$VIRTUAL_ENV
+      # Re-activate and deactivate the other virtualenv we're in. Otherwise the deactivate
+      # function might not even be present in our current shell. This is necessary because otherwise
+      # the --user installation below will fail.
+      set +eu
+      . "$VIRTUAL_ENV/bin/activate"
+      deactivate
+      set -eu
+      # Not clear why deactivate does not do this.
+      remove_path_entry "$old_virtual_env/bin"
+    fi
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     pip2 install virtualenv --user
     (
       set -x
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
   set +u
   . "$virtualenv_dir"/bin/activate
-  # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
-  unset PYTHONPATH
   set -u
-  export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
   pip2 install -r "$YB_SRC_ROOT/requirements.txt"
   add_python_wrappers_dir_to_path
 }
