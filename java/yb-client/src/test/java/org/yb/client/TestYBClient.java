@@ -541,15 +541,7 @@ public class TestYBClient extends BaseYBClientTest {
     CreateTableOptions tableOptions = new CreateTableOptions().setNumTablets(8);
     YBTable table = syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
     
-    // Wait for leader load balancing to finish, timing out after 30 seconds. 
-    List<Integer> leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(4, 4));
-    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
-        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
-    
-    Map<String, Integer> leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
-    assertTrue(leaderCounts.containsKey("testZone0"));
-    assertTrue(leaderCounts.containsKey("testZone1"));
-    assertFalse(leaderCounts.containsKey("testZone2"));
+    assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
     
     leaders.clear();
     //Now make only the third zone an affinitized leader.
@@ -563,15 +555,7 @@ public class TestYBClient extends BaseYBClientTest {
       assertTrue(false);
     }
     
-    // Should have 8 leaders all in the one specified affinitized zone.
-    leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(8));
-    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
-        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
-    
-    leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
-    assertFalse(leaderCounts.containsKey("testZone0"));
-    assertFalse(leaderCounts.containsKey("testZone1"));
-    assertTrue(leaderCounts.containsKey("testZone2"));
+    assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
     
     // Now have no affinitized leaders, should balance 2, 3, 3.
     leaders.clear();
@@ -583,14 +567,7 @@ public class TestYBClient extends BaseYBClientTest {
       assertTrue(false);
     }
     
-    leaderCountsExpected = new ArrayList<Integer>(Arrays.asList(2, 3, 3));
-    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
-        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
-    
-    leaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
-    assertTrue(leaderCounts.containsKey("testZone0"));
-    assertTrue(leaderCounts.containsKey("testZone1"));
-    assertTrue(leaderCounts.containsKey("testZone2"));
+    assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
     
     // Now balance all affinitized leaders, should take no balancing steps.
     leaders.add(ci0);
@@ -604,12 +581,7 @@ public class TestYBClient extends BaseYBClientTest {
       assertTrue(false);
     }
     
-    assertTrue(syncClient.waitForExpectedLeaderLoadBalance(
-        DEFAULT_TIMEOUT_MS, table, leaderCountsExpected));
-    
-    // Since having no and all affinitized zones is the same, the two maps should be identical.
-    Map<String, Integer> newLeaderCounts = table.getLeaderCountsPerPlacementZone(DEFAULT_TIMEOUT_MS);
-    assertTrue(leaderCounts.equals(newLeaderCounts));
+    assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
   }
 
   /**

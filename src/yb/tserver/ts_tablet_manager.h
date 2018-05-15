@@ -245,6 +245,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Return the number of tablets in RUNNING or BOOTSTRAPPING state.
   int GetNumLiveTablets() const;
 
+  // Return the number of tablets for which this ts is a leader.
+  int GetLeaderCount() const;
+
   CHECKED_STATUS RunAllLogGC();
 
   // Creates and updates the map of table to the set of tablets assigned per table per disk

@@ -54,6 +54,20 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
   return Status::OK();
 }
 
+Status CatalogManagerUtil::AreLeadersOnPreferredOnly(const TSDescriptorVector& ts_descs,
+                                                     const ReplicationInfoPB& replication_info) {
+  for (const auto& ts_desc : ts_descs) {
+    if (!ts_desc->IsAcceptingLeaderLoad(replication_info) && ts_desc->leader_count() > 0) {
+      // This is a ts that shouldn't have leader load but does, return an error.
+      return STATUS(
+          IllegalState,
+          Substitute("Expected no leader load on tserver $0, found $1.",
+                     ts_desc->permanent_uuid(), ts_desc->leader_count()));
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                             ZoneToDescMap* zone_to_ts) {
   if (zone_to_ts == nullptr) {

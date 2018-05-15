@@ -117,6 +117,9 @@ message MasterErrorPB {
     ROLE_ALREADY_PRESENT = 27;
     ROLE_NOT_FOUND = 28;
     INVALID_REQUEST = 29;
+
+    // Indicator to client that the are leaders on preferred only operation can be retried.
+    CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK = 30;
   }
 
   // The error code.
@@ -470,6 +473,8 @@ message TSHeartbeatRequestPB {
 
   optional TServerMetricsPB metrics = 6;
 
+  // Number of tablets for which this ts is a leader.
+  optional int32 leader_count = 7;
 }
 
 message TSHeartbeatResponsePB {
@@ -958,6 +963,14 @@ message IsLoadBalancedResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AreLeadersOnPreferredOnlyRequestPB {
+}
+
+message AreLeadersOnPreferredOnlyResponsePB {
+  // Any error being set implies that the leader load is not balanced across the servers.
+  optional MasterErrorPB error = 1;
+}
+
 // ============================================================================
 //  Namespace  (default namespace = ANY placement)
 // ============================================================================
@@ -1209,6 +1222,8 @@ service MasterService {
       returns (GetLoadMovePercentResponsePB);
   rpc IsLoadBalanced(IsLoadBalancedRequestPB)
       returns (IsLoadBalancedResponsePB);
+  rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
+      returns (AreLeadersOnPreferredOnlyResponsePB);
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);

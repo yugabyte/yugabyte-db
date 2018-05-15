@@ -60,6 +60,7 @@ namespace master {
 
 class TSRegistrationPB;
 class TSInformationPB;
+class ReplicationInfoPB;
 
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
@@ -119,6 +120,9 @@ class TSDescriptor {
 
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
+  // Should this ts have any leader load on it.
+  virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
+
   // Return an RPC proxy to a service.
   template <class TProxy>
   CHECKED_STATUS GetProxy(const std::shared_ptr<rpc::Messenger>& messenger,
@@ -147,6 +151,17 @@ class TSDescriptor {
   int num_live_replicas() const {
     std::lock_guard<simple_spinlock> l(lock_);
     return num_live_replicas_;
+  }
+
+  void set_leader_count(int leader_count) {
+    DCHECK_GE(leader_count, 0);
+    std::lock_guard<simple_spinlock> l(lock_);
+    leader_count_ = leader_count;
+  }
+
+  int leader_count() const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return leader_count_;
   }
 
   void set_total_memory_usage(uint64_t total_memory_usage) {
@@ -270,6 +285,9 @@ class TSDescriptor {
 
   // The number of live replicas on this host, from the last heartbeat.
   int num_live_replicas_;
+
+  // The number of tablets for which this ts is a leader.
+  int leader_count_;
 
   gscoped_ptr<TSRegistrationPB> registration_;
   std::string placement_id_;

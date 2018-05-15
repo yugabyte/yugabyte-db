@@ -334,6 +334,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tablet leader load is balanced as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public AreLeadersOnPreferredOnlyResponse getAreLeadersOnPreferredOnly() throws Exception {
+    Deferred<AreLeadersOnPreferredOnlyResponse> d = asyncClient.getAreLeadersOnPreferredOnly();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Wait for the master server to be running and initialized.
    * @param hp the host and port for the master.
    * @param timeoutMS timeout in milliseconds to wait for.
@@ -669,26 +678,11 @@ public class YBClient implements AutoCloseable {
     }
   }
 
-  /**
-   * Checks whether the leader counts of tablet servers match the expected.
-   */
-  private class LeaderLoadBalanceCondition implements Condition {
-    private YBTable table;
-    private List<Integer> leaderCountsExpected;
-    private long deadline;
-    public LeaderLoadBalanceCondition(YBTable table,
-                                      List<Integer> leaderCountsExpected,
-                                      long deadline) {
-      this.table = table;
-      this.leaderCountsExpected = leaderCountsExpected;
-      this.deadline = deadline;
-    }
+  private class AreLeadersOnPreferredOnlyCondition implements Condition {
     @Override
     public boolean get() throws Exception {
-      Map<String, Integer> leaderMap = table.getLeaderCountsPerPlacementZone(deadline);
-      List<Integer>leaderCounts = new ArrayList<Integer>(leaderMap.values());
-      Collections.sort(leaderCounts);
-      return leaderCounts.equals(leaderCountsExpected);
+      AreLeadersOnPreferredOnlyResponse resp = getAreLeadersOnPreferredOnly();
+      return !resp.hasError();
     }
   }
 
@@ -804,18 +798,14 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Wait for the table leader count to match the expected.
+   * Wait for the leader load to be balanced by master leader.
    * @param timeoutMs the amount of time, in MS, to wait.
-   * @param table the table to wait for leader balancing.
-   * @param leaderCountsExpected the list of expected leader counts, sorted.
-   * @return true if the leader count matches within timeoutMs, false otherwise.
+   * @return true iff the leader count is balanced within timeoutMs.
    */
-  public boolean waitForExpectedLeaderLoadBalance(final long timeoutMs,
-                                                  YBTable table,
-                                                  List<Integer> leaderCountsExpected) {
-    Condition leaderLoadBalanceCondition =
-        new LeaderLoadBalanceCondition(table, leaderCountsExpected, timeoutMs);
-    return waitForCondition(leaderLoadBalanceCondition, timeoutMs);
+  public boolean waitForAreLeadersOnPreferredOnlyCondition(final long timeoutMs) {
+    Condition areLeadersOnPreferredOnlyCondition =
+        new AreLeadersOnPreferredOnlyCondition();
+    return waitForCondition(areLeadersOnPreferredOnlyCondition, timeoutMs);
   }
 
   /**
