@@ -15,7 +15,7 @@ oprofile_data
 *.iml
 
 # VIM/emacs stuff
-*.swp
+*.sw?
 *~
 # These files could be used to auto-save vim sessions.
 .session.vim

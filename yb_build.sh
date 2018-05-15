@@ -21,6 +21,7 @@ script_name=${script_name%.*}
 
 show_help() {
   cat >&2 <<-EOT
+yb_build.sh (or "ybd") is the main build tool for YugaByte Database.
 Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>]
 Options:
   -h, --help
@@ -228,6 +229,10 @@ print_report() {
       thick_horizontal_line
       print_report_line "%s" "Build type" "${build_type:-undefined}"
       print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
+      print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
+      if ! is_mac; then
+        print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
+      fi
       report_time "CMake" "cmake"
       report_time "C++ compilation" "make"
       report_time "Java compilation" "java_build"
@@ -254,6 +259,9 @@ build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
+    if ! is_mac; then
+      echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
+    fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
 }
@@ -273,7 +281,14 @@ run_cxx_build() {
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
-    ( set -x; cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT" )
+    (
+      # Always disable remote build (running the compiler on a remote worker node) when running the
+      # CMake step.
+      set -x
+      unset YB_REMOTE_BUILD
+      export YB_NO_REMOTE_BUILD=1
+      cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
+    )
     capture_sec_timestamp "cmake_end"
   fi
 
@@ -510,6 +525,7 @@ mvn_opts=""
 java_only=false
 cmake_only=false
 use_shared_thirdparty=false
+no_shared_thirdparty=false
 run_python_tests=false
 cmake_extra_args=""
 predefined_build_root=""
@@ -621,6 +637,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --use-shared-thirdparty|--ustp|--stp|--us3p|--s3p)
       use_shared_thirdparty=true
+    ;;
+    --no-shared-thirdparty|--nstp|ns3p)
+      no_shared_thirdparty=true
     ;;
     --show-compiler-cmd-line|--sccl)
       export YB_SHOW_COMPILER_COMMAND_LINE=1
@@ -880,11 +899,21 @@ if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
   set_flags_to_skip_build
 fi
 
-if "$use_shared_thirdparty" || [[ -f $YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use ]]; then
-  find_thirdparty_dir
+if "$use_shared_thirdparty" && "$no_shared_thirdparty"; then
+  fatal "--use-shared-thirdparty and --no-shared-thirdparty cannot be specified at the same time"
 fi
 
 configure_remote_build
+do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
+
+if [[ -f $do_not_use_local_thirdparty_flag_path ]] || \
+   "$use_shared_thirdparty" || \
+   is_remote_build && ! "$no_shared_thirdparty"; then
+  find_thirdparty_dir
+fi
+
+echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
+
 detect_edition
 
 if "$save_log"; then
