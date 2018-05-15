@@ -1,12 +1,12 @@
 ---
-title: 2. Data Modelling
-linkTitle: 2. Data Modelling
-description: Data Modelling
+title: 2. Data Modeling
+linkTitle: 2. Data Modeling
+description: Data Modeling
 aliases:
-  - /develop/learn/data-modelling/
+  - /develop/learn/data-modeling/
 menu:
   latest:
-    identifier: data-modelling
+    identifier: data-modeling
     parent: learn
     weight: 562
 ---
