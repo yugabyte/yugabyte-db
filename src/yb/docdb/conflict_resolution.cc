@@ -25,6 +25,7 @@
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
 
 using namespace std::placeholders;
 
@@ -50,7 +51,9 @@ struct TransactionData {
   }
 };
 
-CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason) {
+CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason,
+                                  Counter* conflicts_metric) {
+  conflicts_metric->Increment();
   return STATUS_FORMAT(TryAgain,
                        "Conflicts with $0 transaction: $1",
                        reason,
@@ -86,7 +89,7 @@ class ConflictResolver {
   ConflictResolver(rocksdb::DB* db,
                    TransactionStatusManager* status_manager,
                    ConflictResolverContext* context)
-    : db_(db), status_manager_(*status_manager), context_(*context) {}
+      : db_(db), status_manager_(*status_manager), context_(*context) {}
 
   TransactionStatusManager& status_manager() {
     return status_manager_;
@@ -300,11 +303,13 @@ class ConflictResolver {
 class TransactionConflictResolverContext : public ConflictResolverContext {
  public:
   TransactionConflictResolverContext(const KeyValueWriteBatchPB& write_batch,
-                                     HybridTime hybrid_time)
+                                     HybridTime hybrid_time,
+                                     Counter* conflicts_metric)
       : write_batch_(write_batch),
         hybrid_time_(hybrid_time),
         transaction_id_(FullyDecodeTransactionId(
-            write_batch.transaction().transaction_id()))
+            write_batch.transaction().transaction_id())),
+        conflicts_metric_(conflicts_metric)
   {}
 
   virtual ~TransactionConflictResolverContext() {}
@@ -359,6 +364,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         DocHybridTime doc_ht;
         RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
         if (doc_ht.hybrid_time() >= metadata_.start_time) {
+          conflicts_metric_->Increment();
           return STATUS(TryAgain, "Value write after transaction start");
         }
       }
@@ -383,7 +389,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       }
       auto their_priority = transaction.metadata.priority;
       if (our_priority < their_priority) {
-        return MakeConflictStatus(transaction.id, "higher priority");
+        return MakeConflictStatus(transaction.id, "higher priority", conflicts_metric_);
       }
     }
     fetched_metadata_for_transactions_ = true;
@@ -395,7 +401,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       const TransactionId& id, HybridTime commit_time) override {
     if (metadata_.isolation == yb::IsolationLevel::SNAPSHOT_ISOLATION) {
       if (commit_time >= metadata_.start_time) { // TODO(dtxn) clock skew?
-        return MakeConflictStatus(id, "committed");
+        return MakeConflictStatus(id, "committed", conflicts_metric_);
       }
     }
     return Status::OK();
@@ -416,6 +422,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   IntentTypePair intent_types_;
   Status result_ = Status::OK();
   bool fetched_metadata_for_transactions_ = false;
+  Counter* conflicts_metric_ = nullptr;
 };
 
 class OperationConflictResolverContext : public ConflictResolverContext {
@@ -482,9 +489,10 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 Status ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
                                    rocksdb::DB* db,
-                                   TransactionStatusManager* status_manager) {
+                                   TransactionStatusManager* status_manager,
+                                   Counter* conflicts_metric) {
   DCHECK(hybrid_time.is_valid());
-  TransactionConflictResolverContext context(write_batch, hybrid_time);
+  TransactionConflictResolverContext context(write_batch, hybrid_time, conflicts_metric);
   ConflictResolver resolver(db, status_manager, &context);
   return resolver.Resolve();
 }

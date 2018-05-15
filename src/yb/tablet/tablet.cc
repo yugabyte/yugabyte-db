@@ -1281,7 +1281,8 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
     auto result = docdb::ResolveTransactionConflicts(*write_batch,
                                                      clock_->Now(),
                                                      rocksdb_.get(),
-                                                     transaction_participant_.get());
+                                                     transaction_participant_.get(),
+                                                     metrics_->transaction_conflicts.get());
     if (!result.ok()) {
       *data.keys_locked = LockBatch();  // Unlock the keys.
       return result;
