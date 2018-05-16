@@ -66,17 +66,20 @@ class QLEnv {
 
   // Read/write related methods.
 
-  // Apply a read/write operation. The operation is batched and needs to be flushed with FlushAsync.
-  // Mix of read/write operations in a batch is not supported currently.
+  // Apply a read/write operation. The operation is buffered and needs to be flushed with
+  // FlushAsync. Mix of read/write operations in a batch is not supported currently.
   virtual CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op);
 
-  // Flush batched operations. Returns false when there is no batched operation.
-  virtual bool FlushAsync(Callback<void(const Status &)>* cb);
+  // Returns if there are buffered operations to be flushed.
+  virtual bool HasBufferedOperations() const;
+
+  // Flush buffered operations. Returns false when there is no buffered operation.
+  virtual bool FlushAsync(Callback<void(const Status &, bool)>* cb);
 
   // Get the status of an individual read/write op after it has been flushed and completed.
   virtual Status GetOpError(const client::YBqlOp* op) const;
 
-  // Abort the batched ops.
+  // Abort the buffered ops.
   virtual void AbortOps();
 
   // Start a distributed transaction.
@@ -164,6 +167,9 @@ class QLEnv {
 
   void SetCurrentCall(rpc::InboundCallPtr call);
 
+  // Reschedule the current call to be resumed at the given callback.
+  void RescheduleCurrentCall(Callback<void(void)>* callback);
+
   cqlserver::CQLRpcServerEnv* cql_rpcserver_env() { return cql_rpcserver_env_; }
 
  private:
@@ -192,8 +198,6 @@ class QLEnv {
   // Current distributed transaction if present.
   std::shared_ptr<client::YBTransaction> transaction_;
 
-  bool has_session_operations_ = false;
-
   // Messenger used to requeue the CQL call upon callback.
   std::weak_ptr<rpc::Messenger> messenger_;
 
@@ -209,7 +213,7 @@ class QLEnv {
   // Errors of read/write operations that failed.
   std::unordered_map<const client::YBqlOp*, Status> op_errors_;
 
-  Callback<void(const Status&)>* requested_callback_ = nullptr;
+  Callback<void(const Status&, bool)>* requested_callback_ = nullptr;
   Callback<void(void)> resume_execution_;
 
   // The current keyspace. Used only in test environment when there is no current call.
