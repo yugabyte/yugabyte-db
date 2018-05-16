@@ -65,6 +65,7 @@ QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
       metadata_cache_(cache),
       session_(client->NewSession()),
       messenger_(messenger),
+      resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))),
       cql_rpcserver_env_(cql_rpcserver_env) {
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
@@ -95,6 +96,22 @@ void QLEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   DCHECK(cql_call == nullptr || current_call_ == nullptr)
       << this << " Tried updating current call. Current call is " << current_call_;
   current_call_ = std::move(cql_call);
+}
+
+void QLEnv::RescheduleCurrentCall(Callback<void(void)>* callback) {
+  if (current_call_ == nullptr) {
+    // Some unit tests are not executed in CQL proxy and have no call pointer. In those cases, just
+    // execute the callback directly while disabling thread restrictions.
+    const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
+    callback->Run();
+    ThreadRestrictions::SetWaitAllowed(allowed);
+    return;
+  }
+
+  current_cql_call()->SetResumeFrom(callback);
+  auto messenger = messenger_.lock();
+  DCHECK(messenger != nullptr) << "weak_ptr's messenger is null";
+  messenger->QueueInboundCall(current_call_);
 }
 
 void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
@@ -129,21 +146,23 @@ void QLEnv::CommitTransaction(CommitCallback callback) {
 }
 
 CHECKED_STATUS QLEnv::Apply(std::shared_ptr<client::YBqlOp> op) {
-  has_session_operations_ = true;
-
   // Apply the write.
   TRACE("Apply");
   return session_->Apply(std::move(op));
 }
 
-bool QLEnv::FlushAsync(Callback<void(const Status &)>* cb) {
-  if (!has_session_operations_) {
-    return false;
+bool QLEnv::HasBufferedOperations() const {
+  return session_->CountBufferedOperations() > 0;
+}
+
+bool QLEnv::FlushAsync(Callback<void(const Status &, bool)>* cb) {
+  if (HasBufferedOperations()) {
+    requested_callback_ = cb;
+    TRACE("Flush Async");
+    session_->FlushAsync([this](const Status& status) { FlushAsyncDone(status); });
+    return true;
   }
-  requested_callback_ = cb;
-  TRACE("Flush Async");
-  session_->FlushAsync([this](const Status& status) { FlushAsyncDone(status); });
-  return true;
+  return false;
 }
 
 Status QLEnv::GetOpError(const client::YBqlOp* op) const {
@@ -156,42 +175,31 @@ void QLEnv::AbortOps() {
 }
 
 void QLEnv::FlushAsyncDone(const Status &s) {
+  TRACE("Flush Async Done");
+  flush_status_ = s;
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the errors and discard the IOError.
-  DCHECK(has_session_operations_);
+  op_errors_.clear();
   if (PREDICT_FALSE(!s.ok())) {
     if (s.IsIOError()) {
       for (const auto& error : session_->GetPendingErrors()) {
         op_errors_[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
       }
-    } else {
-      flush_status_ = s;
+      flush_status_ = Status::OK();
     }
   }
-  has_session_operations_ = false;
-
-  TRACE("Flush Async Done");
-  if (current_call_ == nullptr) {
-    // For unit tests. Run the callback in the current (reactor) thread and allow wait for the case
-    // when a statement needs to be reprepared and we need to fetch table metadata synchronously.
-    bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-    ResumeCQLCall();
-    ThreadRestrictions::SetWaitAllowed(allowed);
-    return;
+  // If the current thread is the RPC worker thread, call the callback directly. Otherwise,
+  // reschedule the call to resume in the RPC worker thread.
+  if (rpc::ThreadPool::IsCurrentThreadRpcWorker()) {
+    requested_callback_->Run(flush_status_, false /* rescheduled_call */);
+  } else {
+    RescheduleCurrentCall(&resume_execution_);
   }
-
-  // Production/cqlserver usecase: enqueue the callback to run in the server's handler thread.
-  resume_execution_ = Bind(&QLEnv::ResumeCQLCall, Unretained(this));
-  current_cql_call()->SetResumeFrom(&resume_execution_);
-
-  auto messenger = messenger_.lock();
-  DCHECK(messenger != nullptr) << "weak_ptr's messenger is null";
-  messenger->QueueInboundCall(current_call_);
 }
 
 void QLEnv::ResumeCQLCall() {
   TRACE("Resuming CQL Call");
-  requested_callback_->Run(flush_status_);
+  requested_callback_->Run(flush_status_, true /* rescheduled_call */);
 }
 
 shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
@@ -250,7 +258,6 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 
 void QLEnv::Reset() {
   session_->Abort();
-  has_session_operations_ = false;
   requested_callback_ = nullptr;
   flush_status_ = Status::OK();
   op_errors_.clear();

@@ -23,9 +23,7 @@ using yb::bfql::TSOpcode;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::AggregateResultSets() {
-  DCHECK(exec_context().tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt);
-  const PTSelectStmt *pt_select = static_cast<const PTSelectStmt*>(exec_context().tnode());
+CHECKED_STATUS Executor::AggregateResultSets(const PTSelectStmt* pt_select) {
   if (!pt_select->is_aggregate()) {
     return Status::OK();
   }

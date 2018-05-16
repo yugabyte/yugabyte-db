@@ -218,8 +218,6 @@ class ExecContext : public ProcessContextBase {
     return op_ != nullptr && op_deferred_;
   }
 
-  bool SelectingAggregate();
-
  private:
   // Statement parse tree to execute.
   const ParseTree *parse_tree_;
