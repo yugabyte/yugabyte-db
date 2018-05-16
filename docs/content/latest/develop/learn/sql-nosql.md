@@ -13,7 +13,7 @@ menu:
 
 Most application developers have used SQL and possibly some NoSQL databases to build applications. YugaByte DB brings the best of these two databases together into one unified platform to simplify development of scalable cloud services.
 
-Very often, today's cloud services and applications will start out with just a requests and a very small amount of data. These can be served by just a few nodes. But if the application becomes popular, they would have to scale out rapidly in order to handle millions of requests and many terabytes of data. YugaByte DB is well suited for these kinds of workloads.
+Very often, today's cloud services and applications will start out with just a few requests and a very small amount of data. These can be served by just a few nodes. But if the application becomes popular, they would have to scale out rapidly in order to handle millions of requests and many terabytes of data. YugaByte DB is well suited for these kinds of workloads.
 
 ## Unifying SQL and NoSQL
 
@@ -96,13 +96,13 @@ This is a screenshot of YugaByte DB EE edition, which visualized the universe cr
 Because of this configuration, this universe can:
 
 - Allow low read latencies from any region (follower reads from a nearby datacenter)
-- Allow stronly consistent, global writes
+- Allow strongly consistent, global writes
 - Survive the outage of any region
 
 ![Geo-distributed ops/sec](/images/develop/learn/yb-geo-distributed-ops.png)
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
-The graphs above, also taken from the EE edition, show that the average read latencies for apps running the the various cloud regions are just 250 microseconds, while write are strongly consistent and incur 218 milliseconds.
+The graphs above, also taken from the EE edition, show that the average read latencies for apps running the the various cloud regions are just 250 microseconds, while writes are strongly consistent and incur 218 milliseconds.
 
 
 ## Multi-cloud ready
