@@ -76,7 +76,7 @@ ora_sstrcpy(char *str)
 		ereport(ERROR,
 			(errcode(ERRCODE_OUT_OF_MEMORY),
 			errmsg("out of memory"),
-			errdetail("Failed while allocation block %d bytes in shared memory.", len+1),
+			errdetail("Failed while allocation block %d bytes in shared memory.", (int) len+1),
 			errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
@@ -99,7 +99,7 @@ ora_scstring(text *str)
 		ereport(ERROR,
 			(errcode(ERRCODE_OUT_OF_MEMORY),
 			errmsg("out of memory"),
-			errdetail("Failed while allocation block %d bytes in shared memory.", len+1),
+			errdetail("Failed while allocation block %d bytes in shared memory.", (int) len+1),
 			errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;

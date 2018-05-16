@@ -739,7 +739,7 @@ static bool extended_string = false;
 
 static YY_BUFFER_STATE scanbufhandle;
 
-#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = orafce_sql_yylloc = orafce_sql_yytext - scanbuf)                                                                                              
+#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = orafce_sql_yytext - scanbuf)                                                                                              
                                                                                                                                                
 /* Handles to the buffer that the lexer uses internally */                                                                                     
 static char *scanbuf;       
@@ -2941,7 +2941,7 @@ lexer_errposition(void)
 	int		pos;
 
 	/* Convert byte offset to character number */
-	pos = _pg_mbstrlen_with_len(scanbuf, yylloc) + 1;
+	pos = _pg_mbstrlen_with_len(scanbuf, orafce_sql_yylval.val.lloc) + 1;
 	/* And pass it to the ereport mechanism */
 	return errposition(pos);
 }
@@ -2959,13 +2959,12 @@ lexer_errposition(void)
 void
 orafce_sql_yyerror(List **result, const char *message)
 {
-	const char *loc = scanbuf + yylloc;
+	const char *loc = scanbuf + orafce_sql_yylval.val.lloc;
 
 	if (*loc == YY_END_OF_BUFFER_CHAR)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 /* translator: %s is typically "syntax error" */
 				 errmsg("%s at end of input", _(message)),
 				 lexer_errposition()));
 	}
@@ -2973,7 +2972,6 @@ orafce_sql_yyerror(List **result, const char *message)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 /* translator: first %s is typically "syntax error" */
 				 errmsg("%s at or near \"%s\"", _(message), loc),
 				 lexer_errposition()));
 	}

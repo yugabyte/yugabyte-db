@@ -33,25 +33,17 @@
 #ifndef YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
 # define YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
 /* Debug traces.  */
-#ifndef ORAFCE_SQL_YYDEBUG
-# if defined YYDEBUG
+#ifndef YYDEBUG
+# define YYDEBUG 0
+#endif
 #if YYDEBUG
-#   define ORAFCE_SQL_YYDEBUG 1
-#  else
-#   define ORAFCE_SQL_YYDEBUG 0
-#  endif
-# else /* ! defined YYDEBUG */
-#  define ORAFCE_SQL_YYDEBUG 0
-# endif /* ! defined YYDEBUG */
-#endif  /* ! defined ORAFCE_SQL_YYDEBUG */
-#if ORAFCE_SQL_YYDEBUG
 extern int orafce_sql_yydebug;
 #endif
 
 /* Token type.  */
-#ifndef ORAFCE_SQL_YYTOKENTYPE
-# define ORAFCE_SQL_YYTOKENTYPE
-  enum orafce_sql_yytokentype
+#ifndef YYTOKENTYPE
+# define YYTOKENTYPE
+  enum yytokentype
   {
     X_IDENT = 258,
     X_NCONST = 259,
@@ -67,11 +59,11 @@ extern int orafce_sql_yydebug;
 #endif
 
 /* Value type.  */
-#if ! defined ORAFCE_SQL_YYSTYPE && ! defined ORAFCE_SQL_YYSTYPE_IS_DECLARED
+#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 
-union ORAFCE_SQL_YYSTYPE
+union YYSTYPE
 {
-#line 60 "sqlparse.y" /* yacc.c:1909  */
+#line 63 "sqlparse.y" /* yacc.c:1909  */
 
 	int 	ival;
 	orafce_lexnode	*node;
@@ -85,31 +77,31 @@ union ORAFCE_SQL_YYSTYPE
 		char *modificator;
 	}				val;
 
-#line 89 "sqlparse.h" /* yacc.c:1909  */
+#line 81 "sqlparse.h" /* yacc.c:1909  */
 };
 
-typedef union ORAFCE_SQL_YYSTYPE ORAFCE_SQL_YYSTYPE;
-# define ORAFCE_SQL_YYSTYPE_IS_TRIVIAL 1
-# define ORAFCE_SQL_YYSTYPE_IS_DECLARED 1
+typedef union YYSTYPE YYSTYPE;
+# define YYSTYPE_IS_TRIVIAL 1
+# define YYSTYPE_IS_DECLARED 1
 #endif
 
 /* Location type.  */
-#if ! defined ORAFCE_SQL_YYLTYPE && ! defined ORAFCE_SQL_YYLTYPE_IS_DECLARED
-typedef struct ORAFCE_SQL_YYLTYPE ORAFCE_SQL_YYLTYPE;
-struct ORAFCE_SQL_YYLTYPE
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
 {
   int first_line;
   int first_column;
   int last_line;
   int last_column;
 };
-# define ORAFCE_SQL_YYLTYPE_IS_DECLARED 1
-# define ORAFCE_SQL_YYLTYPE_IS_TRIVIAL 1
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
 #endif
 
 
-extern ORAFCE_SQL_YYSTYPE orafce_sql_yylval;
-extern ORAFCE_SQL_YYLTYPE orafce_sql_yylloc;
+extern YYSTYPE orafce_sql_yylval;
+extern YYLTYPE orafce_sql_yylloc;
 int orafce_sql_yyparse (List **result);
 
 #endif /* !YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED  */

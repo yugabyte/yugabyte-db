@@ -58,9 +58,7 @@
 /* Pull parsers.  */
 #define YYPULL 1
 
-/* Substitute the type names.  */
-#define YYSTYPE         ORAFCE_SQL_YYSTYPE
-#define YYLTYPE         ORAFCE_SQL_YYLTYPE
+
 /* Substitute the variable and function names.  */
 #define yyparse         orafce_sql_yyparse
 #define yylex           orafce_sql_yylex
@@ -73,7 +71,7 @@
 #define yylloc          orafce_sql_yylloc
 
 /* Copy the first part of user declarations.  */
-#line 3 "sqlparse.y" /* yacc.c:339  */
+#line 8 "sqlparse.y" /* yacc.c:339  */
 
 
 #define YYDEBUG 1
@@ -120,13 +118,11 @@ static int	scanbuflen;
 
 void orafce_sql_yyerror(List **result, const char *message);
 
-
-#define ORAFCE_SQL_YYLTYPE		int
 #define YYMALLOC	malloc	/* XXX: should use palloc? */
 #define YYFREE		free	/* XXX: should use pfree? */
 
 
-#line 130 "sqlparse.c" /* yacc.c:339  */
+#line 126 "sqlparse.c" /* yacc.c:339  */
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -149,25 +145,17 @@ void orafce_sql_yyerror(List **result, const char *message);
 #ifndef YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
 # define YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
 /* Debug traces.  */
-#ifndef ORAFCE_SQL_YYDEBUG
-# if defined YYDEBUG
+#ifndef YYDEBUG
+# define YYDEBUG 0
+#endif
 #if YYDEBUG
-#   define ORAFCE_SQL_YYDEBUG 1
-#  else
-#   define ORAFCE_SQL_YYDEBUG 0
-#  endif
-# else /* ! defined YYDEBUG */
-#  define ORAFCE_SQL_YYDEBUG 0
-# endif /* ! defined YYDEBUG */
-#endif  /* ! defined ORAFCE_SQL_YYDEBUG */
-#if ORAFCE_SQL_YYDEBUG
 extern int orafce_sql_yydebug;
 #endif
 
 /* Token type.  */
-#ifndef ORAFCE_SQL_YYTOKENTYPE
-# define ORAFCE_SQL_YYTOKENTYPE
-  enum orafce_sql_yytokentype
+#ifndef YYTOKENTYPE
+# define YYTOKENTYPE
+  enum yytokentype
   {
     X_IDENT = 258,
     X_NCONST = 259,
@@ -183,11 +171,11 @@ extern int orafce_sql_yydebug;
 #endif
 
 /* Value type.  */
-#if ! defined ORAFCE_SQL_YYSTYPE && ! defined ORAFCE_SQL_YYSTYPE_IS_DECLARED
+#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 
-union ORAFCE_SQL_YYSTYPE
+union YYSTYPE
 {
-#line 60 "sqlparse.y" /* yacc.c:355  */
+#line 63 "sqlparse.y" /* yacc.c:355  */
 
 	int 	ival;
 	orafce_lexnode	*node;
@@ -201,38 +189,38 @@ union ORAFCE_SQL_YYSTYPE
 		char *modificator;
 	}				val;
 
-#line 205 "sqlparse.c" /* yacc.c:355  */
+#line 193 "sqlparse.c" /* yacc.c:355  */
 };
 
-typedef union ORAFCE_SQL_YYSTYPE ORAFCE_SQL_YYSTYPE;
-# define ORAFCE_SQL_YYSTYPE_IS_TRIVIAL 1
-# define ORAFCE_SQL_YYSTYPE_IS_DECLARED 1
+typedef union YYSTYPE YYSTYPE;
+# define YYSTYPE_IS_TRIVIAL 1
+# define YYSTYPE_IS_DECLARED 1
 #endif
 
 /* Location type.  */
-#if ! defined ORAFCE_SQL_YYLTYPE && ! defined ORAFCE_SQL_YYLTYPE_IS_DECLARED
-typedef struct ORAFCE_SQL_YYLTYPE ORAFCE_SQL_YYLTYPE;
-struct ORAFCE_SQL_YYLTYPE
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
 {
   int first_line;
   int first_column;
   int last_line;
   int last_column;
 };
-# define ORAFCE_SQL_YYLTYPE_IS_DECLARED 1
-# define ORAFCE_SQL_YYLTYPE_IS_TRIVIAL 1
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
 #endif
 
 
-extern ORAFCE_SQL_YYSTYPE orafce_sql_yylval;
-extern ORAFCE_SQL_YYLTYPE orafce_sql_yylloc;
+extern YYSTYPE orafce_sql_yylval;
+extern YYLTYPE orafce_sql_yylloc;
 int orafce_sql_yyparse (List **result);
 
 #endif /* !YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED  */
 
 /* Copy the second part of user declarations.  */
 
-#line 236 "sqlparse.c" /* yacc.c:358  */
+#line 224 "sqlparse.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -413,8 +401,8 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
-         || (defined ORAFCE_SQL_YYLTYPE_IS_TRIVIAL && ORAFCE_SQL_YYLTYPE_IS_TRIVIAL \
-             && defined ORAFCE_SQL_YYSTYPE_IS_TRIVIAL && ORAFCE_SQL_YYSTYPE_IS_TRIVIAL)))
+         || (defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL \
+             && defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL)))
 
 /* A type that is properly aligned for any stack member.  */
 union yyalloc
@@ -528,16 +516,16 @@ static const yytype_uint8 yytranslate[] =
        5,     6,     7,     8,     9,    10,    11,    12
 };
 
-#if ORAFCE_SQL_YYDEBUG
+#if YYDEBUG
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    88,    88,    92,    93,    97,    98,    99,   100,   101,
-     102,   103,   104,   105
+       0,    91,    91,    95,    96,   100,   101,   102,   103,   104,
+     105,   106,   107,   108
 };
 #endif
 
-#if ORAFCE_SQL_YYDEBUG || YYERROR_VERBOSE || 0
+#if YYDEBUG || YYERROR_VERBOSE || 0
 /* YYTNAME[SYMBOL-NUM] -- String name of the symbol SYMBOL-NUM.
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
@@ -697,7 +685,7 @@ while (0)
 
 
 /* Enable debugging if requested.  */
-#if ORAFCE_SQL_YYDEBUG
+#if YYDEBUG
 
 # ifndef YYFPRINTF
 #  include <stdio.h> /* INFRINGES ON USER NAME SPACE */
@@ -716,7 +704,7 @@ do {                                            \
    we won't break user code: when these are the locations we know.  */
 
 #ifndef YY_LOCATION_PRINT
-# if defined ORAFCE_SQL_YYLTYPE_IS_TRIVIAL && ORAFCE_SQL_YYLTYPE_IS_TRIVIAL
+# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
 
 /* Print *YYLOCP on YYO.  Private, do not rely on its existence. */
 
@@ -861,12 +849,12 @@ do {                                    \
 /* Nonzero means print parse trace.  It is left uninitialized so that
    multiple parsers can coexist.  */
 int yydebug;
-#else /* !ORAFCE_SQL_YYDEBUG */
+#else /* !YYDEBUG */
 # define YYDPRINTF(Args)
 # define YY_SYMBOL_PRINT(Title, Type, Value, Location)
 # define YY_STACK_PRINT(Bottom, Top)
 # define YY_REDUCE_PRINT(Rule)
-#endif /* !ORAFCE_SQL_YYDEBUG */
+#endif /* !YYDEBUG */
 
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
@@ -1137,7 +1125,7 @@ int yychar;
 YYSTYPE yylval;
 /* Location data for the lookahead symbol.  */
 YYLTYPE yylloc
-# if defined ORAFCE_SQL_YYLTYPE_IS_TRIVIAL && ORAFCE_SQL_YYLTYPE_IS_TRIVIAL
+# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
   = { 1, 1, 1, 1 }
 # endif
 ;
@@ -1403,79 +1391,79 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 88 "sqlparse.y" /* yacc.c:1646  */
+#line 91 "sqlparse.y" /* yacc.c:1646  */
     { *((void**)result) = (yyvsp[0].list); }
-#line 1409 "sqlparse.c" /* yacc.c:1646  */
+#line 1397 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 3:
-#line 92 "sqlparse.y" /* yacc.c:1646  */
+#line 95 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.list) = list_make1((yyvsp[0].node));}
-#line 1415 "sqlparse.c" /* yacc.c:1646  */
+#line 1403 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 4:
-#line 93 "sqlparse.y" /* yacc.c:1646  */
+#line 96 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.list) = lappend((yyvsp[-1].list), (yyvsp[0].node));}
-#line 1421 "sqlparse.c" /* yacc.c:1646  */
+#line 1409 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 5:
-#line 97 "sqlparse.y" /* yacc.c:1646  */
+#line 100 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), IDENT);  }
-#line 1427 "sqlparse.c" /* yacc.c:1646  */
+#line 1415 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 6:
-#line 98 "sqlparse.y" /* yacc.c:1646  */
+#line 101 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), NCONST); }
-#line 1433 "sqlparse.c" /* yacc.c:1646  */
+#line 1421 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 7:
-#line 99 "sqlparse.y" /* yacc.c:1646  */
+#line 102 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), SCONST); }
-#line 1439 "sqlparse.c" /* yacc.c:1646  */
+#line 1427 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 8:
-#line 100 "sqlparse.y" /* yacc.c:1646  */
+#line 103 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), OP);    }
-#line 1445 "sqlparse.c" /* yacc.c:1646  */
+#line 1433 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 9:
-#line 101 "sqlparse.y" /* yacc.c:1646  */
+#line 104 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), PARAM); }
-#line 1451 "sqlparse.c" /* yacc.c:1646  */
+#line 1439 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 10:
-#line 102 "sqlparse.y" /* yacc.c:1646  */
+#line 105 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), COMMENT);    }
-#line 1457 "sqlparse.c" /* yacc.c:1646  */
+#line 1445 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 11:
-#line 103 "sqlparse.y" /* yacc.c:1646  */
+#line 106 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), WHITESPACE); }
-#line 1463 "sqlparse.c" /* yacc.c:1646  */
+#line 1451 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 12:
-#line 104 "sqlparse.y" /* yacc.c:1646  */
+#line 107 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), KEYWORD); }
-#line 1469 "sqlparse.c" /* yacc.c:1646  */
+#line 1457 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 13:
-#line 105 "sqlparse.y" /* yacc.c:1646  */
+#line 108 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), OTHERS);  }
-#line 1475 "sqlparse.c" /* yacc.c:1646  */
+#line 1463 "sqlparse.c" /* yacc.c:1646  */
     break;
 
 
-#line 1479 "sqlparse.c" /* yacc.c:1646  */
+#line 1467 "sqlparse.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -1710,7 +1698,7 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 107 "sqlparse.y" /* yacc.c:1906  */
+#line 110 "sqlparse.y" /* yacc.c:1906  */
 
 
 #undef YYLTYPE
