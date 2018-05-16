@@ -139,11 +139,11 @@ class Executor : public QLExprExecutor {
   //------------------------------------------------------------------------------------------------
   // Result processing.
 
-  // Flush operations that have been applied.
-  bool FlushAsync();
+  // Flush operations that have been applied. If there is none, finish the statement execution.
+  void FlushAsync();
 
   // Callback for FlushAsync.
-  void FlushAsyncDone(const Status& s);
+  void FlushAsyncDone(const Status& s, bool rescheduled_call);
 
   // Callback for Commit.
   void CommitDone(const Status& s);
@@ -157,16 +157,18 @@ class Executor : public QLExprExecutor {
                                    ExecContext* exec_context);
 
   // Process result of FlushAsyncDone.
-  CHECKED_STATUS ProcessAsyncResults();
+  CHECKED_STATUS ProcessAsyncResults(const Status& s);
 
   // Append execution result.
   CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
-  CHECKED_STATUS FetchMoreRowsIfNeeded();
+  Result<bool> FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
+                                     const std::shared_ptr<client::YBqlReadOp>& op,
+                                     ExecContext* exec_context);
 
   // Aggregate all result sets from all tablet servers to form the requested resultset.
-  CHECKED_STATUS AggregateResultSets();
+  CHECKED_STATUS AggregateResultSets(const PTSelectStmt* pt_select);
   CHECKED_STATUS EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
                            int column_index,
                            QLValue *ql_value);
@@ -322,8 +324,11 @@ class Executor : public QLExprExecutor {
   // QLMetrics to keep track of node parsing etc.
   const QLMetrics* ql_metrics_;
 
+  // Rescheduled FlushAsync callback.
+  Callback<void(void)> rescheduled_flush_async_cb_;
+
   // FlushAsync callback.
-  Callback<void(const Status&)> flush_async_cb_;
+  Callback<void(const Status&, bool)> flush_async_cb_;
 };
 
 }  // namespace ql

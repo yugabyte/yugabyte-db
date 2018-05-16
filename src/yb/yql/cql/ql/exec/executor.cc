@@ -43,11 +43,18 @@ using client::YBqlWriteOp;
 using client::YBqlWriteOpPtr;
 using strings::Substitute;
 
+#define RETURN_STMT_NOT_OK(s) do {                                         \
+    auto&& _s = (s);                                                       \
+    if (PREDICT_FALSE(!_s.ok())) return StatementExecuted(MoveStatus(_s)); \
+  } while (false)
+
+
 //--------------------------------------------------------------------------------------------------
 
 Executor::Executor(QLEnv *ql_env, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       ql_metrics_(ql_metrics),
+      rescheduled_flush_async_cb_(Bind(&Executor::FlushAsync, Unretained(this))),
       flush_async_cb_(Bind(&Executor::FlushAsyncDone, Unretained(this))) {
 }
 
@@ -63,13 +70,8 @@ void Executor::ExecuteAsync(const string &ql_stmt, const ParseTree &parse_tree,
   ql_env_->Reset();
   // Execute the statement and invoke statement-executed callback either when there is an error or
   // no async operation is pending.
-  const Status s = Execute(ql_stmt, parse_tree, params);
-  if (PREDICT_FALSE(!s.ok())) {
-    return StatementExecuted(s);
-  }
-  if (!FlushAsync()) {
-    return StatementExecuted(Status::OK());
-  }
+  RETURN_STMT_NOT_OK(Execute(ql_stmt, parse_tree, params));
+  FlushAsync();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -109,16 +111,11 @@ void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_t
   if (s.ok()) {
     s = Execute(ql_stmt, parse_tree, params);
   }
-  if (PREDICT_FALSE(!s.ok())) {
-    return StatementExecuted(s);
-  }
+  RETURN_STMT_NOT_OK(s);
 }
 
 void Executor::ApplyBatch() {
-  // Invoke statement-executed callback when no async operation is pending.
-  if (!FlushAsync()) {
-    return StatementExecuted(Status::OK());
-  }
+  FlushAsync();
 }
 
 void Executor::AbortBatch() {
@@ -702,13 +699,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   return exec_context().Apply(select_op);
 }
 
-Status Executor::FetchMoreRowsIfNeeded() {
+Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
+                                             const std::shared_ptr<YBqlReadOp>& op,
+                                             ExecContext* exec_context) {
   if (result_ == nullptr) {
-    return Status::OK();
+    return false;
   }
-
-  // The current select statement.
-  const PTSelectStmt *tnode = static_cast<const PTSelectStmt *>(exec_context().tnode());
 
   // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
   RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
@@ -717,7 +713,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
                                         current_result->rows_data(),
                                         &current_fetch_row_count));
 
-  size_t previous_fetches_row_count = exec_context().params()->total_num_rows_read();
+  size_t previous_fetches_row_count = exec_context->params()->total_num_rows_read();
   size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
   // Statement (paging) parameters.
@@ -725,7 +721,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
 
   // The limit for this select: min of page size and result limit (if set).
-  uint64_t fetch_limit = exec_context().params()->page_size(); // default;
+  uint64_t fetch_limit = exec_context->params()->page_size(); // default;
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
@@ -735,9 +731,6 @@ Status Executor::FetchMoreRowsIfNeeded() {
     }
   }
 
-  // The current read operation.
-  std::shared_ptr<YBqlReadOp> op = std::static_pointer_cast<YBqlReadOp>(exec_context().op());
-
   //------------------------------------------------------------------------------------------------
   // Check if we should fetch more rows (return with 'done=true' otherwise).
 
@@ -746,12 +739,12 @@ Status Executor::FetchMoreRowsIfNeeded() {
   if (finished_current_read_partition) {
 
     // If there or no other partitions to query, we are done.
-    if (exec_context().UnreadPartitionsRemaining() <= 1) {
-      return Status::OK();
+    if (exec_context->UnreadPartitionsRemaining() <= 1) {
+      return false;
     }
 
     // Otherwise, we continue to the next partition.
-    exec_context().AdvanceToNextPartition(op->mutable_request());
+    exec_context->AdvanceToNextPartition(op->mutable_request());
     op->mutable_request()->clear_hash_code();
     op->mutable_request()->clear_max_hash_code();
   }
@@ -766,11 +759,11 @@ Status Executor::FetchMoreRowsIfNeeded() {
       QLPagingStatePB paging_state;
       paging_state.set_total_num_rows_read(total_row_count);
       paging_state.set_table_id(tnode->table()->id());
-      paging_state.set_next_partition_index(exec_context().current_partition_index());
+      paging_state.set_next_partition_index(exec_context->current_partition_index());
       current_result->set_paging_state(paging_state);
     }
 
-    return Status::OK();
+    return false;
   }
 
   //------------------------------------------------------------------------------------------------
@@ -784,7 +777,8 @@ Status Executor::FetchMoreRowsIfNeeded() {
   paging_state->set_total_num_rows_read(total_row_count);
 
   // Apply the request.
-  return exec_context().Apply(op);
+  RETURN_NOT_OK(exec_context->Apply(op));
+  return true;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -986,101 +980,99 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 
 //--------------------------------------------------------------------------------------------------
 
-bool Executor::FlushAsync() {
+void Executor::FlushAsync() {
   batched_writes_by_primary_key_.clear();
   batched_writes_by_hash_key_.clear();
-  return ql_env_->FlushAsync(&flush_async_cb_);
+  if (!ql_env_->FlushAsync(&flush_async_cb_)) {
+    StatementExecuted(Status::OK());
+  }
 }
 
-void Executor::FlushAsyncDone(const Status &s) {
-  Status ss = s;
-  if (ss.ok()) {
-    ss = ProcessAsyncResults();
-    if (ss.ok()) {
-      const TreeNodeOpcode last_opcode = exec_context().tnode()->opcode();
+void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
 
-      if (last_opcode == TreeNodeOpcode::kPTSelectStmt) {
+  RETURN_STMT_NOT_OK(ProcessAsyncResults(s));
 
-        ql_env_->Reset();
-        ss = FetchMoreRowsIfNeeded();
-        if (ss.ok()) {
-          if (FlushAsync()) {
-            return;
-          } else {
-            // Evaluate aggregate functions if they are selected.
-            ss = AggregateResultSets();
-          }
+  const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
+  for (std::list<ExecContext>::iterator curr = exec_contexts_.begin(), next;
+       curr != exec_contexts_.end(); curr = next) {
+    next = std::next(curr);
+    ExecContext& exec_context = *curr;
+    const shared_ptr<client::YBqlOp>& op = exec_context.op();
+    const TreeNode *tnode = exec_context.tnode();
+    if (op != nullptr) {
+      // Apply any operation that has been deferred but can be applied now.
+      if (exec_context.IsOperationDeferred()) {
+        if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
+                            std::static_pointer_cast<YBqlWriteOp>(op))) {
+          RETURN_STMT_NOT_OK(exec_context.Apply());
         }
+        continue;
       }
 
-      const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
-      for (auto itr = exec_contexts_.begin(); itr != exec_contexts_.end();) {
-        ExecContext& exec_context = *itr;
-        const TreeNode *tnode = exec_context.tnode();
-        if (exec_context.op() != nullptr) {
-          // Apply any operation that has been deferred but can be applied now.
-          if (exec_context.IsOperationDeferred()) {
-            if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
-                                std::static_pointer_cast<YBqlWriteOp>(exec_context.op()))) {
-              ss = exec_context.Apply();
-              if (!ss.ok()) {
-                break;
-              }
-            }
-            itr++;
-          } else {
-            // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
-            // completed but exclude the time to commit the transaction if any.
-            if (ql_metrics_ != nullptr) {
-              const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
-              switch (tnode->opcode()) {
-                case TreeNodeOpcode::kPTSelectStmt:
-                  ql_metrics_->ql_select_->Increment(delta_usec);
-                  break;
-                case TreeNodeOpcode::kPTInsertStmt:
-                  ql_metrics_->ql_insert_->Increment(delta_usec);
-                  break;
-                case TreeNodeOpcode::kPTUpdateStmt:
-                  ql_metrics_->ql_update_->Increment(delta_usec);
-                  break;
-                case TreeNodeOpcode::kPTDeleteStmt:
-                  ql_metrics_->ql_delete_->Increment(delta_usec);
-                  break;
-                default:
-                  LOG(FATAL) << "unexpected operation";
-              }
-              ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
-            }
-            // Apply child transaction results if any.
-            const QLResponsePB& response = exec_context.op()->response();
-            if (response.has_child_transaction_result()) {
-              ss = ql_env_->ApplyChildTransactionResult(response.child_transaction_result());
-              if (!ss.ok()) {
-                break;
-              }
-            }
-            itr = exec_contexts_.erase(itr);
-          }
-        } else {
-          itr++;
+      // For SELECT statement, check if there are more rows to fetch.
+      if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+        const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
+        const auto& read_op = std::static_pointer_cast<YBqlReadOp>(op);
+        const auto more_rows = FetchMoreRowsIfNeeded(select_stmt, read_op, &exec_context);
+        RETURN_STMT_NOT_OK(more_rows);
+        if (*more_rows) {
+          continue;
         }
+        // Evaluate aggregate functions if they are selected.
+        RETURN_STMT_NOT_OK(AggregateResultSets(select_stmt));
       }
 
-      if (ss.ok()) {
-        // Flush any deferred operation that has been applied now. If there is no more deferred
-        // operation, commit the transaction if needed.
-        if (FlushAsync()) {
-          return;
-        } else {
-          if (last_opcode == TreeNodeOpcode::kPTCommit) {
-            ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
-            return;
-          }
+      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
+      // completed but exclude the time to commit the transaction if any.
+      if (ql_metrics_ != nullptr) {
+        const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
+        switch (tnode->opcode()) {
+          case TreeNodeOpcode::kPTSelectStmt:
+            ql_metrics_->ql_select_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTInsertStmt:
+            ql_metrics_->ql_insert_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTUpdateStmt:
+            ql_metrics_->ql_update_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTDeleteStmt:
+            ql_metrics_->ql_delete_->Increment(delta_usec);
+            break;
+          default:
+            LOG(FATAL) << "unexpected operation";
         }
+        ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
       }
+
+      // Apply child transaction results if any.
+      const QLResponsePB& response = op->response();
+      if (response.has_child_transaction_result()) {
+        const auto& result = response.child_transaction_result();
+        RETURN_STMT_NOT_OK(ql_env_->ApplyChildTransactionResult(result));
+      }
+
+      exec_contexts_.erase(curr);
     }
   }
-  StatementExecuted(ss);
+
+  // If there are additional operations that have been applied above, flush them directly if we are
+  // called from a rescheduled call already. Otherwise, reschedule the current CQL call to flush.
+  // This is necessary because in an RF1 setup, the flush will be a direct local call and this
+  // callback can recurse too deeply hitting the stack limitiation. Rescheduling can also avoid
+  // occupying the RPC worker thread for too long starving other CQL calls waiting in the queue.
+  if (ql_env_->HasBufferedOperations()) {
+    return rescheduled_call ? FlushAsync()
+                            : ql_env_->RescheduleCurrentCall(&rescheduled_flush_async_cb_);
+  }
+
+  // Commit the transaction if needed.
+  if (!exec_contexts_.empty() &&
+      exec_contexts_.back().tnode()->opcode() == TreeNodeOpcode::kPTCommit) {
+    return ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
+  }
+
+  StatementExecuted(Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1330,30 +1322,26 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op,
   return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
 
-Status Executor::ProcessAsyncResults() {
-  Status s, ss;
+Status Executor::ProcessAsyncResults(const Status& s) {
+  RETURN_NOT_OK(s);
   for (auto& exec_context : exec_contexts_) {
     client::YBqlOp* op = exec_context.op().get();
     const TreeNode* tnode = exec_context.tnode();
     if (op == nullptr || exec_context.IsOperationDeferred()) {
       continue; // Skip empty or deferred op.
     }
-    ss = ql_env_->GetOpError(op);
-    if (PREDICT_FALSE(!ss.ok())) {
+    Status ss = ql_env_->GetOpError(op);
+    if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
       // YBOperation returns not-found error when the tablet is not found.
-      const auto error_code =
-          ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID;
+      const auto error_code = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
       ss = exec_context.Error(tnode, ss, error_code);
     }
     if (ss.ok()) {
       ss = ProcessOpResponse(op, tnode, &exec_context);
     }
-    ss = ProcessStatementStatus(*exec_context.parse_tree(), ss);
-    if (PREDICT_FALSE(!ss.ok())) {
-      s = ss;
-    }
+    RETURN_NOT_OK(ProcessStatementStatus(*exec_context.parse_tree(), ss));
   }
-  return s;
+  return Status::OK();
 }
 
 Status Executor::AppendResult(const RowsResult::SharedPtr& result) {

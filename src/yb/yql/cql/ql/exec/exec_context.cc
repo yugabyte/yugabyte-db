@@ -45,14 +45,6 @@ ExecContext::ExecContext(const ExecContext& exec_context, const TreeNode *tnode)
 ExecContext::~ExecContext() {
 }
 
-bool ExecContext::SelectingAggregate() {
-  if (tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-    const PTSelectStmt *pt_select = static_cast<const PTSelectStmt*>(tnode());
-    return pt_select->is_aggregate();
-  }
-  return false;
-}
-
 void ExecContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
   current_partition_index_ = start_partition;
   // Hash values before the first 'IN' condition will be already set.
