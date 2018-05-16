@@ -2,11 +2,11 @@
 
 ## Inserting data
 
-To insert data in a batch, prepared statements with the bind values are added to the write batch. This is done in order to reduce repeated query parsing overhead.
+To insert data in a batch, prepared statements with the bind values are added to the write batch. This is done in order to reduce repeated statement parsing overhead.
 
 ### Java Example
 
-In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of [prepared and bound insert queries](#) to it. Finally, execute the batch object. This is shown below.
+In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of [prepared and bound insert statements](#) to it. Finally, execute the batch object. This is shown below.
 
 ```{.java .copy}
 // Create a batch statement object.

@@ -73,7 +73,7 @@ $ ./bin/yb-master \
 
 ```{.sh .copy}
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
---fs_data_dirs=/home/centos/disk1,/home/centos/disk2 &
+--fs_data_dirs=/home/centos/disk1,/home/centos/disk2 
 ```
 
 ```{.sh .copy .separator-dollar}
