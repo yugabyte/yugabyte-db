@@ -1,5 +1,17 @@
 #!/bin/bash
 # Copyright (c) YugaByte, Inc.
+set -euo pipefail
+
+# TODO: move this to common file.
+if [[ -z ${DEVOPS_HOME:-} ]]; then
+  devops_home_candidate_dir="${BASH_SOURCE%/*}"/../devops
+  if [[ -d $devops_home_candidate_dir ]]; then
+    export DEVOPS_HOME=$( cd "$devops_home_candidate_dir" && pwd )
+  else
+    echo "DEVOPS_HOME not set and the devops repo not found at $devops_home_candidate_dir" >&2
+    exit 1
+  fi
+fi
 
 YW_REPO="$( dirname "${BASH_SOURCE[0]}" )"
 . "$YW_REPO"/common_itest
