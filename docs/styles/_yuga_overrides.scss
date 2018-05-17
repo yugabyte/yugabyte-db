@@ -31,7 +31,7 @@ a {
   min-width: 0;
   margin-left: 0 !important;
   font-size: 15.5px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 26px;
   color: $YB_DARK;
 
@@ -41,11 +41,10 @@ a {
     letter-spacing: -.02em;
     line-height: 36px;
     position: relative;
-    padding-right: 60px;
   }
   h1 {
     padding-top: 0 !important;
-    margin: 26px 0 30px;
+    margin: 26px 0 0;
     font-size: 40px;
     font-weight: 600;
     letter-spacing: -.02em;
@@ -58,6 +57,10 @@ a {
     padding-top: 0;
     font-size: 28px;
     font-weight: 600;
+    letter-spacing: -.02em;
+    margin-top: -52px;
+    padding-top: 100px !important;
+  
     @media only screen and (max-width: 767px) {
       font-size: 20px;
     }
@@ -67,6 +70,8 @@ a {
     padding-top: 0;
     font-size: 20px;
     font-weight: 500;
+    margin-top: -52px;
+    padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
       font-size: 17px;
     }
@@ -76,6 +81,8 @@ a {
     font-size: 17px;
     font-weight: 500;
     font-style: normal;
+    margin-top: -52px;
+    padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
       font-size: 16px;
     }
@@ -108,7 +115,7 @@ a {
     }
   }
 
-  h1 a.headerlink, h1 a.issuelink {
+  h1 .links {
     display: none !important;
   }
 
@@ -168,7 +175,7 @@ a {
   }
 
   .links {
-    margin-top: 5px;
+    margin-top: 105px;
     position: absolute;
     z-index: 2;
     top: 0;
@@ -213,6 +220,11 @@ a {
 
   svg {
     max-width: 100%;
+  }
+
+  p {
+    position: relative;
+    z-index: 2;
   }
 
   i {

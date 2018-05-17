@@ -41,11 +41,12 @@
     }
   }
 
-  p {
+  h4 {
     font-weight: 600;
-    color: $YB_LIGHT_BLUE;
+    color: $YB_DARK_MILD;
     letter-spacing: -.02em;
-    font-size: 13px;
+    font-size: 15px;
+    opacity: 0.45;
 
     @media screen and (max-width: 767px) {
       text-align: center;

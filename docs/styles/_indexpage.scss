@@ -36,10 +36,10 @@
   }
 
   .hero {
-    padding-top: 150px;
+    padding-top: 170px;
     padding-bottom: 70px;
     text-align: center;
-    max-width: 100%;
+    max-width: 540px;
     margin: 0 auto;
     font-weight: 300;
     pointer-events: none;
@@ -59,6 +59,11 @@
         font-style: normal;
         color: $YB_LIGHT_BLUE;
       }
+    }
+
+    h2 {
+      font-size: 18px;
+      line-height: 1.5em;
     }
 
     a.cta-button {
@@ -282,7 +287,9 @@
           line-height: 23px;        /* fallback */
           max-height: 59px; 
           position: relative;
+          font-weight: 300;
           z-index: 2;
+          text-shadow: 0.15px 0.15px #2e3135, 0.15px -0.15px #2e3135;
 
           @media only screen and (min-width:768px) and (max-width:1024px) {
             max-height: 84px; 

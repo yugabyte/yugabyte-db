@@ -179,6 +179,7 @@ function setupForm(selector, callback) {
     const form = $(event.target);
     if (form.valid()) {
       const formJson = form.serializeJSON();
+      formJson.email = formJson.email ? formJson.email : 'no-email@yugabyte.com';
       $.ajax({
         type: 'POST',
         crossDomain: true,
@@ -209,12 +210,14 @@ function setupRegistrationForm(selector, message = 'Thanks! We\'ll email you soo
     const thankYouNode = $('<div class="submit-thank-you" />').text(message);
     const eventTarget = $(event.target);
     const submitReplaceNode = eventTarget.closest('.submit-replace');
-    (submitReplaceNode.length ? submitReplaceNode : eventTarget).after(thankYouNode);
-    setTimeout(() => {
-      thankYouNode.fadeOut(500, () => {
-        thankYouNode.remove();
-      });
-    }, 2500);
+    if (message) {
+      (submitReplaceNode.length ? submitReplaceNode : eventTarget).after(thankYouNode);
+      setTimeout(() => {
+        thankYouNode.fadeOut(500, () => {
+          thankYouNode.remove();
+        });
+      }, 2500);
+    }
   });
 }
 window.setupRegistrationForm = setupRegistrationForm;
