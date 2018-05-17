@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
 @Singleton
 public class ReleaseManager {
 
@@ -93,7 +95,7 @@ public class ReleaseManager {
             destinationFolder.mkdir();
           }
           try {
-            Files.move(releaseFile.toPath(), destinationFile.toPath());
+            Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
           } catch (IOException e) {
             throw new RuntimeException("Unable to move docker release file " +
                 releaseFile.toPath() + " to " + destinationFile);
