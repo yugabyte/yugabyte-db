@@ -1,5 +1,5 @@
 
-## 1. Create a glcoud cluster
+## 1. Create a gcloud cluster
 
 Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the YugaByte universe.
 

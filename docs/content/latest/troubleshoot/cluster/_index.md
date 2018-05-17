@@ -20,7 +20,6 @@ menu:
     <a class="section-link icon-offset" href="connect-cassandra">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">Cluster</div>
         <div class="title">Cannot connect to YCQL API</div>
       </div>
       <div class="body">
@@ -33,7 +32,6 @@ menu:
     <a class="section-link icon-offset" href="connect-redis">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">Cluster</div>
         <div class="title">Cannot connect to YEDIS API</div>
       </div>
       <div class="body">

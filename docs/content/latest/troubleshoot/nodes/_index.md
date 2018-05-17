@@ -20,7 +20,6 @@ menu:
     <a class="section-link icon-offset" href="check-processes">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">Nodes</div>
         <div class="title">Check Processes</div>
       </div>
       <div class="body">
@@ -32,8 +31,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="check-logs">
       <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">Nodes</div>
+        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />  
         <div class="title">Inspect Logs</div>
       </div>
       <div class="body">
@@ -46,7 +44,6 @@ menu:
     <a class="section-link icon-offset" href="check-stats">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">Nodes</div>
         <div class="title">Get System Stats</div>
       </div>
       <div class="body">

@@ -3,7 +3,7 @@ title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot YugaByte DB
 image: /images/section_icons/index/troubleshoot.png
-headcontent: Troubleshoot YugaByte DB. Know how to deal with emergency easily.
+headcontent:
 aliases:
   - /troubleshoot/
 menu:
@@ -11,15 +11,11 @@ menu:
     identifier: troubleshoot
     weight: 800
 ---
-
-<div class="contents-title">In this section:</div>
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="overview">
       <div class="head">
-        <img class="icon" src="/images/section_icons/introduction/overview.png" aria-hidden="true" />
-        <div class="articles">Troubleshoot</div>
+        <img class="icon" src="/images/section_icons/introduction/overview.png" aria-hidden="true" />  
         <div class="title">Overview</div>
       </div>
       <div class="body">
@@ -58,7 +54,6 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="articles">1 article</div>
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">

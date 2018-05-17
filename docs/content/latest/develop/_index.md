@@ -13,14 +13,12 @@ menu:
 
 ---
 
-<div class="contents-title">In this section:</div>
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="articles">Develop</div>
+        <div class="articles">3 articles</div>
         <div class="title">Client Drivers</div>
       </div>
       <div class="body">
@@ -32,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="articles">Develop</div>
+        <div class="articles">5 articles</div>
         <div class="title">Learn</div>
       </div>
       <div class="body">
@@ -44,7 +42,7 @@ menu:
     <a class="section-link icon-offset" href="ecosystem-integrations/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="articles">Develop</div>
+        <div class="articles">3 articles</div>
         <div class="title">Ecosystem Integrations</div>
       </div>
       <div class="body">
@@ -56,7 +54,7 @@ menu:
     <a class="section-link icon-offset" href="realworld-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">Develop</div>
+        <div class="articles">2 articles</div>
         <div class="title">Real World Examples</div>
       </div>
       <div class="body">

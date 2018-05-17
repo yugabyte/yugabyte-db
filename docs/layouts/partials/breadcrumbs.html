@@ -6,9 +6,9 @@
   <div class="breadcrumbs">
     <span class="mobile-only">
       <label class="toggle-button" for="toggle-drawer">
-        Docs
+        Home
       </label>
-      <i>/</i>
+      <i> > </i>
     </span>
 
     {{ if ($foundBreadcrumb) }}
@@ -17,7 +17,5 @@
       {{ end }}
     {{ end }}
 
-    <a title="{{ .Name }}" href="{{ .URL | relURL}}">
-        {{ .Name }}</a>
   </div>
 {{ end }}

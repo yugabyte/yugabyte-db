@@ -12,18 +12,16 @@ menu:
     weight: 1200
 ---
 
-<div class="contents-title">In this section:</div>
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cassandra/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/cql.png" aria-hidden="true" />
-        <div class="articles">API</div>
-        <div class="title">Yugabyte Cloud Query Language</div>
+        <div class="title">YCQL</div>
       </div>
       <div class="body">
-        Complete reference for Cassandra-compatible Yugabyte Cloud Query Language (YCQL).
+        Complete reference for Cassandra-compatible Yugabyte Cloud Query Language (YCQL) API.
       </div>
     </a>
   </div>
@@ -32,11 +30,10 @@ menu:
     <a class="section-link icon-offset" href="redis/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/redis.png" aria-hidden="true" />
-        <div class="articles">API</div>
-        <div class="title">YugabytE DIrectory Server</div>
+        <div class="title">YEDIS</div>
       </div>
       <div class="body">
-        Complete reference for Redis-compatible YugabytE DIrectory Server (YEDIS).
+        Complete reference for Redis-compatible YugabytE DIrectory Server (YEDIS) API.
       </div>
     </a>
   </div>
@@ -45,7 +42,6 @@ menu:
     <a class="section-link icon-offset" href="postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" />
-        <div class="articles">API</div>
         <div class="title">PostgreSQL (Beta)</div>
       </div>
       <div class="body">

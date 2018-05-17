@@ -56,7 +56,9 @@
     background-color: #f75821; }
 
 .longer-buttons .btn {
-  min-width: 240px !important; }
+  min-width: 310px !important; 
+  font-size: 18px;
+  }
 
 .nav-tabs {
   margin: 1.5em -48px 0;
@@ -95,6 +97,10 @@
         border-bottom: 5px solid $YB_ORANGE !important;
         height: 70px;
         color: $YB_DARK_MILD;
+        i {
+          color: $YB_DARK_MILD;
+          vertical-align: middle;
+        }
       }
     }
   }
