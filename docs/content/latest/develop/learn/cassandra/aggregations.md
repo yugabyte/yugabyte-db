@@ -60,7 +60,7 @@ cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 ```
 
 
-- Finding the number of items types for supplier 1 can be done as follows.
+- Finding the number of item types for supplier 1 can be done as follows.
 
 ```{.sql .copy .separator-gt}
 cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;

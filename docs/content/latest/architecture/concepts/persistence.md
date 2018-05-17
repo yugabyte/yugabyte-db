@@ -83,7 +83,7 @@ enhancements or customizations to RocksDB are described below:
       example, a scan to get all the columns within row or all the elements of a collection can also
       benefit from bloom filters.
 
-  * **Data model aware range query optimization**: The ordered (or range) components of the compound-keys in DocDB frequently have a natural order. For example, it may be a int that represents a message id
+  * **Data model aware range query optimization**: The ordered (or range) components of the compound-keys in DocDB frequently have a natural order. For example, it may be an int that represents a message id
   (for a messaging like application) or a timestamp (for a IoT/Timeseries like use case). See example
   below. By keeping hints with each SSTable file in the LSM store about the min/max values for these
   components of the “key”, range queries can intelligently prune away the lookup of irrelevant SSTable

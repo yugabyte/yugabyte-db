@@ -46,7 +46,7 @@ chain of the form "A happens before B on the same server" or "A happens on one s
 sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an
 increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and
 always updating the hybrid time on the receiving server to the highest value seen, including the
-current physcial time on the server.  Multiple aspects of YugaByte DB's transaction model rely on
+current physical time on the server.  Multiple aspects of YugaByte DB's transaction model rely on
 these properties of Hybrid Time, e.g.:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep
