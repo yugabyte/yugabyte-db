@@ -152,6 +152,40 @@ public class ReleaseManagerTest {
   }
 
   @Test
+  public void testLoadReleasesWithReleaseAndDockerPathDuplicate() {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.2-b2");
+    createDummyReleases(versions, false, false);
+    List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
+    createDummyReleases(dockerVersions, false, true);
+    releaseManager.loadReleasesToDB();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap = ImmutableMap.of(
+        "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz");
+    assertEquals(expectedMap, releaseMap.getValue());
+    assertEquals(SoftwareReleases, configType.getValue());
+
+    File dockerStoragePath = new File(TMP_DOCKER_STORAGE_PATH);
+    File[] files = dockerStoragePath.listFiles();
+    assertEquals(0, files.length);
+  }
+
+  @Test
+  public void testLoadReleasesWithInvalidDockerPath() {
+    when(appConfig.getString("yb.docker.release")).thenReturn("foo");
+    try {
+      releaseManager.loadReleasesToDB();
+    } catch (RuntimeException re) {
+      assertEquals("Unable to look up release files in foo", re.getMessage());
+    }
+  }
+
+  @Test
   public void testGetReleaseByVersionWithConfig() {
     when(configHelper.getConfig(SoftwareReleases))
         .thenReturn(ImmutableMap.of("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz"));
