@@ -768,7 +768,15 @@ build_yb_java_code_filter_save_output() {
     return $mvn_exit_code
   fi
   set -e +x
-  log "ERROR: Java build finished but build command failed so log cannot be processed"
+  log "Java build or one of its output filters failed"
+  if [[ -f $java_build_output_path ]]; then
+    log "Java build output (from '$java_build_output_path'):"
+    cat "$java_build_output_path"
+    log "(End of Java build output)"
+    rm -f "$java_build_output_path"
+  else
+    log "Java build output path file not found at '$java_build_output_path'"
+  fi
   return 1
 }
 
@@ -882,10 +890,15 @@ ssh: Could not resolve hostname build-workers-.*: Name or service not known"
 remove_path_entry() {
   expect_num_args 1 "$@"
   local path_entry=$1
-  PATH=:$PATH:
-  PATH=${PATH//:$path_entry:/:}
-  PATH=${PATH#:}
-  PATH=${PATH%:}
+  local prev_path=""
+  # Remove all occurrences of the given entry.
+  while  [[ $PATH != $prev_path ]]; do
+    prev_path=$PATH
+    PATH=:$PATH:
+    PATH=${PATH//:$path_entry:/:}
+    PATH=${PATH#:}
+    PATH=${PATH%:}
+  done
   export PATH
 }
 
