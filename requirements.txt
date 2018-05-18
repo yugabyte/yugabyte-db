@@ -1,2 +1,3 @@
 PyYAML==3.12
 six==1.11.0
+yugabyte_pycommon==1.5.0

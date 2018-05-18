@@ -158,10 +158,25 @@ def main():
         if args.skip_build:
             build_cmd_list += ["--skip-build"]
         if args.build_args:
+            # TODO: run with shell=True and append build_args as is.
             build_cmd_list += args.build_args.strip().split()
 
     build_cmd_line = " ".join(build_cmd_list).strip()
     logging.info("Build command line: {}".format(build_cmd_line))
+
+    if not args.java_only and not args.skip_build:
+        # TODO: figure out the dependency issues in our CMake build instead.
+        # TODO: move this into yb_build.sh itself.
+        for preliminary_target in ['protoc-gen-insertions', 'bfql_codegen']:
+            preliminary_step_cmd_list = [
+                    arg for arg in build_cmd_list if arg != 'packaged_targets'
+                ] + ['--target', preliminary_target, '--skip-java']
+            logging.info(
+                    "Running a preliminary step to build target %s: %s",
+                    preliminary_target,
+                    " ".join(preliminary_step_cmd_list))
+            subprocess.check_call(preliminary_step_cmd_list)
+
     subprocess.check_call(build_cmd_list)
 
     if not os.path.exists(build_desc_path):
