@@ -40,7 +40,7 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 | Operational Characteristics  | SQL | NoSQL | YugaByte DB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Automatic sharding | No | Sometimes | Yes
-| Linear scalability | No | Yes | Yes }
+| Linear scalability | No | Yes | Yes 
 | Fault tolerance | No - manual setup | Yes - smart client detects failed nodes | Yes - smart client detects failed nodes
 | Data resilience | No | Yes - but rebuilds cause high latencies | Yes - automatic, efficient data rebuilds
 | Geo-distributed | No - manual setup | Sometimes | Yes

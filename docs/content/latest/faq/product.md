@@ -78,7 +78,7 @@ See [YugaByte DB in Comparison](../../comparisons/)
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
 
-## Why not use a Redis cluser alongside a sharded SQL cluster?
+## Why not use a Redis cluster alongside a sharded SQL cluster?
 
 Independent cache and database clusters should be avoided for multiple reasons.
 

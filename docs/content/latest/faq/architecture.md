@@ -27,7 +27,7 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 ## Why is a group of YugaByte DB nodes called a universe instead of the more commonly used term clusters?
 
-The YugaByte universe packs a lot more functionality that what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
+The YugaByte universe packs a lot more functionality than what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
 
 - A YugaByte universe can move into new machines/AZs/Regions/DCs in an online fashion, while these primitives are not associated with a traditional cluster.
 
