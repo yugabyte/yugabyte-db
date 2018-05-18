@@ -1,7 +1,7 @@
 ---
-title: Private Datacenter
-linkTitle: Private Datacenter
-description: Private Datacenter
+title: Manual Deployment
+linkTitle: Manual Deployment
+description: Manual Deployment
 aliases:
   - /deploy/multi-node-cluster/
 menu:

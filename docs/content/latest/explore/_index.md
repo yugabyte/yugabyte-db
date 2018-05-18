@@ -103,12 +103,17 @@ menu:
         Multiple read consistency levels for latency-sensitive apps.
       </div>
     </a>
-  </div><!--
-  <a class="section-link icon-offset" href="/explore/zero-downtime-reconfig">
-    <div class="icon">
-      <img src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
-    </div>
-    Zero Downtime Reconfig
-  </a>
--->
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="zero-downtime-reconfig/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
+        <div class="articles">Explore</div>
+        <div class="title">Zero Downtime Reconfig</div>
+      </div>
+      <div class="body">
+        Change config such as machine types or cloud/region/zone placements without any app downtime.
+      </div>
+    </a>
+  </div>
 </div>
