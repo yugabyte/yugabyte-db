@@ -233,6 +233,12 @@ print_report() {
       if ! is_mac; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
       fi
+      set +u
+      local make_targets_str="${make_targets[*]}"
+      set -u
+      if [[ -n $make_targets_str ]]; then
+        print_report_line "%s" "Targets" "$make_targets_str"
+      fi
       report_time "CMake" "cmake"
       report_time "C++ compilation" "make"
       report_time "Java compilation" "java_build"

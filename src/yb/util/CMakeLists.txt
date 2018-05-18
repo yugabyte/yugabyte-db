@@ -31,6 +31,13 @@
 #
 
 #######################################
+# protoc-gen-insertions
+#######################################
+
+add_executable(protoc-gen-insertions protoc-gen-insertions.cc)
+target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${YB_BASE_LIBS})
+
+#######################################
 # histogram_proto
 #######################################
 
@@ -302,13 +309,6 @@ if(NOT APPLE)
   target_link_libraries(yb_test_main
     rt)
 endif()
-
-#######################################
-# protoc-gen-insertions
-#######################################
-
-add_executable(protoc-gen-insertions protoc-gen-insertions.cc)
-target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${YB_BASE_LIBS})
 
 #######################################
 # Unit tests
