@@ -1,6 +1,6 @@
 ---
-title: 5. Secondary Indexes
-linkTitle: 5. Secondary Indexes
+title: 2. Secondary Indexes
+linkTitle: 2. Secondary Indexes
 description: Secondary Indexes
 beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: secondary-indexes
-    parent: explore
-    weight: 231
+    parent: explore-transactional
+    weight: 230
 ---
 
 A database index is a data structure that improves the speed of data retrieval operations on a database table. Secondary indexes require additional writes and storage space to maintain the index data structure. They can be created using one or more columns of a database table, providing the basis for both rapid random lookups and efficient access of ordered records.

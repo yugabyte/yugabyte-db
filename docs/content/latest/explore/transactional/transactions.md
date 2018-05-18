@@ -1,17 +1,25 @@
 ---
-title: Linear Scalability
-linkTitle: 1. Linear Scalability
-description: Linear Scalability
+title: 1. ACID Transactions
+linkTitle: 1. ACID Transactions
+description: Distributed ACID Transactions
+beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /explore/linear-scalability/
+  - /explore/transactions/
 menu:
   latest:
-    identifier: linear-scalability
-    parent: explore
-    weight: 210
+    identifier: transactions
+    parent: explore-transactional
+    weight: 225
 ---
 
-With YugaByte DB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS. In this tutorial, we will look at how YugaByte DB can scale while a workload is running. We will run a read-write workload using a pre-packaged sample application against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. We will then observe how the cluster scales out, by verifying that the number of read/write IOPS are evenly distributed across all the nodes at all times.
+Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
+
+YugaByte DB is designed to support transactions at the following isolation levels:
+
+- Snapshot Isolation (currently supported)
+- Serializable (work in progress)
+
+You can [read more about transactions](../../architecture/transactions/) in our architecture docs.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
@@ -23,7 +31,7 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="v">
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -44,15 +52,15 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/linear-scalability.md" /%}}
+    {{% includeMarkdown "binary/transactions.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/linear-scalability.md" /%}}
+    {{% includeMarkdown "binary/transactions.md" /%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/linear-scalability.md" /%}}
+    {{% includeMarkdown "docker/transactions.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/linear-scalability.md" /%}}
+    {{% includeMarkdown "kubernetes/transactions.md" /%}}
   </div>
 </div>

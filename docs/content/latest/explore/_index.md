@@ -1,6 +1,6 @@
 ---
-title: Explore
-linkTitle: Explore
+title: Explore Core Features
+linkTitle: Explore Core Features
 description: Explore Core Features
 headcontent:
 image: /images/section_icons/index/explore.png
@@ -17,102 +17,49 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/">
+    <a class="section-link icon-offset" href="cloud-native/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Linear Scalability</div>
+        <img class="icon" src="/images/section_icons/explore/cloud_native.png" aria-hidden="true" />
+        <div class="articles">2 articles</div>
+        <div class="title">Cloud Native</div>
       </div>
       <div class="body">
-        Reliable and fast scale out.
+        Linear scalability and Fault tolerance.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="transactional/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Fault Tolerance</div>
+        <img class="icon" src="/images/section_icons/explore/transactional.png" aria-hidden="true" />
+        <div class="articles">3 articles</div>       
+        <div class="title">Transactional</div>
       </div>
       <div class="body">
-        Resilient and self-healing.
+        Distributed ACID transactions, Secondary indexes and JSON documents.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="json-documents/">
+    <a class="section-link icon-offset" href="high-performance/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
-        <div class="title">JSON Documents</div>
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />       
+        <div class="title">High Performance</div>
       </div>
       <div class="body">
-        Working with JSON document data type.
+        Tunable read latency.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="transactions/">
+    <a class="section-link icon-offset" href="planet-scale/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />       
-        <div class="title">Distributed ACID Transactions</div>
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" /> 
+       <div class="articles">3 articles</div>
+        <div class="title">Planet-Scale</div>
       </div>
       <div class="body">
-        Multi-row and multi-shard transactions at any scale.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="secondary-indexes/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/secondary_indexes.png" aria-hidden="true" />        
-        <div class="title">Secondary Indexes</div>
-      </div>
-      <div class="body">
-        Consistent, performant secondary indexes on columns of your table.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-sharding/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
-        <div class="title">Auto Sharding</div>
-      </div>
-      <div class="body">
-        Purpose-built for large, ever-growing datasets.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-rebalancing/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_rebalance.png" aria-hidden="true" />     
-        <div class="title">Auto Rebalancing</div>
-      </div>
-      <div class="body">
-        Uniform query & data distribution without manual intervention.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tunable-reads/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/tunable_reads.png" aria-hidden="true" />        
-        <div class="title">Tunable Read Latency</div>
-      </div>
-      <div class="body">
-        Multiple read consistency levels for latency-sensitive apps.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="zero-downtime-reconfig/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
-        <div class="articles">Explore</div>
-        <div class="title">Zero Downtime Reconfig</div>
-      </div>
-      <div class="body">
-        Change config such as machine types or cloud/region/zone placements without any app downtime.
+        Global data distribution, Auto-sharding and Auto-rebalancing.
       </div>
     </a>
   </div>

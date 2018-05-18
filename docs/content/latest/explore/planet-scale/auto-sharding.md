@@ -1,14 +1,14 @@
 ---
-title: 6. Auto Sharding
-linkTitle: 6. Auto Sharding
+title: Auto Sharding
+linkTitle: 2. Auto Sharding
 description: Auto Sharding
 aliases:
   - /explore/auto-sharding/
 menu:
   latest:
     identifier: auto-sharding
-    parent: explore
-    weight: 240
+    parent: explore-planet-scale
+    weight: 270
 ---
 
 YugaByte DB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/sharding/) in YugaByte DB.

@@ -1,14 +1,14 @@
 ---
-title: 8. Tunable Reads
-linkTitle: 8. Tunable Reads
+title: Tunable Reads
+linkTitle: Tunable Reads
 description: Tunable Read Latency
 aliases:
   - /explore/tunable-reads/
 menu:
   latest:
     identifier: tunable-reads
-    parent: explore
-    weight: 260
+    parent: explore-high-perf
+    weight: 245
 ---
 
 With YugaByte DB, you can choose different consistency levels for performing reads. Relaxed consistency levels lead to lower latencies since the DB now has less work to do at read time including serving the read from the tablet followers. Reading from the followers is similar to a reading from a cache, which can give more read IOPS with low latency. In this tutorial, we will update a single key-value over and over, and read it from the tablet leader. While that workload is running, we will start another workload to read from a follower and verify that we are able to read from a tablet follower.

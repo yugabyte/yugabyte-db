@@ -7,11 +7,11 @@ aliases:
 menu:
   latest:
     identifier: fault-tolerance
-    parent: explore
-    weight: 220
+    parent: explore-cloud-native
+    weight: 215
 ---
 
-YugaByte DB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/) for both Redis as well as Cassandra tables. In this tutorial, we will look at how fault tolerance is achieved for Cassandra, but the same steps would work for Redis tables as well. Except for the Kubernetes example, we will create these tables with a replication factor = 5 that allows a [fault tolerance](../../architecture/concepts/replication/) of 2. We will then insert some data through one of the nodes, and query the data from another node. We will then simulate two node failures (one by one) and make sure we are able to successfully query and write data after each of these failures.
+YugaByte DB can automatically handle failures and therefore provides [high availability](/architecture/core-functions/high-availability/) for both Redis as well as Cassandra tables. In this tutorial, we will look at how fault tolerance is achieved for Cassandra, but the same steps would work for Redis tables as well. Except for the Kubernetes example, we will create these tables with a replication factor = 5 that allows a [fault tolerance](/architecture/concepts/replication/) of 2. We will then insert some data through one of the nodes, and query the data from another node. We will then simulate two node failures (one by one) and make sure we are able to successfully query and write data after each of these failures.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
