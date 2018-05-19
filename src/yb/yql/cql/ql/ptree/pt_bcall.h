@@ -92,13 +92,22 @@ class PTBcall : public PTExpr {
 
   virtual string QLName() const override {
     string arg_names;
+    string keyspace;
+
     for (auto arg : args_->node_list()) {
       if (!arg_names.empty()) {
         arg_names += ", ";
       }
       arg_names += arg->QLName();
     }
-    return strings::Substitute("$0$1$2$3", name_->c_str(), "(", arg_names, ")");
+    if (IsAggregateCall()) {
+      // count(*) is displayed as count
+      if (arg_names.empty()) {
+        return strings::Substitute("$0", name_->c_str());
+      }
+      keyspace += "system.";
+    }
+    return strings::Substitute("$0$1$2$3$4", keyspace, name_->c_str(), "(", arg_names, ")");
   }
 
   virtual bool IsAggregateCall() const override;
