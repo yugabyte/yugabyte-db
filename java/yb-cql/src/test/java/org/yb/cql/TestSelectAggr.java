@@ -106,7 +106,7 @@ public class TestSelectAggr extends BaseCQLTest {
     {
       // Test Basic - Not existing data.
       ResultSet rs = session.execute("SELECT count(*), max(h), min(r), sum(v6), avg(v1) " +
-                                     "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
+              "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
       Iterator<Row> iter = rs.iterator();
       Row row = iter.next();
       assertEquals(row.getLong(0), 0);
@@ -120,9 +120,9 @@ public class TestSelectAggr extends BaseCQLTest {
     {
       // Test Basic - Query with completely-specified primary key.
       ResultSet rs = session.execute(String.format("SELECT count(*), max(h), min(r), sum(v6), " +
-                                                   "avg(v1) " +
-                                                   "  FROM test_aggr_expr WHERE h = %d AND r = %d;",
-                                                   h_min, r_max));
+                      "avg(v1) " +
+                      "  FROM test_aggr_expr WHERE h = %d AND r = %d;",
+              h_min, r_max));
       Iterator<Row> iter = rs.iterator();
       Row row = iter.next();
       assertEquals(row.getLong(0), 1);
@@ -136,21 +136,21 @@ public class TestSelectAggr extends BaseCQLTest {
     {
       // Test Basic - Query with completely-specified hash key.
       ResultSet rs = session.execute("SELECT count(*), max(h), min(r), sum(v6), avg(v1) " +
-                                     "  FROM test_aggr_expr WHERE h = 1;");
+              "  FROM test_aggr_expr WHERE h = 1;");
       Iterator<Row> iter = rs.iterator();
       Row row = iter.next();
       assertEquals(row.getLong(0), 2);
       assertEquals(row.getInt(1), h_min);
       assertEquals(row.getInt(2), r_min);
-      assertEquals(row.getDouble(3), 2*v6_min + 1, 0.1);
-      assertEquals(row.getLong(4), (2*v1_min + 1) / 2);
+      assertEquals(row.getDouble(3), 2 * v6_min + 1, 0.1);
+      assertEquals(row.getLong(4), (2 * v1_min + 1) / 2);
       // Expect only one row.
       assertFalse(iter.hasNext());
     }
     {
       // Test Basic - All rows.
-      ResultSet rs = session.execute("SELECT count(*), max(h), min(r), sum(v6), avg(v1) " +
-                                     "  FROM test_aggr_expr;");
+      ResultSet rs = session.execute("SELECT count(*), max(h), min(r), sum(v6), " +
+                      "avg(v1), count(v1) FROM test_aggr_expr;");
       Iterator<Row> iter = rs.iterator();
       Row row = iter.next();
       assertEquals(row.getLong(0), total_inserted_row);
@@ -158,6 +158,25 @@ public class TestSelectAggr extends BaseCQLTest {
       assertEquals(row.getInt(2), 2);
       assertEquals(row.getDouble(3), v6_total, 0.1);
       assertEquals(row.getLong(4), v1_total / (total_inserted_row - 1));
+      assertEquals(row.getLong(5), total_inserted_row - 1);
+      assertEquals(row.getLong("count"), total_inserted_row);
+      assertEquals(row.getInt("system.max(h)"), h_max);
+      assertEquals(row.getInt("system.min(r)"), 2);
+      assertEquals(row.getDouble("system.sum(v6)"), v6_total, 0.1);
+      assertEquals(row.getLong("system.avg(v1)"), v1_total / (total_inserted_row - 1));
+      assertEquals(row.getLong("system.count(v1)"), total_inserted_row - 1);
+      // Expect only one row.
+      assertFalse(iter.hasNext());
+    }
+    {
+      // Test Basic - Query with completely-specified primary key, and specify column by name
+      ResultSet rs = session.execute(String.format("SELECT h, r, v6, v1 " +
+                      "  FROM test_aggr_expr WHERE h = %d AND r = %d;",
+              h_min, r_max));
+      Iterator<Row> iter = rs.iterator();
+      Row row = iter.next();
+      assertEquals(row.getInt("h"), h_min);
+      assertEquals(row.getInt("r"), r_max);
       // Expect only one row.
       assertFalse(iter.hasNext());
     }

@@ -704,7 +704,7 @@ class PTStar : public PTNull {
   }
 
   virtual string QLName() const override {
-    return "*";
+    return "";
   }
   virtual bool IsDummyStar() const override {
     return true;
