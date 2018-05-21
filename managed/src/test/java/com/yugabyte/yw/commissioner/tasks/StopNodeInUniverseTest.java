@@ -65,6 +65,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         when(mockYBClient.getClient(any())).thenReturn(mockClient);
         when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
         dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+        dummyShellResponse.message = "true";
         when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     }
 
@@ -101,10 +102,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER = ImmutableList.of(
             TaskType.SetNodeState,
             TaskType.AnsibleClusterServerCtl,
-            TaskType.UpdateNodeProcess,
             TaskType.AnsibleClusterServerCtl,
-            TaskType.UpdateNodeProcess,
             TaskType.WaitForMasterLeader,
+            TaskType.UpdateNodeProcess,
+            TaskType.UpdateNodeProcess,
             TaskType.SetNodeState,
             TaskType.UniverseUpdateSucceeded
     );
@@ -113,13 +114,13 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             Json.toJson(ImmutableMap.of("state", "Stopping")),
             Json.toJson(ImmutableMap.of("process", "tserver",
                     "command", "stop")),
-            Json.toJson(ImmutableMap.of("processType", "TSERVER",
-                    "isAdd", false)),
             Json.toJson(ImmutableMap.of("process", "master",
                     "command", "stop")),
+            Json.toJson(ImmutableMap.of()),
+            Json.toJson(ImmutableMap.of("processType", "TSERVER",
+                    "isAdd", false)),
             Json.toJson(ImmutableMap.of("processType", "MASTER",
                     "isAdd", false)),
-            Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("state", "Stopped")),
             Json.toJson(ImmutableMap.of())
     );
@@ -162,7 +163,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         taskParams.universeUUID = defaultUniverse.universeUUID;
 
         TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-        verify(mockNodeManager, times(2)).nodeCommand(any(), any());
+        verify(mockNodeManager, times(3)).nodeCommand(any(), any());
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -183,7 +184,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         taskParams.universeUUID = universe.universeUUID;
 
         TaskInfo taskInfo = submitTask(taskParams, "host-n4");
-        verify(mockNodeManager, times(1)).nodeCommand(any(), any());
+        verify(mockNodeManager, times(2)).nodeCommand(any(), any());
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

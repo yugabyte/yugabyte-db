@@ -45,6 +45,14 @@ public class StartNodeInUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
+      if (!instanceExists(taskParams())) {
+        String msg = "No instance exists for " + taskParams().nodeName;
+        LOG.error(msg);
+        throw new RuntimeException(msg);
+      }
+
       // Update node state to Starting
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
