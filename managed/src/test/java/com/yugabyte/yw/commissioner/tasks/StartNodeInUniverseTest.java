@@ -56,6 +56,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                 ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
         dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+        dummyShellResponse.message = "true";
         when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     }
 
@@ -156,7 +157,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         taskParams.universeUUID = defaultUniverse.universeUUID;
 
         TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-        verify(mockNodeManager, times(1)).nodeCommand(any(), any());
+        verify(mockNodeManager, times(2)).nodeCommand(any(), any());
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -171,7 +172,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         NodeTaskParams taskParams = new NodeTaskParams();
         taskParams.universeUUID = universe.universeUUID;
         TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-        verify(mockNodeManager, times(2)).nodeCommand(any(), any());
+        verify(mockNodeManager, times(3)).nodeCommand(any(), any());
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

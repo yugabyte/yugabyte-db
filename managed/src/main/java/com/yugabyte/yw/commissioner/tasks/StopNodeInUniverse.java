@@ -44,20 +44,28 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      // Stop the tserver and remove its state from YW DB.
-      createTServerTaskForNode(currentNode, "stop")
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
+      if (instanceExists(taskParams())) {
+        // Stop the tserver.
+        createTServerTaskForNode(currentNode, "stop")
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+        // Stop the master process on this node.
+        if (currentNode.isMaster) {
+          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+      }
+
+      // Update the per process state in YW DB.
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-      // Stop the master process on this node and remove its state from YW DB.
       if (currentNode.isMaster) {
-        createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
       // Update Node State to Stopped
