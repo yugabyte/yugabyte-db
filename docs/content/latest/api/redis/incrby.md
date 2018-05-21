@@ -1,14 +1,14 @@
 ---
-title: INCR
-linkTitle: INCR
-description: INCR
+title: INCRBY
+linkTitle: INCRBY
+description: INCRBY
 menu:
   latest:
     parent: api-redis
-    weight: 2210
+    weight: 2215
 aliases:
-  - api/redis/incr
-  - api/yedis/incr
+  - api/redis/incrby
+  - api/yedis/incrby
 ---
 
 ## SYNOPSIS
@@ -25,14 +25,14 @@ Returns the value after addition.
 $ SET yugakey 7
 ```
 ```sh
-"OK"
+OK
 ```
 ```{.sh .copy .separator-dollar}
-$ INCR yugakey
+$ INCRBY yugakey 3
 ```
 ```sh
-8
+10
 ```
 
 ## SEE ALSO
-[`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incrby`](../incrby/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)
+[`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)
