@@ -76,7 +76,7 @@
     </style>
 
     <link rel="stylesheet" href="/css/application.css">
-    <link rel="stylesheet" type="text/css" href="/css/site.css" />
+    <link rel="stylesheet" type="text/css" href="/css/site.css?{{ now.Unix }}" />
     <link rel="stylesheet" href="/css/temporary.css">
     <link rel="stylesheet" href="{{ with .Site.Params.highlight_css }}{{ . | absURL }}{{ else }}{{ "/css/highlight/highlight.css" }}{{ end }}">
 
