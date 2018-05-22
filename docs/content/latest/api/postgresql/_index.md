@@ -17,7 +17,7 @@ aliases:
 ---
 
 ## Introduction
-PostgreSQL support is under active development in YugaByte. We will keep updating this page as features are added.
+PostgreSQL support is under active development in YugaByte DB. We will keep updating this page as features are added.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

@@ -22,7 +22,7 @@ In terms of data model and APIs, YugaByte DB currently supports 3 APIs.
 
 2. [Redis-compatible YEDIS](/api/redis/) - YugaByte DB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 
-3. PostgreSQL - This API is currently in Beta.
+3. PostgreSQL (Beta) - Compatible with the SQL language in PostgreSQL.
 
 ## What makes YugaByte DB unique?
 

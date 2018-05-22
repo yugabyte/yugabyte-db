@@ -14,7 +14,7 @@ menu:
 ---
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="transactions/">
+    <a class="section-link icon-offset" href="acid-transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />       
         <div class="title">Distributed ACID Transactions</div>
