@@ -27,6 +27,8 @@ SystemTablesHandler::SystemTablesHandler()
                        string(kSystemLocalTableName)),
         std::make_pair(string(kSystemNamespaceId),
                        string(kSystemPartitionsTableName)),
+        std::make_pair(string(kSystemNamespaceId),
+                       string(kSystemSizeEstimatesTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),
                        string(kSystemSchemaAggregatesTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),

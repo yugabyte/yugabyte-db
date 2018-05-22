@@ -93,6 +93,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
     TABLE_ENTRY(System, Peers), \
     TABLE_ENTRY(System, Local), \
     TABLE_ENTRY(System, Partitions), \
+    TABLE_ENTRY(System, SizeEstimates), \
     TABLE_ENTRY(SystemSchema, Aggregates), \
     TABLE_ENTRY(SystemSchema, Columns), \
     TABLE_ENTRY(SystemSchema, Functions), \
