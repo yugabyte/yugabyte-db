@@ -100,6 +100,7 @@ set(COMMON_SRCS
   row_key-util.cc
   schema.cc
   index.cc
+  jsonb.cc
   hybrid_time.cc
   doc_hybrid_time.cc
   transaction.cc
@@ -149,6 +150,7 @@ add_dependencies(yb_common yb_bfql yb_bfpg)
 
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
+ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
 ADD_YB_TEST(row_key-util-test)

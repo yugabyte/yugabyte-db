@@ -19,12 +19,12 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/jsonb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
-#include "yb/util/jsonb.h"
 #include "yb/util/varint.h"
 #include "yb/util/enums.h"
 
@@ -61,6 +61,7 @@ using std::shared_ptr;
 using std::to_string;
 using util::Decimal;
 using util::FormatBytesAsStr;
+using common::Jsonb;
 
 template<typename T>
 static int GenericCompare(const T& lhs, const T& rhs) {
@@ -341,7 +342,7 @@ void QLValue::Serialize(
     }
     case JSONB: {
       std::string json;
-      util::Jsonb jsonb(jsonb_value());
+      Jsonb jsonb(jsonb_value());
       CHECK_OK(jsonb.ToJsonString(&json));
       CQLEncodeBytes(json, buffer);
       return;
@@ -558,7 +559,7 @@ Status QLValue::Deserialize(
     case JSONB: {
       string json;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &json));
-      util::Jsonb jsonb;
+      Jsonb jsonb;
       RETURN_NOT_OK(jsonb.FromString(json));
       set_jsonb_value(jsonb.MoveSerializedJsonb());
       return Status::OK();
