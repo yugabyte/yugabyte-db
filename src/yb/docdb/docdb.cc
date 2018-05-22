@@ -173,7 +173,15 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
   DocWriteBatch doc_write_batch(rocksdb, init_marker_behavior, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    RETURN_NOT_OK(doc_op->Apply(data));
+    Status s = doc_op->Apply(data);
+    if (doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION && s.IsQLError()) {
+      // Ensure we set appropriate error in the response object for QL errors.
+      const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
+      resp->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+      resp->set_error_message(s.ToString());
+      continue;
+    }
+    RETURN_NOT_OK(s);
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();

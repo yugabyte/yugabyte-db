@@ -65,6 +65,10 @@ Status Jsonb::FromString(const std::string& json) {
     return STATUS(Corruption, "JSON text is corrupt",
                   rapidjson::GetParseError_En(document.GetParseError()));
   }
+  return FromRapidJson(document);
+}
+
+Status Jsonb::FromRapidJson(const rapidjson::Document& document) {
   return ToJsonbInternal(document, &serialized_jsonb_);
 }
 

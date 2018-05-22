@@ -192,6 +192,9 @@ TEST_F(QLTestParser, TestQLParser) {
   PARSE_VALID_STMT("SELECT * FROM t WHERE c2->'a'->'b' = '1';");
   PARSE_VALID_STMT("SELECT * FROM t WHERE c2->'a'->'b'->>'c' = '1';");
   PARSE_VALID_STMT("SELECT * FROM t WHERE c2->>'a' = '1';");
+  PARSE_VALID_STMT("UPDATE t SET c2->'a' = '1' WHERE c1 = 1;");
+  PARSE_VALID_STMT("UPDATE t SET c2->'a'->'b'->'c' = '1' WHERE c1 = 1;");
+  PARSE_VALID_STMT("UPDATE t SET c2->'a'->'b'->'c' = '1', c3->'x'->'y'->'z' = '1' WHERE c1 = 1;");
 
   // Invalid json operators.
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c2->>'a'->'b' = '1';");
@@ -200,6 +203,7 @@ TEST_F(QLTestParser, TestQLParser) {
   PARSE_INVALID_STMT("SELECT c2->>'a'->'b' FROM t;");
   PARSE_INVALID_STMT("SELECT c2->>a  FROM t;");
   PARSE_INVALID_STMT("SELECT c2->a FROM t;");
+  PARSE_INVALID_STMT("UPDATE t SET c2->>'a' = '1' WHERE c1 = 1;");
 
   // Valid statement: unreserved keywords used as names.
   PARSE_VALID_STMT("CREATE KEYSPACE clustering;");

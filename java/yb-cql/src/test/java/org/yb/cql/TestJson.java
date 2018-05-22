@@ -90,6 +90,16 @@ public class TestJson extends BaseCQLTest {
     session.execute("INSERT INTO test_json(c1, c2) values (8, '{\"b\" : 1}');");
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c1 = 1"));
 
+    // Invalid inserts.
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, abc);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 'abc');");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 1);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 2.0);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, null);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, true);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, false);");
+    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, '{a:1, \"b\":2}');");
+
     // Test operators.
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
         "'4294967295'"));
@@ -139,6 +149,16 @@ public class TestJson extends BaseCQLTest {
         .getAvailableWithoutFetching());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->2 = '1'")
         .getAvailableWithoutFetching());
+
+    // Test invalid rhs for where clause.
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a1'->5->'k2'->1 = 200");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a1'->5->'k3' = true");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a1'->0 = 1");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a2' = '{a:1}'");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a3' = ''");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->'e' = null");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->'c' = false");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->>'f' = hello");
 
     // Test json operators in select clause.
     assertEquals("4294967295",
@@ -242,5 +262,42 @@ public class TestJson extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as uuid) = 123");
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as varint) = 123");
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as decimal) = 123");
+    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->'p' as text) = '123'");
+
+    // Test update.
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '100' WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'100'"));
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '\"100\"' WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'\"100\"'"));
+    session.execute("UPDATE test_json SET c2->'a1'->5->'k2'->2 = '2000' WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->5->'k2'->2 = " +
+        "'2000'"));
+    session.execute("UPDATE test_json SET c2->'a2' = '{\"x1\": 1, \"x2\": 2, \"x3\": 3}' WHERE c1" +
+        " = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a2' = " +
+        "'{\"x1\": 1, \"x2\": 2, \"x3\": 3}'"));
+    session.execute("UPDATE test_json SET c2->'a'->'e' = '{\"y1\": 1, \"y2\": {\"z1\" : 1}}' " +
+        "WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = " +
+        "'{\"y1\": 1, \"y2\": {\"z1\" : 1}}'"));
+
+    // Invalid updates.
+    // Invalid rhs (needs to be valid json)
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'p' = 100 WHERE c1 = 1");
+    // non-existent key.
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'xyz' = '100' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'aa'->'q'->'p' = '100' WHERE c1 = 1");
+    // Array out of bounds.
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->200->'k2'->2 = '2000' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->-2->'k2'->2 = '2000' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->5->'k2'->100 = '2000' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->5->'k2'->-1 = '2000' WHERE c1 = 1");
+    // Mixup arrays and objects.
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->1 = '100' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->5->'k2'->'abc' = '2000' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->5->'q'->'p' = '100' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a1'->'b'->'k2'->2 = '2000' WHERE c1 = 1");
   }
 }

@@ -77,6 +77,7 @@ message QLMapValuePB {
 message QLColumnValuePB {
   optional int32 column_id = 1;
   repeated QLExpressionPB subscript_args = 3;
+  repeated QLJsonOperationPB json_args = 4;
   optional QLExpressionPB expr = 2;
 }
 

@@ -300,6 +300,7 @@ using namespace yb::ql;
 %type <PExprListNode>     // A list of expressions.
                           target_list opt_target_list
                           ctext_row ctext_expr_list func_arg_list col_arg_list json_ref
+                          json_ref_single_arrow
 
 %type <PRoleOptionListNode>   RoleOptionList optRoleOptionList
 
@@ -2721,6 +2722,9 @@ single_set_clause:
   | set_target col_arg_list '=' ctext_expr {
     $$ = MAKE_NODE(@1, PTAssign, $1, $4, $2);
   }
+  | set_target json_ref_single_arrow '=' ctext_expr {
+    $$ = MAKE_NODE(@1, PTAssign, $1, $4, nullptr, $2);
+  }
 ;
 
 col_arg_list:
@@ -4080,6 +4084,16 @@ columnref:
 ;
 
 json_ref:
+  json_ref_single_arrow {
+    $$ = $1;
+  }
+  | DOUBLE_ARROW AexprConst {
+    PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_TEXT, $2);
+    $$ = MAKE_NODE(@1, PTExprListNode, node);
+  }
+;
+
+json_ref_single_arrow:
   SINGLE_ARROW AexprConst {
     PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_OBJECT, $2);
     $$ = MAKE_NODE(@1, PTExprListNode, node);
@@ -4089,10 +4103,6 @@ json_ref:
       $2);
     $3->Prepend(json_op);
     $$ = $3;
-  }
-  | DOUBLE_ARROW AexprConst {
-    PTJsonOperator::SharedPtr node = MAKE_NODE(@1, PTJsonOperator, JsonOperator::JSON_TEXT, $2);
-    $$ = MAKE_NODE(@1, PTExprListNode, node);
   }
 ;
 
