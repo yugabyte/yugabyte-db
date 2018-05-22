@@ -24,7 +24,7 @@ menu:
         <div class="title">Cloud Native</div>
       </div>
       <div class="body">
-        Linear scalability and Fault tolerance.
+        Linear scalability and fault tolerance.
       </div>
     </a>
   </div>
@@ -36,7 +36,7 @@ menu:
         <div class="title">Transactional</div>
       </div>
       <div class="body">
-        Distributed ACID transactions, Secondary indexes and JSON documents.
+        Distributed ACID transactions, secondary indexes and JSON documents.
       </div>
     </a>
   </div>
@@ -59,7 +59,7 @@ menu:
         <div class="title">Planet-Scale</div>
       </div>
       <div class="body">
-        Global data distribution, Auto-sharding and Auto-rebalancing.
+        Global data distribution, auto-sharding and auto-rebalancing.
       </div>
     </a>
   </div>

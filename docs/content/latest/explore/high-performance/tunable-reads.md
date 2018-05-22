@@ -37,10 +37,12 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/tunable-reads.md" /%}}
   </div>
+  <!--
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/tunable-reads.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/tunable-reads.md" /%}}
   </div>
+  -->
 </div>
