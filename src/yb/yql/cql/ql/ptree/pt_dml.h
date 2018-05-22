@@ -309,6 +309,11 @@ class PTDmlStmt : public PTCollection {
     return *subscripted_col_args_;
   }
 
+  const MCVector<JsonColumnArg>& json_col_args() const {
+    CHECK(json_col_args_ != nullptr) << "json-column arguments not set up";
+    return *json_col_args_;
+  }
+
   // Access for selected result.
   const std::shared_ptr<vector<ColumnSchema>>& selected_schemas() const {
     return selected_schemas_;
@@ -413,6 +418,7 @@ class PTDmlStmt : public PTCollection {
 
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
   MCSharedPtr<MCVector<SubscriptedColumnArg>> subscripted_col_args_;
+  MCSharedPtr<MCVector<JsonColumnArg>> json_col_args_;
 
   // Columns that are being referenced by this statement. The tservers will need to read these
   // columns when processing the statements. These are different from selected columns whose values

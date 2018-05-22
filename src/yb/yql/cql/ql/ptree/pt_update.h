@@ -41,7 +41,8 @@ class PTAssign : public TreeNode {
            YBLocation::SharedPtr loc,
            const PTQualifiedName::SharedPtr& lhs_,
            const PTExpr::SharedPtr& rhs_,
-           const PTExprListNode::SharedPtr& = nullptr);
+           const PTExprListNode::SharedPtr& subscript_args = nullptr,
+           const PTExprListNode::SharedPtr& json_ops = nullptr);
   virtual ~PTAssign();
 
   template<typename... TypeArgs>
@@ -67,8 +68,16 @@ class PTAssign : public TreeNode {
     return subscript_args_;
   }
 
+  const PTExprListNode::SharedPtr json_ops() const {
+    return json_ops_;
+  }
+
   bool has_subscripted_column() const {
     return subscript_args_ != nullptr && subscript_args_->size() > 0;
+  }
+
+  bool has_json_ops() const {
+    return json_ops_ != nullptr && json_ops_->size() > 0;
   }
 
   PTExpr::SharedPtr rhs() {
@@ -86,6 +95,9 @@ class PTAssign : public TreeNode {
 
   // for assigning specific indexes for collection columns: e.g.: lhs[key1][key2] = value
   PTExprListNode::SharedPtr subscript_args_;
+
+  // Denotes json operators applied to a column e.g.: c1->'a'->'b'->'c'.
+  PTExprListNode::SharedPtr json_ops_;
 
   // Semantic phase will fill in this value.
   const ColumnDesc *col_desc_;

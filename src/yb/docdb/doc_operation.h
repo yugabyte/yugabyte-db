@@ -26,6 +26,7 @@
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/typedefs.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_resultset.h"
@@ -53,6 +54,13 @@ const int kNilSubkeyIndex = -1;
 
 class DocOperation {
  public:
+  enum Type {
+    PGSQL_DOC_OPERATION,
+    PGSQL_WRITE_OPERATION,
+    PGSQL_READ_OPERATION,
+    QL_WRITE_OPERATION,
+    REDIS_WRITE_OPERATION,
+  };
   virtual ~DocOperation() {}
 
   // Does the operation require a read snapshot to be taken before being applied? If so, a
@@ -62,6 +70,7 @@ class DocOperation {
   virtual bool RequireReadSnapshot() const = 0;
   virtual void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const = 0;
   virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
+  virtual Type OpType() = 0;
 };
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
@@ -90,6 +99,8 @@ class RedisWriteOperation : public DocOperation {
   void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
   RedisResponsePB &response() { return response_; }
+
+  Type OpType() override { return Type::REDIS_WRITE_OPERATION; }
 
  private:
   void InitializeIterator(const DocOperationApplyData& data);
@@ -184,6 +195,30 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
+  CHECKED_STATUS ApplyForJsonOperators(const QLColumnValuePB& column_value,
+                                       const QLTableRow& current_row,
+                                       const DocOperationApplyData& data,
+                                       const DocPath& sub_path, const MonoDelta& ttl,
+                                       const UserTimeMicros& user_timestamp,
+                                       const ColumnSchema& column);
+
+  CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+                                       const QLTableRow& current_row,
+                                       const DocOperationApplyData& data,
+                                       const MonoDelta& ttl,
+                                       const UserTimeMicros& user_timestamp,
+                                       const ColumnSchema& column,
+                                       DocPath* sub_path);
+
+  CHECKED_STATUS ApplyForRegularColumns(const QLColumnValuePB& column_value,
+                                        const QLTableRow& current_row,
+                                        const DocOperationApplyData& data,
+                                        const DocPath& sub_path, const MonoDelta& ttl,
+                                        const UserTimeMicros& user_timestamp,
+                                        const ColumnSchema& column,
+                                        const ColumnId& column_id,
+                                        QLTableRow* new_row);
+
   const QLWriteRequestPB& request() const { return request_; }
   QLResponsePB* response() const { return response_; }
 
@@ -193,6 +228,8 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
+
+  Type OpType() override { return Type::QL_WRITE_OPERATION; }
 
  private:
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
@@ -295,6 +332,7 @@ class PgsqlDocOperation : public DocOperation, public DocExprExecutor {
   CHECKED_STATUS CreateProjections(const Schema& schema,
                                    const PgsqlColumnRefsPB& column_refs,
                                    Schema* column_projection);
+  Type OpType() override { return Type::PGSQL_DOC_OPERATION; }
 };
 
 class PgsqlWriteOperation : public PgsqlDocOperation {
@@ -313,6 +351,8 @@ class PgsqlWriteOperation : public PgsqlDocOperation {
 
   // Execute write.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
+
+  Type OpType() override { return Type::PGSQL_WRITE_OPERATION; }
 
  private:
   // Insert, update, and delete operations.
@@ -381,6 +421,8 @@ class PgsqlReadOperation : public PgsqlDocOperation {
                          const Schema& query_schema,
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
+
+  Type OpType() override { return Type::PGSQL_READ_OPERATION; }
 
  private:
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,

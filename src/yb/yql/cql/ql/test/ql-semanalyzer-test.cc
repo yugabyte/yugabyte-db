@@ -158,6 +158,14 @@ TEST_F(QLTestAnalyzer, TestJsonColumn) {
   // Column is not json.
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE c2->>'a' = '1'", &parse_tree);
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1->'a' = '1'", &parse_tree);
+
+  // Update json column.
+  ANALYZE_VALID_STMT("UPDATE t SET c1->'a'->'b'->'c' = '2' WHERE h1 = 1", &parse_tree);
+  ANALYZE_VALID_STMT("UPDATE t SET c1->'a' = '2' WHERE h1 = 1", &parse_tree);
+
+  // Invalid updates.
+  ANALYZE_INVALID_STMT("UPDATE t SET c1->>'a' = '2' WHERE h1 = 1", &parse_tree);
+  ANALYZE_INVALID_STMT("UPDATE t SET c1.a.b.c = '2' WHERE h1 = 1", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestDmlWithStaticColumn) {

@@ -635,7 +635,7 @@ CHECKED_STATUS ConvertBlobToBool(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeBool) {
-      return STATUS(InvalidArgument, "The blob string is not a valid string for a boolean type.");
+      return STATUS(QLError, "The blob string is not a valid string for a boolean type.");
     }
     if (blob[0] == 0) {
       target->set_bool_value(false);
@@ -653,7 +653,7 @@ CHECKED_STATUS ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeTinyInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for tinyint type.");
+      return STATUS(QLError, "The blob string is not valid for tinyint type.");
     }
     target->set_int8_value(static_cast<int8_t> (blob[0]));
   }
@@ -667,7 +667,7 @@ CHECKED_STATUS ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeSmallInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for smallint type.");
+      return STATUS(QLError, "The blob string is not valid for smallint type.");
     }
     uint16* target_ptr = reinterpret_cast<uint16*> (const_cast <char*> (blob.c_str()));
     uint16 target_little_endian = BigEndian::ToHost16(*target_ptr);
@@ -684,7 +684,7 @@ CHECKED_STATUS ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for int type.");
+      return STATUS(QLError, "The blob string is not valid for int type.");
     }
     uint32* target_ptr = reinterpret_cast<uint32*> (const_cast <char*> (blob.c_str()));
     uint32 target_little_endian = BigEndian::ToHost32(*target_ptr);
@@ -701,7 +701,7 @@ CHECKED_STATUS ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for bigint type.");
+      return STATUS(QLError, "The blob string is not valid for bigint type.");
     }
     uint64* target_ptr = reinterpret_cast<uint64*> (const_cast <char*> (blob.c_str()));
     uint64 target_little_endian = BigEndian::ToHost64(*target_ptr);
@@ -723,7 +723,7 @@ CHECKED_STATUS ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for float type.");
+      return STATUS(QLError, "The blob string is not valid for float type.");
     }
     uint32* target_ptr = reinterpret_cast<uint32*> (const_cast <char*> (blob.c_str()));
     uint32 target_little_endian = BigEndian::ToHost32(*target_ptr);
@@ -740,7 +740,7 @@ CHECKED_STATUS ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
-      return STATUS(InvalidArgument, "The blob string is not valid for double type.");
+      return STATUS(QLError, "The blob string is not valid for double type.");
     }
     uint64* target_ptr = reinterpret_cast<uint64*> (const_cast <char*> (blob.c_str()));
     uint64 target_little_endian = BigEndian::ToHost64(*target_ptr);
@@ -772,7 +772,7 @@ CHECKED_STATUS ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
-      return STATUS(InvalidArgument, "The blob string is not a valid Timestamp.");
+      return STATUS(QLError, "The blob string is not a valid Timestamp.");
     }
     uint64* target_ptr = reinterpret_cast<uint64*> (const_cast <char*> (blob.c_str()));
     uint64 target_little_endian = BigEndian::ToHost64(*target_ptr);
@@ -793,7 +793,7 @@ CHECKED_STATUS ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeUuid) {
-      return STATUS(InvalidArgument, "The blob string is not valid for UUID type.");
+      return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
     Uuid target_val;
     RETURN_NOT_OK(target_val.FromBytes(blob));
@@ -809,7 +809,7 @@ CHECKED_STATUS ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
   } else {
     string blob = source->binary_value();
     if (blob.size() != kSizeUuid) {
-      return STATUS(InvalidArgument, "The blob string is not valid for UUID type.");
+      return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
     Uuid target_val;
     RETURN_NOT_OK(target_val.FromBytes(blob));
@@ -938,7 +938,7 @@ CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
     int64_t val;
     RETURN_NOT_OK(source->varint_value().ToInt64(&val));
     if (val < INT8_MIN || val > INT8_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int8 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int8 due to overflow");
     }
     target->set_int8_value(val);
   }
@@ -953,7 +953,7 @@ CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
     int64_t val;
     RETURN_NOT_OK(source->varint_value().ToInt64(&val));
     if (val < INT16_MIN || val > INT16_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int16 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int16 due to overflow");
     }
     target->set_int16_value(val);
   }
@@ -968,7 +968,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
     int64_t val;
     RETURN_NOT_OK(source->varint_value().ToInt64(&val));
     if (val < INT32_MIN || val > INT32_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int32 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int32 due to overflow");
     }
     target->set_int32_value(val);
   }
@@ -1062,7 +1062,7 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
                        RTypePtr target) {
   DataType source_datatype = QLValue::FromInternalDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Cannot convert $0 to $1",
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
                              QLType::ToCQLString(target_datatype));
   }
@@ -1084,7 +1084,7 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
       RETURN_NOT_OK(set_result(source->double_value(), target));
       break;
     default:
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid datatype for cast: $0", source->type());
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0", source->type());
   }
   return Status::OK();
 }
@@ -1093,7 +1093,7 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
   DataType source_datatype = QLValue::FromInternalDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Cannot convert $0 to $1",
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
                              QLType::ToCQLString(DataType::STRING));
   }
@@ -1118,7 +1118,7 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
       target->set_string_value(source->string_value());
       break;
     default:
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid datatype for cast: $0", source->type());
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0", source->type());
   }
   return Status::OK();
 }

@@ -49,7 +49,11 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
       QLStorage(), deadline, read_time, schema, query_schema, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
-    result->response.set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+    if (s.IsQLError()) {
+      result->response.set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+    } else {
+      result->response.set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+    }
     result->response.set_error_message(s.message().cdata(), s.message().size());
     return Status::OK();
   }

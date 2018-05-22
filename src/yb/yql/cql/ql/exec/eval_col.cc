@@ -85,6 +85,19 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     }
   }
 
+  const MCVector<JsonColumnArg>& jsoncol_args = tnode->json_col_args();
+  for (const JsonColumnArg& col : jsoncol_args) {
+    const ColumnDesc *col_desc = col.desc();
+    QLColumnValuePB *col_pb = req->add_column_values();
+    col_pb->set_column_id(col_desc->id());
+    QLExpressionPB *expr_pb = col_pb->mutable_expr();
+    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    for (auto& col_arg : col.args()->node_list()) {
+      QLJsonOperationPB *arg_pb = col_pb->add_json_args();
+      RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(col_arg), arg_pb));
+    }
+  }
+
   return Status::OK();
 }
 
