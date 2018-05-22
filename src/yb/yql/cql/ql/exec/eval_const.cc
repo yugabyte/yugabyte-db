@@ -13,14 +13,13 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/util/bytes_formatter.h>
-#include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/util/jsonb.h"
+#include "yb/common/jsonb.h"
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfunc.h"
 #include "yb/util/net/inetaddress.h"
-
 #include "yb/util/decimal.h"
+#include "yb/yql/cql/ql/exec/executor.h"
 
 namespace yb {
 namespace ql {
@@ -279,7 +278,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     case InternalType::kJsonbValue: {
       std::string value;
       RETURN_NOT_OK(const_pt->ToString(&value));
-      util::Jsonb jsonb;
+      common::Jsonb jsonb;
       RETURN_NOT_OK(jsonb.FromString(value));
 
       QLValue ql_const;

@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_JSONB_H
-#define YB_UTIL_JSONB_H
+#ifndef YB_COMMON_JSONB_H
+#define YB_COMMON_JSONB_H
 
 #include <rapidjson/document.h>
 
@@ -20,7 +20,7 @@
 #include "yb/util/status.h"
 
 namespace yb {
-namespace util {
+namespace common {
 
 using JsonbMetadata = uint32_t;
 using JsonbHeader = JsonbMetadata;
@@ -209,7 +209,7 @@ class Jsonb {
   static constexpr uint32_t kJEIsDouble = 0xB0000000;
 };
 
-} // namespace util
+} // namespace common
 } // namespace yb
 
-#endif // YB_UTIL_JSONB_H
+#endif // YB_COMMON_JSONB_H

@@ -2,7 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/util/jsonb.h>
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_bfunc.h"
 
@@ -34,7 +34,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       QLValue ql_value;
       const QLJsonColumnOperationsPB& json_ops = ql_expr.json_column();
       RETURN_NOT_OK(table_row.ReadColumn(json_ops.column_id(), &ql_value));
-      util::Jsonb jsonb(std::move(ql_value.jsonb_value()));
+      common::Jsonb jsonb(std::move(ql_value.jsonb_value()));
       RETURN_NOT_OK(jsonb.ApplyJsonbOperators(json_ops, result));
       break;
     }

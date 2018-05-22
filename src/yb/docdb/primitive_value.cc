@@ -17,6 +17,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/jsonb.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/intent.h"
@@ -27,12 +28,12 @@
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/jsonb.h"
 #include "yb/util/net/inetaddress.h"
 
 using std::string;
 using strings::Substitute;
 using yb::QLValuePB;
+using yb::common::Jsonb;
 using yb::util::Decimal;
 using yb::util::VarInt;
 using yb::util::FormatBytesAsStr;
@@ -45,7 +46,6 @@ using yb::util::AppendBigEndianUInt32;
 using yb::util::DecodeInt64FromKey;
 using yb::util::DecodeFloatFromKey;
 using yb::util::DecodeDoubleFromKey;
-using yb::util::Jsonb;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
 // default clause so that we can ensure that we're handling all possible primitive value types

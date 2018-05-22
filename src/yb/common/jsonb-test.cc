@@ -14,7 +14,7 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/prettywriter.h>
 
-#include "yb/util/jsonb.h"
+#include "yb/common/jsonb.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -22,7 +22,7 @@ using std::to_string;
 using std::numeric_limits;
 
 namespace yb {
-namespace util {
+namespace common {
 
 void ParseJson(const std::string& json, rapidjson::Document* document) {
   Jsonb jsonb;
@@ -151,5 +151,5 @@ TEST(JsonbTest, TestArrays) {
   VerifyArray(document);
 }
 
-}  // namespace util
+}  // namespace common
 }  // namespace yb

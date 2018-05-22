@@ -159,7 +159,6 @@ set(UTIL_SRCS
   hdr_histogram.cc
   hexdump.cc
   init.cc
-  jsonb.cc
   jsonreader.cc
   jsonwriter.cc
   kernel_stack_watchdog.cc
@@ -245,7 +244,6 @@ set(UTIL_LIBS
   histogram_proto
   pb_util_proto
   protobuf
-  ql_protocol_proto
   version_info_proto
   zlib)
 
@@ -335,7 +333,6 @@ ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
-ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(jsonreader-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(map-util-test)
