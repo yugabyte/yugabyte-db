@@ -16,13 +16,13 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include "yb/common/jsonb.h"
 #include "yb/util/kv_util.h"
-#include "yb/util/jsonb.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/varint.h"
 
 namespace yb {
-namespace util {
+namespace common {
 
 bool Jsonb::IsScalar(const JEntry& jentry) {
   uint32_t jentry_type = GetJEType(jentry);
@@ -149,22 +149,22 @@ CHECKED_STATUS Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
     case rapidjson::Type::kNumberType:
       if (value.IsInt()) {
         jentry |= kJEIsInt;
-        AppendInt32ToKey(value.GetInt(), jsonb);
+        util::AppendInt32ToKey(value.GetInt(), jsonb);
       } else if (value.IsUint()) {
         jentry |= kJEIsUInt;
-        AppendBigEndianUInt32(value.GetUint(), jsonb);
+        util::AppendBigEndianUInt32(value.GetUint(), jsonb);
       } else if (value.IsInt64()) {
         jentry |= kJEIsInt64;
-        AppendInt64ToKey(value.GetInt64(), jsonb);
+        util::AppendInt64ToKey(value.GetInt64(), jsonb);
       } else if (value.IsUint64()) {
         jentry |= kJEIsUInt64;
-        AppendBigEndianUInt64(value.GetUint64(), jsonb);
+        util::AppendBigEndianUInt64(value.GetUint64(), jsonb);
       } else if (value.IsFloat()) {
         jentry |= kJEIsFloat;
-        AppendFloatToKey(value.GetFloat(), jsonb);
+        util::AppendFloatToKey(value.GetFloat(), jsonb);
       } else if (value.IsDouble()) {
         jentry |= kJEIsDouble;
-        AppendDoubleToKey(value.GetDouble(), jsonb);
+        util::AppendDoubleToKey(value.GetDouble(), jsonb);
       } else {
         return STATUS(NotSupported, "Numeric type is not supported");
       }
@@ -259,7 +259,7 @@ Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_v
       break;
     }
     case kJEIsInt: {
-      int32_t value = DecodeInt32FromKey(json_value);
+      int32_t value = util::DecodeInt32FromKey(json_value);
       *result = std::to_string(value);
       break;
     }
@@ -269,7 +269,7 @@ Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_v
       break;
     }
     case kJEIsInt64: {
-      int64_t value = DecodeInt64FromKey(json_value);
+      int64_t value = util::DecodeInt64FromKey(json_value);
       *result = std::to_string(value);
       break;
     }
@@ -279,12 +279,12 @@ Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_v
       break;
     }
     case kJEIsDouble: {
-      double value = DecodeDoubleFromKey(json_value);
+      double value = util::DecodeDoubleFromKey(json_value);
       *result = std::to_string(value);
       break;
     }
     case kJEIsFloat: {
-      float value = DecodeFloatFromKey(json_value);
+      float value = util::DecodeFloatFromKey(json_value);
       *result = std::to_string(value);
       break;
     }
@@ -333,7 +333,7 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
         break;
       }
       case kJEIsInt: {
-        int32_t value = DecodeInt32FromKey(json_value);
+        int32_t value = util::DecodeInt32FromKey(json_value);
         AddNumericMember(document, key, value);
         break;
       }
@@ -343,7 +343,7 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
         break;
       }
       case kJEIsInt64: {
-        int64_t value = DecodeInt64FromKey(json_value);
+        int64_t value = util::DecodeInt64FromKey(json_value);
         AddNumericMember(document, key, value);
         break;
       }
@@ -353,12 +353,12 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
         break;
       }
       case kJEIsDouble: {
-        double value = DecodeDoubleFromKey(json_value);
+        double value = util::DecodeDoubleFromKey(json_value);
         AddNumericMember(document, key, value);
         break;
       }
       case kJEIsFloat: {
-        float value = DecodeFloatFromKey(json_value);
+        float value = util::DecodeFloatFromKey(json_value);
         AddNumericMember(document, key, value);
         break;
       }
@@ -509,7 +509,7 @@ Status Jsonb::FromJsonbProcessArray(const Slice& jsonb,
         break;
       }
       case kJEIsInt: {
-        int32_t value = DecodeInt32FromKey(result);
+        int32_t value = util::DecodeInt32FromKey(result);
         PushBackNumericMember(document, value);
         break;
       }
@@ -519,7 +519,7 @@ Status Jsonb::FromJsonbProcessArray(const Slice& jsonb,
         break;
       }
       case kJEIsInt64: {
-        int64_t value = DecodeInt64FromKey(result);
+        int64_t value = util::DecodeInt64FromKey(result);
         PushBackNumericMember(document, value);
         break;
       }
@@ -529,12 +529,12 @@ Status Jsonb::FromJsonbProcessArray(const Slice& jsonb,
         break;
       }
       case kJEIsDouble: {
-        double value = DecodeDoubleFromKey(result);
+        double value = util::DecodeDoubleFromKey(result);
         PushBackNumericMember(document, value);
         break;
       }
       case kJEIsFloat: {
-        float value = DecodeFloatFromKey(result);
+        float value = util::DecodeFloatFromKey(result);
         PushBackNumericMember(document, value);
         break;
       }
@@ -642,7 +642,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   size_t num_array_entries = GetCount(jsonb_header);
 
   // Retrieve the array index and verify.
-  VarInt varint;
+  util::VarInt varint;
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
   int64_t array_index;
   RETURN_NOT_OK(varint.ToInt64(&array_index));
@@ -792,5 +792,5 @@ Status Jsonb::CreateScalar(const Slice& scalar, const JEntry& original_jentry,
   return Status::OK();
 }
 
-} // namespace util
+} // namespace common
 } // namespace yb

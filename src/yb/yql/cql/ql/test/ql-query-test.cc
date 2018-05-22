@@ -16,13 +16,13 @@
 #include <thread>
 #include <cmath>
 
-#include "yb/util/yb_partition.h"
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/common/jsonb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_manager.h"
+#include "yb/util/yb_partition.h"
 #include "yb/util/crypt.h"
-#include "yb/util/jsonb.h"
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
 using std::unique_ptr;
@@ -1788,7 +1788,7 @@ void verifyJson(std::shared_ptr<QLRowBlock> row_block) {
   QLRow &row = returned_rows.at(0);
   // All spaces are removed by rapidjson writer.
   string json;
-  util::Jsonb jsonb(row.column(1).jsonb_value());
+  common::Jsonb jsonb(row.column(1).jsonb_value());
   ASSERT_OK(jsonb.ToJsonString(&json));
   EXPECT_EQ("{\"a\":1,\"b\":2}", json);
   faststring buffer;
