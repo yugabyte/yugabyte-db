@@ -36,6 +36,7 @@ static const char* const kSystemTracesNamespaceName = "system_traces";
 static const char* const kSystemPeersTableName = "peers";
 static const char* const kSystemLocalTableName = "local";
 static const char* const kSystemPartitionsTableName = "partitions";
+static const char* const kSystemSizeEstimatesTableName = "size_estimates";
 
 static const char* const kSystemSchemaAggregatesTableName = "aggregates";
 static const char* const kSystemSchemaColumnsTableName = "columns";
@@ -59,7 +60,7 @@ static constexpr int kNumSystemNamespaces = 3;
 
 // Needs to be updated each time we add a new system table. Currently, this is only used for unit
 // tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
-static constexpr int kNumSystemTables = 15;
+static constexpr int kNumSystemTables = 16;
 
 constexpr uint16_t kMasterDefaultPort = 7100;
 constexpr uint16_t kMasterDefaultWebPort = 7000;

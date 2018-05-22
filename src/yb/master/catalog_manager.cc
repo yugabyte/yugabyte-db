@@ -105,6 +105,7 @@
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
 #include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/yql_size_estimates_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -963,6 +964,8 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
       kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLSizeEstimatesVTable>(
+      kSystemSizeEstimatesTableName, kSystemNamespaceName, kSystemNamespaceId)));
 
   // Empty tables.
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
