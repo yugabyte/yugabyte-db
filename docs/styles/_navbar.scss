@@ -32,7 +32,7 @@ body {
 }
 
 .navbar .nav-logo {
-  height: 30px;
+  height: 33px;
   @media screen and (max-width: 991px) {
     height: 28px;
   }
@@ -182,7 +182,7 @@ body {
     height: $HEADER_HEIGHT;
     line-height: 70px;
     padding: 0;
-    width: 215px;
+    width: 192px;
     margin-right: 0;
 
     @media screen and (max-width: 991px) {
@@ -233,7 +233,7 @@ body {
 
   .navbar-text {
     display: block;
-    margin: 0;
+    margin: 0 4px;
     padding: 0;
     line-height: 18px;
     font-size: 18px;
@@ -300,7 +300,7 @@ body {
       margin-bottom: -4px;
       font-family: "Open Sans", sans-serif;
       font-weight: 300;
-      font-size: 13.5px;
+      font-size: 15px;
       color: #e4e8ec !important;
       text-decoration: none;
 
@@ -332,7 +332,7 @@ body {
       line-height: 75px;
       font-family: "Open Sans", sans-serif;
       font-weight: 400;
-      font-size: 13.5px;
+      font-size: 15px;
       margin-bottom: 0;
       margin-top: -4px;
       color: $YB_VIOLET;
@@ -417,6 +417,10 @@ body {
         border: none;
       }
     }
+  }
+
+  .navbar-link {
+    padding-top: 4px !important;
   }
 
   .navbar-collapse {
