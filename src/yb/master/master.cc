@@ -107,7 +107,7 @@ DEFINE_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_int32(master_consensus_svc_queue_length, 50,
+DEFINE_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
