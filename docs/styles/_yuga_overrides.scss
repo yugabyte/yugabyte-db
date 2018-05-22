@@ -59,8 +59,8 @@ a {
     font-weight: 600;
     letter-spacing: -.02em;
     margin-top: -52px;
-    padding-top: 100px !important;
-  
+    padding-top: 50px !important;
+
     @media only screen and (max-width: 767px) {
       font-size: 20px;
     }
@@ -71,7 +71,7 @@ a {
     font-size: 20px;
     font-weight: 500;
     margin-top: -52px;
-    padding-top: 100px !important;
+    padding-top: 50px !important;
     @media only screen and (max-width: 767px) {
       font-size: 17px;
     }
@@ -82,7 +82,7 @@ a {
     font-weight: 500;
     font-style: normal;
     margin-top: -52px;
-    padding-top: 100px !important;
+    padding-top: 50px !important;
     @media only screen and (max-width: 767px) {
       font-size: 16px;
     }
@@ -171,6 +171,10 @@ a {
     }
     @media screen and (max-width: 767px) {
       border-radius: 0;
+    }
+
+    .tab-content {
+      padding-top: 50px !important;
     }
   }
 
