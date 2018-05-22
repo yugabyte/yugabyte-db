@@ -122,11 +122,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      if (!newMasters.isEmpty()) {
-        // Now finalize the cluster configuration change tasks. (implicitly calls setSubTaskGroupType)
-        createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
-      }
-
       Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(primaryNodes);
 
       // Persist the placement info and blacklisted node info into the YB master.
@@ -144,11 +139,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // Wait for %age completion of the tablet move from master.
         createWaitForDataMoveTask()
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
-        // Send destroy old set of nodes to ansible and remove them from this universe.
-        createDestroyServerTasks(nodesToBeRemoved, false, true)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-        // Clearing the blacklist on the yb cluster master is handled on the server side.
       } else {
         if (!tserversToBeRemoved.isEmpty()) {
           String errMsg = "Universe shrink should have been handled using node decommision.";
@@ -158,6 +148,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask()
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
+
+      if (!newMasters.isEmpty()) {
+        // Now finalize the master quorum change tasks.
+        createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
+      }
+
+      // Finally send destroy to the old set of nodes and remove them from this universe.
+      if (!nodesToBeRemoved.isEmpty()) {
+        createDestroyServerTasks(nodesToBeRemoved, false, true)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
       // Update the swamper target file (implicitly calls setSubTaskGroupType)
@@ -211,10 +212,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Perform a master add followed by a remove if possible. Need not remove the (current) master
     // leader last - even if we get current leader, it might change by the time we run the actual
     // task. So we might do multiple leader stepdown's, which happens automatically on in the
-    // client code during the task's run.
+    // client code during the task's run. Removes are best-effort as those masters will be killed.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
     }
 
     // Perform any additions still left.
@@ -224,7 +225,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
     }
   }
 }
