@@ -18,6 +18,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -106,6 +107,37 @@ public class TestSystemTables extends BaseCQLTest {
   public static void setUpBeforeClass() throws Exception {
     BaseCQLTest.tserverArgs = Arrays.asList(String.format("--placement_region=%s",
       PLACEMENT_REGION), String.format("--placement_zone=%s", PLACEMENT_ZONE));
+  }
+
+  @Test
+  public void testSystemSizeEstimatesTable() throws Exception {
+    createTable("est_test");
+
+    Iterator<Row> rows = session.execute("SELECT * FROM system.size_estimates WHERE " +
+        "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "' AND table_name = 'est_test';").iterator();
+
+    long rangeStart;
+    long rangeEnd = Long.MIN_VALUE;
+    int idx = 0;
+    while (rows.hasNext()) {
+      Row row = rows.next();
+      // Range start should be equal to previous range end (starting from min long);
+      rangeStart = Long.parseLong(row.getString("range_start"));
+      assertEquals(rangeEnd, rangeStart);
+
+      // Range start should be strictly smaller than range end, except for the last range which
+      // cycles back to min long (because range end is an exclusive bound).
+      rangeEnd = Long.parseLong(row.getString("range_end"));
+      if (rows.hasNext()) {
+        assertTrue(rangeStart < rangeEnd);
+      } else {
+        assertEquals(Long.MIN_VALUE, rangeEnd);
+      }
+      idx++;
+    }
+
+    // Expecting one row per tablet.
+    assertEquals(NUM_TABLET_SERVERS * overridableNumShardsPerTServer(), idx);
   }
 
   @Test
@@ -263,7 +295,7 @@ public class TestSystemTables extends BaseCQLTest {
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
-    assertEquals(15, results.size());
+    assertEquals(16, results.size());
     assertTrue(verifySystemSchemaTables(results, "system_schema", "aggregates"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "columns"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "functions"));
@@ -276,6 +308,7 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(verifySystemSchemaTables(results, "system", "partitions"));
     assertTrue(verifySystemSchemaTables(results, "system", "peers"));
     assertTrue(verifySystemSchemaTables(results, "system", "local"));
+    assertTrue(verifySystemSchemaTables(results, "system", "size_estimates"));
     assertTrue(verifySystemSchemaTables(results, "system_auth", "roles"));
     assertTrue(verifySystemSchemaTables(results, "system_auth", "role_permissions"));
     assertTrue(verifySystemSchemaTables(results, "system_auth", "resource_role_permissions_index"));

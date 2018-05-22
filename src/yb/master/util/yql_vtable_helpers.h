@@ -63,7 +63,23 @@ template<> struct GetValueHelper<int32_t> {
 
   static QLValuePB Apply(const int32_t intval, const DataType data_type) {
     QLValuePB value_pb;
-    value_pb.set_int32_value(intval);
+    switch (data_type) {
+      case INT64:
+        value_pb.set_int64_value(intval);
+        break;
+      case INT32:
+        value_pb.set_int32_value(intval);
+        break;
+      case INT16:
+        value_pb.set_int16_value(intval);
+        break;
+      case INT8:
+        value_pb.set_int8_value(intval);
+        break;
+      default:
+        LOG(ERROR) << "unexpected int type " << data_type;
+        break;
+    }
     return value_pb;
   }
 };
