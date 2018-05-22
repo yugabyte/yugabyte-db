@@ -27,11 +27,13 @@ PTAssign::PTAssign(MemoryContext *memctx,
                    YBLocation::SharedPtr loc,
                    const PTQualifiedName::SharedPtr& lhs,
                    const PTExpr::SharedPtr& rhs,
-                   const PTExprListNode::SharedPtr& subscript_args)
+                   const PTExprListNode::SharedPtr& subscript_args,
+                   const PTExprListNode::SharedPtr& json_ops)
     : TreeNode(memctx, loc),
       lhs_(lhs),
       rhs_(rhs),
       subscript_args_(subscript_args),
+      json_ops_(json_ops),
       col_desc_(nullptr) {
 }
 
@@ -76,6 +78,17 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     if (col_desc_->ql_type()->main() == DataType::LIST) {
       sem_context->current_dml_stmt()->AddColumnRef(*col_desc_);
     }
+  }
+
+  if (has_json_ops()) {
+    if (!col_desc_->ql_type()->IsJson()) {
+      return sem_context->Error(this, "Json ops only supported for json columns",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    }
+    RETURN_NOT_OK(json_ops_->Analyze(sem_context));
+
+    // We need to perform a read-modify-write for json updates.
+    sem_context->current_dml_stmt()->AddColumnRef(*col_desc_);
   }
 
   sem_state.set_processing_assignee(false);
@@ -177,6 +190,10 @@ CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *s
     subscripted_col_args_->emplace_back(col_desc,
                                         assign_expr->subscript_args(),
                                         assign_expr->rhs());
+  } else if (assign_expr->has_json_ops()) {
+    json_col_args_->emplace_back(col_desc,
+                                 assign_expr->json_ops(),
+                                 assign_expr->rhs());
   } else {
     column_args_->at(col_desc->index()).Init(col_desc, assign_expr->rhs());
   }

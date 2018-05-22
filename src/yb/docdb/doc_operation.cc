@@ -13,6 +13,7 @@
 
 #include "yb/docdb/doc_operation.h"
 
+#include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
@@ -55,6 +56,8 @@ using std::make_shared;
 using std::unique_ptr;
 using std::make_unique;
 using strings::Substitute;
+using common::Jsonb;
+using yb::bfql::TSOpcode;
 
 //--------------------------------------------------------------------------------------------------
 // Redis support.
@@ -483,6 +486,36 @@ void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card, bool reverse
   if (*high_idx_normalized >= card) {
     *high_idx_normalized = card - 1;
   }
+}
+
+CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
+                                  size_t index,
+                                  rapidjson::Value* document,
+                                  rapidjson::Value::MemberIterator* memberit,
+                                  rapidjson::Value::ValueIterator* valueit,
+                                  bool* last_elem_object) {
+  int64_t array_index;
+  if (document->IsArray()) {
+    util::VarInt varint;
+    RETURN_NOT_OK(varint.DecodeFromComparable(
+        column_value.json_args(index).operand().value().varint_value()));
+    RETURN_NOT_OK(varint.ToInt64(&array_index));
+
+    if (array_index >= document->GetArray().Size() || array_index < 0) {
+      return STATUS_SUBSTITUTE(QLError, "Array index out of bounds: ", array_index);
+    }
+    *valueit = document->Begin();
+    std::advance(*valueit, array_index);
+    *last_elem_object = false;
+  } else {
+    const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
+    *memberit = document->FindMember(member);
+    if (*memberit == document->MemberEnd()) {
+      return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
+    }
+    *last_elem_object = true;
+  }
+  return Status::OK();
 }
 
 } // anonymous namespace
@@ -1892,9 +1925,165 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
   return Status::OK();
 }
 
-Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
-  using yb::bfql::TSOpcode;
+Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
+                                               const QLTableRow& current_row,
+                                               const DocOperationApplyData& data,
+                                               const DocPath& sub_path, const MonoDelta& ttl,
+                                               const UserTimeMicros& user_timestamp,
+                                               const ColumnSchema& column) {
+  // Read the json column value inorder to perform a read modify write.
+  QLValue ql_value;
+  RETURN_NOT_OK(current_row.ReadColumn(column_value.column_id(), &ql_value));
+  Jsonb jsonb(std::move(ql_value.jsonb_value()));
+  rapidjson::Document document;
+  RETURN_NOT_OK(jsonb.ToRapidJson(&document));
 
+  // Deserialize the rhs.
+  Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
+  rapidjson::Document rhs_doc;
+  RETURN_NOT_OK(rhs.ToRapidJson(&rhs_doc));
+
+  // Update the json value.
+  rapidjson::Value::MemberIterator memberit;
+  rapidjson::Value::ValueIterator valueit;
+  bool last_elem_object = true;
+  RETURN_NOT_OK(FindMemberForIndex(column_value, 0, &document, &memberit, &valueit,
+                                   &last_elem_object));
+  for (int i = 1; i < column_value.json_args_size(); i++) {
+    if (last_elem_object) {
+      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(memberit->value), &memberit, &valueit,
+                                       &last_elem_object));
+    } else {
+      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(*valueit), &memberit, &valueit,
+                                       &last_elem_object));
+    }
+  }
+  if (last_elem_object) {
+    memberit->value = rhs_doc.Move();
+  } else {
+    *valueit = rhs_doc.Move();
+  }
+
+  // Now write the new json value back.
+  QLValue result;
+  Jsonb jsonb_result;
+  RETURN_NOT_OK(jsonb_result.FromRapidJson(document));
+  *result.mutable_jsonb_value() = std::move(jsonb_result.MoveSerializedJsonb());
+  const SubDocument& sub_doc =
+      SubDocument::FromQLValuePB(result.value(), column.sorting_type(),
+                                 TSOpcode::kScalarInsert);
+  return data.doc_write_batch->InsertSubDocument(
+      sub_path, sub_doc, request_.query_id(), ttl, user_timestamp);
+}
+
+Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+                                               const QLTableRow& current_row,
+                                               const DocOperationApplyData& data,
+                                               const MonoDelta& ttl,
+                                               const UserTimeMicros& user_timestamp,
+                                               const ColumnSchema& column,
+                                               DocPath* sub_path) {
+  QLValue expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
+  const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
+  const SubDocument& sub_doc =
+      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+
+  // Setting the value for a sub-column
+  // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
+  // Any other case should be rejected by the semantic analyser before getting here
+  // Later when we support frozen or nested collections this code may need refactoring
+  DCHECK_EQ(column_value.subscript_args().size(), 1);
+  DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
+  switch (column.type()->main()) {
+    case MAP: {
+      const PrimitiveValue &pv = PrimitiveValue::FromQLValuePB(
+          column_value.subscript_args(0).value(),
+          ColumnSchema::SortingType::kNotSpecified);
+      sub_path->AddSubKey(pv);
+      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          *sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+      break;
+    }
+    case LIST: {
+      MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
+          MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
+          MonoDelta::kMax;
+
+      // At YQL layer list indexes start at 0, but internally we start at 1.
+      int index = column_value.subscript_args(0).value().int32_value() + 1;
+      RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(
+          *sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
+          table_ttl, ttl));
+      break;
+    }
+    default: {
+      LOG(ERROR) << "Unexpected type for setting subcolumn: "
+                 << column.type()->ToString();
+    }
+  }
+  return Status::OK();
+}
+
+Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_value,
+                                                const QLTableRow& current_row,
+                                                const DocOperationApplyData& data,
+                                                const DocPath& sub_path, const MonoDelta& ttl,
+                                                const UserTimeMicros& user_timestamp,
+                                                const ColumnSchema& column,
+                                                const ColumnId& column_id,
+                                                QLTableRow* new_row) {
+  // Typical case, setting a columns value
+  QLValue expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
+  const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
+  const SubDocument& sub_doc =
+      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+  switch (write_instr) {
+    case TSOpcode::kScalarInsert:
+          RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+      break;
+    case TSOpcode::kMapExtend:
+    case TSOpcode::kSetExtend:
+    case TSOpcode::kMapRemove:
+    case TSOpcode::kSetRemove:
+          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+          RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+          sub_path, sub_doc, request_.query_id(), ttl));
+      break;
+    case TSOpcode::kListAppend:
+          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+          RETURN_NOT_OK(data.doc_write_batch->ExtendList(
+          sub_path, sub_doc, ListExtendOrder::APPEND, request_.query_id(), ttl));
+      break;
+    case TSOpcode::kListPrepend:
+          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+          RETURN_NOT_OK(data.doc_write_batch->ExtendList(
+          sub_path, sub_doc, ListExtendOrder::PREPEND, request_.query_id(), ttl));
+      break;
+    case TSOpcode::kListRemove:
+      // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
+      // Currently list subtraction is computed in memory using builtin call so this
+      // case should never be reached. Once it is implemented the corresponding case
+      // from EvalQLExpressionPB should be uncommented to enable this optimization.
+          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+          RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+      break;
+    default:
+      LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
+      break;
+  }
+
+  if (update_indexes_) {
+    new_row->AllocColumn(column_id, expr_result);
+  }
+  return Status::OK();
+}
+
+Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   bool should_apply = true;
   QLTableRow current_row;
   if (request_.has_if_expr()) {
@@ -1966,100 +2155,15 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                            PrimitiveValue(column_id));
 
           QLValue expr_result;
-          RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
-          const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
-          const SubDocument& sub_doc =
-              SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
-
-          // Typical case, setting a columns value
-          if (column_value.subscript_args().empty()) {
-            switch (write_instr) {
-              case TSOpcode::kScalarInsert:
-                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
-                break;
-              case TSOpcode::kMapExtend:
-              case TSOpcode::kSetExtend:
-              case TSOpcode::kMapRemove:
-              case TSOpcode::kSetRemove:
-                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                    sub_path, sub_doc, request_.query_id(), ttl));
-                break;
-              case TSOpcode::kListAppend:
-                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                    sub_path, sub_doc, ListExtendOrder::APPEND, request_.query_id(), ttl));
-                break;
-              case TSOpcode::kListPrepend:
-                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                    sub_path, sub_doc, ListExtendOrder::PREPEND, request_.query_id(), ttl));
-                break;
-              case TSOpcode::kListRemove:
-                // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
-                // Currently list subtraction is computed in memory using builtin call so this
-                // case should never be reached. Once it is implemented the corresponding case
-                // from EvalQLExpressionPB should be uncommented to enable this optimization.
-                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
-                break;
-              default:
-                LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
-                break;
-            }
-
-            if (update_indexes_) {
-              new_row.AllocColumn(column_id, expr_result);
-            }
-
+          if (!column_value.json_args().empty()) {
+            RETURN_NOT_OK(ApplyForJsonOperators(column_value, current_row, data, sub_path, ttl,
+                                                user_timestamp, column));
+          } else if (!column_value.subscript_args().empty()) {
+            RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, current_row, data, ttl,
+                                                user_timestamp, column, &sub_path));
           } else {
-            RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-
-            // Setting the value for a sub-column
-            // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
-            // Any other case should be rejected by the semantic analyser before getting here
-            // Later when we support frozen or nested collections this code may need refactoring
-            DCHECK_EQ(column_value.subscript_args().size(), 1);
-            DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
-            switch (column.type()->main()) {
-              case MAP: {
-                const PrimitiveValue &pv = PrimitiveValue::FromQLValuePB(
-                    column_value.subscript_args(0).value(),
-                    ColumnSchema::SortingType::kNotSpecified);
-                sub_path.AddSubKey(pv);
-                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
-                break;
-              }
-              case LIST: {
-                MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
-                  MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
-                  MonoDelta::kMax;
-
-                // At YQL layer list indexes start at 0, but internally we start at 1.
-                int index = column_value.subscript_args(0).value().int32_value() + 1;
-                Status s = data.doc_write_batch->ReplaceInList(
-                    sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
-                    table_ttl, ttl);
-
-                // Don't crash tserver if this is index-out-of-bounds error
-                if (s.IsQLError()) {
-                  response_->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
-                  response_->set_error_message(s.ToString());
-                  return Status::OK();
-                } else if (!s.ok()) {
-                  return s;
-                }
-
-                break;
-              }
-              default: {
-                LOG(ERROR) << "Unexpected type for setting subcolumn: "
-                           << column.type()->ToString();
-              }
-            }
+            RETURN_NOT_OK(ApplyForRegularColumns(column_value, current_row, data, sub_path, ttl,
+                                                 user_timestamp, column, column_id, &new_row));
           }
         }
 

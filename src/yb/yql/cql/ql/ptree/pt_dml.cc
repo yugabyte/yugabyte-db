@@ -67,6 +67,7 @@ CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
   MemoryContext *psem_mem = sem_context->PSemMem();
   column_args_ = MCMakeShared<MCVector<ColumnArg>>(psem_mem);
   subscripted_col_args_ = MCMakeShared<MCVector<SubscriptedColumnArg>>(psem_mem);
+  json_col_args_ = MCMakeShared<MCVector<JsonColumnArg>>(psem_mem);
   return Status::OK();
 }
 
