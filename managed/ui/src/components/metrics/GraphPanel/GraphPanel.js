@@ -2,11 +2,11 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Accordion, Panel } from 'react-bootstrap';
+import { Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
-import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 
 const panelTypes = {
   server: {title: "Node",
@@ -114,6 +114,10 @@ const panelTypes = {
 };
 
 class GraphPanel extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {isOpen: false, ...this.props};
+  }
   static propTypes = {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
@@ -124,7 +128,9 @@ class GraphPanel extends Component {
   }
 
   componentDidMount() {
-    this.queryMetricsType(this.props.graph.graphFilter);
+    if(this.state.isOpen) {
+      this.queryMetricsType(this.props.graph.graphFilter);
+    }
   }
 
   componentWillReceiveProps(nextProps) {
@@ -132,7 +138,9 @@ class GraphPanel extends Component {
     // TODO: add the nodePrefixes to the queryParam
     if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
       this.props.resetMetrics();
-      this.queryMetricsType(nextProps.graph.graphFilter);
+      if(this.state.isOpen) {
+        this.queryMetricsType(nextProps.graph.graphFilter);
+      }
     }
   }
 
@@ -165,6 +173,13 @@ class GraphPanel extends Component {
     this.props.resetMetrics();
   }
 
+  componentDidUpdate(prevProps, prevState) {
+    const { type, graph: { metrics }} = this.props;
+    if(!prevState.isOpen && this.state.isOpen && (Object.keys(metrics).length === 0 || isEmptyObject(metrics[type]))) {
+      this.queryMetricsType(this.props.graph.graphFilter);
+    }
+  }
+
   render() {
     const { type, graph: { metrics }} = this.props;
 
@@ -190,16 +205,14 @@ class GraphPanel extends Component {
       panelData = "Error receiving response from Graph Server";
     }
     return (
-      <Accordion id={panelTypes[type].title}>
-        <Panel key={panelTypes[type]} className="metrics-container">
-          <Panel.Heading>
-            <Panel.Title tag="h4" toggle>{panelTypes[type].title}</Panel.Title>
-          </Panel.Heading>
-          <Panel.Body collapsible>
-            {panelData}
-          </Panel.Body>
-        </Panel>
-      </Accordion>
+      <Panel id={panelTypes[type].title} key={panelTypes[type]} eventKey={this.props.eventKey} defaultExpanded={this.state.isOpen} className="metrics-container">
+        <Panel.Heading>
+          <Panel.Title tag="h4" toggle onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}>{panelTypes[type].title}</Panel.Title>
+        </Panel.Heading>
+        <Panel.Body collapsible>
+          {panelData}
+        </Panel.Body>
+      </Panel>
     );
   }
 }
