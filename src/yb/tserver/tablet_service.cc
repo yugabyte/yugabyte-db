@@ -744,7 +744,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   operation_state->set_completion_callback(
       std::make_unique<WriteOperationCompletionCallback>(
           context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
-  auto status = tablet_peer->SubmitWrite(std::move(operation_state));
+  auto status = tablet_peer->SubmitWrite(
+      std::move(operation_state), context_ptr->GetClientDeadline());
 
   // Check that we could submit the write
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(status, resp, context_ptr.get());
@@ -926,6 +927,11 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       // Global limit is ignored by caller, so we don't set it.
       break;
     }
+    if (MonoTime::Now() > context.GetClientDeadline()) {
+      SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
+                           TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
+    }
   }
   if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
@@ -938,12 +944,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const RedisReadRequestPB& redis_read_request,
     RedisResponsePB* response,
     const std::function<void(const Status& s)>& status_cb
 ) {
-  status_cb(tablet->HandleRedisReadRequest(read_time, redis_read_request, response));
+  status_cb(tablet->HandleRedisReadRequest(deadline, read_time, redis_read_request, response));
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
@@ -968,12 +975,14 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
             failed_status_ = status;
           latch.CountDown(1);
         };
-        auto func = Bind(&HandleRedisReadRequestAsync,
-                  Unretained(tablet),
-                  read_tx.read_time(),
-                  redis_read_req,
-                  Unretained(resp->add_redis_batch()),
-                  cb);
+        auto func = Bind(
+            &HandleRedisReadRequestAsync,
+            Unretained(tablet),
+            context->GetClientDeadline(),
+            read_tx.read_time(),
+            redis_read_req,
+            Unretained(resp->add_redis_batch()),
+            cb);
 
         Status s;
         bool run_async = FLAGS_parallelize_read_ops && (idx != count - 1);
@@ -1013,7 +1022,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
         tablet::QLReadRequestResult result;
         TRACE("Start HandleQLReadRequest");
         RETURN_NOT_OK(tablet->HandleQLReadRequest(
-            read_tx.read_time(), ql_read_req, req->transaction(), &result));
+            context->GetClientDeadline(), read_tx.read_time(), ql_read_req, req->transaction(),
+            &result));
         TRACE("Done HandleQLReadRequest");
         if (result.restart_read_ht.is_valid()) {
           DCHECK_GT(result.restart_read_ht, read_time.read);
@@ -1037,7 +1047,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
         tablet::PgsqlReadRequestResult result;
         TRACE("Start HandlePgsqlReadRequest");
         RETURN_NOT_OK(tablet->HandlePgsqlReadRequest(
-            read_tx.read_time(), pgsql_read_req, req->transaction(), &result));
+            context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req, req->transaction(),
+            &result));
         TRACE("Done HandlePgsqlReadRequest");
         if (result.restart_read_ht.is_valid()) {
           VLOG(1) << "Restart read required at: " << result.restart_read_ht;

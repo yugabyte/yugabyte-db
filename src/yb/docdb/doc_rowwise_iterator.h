@@ -43,6 +43,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const Schema &schema,
                      const TransactionOperationContextOpt& txn_op_context,
                      rocksdb::DB *db,
+                     MonoTime deadline,
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
 
@@ -50,9 +51,11 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const Schema &schema,
                      const TransactionOperationContextOpt& txn_op_context,
                      rocksdb::DB *db,
+                     MonoTime deadline,
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr)
-      : DocRowwiseIterator(*projection, schema, txn_op_context, db, read_time, pending_op_counter) {
+      : DocRowwiseIterator(
+          *projection, schema, txn_op_context, db, deadline, read_time, pending_op_counter) {
     projection_owner_ = std::move(projection);
   }
 
@@ -148,6 +151,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   const TransactionOperationContextOpt txn_op_context_;
 
   bool is_forward_scan_ = true;
+
+  const MonoTime deadline_;
 
   const ReadHybridTime read_time_;
 

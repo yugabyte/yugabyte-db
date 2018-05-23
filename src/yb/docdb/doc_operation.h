@@ -43,6 +43,7 @@ class DocWriteBatch;
 
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
+  MonoTime deadline;
   ReadHybridTime read_time;
   HybridTime* restart_read_ht;
 };
@@ -122,7 +123,9 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
                               rocksdb::DB* db,
-      const ReadHybridTime& read_time) : request_(request), db_(db), read_time_(read_time) {}
+                              MonoTime deadline,
+                              const ReadHybridTime& read_time)
+      : request_(request), db_(db), deadline_(deadline), read_time_(read_time) {}
 
   CHECKED_STATUS Execute();
 
@@ -150,6 +153,7 @@ class RedisReadOperation {
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
   rocksdb::DB* db_;
+  MonoTime deadline_;
   ReadHybridTime read_time_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation
   // Make these two classes similar in terms of how rocksdb state is passed to them.
@@ -257,6 +261,7 @@ class QLReadOperation : public DocExprExecutor {
       : request_(request), txn_op_context_(txn_op_context) {}
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
+                         MonoTime deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& query_schema,
@@ -370,9 +375,10 @@ class PgsqlReadOperation : public PgsqlDocOperation {
   }
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
+                         MonoTime deadline,
+                         const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& query_schema,
-                         const ReadHybridTime& read_time,
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 

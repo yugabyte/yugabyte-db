@@ -119,6 +119,7 @@ void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& 
 // operation that happens after Raft replication.
 CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     rocksdb::DB *rocksdb,
     KeyValueWriteBatchPB* write_batch,
@@ -404,6 +405,7 @@ yb::Status GetSubDocument(
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
+    MonoTime deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
 
 YB_STRONGLY_TYPED_BOOL(IncludeBinary);

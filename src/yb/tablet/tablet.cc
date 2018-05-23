@@ -278,6 +278,7 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
 struct WriteOperationData {
   WriteOperationState* operation_state;
   LockBatch *keys_locked;
+  MonoTime deadline;
   HybridTime* restart_read_ht;
 
   tserver::WriteRequestPB* write_request() const {
@@ -500,8 +501,8 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
   auto read_time = ReadHybridTime::SingleTime(HybridTime::kMax);
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), *schema(), txn_op_ctx, rocksdb_.get(), read_time,
-      &pending_op_counter_);
+      std::move(mapped_projection), *schema(), txn_op_ctx, rocksdb_.get(),
+      MonoTime::Max() /* deadline */, read_time, &pending_op_counter_);
   RETURN_NOT_OK(result->Init());
   return std::move(result);
 }
@@ -675,7 +676,8 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data) 
   return Status::OK();
 }
 
-Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
+Status Tablet::HandleRedisReadRequest(MonoTime deadline,
+                                      const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   // TODO: move this locking to the top-level read request handler in TabletService.
@@ -684,7 +686,7 @@ Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
-  docdb::RedisReadOperation doc_op(redis_read_request, rocksdb_.get(), read_time);
+  docdb::RedisReadOperation doc_op(redis_read_request, rocksdb_.get(), deadline, read_time);
   RETURN_NOT_OK(doc_op.Execute());
   *response = std::move(doc_op.response());
   return Status::OK();
@@ -693,6 +695,7 @@ Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
 //--------------------------------------------------------------------------------------------------
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
@@ -710,7 +713,7 @@ Status Tablet::HandleQLReadRequest(
       CreateTransactionOperationContext(transaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandleQLReadRequest(
-      read_time, ql_read_request, *txn_op_ctx, result);
+      deadline, read_time, ql_read_request, *txn_op_ctx, result);
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
@@ -835,6 +838,7 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
 //--------------------------------------------------------------------------------------------------
 // PGSQL Request Processing.
 Status Tablet::HandlePgsqlReadRequest(
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
@@ -853,7 +857,7 @@ Status Tablet::HandlePgsqlReadRequest(
       CreateTransactionOperationContext(transaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
-      read_time, pgsql_read_request, *txn_op_ctx, result);
+      deadline, read_time, pgsql_read_request, *txn_op_ctx, result);
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
@@ -927,7 +931,7 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data) 
 //--------------------------------------------------------------------------------------------------
 
 Status Tablet::AcquireLocksAndPerformDocOperations(
-    WriteOperationState *state, HybridTime* restart_read_ht) {
+    MonoTime deadline, WriteOperationState *state, HybridTime* restart_read_ht) {
   LockBatch locks_held;
   WriteRequestPB* key_value_write_request = state->mutable_request();
 
@@ -935,6 +939,7 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
   WriteOperationData data = {
     state,
     &locks_held,
+    deadline,
     restart_read_ht
   };
   switch (table_type_) {
@@ -1267,7 +1272,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
-      doc_ops, real_read_time, rocksdb_.get(), write_batch,
+      doc_ops, data.deadline, real_read_time, rocksdb_.get(), write_batch,
       table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
                                                  : InitMarkerBehavior::kOptional,
       &monotonic_counter_,

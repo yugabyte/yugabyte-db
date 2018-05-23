@@ -27,6 +27,8 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
 
+#include "yb/util/backoff_waiter.h"
+
 using namespace std::literals;
 
 DEFINE_bool(transaction_allow_rerequest_status_in_tests, true,
@@ -88,6 +90,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
   }
 
   TransactionStatusResult txn_status;
+  BackoffWaiter waiter(deadline_.ToSteadyTimePoint(), 50ms /* max_wait */);
   for(;;) {
     std::promise<Result<TransactionStatusResult>> txn_status_promise;
     auto future = txn_status_promise.get_future();
@@ -110,9 +113,9 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
       return std::move(txn_status_result.status());
     }
     DCHECK(FLAGS_transaction_allow_rerequest_status_in_tests);
-    // TODO(dtxn) In case of TryAgain error status we need to re-request transaction status.
-    // Temporary workaround is to sleep for 0.05s and re-request.
-    std::this_thread::sleep_for(50ms);
+    if (!waiter.Wait()) {
+      return STATUS(TimedOut, "");
+    }
   }
   VLOG(4) << "Transaction_id " << transaction_id << " at " << read_time_
           << ": status: " << TransactionStatus_Name(txn_status.status)
@@ -220,6 +223,7 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
 IntentAwareIterator::IntentAwareIterator(
     rocksdb::DB* rocksdb,
     const rocksdb::ReadOptions& read_opts,
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
     : read_time_(read_time),
@@ -229,7 +233,7 @@ IntentAwareIterator::IntentAwareIterator(
           DocHybridTime(read_time_.global_limit, kMaxWriteId).EncodedInDocDbFormat()),
       txn_op_context_(txn_op_context),
       transaction_status_cache_(
-          txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time) {
+          txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time, deadline) {
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
           << ", txp_op_context: " << txn_op_context_;
   if (txn_op_context.is_initialized()) {

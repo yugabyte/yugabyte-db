@@ -20,6 +20,7 @@ namespace yb {
 namespace tablet {
 
 CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionOperationContextOpt& txn_op_context,
@@ -45,7 +46,7 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   QLResultSet resultset;
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), read_time, schema, query_schema, &resultset, &result->restart_read_ht);
+      QLStorage(), deadline, read_time, schema, query_schema, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     result->response.set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
@@ -70,6 +71,7 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
 }
 
 CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionOperationContextOpt& txn_op_context,
@@ -90,8 +92,8 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
   PgsqlRSRowDesc rsrow_desc(pgsql_read_request.rsrow_desc());
   PgsqlResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), schema, query_schema, read_time, &resultset,
-                                  &result->restart_read_ht);
+  const Status s = doc_op.Execute(QLStorage(), deadline, read_time, schema, query_schema,
+                                  &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

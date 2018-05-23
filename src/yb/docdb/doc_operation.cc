@@ -494,7 +494,7 @@ void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) 
   auto iter = yb::docdb::CreateIntentAwareIterator(
       data.doc_write_batch->rocksdb(), BloomFilterMode::USE_BLOOM_FILTER,
       subdoc_key.Encode().AsSlice(),
-      redis_query_id(), /* txn_op_context */ boost::none, data.read_time);
+      redis_query_id(), /* txn_op_context */ boost::none, data.deadline, data.read_time);
 
   iterator_ = std::move(iter);
 }
@@ -622,7 +622,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
                                           &subdoc_reverse_found };
           RETURN_NOT_OK(GetSubDocument(
               data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
-              boost::none /* txn_op_context */, data.read_time));
+              boost::none /* txn_op_context */, data.deadline, data.read_time));
 
           // Flag indicating whether we should add the given entry to the sorted set.
           bool should_add_entry = true;
@@ -871,8 +871,8 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         GetSubDocumentData get_data = { encoded_subdoc_key_reverse, &doc_reverse,
                                         &doc_reverse_found };
         RETURN_NOT_OK(GetSubDocument(
-        data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
-        boost::none /* txn_op_context */, data.read_time));
+            data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
+            boost::none /* txn_op_context */, data.deadline, data.read_time));
         if (doc_reverse_found && doc_reverse.value_type() != ValueType::kTombstone) {
           // The value is already in the doc, needs to be removed.
           values_reverse.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
@@ -1102,7 +1102,7 @@ Status RedisReadOperation::Execute() {
   auto iter = yb::docdb::CreateIntentAwareIterator(
       db_, BloomFilterMode::USE_BLOOM_FILTER,
       doc_key.Encode().AsSlice(),
-      redis_query_id(), /* txn_op_context */ boost::none, read_time_);
+      redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
   iterator_ = std::move(iter);
 
   switch (request_.request_case()) {
@@ -1432,7 +1432,7 @@ Status RedisReadOperation::ExecuteGet() {
       auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
       GetSubDocumentData get_data = { encoded_key_reverse, &subdoc_reverse, &subdoc_reverse_found };
       RETURN_NOT_OK(GetSubDocument(db_, get_data, redis_query_id(),
-                                   boost::none /* txn_op_context */, read_time_));
+                                   boost::none /* txn_op_context */, deadline_, read_time_));
       if (subdoc_reverse_found) {
         double score = subdoc_reverse.GetDouble();
         response_.set_string_response(std::to_string(score));
@@ -1826,7 +1826,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   if (hashed_doc_key_ != nullptr) {
     DocQLScanSpec spec(*static_projection, *hashed_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*static_projection, schema_, txn_op_context_,
-                                data.doc_write_batch->rocksdb(), data.read_time);
+                                data.doc_write_batch->rocksdb(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
@@ -1836,7 +1836,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   if (pk_doc_key_ != nullptr) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*non_static_projection, schema_, txn_op_context_,
-                                data.doc_write_batch->rocksdb(), data.read_time);
+                                data.doc_write_batch->rocksdb(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
@@ -2118,8 +2118,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
               request_.query_id());
 
           // Create iterator.
-          DocRowwiseIterator iterator(projection, schema_, txn_op_context_,
-                                      data.doc_write_batch->rocksdb(), data.read_time);
+          DocRowwiseIterator iterator(
+              projection, schema_, txn_op_context_, data.doc_write_batch->rocksdb(), data.deadline,
+              data.read_time);
           RETURN_NOT_OK(iterator.Init(spec));
 
           // Iterate through rows and delete those that match the condition.
@@ -2315,6 +2316,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
 }
 
 Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+                                MonoTime deadline,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
                                 const Schema& query_schema,
@@ -2345,7 +2347,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec, &req_read_time));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
-                                       req_read_time, *spec, &iter));
+                                       deadline, req_read_time, *spec, &iter));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
@@ -2359,8 +2361,9 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
     std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
-    RETURN_NOT_OK(ql_storage.GetIterator(request_, static_projection, schema, txn_op_context_,
-                                         req_read_time, *static_row_spec, &static_row_iter));
+    RETURN_NOT_OK(ql_storage.GetIterator(
+        request_, static_projection, schema, txn_op_context_, deadline, req_read_time,
+        *static_row_spec, &static_row_iter));
     if (static_row_iter->HasNext()) {
       RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
     }
@@ -2661,6 +2664,7 @@ CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& dat
                                 schema_,
                                 txn_op_context_,
                                 data.doc_write_batch->rocksdb(),
+                                data.deadline,
                                 data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
@@ -2693,12 +2697,13 @@ void PgsqlWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
-                                           const Schema& schema,
-                                           const Schema& query_schema,
-                                           const ReadHybridTime& read_time,
-                                           PgsqlResultSet *resultset,
-                                           HybridTime *restart_read_ht) {
+Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+                                   MonoTime deadline,
+                                   const ReadHybridTime& read_time,
+                                   const Schema& schema,
+                                   const Schema& query_schema,
+                                   PgsqlResultSet *resultset,
+                                   HybridTime *restart_read_ht) {
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -2720,7 +2725,7 @@ CHECKED_STATUS PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   ReadHybridTime req_read_time;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(request_, read_time, schema, &spec, &req_read_time));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
-                                       req_read_time, *spec, &iter));
+                                       deadline, req_read_time, *spec, &iter));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
