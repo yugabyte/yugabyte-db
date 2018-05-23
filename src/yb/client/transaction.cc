@@ -56,6 +56,7 @@ TransactionMetadata CreateMetadata(TransactionManager* manager, IsolationLevel i
 }
 
 YB_STRONGLY_TYPED_BOOL(Child);
+YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted));
 
 } // namespace
 
@@ -110,7 +111,7 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (complete_.load(std::memory_order_acquire)) {
+      if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
         LOG(DFATAL) << "Restart of completed transaction";
         return;
       }
@@ -118,7 +119,7 @@ class YBTransaction::Impl final {
       other->local_limits_.swap(restarts_);
       other->read_time_ = read_time_;
       other->read_time_.read = restart_read_ht_;
-      complete_.store(true, std::memory_order_release);
+      state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(Status::OK(), transaction);
   }
@@ -195,7 +196,7 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      auto status = CheckIncomplete(&lock);
+      auto status = CheckRunning(&lock);
       if (!status.ok()) {
         callback(status);
         return;
@@ -209,7 +210,7 @@ class YBTransaction::Impl final {
             IllegalState, "Commit of transaction that requires restart is not allowed"));
         return;
       }
-      complete_.store(true, std::memory_order_release);
+      state_.store(TransactionState::kCommitted, std::memory_order_release);
       commit_callback_ = std::move(callback);
       if (!ready_) {
         RequestStatusTablet();
@@ -224,15 +225,16 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      if (complete_.load(std::memory_order_acquire)) {
-        LOG(DFATAL) << "Abort of committed transaction";
+      auto state = state_.load(std::memory_order_acquire);
+      if (state != TransactionState::kRunning) {
+        LOG_IF(DFATAL, state != TransactionState::kAborted) << "Abort of committed transaction";
         return;
       }
       if (child_) {
         LOG(DFATAL) << "Abort of child transaction";
         return;
       }
-      complete_.store(true, std::memory_order_release);
+      state_.store(TransactionState::kAborted, std::memory_order_release);
       if (!ready_) {
         RequestStatusTablet();
         waiters_.emplace_back(std::bind(&Impl::DoAbort, this, _1, transaction));
@@ -273,12 +275,14 @@ class YBTransaction::Impl final {
 
   void PrepareChild(PrepareChildCallback callback) {
     auto transaction = transaction_->shared_from_this();
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (complete_.load(std::memory_order_acquire)) {
-      callback(STATUS(IllegalState, "Transaction complete"));
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto status = CheckRunning(&lock);
+    if (!status.ok()) {
+      callback(status);
       return;
     }
     if (!restarts_.empty()) {
+      lock.unlock();
       callback(STATUS(IllegalState, "Restart required"));
       return;
     }
@@ -294,14 +298,11 @@ class YBTransaction::Impl final {
 
   Result<ChildTransactionResultPB> FinishChild() {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto status = CheckIncomplete(&lock);
-    if (!status.ok()) {
-      return status;
-    }
+    RETURN_NOT_OK(CheckRunning(&lock));
     if (!child_) {
       return STATUS(IllegalState, "Finish child of non child transaction");
     }
-    complete_.store(true, std::memory_order_release);
+    state_.store(TransactionState::kCommitted, std::memory_order_release);
     ChildTransactionResultPB result;
     auto& tablets = *result.mutable_tablets();
     tablets.Reserve(tablets_.size());
@@ -325,10 +326,7 @@ class YBTransaction::Impl final {
 
   Status ApplyChildResult(const ChildTransactionResultPB& result) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto status = CheckIncomplete(&lock);
-    if (!status.ok()) {
-      return status;
-    }
+    RETURN_NOT_OK(CheckRunning(&lock));
     if (child_) {
       return STATUS(IllegalState, "Apply child result of child transaction");
     }
@@ -370,8 +368,8 @@ class YBTransaction::Impl final {
     abort_handle_ = manager_->rpcs().InvalidHandle();
   }
 
-  CHECKED_STATUS CheckIncomplete(std::unique_lock<std::mutex>* lock) {
-    if (complete_.load(std::memory_order_acquire)) {
+  CHECKED_STATUS CheckRunning(std::unique_lock<std::mutex>* lock) {
+    if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
       auto status = error_;
       lock->unlock();
       if (status.ok()) {
@@ -501,7 +499,7 @@ class YBTransaction::Impl final {
   void SendHeartbeat(TransactionStatus status,
                      std::weak_ptr<YBTransaction> weak_transaction) {
     auto transaction = weak_transaction.lock();
-    if (!transaction || complete_.load(std::memory_order_acquire)) {
+    if (!transaction || state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
       return;
     }
 
@@ -567,14 +565,14 @@ class YBTransaction::Impl final {
     std::lock_guard<std::mutex> lock(mutex_);
     if (error_.ok()) {
       error_ = status;
-      complete_.store(true, std::memory_order_release);
+      state_.store(TransactionState::kAborted, std::memory_order_release);
     }
   }
 
   void DoPrepareChild(const Status& status,
                       const YBTransactionPtr& transaction,
                       PrepareChildCallback callback,
-                      std::lock_guard<std::mutex>* parent_lock) {
+                      std::unique_lock<std::mutex>* parent_lock) {
     if (!status.ok()) {
       callback(status);
       return;
@@ -618,7 +616,7 @@ class YBTransaction::Impl final {
   bool requested_status_tablet_ = false;
   internal::RemoteTabletPtr status_tablet_;
   internal::RemoteTabletPtr status_tablet_holder_;
-  std::atomic<bool> complete_{false};
+  std::atomic<TransactionState> state_{TransactionState::kRunning};
   // Transaction is successfully initialized and ready to process intents.
   const bool child_;
   bool ready_ = false;
