@@ -162,6 +162,7 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
 }
 
 Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+                                MonoTime deadline,
                                 const ReadHybridTime& read_time,
                                 rocksdb::DB *rocksdb,
                                 KeyValueWriteBatchPB* write_batch,
@@ -170,7 +171,7 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
                                 HybridTime* restart_read_ht) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(rocksdb, init_marker_behavior, monotonic_counter);
-  DocOperationApplyData data = {&doc_write_batch, read_time, restart_read_ht};
+  DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     RETURN_NOT_OK(doc_op->Apply(data));
   }
@@ -600,10 +601,11 @@ yb::Status GetSubDocument(
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
+    MonoTime deadline,
     const ReadHybridTime& read_time) {
   auto iter = CreateIntentAwareIterator(
       db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
-      read_time);
+      deadline, read_time);
   return GetSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 

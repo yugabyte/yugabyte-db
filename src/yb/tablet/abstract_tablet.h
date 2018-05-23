@@ -50,6 +50,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // Redis support.
   virtual CHECKED_STATUS HandleRedisReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
@@ -57,6 +58,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // CQL support.
   virtual CHECKED_STATUS HandleQLReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -85,6 +87,7 @@ class AbstractTablet {
 
  protected:
   CHECKED_STATUS HandleQLReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContextOpt& txn_op_context,
@@ -95,6 +98,7 @@ class AbstractTablet {
   // PGSQL support.
  public:
   virtual CHECKED_STATUS HandlePgsqlReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -104,7 +108,8 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(const ReadHybridTime& read_time,
+  CHECKED_STATUS HandlePgsqlReadRequest(MonoTime deadline,
+                                        const ReadHybridTime& read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
                                         PgsqlReadRequestResult* result);

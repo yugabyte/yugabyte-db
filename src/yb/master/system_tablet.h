@@ -41,11 +41,13 @@ class SystemTablet : public tablet::AbstractTablet {
   void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS HandleRedisReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
   CHECKED_STATUS HandleQLReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -56,6 +58,7 @@ class SystemTablet : public tablet::AbstractTablet {
                                           QLResponsePB* response) const override;
 
   CHECKED_STATUS HandlePgsqlReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,

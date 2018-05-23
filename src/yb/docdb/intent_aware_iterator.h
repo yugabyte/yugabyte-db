@@ -40,8 +40,9 @@ YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 class TransactionStatusCache {
  public:
   TransactionStatusCache(TransactionStatusManager* txn_status_manager,
-                         const ReadHybridTime& read_time)
-      : txn_status_manager_(txn_status_manager), read_time_(read_time) {}
+                         const ReadHybridTime& read_time,
+                         MonoTime deadline)
+      : txn_status_manager_(txn_status_manager), read_time_(read_time), deadline_(deadline) {}
 
   // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
   // otherwise.
@@ -53,6 +54,7 @@ class TransactionStatusCache {
 
   TransactionStatusManager* txn_status_manager_;
   ReadHybridTime read_time_;
+  MonoTime deadline_;
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
 };
 
@@ -77,6 +79,7 @@ class IntentAwareIterator {
   IntentAwareIterator(
       rocksdb::DB* rocksdb,
       const rocksdb::ReadOptions& read_opts,
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const TransactionOperationContextOpt& txn_op_context);
 

@@ -554,7 +554,7 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
       tablet_peer_->tablet(), &writer->req_, &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
-  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state)));
+  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state), MonoTime::Max()));
   while (!latch.WaitFor(15s)) {
     LOG(DFATAL) << "SyncWrite hang";
   }

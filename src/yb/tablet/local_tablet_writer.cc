@@ -52,7 +52,8 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   tx_state_.reset(new WriteOperationState(tablet_, &req_, &resp_));
   HybridTime read_ht;
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get(), &read_ht));
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(
+      MonoTime::Max() /* deadline */, tx_state_.get(), &read_ht));
   tablet_->StartOperation(tx_state_.get());
 
   // Create a "fake" OpId and set it in the OperationState for anchoring.

@@ -134,7 +134,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteOperationState> operation_state);
+  CHECKED_STATUS SubmitWrite(
+      std::unique_ptr<WriteOperationState> operation_state, MonoTime deadline);
 
   void Submit(std::unique_ptr<Operation> operation);
 

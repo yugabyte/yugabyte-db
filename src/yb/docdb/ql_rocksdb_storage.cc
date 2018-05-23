@@ -32,12 +32,13 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const common::QLScanSpec& spec,
     std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
 
-  std::unique_ptr<DocRowwiseIterator> doc_iter =
-    std::make_unique<DocRowwiseIterator>(projection, schema, txn_op_context, rocksdb_, read_time);
+  auto doc_iter = std::make_unique<DocRowwiseIterator>(
+      projection, schema, txn_op_context, rocksdb_, deadline, read_time);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -103,12 +104,13 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
+    MonoTime deadline,
     const ReadHybridTime& read_time,
     const common::PgsqlScanSpec& spec,
     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
 
-  std::unique_ptr<DocRowwiseIterator> doc_iter =
-    std::make_unique<DocRowwiseIterator>(projection, schema, txn_op_context, rocksdb_, read_time);
+  auto doc_iter = std::make_unique<DocRowwiseIterator>(
+      projection, schema, txn_op_context, rocksdb_, deadline, read_time);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   *iter = std::move(doc_iter);
