@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
+import { PanelGroup } from 'react-bootstrap';
 
 const graphPanelTypes = {
   "universe": ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
@@ -27,13 +28,15 @@ export default class CustomerMetricsPanel extends Component {
   render() {
     const { origin, nodePrefixes, width, tableName } = this.props;
     const graphPanelContainers = graphPanelTypes[origin].map(function (type, idx) {
-      return (<GraphPanelContainer key={idx} type={type} width={width}
+      return (<GraphPanelContainer key={idx} isOpen={idx?false:true} type={type} width={width}
                   nodePrefixes={nodePrefixes} tableName={tableName} />);
     });
 
     return (
       <GraphPanelHeaderContainer origin={origin}>
-        {graphPanelContainers}
+        <PanelGroup id={origin+" metrics"}>
+          {graphPanelContainers}
+        </PanelGroup>
       </GraphPanelHeaderContainer>
     );
   }
