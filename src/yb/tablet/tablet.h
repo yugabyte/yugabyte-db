@@ -256,6 +256,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data);
 
   CHECKED_STATUS HandleRedisReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
@@ -263,6 +264,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // CQL Request Processing.
   CHECKED_STATUS HandleQLReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -278,6 +280,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
   CHECKED_STATUS HandlePgsqlReadRequest(
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -372,7 +375,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
   CHECKED_STATUS AcquireLocksAndPerformDocOperations(
-      WriteOperationState *state, HybridTime* restart_read_ht);
+      MonoTime deadline, WriteOperationState *state, HybridTime* restart_read_ht);
 
   static const char* kDMSMemTrackerId;
 

@@ -411,12 +411,14 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
+Status TabletPeer::SubmitWrite(
+    std::unique_ptr<WriteOperationState> state, MonoTime deadline) {
   auto operation = std::make_unique<WriteOperation>(std::move(state), consensus::LEADER);
   RETURN_NOT_OK(CheckRunning());
 
   HybridTime restart_read_ht;
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(operation->state(), &restart_read_ht));
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(
+      deadline, operation->state(), &restart_read_ht));
   // If a restart read is required, then we return this fact to caller and don't perform the write
   // operation.
   if (restart_read_ht.is_valid()) {

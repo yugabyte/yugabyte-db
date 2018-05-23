@@ -290,6 +290,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   RETURN_NOT_OK(op.Init(&req, &resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
+      MonoTime::Max() /* deadline */,
       ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
   return Status::OK();
 }

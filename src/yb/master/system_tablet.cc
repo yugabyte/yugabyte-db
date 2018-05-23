@@ -55,17 +55,17 @@ HybridTime SystemTablet::DoGetSafeTime(
 }
 
 CHECKED_STATUS SystemTablet::HandleRedisReadRequest(
-    const ReadHybridTime& read_time, const RedisReadRequestPB& redis_read_request,
-    RedisResponsePB* response) {
+    MonoTime deadline, const ReadHybridTime& read_time,
+    const RedisReadRequestPB& redis_read_request, RedisResponsePB* response) {
   return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
 }
 
 CHECKED_STATUS SystemTablet::HandleQLReadRequest(
-    const ReadHybridTime& read_time, const QLReadRequestPB& ql_read_request,
+    MonoTime deadline, const ReadHybridTime& read_time, const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata, tablet::QLReadRequestResult* result) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      read_time, ql_read_request, boost::none, result);
+      deadline, read_time, ql_read_request, boost::none, result);
 }
 
 CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

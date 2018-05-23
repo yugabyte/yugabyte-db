@@ -42,6 +42,7 @@ class YQLStorageIf {
       const Schema& projection,
       const Schema& schema,
       const TransactionOperationContextOpt& txn_op_context,
+      MonoTime deadline,
       const ReadHybridTime& read_time,
       const QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
@@ -61,6 +62,7 @@ class YQLStorageIf {
                                      const Schema& projection,
                                      const Schema& schema,
                                      const TransactionOperationContextOpt& txn_op_context,
+                                     MonoTime deadline,
                                      const ReadHybridTime& read_time,
                                      const PgsqlScanSpec& spec,
                                      YQLRowwiseIteratorIf::UniPtr* iter) const = 0;

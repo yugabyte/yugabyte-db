@@ -216,7 +216,7 @@ class TabletPeerTest : public YBTabletTest,
     operation_state->set_completion_callback(
         std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    CHECK_OK(tablet_peer->SubmitWrite(std::move(operation_state)));
+    CHECK_OK(tablet_peer->SubmitWrite(std::move(operation_state), MonoTime::Max() /* deadline */));
     rpc_latch.Wait();
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
