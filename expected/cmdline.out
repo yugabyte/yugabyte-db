@@ -21,11 +21,11 @@ UPDATE table_optional SET b = 123 WHERE a = 1;
 DELETE FROM table_optional WHERE a = 1;
 DROP TABLE table_optional;
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'include-not-null', '1');
-                                                                                                                                            data                                                                                                                                             
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                            data                                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"change":[]}
- {"change":[{"kind":"insert","schema":"public","table":"table_optional","columnnames":["a","b","c"],"columntypes":["smallint","integer","boolean"],"columnoptionals": [false,true,false],"columnvalues":[1,null,true]}]}
- {"change":[{"kind":"update","schema":"public","table":"table_optional","columnnames":["a","b","c"],"columntypes":["smallint","integer","boolean"],"columnoptionals": [false,true,false],"columnvalues":[1,123,true],"oldkeys":{"keynames":["a"],"keytypes":["smallint"],"keyvalues":[1]}}]}
+ {"change":[{"kind":"insert","schema":"public","table":"table_optional","columnnames":["a","b","c"],"columntypes":["smallint","integer","boolean"],"columnoptionals":[false,true,false],"columnvalues":[1,null,true]}]}
+ {"change":[{"kind":"update","schema":"public","table":"table_optional","columnnames":["a","b","c"],"columntypes":["smallint","integer","boolean"],"columnoptionals":[false,true,false],"columnvalues":[1,123,true],"oldkeys":{"keynames":["a"],"keytypes":["smallint"],"keyvalues":[1]}}]}
  {"change":[{"kind":"delete","schema":"public","table":"table_optional","oldkeys":{"keynames":["a"],"keytypes":["smallint"],"keyvalues":[1]}}]}
  {"change":[]}
 (5 rows)

@@ -55,6 +55,11 @@ typedef struct
 
 	uint64		nr_changes;			/* # of passes in pg_decode_change() */
 									/* FIXME replace with txn->nentries */
+
+	/* pretty print */
+	char		ht[2];				/* horizontal tab, if pretty print */
+	char		nl[2];				/* new line, if pretty print */
+	char		sp[2];				/* space, if pretty print */
 } JsonDecodingData;
 
 typedef struct SelectTable
@@ -137,6 +142,11 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_not_null = false;
 	data->include_unchanged_toast = true;
 	data->filter_tables = NIL;
+
+	/* pretty print */
+	strcpy(data->ht, "");
+	strcpy(data->nl, "");
+	strcpy(data->sp, "");
 
 	/* add all tables in all schemas by default */
 	t = palloc0(sizeof(SelectTable));
@@ -260,6 +270,13 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
+
+			if (data->pretty_print)
+			{
+				strncpy(data->ht, "\t", 1);
+				strncpy(data->nl, "\n", 1);
+				strncpy(data->sp, " ", 1);
+			}
 		}
 		else if (strcmp(elem->defname, "write-in-chunks") == 0)
 		{
@@ -383,43 +400,24 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	/* Transaction starts */
 	OutputPluginPrepareWrite(ctx, true);
 
-	if (data->pretty_print)
-		appendStringInfoString(ctx->out, "{\n");
-	else
-		appendStringInfoCharMacro(ctx->out, '{');
+	appendStringInfo(ctx->out, "{%s", data->nl);
 
 	if (data->include_xids)
-	{
-		if (data->pretty_print)
-			appendStringInfo(ctx->out, "\t\"xid\": %u,\n", txn->xid);
-		else
-			appendStringInfo(ctx->out, "\"xid\":%u,", txn->xid);
-	}
+		appendStringInfo(ctx->out, "%s\"xid\":%s%u,%s", data->ht, data->sp, txn->xid, data->nl);
 
 	if (data->include_lsn)
 	{
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->end_lsn));
 
-		if (data->pretty_print)
-			appendStringInfo(ctx->out, "\t\"nextlsn\": \"%s\",\n", lsn_str);
-		else
-			appendStringInfo(ctx->out, "\"nextlsn\":\"%s\",", lsn_str);
+		appendStringInfo(ctx->out, "%s\"nextlsn\":%s\"%s\",%s", data->ht, data->sp, lsn_str, data->nl);
 
 		pfree(lsn_str);
 	}
 
 	if (data->include_timestamp)
-	{
-		if (data->pretty_print)
-			appendStringInfo(ctx->out, "\t\"timestamp\": \"%s\",\n", timestamptz_to_str(txn->commit_time));
-		else
-			appendStringInfo(ctx->out, "\"timestamp\":\"%s\",", timestamptz_to_str(txn->commit_time));
-	}
+		appendStringInfo(ctx->out, "%s\"timestamp\":%s\"%s\",%s", data->ht, data->sp, timestamptz_to_str(txn->commit_time), data->nl);
 
-	if (data->pretty_print)
-		appendStringInfoString(ctx->out, "\t\"change\": [");
-	else
-		appendStringInfoString(ctx->out, "\"change\":[");
+	appendStringInfo(ctx->out, "%s\"change\":%s[", data->ht, data->sp);
 
 	if (data->write_in_chunks)
 		OutputPluginWrite(ctx, true);
@@ -443,18 +441,11 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (data->write_in_chunks)
 		OutputPluginPrepareWrite(ctx, true);
 
-	if (data->pretty_print)
-	{
-		/* if we don't write in chunks, we need a newline here */
-		if (!data->write_in_chunks)
-			appendStringInfoCharMacro(ctx->out, '\n');
+	/* if we don't write in chunks, we need a newline here */
+	if (!data->write_in_chunks)
+		appendStringInfo(ctx->out, "%s", data->nl);
 
-		appendStringInfoString(ctx->out, "\t]\n}");
-	}
-	else
-	{
-		appendStringInfoString(ctx->out, "]}");
-	}
+	appendStringInfo(ctx->out, "%s]%s}", data->ht, data->nl);
 
 	OutputPluginWrite(ctx, true);
 }
@@ -477,7 +468,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	StringInfoData		coltypeoids;
 	StringInfoData		colnotnulls;
 	StringInfoData		colvalues;
-	char				*comma = "";
+	char				comma[3] = "";
 
 	data = ctx->output_plugin_private;
 
@@ -496,47 +487,22 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	 */
 	if (replident)
 	{
-		if (data->pretty_print)
-		{
-			appendStringInfoString(&colnames, "\t\t\t\"oldkeys\": {\n");
-			appendStringInfoString(&colnames, "\t\t\t\t\"keynames\": [");
-			appendStringInfoString(&coltypes, "\t\t\t\t\"keytypes\": [");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "\t\t\t\"keytypeoids\": [");
-			appendStringInfoString(&colvalues, "\t\t\t\t\"keyvalues\": [");
-		}
-		else
-		{
-			appendStringInfoString(&colnames, "\"oldkeys\":{");
-			appendStringInfoString(&colnames, "\"keynames\":[");
-			appendStringInfoString(&coltypes, "\"keytypes\":[");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "\"keytypeoids\": [");
-			appendStringInfoString(&colvalues, "\"keyvalues\":[");
-		}
+		appendStringInfo(&colnames, "%s%s%s\"oldkeys\":%s{%s", data->ht, data->ht, data->ht, data->sp, data->nl);
+		appendStringInfo(&colnames, "%s%s%s%s\"keynames\":%s[", data->ht, data->ht, data->ht, data->ht, data->sp);
+		appendStringInfo(&coltypes, "%s%s%s%s\"keytypes\":%s[", data->ht, data->ht, data->ht, data->ht, data->sp);
+		if (data->include_type_oids)
+			appendStringInfo(&coltypeoids, "%s%s%s%s\"keytypeoids\":%s[", data->ht, data->ht, data->ht, data->ht, data->sp);
+		appendStringInfo(&colvalues, "%s%s%s%s\"keyvalues\":%s[", data->ht, data->ht, data->ht, data->ht, data->sp);
 	}
 	else
 	{
-		if (data->pretty_print)
-		{
-			appendStringInfoString(&colnames, "\t\t\t\"columnnames\": [");
-			appendStringInfoString(&coltypes, "\t\t\t\"columntypes\": [");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "\t\t\t\"columntypeoids\": [");
-			if (data->include_not_null)
-				appendStringInfoString(&colnotnulls, "\t\t\t\"columnoptionals\": [");
-			appendStringInfoString(&colvalues, "\t\t\t\"columnvalues\": [");
-		}
-		else
-		{
-			appendStringInfoString(&colnames, "\"columnnames\":[");
-			appendStringInfoString(&coltypes, "\"columntypes\":[");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "\"columntypeoids\": [");
-			if (data->include_not_null)
-				appendStringInfoString(&colnotnulls, "\"columnoptionals\": [");
-			appendStringInfoString(&colvalues, "\"columnvalues\":[");
-		}
+		appendStringInfo(&colnames, "%s%s%s\"columnnames\":%s[", data->ht, data->ht, data->ht, data->sp);
+		appendStringInfo(&coltypes, "%s%s%s\"columntypes\":%s[", data->ht, data->ht, data->ht, data->sp);
+		if (data->include_type_oids)
+			appendStringInfo(&coltypeoids, "%s%s%s\"columntypeoids\":%s[", data->ht, data->ht, data->ht, data->sp);
+		if (data->include_not_null)
+			appendStringInfo(&colnotnulls, "%s%s%s\"columnoptionals\":%s[", data->ht, data->ht, data->ht, data->sp);
+		appendStringInfo(&colvalues, "%s%s%s\"columnvalues\":%s[", data->ht, data->ht, data->ht, data->sp);
 	}
 
 	/* Print column information (name, type, value) */
@@ -621,7 +587,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		}
 
 		/* Accumulate each column info */
-		appendStringInfoString(&colnames, comma);
+		appendStringInfo(&colnames, "%s", comma);
 		escape_json(&colnames, NameStr(attr->attname));
 
 		if (data->include_types)
@@ -631,14 +597,14 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				char	*type_str;
 
 				type_str = TextDatumGetCString(DirectFunctionCall2(format_type, attr->atttypid, attr->atttypmod));
-				appendStringInfoString(&coltypes, comma);
+				appendStringInfo(&coltypes, "%s", comma);
 				escape_json(&coltypes, type_str);
 				pfree(type_str);
 			}
 			else
 			{
 				Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
-				appendStringInfoString(&coltypes, comma);
+				appendStringInfo(&coltypes, "%s", comma);
 				escape_json(&coltypes, NameStr(type_form->typname));
 			}
 
@@ -706,12 +672,12 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 						appendStringInfo(&colvalues, "%sfalse", comma);
 					break;
 				case BYTEAOID:
-					appendStringInfoString(&colvalues, comma);
-					// XXX: strings here are "\xC0FFEE", we strip the "\x"
-					escape_json(&colvalues, (outputstr+2));
+					appendStringInfo(&colvalues, "%s", comma);
+					/* string is "\x54617069727573", start after "\x" */
+					escape_json(&colvalues, (outputstr + 2));
 					break;
 				default:
-					appendStringInfoString(&colvalues, comma);
+					appendStringInfo(&colvalues, "%s", comma);
 					escape_json(&colvalues, outputstr);
 					break;
 			}
@@ -719,68 +685,33 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 		/* The first column does not have comma */
 		if (strcmp(comma, "") == 0)
-		{
-			if (data->pretty_print)
-				comma = ", ";
-			else
-				comma = ",";
-		}
+			snprintf(comma, 3, ",%s", data->sp);
 	}
 
 	/* Column info ends */
 	if (replident)
 	{
-		if (data->pretty_print)
-		{
-			appendStringInfoString(&colnames, "],\n");
-			if (data->include_types)
-				appendStringInfoString(&coltypes, "],\n");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "],\n");
-			appendStringInfoString(&colvalues, "]\n");
-			appendStringInfoString(&colvalues, "\t\t\t}\n");
-		}
-		else
-		{
-			appendStringInfoString(&colnames, "],");
-			if (data->include_types)
-				appendStringInfoString(&coltypes, "],");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "],");
-			appendStringInfoCharMacro(&colvalues, ']');
-			appendStringInfoCharMacro(&colvalues, '}');
-		}
+		appendStringInfo(&colnames, "],%s", data->nl);
+		if (data->include_types)
+			appendStringInfo(&coltypes, "],%s", data->nl);
+		if (data->include_type_oids)
+			appendStringInfo(&coltypeoids, "],%s", data->nl);
+		appendStringInfo(&colvalues, "]%s", data->nl);
+		appendStringInfo(&colvalues, "%s%s%s}%s", data->ht, data->ht, data->ht, data->nl);
 	}
 	else
 	{
-		if (data->pretty_print)
-		{
-			appendStringInfoString(&colnames, "],\n");
-			if (data->include_types)
-				appendStringInfoString(&coltypes, "],\n");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "],\n");
-			if (data->include_not_null)
-				appendStringInfoString(&colnotnulls, "],\n");
-			if (hasreplident)
-				appendStringInfoString(&colvalues, "],\n");
-			else
-				appendStringInfoString(&colvalues, "]\n");
-		}
+		appendStringInfo(&colnames, "],%s", data->nl);
+		if (data->include_types)
+			appendStringInfo(&coltypes, "],%s", data->nl);
+		if (data->include_type_oids)
+			appendStringInfo(&coltypeoids, "],%s", data->nl);
+		if (data->include_not_null)
+			appendStringInfo(&colnotnulls, "],%s", data->nl);
+		if (hasreplident)
+			appendStringInfo(&colvalues, "],%s", data->nl);
 		else
-		{
-			appendStringInfoString(&colnames, "],");
-			if (data->include_types)
-				appendStringInfoString(&coltypes, "],");
-			if (data->include_type_oids)
-				appendStringInfoString(&coltypeoids, "],");
-			if (data->include_not_null)
-				appendStringInfoString(&colnotnulls, "],");
-			if (hasreplident)
-				appendStringInfoString(&colvalues, "],");
-			else
-				appendStringInfoCharMacro(&colvalues, ']');
-		}
+			appendStringInfo(&colvalues, "]%s", data->nl);
 	}
 
 	/* Print data */
@@ -967,78 +898,43 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Change counter */
 	data->nr_changes++;
 
-	/* Change starts */
-	if (data->pretty_print)
-	{
-		/* if we don't write in chunks, we need a newline here */
-		if (!data->write_in_chunks)
-			appendStringInfoChar(ctx->out, '\n');
+	/* if we don't write in chunks, we need a newline here */
+	if (!data->write_in_chunks)
+		appendStringInfo(ctx->out, "%s", data->nl);
 
-		appendStringInfoString(ctx->out, "\t\t");
+	appendStringInfo(ctx->out, "%s%s", data->ht, data->ht);
 
-		if (data->nr_changes > 1)
-			appendStringInfoChar(ctx->out, ',');
+	if (data->nr_changes > 1)
+		appendStringInfoChar(ctx->out, ',');
 
-		appendStringInfoString(ctx->out, "{\n");
-	}
-	else
-	{
-		if (data->nr_changes > 1)
-			appendStringInfoString(ctx->out, ",{");
-		else
-			appendStringInfoCharMacro(ctx->out, '{');
-	}
+	appendStringInfo(ctx->out, "{%s", data->nl);
 
 	/* Print change kind */
 	switch (change->action)
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
-			if (data->pretty_print)
-				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"insert\",\n");
-			else
-				appendStringInfoString(ctx->out, "\"kind\":\"insert\",");
+			appendStringInfo(ctx->out, "%s%s%s\"kind\":%s\"insert\",%s", data->ht, data->ht, data->ht, data->sp, data->nl);
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
-			if(data->pretty_print)
-				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"update\",\n");
-			else
-				appendStringInfoString(ctx->out, "\"kind\":\"update\",");
+			appendStringInfo(ctx->out, "%s%s%s\"kind\":%s\"update\",%s", data->ht, data->ht, data->ht, data->sp, data->nl);
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
-			if (data->pretty_print)
-				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"delete\",\n");
-			else
-				appendStringInfoString(ctx->out, "\"kind\":\"delete\",");
+			appendStringInfo(ctx->out, "%s%s%s\"kind\":%s\"delete\",%s", data->ht, data->ht, data->ht, data->sp, data->nl);
 			break;
 		default:
 			Assert(false);
 	}
 
 	/* Print table name (possibly) qualified */
-	if (data->pretty_print)
+	if (data->include_schemas)
 	{
-		if (data->include_schemas)
-		{
-			appendStringInfoString(ctx->out, "\t\t\t\"schema\": ");
-			escape_json(ctx->out, get_namespace_name(class_form->relnamespace));
-			appendStringInfoString(ctx->out, ",\n");
-		}
-		appendStringInfoString(ctx->out, "\t\t\t\"table\": ");
-		escape_json(ctx->out, NameStr(class_form->relname));
-		appendStringInfoString(ctx->out, ",\n");
+		appendStringInfo(ctx->out, "%s%s%s\"schema\":%s", data->ht, data->ht, data->ht, data->sp);
+		escape_json(ctx->out, get_namespace_name(class_form->relnamespace));
+		appendStringInfo(ctx->out, ",%s", data->nl);
 	}
-	else
-	{
-		if (data->include_schemas)
-		{
-			appendStringInfoString(ctx->out, "\"schema\":");
-			escape_json(ctx->out, get_namespace_name(class_form->relnamespace));
-			appendStringInfoCharMacro(ctx->out, ',');
-		}
-		appendStringInfoString(ctx->out, "\"table\":");
-		escape_json(ctx->out, NameStr(class_form->relname));
-		appendStringInfoCharMacro(ctx->out, ',');
-	}
+	appendStringInfo(ctx->out, "%s%s%s\"table\":%s", data->ht, data->ht, data->ht, data->sp);
+	escape_json(ctx->out, NameStr(class_form->relname));
+	appendStringInfo(ctx->out, ",%s", data->nl);
 
 	switch (change->action)
 	{
@@ -1104,10 +1000,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			Assert(false);
 	}
 
-	if (data->pretty_print)
-		appendStringInfoString(ctx->out, "\t\t}");
-	else
-		appendStringInfoCharMacro(ctx->out, '}');
+	appendStringInfo(ctx->out, "%s%s}", data->ht, data->ht);
 
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
@@ -1146,90 +1039,40 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (transactional)
 		data->nr_changes++;
 
-	if (data->pretty_print)
-	{
-		/* if we don't write in chunks, we need a newline here */
-		if (!data->write_in_chunks && transactional)
-			appendStringInfoChar(ctx->out, '\n');
+	/* if we don't write in chunks, we need a newline here */
+	if (!data->write_in_chunks && transactional)
+			appendStringInfo(ctx->out, "%s", data->nl);
 
-		/* build a complete JSON object for non-transactional message */
-		if (!transactional)
-		{
-			appendStringInfoString(ctx->out, "{\n");
-			appendStringInfoString(ctx->out, "\t\"change\": [\n");
-		}
+	/* build a complete JSON object for non-transactional message */
+	if (!transactional)
+		appendStringInfo(ctx->out, "{%s%s\"change\":%s[%s", data->nl, data->ht, data->sp, data->nl);
 
-		appendStringInfoString(ctx->out, "\t\t");
+	appendStringInfo(ctx->out, "%s%s", data->ht, data->ht);
 
-		if (data->nr_changes > 1)
-			appendStringInfoChar(ctx->out, ',');
+	if (data->nr_changes > 1)
+		appendStringInfoChar(ctx->out, ',');
 
-		appendStringInfoString(ctx->out, "{\n");
+	appendStringInfo(ctx->out, "{%s%s%s%s\"kind\":%s\"message\",%s", data->nl, data->ht, data->ht, data->ht, data->sp, data->nl);
 
-		appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"message\",\n");
-
-		if (transactional)
-			appendStringInfoString(ctx->out, "\t\t\t\"transactional\": true,\n");
-		else
-			appendStringInfoString(ctx->out, "\t\t\t\"transactional\": false,\n");
-
-		appendStringInfo(ctx->out, "\t\t\t\"prefix\": ");
-		escape_json(ctx->out, prefix);
-		appendStringInfoString(ctx->out, ",\n\t\t\t\"content\": ");
-
-		// force null-terminated string
-		content_str = (char *)palloc0(content_size+1);
-		strncpy(content_str, content, content_size);
-		escape_json(ctx->out, content_str);
-		pfree(content_str);
-
-		appendStringInfoString(ctx->out, "\n\t\t}");
-
-		/* build a complete JSON object for non-transactional message */
-		if (!transactional)
-		{
-			appendStringInfoString(ctx->out, "\n\t]");
-			appendStringInfoString(ctx->out, "\n}");
-		}
-	}
+	if (transactional)
+		appendStringInfo(ctx->out, "%s%s%s\"transactional\":%strue,%s", data->ht, data->ht, data->ht, data->sp, data->nl);
 	else
-	{
-		/* build a complete JSON object for non-transactional message */
-		if (!transactional)
-		{
-			appendStringInfoString(ctx->out, "{\"change\":[");
-		}
+		appendStringInfo(ctx->out, "%s%s%s\"transactional\":%sfalse,%s", data->ht, data->ht, data->ht, data->sp, data->nl);
 
-		if (data->nr_changes > 1)
-			appendStringInfoString(ctx->out, ",{");
-		else
-			appendStringInfoChar(ctx->out, '{');
+	appendStringInfo(ctx->out, "%s%s%s\"prefix\":%s", data->ht, data->ht, data->ht, data->sp);
+	escape_json(ctx->out, prefix);
+	appendStringInfo(ctx->out, ",%s%s%s%s\"content\":%s", data->nl, data->ht, data->ht, data->ht, data->sp);
 
-		appendStringInfoString(ctx->out, "\"kind\":\"message\",");
+	content_str = (char *) palloc0((content_size + 1) * sizeof(char));
+	strncpy(content_str, content, content_size);
+	escape_json(ctx->out, content_str);
+	pfree(content_str);
 
-		if (transactional)
-			appendStringInfoString(ctx->out, "\"transactional\":true,");
-		else
-			appendStringInfoString(ctx->out, "\"transactional\":false,");
+	appendStringInfo(ctx->out, "%s%s%s}", data->nl, data->ht, data->ht);
 
-		appendStringInfo(ctx->out, "\"prefix\":");
-		escape_json(ctx->out, prefix);
-		appendStringInfoString(ctx->out, ",\"content\":");
-
-		// force null-terminated string
-		content_str = (char *)palloc0(content_size+1);
-		strncpy(content_str, content, content_size);
-		escape_json(ctx->out, content_str);
-		pfree(content_str);
-
-		appendStringInfoChar(ctx->out, '}');
-
-		/* build a complete JSON object for non-transactional message */
-		if (!transactional)
-		{
-			appendStringInfoString(ctx->out, "]}");
-		}
-	}
+	/* build a complete JSON object for non-transactional message */
+	if (!transactional)
+		appendStringInfo(ctx->out, "%s%s]%s}", data->nl, data->ht, data->nl);
 
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
