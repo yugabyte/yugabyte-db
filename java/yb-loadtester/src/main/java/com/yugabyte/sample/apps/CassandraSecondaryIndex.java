@@ -13,7 +13,6 @@
 
 package com.yugabyte.sample.apps;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
@@ -21,18 +20,18 @@ import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 /**
- * This workload writes and reads some random string keys from a CQL server. By default, this app
- * inserts a million keys, and reads/updates them indefinitely.
+ * This workload writes and reads some random string keys from a YCQL table with a secondary index
+ * on a non-primary-key column. When it reads a key, it queries the key by its associated value
+ * which is indexed.
  */
-public class CassandraTransactionalKeyValue extends CassandraKeyValue {
-  private static final Logger LOG = Logger.getLogger(CassandraTransactionalKeyValue.class);
+public class CassandraSecondaryIndex extends CassandraKeyValue {
+  private static final Logger LOG = Logger.getLogger(CassandraSecondaryIndex.class);
 
   // Static initialization of this workload's config. These are good defaults for getting a decent
   // read dominated workload on a reasonably powered machine. Exact IOPS will of course vary
@@ -53,18 +52,19 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   }
 
   // The default table name to create and use for CRUD ops.
-  private static final String DEFAULT_TABLE_NAME =
-      CassandraTransactionalKeyValue.class.getSimpleName();
+  private static final String DEFAULT_TABLE_NAME = CassandraSecondaryIndex.class.getSimpleName();
 
-  public CassandraTransactionalKeyValue() {
+  public CassandraSecondaryIndex() {
   }
 
   @Override
   public List<String> getCreateTableStatements() {
-    String create_stmt = String.format(
-        "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k)) " +
-        "WITH transactions = { 'enabled' : true };", getTableName());
-    return Arrays.asList(create_stmt);
+    return Arrays.asList(
+        String.format(
+            "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
+            "WITH transactions = { 'enabled' : true };", getTableName()),
+        String.format(
+            "CREATE INDEX IF NOT EXISTS %sByValue ON %s (v);", getTableName(), getTableName()));
   }
 
   public String getTableName() {
@@ -72,19 +72,8 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   }
 
   private PreparedStatement getPreparedSelect()  {
-    return getPreparedSelect(String.format("SELECT k, v, writetime(v) FROM %s WHERE k in :k;",
-                                           getTableName()),
+    return getPreparedSelect(String.format("SELECT k, v FROM %s WHERE v = ?;", getTableName()),
                              appConfig.localReads);
-  }
-
-  private void verifyValue(Key key, ByteBuffer value) {
-    if (appConfig.valueSize == 0) {
-      key.verify(new String(value.array()));
-    } else {
-      byte[] bytes = new byte[value.capacity()];
-      value.get(bytes);
-      verifyRandomValue(key, bytes);
-    }
   }
 
   @Override
@@ -96,56 +85,34 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
     }
     // Do the read from Cassandra.
     // Bind the select statement.
-    BoundStatement select = getPreparedSelect().bind(Arrays.asList(key.asString() + "_1",
-                                                                   key.asString() + "_2"));
+    BoundStatement select = getPreparedSelect().bind(key.getValueStr());
     ResultSet rs = getCassandraClient().execute(select);
     List<Row> rows = rs.all();
-    if (rows.size() != 2) {
-      LOG.fatal("Read key: " + key.asString() + " expected 2 row in result, got " + rows.size());
-      return 1;
+    if (rows.size() != 1) {
+      LOG.fatal("Read key: " + key.asString() + " expected 1 row in result, got " + rows.size());
     }
-    verifyValue(key, rows.get(0).getBytes(1));
-    verifyValue(key, rows.get(1).getBytes(1));
-    if (rows.get(0).getLong(2) != rows.get(1).getLong(2)) {
-      LOG.fatal("Writetime mismatch for key: " + key.toString() + ", " +
-                rows.get(0).getLong(2) + " vs " + rows.get(1).getLong(2));
+    if (!key.asString().equals(rows.get(0).getString(0))) {
+      LOG.fatal("Read key: " + key.asString() + ", got " + rows.get(0).getString(0));
     }
-
     LOG.debug("Read key: " + key.toString());
     return 1;
   }
 
   protected PreparedStatement getPreparedInsert()  {
-    return getPreparedInsert(String.format(
-        "BEGIN TRANSACTION" +
-        "  INSERT INTO %s (k, v) VALUES (:k1, :v);" +
-        "  INSERT INTO %s (k, v) VALUES (:k2, :v);" +
-        "END TRANSACTION;",
-        getTableName(),
-        getTableName()));
+    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);",
+                             getTableName()));
   }
 
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
+    if (key == null) {
+      return 0;
+    }
+
     try {
       // Do the write to Cassandra.
-      BoundStatement insert = null;
-      if (appConfig.valueSize == 0) {
-        String value = key.getValueStr();
-        insert = getPreparedInsert()
-                 .bind()
-                 .setString("k1", key.asString() + "_1")
-                 .setString("k2", key.asString() + "_2")
-                 .setBytes("v", ByteBuffer.wrap(value.getBytes()));
-      } else {
-        byte[] value = getRandomValue(key);
-        insert = getPreparedInsert()
-                 .bind()
-                 .setString("k1", key.asString() + "_1")
-                 .setString("k2", key.asString() + "_2")
-                 .setBytes("v", ByteBuffer.wrap(value));
-      }
+      BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
       ResultSet resultSet = getCassandraClient().execute(insert);
       LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
       getSimpleLoadGenerator().recordWriteSuccess(key);
@@ -159,11 +126,12 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   @Override
   public List<String> getWorkloadDescription() {
     return Arrays.asList(
-      "Sample key-value app with multi-row transaction built on Cassandra. The app writes",
-      "out 1M unique string keys in pairs, with each pair of keys with the same string",
-      "value written in a transaction. There are multiple readers and writers that update",
-      "these keys and read them in pair indefinitely. Note that the number of reads and ",
-      "writes to perform can be specified as a parameter.");
+      "Sample key-value app built on Cassandra. The app writes out unique string keys",
+      "each with a string value to a YCQL table with an index on the value column.",
+      "There are multiple readers and writers that update these keys and read them",
+      "indefinitely, with the readers query the keys by the associated values that are",
+      "indexed. Note that the number of reads and writes to perform can be specified as",
+      "a parameter.");
   }
 
   @Override
@@ -172,7 +140,6 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
       "--num_unique_keys " + appConfig.numUniqueKeysToWrite,
       "--num_reads " + appConfig.numKeysToRead,
       "--num_writes " + appConfig.numKeysToWrite,
-      "--value_size " + appConfig.valueSize,
       "--num_threads_read " + appConfig.numReaderThreads,
       "--num_threads_write " + appConfig.numWriterThreads);
   }
