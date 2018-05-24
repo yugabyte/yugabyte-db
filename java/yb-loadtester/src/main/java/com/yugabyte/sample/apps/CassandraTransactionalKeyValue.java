@@ -16,6 +16,7 @@ package com.yugabyte.sample.apps;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
@@ -62,7 +63,7 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format(
-        "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k)) " +
+        "CREATE TABLE IF NOT EXISTS %s (k varchar, v bigint, primary key (k)) " +
         "WITH transactions = { 'enabled' : true };", getTableName());
     return Arrays.asList(create_stmt);
   }
@@ -77,13 +78,11 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
                              appConfig.localReads);
   }
 
-  private void verifyValue(Key key, ByteBuffer value) {
-    if (appConfig.valueSize == 0) {
-      key.verify(new String(value.array()));
-    } else {
-      byte[] bytes = new byte[value.capacity()];
-      value.get(bytes);
-      verifyRandomValue(key, bytes);
+  private void verifyValue(Key key, long value1, long value2) {
+    long key_number = key.asNumber();
+    if (key_number != value1 + value2) {
+      LOG.fatal("Value mismatch for key: " + key.toString() +
+                " != " + value1 + " + " +  value2);
     }
   }
 
@@ -104,8 +103,7 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
       LOG.fatal("Read key: " + key.asString() + " expected 2 row in result, got " + rows.size());
       return 1;
     }
-    verifyValue(key, rows.get(0).getBytes(1));
-    verifyValue(key, rows.get(1).getBytes(1));
+    verifyValue(key, rows.get(0).getLong(1), rows.get(1).getLong(1));
     if (rows.get(0).getLong(2) != rows.get(1).getLong(2)) {
       LOG.fatal("Writetime mismatch for key: " + key.toString() + ", " +
                 rows.get(0).getLong(2) + " vs " + rows.get(1).getLong(2));
@@ -118,8 +116,8 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   protected PreparedStatement getPreparedInsert()  {
     return getPreparedInsert(String.format(
         "BEGIN TRANSACTION" +
-        "  INSERT INTO %s (k, v) VALUES (:k1, :v);" +
-        "  INSERT INTO %s (k, v) VALUES (:k2, :v);" +
+        "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
+        "  INSERT INTO %s (k, v) VALUES (:k2, :v2);" +
         "END TRANSACTION;",
         getTableName(),
         getTableName()));
@@ -131,21 +129,17 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
     try {
       // Do the write to Cassandra.
       BoundStatement insert = null;
-      if (appConfig.valueSize == 0) {
-        String value = key.getValueStr();
-        insert = getPreparedInsert()
+      long key_num = key.asNumber();
+      /* Generate two numbers that add up to the key, and use them as values */
+      long value1 = ThreadLocalRandom.current().nextLong(key_num + 1);
+      long value2 = key_num - value1;
+      insert = getPreparedInsert()
                  .bind()
                  .setString("k1", key.asString() + "_1")
                  .setString("k2", key.asString() + "_2")
-                 .setBytes("v", ByteBuffer.wrap(value.getBytes()));
-      } else {
-        byte[] value = getRandomValue(key);
-        insert = getPreparedInsert()
-                 .bind()
-                 .setString("k1", key.asString() + "_1")
-                 .setString("k2", key.asString() + "_2")
-                 .setBytes("v", ByteBuffer.wrap(value));
-      }
+                 .setLong("v1", value1)
+                 .setLong("v2", value2);
+
       ResultSet resultSet = getCassandraClient().execute(insert);
       LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
       getSimpleLoadGenerator().recordWriteSuccess(key);
