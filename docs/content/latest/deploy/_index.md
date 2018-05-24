@@ -14,10 +14,21 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="/deploy/checklist/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <div class="title">Checklist</div>
+      </div>
+      <div class="body">
+          This page compiles system requirements, configuration details and other important details when deploying YugaByte DB in production.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/multi-node-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
-        <div class="title">Private Datacenter</div>
+        <div class="title">Manual Deployment</div>
       </div>
       <div class="body">
           Manual deployment of YugaByte DB in a private datacenter using the basic admin commands.
