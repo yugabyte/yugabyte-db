@@ -855,9 +855,6 @@ bool IsLogFileName(const string& fname) {
 
 std::vector<std::string> ParseDirFlags(string flag_dirs, string flag_name) {
   std::vector<std::string> paths = strings::Split(flag_dirs, ",", strings::SkipEmpty());
-  if (paths.size() < 1) {
-    LOG(INFO) << "Flag " << flag_name << " is empty.";
-  }
   return paths;
 }
 

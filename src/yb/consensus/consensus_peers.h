@@ -224,7 +224,7 @@ class Peer {
   rpc::RpcController controller_;
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
-  // single request oustanding at a time, and to wait for the outstanding requests at Close().
+  // single request outstanding at a time, and to wait for the outstanding requests at Close().
   Semaphore sem_;
 
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote

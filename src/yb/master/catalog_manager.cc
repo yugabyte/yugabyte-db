@@ -352,8 +352,8 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
         }
 
         // if the tablet is not in a "preparing" state, something is wrong...
-        LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id;
-        LOG(ERROR) << "Metadata: " << metadata.DebugString();
+        LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id
+                   << "Metadata: " << metadata.DebugString();
         return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
       }
 
@@ -812,7 +812,7 @@ Status CatalogManager::VisitSysCatalog() {
   std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
   auto finish = std::chrono::steady_clock::now();
   if (finish > start + kLockLongLimit) {
-    LOG(ERROR) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
+    LOG(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
   }
 
   LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
@@ -5497,8 +5497,8 @@ void CatalogManager::ScopedLeaderSharedLock::Unlock() {
     }
     auto finish = std::chrono::steady_clock::now();
     if (finish > start_ + kLockLongLimit) {
-      LOG(ERROR) << "Long lock of catalog manager: " << yb::ToString(finish - start_) << "\n"
-                 << GetStackTrace();
+      LOG(WARNING) << "Long lock of catalog manager: " << yb::ToString(finish - start_) << "\n"
+                   << GetStackTrace();
     }
   }
 }
