@@ -41,6 +41,7 @@ a {
     letter-spacing: -.02em;
     line-height: 36px;
     position: relative;
+    z-index: 0;
   }
   h1 {
     padding-top: 0 !important;
@@ -58,7 +59,9 @@ a {
     font-size: 28px;
     font-weight: 600;
     letter-spacing: -.02em;
-
+    margin-top: -52px;
+    padding-top: 100px !important;
+  
     @media only screen and (max-width: 767px) {
       font-size: 20px;
     }
@@ -68,6 +71,8 @@ a {
     padding-top: 0;
     font-size: 20px;
     font-weight: 500;
+    margin-top: -52px;
+    padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
       font-size: 17px;
     }
@@ -77,6 +82,8 @@ a {
     font-size: 17px;
     font-weight: 500;
     font-style: normal;
+    margin-top: -52px;
+    padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
       font-size: 16px;
     }
@@ -169,6 +176,7 @@ a {
   }
 
   .links {
+    margin-top: 105px;
     position: absolute;
     z-index: 2;
     top: 0;
@@ -195,8 +203,8 @@ a {
       float: right;
       margin-left: 5px;
       font-size: 14px;
-      color: rgba(0,0,0,.26);
-
+      color: rgba($YB_DARK_BLUE, 0.5);
+      
       &, &:hover, &:focus, &:active {
         border: none !important;
       }
@@ -215,7 +223,7 @@ a {
     max-width: 100%;
   }
 
-  p {
+  p, pre {
     position: relative;
     z-index: 2;
   }
@@ -910,6 +918,11 @@ a {
       }
     }
   }
+}
+
+.nav-tabs {
+  position: relative;
+  z-index: 2;
 }
 
 .nav-tabs li:before {
