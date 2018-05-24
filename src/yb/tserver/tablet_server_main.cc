@@ -81,6 +81,7 @@ DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
 DECLARE_int32(logbuflevel);
+DECLARE_int32(stderrthreshold);
 
 DECLARE_string(redis_proxy_bind_address);
 DECLARE_int32(redis_proxy_webserver_port);
@@ -111,6 +112,9 @@ static int TabletServerMain(int argc, char** argv) {
 
   FLAGS_pgsql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", PgServer::kDefaultPort);
   FLAGS_pgsql_proxy_webserver_port = PgServer::kDefaultWebPort;
+
+  // Only write FATALs by default to stderr.
+  FLAGS_stderrthreshold = google::FATAL;
 
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {

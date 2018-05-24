@@ -50,6 +50,7 @@ DECLARE_int32(logbuflevel);
 DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
+DECLARE_int32(stderrthreshold);
 
 namespace yb {
 namespace master {
@@ -66,6 +67,9 @@ static int MasterMain(int argc, char** argv) {
   // because there is no-one to assign replacement servers in order to maintain
   // the desired replication factor. (It's not turtles all the way down!)
   FLAGS_evict_failed_followers = false;
+
+  // Only write FATALs by default to stderr.
+  FLAGS_stderrthreshold = google::FATAL;
 
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.

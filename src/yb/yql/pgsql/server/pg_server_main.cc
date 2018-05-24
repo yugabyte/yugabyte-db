@@ -29,6 +29,8 @@ DEFINE_string(pgsql_proxy_bind_address, "",
 DEFINE_string(pgsql_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
+DECLARE_int32(stderrthreshold);
+
 namespace yb {
 namespace pgserver {
 
@@ -38,6 +40,10 @@ static int PgServerDriver(int argc, char** argv) {
   if (FLAGS_pgsql_proxy_bind_address.empty()) {
     FLAGS_pgsql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", PgServer::kDefaultPort);
   }
+
+  // Only write FATALs by default to stderr.
+  FLAGS_stderrthreshold = google::FATAL;
+
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
