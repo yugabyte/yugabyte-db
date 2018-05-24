@@ -1803,6 +1803,21 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 {
 	const char *p = debug_query_string;
 
+	/*
+	 * If debug_query_string is set, it is the top level statement. But in some
+	 * cases we reach here with debug_query_string set NULL for example in the
+	 * case of DESCRIBE message handling. We may still see a candidate
+	 * top-level query in pstate in the case.
+	 */
+	if (!p)
+	{
+		/* We don't see a query string, return NULL */
+		if (!pstate->p_sourcetext)
+			return NULL;
+
+		p = pstate->p_sourcetext;
+	}
+
 	if (jumblequery != NULL)
 		*jumblequery = query;
 
