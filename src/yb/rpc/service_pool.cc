@@ -166,7 +166,7 @@ class ServicePoolImpl {
             yb::ToString(call->remote_address()),
             type,
             limit);
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << err_msg;
+    YB_LOG_EVERY_N_SECS(WARNING, 3) << err_msg;
     const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
     call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
