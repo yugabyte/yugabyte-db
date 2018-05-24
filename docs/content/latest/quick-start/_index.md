@@ -41,7 +41,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="test-cassandra/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/test_cql.png" aria-hidden="true" />    
+        <img class="icon" src="/images/section_icons/quick_start/test_cql.png" aria-hidden="true" />
         <div class="title">3. Test YCQL API</div>
       </div>
       <div class="body">
@@ -77,7 +77,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="run-sample-apps/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />  
+        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
         <div class="title">6. Run Sample Apps</div>
       </div>
       <div class="body">
