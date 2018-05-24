@@ -36,6 +36,7 @@ DEFINE_string(cqlserver_master_addrs, "127.0.0.1:7100",
 TAG_FLAG(cqlserver_master_addrs, stable);
 
 DECLARE_string(rpc_bind_addresses);
+DECLARE_int32(stderrthreshold);
 
 namespace yb {
 namespace cqlserver {
@@ -43,6 +44,10 @@ namespace cqlserver {
 static int CQLServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
+
+  // Only write FATALs by default to stderr.
+  FLAGS_stderrthreshold = google::FATAL;
+
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;

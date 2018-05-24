@@ -27,12 +27,18 @@ using yb::redisserver::RedisServer;
 DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to.");
 DEFINE_string(master_addresses, "", "Master addresses for the YB tier that the proxy talks to.");
 
+DECLARE_int32(stderrthreshold);
+
 namespace yb {
 namespace redisserver {
 
 static int RedisServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
+
+  // Only write FATALs by default to stderr.
+  FLAGS_stderrthreshold = google::FATAL;
+
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
