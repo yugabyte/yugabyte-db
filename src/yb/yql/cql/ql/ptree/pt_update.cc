@@ -170,6 +170,20 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
+namespace {
+
+CHECKED_STATUS MultipleColumnSetError(const ColumnDesc* const col_desc,
+                                      const PTAssign* const assign_expr,
+                                      SemContext* sem_context) {
+  return sem_context->Error(
+      assign_expr,
+      strings::Substitute("Multiple incompatible setting of column $0.",
+                          col_desc->name()).c_str(),
+      ErrorCode::INVALID_ARGUMENTS);
+}
+
+} // anonymous namespace
+
 CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));
@@ -187,14 +201,38 @@ CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *s
   // Form the column args for protobuf.
   const ColumnDesc *col_desc = assign_expr->col_desc();
   if (assign_expr->has_subscripted_column()) {
+    // Setting the same column twice, once with a subscripted arg and once as a regular set for the
+    // entire column is not allowed.
+    if (column_args_->at(col_desc->index()).IsInitialized()) {
+      return MultipleColumnSetError(col_desc, assign_expr, sem_context);
+    }
     subscripted_col_args_->emplace_back(col_desc,
                                         assign_expr->subscript_args(),
                                         assign_expr->rhs());
   } else if (assign_expr->has_json_ops()) {
+    // Setting the same column twice, once with a json arg and once as a regular set for the
+    // entire column is not allowed.
+    if (column_args_->at(col_desc->index()).IsInitialized()) {
+      return MultipleColumnSetError(col_desc, assign_expr, sem_context);
+    }
     json_col_args_->emplace_back(col_desc,
                                  assign_expr->json_ops(),
                                  assign_expr->rhs());
   } else {
+    // Setting the same column twice is not allowed.
+    for (const auto& json_col_arg : *json_col_args_) {
+      if (json_col_arg.desc()->id() == col_desc->id()) {
+        return MultipleColumnSetError(col_desc, assign_expr, sem_context);
+      }
+    }
+    for (const auto& subscripted_col_arg : *subscripted_col_args_) {
+      if (subscripted_col_arg.desc()->id() == col_desc->id()) {
+        return MultipleColumnSetError(col_desc, assign_expr, sem_context);
+      }
+    }
+    if (column_args_->at(col_desc->index()).IsInitialized()) {
+      return MultipleColumnSetError(col_desc, assign_expr, sem_context);
+    }
     column_args_->at(col_desc->index()).Init(col_desc, assign_expr->rhs());
   }
   return Status::OK();

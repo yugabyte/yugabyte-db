@@ -299,5 +299,22 @@ public class TestJson extends BaseCQLTest {
     runInvalidStmt("UPDATE test_json SET c2->'a1'->5->'k2'->'abc' = '2000' WHERE c1 = 1");
     runInvalidStmt("UPDATE test_json SET c2->5->'q'->'p' = '100' WHERE c1 = 1");
     runInvalidStmt("UPDATE test_json SET c2->'a1'->'b'->'k2'->2 = '2000' WHERE c1 = 1");
+    // Invalid RHS.
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'p' = c1->'a' WHERE c1 = 1");
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->>'p' = c2->>'b' WHERE c1 = 1");
+
+
+    // Update the same column multiple times.
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'r' = '200', c2->'a'->'x' = '2', " +
+        "c2->'a'->'l' = '3.0' WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'r' = '200'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'x' = '2'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'l' = '3.0'"));
+
+    // Can't set entire column and nested attributes at the same time.
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'r' = '200', c2 = '{a : 1, b: 2}' WHERE c1" +
+        " = 1");
+    // Subscript args with json not allowed.
+    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'r' = '200', c2[0] = '1' WHERE c1 = 1");
   }
 }

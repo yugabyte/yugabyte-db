@@ -74,7 +74,7 @@ QLValue::~QLValue() {}
 
 //------------------------- instance methods for abstract QLValue class -----------------------
 
-DataType QLValue::FromInternalDataType(const QLValue::InternalType& internal_type) {
+DataType QLValue::FromInternalDataType(const InternalType& internal_type) {
   switch (internal_type) {
     case QLValue::InternalType::kInt8Value:
       return DataType::INT8;
@@ -120,6 +120,34 @@ DataType QLValue::FromInternalDataType(const QLValue::InternalType& internal_typ
       LOG(FATAL) << "Internal error: unsupported type " << internal_type;
   }
   return DataType::NULL_VALUE_TYPE;
+}
+
+const string QLValue::ToCQLString(const InternalType& internal_type) {
+  switch (internal_type) {
+    case InternalType::VALUE_NOT_SET: return "unknown";
+    case InternalType::kInt8Value: return "tinyint";
+    case InternalType::kInt16Value: return "smallint";
+    case InternalType::kInt32Value: return "int";
+    case InternalType::kInt64Value: return "bigint";
+    case InternalType::kStringValue: return "text";
+    case InternalType::kBoolValue: return "boolean";
+    case InternalType::kFloatValue: return "float";
+    case InternalType::kDoubleValue: return "double";
+    case InternalType::kBinaryValue: return "blob";
+    case InternalType::kTimestampValue: return "timestamp";
+    case InternalType::kDecimalValue: return "decimal";
+    case InternalType::kVarintValue: return "varint";
+    case InternalType::kInetaddressValue: return "inet";
+    case InternalType::kJsonbValue: return "jsonb";
+    case InternalType::kListValue: return "list";
+    case InternalType::kMapValue: return "map";
+    case InternalType::kSetValue: return "set";
+    case InternalType::kUuidValue: return "uuid";
+    case InternalType::kTimeuuidValue: return "timeuuid";
+    case InternalType::kFrozenValue: return "frozen";
+  }
+  LOG (FATAL) << "Invalid datatype: " << internal_type;
+  return "Undefined Type";
 }
 
 int QLValue::CompareTo(const QLValue& other) const {

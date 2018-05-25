@@ -1926,14 +1926,14 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 }
 
 Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
-                                               const QLTableRow& current_row,
                                                const DocOperationApplyData& data,
                                                const DocPath& sub_path, const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
-                                               const ColumnSchema& column) {
+                                               const ColumnSchema& column,
+                                               QLTableRow* current_row) {
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
-  RETURN_NOT_OK(current_row.ReadColumn(column_value.column_id(), &ql_value));
+  RETURN_NOT_OK(current_row->ReadColumn(column_value.column_id(), &ql_value));
   Jsonb jsonb(std::move(ql_value.jsonb_value()));
   rapidjson::Document document;
   RETURN_NOT_OK(jsonb.ToRapidJson(&document));
@@ -1972,8 +1972,13 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   const SubDocument& sub_doc =
       SubDocument::FromQLValuePB(result.value(), column.sorting_type(),
                                  TSOpcode::kScalarInsert);
-  return data.doc_write_batch->InsertSubDocument(
-      sub_path, sub_doc, request_.query_id(), ttl, user_timestamp);
+  RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+      sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+
+  // Update the current row as well so that we can accumulate the result of multiple json
+  // operations and write the final value.
+  current_row->AllocColumn(column_value.column_id()).value = result.value();
+  return Status::OK();
 }
 
 Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
@@ -2156,8 +2161,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
           QLValue expr_result;
           if (!column_value.json_args().empty()) {
-            RETURN_NOT_OK(ApplyForJsonOperators(column_value, current_row, data, sub_path, ttl,
-                                                user_timestamp, column));
+            RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
+                                                user_timestamp, column, &current_row));
           } else if (!column_value.subscript_args().empty()) {
             RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, current_row, data, ttl,
                                                 user_timestamp, column, &sub_path));
