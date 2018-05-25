@@ -196,11 +196,11 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
   CHECKED_STATUS ApplyForJsonOperators(const QLColumnValuePB& column_value,
-                                       const QLTableRow& current_row,
                                        const DocOperationApplyData& data,
                                        const DocPath& sub_path, const MonoDelta& ttl,
                                        const UserTimeMicros& user_timestamp,
-                                       const ColumnSchema& column);
+                                       const ColumnSchema& column,
+                                       QLTableRow* current_row);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
