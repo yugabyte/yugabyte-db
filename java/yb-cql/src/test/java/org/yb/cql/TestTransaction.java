@@ -19,8 +19,14 @@ import org.junit.Test;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
 
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBDaemon;
+
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSetFuture;
+import com.datastax.driver.core.ResultSetFuture;
 
 public class TestTransaction extends BaseCQLTest {
 
@@ -329,5 +335,92 @@ public class TestTransaction extends BaseCQLTest {
       failedReadCount++;
     }
     assertEquals("Failed read count", 0, failedReadCount);
+  }
+
+  private int getTransactionConflictsCount(String tableName) throws Exception {
+    return getTableCounterMetric(tableName, "transaction_conflicts");
+  }
+
+  private int getRetriesCount() throws Exception {
+    int totalSum = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      totalSum += new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server")
+                  .getHistogram("handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute")
+                  .totalSum;
+    }
+    return totalSum;
+  }
+
+  @Test
+  public void testWriteConflicts() throws Exception {
+
+    // Test write transaction conflicts by writing to the same rows in parallel repeatedly until
+    // the desired number of conlicts have happened and the writes have been retried successfully
+    // without error.
+    session.execute("create table test_write_conflicts (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true};");
+
+    PreparedStatement insertStmt = session.prepare(
+        "begin transaction" +
+        "  insert into test_write_conflicts (k, v) values (1, 1000);" +
+        "  insert into test_write_conflicts (k, v) values (2, 2000);" +
+        "end transaction;");
+
+    final int PARALLEL_WRITE_COUNT = 5;
+    final int TOTAL_CONFLICTS = 10;
+
+    int initialConflicts = getTransactionConflictsCount("test_write_conflicts");
+    int initialRetries = getRetriesCount();
+    LOG.info("Initial transaction conflicts = {}, retries = {}",
+             initialConflicts, initialRetries);
+
+    while (true) {
+      Set<ResultSetFuture> results = new HashSet<ResultSetFuture>();
+      for (int i = 0; i < PARALLEL_WRITE_COUNT; i++) {
+        results.add(session.executeAsync(insertStmt.bind()));
+      }
+      for (ResultSetFuture result : results) {
+        result.get();
+      }
+      int currentConflicts = getTransactionConflictsCount("test_write_conflicts");
+      int currentRetries = getRetriesCount();
+      LOG.info("Current transaction conflicts = {}, retries = {}",
+               currentConflicts, currentRetries);
+      if (currentConflicts - initialConflicts >= TOTAL_CONFLICTS &&
+          currentRetries > initialRetries)
+        break;
+    }
+
+    // Also verify that the rows are inserted indeed.
+    assertQuery("select k, v from test_write_conflicts",
+                new HashSet<>(Arrays.asList("Row[1, 1000]",
+                                            "Row[2, 2000]")));
+  }
+
+  @Test
+  public void testTimeout() throws Exception {
+    try {
+      // Test transaction timeout by recreating the cluster with missed heartbeat periods equals 0
+      // and executing a transaction. Verify that OperationTimedOutException is raised as CQL proxy
+      // keeps retrying the transaction.
+      destroyMiniCluster();
+      List<List<String>> tserverArgs = new ArrayList<>();
+      for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
+        tserverArgs.add(Arrays.asList("--transaction_max_missed_heartbeat_periods=0.0"));
+      }
+      createMiniCluster(NUM_MASTERS, tserverArgs);
+
+      setUpCqlClient();
+      session.execute("create table test_timeout (k int primary key, v int) " +
+                      "with transactions = {'enabled' : true};");
+
+      thrown.expect(com.datastax.driver.core.exceptions.OperationTimedOutException.class);
+      session.execute("begin transaction" +
+                      "  insert into test_timeout (k, v) values (1, 1);" +
+                      "end transaction;");
+    } finally {
+      // Destroy the recreated cluster when done.
+      destroyMiniCluster();
+    }
   }
 }

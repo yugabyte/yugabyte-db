@@ -204,6 +204,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @After
   public void tearDownAfter() throws Exception {
     final String logPrefix = "BaseCQLTest.tearDownAfter: ";
+
+    if (miniCluster == null) {
+      LOG.info(logPrefix + "mini cluster has been destroyed");
+      return;
+    }
+
     LOG.info(logPrefix + "dropping tables / types / keyspaces");
 
     // Clean up all tables before end of each test to lower high-water-mark disk usage.
@@ -531,14 +537,18 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return totalMetrics;
   }
 
-  public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
-    Set<String> tabletIDs = new HashSet<>();
+  private Set<String> getTableIds(String tableName) {
+    Set<String> ids = new HashSet<>();
     for (Row row : session.execute("SELECT id FROM system.partitions " +
                                    "WHERE keyspace_name = ? and table_name = ?;",
                                    DEFAULT_TEST_KEYSPACE, tableName).all()) {
-      tabletIDs.add(ServerInfo.UUIDToHostString(row.getUUID("id")));
+      ids.add(ServerInfo.UUIDToHostString(row.getUUID("id")));
     }
+    return ids;
+  }
 
+  public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
+    Set<String> tabletIds = getTableIds(tableName);
     RocksDBMetrics metrics = new RocksDBMetrics();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       try {
@@ -551,7 +561,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         for (JsonElement elem : tree.getAsJsonArray()) {
           JsonObject obj = elem.getAsJsonObject();
           if (obj.get("type").getAsString().equals("tablet") &&
-              tabletIDs.contains(obj.get("id").getAsString())) {
+              tabletIds.contains(obj.get("id").getAsString())) {
             metrics.add(new RocksDBMetrics(new Metrics(obj)));
           }
         }
@@ -560,5 +570,30 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       }
     }
     return metrics;
+  }
+
+  public int getTableCounterMetric(String tableName, String metricName) throws IOException {
+    int value = 0;
+    Set<String> tabletIds = getTableIds(tableName);
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      try {
+        URL url = new URL(String.format("http://%s:%d/metrics",
+                                        ts.getLocalhostIP(),
+                                        ts.getWebPort()));
+        Scanner scanner = new Scanner(url.openConnection().getInputStream());
+        JsonParser parser = new JsonParser();
+        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+        for (JsonElement elem : tree.getAsJsonArray()) {
+          JsonObject obj = elem.getAsJsonObject();
+          if (obj.get("type").getAsString().equals("tablet") &&
+              tabletIds.contains(obj.get("id").getAsString())) {
+            value += new Metrics(obj).getCounter(metricName).value;
+          }
+        }
+      } catch (MalformedURLException e) {
+        throw new InternalError(e.getMessage());
+      }
+    }
+    return value;
   }
 }

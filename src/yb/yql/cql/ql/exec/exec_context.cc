@@ -27,25 +27,27 @@ ExecContext::ExecContext(const char *ql_stmt,
                          QLEnv *ql_env)
     : ProcessContextBase(ql_stmt, stmt_len),
       parse_tree_(parse_tree),
-      tnode_(parse_tree->root().get()),
       params_(params),
-      start_time_(MonoTime::Now()),
       ql_env_(ql_env) {
-}
-
-ExecContext::ExecContext(const ExecContext& exec_context, const TreeNode *tnode)
-    : ProcessContextBase(exec_context.stmt(), exec_context.stmt_len()),
-      parse_tree_(exec_context.parse_tree_),
-      tnode_(tnode),
-      params_(exec_context.params_),
-      start_time_(MonoTime::Now()),
-      ql_env_(exec_context.ql_env_) {
 }
 
 ExecContext::~ExecContext() {
 }
 
-void ExecContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
+void ExecContext::AddTnode(const TreeNode *tnode) {
+  tnode_contexts_.emplace_back(tnode);
+}
+
+void ExecContext::Reset() {
+  tnode_contexts_.clear();
+  num_retries_++;
+}
+
+//--------------------------------------------------------------------------------------------------
+TnodeContext::TnodeContext(const TreeNode* tnode) : tnode_(tnode), start_time_(MonoTime::Now()) {
+}
+
+void TnodeContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
   current_partition_index_ = start_partition;
   // Hash values before the first 'IN' condition will be already set.
   // hash_values_options_ vector starts from the first column with an 'IN' restriction.
@@ -74,7 +76,7 @@ void ExecContext::InitializePartition(QLReadRequestPB *req, uint64_t start_parti
   }
 }
 
-void ExecContext::AdvanceToNextPartition(QLReadRequestPB *req) {
+void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
   // this will do, index: 2 -> 3 and hashed_column_values(): [1, 3, 4, 6] -> [1, 3, 5, 6].
   current_partition_index_++;
