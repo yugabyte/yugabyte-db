@@ -28,6 +28,105 @@
 namespace yb {
 namespace ql {
 
+class TnodeContext {
+ public:
+  explicit TnodeContext(const TreeNode* tnode);
+
+  // Returns the tree node of the statement being executed.
+  const TreeNode* tnode() const {
+    return tnode_;
+  }
+
+  // Access function for start_time.
+  const MonoTime& start_time() const {
+    return start_time_;
+  }
+
+  // Access function for op.
+  const std::shared_ptr<client::YBqlOp>& op() const {
+    return op_;
+  }
+
+  // Apply YBClient read/write operation.
+  CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op, QLEnv* ql_env, bool defer = false) {
+    op_ = op;
+    deferred_ = defer;
+    return defer ? Status::OK() : ql_env->Apply(op);
+  }
+
+  // Apply the deferred operation.
+  CHECKED_STATUS Apply(QLEnv* ql_env) {
+    DCHECK(IsDeferred());
+    deferred_ = false;
+    return ql_env->Apply(op_);
+  }
+
+  // Is the operation deferred?
+  bool IsDeferred() const {
+    return op_ != nullptr && deferred_;
+  }
+
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Called from Executor::FetchMoreRowsIfNeeded to check if request is finished.
+  uint64_t UnreadPartitionsRemaining() const {
+    return partitions_count_ - current_partition_index_;
+  }
+
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Initializes the current partition index and sets the corresponding hashed column values in the
+  // request object so that it references the appropriate partition.
+  // Called from Executor::ExecPTNode for PTSelectStmt.
+  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" start_position 0:
+  // this will set req->hashed_column_values() to [1, 2, 4, 6].
+  void InitializePartition(QLReadRequestPB *req, uint64_t start_partition);
+
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Increments the current partition index and updates the corresponding hashed column values in
+  // passed request object so that it references the appropriate partition.
+  // Called from Executor::FetchMoreRowsIfNeeded.
+  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
+  // this will do, index: 2 -> 3 and hashed_column_values: [1, 3, 4, 6] -> [1, 3, 5, 6].
+  void AdvanceToNextPartition(QLReadRequestPB *req);
+
+  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>>& hash_values_options() {
+    if (hash_values_options_ == nullptr) {
+      hash_values_options_ = std::make_unique<std::vector<std::vector<QLExpressionPB>>>();
+    }
+    return hash_values_options_;
+  }
+
+  uint64_t current_partition_index() const {
+    return current_partition_index_;
+  }
+
+  void set_partitions_count(uint64_t count) {
+    partitions_count_ = count;
+  }
+
+ private:
+  // Tree node of the statement being executed.
+  const TreeNode* tnode_ = nullptr;
+
+  // Execution start time.
+  const MonoTime start_time_;
+
+  // Read/write operation to execute.
+  std::shared_ptr<client::YBqlOp> op_;
+
+  // Is the operation deferred?
+  bool deferred_ = false;
+
+  // For multi-partition selects (e.g. selects with 'IN' condition on hash cols) we hold the options
+  // for each hash column (starting from first 'IN') as we iteratively query each partition.
+  // e.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6".
+  //  hash_values_options_ = [[2, 3], [4, 5], [6]]
+  //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [4,5,6]).
+  //  current_partition_index_ starts from 0 unless set in the paging state.
+  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
+  uint64_t partitions_count_ = 0;
+  uint64_t current_partition_index_ = 0;
+};
+
 class ExecContext : public ProcessContextBase {
  public:
   //------------------------------------------------------------------------------------------------
@@ -42,8 +141,15 @@ class ExecContext : public ProcessContextBase {
               const ParseTree *parse_tree,
               const StatementParameters *params,
               QLEnv *ql_env);
-  ExecContext(const ExecContext& exec_context, const TreeNode *tnode);
   virtual ~ExecContext();
+
+  // Add a statement tree node for execution.
+  void AddTnode(const TreeNode *tnode);
+
+  // Returns the context for the current tnode being executed.
+  TnodeContext* tnode_context() {
+    return &tnode_contexts_.back();
+  }
 
   // Get a table creator from YB client.
   client::YBTableCreator* NewTableCreator() {
@@ -143,112 +249,43 @@ class ExecContext : public ProcessContextBase {
     return parse_tree_;
   }
 
-  // Returns the tree node of the statement being executed.
-  const TreeNode* tnode() const {
-    return tnode_;
-  }
-
   // Access function for params.
   const StatementParameters* params() const {
     return params_;
   }
 
-  // Access function for op.
-  const std::shared_ptr<client::YBqlOp>& op() const {
-    return op_;
+  const std::list<TnodeContext>& tnode_contexts() const {
+    return tnode_contexts_;
+  }
+  std::list<TnodeContext>* tnode_contexts() {
+    return &tnode_contexts_;
   }
 
-  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
-  // Called from Executor::FetchMoreRowsIfNeeded to check if request is finished.
-  uint64_t UnreadPartitionsRemaining() const {
-    return partitions_count_ - current_partition_index_;
-  }
-
-  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
-  // Initializes the current partition index and sets the corresponding hashed column values in the
-  // request object so that it references the appropriate partition.
-  // Called from Executor::ExecPTNode for PTSelectStmt.
-  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" start_position 0:
-  // this will set req->hashed_column_values() to [1, 2, 4, 6].
-  void InitializePartition(QLReadRequestPB *req, uint64_t start_partition);
-
-  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
-  // Increments the current partition index and updates the corresponding hashed column values in
-  // passed request object so that it references the appropriate partition.
-  // Called from Executor::FetchMoreRowsIfNeeded.
-  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
-  // this will do, index: 2 -> 3 and hashed_column_values: [1, 3, 4, 6] -> [1, 3, 5, 6].
-  void AdvanceToNextPartition(QLReadRequestPB *req);
-
-  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>>& hash_values_options() {
-    if (hash_values_options_ == nullptr) {
-      hash_values_options_ = std::make_unique<std::vector<std::vector<QLExpressionPB>>>();
-    }
-    return hash_values_options_;
-  }
-
-  uint64_t current_partition_index() const {
-    return current_partition_index_;
-  }
-
-  void set_partitions_count(uint64_t count) {
-    partitions_count_ = count;
-  }
-
-  // Access function for start_time.
-  const MonoTime& start_time() const {
-    return start_time_;
+  int64_t num_retries() const {
+    return num_retries_;
   }
 
   // Apply YBClient read/write operation.
   CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op, const bool defer = false) {
-    op_ = op;
-    op_deferred_ = defer;
-    return defer ? Status::OK() : ql_env_->Apply(op);
-  }
-  // Apply the deferred operation.
-  CHECKED_STATUS Apply() {
-    DCHECK(IsOperationDeferred());
-    op_deferred_ = false;
-    return ql_env_->Apply(op_);
+    return tnode_context()->Apply(op, ql_env_, defer);
   }
 
-  // Is the operation deferred?
-  bool IsOperationDeferred() const {
-    return op_ != nullptr && op_deferred_;
-  }
+  // Reset this ExecContext to re-execute the statement.
+  void Reset();
 
  private:
   // Statement parse tree to execute.
   const ParseTree *parse_tree_;
 
-  // Tree node of the statement being executed.
-  const TreeNode* tnode_;
-
   // Statement parameters to execute with.
   const StatementParameters *params_;
-
-  // Read/write operation to execute.
-  std::shared_ptr<client::YBqlOp> op_;
-
-  // Is the operation deferred?
-  bool op_deferred_ = false;
-
-  // Execution start time.
-  const MonoTime start_time_;
 
   // SQL environment.
   QLEnv *ql_env_;
 
-  // For multi-partition selects (e.g. selects with 'IN' condition on hash cols) we hold the options
-  // for each hash column (starting from first 'IN') as we iteratively query each partition.
-  // e.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6".
-  //  hash_values_options_ = [[2, 3], [4, 5], [6]]
-  //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [4,5,6]).
-  //  current_partition_index_ starts from 0 unless set in the paging state.
-  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
-  uint64_t partitions_count_ = 0;
-  uint64_t current_partition_index_ = 0;
+  std::list<TnodeContext> tnode_contexts_;
+
+  int64_t num_retries_ = 0;
 };
 
 }  // namespace ql
