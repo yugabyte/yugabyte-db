@@ -119,6 +119,11 @@ METRIC_DEFINE_counter(tablet, expired_transactions,
   yb::MetricUnit::kRequests,
   "Number of expired distributed transactions.");
 
+METRIC_DEFINE_counter(tablet, restart_read_requests,
+  "Read Requests Requiring Restart",
+  yb::MetricUnit::kRequests,
+  "Number of read requests that require restart.");
+
 using strings::Substitute;
 
 namespace yb {
@@ -133,7 +138,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(write_op_duration_client_propagated_consistency),
     MINIT(leader_memory_pressure_rejections),
     MINIT(transaction_conflicts),
-    MINIT(expired_transactions) {
+    MINIT(expired_transactions),
+    MINIT(restart_read_requests) {
 }
 #undef MINIT
 

@@ -893,7 +893,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // Serial number is used for check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
     read_time.serial_no =
-        down_cast<tablet::Tablet*>(tablet.get())->transaction_participant()->RegisterRequest();
+        down_cast<Tablet*>(tablet.get())->transaction_participant()->RegisterRequest();
   }
 
   const auto& remote_address = context.remote_address();
@@ -925,6 +925,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       restart_read_time->set_read_ht(read_time.read.ToUint64());
       restart_read_time->set_local_limit_ht(read_time.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
+      down_cast<Tablet*>(tablet.get())->metrics()->restart_read_requests->Increment();
       break;
     }
     if (MonoTime::Now() > context.GetClientDeadline()) {
