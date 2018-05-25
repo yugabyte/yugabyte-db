@@ -89,6 +89,8 @@ public class MiniYBCluster implements AutoCloseable {
   // High threshold to avoid excessive slow query log.
   private static final int RPC_SLOW_QUERY_THRESHOLD = 10000000;
 
+  private static final int YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC = 120;
+
   // List of threads that print
   private final List<Thread> processInputPrinters = new ArrayList<>();
 
@@ -363,6 +365,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
         "--cql_proxy_webserver_port=" + cqlWebPort,
+        "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
     tsCmdLine.addAll(getCommonDaemonFlags());
     if (tserverArgs != null) {

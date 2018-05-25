@@ -28,11 +28,6 @@ public class TestRF1Cluster extends TestClusterBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestRF1Cluster.class);
 
   @Override
-  public int overridableNumShardsPerTServer() {
-    return TestUtils.isTSAN() ? 2 : 3;
-  }
-
-  @Override
   public void setUpBefore() throws Exception {
     createMiniCluster(1, 1);
     updateConfigReplicationFactor(1);
@@ -46,7 +41,7 @@ public class TestRF1Cluster extends TestClusterBase {
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
   public void testRF1LoadBalance() throws Exception {
     // Wait for load tester to generate traffic.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
     LOG.info("WaitOps Done.");
 
     // Now perform a tserver expand.

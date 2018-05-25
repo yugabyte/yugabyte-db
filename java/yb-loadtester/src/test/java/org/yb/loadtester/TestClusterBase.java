@@ -12,11 +12,14 @@
 //
 package org.yb.loadtester;
 
+import com.datastax.driver.core.Host;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.yugabyte.sample.Main;
+import com.yugabyte.sample.apps.AppBase;
+import com.yugabyte.sample.apps.CassandraStockTicker;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.After;
 import org.junit.Before;
@@ -25,12 +28,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
-import org.yb.client.ChangeConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ModifyMasterClusterConfigBlacklist;
-import org.yb.client.ModifyClusterConfigReplicationFactor;
-import org.yb.client.TestUtils;
-import org.yb.client.YBClient;
+import org.yb.client.*;
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
@@ -76,6 +74,9 @@ public class TestClusterBase extends BaseCQLTest {
   // Timeout to wait for load balancing to complete.
   protected static final int LOADBALANCE_TIMEOUT_MS = 240000; // 4 mins
 
+  // Timeout to wait for new servers to startup and join the cluster.
+  protected static final int WAIT_FOR_SERVER_TIMEOUT_MS = 60000; // 60 seconds.
+
   // Timeout to wait for cluster move to complete.
   protected static final int CLUSTER_MOVE_TIMEOUT_MS = 300000; // 5 mins
 
@@ -93,9 +94,6 @@ public class TestClusterBase extends BaseCQLTest {
 
   // Timeout to wait expected number of tservers to be alive.
   protected static final int EXPECTED_TSERVERS_TIMEOUT_MS = 30000; // 30 seconds.
-
-  // The total number of ops seen so far.
-  protected static long totalOps = 0;
 
   // Maximum number of exceptions to tolerate. We might see exceptions during a full master move,
   // since the newly elected leader might not have received heartbeats from any tservers. As a
@@ -165,6 +163,8 @@ public class TestClusterBase extends BaseCQLTest {
 
     public void stopLoadTester() {
       testRunner.stopAllThreads();
+      testRunner.resetOps();
+      testRunner.terminate();
     }
 
     @Override
@@ -190,7 +190,8 @@ public class TestClusterBase extends BaseCQLTest {
       return testRunner.getNumExceptions();
     }
 
-    public void waitNumOpsAtLeast(long expectedNumOps) throws Exception {
+    public void waitNumOpsIncrement(long incrementNumOps) throws Exception {
+      long expectedNumOps = testRunner.numOps() + incrementNumOps;
       TestUtils.waitFor(() -> {
         long numOps = testRunner.numOps();
         if (numOps >= expectedNumOps)
@@ -198,9 +199,8 @@ public class TestClusterBase extends BaseCQLTest {
         LOG.info("Current num ops: " + numOps + ", expected: " + expectedNumOps);
         return false;
       }, WAIT_FOR_OPS_TIMEOUT_MS);
-      totalOps = testRunner.numOps();
-      LOG.info("Num Ops: " + totalOps + ", Expected: " + expectedNumOps);
-      assertTrue(totalOps >= expectedNumOps);
+      LOG.info("Num Ops: " + testRunner.numOps() + ", Expected: " + expectedNumOps);
+      assertTrue(testRunner.numOps() >= expectedNumOps);
     }
 
     public void verifyNumExceptions() {
@@ -218,6 +218,8 @@ public class TestClusterBase extends BaseCQLTest {
       long numOps =
           metrics.getHistogram(
               "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt").totalCount +
+          metrics.getHistogram(
+              "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt").totalCount +
           metrics.getHistogram(
               "handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt").totalCount;
 
@@ -348,7 +350,7 @@ public class TestClusterBase extends BaseCQLTest {
 
   protected void verifyStateAfterTServerAddition() throws Exception {
     // Wait for some ops across the entire cluster.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
 
     // Verify no failures in load tester.
     loadTesterRunnable.verifyNumExceptions();
@@ -412,10 +414,10 @@ public class TestClusterBase extends BaseCQLTest {
 
   private void verifyClusterHealth(int numTabletServers) throws Exception {
     // Wait for some ops.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
 
     // Wait for some more ops and verify no exceptions.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
     loadTesterRunnable.verifyNumExceptions();
 
     // Verify metrics for all tservers.
@@ -473,7 +475,7 @@ public class TestClusterBase extends BaseCQLTest {
     }
     int numNewServers = toRF - fromRF;
     // Wait for load tester to generate traffic.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
     LOG.info("WaitOps Done.");
 
     // Increase the number of masters
@@ -491,12 +493,65 @@ public class TestClusterBase extends BaseCQLTest {
     // Wait for load to balance across the target number of tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, toRF));
 
+    // Verify all tservers have expected tablets.
+    TestUtils.waitFor(() -> {
+      YBTable ybTable = client.openTable(CassandraStockTicker.keyspace,
+          CassandraStockTicker.tickerTableRaw);
+      Map <String, Integer> leaderCounts = new HashMap<>();
+      for (LocatedTablet tabletLocation : ybTable.getTabletsLocations(10000)) {
+        // Record leader counts for each tserver.
+        String tsUuid = tabletLocation.getLeaderReplica().getTsUuid();
+        Integer currentCount = leaderCounts.getOrDefault(tsUuid, 0);
+        leaderCounts.put(tsUuid, currentCount + 1);
+
+        if (toRF != tabletLocation.getReplicas().size())  {
+          return false;
+        }
+
+        // Verify all replicas are voters.
+        for (LocatedTablet.Replica replica : tabletLocation.getReplicas()) {
+          if (!replica.getMemberType().equals("VOTER")) {
+            return false;
+          }
+        }
+      }
+
+      // Verify leaders are balanced across all tservers.
+      if (leaderCounts.size() != miniCluster.getTabletServers().size()) {
+        return false;
+      }
+
+      int prevCount = -1;
+      for (Integer leaderCount : leaderCounts.values()) {
+        // The leader counts could be off by one.
+        if (prevCount != -1 && Math.abs(leaderCount - prevCount) > 1) {
+          return false;
+        }
+        prevCount = leaderCount;
+      }
+      return true;
+    }, WAIT_FOR_SERVER_TIMEOUT_MS);
+
     // Wait for the partition metadata to refresh.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     LOG.info("Load Balance Done.");
 
-    // TODO: Disable till ENG-3122 is fixed.
-    // verifyClusterHealth(toRF);
+    // Verify CQL driver knows about all servers.
+    TestUtils.waitFor(() -> {
+      Collection<Host> connectedHosts = session.getState().getConnectedHosts();
+      if (connectedHosts.size() != toRF) {
+        return false;
+      }
+      for (Host h : connectedHosts) {
+        if (!h.isUp()) {
+          return false;
+        }
+      }
+      return true;
+    }, WAIT_FOR_SERVER_TIMEOUT_MS);
+
+
+    verifyClusterHealth(toRF);
     LOG.info("Sanity Check Done.");
 
     GetMasterClusterConfigResponse resp = client.getMasterClusterConfig();
