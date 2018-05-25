@@ -19,6 +19,7 @@ import org.yb.client.TestUtils;
 
 import java.net.InetAddress;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
@@ -151,5 +152,30 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testUpdateSystemNamespace() throws Exception {
     runInvalidStmt("UPDATE system.peers SET h1 = 1, h2 = '1', r1 = 1, r2 = '1';");
+  }
+
+  @Test
+  public void testUpdateDuplicateColumns() throws Exception {
+    String tableName = "test_update_duplicate_column";
+    createTable(tableName);
+
+    // Insert a row.
+    String insert_stmt = String.format(
+        "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
+        tableName, 1, 2, 3, 4, 5, 6);
+    session.execute(insert_stmt);
+
+    runInvalidStmt(String.format("UPDATE %s SET v1 = 50, v1 = 500 WHERE h1 = 1 and h2 = 'h2' and " +
+        "r1 = 3 and r2 = 'r4'", tableName));
+    session.execute("create table foo(h int primary key, i int, m map<int,int>)");
+    runInvalidStmt("update foo set m[1] = 1, m[2] = 1, m = m - {1} where h = 1;");
+    runInvalidStmt("update foo set m[1] = 1, m[2] = 1, m = {1 : 2, 2 : 3} where h = 1;");
+    runInvalidStmt("update foo set m->'a'->'q'->'r' = '200', m[1] = 1 WHERE c1 = 1");
+    session.execute("update foo set m[1] = 1, m[2] = 1, m[1] = 3, m[2] = 4 where h = 1;");
+    Row row = session.execute("select * from foo").one();
+    Map expectedMap = new HashMap<>();
+    expectedMap.put(1, 3);
+    expectedMap.put(2, 4);
+    assertEquals(expectedMap, row.getMap("m", Integer.class, Integer.class));
   }
 }

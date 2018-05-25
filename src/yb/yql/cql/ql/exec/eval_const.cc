@@ -24,6 +24,8 @@
 namespace yb {
 namespace ql {
 
+using strings::Substitute;
+
 CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
                                      QLValuePB *const_pb,
                                      bool negate) {
@@ -174,7 +176,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
 
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "varint",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -198,7 +201,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *c
       break;
     }
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "decimal",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -235,7 +239,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
       break;
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "int",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -255,7 +260,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *co
       const_pb->set_double_value(value);
       break;
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "double",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -292,7 +298,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     }
 
     default:
-      LOG(FATAL) << "Illegal datatype conversion: " << const_pt->expected_internal_type();
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "text",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -303,7 +310,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *cons
       const_pb->set_bool_value(const_pt->value());
       break;
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "bool",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -323,7 +331,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *co
       break;
     }
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "binary",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -351,7 +360,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
       break;
     }
     default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "uuid",
+                               QLValue::ToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
