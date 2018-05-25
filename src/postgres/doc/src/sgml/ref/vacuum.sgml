@@ -1,0 +1,274 @@
+<!--
+doc/src/sgml/ref/vacuum.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-VACUUM">
+ <indexterm zone="sql-vacuum">
+  <primary>VACUUM</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>VACUUM</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>VACUUM</refname>
+  <refpurpose>garbage-collect and optionally analyze a database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+VACUUM [ ( { FULL | FREEZE | VERBOSE | ANALYZE | DISABLE_PAGE_SKIPPING } [, ...] ) ] [ <replaceable class="PARAMETER">table_name</replaceable> [ (<replaceable class="PARAMETER">column_name</replaceable> [, ...] ) ] ]
+VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] [ <replaceable class="PARAMETER">table_name</replaceable> ]
+VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] ANALYZE [ <replaceable class="PARAMETER">table_name</replaceable> [ (<replaceable class="PARAMETER">column_name</replaceable> [, ...] ) ] ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>VACUUM</command> reclaims storage occupied by dead tuples.
+   In normal <productname>PostgreSQL</productname> operation, tuples that
+   are deleted or obsoleted by an update are not physically removed from
+   their table; they remain present until a <command>VACUUM</command> is
+   done.  Therefore it's necessary to do <command>VACUUM</command>
+   periodically, especially on frequently-updated tables.
+  </para>
+
+  <para>
+   With no parameter, <command>VACUUM</command> processes every table in the
+   current database that the current user has permission to vacuum.
+   With a parameter, <command>VACUUM</command> processes only that table.
+  </para>
+
+  <para>
+   <command>VACUUM ANALYZE</command> performs a <command>VACUUM</command>
+   and then an <command>ANALYZE</command> for each selected table.  This
+   is a handy combination form for routine maintenance scripts.  See
+   <xref linkend="sql-analyze">
+   for more details about its processing.
+  </para>
+
+  <para>
+   Plain <command>VACUUM</command> (without <literal>FULL</>) simply reclaims
+   space and makes it
+   available for re-use.  This form of the command can operate in parallel
+   with normal reading and writing of the table, as an exclusive lock
+   is not obtained.  However, extra space is not returned to the operating
+   system (in most cases); it's just kept available for re-use within the
+   same table.  <command>VACUUM FULL</command> rewrites the entire contents
+   of the table into a new disk file with no extra space, allowing unused
+   space to be returned to the operating system.  This form is much slower and
+   requires an exclusive lock on each table while it is being processed.
+  </para>
+
+  <para>
+   When the option list is surrounded by parentheses, the options can be
+   written in any order.  Without parentheses, options must be specified
+   in exactly the order shown above.
+   The parenthesized syntax was added in
+   <productname>PostgreSQL</productname> 9.0;  the unparenthesized
+   syntax is deprecated.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>FULL</literal></term>
+    <listitem>
+     <para>
+      Selects <quote>full</quote> vacuum, which can reclaim more
+      space, but takes much longer and exclusively locks the table.
+      This method also requires extra disk space, since it writes a
+      new copy of the table and doesn't release the old copy until
+      the operation is complete.  Usually this should only be used when a
+      significant amount of space needs to be reclaimed from within the table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FREEZE</literal></term>
+    <listitem>
+     <para>
+      Selects aggressive <quote>freezing</quote> of tuples.
+      Specifying <literal>FREEZE</literal> is equivalent to performing
+      <command>VACUUM</command> with the
+      <xref linkend="guc-vacuum-freeze-min-age"> and
+      <xref linkend="guc-vacuum-freeze-table-age"> parameters
+      set to zero.  Aggressive freezing is always performed when the
+      table is rewritten, so this option is redundant when <literal>FULL</>
+      is specified.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VERBOSE</literal></term>
+    <listitem>
+     <para>
+      Prints a detailed vacuum activity report for each table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ANALYZE</literal></term>
+    <listitem>
+     <para>
+      Updates statistics used by the planner to determine the most
+      efficient way to execute a query.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE_PAGE_SKIPPING</literal></term>
+    <listitem>
+     <para>
+      Normally, <command>VACUUM</> will skip pages based on the <link
+      linkend="vacuum-for-visibility-map">visibility map</>.  Pages where
+      all tuples are known to be frozen can always be skipped, and those
+      where all tuples are known to be visible to all transactions may be
+      skipped except when performing an aggressive vacuum.  Furthermore,
+      except when performing an aggressive vacuum, some pages may be skipped
+      in order to avoid waiting for other sessions to finish using them.
+      This option disables all page-skipping behavior, and is intended to
+      be used only the contents of the visibility map are thought to
+      be suspect, which should happen only if there is a hardware or software
+      issue causing database corruption.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a specific table to
+      vacuum.  If omitted, all regular tables and materialized views in the
+      current database are vacuumed.  If the specified table is a partitioned
+      table, all of its leaf partitions are vacuumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">column_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a specific column to analyze. Defaults to all columns.
+      If a column list is specified, <literal>ANALYZE</> is implied.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+   <para>
+    When <literal>VERBOSE</> is specified, <command>VACUUM</> emits
+    progress messages to indicate which table is currently being
+    processed.  Various statistics about the tables are printed as well.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    To vacuum a table, one must ordinarily be the table's owner or a
+    superuser.  However, database owners are allowed to
+    vacuum all tables in their databases, except shared catalogs.
+    (The restriction for shared catalogs means that a true database-wide
+    <command>VACUUM</> can only be performed by a superuser.)
+    <command>VACUUM</> will skip over any tables that the calling user
+    does not have permission to vacuum.
+   </para>
+
+   <para>
+    <command>VACUUM</> cannot be executed inside a transaction block.
+   </para>
+
+   <para>
+    For tables with <acronym>GIN</> indexes, <command>VACUUM</command> (in
+    any form) also completes any pending index insertions, by moving pending
+    index entries to the appropriate places in the main <acronym>GIN</> index
+    structure.  See <xref linkend="gin-fast-update"> for details.
+   </para>
+
+   <para>
+    We recommend that active production databases be
+    vacuumed frequently (at least nightly), in order to
+    remove dead rows. After adding or deleting a large number
+    of rows, it might be a good idea to issue a <command>VACUUM
+    ANALYZE</command> command for the affected table. This will update the
+    system catalogs with
+    the results of all recent changes, and allow the
+    <productname>PostgreSQL</productname> query planner to make better
+    choices in planning queries.
+   </para>
+
+   <para>
+    The <option>FULL</option> option is not recommended for routine use,
+    but might be useful in special cases.  An example is when you have deleted
+    or updated most of the rows in a table and would like the table to
+    physically shrink to occupy less disk space and allow faster table
+    scans. <command>VACUUM FULL</command> will usually shrink the table
+    more than a plain <command>VACUUM</command> would.
+   </para>
+
+   <para>
+    <command>VACUUM</command> causes a substantial increase in I/O traffic,
+    which might cause poor performance for other active sessions.  Therefore,
+    it is sometimes advisable to use the cost-based vacuum delay feature.
+    See <xref linkend="runtime-config-resource-vacuum-cost"> for details.
+   </para>
+
+   <para>
+    <productname>PostgreSQL</productname> includes an <quote>autovacuum</>
+    facility which can automate routine vacuum maintenance.  For more
+    information about automatic and manual vacuuming, see
+    <xref linkend="routine-vacuuming">.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To clean a single table <literal>onek</literal>, analyze it for
+   the optimizer and print a detailed vacuum activity report:
+
+<programlisting>
+VACUUM (VERBOSE, ANALYZE) onek;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>VACUUM</command> statement in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-vacuumdb"></member>
+   <member><xref linkend="runtime-config-resource-vacuum-cost"></member>
+   <member><xref linkend="autovacuum"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

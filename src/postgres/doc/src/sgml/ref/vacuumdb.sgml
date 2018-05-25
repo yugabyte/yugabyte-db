@@ -1,0 +1,446 @@
+<!--
+doc/src/sgml/ref/vacuumdb.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="APP-VACUUMDB">
+ <indexterm zone="app-vacuumdb">
+  <primary>vacuumdb</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>vacuumdb</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname id="vacuumdb">vacuumdb</refname>
+  <refpurpose>garbage-collect and analyze a <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>vacuumdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+
+   <arg choice="plain" rep="repeat">
+    <arg choice="opt">
+     <group choice="plain">
+      <arg choice="plain"><option>--table</option></arg>
+      <arg choice="plain"><option>-t</option></arg>
+     </group>
+     <replaceable>table</replaceable>
+     <arg choice="opt">( <replaceable class="parameter">column</replaceable> [,...] )</arg>
+    </arg>
+   </arg>
+
+   <arg choice="opt"><replaceable>dbname</replaceable></arg>
+  </cmdsynopsis>
+
+  <cmdsynopsis>
+   <command>vacuumdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <group choice="plain">
+    <arg choice="plain"><option>--all</option></arg>
+    <arg choice="plain"><option>-a</option></arg>
+   </group>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <application>vacuumdb</application> is a utility for cleaning a
+   <productname>PostgreSQL</productname> database.
+   <application>vacuumdb</application> will also generate internal statistics
+   used by the <productname>PostgreSQL</productname> query optimizer.
+  </para>
+
+  <para>
+   <application>vacuumdb</application> is a wrapper around the SQL
+   command <xref linkend="SQL-VACUUM">.
+   There is no effective difference between vacuuming and analyzing
+   databases via this utility and via other methods for accessing the
+   server.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    <application>vacuumdb</application> accepts the following command-line arguments:
+    <variablelist>
+     <varlistentry>
+      <term><option>-a</option></term>
+      <term><option>--all</option></term>
+      <listitem>
+       <para>
+        Vacuum all databases.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option><optional>-d</> <replaceable class="parameter">dbname</replaceable></option></term>
+      <term><option><optional>--dbname=</><replaceable class="parameter">dbname</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to be cleaned or analyzed.
+        If this is not specified and <option>-a</option> (or
+        <option>--all</option>) is not used, the database name is read
+        from the environment variable <envar>PGDATABASE</envar>.  If
+        that is not set, the user name specified for the connection is
+        used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</></term>
+      <term><option>--echo</></term>
+      <listitem>
+       <para>
+        Echo the commands that <application>vacuumdb</application> generates
+        and sends to the server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-f</option></term>
+      <term><option>--full</option></term>
+      <listitem>
+       <para>
+        Perform <quote>full</quote> vacuuming.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-F</option></term>
+      <term><option>--freeze</option></term>
+      <listitem>
+       <para>
+        Aggressively <quote>freeze</quote> tuples.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-j <replaceable class="parameter">njobs</replaceable></option></term>
+      <term><option>--jobs=<replaceable class="parameter">njobs</replaceable></option></term>
+      <listitem>
+       <para>
+        Execute the vacuum or analyze commands in parallel by running
+        <replaceable class="parameter">njobs</replaceable>
+        commands simultaneously.  This option reduces the time of the
+        processing but it also increases the load on the database server.
+       </para>
+       <para>
+        <application>vacuumdb</application> will open
+        <replaceable class="parameter">njobs</replaceable> connections to the
+        database, so make sure your <xref linkend="guc-max-connections">
+        setting is high enough to accommodate all connections.
+       </para>
+       <para>
+        Note that using this mode together with the <option>-f</option>
+        (<literal>FULL</literal>) option might cause deadlock failures if
+        certain system catalogs are processed in parallel.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-q</></term>
+      <term><option>--quiet</></term>
+      <listitem>
+       <para>
+        Do not display progress messages.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-t <replaceable class="parameter">table</replaceable> [ (<replaceable class="parameter">column</replaceable> [,...]) ]</option></term>
+      <term><option>--table=<replaceable class="parameter">table</replaceable> [ (<replaceable class="parameter">column</replaceable> [,...]) ]</option></term>
+      <listitem>
+       <para>
+        Clean or analyze <replaceable class="parameter">table</replaceable> only.
+        Column names can be specified only in conjunction with
+        the <option>--analyze</option> or <option>--analyze-only</option> options.
+        Multiple tables can be vacuumed by writing multiple
+        <option>-t</> switches.
+       </para>
+       <tip>
+        <para>
+         If you specify columns, you probably have to escape the parentheses
+         from the shell.  (See examples below.)
+        </para>
+       </tip>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-v</option></term>
+      <term><option>--verbose</option></term>
+      <listitem>
+       <para>
+        Print detailed information during processing.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</></term>
+       <term><option>--version</></term>
+       <listitem>
+       <para>
+       Print the <application>vacuumdb</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-z</option></term>
+      <term><option>--analyze</option></term>
+      <listitem>
+       <para>
+        Also calculate statistics for use by the optimizer.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-Z</option></term>
+      <term><option>--analyze-only</option></term>
+      <listitem>
+       <para>
+        Only calculate statistics for use by the optimizer (no vacuum).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--analyze-in-stages</option></term>
+      <listitem>
+       <para>
+        Only calculate statistics for use by the optimizer (no vacuum),
+        like <option>--analyze-only</option>.  Run several (currently three)
+        stages of analyze with different configuration settings, to produce
+        usable statistics faster.
+       </para>
+
+       <para>
+        This option is useful to analyze a database that was newly populated
+        from a restored dump or by <command>pg_upgrade</command>.  This option
+        will try to create some statistics as fast as possible, to make the
+        database usable, and then produce full statistics in the subsequent
+        stages.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-?</></term>
+       <term><option>--help</></term>
+       <listitem>
+       <para>
+       Show help about <application>vacuumdb</application> command line
+       arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+
+   <para>
+    <application>vacuumdb</application> also accepts
+    the following command-line arguments for connection parameters:
+    <variablelist>
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">host</replaceable></></term>
+      <term><option>--host=<replaceable class="parameter">host</replaceable></></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the server
+        is running.  If the value begins with a slash, it is used
+        as the directory for the Unix domain socket.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or local Unix domain socket file
+        extension on which the server
+        is listening for connections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></></term>
+      <listitem>
+       <para>
+        User name to connect as.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</></term>
+      <term><option>--no-password</></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</></term>
+      <term><option>--password</></term>
+      <listitem>
+       <para>
+        Force <application>vacuumdb</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>vacuumdb</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>vacuumdb</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</> to avoid the extra
+        connection attempt.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--maintenance-db=<replaceable class="parameter">dbname</replaceable></></term>
+      <listitem>
+       <para>
+         Specifies the name of the database to connect to discover what other
+         databases should be vacuumed. If not specified, the
+         <literal>postgres</literal> database will be used,
+         and if that does not exist, <literal>template1</literal> will be used.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATABASE</envar></term>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</> utilities,
+   also uses the environment variables supported by <application>libpq</>
+   (see <xref linkend="libpq-envars">).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Diagnostics</title>
+
+  <para>
+   In case of difficulty, see <xref linkend="SQL-VACUUM">
+   and <xref linkend="APP-PSQL"> for
+   discussions of potential problems and error messages.
+   The database server must be running at the
+   targeted host.  Also, any default connection settings and environment
+   variables used by the <application>libpq</application> front-end
+   library will apply.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <application>vacuumdb</application> might need to connect several
+   times to the <productname>PostgreSQL</productname> server, asking
+   for a password each time. It is convenient to have a
+   <filename>~/.pgpass</> file in such cases. See <xref
+   linkend="libpq-pgpass"> for more information.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+   <para>
+    To clean the database <literal>test</literal>:
+<screen>
+<prompt>$ </prompt><userinput>vacuumdb test</userinput>
+</screen>
+   </para>
+
+   <para>
+    To clean and analyze for the optimizer a database named
+    <literal>bigdb</literal>:
+<screen>
+<prompt>$ </prompt><userinput>vacuumdb --analyze bigdb</userinput>
+</screen>
+   </para>
+
+   <para>
+    To clean a single table
+    <literal>foo</literal> in a database named
+    <literal>xyzzy</literal>, and analyze a single column
+    <literal>bar</literal> of the table for the optimizer:
+<screen>
+<prompt>$ </prompt><userinput>vacuumdb --analyze --verbose --table='foo(bar)' xyzzy</userinput>
+</screen></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-vacuum"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,1339 @@
+--
+-- This is created by pgsql/src/tools/findoidjoins/make_oidjoins_check
+--
+SELECT	ctid, aggfnoid
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggfnoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggfnoid);
+ ctid | aggfnoid 
+------+----------
+(0 rows)
+
+SELECT	ctid, aggtransfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggtransfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggtransfn);
+ ctid | aggtransfn 
+------+------------
+(0 rows)
+
+SELECT	ctid, aggfinalfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggfinalfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggfinalfn);
+ ctid | aggfinalfn 
+------+------------
+(0 rows)
+
+SELECT	ctid, aggcombinefn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggcombinefn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggcombinefn);
+ ctid | aggcombinefn 
+------+--------------
+(0 rows)
+
+SELECT	ctid, aggserialfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggserialfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggserialfn);
+ ctid | aggserialfn 
+------+-------------
+(0 rows)
+
+SELECT	ctid, aggdeserialfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggdeserialfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggdeserialfn);
+ ctid | aggdeserialfn 
+------+---------------
+(0 rows)
+
+SELECT	ctid, aggmtransfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggmtransfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggmtransfn);
+ ctid | aggmtransfn 
+------+-------------
+(0 rows)
+
+SELECT	ctid, aggminvtransfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggminvtransfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggminvtransfn);
+ ctid | aggminvtransfn 
+------+----------------
+(0 rows)
+
+SELECT	ctid, aggmfinalfn
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggmfinalfn != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.aggmfinalfn);
+ ctid | aggmfinalfn 
+------+-------------
+(0 rows)
+
+SELECT	ctid, aggsortop
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggsortop != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.aggsortop);
+ ctid | aggsortop 
+------+-----------
+(0 rows)
+
+SELECT	ctid, aggtranstype
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggtranstype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.aggtranstype);
+ ctid | aggtranstype 
+------+--------------
+(0 rows)
+
+SELECT	ctid, aggmtranstype
+FROM	pg_catalog.pg_aggregate fk
+WHERE	aggmtranstype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.aggmtranstype);
+ ctid | aggmtranstype 
+------+---------------
+(0 rows)
+
+SELECT	ctid, amhandler
+FROM	pg_catalog.pg_am fk
+WHERE	amhandler != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.amhandler);
+ ctid | amhandler 
+------+-----------
+(0 rows)
+
+SELECT	ctid, amopfamily
+FROM	pg_catalog.pg_amop fk
+WHERE	amopfamily != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_opfamily pk WHERE pk.oid = fk.amopfamily);
+ ctid | amopfamily 
+------+------------
+(0 rows)
+
+SELECT	ctid, amoplefttype
+FROM	pg_catalog.pg_amop fk
+WHERE	amoplefttype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.amoplefttype);
+ ctid | amoplefttype 
+------+--------------
+(0 rows)
+
+SELECT	ctid, amoprighttype
+FROM	pg_catalog.pg_amop fk
+WHERE	amoprighttype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.amoprighttype);
+ ctid | amoprighttype 
+------+---------------
+(0 rows)
+
+SELECT	ctid, amopopr
+FROM	pg_catalog.pg_amop fk
+WHERE	amopopr != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.amopopr);
+ ctid | amopopr 
+------+---------
+(0 rows)
+
+SELECT	ctid, amopmethod
+FROM	pg_catalog.pg_amop fk
+WHERE	amopmethod != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_am pk WHERE pk.oid = fk.amopmethod);
+ ctid | amopmethod 
+------+------------
+(0 rows)
+
+SELECT	ctid, amopsortfamily
+FROM	pg_catalog.pg_amop fk
+WHERE	amopsortfamily != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_opfamily pk WHERE pk.oid = fk.amopsortfamily);
+ ctid | amopsortfamily 
+------+----------------
+(0 rows)
+
+SELECT	ctid, amprocfamily
+FROM	pg_catalog.pg_amproc fk
+WHERE	amprocfamily != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_opfamily pk WHERE pk.oid = fk.amprocfamily);
+ ctid | amprocfamily 
+------+--------------
+(0 rows)
+
+SELECT	ctid, amproclefttype
+FROM	pg_catalog.pg_amproc fk
+WHERE	amproclefttype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.amproclefttype);
+ ctid | amproclefttype 
+------+----------------
+(0 rows)
+
+SELECT	ctid, amprocrighttype
+FROM	pg_catalog.pg_amproc fk
+WHERE	amprocrighttype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.amprocrighttype);
+ ctid | amprocrighttype 
+------+-----------------
+(0 rows)
+
+SELECT	ctid, amproc
+FROM	pg_catalog.pg_amproc fk
+WHERE	amproc != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.amproc);
+ ctid | amproc 
+------+--------
+(0 rows)
+
+SELECT	ctid, adrelid
+FROM	pg_catalog.pg_attrdef fk
+WHERE	adrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.adrelid);
+ ctid | adrelid 
+------+---------
+(0 rows)
+
+SELECT	ctid, attrelid
+FROM	pg_catalog.pg_attribute fk
+WHERE	attrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.attrelid);
+ ctid | attrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, atttypid
+FROM	pg_catalog.pg_attribute fk
+WHERE	atttypid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.atttypid);
+ ctid | atttypid 
+------+----------
+(0 rows)
+
+SELECT	ctid, attcollation
+FROM	pg_catalog.pg_attribute fk
+WHERE	attcollation != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_collation pk WHERE pk.oid = fk.attcollation);
+ ctid | attcollation 
+------+--------------
+(0 rows)
+
+SELECT	ctid, roleid
+FROM	pg_catalog.pg_auth_members fk
+WHERE	roleid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.roleid);
+ ctid | roleid 
+------+--------
+(0 rows)
+
+SELECT	ctid, member
+FROM	pg_catalog.pg_auth_members fk
+WHERE	member != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.member);
+ ctid | member 
+------+--------
+(0 rows)
+
+SELECT	ctid, grantor
+FROM	pg_catalog.pg_auth_members fk
+WHERE	grantor != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.grantor);
+ ctid | grantor 
+------+---------
+(0 rows)
+
+SELECT	ctid, castsource
+FROM	pg_catalog.pg_cast fk
+WHERE	castsource != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.castsource);
+ ctid | castsource 
+------+------------
+(0 rows)
+
+SELECT	ctid, casttarget
+FROM	pg_catalog.pg_cast fk
+WHERE	casttarget != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.casttarget);
+ ctid | casttarget 
+------+------------
+(0 rows)
+
+SELECT	ctid, castfunc
+FROM	pg_catalog.pg_cast fk
+WHERE	castfunc != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.castfunc);
+ ctid | castfunc 
+------+----------
+(0 rows)
+
+SELECT	ctid, relnamespace
+FROM	pg_catalog.pg_class fk
+WHERE	relnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.relnamespace);
+ ctid | relnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, reltype
+FROM	pg_catalog.pg_class fk
+WHERE	reltype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.reltype);
+ ctid | reltype 
+------+---------
+(0 rows)
+
+SELECT	ctid, reloftype
+FROM	pg_catalog.pg_class fk
+WHERE	reloftype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.reloftype);
+ ctid | reloftype 
+------+-----------
+(0 rows)
+
+SELECT	ctid, relowner
+FROM	pg_catalog.pg_class fk
+WHERE	relowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.relowner);
+ ctid | relowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, relam
+FROM	pg_catalog.pg_class fk
+WHERE	relam != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_am pk WHERE pk.oid = fk.relam);
+ ctid | relam 
+------+-------
+(0 rows)
+
+SELECT	ctid, reltablespace
+FROM	pg_catalog.pg_class fk
+WHERE	reltablespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_tablespace pk WHERE pk.oid = fk.reltablespace);
+ ctid | reltablespace 
+------+---------------
+(0 rows)
+
+SELECT	ctid, reltoastrelid
+FROM	pg_catalog.pg_class fk
+WHERE	reltoastrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.reltoastrelid);
+ ctid | reltoastrelid 
+------+---------------
+(0 rows)
+
+SELECT	ctid, collnamespace
+FROM	pg_catalog.pg_collation fk
+WHERE	collnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.collnamespace);
+ ctid | collnamespace 
+------+---------------
+(0 rows)
+
+SELECT	ctid, collowner
+FROM	pg_catalog.pg_collation fk
+WHERE	collowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.collowner);
+ ctid | collowner 
+------+-----------
+(0 rows)
+
+SELECT	ctid, connamespace
+FROM	pg_catalog.pg_constraint fk
+WHERE	connamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.connamespace);
+ ctid | connamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, conrelid
+FROM	pg_catalog.pg_constraint fk
+WHERE	conrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.conrelid);
+ ctid | conrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, contypid
+FROM	pg_catalog.pg_constraint fk
+WHERE	contypid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.contypid);
+ ctid | contypid 
+------+----------
+(0 rows)
+
+SELECT	ctid, conindid
+FROM	pg_catalog.pg_constraint fk
+WHERE	conindid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.conindid);
+ ctid | conindid 
+------+----------
+(0 rows)
+
+SELECT	ctid, confrelid
+FROM	pg_catalog.pg_constraint fk
+WHERE	confrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.confrelid);
+ ctid | confrelid 
+------+-----------
+(0 rows)
+
+SELECT	ctid, connamespace
+FROM	pg_catalog.pg_conversion fk
+WHERE	connamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.connamespace);
+ ctid | connamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, conowner
+FROM	pg_catalog.pg_conversion fk
+WHERE	conowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.conowner);
+ ctid | conowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, conproc
+FROM	pg_catalog.pg_conversion fk
+WHERE	conproc != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.conproc);
+ ctid | conproc 
+------+---------
+(0 rows)
+
+SELECT	ctid, datdba
+FROM	pg_catalog.pg_database fk
+WHERE	datdba != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.datdba);
+ ctid | datdba 
+------+--------
+(0 rows)
+
+SELECT	ctid, dattablespace
+FROM	pg_catalog.pg_database fk
+WHERE	dattablespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_tablespace pk WHERE pk.oid = fk.dattablespace);
+ ctid | dattablespace 
+------+---------------
+(0 rows)
+
+SELECT	ctid, setdatabase
+FROM	pg_catalog.pg_db_role_setting fk
+WHERE	setdatabase != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_database pk WHERE pk.oid = fk.setdatabase);
+ ctid | setdatabase 
+------+-------------
+(0 rows)
+
+SELECT	ctid, classid
+FROM	pg_catalog.pg_depend fk
+WHERE	classid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.classid);
+ ctid | classid 
+------+---------
+(0 rows)
+
+SELECT	ctid, refclassid
+FROM	pg_catalog.pg_depend fk
+WHERE	refclassid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.refclassid);
+ ctid | refclassid 
+------+------------
+(0 rows)
+
+SELECT	ctid, classoid
+FROM	pg_catalog.pg_description fk
+WHERE	classoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.classoid);
+ ctid | classoid 
+------+----------
+(0 rows)
+
+SELECT	ctid, enumtypid
+FROM	pg_catalog.pg_enum fk
+WHERE	enumtypid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.enumtypid);
+ ctid | enumtypid 
+------+-----------
+(0 rows)
+
+SELECT	ctid, extowner
+FROM	pg_catalog.pg_extension fk
+WHERE	extowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.extowner);
+ ctid | extowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, extnamespace
+FROM	pg_catalog.pg_extension fk
+WHERE	extnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.extnamespace);
+ ctid | extnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, fdwowner
+FROM	pg_catalog.pg_foreign_data_wrapper fk
+WHERE	fdwowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.fdwowner);
+ ctid | fdwowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, srvowner
+FROM	pg_catalog.pg_foreign_server fk
+WHERE	srvowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.srvowner);
+ ctid | srvowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, srvfdw
+FROM	pg_catalog.pg_foreign_server fk
+WHERE	srvfdw != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper pk WHERE pk.oid = fk.srvfdw);
+ ctid | srvfdw 
+------+--------
+(0 rows)
+
+SELECT	ctid, indexrelid
+FROM	pg_catalog.pg_index fk
+WHERE	indexrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.indexrelid);
+ ctid | indexrelid 
+------+------------
+(0 rows)
+
+SELECT	ctid, indrelid
+FROM	pg_catalog.pg_index fk
+WHERE	indrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.indrelid);
+ ctid | indrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, inhrelid
+FROM	pg_catalog.pg_inherits fk
+WHERE	inhrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.inhrelid);
+ ctid | inhrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, inhparent
+FROM	pg_catalog.pg_inherits fk
+WHERE	inhparent != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.inhparent);
+ ctid | inhparent 
+------+-----------
+(0 rows)
+
+SELECT	ctid, classoid
+FROM	pg_catalog.pg_init_privs fk
+WHERE	classoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.classoid);
+ ctid | classoid 
+------+----------
+(0 rows)
+
+SELECT	ctid, lanowner
+FROM	pg_catalog.pg_language fk
+WHERE	lanowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.lanowner);
+ ctid | lanowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, lanplcallfoid
+FROM	pg_catalog.pg_language fk
+WHERE	lanplcallfoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.lanplcallfoid);
+ ctid | lanplcallfoid 
+------+---------------
+(0 rows)
+
+SELECT	ctid, laninline
+FROM	pg_catalog.pg_language fk
+WHERE	laninline != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.laninline);
+ ctid | laninline 
+------+-----------
+(0 rows)
+
+SELECT	ctid, lanvalidator
+FROM	pg_catalog.pg_language fk
+WHERE	lanvalidator != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.lanvalidator);
+ ctid | lanvalidator 
+------+--------------
+(0 rows)
+
+SELECT	ctid, loid
+FROM	pg_catalog.pg_largeobject fk
+WHERE	loid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_largeobject_metadata pk WHERE pk.oid = fk.loid);
+ ctid | loid 
+------+------
+(0 rows)
+
+SELECT	ctid, lomowner
+FROM	pg_catalog.pg_largeobject_metadata fk
+WHERE	lomowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.lomowner);
+ ctid | lomowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, nspowner
+FROM	pg_catalog.pg_namespace fk
+WHERE	nspowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.nspowner);
+ ctid | nspowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, opcmethod
+FROM	pg_catalog.pg_opclass fk
+WHERE	opcmethod != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_am pk WHERE pk.oid = fk.opcmethod);
+ ctid | opcmethod 
+------+-----------
+(0 rows)
+
+SELECT	ctid, opcnamespace
+FROM	pg_catalog.pg_opclass fk
+WHERE	opcnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.opcnamespace);
+ ctid | opcnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, opcowner
+FROM	pg_catalog.pg_opclass fk
+WHERE	opcowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.opcowner);
+ ctid | opcowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, opcfamily
+FROM	pg_catalog.pg_opclass fk
+WHERE	opcfamily != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_opfamily pk WHERE pk.oid = fk.opcfamily);
+ ctid | opcfamily 
+------+-----------
+(0 rows)
+
+SELECT	ctid, opcintype
+FROM	pg_catalog.pg_opclass fk
+WHERE	opcintype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.opcintype);
+ ctid | opcintype 
+------+-----------
+(0 rows)
+
+SELECT	ctid, opckeytype
+FROM	pg_catalog.pg_opclass fk
+WHERE	opckeytype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.opckeytype);
+ ctid | opckeytype 
+------+------------
+(0 rows)
+
+SELECT	ctid, oprnamespace
+FROM	pg_catalog.pg_operator fk
+WHERE	oprnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.oprnamespace);
+ ctid | oprnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, oprowner
+FROM	pg_catalog.pg_operator fk
+WHERE	oprowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.oprowner);
+ ctid | oprowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, oprleft
+FROM	pg_catalog.pg_operator fk
+WHERE	oprleft != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.oprleft);
+ ctid | oprleft 
+------+---------
+(0 rows)
+
+SELECT	ctid, oprright
+FROM	pg_catalog.pg_operator fk
+WHERE	oprright != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.oprright);
+ ctid | oprright 
+------+----------
+(0 rows)
+
+SELECT	ctid, oprresult
+FROM	pg_catalog.pg_operator fk
+WHERE	oprresult != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.oprresult);
+ ctid | oprresult 
+------+-----------
+(0 rows)
+
+SELECT	ctid, oprcom
+FROM	pg_catalog.pg_operator fk
+WHERE	oprcom != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprcom);
+ ctid | oprcom 
+------+--------
+(0 rows)
+
+SELECT	ctid, oprnegate
+FROM	pg_catalog.pg_operator fk
+WHERE	oprnegate != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprnegate);
+ ctid | oprnegate 
+------+-----------
+(0 rows)
+
+SELECT	ctid, oprcode
+FROM	pg_catalog.pg_operator fk
+WHERE	oprcode != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.oprcode);
+ ctid | oprcode 
+------+---------
+(0 rows)
+
+SELECT	ctid, oprrest
+FROM	pg_catalog.pg_operator fk
+WHERE	oprrest != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.oprrest);
+ ctid | oprrest 
+------+---------
+(0 rows)
+
+SELECT	ctid, oprjoin
+FROM	pg_catalog.pg_operator fk
+WHERE	oprjoin != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.oprjoin);
+ ctid | oprjoin 
+------+---------
+(0 rows)
+
+SELECT	ctid, opfmethod
+FROM	pg_catalog.pg_opfamily fk
+WHERE	opfmethod != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_am pk WHERE pk.oid = fk.opfmethod);
+ ctid | opfmethod 
+------+-----------
+(0 rows)
+
+SELECT	ctid, opfnamespace
+FROM	pg_catalog.pg_opfamily fk
+WHERE	opfnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.opfnamespace);
+ ctid | opfnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, opfowner
+FROM	pg_catalog.pg_opfamily fk
+WHERE	opfowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.opfowner);
+ ctid | opfowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, partrelid
+FROM	pg_catalog.pg_partitioned_table fk
+WHERE	partrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.partrelid);
+ ctid | partrelid 
+------+-----------
+(0 rows)
+
+SELECT	ctid, polrelid
+FROM	pg_catalog.pg_policy fk
+WHERE	polrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.polrelid);
+ ctid | polrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, pronamespace
+FROM	pg_catalog.pg_proc fk
+WHERE	pronamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.pronamespace);
+ ctid | pronamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, proowner
+FROM	pg_catalog.pg_proc fk
+WHERE	proowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.proowner);
+ ctid | proowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, prolang
+FROM	pg_catalog.pg_proc fk
+WHERE	prolang != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_language pk WHERE pk.oid = fk.prolang);
+ ctid | prolang 
+------+---------
+(0 rows)
+
+SELECT	ctid, provariadic
+FROM	pg_catalog.pg_proc fk
+WHERE	provariadic != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.provariadic);
+ ctid | provariadic 
+------+-------------
+(0 rows)
+
+SELECT	ctid, protransform
+FROM	pg_catalog.pg_proc fk
+WHERE	protransform != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.protransform);
+ ctid | protransform 
+------+--------------
+(0 rows)
+
+SELECT	ctid, prorettype
+FROM	pg_catalog.pg_proc fk
+WHERE	prorettype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.prorettype);
+ ctid | prorettype 
+------+------------
+(0 rows)
+
+SELECT	ctid, rngtypid
+FROM	pg_catalog.pg_range fk
+WHERE	rngtypid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.rngtypid);
+ ctid | rngtypid 
+------+----------
+(0 rows)
+
+SELECT	ctid, rngsubtype
+FROM	pg_catalog.pg_range fk
+WHERE	rngsubtype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.rngsubtype);
+ ctid | rngsubtype 
+------+------------
+(0 rows)
+
+SELECT	ctid, rngcollation
+FROM	pg_catalog.pg_range fk
+WHERE	rngcollation != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_collation pk WHERE pk.oid = fk.rngcollation);
+ ctid | rngcollation 
+------+--------------
+(0 rows)
+
+SELECT	ctid, rngsubopc
+FROM	pg_catalog.pg_range fk
+WHERE	rngsubopc != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_opclass pk WHERE pk.oid = fk.rngsubopc);
+ ctid | rngsubopc 
+------+-----------
+(0 rows)
+
+SELECT	ctid, rngcanonical
+FROM	pg_catalog.pg_range fk
+WHERE	rngcanonical != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.rngcanonical);
+ ctid | rngcanonical 
+------+--------------
+(0 rows)
+
+SELECT	ctid, rngsubdiff
+FROM	pg_catalog.pg_range fk
+WHERE	rngsubdiff != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.rngsubdiff);
+ ctid | rngsubdiff 
+------+------------
+(0 rows)
+
+SELECT	ctid, ev_class
+FROM	pg_catalog.pg_rewrite fk
+WHERE	ev_class != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.ev_class);
+ ctid | ev_class 
+------+----------
+(0 rows)
+
+SELECT	ctid, seqrelid
+FROM	pg_catalog.pg_sequence fk
+WHERE	seqrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.seqrelid);
+ ctid | seqrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, seqtypid
+FROM	pg_catalog.pg_sequence fk
+WHERE	seqtypid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.seqtypid);
+ ctid | seqtypid 
+------+----------
+(0 rows)
+
+SELECT	ctid, refclassid
+FROM	pg_catalog.pg_shdepend fk
+WHERE	refclassid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.refclassid);
+ ctid | refclassid 
+------+------------
+(0 rows)
+
+SELECT	ctid, classoid
+FROM	pg_catalog.pg_shdescription fk
+WHERE	classoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.classoid);
+ ctid | classoid 
+------+----------
+(0 rows)
+
+SELECT	ctid, starelid
+FROM	pg_catalog.pg_statistic fk
+WHERE	starelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.starelid);
+ ctid | starelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, staop1
+FROM	pg_catalog.pg_statistic fk
+WHERE	staop1 != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.staop1);
+ ctid | staop1 
+------+--------
+(0 rows)
+
+SELECT	ctid, staop2
+FROM	pg_catalog.pg_statistic fk
+WHERE	staop2 != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.staop2);
+ ctid | staop2 
+------+--------
+(0 rows)
+
+SELECT	ctid, staop3
+FROM	pg_catalog.pg_statistic fk
+WHERE	staop3 != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.staop3);
+ ctid | staop3 
+------+--------
+(0 rows)
+
+SELECT	ctid, staop4
+FROM	pg_catalog.pg_statistic fk
+WHERE	staop4 != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.staop4);
+ ctid | staop4 
+------+--------
+(0 rows)
+
+SELECT	ctid, staop5
+FROM	pg_catalog.pg_statistic fk
+WHERE	staop5 != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.staop5);
+ ctid | staop5 
+------+--------
+(0 rows)
+
+SELECT	ctid, stxrelid
+FROM	pg_catalog.pg_statistic_ext fk
+WHERE	stxrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.stxrelid);
+ ctid | stxrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, stxnamespace
+FROM	pg_catalog.pg_statistic_ext fk
+WHERE	stxnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.stxnamespace);
+ ctid | stxnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, stxowner
+FROM	pg_catalog.pg_statistic_ext fk
+WHERE	stxowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.stxowner);
+ ctid | stxowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, spcowner
+FROM	pg_catalog.pg_tablespace fk
+WHERE	spcowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.spcowner);
+ ctid | spcowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, trftype
+FROM	pg_catalog.pg_transform fk
+WHERE	trftype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.trftype);
+ ctid | trftype 
+------+---------
+(0 rows)
+
+SELECT	ctid, trflang
+FROM	pg_catalog.pg_transform fk
+WHERE	trflang != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_language pk WHERE pk.oid = fk.trflang);
+ ctid | trflang 
+------+---------
+(0 rows)
+
+SELECT	ctid, trffromsql
+FROM	pg_catalog.pg_transform fk
+WHERE	trffromsql != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.trffromsql);
+ ctid | trffromsql 
+------+------------
+(0 rows)
+
+SELECT	ctid, trftosql
+FROM	pg_catalog.pg_transform fk
+WHERE	trftosql != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.trftosql);
+ ctid | trftosql 
+------+----------
+(0 rows)
+
+SELECT	ctid, tgrelid
+FROM	pg_catalog.pg_trigger fk
+WHERE	tgrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.tgrelid);
+ ctid | tgrelid 
+------+---------
+(0 rows)
+
+SELECT	ctid, tgfoid
+FROM	pg_catalog.pg_trigger fk
+WHERE	tgfoid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.tgfoid);
+ ctid | tgfoid 
+------+--------
+(0 rows)
+
+SELECT	ctid, tgconstrrelid
+FROM	pg_catalog.pg_trigger fk
+WHERE	tgconstrrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.tgconstrrelid);
+ ctid | tgconstrrelid 
+------+---------------
+(0 rows)
+
+SELECT	ctid, tgconstrindid
+FROM	pg_catalog.pg_trigger fk
+WHERE	tgconstrindid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.tgconstrindid);
+ ctid | tgconstrindid 
+------+---------------
+(0 rows)
+
+SELECT	ctid, tgconstraint
+FROM	pg_catalog.pg_trigger fk
+WHERE	tgconstraint != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint pk WHERE pk.oid = fk.tgconstraint);
+ ctid | tgconstraint 
+------+--------------
+(0 rows)
+
+SELECT	ctid, cfgnamespace
+FROM	pg_catalog.pg_ts_config fk
+WHERE	cfgnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.cfgnamespace);
+ ctid | cfgnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, cfgowner
+FROM	pg_catalog.pg_ts_config fk
+WHERE	cfgowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.cfgowner);
+ ctid | cfgowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, cfgparser
+FROM	pg_catalog.pg_ts_config fk
+WHERE	cfgparser != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_ts_parser pk WHERE pk.oid = fk.cfgparser);
+ ctid | cfgparser 
+------+-----------
+(0 rows)
+
+SELECT	ctid, mapcfg
+FROM	pg_catalog.pg_ts_config_map fk
+WHERE	mapcfg != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_ts_config pk WHERE pk.oid = fk.mapcfg);
+ ctid | mapcfg 
+------+--------
+(0 rows)
+
+SELECT	ctid, mapdict
+FROM	pg_catalog.pg_ts_config_map fk
+WHERE	mapdict != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_ts_dict pk WHERE pk.oid = fk.mapdict);
+ ctid | mapdict 
+------+---------
+(0 rows)
+
+SELECT	ctid, dictnamespace
+FROM	pg_catalog.pg_ts_dict fk
+WHERE	dictnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.dictnamespace);
+ ctid | dictnamespace 
+------+---------------
+(0 rows)
+
+SELECT	ctid, dictowner
+FROM	pg_catalog.pg_ts_dict fk
+WHERE	dictowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.dictowner);
+ ctid | dictowner 
+------+-----------
+(0 rows)
+
+SELECT	ctid, dicttemplate
+FROM	pg_catalog.pg_ts_dict fk
+WHERE	dicttemplate != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_ts_template pk WHERE pk.oid = fk.dicttemplate);
+ ctid | dicttemplate 
+------+--------------
+(0 rows)
+
+SELECT	ctid, prsnamespace
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prsnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.prsnamespace);
+ ctid | prsnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, prsstart
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prsstart != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.prsstart);
+ ctid | prsstart 
+------+----------
+(0 rows)
+
+SELECT	ctid, prstoken
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prstoken != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.prstoken);
+ ctid | prstoken 
+------+----------
+(0 rows)
+
+SELECT	ctid, prsend
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prsend != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.prsend);
+ ctid | prsend 
+------+--------
+(0 rows)
+
+SELECT	ctid, prsheadline
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prsheadline != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.prsheadline);
+ ctid | prsheadline 
+------+-------------
+(0 rows)
+
+SELECT	ctid, prslextype
+FROM	pg_catalog.pg_ts_parser fk
+WHERE	prslextype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.prslextype);
+ ctid | prslextype 
+------+------------
+(0 rows)
+
+SELECT	ctid, tmplnamespace
+FROM	pg_catalog.pg_ts_template fk
+WHERE	tmplnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.tmplnamespace);
+ ctid | tmplnamespace 
+------+---------------
+(0 rows)
+
+SELECT	ctid, tmplinit
+FROM	pg_catalog.pg_ts_template fk
+WHERE	tmplinit != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.tmplinit);
+ ctid | tmplinit 
+------+----------
+(0 rows)
+
+SELECT	ctid, tmpllexize
+FROM	pg_catalog.pg_ts_template fk
+WHERE	tmpllexize != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.tmpllexize);
+ ctid | tmpllexize 
+------+------------
+(0 rows)
+
+SELECT	ctid, typnamespace
+FROM	pg_catalog.pg_type fk
+WHERE	typnamespace != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace pk WHERE pk.oid = fk.typnamespace);
+ ctid | typnamespace 
+------+--------------
+(0 rows)
+
+SELECT	ctid, typowner
+FROM	pg_catalog.pg_type fk
+WHERE	typowner != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_authid pk WHERE pk.oid = fk.typowner);
+ ctid | typowner 
+------+----------
+(0 rows)
+
+SELECT	ctid, typrelid
+FROM	pg_catalog.pg_type fk
+WHERE	typrelid != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.typrelid);
+ ctid | typrelid 
+------+----------
+(0 rows)
+
+SELECT	ctid, typelem
+FROM	pg_catalog.pg_type fk
+WHERE	typelem != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.typelem);
+ ctid | typelem 
+------+---------
+(0 rows)
+
+SELECT	ctid, typarray
+FROM	pg_catalog.pg_type fk
+WHERE	typarray != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.typarray);
+ ctid | typarray 
+------+----------
+(0 rows)
+
+SELECT	ctid, typinput
+FROM	pg_catalog.pg_type fk
+WHERE	typinput != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typinput);
+ ctid | typinput 
+------+----------
+(0 rows)
+
+SELECT	ctid, typoutput
+FROM	pg_catalog.pg_type fk
+WHERE	typoutput != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typoutput);
+ ctid | typoutput 
+------+-----------
+(0 rows)
+
+SELECT	ctid, typreceive
+FROM	pg_catalog.pg_type fk
+WHERE	typreceive != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typreceive);
+ ctid | typreceive 
+------+------------
+(0 rows)
+
+SELECT	ctid, typsend
+FROM	pg_catalog.pg_type fk
+WHERE	typsend != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typsend);
+ ctid | typsend 
+------+---------
+(0 rows)
+
+SELECT	ctid, typmodin
+FROM	pg_catalog.pg_type fk
+WHERE	typmodin != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typmodin);
+ ctid | typmodin 
+------+----------
+(0 rows)
+
+SELECT	ctid, typmodout
+FROM	pg_catalog.pg_type fk
+WHERE	typmodout != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typmodout);
+ ctid | typmodout 
+------+-----------
+(0 rows)
+
+SELECT	ctid, typanalyze
+FROM	pg_catalog.pg_type fk
+WHERE	typanalyze != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.typanalyze);
+ ctid | typanalyze 
+------+------------
+(0 rows)
+
+SELECT	ctid, typbasetype
+FROM	pg_catalog.pg_type fk
+WHERE	typbasetype != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.typbasetype);
+ ctid | typbasetype 
+------+-------------
+(0 rows)
+
+SELECT	ctid, typcollation
+FROM	pg_catalog.pg_type fk
+WHERE	typcollation != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_collation pk WHERE pk.oid = fk.typcollation);
+ ctid | typcollation 
+------+--------------
+(0 rows)
+
+SELECT	ctid, conpfeqop
+FROM	(SELECT ctid, unnest(conpfeqop) AS conpfeqop FROM pg_catalog.pg_constraint) fk
+WHERE	conpfeqop != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.conpfeqop);
+ ctid | conpfeqop 
+------+-----------
+(0 rows)
+
+SELECT	ctid, conppeqop
+FROM	(SELECT ctid, unnest(conppeqop) AS conppeqop FROM pg_catalog.pg_constraint) fk
+WHERE	conppeqop != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.conppeqop);
+ ctid | conppeqop 
+------+-----------
+(0 rows)
+
+SELECT	ctid, conffeqop
+FROM	(SELECT ctid, unnest(conffeqop) AS conffeqop FROM pg_catalog.pg_constraint) fk
+WHERE	conffeqop != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.conffeqop);
+ ctid | conffeqop 
+------+-----------
+(0 rows)
+
+SELECT	ctid, conexclop
+FROM	(SELECT ctid, unnest(conexclop) AS conexclop FROM pg_catalog.pg_constraint) fk
+WHERE	conexclop != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.conexclop);
+ ctid | conexclop 
+------+-----------
+(0 rows)
+
+SELECT	ctid, proallargtypes
+FROM	(SELECT ctid, unnest(proallargtypes) AS proallargtypes FROM pg_catalog.pg_proc) fk
+WHERE	proallargtypes != 0 AND
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type pk WHERE pk.oid = fk.proallargtypes);
+ ctid | proallargtypes 
+------+----------------
+(0 rows)
+

@@ -1,0 +1,96 @@
+<!--
+doc/src/sgml/ref/rollback.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ROLLBACK">
+ <indexterm zone="sql-rollback">
+  <primary>ROLLBACK</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ROLLBACK</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ROLLBACK</refname>
+  <refpurpose>abort the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ROLLBACK [ WORK | TRANSACTION ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ROLLBACK</command> rolls back the current transaction and causes
+   all the updates made by the transaction to be discarded.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>WORK</literal></term>
+    <term><literal>TRANSACTION</literal></term>
+    <listitem>
+     <para>
+      Optional key words. They have no effect.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Use <xref linkend="SQL-COMMIT"> to
+   successfully terminate a transaction.
+  </para>
+
+  <para>
+   Issuing <command>ROLLBACK</> outside of a transaction
+   block emits a warning and otherwise has no effect.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To abort all changes:
+<programlisting>
+ROLLBACK;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL standard only specifies the two forms
+   <literal>ROLLBACK</literal> and <literal>ROLLBACK
+   WORK</literal>. Otherwise, this command is fully conforming.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"></member>
+   <member><xref linkend="sql-commit"></member>
+   <member><xref linkend="sql-rollback-to"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

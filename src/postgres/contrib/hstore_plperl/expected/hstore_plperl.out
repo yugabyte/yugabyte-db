@@ -1,0 +1,48 @@
+CREATE EXTENSION hstore_plperl CASCADE;
+NOTICE:  installing required extension "hstore"
+NOTICE:  installing required extension "plperl"
+SELECT transforms.udt_schema, transforms.udt_name,
+       routine_schema, routine_name,
+       group_name, transform_type
+FROM information_schema.transforms JOIN information_schema.routines
+     USING (specific_catalog, specific_schema, specific_name)
+ORDER BY 1, 2, 5, 6;
+ udt_schema | udt_name | routine_schema |   routine_name   | group_name | transform_type 
+------------+----------+----------------+------------------+------------+----------------
+ public     | hstore   | public         | hstore_to_plperl | plperl     | FROM SQL
+ public     | hstore   | public         | plperl_to_hstore | plperl     | TO SQL
+(2 rows)
+
+-- test perl -> hstore
+CREATE FUNCTION test2() RETURNS hstore
+LANGUAGE plperl
+TRANSFORM FOR TYPE hstore
+AS $$
+$val = {a => 1, b => 'boo', c => undef};
+return $val;
+$$;
+SELECT test2();
+              test2              
+---------------------------------
+ "a"=>"1", "b"=>"boo", "c"=>NULL
+(1 row)
+
+-- test perl -> hstore[]
+CREATE FUNCTION test2arr() RETURNS hstore[]
+LANGUAGE plperl
+TRANSFORM FOR TYPE hstore
+AS $$
+$val = [{a => 1, b => 'boo', c => undef}, {d => 2}];
+return $val;
+$$;
+SELECT test2arr();
+                           test2arr                           
+--------------------------------------------------------------
+ {"\"a\"=>\"1\", \"b\"=>\"boo\", \"c\"=>NULL","\"d\"=>\"2\""}
+(1 row)
+
+DROP FUNCTION test2();
+DROP FUNCTION test2arr();
+DROP EXTENSION hstore_plperl;
+DROP EXTENSION hstore;
+DROP EXTENSION plperl;

@@ -1,0 +1,301 @@
+<!--
+doc/src/sgml/ref/revoke.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-REVOKE">
+ <indexterm zone="sql-revoke">
+  <primary>REVOKE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>REVOKE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>REVOKE</refname>
+  <refpurpose>remove access privileges</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+REVOKE [ GRANT OPTION FOR ]
+    { { SELECT | INSERT | UPDATE | DELETE | TRUNCATE | REFERENCES | TRIGGER }
+    [, ...] | ALL [ PRIVILEGES ] }
+    ON { [ TABLE ] <replaceable class="PARAMETER">table_name</replaceable> [, ...]
+         | ALL TABLES IN SCHEMA <replaceable>schema_name</replaceable> [, ...] }
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { { SELECT | INSERT | UPDATE | REFERENCES } ( <replaceable class="PARAMETER">column_name</replaceable> [, ...] )
+    [, ...] | ALL [ PRIVILEGES ] ( <replaceable class="PARAMETER">column_name</replaceable> [, ...] ) }
+    ON [ TABLE ] <replaceable class="PARAMETER">table_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { { USAGE | SELECT | UPDATE }
+    [, ...] | ALL [ PRIVILEGES ] }
+    ON { SEQUENCE <replaceable class="PARAMETER">sequence_name</replaceable> [, ...]
+         | ALL SEQUENCES IN SCHEMA <replaceable>schema_name</replaceable> [, ...] }
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { { CREATE | CONNECT | TEMPORARY | TEMP } [, ...] | ALL [ PRIVILEGES ] }
+    ON DATABASE <replaceable>database_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { USAGE | ALL [ PRIVILEGES ] }
+    ON DOMAIN <replaceable>domain_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { USAGE | ALL [ PRIVILEGES ] }
+    ON FOREIGN DATA WRAPPER <replaceable>fdw_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { USAGE | ALL [ PRIVILEGES ] }
+    ON FOREIGN SERVER <replaceable>server_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { EXECUTE | ALL [ PRIVILEGES ] }
+    ON { FUNCTION <replaceable>function_name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">arg_name</replaceable> ] <replaceable class="parameter">arg_type</replaceable> [, ...] ] ) ] [, ...]
+         | ALL FUNCTIONS IN SCHEMA <replaceable>schema_name</replaceable> [, ...] }
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { USAGE | ALL [ PRIVILEGES ] }
+    ON LANGUAGE <replaceable>lang_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { { SELECT | UPDATE } [, ...] | ALL [ PRIVILEGES ] }
+    ON LARGE OBJECT <replaceable class="PARAMETER">loid</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { { CREATE | USAGE } [, ...] | ALL [ PRIVILEGES ] }
+    ON SCHEMA <replaceable>schema_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { CREATE | ALL [ PRIVILEGES ] }
+    ON TABLESPACE <replaceable>tablespace_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
+    { USAGE | ALL [ PRIVILEGES ] }
+    ON TYPE <replaceable>type_name</replaceable> [, ...]
+    FROM { [ GROUP ] <replaceable class="PARAMETER">role_name</replaceable> | PUBLIC } [, ...]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ ADMIN OPTION FOR ]
+    <replaceable class="PARAMETER">role_name</replaceable> [, ...] FROM <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="SQL-REVOKE-description">
+  <title>Description</title>
+
+  <para>
+   The <command>REVOKE</command> command revokes previously granted
+   privileges from one or more roles.  The key word
+   <literal>PUBLIC</literal> refers to the implicitly defined group of
+   all roles.
+  </para>
+
+  <para>
+   See the description of the <xref linkend="sql-grant"> command for
+   the meaning of the privilege types.
+  </para>
+
+  <para>
+   Note that any particular role will have the sum
+   of privileges granted directly to it, privileges granted to any role it
+   is presently a member of, and privileges granted to
+   <literal>PUBLIC</literal>.  Thus, for example, revoking <literal>SELECT</> privilege
+   from <literal>PUBLIC</literal> does not necessarily mean that all roles
+   have lost <literal>SELECT</> privilege on the object: those who have it granted
+   directly or via another role will still have it.  Similarly, revoking
+   <literal>SELECT</> from a user might not prevent that user from using
+   <literal>SELECT</> if <literal>PUBLIC</literal> or another membership
+   role still has <literal>SELECT</> rights.
+  </para>
+
+  <para>
+   If <literal>GRANT OPTION FOR</literal> is specified, only the grant
+   option for the privilege is revoked, not the privilege itself.
+   Otherwise, both the privilege and the grant option are revoked.
+  </para>
+
+  <para>
+   If a user holds a privilege with grant option and has granted it to
+   other users then the privileges held by those other users are
+   called dependent privileges. If the privilege or the grant option
+   held by the first user is being revoked and dependent privileges
+   exist, those dependent privileges are also revoked if
+   <literal>CASCADE</literal> is specified; if it is not, the revoke action
+   will fail.  This recursive revocation only affects privileges that
+   were granted through a chain of users that is traceable to the user
+   that is the subject of this <literal>REVOKE</literal> command.
+   Thus, the affected users might effectively keep the privilege if it
+   was also granted through other users.
+  </para>
+
+  <para>
+   When revoking privileges on a table, the corresponding column privileges
+   (if any) are automatically revoked on each column of the table, as well.
+   On the other hand, if a role has been granted privileges on a table, then
+   revoking the same privileges from individual columns will have no effect.
+  </para>
+
+  <para>
+   When revoking membership in a role, <literal>GRANT OPTION</> is instead
+   called <literal>ADMIN OPTION</>, but the behavior is similar.
+   Note also that this form of the command does not
+   allow the noise word <literal>GROUP</>.
+  </para>
+ </refsect1>
+
+ <refsect1 id="SQL-REVOKE-notes">
+  <title>Notes</title>
+
+  <para>
+   Use <xref linkend="app-psql">'s <command>\dp</command> command to
+   display the privileges granted on existing tables and columns.  See <xref
+   linkend="sql-grant"> for information about the
+   format.  For non-table objects there are other <command>\d</> commands
+   that can display their privileges.
+  </para>
+
+  <para>
+   A user can only revoke privileges that were granted directly by
+   that user.  If, for example, user A has granted a privilege with
+   grant option to user B, and user B has in turned granted it to user
+   C, then user A cannot revoke the privilege directly from C.
+   Instead, user A could revoke the grant option from user B and use
+   the <literal>CASCADE</literal> option so that the privilege is
+   in turn revoked from user C.  For another example, if both A and B
+   have granted the same privilege to C, A can revoke their own grant
+   but not B's grant, so C will still effectively have the privilege.
+  </para>
+
+   <para>
+    When a non-owner of an object attempts to <command>REVOKE</> privileges
+    on the object, the command will fail outright if the user has no
+    privileges whatsoever on the object.  As long as some privilege is
+    available, the command will proceed, but it will revoke only those
+    privileges for which the user has grant options.  The <command>REVOKE ALL
+    PRIVILEGES</> forms will issue a warning message if no grant options are
+    held, while the other forms will issue a warning if grant options for
+    any of the privileges specifically named in the command are not held.
+    (In principle these statements apply to the object owner as well, but
+    since the owner is always treated as holding all grant options, the
+    cases can never occur.)
+   </para>
+
+   <para>
+    If a superuser chooses to issue a <command>GRANT</> or <command>REVOKE</>
+    command, the command is performed as though it were issued by the
+    owner of the affected object.  Since all privileges ultimately come
+    from the object owner (possibly indirectly via chains of grant options),
+    it is possible for a superuser to revoke all privileges, but this might
+    require use of <literal>CASCADE</literal> as stated above.
+   </para>
+
+   <para>
+    <command>REVOKE</> can also be done by a role
+    that is not the owner of the affected object, but is a member of the role
+    that owns the object, or is a member of a role that holds privileges
+    <literal>WITH GRANT OPTION</literal> on the object.  In this case the
+    command is performed as though it were issued by the containing role that
+    actually owns the object or holds the privileges
+    <literal>WITH GRANT OPTION</literal>.  For example, if table
+    <literal>t1</> is owned by role <literal>g1</>, of which role
+    <literal>u1</> is a member, then <literal>u1</> can revoke privileges
+    on <literal>t1</> that are recorded as being granted by <literal>g1</>.
+    This would include grants made by <literal>u1</> as well as by other
+    members of role <literal>g1</>.
+   </para>
+
+   <para>
+    If the role executing <command>REVOKE</> holds privileges
+    indirectly via more than one role membership path, it is unspecified
+    which containing role will be used to perform the command.  In such cases
+    it is best practice to use <command>SET ROLE</> to become the specific
+    role you want to do the <command>REVOKE</> as.  Failure to do so might
+    lead to revoking privileges other than the ones you intended, or not
+    revoking anything at all.
+   </para>
+ </refsect1>
+
+ <refsect1 id="SQL-REVOKE-examples">
+  <title>Examples</title>
+
+  <para>
+   Revoke insert privilege for the public on table
+   <literal>films</literal>:
+
+<programlisting>
+REVOKE INSERT ON films FROM PUBLIC;
+</programlisting>
+  </para>
+
+  <para>
+   Revoke all privileges from user <literal>manuel</literal> on view
+   <literal>kinds</literal>:
+
+<programlisting>
+REVOKE ALL PRIVILEGES ON kinds FROM manuel;
+</programlisting>
+
+   Note that this actually means <quote>revoke all privileges that I
+   granted</>.
+  </para>
+
+  <para>
+   Revoke membership in role <literal>admins</> from user <literal>joe</>:
+
+<programlisting>
+REVOKE admins FROM joe;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="SQL-REVOKE-compatibility">
+  <title>Compatibility</title>
+
+   <para>
+    The compatibility notes of the <xref linkend="sql-grant"> command
+    apply analogously to <command>REVOKE</command>.
+    The keyword <literal>RESTRICT</literal> or <literal>CASCADE</literal>
+    is required according to the standard, but <productname>PostgreSQL</>
+    assumes <literal>RESTRICT</literal> by default.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simpara>
+   <xref linkend="sql-grant">
+  </simpara>
+ </refsect1>
+
+</refentry>

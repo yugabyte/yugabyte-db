@@ -1,0 +1,572 @@
+<!-- doc/src/sgml/cube.sgml -->
+
+<sect1 id="cube" xreflabel="cube">
+ <title>cube</title>
+
+ <indexterm zone="cube">
+  <primary>cube (extension)</primary>
+ </indexterm>
+
+ <para>
+  This module implements a data type <type>cube</> for
+  representing multidimensional cubes.
+ </para>
+
+ <sect2>
+  <title>Syntax</title>
+
+  <para>
+   <xref linkend="cube-repr-table"> shows the valid external
+   representations for the <type>cube</>
+   type.  <replaceable>x</>, <replaceable>y</>, etc. denote
+   floating-point numbers.
+  </para>
+
+  <table id="cube-repr-table">
+   <title>Cube External Representations</title>
+   <tgroup cols="2">
+    <thead>
+     <row>
+      <entry>External Syntax</entry>
+      <entry>Meaning</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><literal><replaceable>x</></literal></entry>
+      <entry>A one-dimensional point
+       (or, zero-length one-dimensional interval)
+      </entry>
+     </row>
+     <row>
+      <entry><literal>(<replaceable>x</>)</literal></entry>
+      <entry>Same as above</entry>
+     </row>
+     <row>
+      <entry><literal><replaceable>x1</>,<replaceable>x2</>,...,<replaceable>xn</></literal></entry>
+      <entry>A point in n-dimensional space, represented internally as a
+      zero-volume cube
+      </entry>
+     </row>
+     <row>
+      <entry><literal>(<replaceable>x1</>,<replaceable>x2</>,...,<replaceable>xn</>)</literal></entry>
+      <entry>Same as above</entry>
+     </row>
+     <row>
+      <entry><literal>(<replaceable>x</>),(<replaceable>y</>)</literal></entry>
+      <entry>A one-dimensional interval starting at <replaceable>x</> and ending at <replaceable>y</> or vice versa; the
+       order does not matter
+      </entry>
+     </row>
+     <row>
+      <entry><literal>[(<replaceable>x</>),(<replaceable>y</>)]</literal></entry>
+      <entry>Same as above</entry>
+     </row>
+     <row>
+      <entry><literal>(<replaceable>x1</>,...,<replaceable>xn</>),(<replaceable>y1</>,...,<replaceable>yn</>)</literal></entry>
+      <entry>An n-dimensional cube represented by a pair of its diagonally
+       opposite corners
+      </entry>
+     </row>
+     <row>
+      <entry><literal>[(<replaceable>x1</>,...,<replaceable>xn</>),(<replaceable>y1</>,...,<replaceable>yn</>)]</literal></entry>
+      <entry>Same as above</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   It does not matter which order the opposite corners of a cube are
+   entered in.  The <type>cube</> functions
+   automatically swap values if needed to create a uniform
+   <quote>lower left &mdash; upper right</> internal representation.
+   When the corners coincide, <type>cube</> stores only one corner
+   along with an <quote>is point</> flag to avoid wasting space.
+  </para>
+
+  <para>
+   White space is ignored on input, so
+   <literal>[(<replaceable>x</>),(<replaceable>y</>)]</literal> is the same as
+   <literal>[ ( <replaceable>x</> ), ( <replaceable>y</> ) ]</literal>.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Precision</title>
+
+  <para>
+   Values are stored internally as 64-bit floating point numbers. This means
+   that numbers with more than about 16 significant digits will be truncated.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Usage</title>
+
+  <para>
+   <xref linkend="cube-operators-table"> shows the operators provided for
+   type <type>cube</>.
+  </para>
+
+  <table id="cube-operators-table">
+   <title>Cube Operators</title>
+   <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Operator</entry>
+      <entry>Result</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><literal>a = b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cubes a and b are identical.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &amp;&amp; b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cubes a and b overlap.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a @&gt; b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a contains the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;@ b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is contained in the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt; b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is less than the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;= b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is less than or equal to the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &gt; b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is greater than the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &gt;= b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is greater than or equal to the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;&gt; b</></entry>
+      <entry><type>boolean</></entry>
+      <entry>The cube a is not equal to the cube b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a -&gt; n</></entry>
+      <entry><type>float8</></entry>
+      <entry>Get <replaceable>n</>-th coordinate of cube (counting from 1).</entry>
+     </row>
+
+     <row>
+      <entry><literal>a ~&gt; n</></entry>
+      <entry><type>float8</></entry>
+      <entry>
+        Get <replaceable>n</>-th coordinate of cube in following way:
+        n = 2 * k - 1 means lower bound of <replaceable>k</>-th
+        dimension, n = 2 * k means upper bound of
+        <replaceable>k</>-th dimension.  This operator is designed
+        for KNN-GiST support.
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;-&gt; b</></entry>
+      <entry><type>float8</></entry>
+      <entry>Euclidean distance between a and b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;#&gt; b</></entry>
+      <entry><type>float8</></entry>
+      <entry>Taxicab (L-1 metric) distance between a and b.</entry>
+     </row>
+
+     <row>
+      <entry><literal>a &lt;=&gt; b</></entry>
+      <entry><type>float8</></entry>
+      <entry>Chebyshev (L-inf metric) distance between a and b.</entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   (Before PostgreSQL 8.2, the containment operators <literal>@&gt;</> and <literal>&lt;@</> were
+   respectively called <literal>@</> and <literal>~</>.  These names are still available, but are
+   deprecated and will eventually be retired.  Notice that the old names
+   are reversed from the convention formerly followed by the core geometric
+   data types!)
+  </para>
+
+  <para>
+   The scalar ordering operators (<literal>&lt;</>, <literal>&gt;=</>, etc)
+   do not make a lot of sense for any practical purpose but sorting.  These
+   operators first compare the first coordinates, and if those are equal,
+   compare the second coordinates, etc.  They exist mainly to support the
+   b-tree index operator class for <type>cube</>, which can be useful for
+   example if you would like a UNIQUE constraint on a <type>cube</> column.
+  </para>
+
+  <para>
+   The <filename>cube</> module also provides a GiST index operator class for
+   <type>cube</> values.
+   A <type>cube</> GiST index can be used to search for values using the
+   <literal>=</>, <literal>&amp;&amp;</>, <literal>@&gt;</>, and
+   <literal>&lt;@</> operators in <literal>WHERE</> clauses.
+  </para>
+
+  <para>
+   In addition, a <type>cube</> GiST index can be used to find nearest
+   neighbors using the metric operators
+   <literal>&lt;-&gt;</>, <literal>&lt;#&gt;</>, and
+   <literal>&lt;=&gt;</> in <literal>ORDER BY</> clauses.
+   For example, the nearest neighbor of the 3-D point (0.5, 0.5, 0.5)
+   could be found efficiently with:
+<programlisting>
+SELECT c FROM test ORDER BY c &lt;-&gt; cube(array[0.5,0.5,0.5]) LIMIT 1;
+</programlisting>
+  </para>
+
+  <para>
+   The <literal>~&gt;</> operator can also be used in this way to
+   efficiently retrieve the first few values sorted by a selected coordinate.
+   For example, to get the first few cubes ordered by the first coordinate
+   (lower left corner) ascending one could use the following query:
+<programlisting>
+SELECT c FROM test ORDER BY c ~&gt; 1 LIMIT 5;
+</programlisting>
+   And to get 2-D cubes ordered by the first coordinate of the upper right
+   corner descending:
+<programlisting>
+SELECT c FROM test ORDER BY c ~&gt; 3 DESC LIMIT 5;
+</programlisting>
+  </para>
+
+  <para>
+   <xref linkend="cube-functions-table"> shows the available functions.
+  </para>
+
+  <table id="cube-functions-table">
+   <title>Cube Functions</title>
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Function</entry>
+      <entry>Result</entry>
+      <entry>Description</entry>
+      <entry>Example</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><literal>cube(float8)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a one dimensional cube with both coordinates the same.
+      </entry>
+      <entry>
+       <literal>cube(1) == '(1)'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube(float8, float8)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a one dimensional cube.
+      </entry>
+      <entry>
+       <literal>cube(1,2) == '(1),(2)'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube(float8[])</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a zero-volume cube using the coordinates
+       defined by the array.
+      </entry>
+      <entry>
+       <literal>cube(ARRAY[1,2]) == '(1,2)'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube(float8[], float8[])</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a cube with upper right and lower left
+       coordinates as defined by the two arrays, which must be of the
+       same length.
+      </entry>
+      <entry>
+       <literal>cube(ARRAY[1,2], ARRAY[3,4]) == '(1,2),(3,4)'
+       </literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube(cube, float8)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a new cube by adding a dimension on to an existing cube,
+       with the same values for both endpoints of the new coordinate.  This
+       is useful for building cubes piece by piece from calculated values.
+      </entry>
+      <entry>
+       <literal>cube('(1,2),(3,4)'::cube, 5) == '(1,2,5),(3,4,5)'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube(cube, float8, float8)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a new cube by adding a dimension on to an existing
+       cube. This is useful for building cubes piece by piece from calculated
+       values.
+      </entry>
+      <entry>
+       <literal>cube('(1,2),(3,4)'::cube, 5, 6) == '(1,2,5),(3,4,6)'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_dim(cube)</literal></entry>
+      <entry><type>integer</type></entry>
+      <entry>Returns the number of dimensions of the cube.
+      </entry>
+      <entry>
+       <literal>cube_dim('(1,2),(3,4)') == '2'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_ll_coord(cube, integer)</literal></entry>
+      <entry><type>float8</type></entry>
+      <entry>Returns the <replaceable>n</>-th coordinate value for the lower
+       left corner of the cube.
+      </entry>
+      <entry>
+       <literal>cube_ll_coord('(1,2),(3,4)', 2) == '2'</literal>
+      </entry>
+     </row>
+
+    <row>
+      <entry><literal>cube_ur_coord(cube, integer)</literal></entry>
+      <entry><type>float8</type></entry>
+      <entry>Returns the <replaceable>n</>-th coordinate value for the
+       upper right corner of the cube.
+      </entry>
+      <entry>
+       <literal>cube_ur_coord('(1,2),(3,4)', 2) == '4'</literal>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_is_point(cube)</literal></entry>
+      <entry><type>boolean</type></entry>
+      <entry>Returns true if the cube is a point, that is,
+       the two defining corners are the same.</entry>
+      <entry>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_distance(cube, cube)</literal></entry>
+      <entry><type>float8</type></entry>
+      <entry>Returns the distance between two cubes. If both
+       cubes are points, this is the normal distance function.
+      </entry>
+      <entry>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_subset(cube, integer[])</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Makes a new cube from an existing cube, using a list of
+       dimension indexes from an array. Can be used to extract the endpoints
+       of a single dimension, or to drop dimensions, or to reorder them as
+       desired.
+      </entry>
+      <entry>
+       <literal>cube_subset(cube('(1,3,5),(6,7,8)'), ARRAY[2]) == '(3),(7)'</>
+       <literal>cube_subset(cube('(1,3,5),(6,7,8)'), ARRAY[3,2,1,1]) ==
+        '(5,3,1,1),(8,7,6,6)'</>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_union(cube, cube)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Produces the union of two cubes.
+      </entry>
+      <entry>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_inter(cube, cube)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Produces the intersection of two cubes.
+      </entry>
+      <entry>
+      </entry>
+     </row>
+
+     <row>
+      <entry><literal>cube_enlarge(c cube, r double, n integer)</literal></entry>
+      <entry><type>cube</type></entry>
+      <entry>Increases the size of the cube by the specified
+       radius <replaceable>r</> in at least <replaceable>n</> dimensions.
+       If the radius is negative the cube is shrunk instead.
+       All defined dimensions are changed by the radius <replaceable>r</>.
+       Lower-left coordinates are decreased by <replaceable>r</> and
+       upper-right coordinates are increased by <replaceable>r</>.  If a
+       lower-left coordinate is increased to more than the corresponding
+       upper-right coordinate (this can only happen when <replaceable>r</>
+       &lt; 0) than both coordinates are set to their average.
+       If <replaceable>n</> is greater than the number of defined dimensions
+       and the cube is being enlarged (<replaceable>r</> &gt; 0), then extra
+       dimensions are added to make <replaceable>n</> altogether;
+       0 is used as the initial value for the extra coordinates.
+       This function is useful for creating bounding boxes around a point for
+       searching for nearby points.
+      </entry>
+      <entry>
+       <literal>cube_enlarge('(1,2),(3,4)', 0.5, 3) ==
+        '(0.5,1.5,-0.5),(3.5,4.5,0.5)'</>
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect2>
+
+ <sect2>
+  <title>Defaults</title>
+
+  <para>
+   I believe this union:
+  </para>
+<programlisting>
+select cube_union('(0,5,2),(2,3,1)', '0');
+cube_union
+-------------------
+(0, 0, 0),(2, 5, 2)
+(1 row)
+</programlisting>
+
+   <para>
+    does not contradict common sense, neither does the intersection
+   </para>
+
+<programlisting>
+select cube_inter('(0,-1),(1,1)', '(-2),(2)');
+cube_inter
+-------------
+(0, 0),(1, 0)
+(1 row)
+</programlisting>
+
+   <para>
+    In all binary operations on differently-dimensioned cubes, I assume the
+    lower-dimensional one to be a Cartesian projection, i. e., having zeroes
+    in place of coordinates omitted in the string representation. The above
+    examples are equivalent to:
+   </para>
+
+<programlisting>
+cube_union('(0,5,2),(2,3,1)','(0,0,0),(0,0,0)');
+cube_inter('(0,-1),(1,1)','(-2,0),(2,0)');
+</programlisting>
+
+   <para>
+    The following containment predicate uses the point syntax,
+    while in fact the second argument is internally represented by a box.
+    This syntax makes it unnecessary to define a separate point type
+    and functions for (box,point) predicates.
+   </para>
+
+<programlisting>
+select cube_contains('(0,0),(1,1)', '0.5,0.5');
+cube_contains
+--------------
+t
+(1 row)
+</programlisting>
+ </sect2>
+
+ <sect2>
+  <title>Notes</title>
+
+  <para>
+   For examples of usage, see the regression test <filename>sql/cube.sql</>.
+  </para>
+
+  <para>
+   To make it harder for people to break things, there
+   is a limit of 100 on the number of dimensions of cubes. This is set
+   in <filename>cubedata.h</> if you need something bigger.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Credits</title>
+
+  <para>
+   Original author: Gene Selkov, Jr. <email>selkovjr@mcs.anl.gov</email>,
+   Mathematics and Computer Science Division, Argonne National Laboratory.
+  </para>
+
+  <para>
+   My thanks are primarily to Prof. Joe Hellerstein
+   (<ulink url="http://db.cs.berkeley.edu/jmh/"></ulink>) for elucidating the
+   gist of the GiST (<ulink url="http://gist.cs.berkeley.edu/"></ulink>), and
+   to his former student Andy Dong for his example written for Illustra.
+   I am also grateful to all Postgres developers, present and past, for
+   enabling myself to create my own world and live undisturbed in it. And I
+   would like to acknowledge my gratitude to Argonne Lab and to the
+   U.S. Department of Energy for the years of faithful support of my database
+   research.
+  </para>
+
+  <para>
+   Minor updates to this package were made by Bruno Wolff III
+   <email>bruno@wolff.to</email> in August/September of 2002. These include
+   changing the precision from single precision to double precision and adding
+   some new functions.
+  </para>
+
+  <para>
+   Additional updates were made by Joshua Reich <email>josh@root.net</email> in
+   July 2006. These include <literal>cube(float8[], float8[])</literal> and
+   cleaning up the code to use the V1 call protocol instead of the deprecated
+   V0 protocol.
+  </para>
+ </sect2>
+
+</sect1>

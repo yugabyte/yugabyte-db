@@ -1,0 +1,279 @@
+src/backend/storage/buffer/README
+
+Notes About Shared Buffer Access Rules
+======================================
+
+There are two separate access control mechanisms for shared disk buffers:
+reference counts (a/k/a pin counts) and buffer content locks.  (Actually,
+there's a third level of access control: one must hold the appropriate kind
+of lock on a relation before one can legally access any page belonging to
+the relation.  Relation-level locks are not discussed here.)
+
+Pins: one must "hold a pin on" a buffer (increment its reference count)
+before being allowed to do anything at all with it.  An unpinned buffer is
+subject to being reclaimed and reused for a different page at any instant,
+so touching it is unsafe.  Normally a pin is acquired via ReadBuffer and
+released via ReleaseBuffer.  It is OK and indeed common for a single
+backend to pin a page more than once concurrently; the buffer manager
+handles this efficiently.  It is considered OK to hold a pin for long
+intervals --- for example, sequential scans hold a pin on the current page
+until done processing all the tuples on the page, which could be quite a
+while if the scan is the outer scan of a join.  Similarly, a btree index
+scan may hold a pin on the current index page.  This is OK because normal
+operations never wait for a page's pin count to drop to zero.  (Anything
+that might need to do such a wait is instead handled by waiting to obtain
+the relation-level lock, which is why you'd better hold one first.)  Pins
+may not be held across transaction boundaries, however.
+
+Buffer content locks: there are two kinds of buffer lock, shared and exclusive,
+which act just as you'd expect: multiple backends can hold shared locks on
+the same buffer, but an exclusive lock prevents anyone else from holding
+either shared or exclusive lock.  (These can alternatively be called READ
+and WRITE locks.)  These locks are intended to be short-term: they should not
+be held for long.  Buffer locks are acquired and released by LockBuffer().
+It will *not* work for a single backend to try to acquire multiple locks on
+the same buffer.  One must pin a buffer before trying to lock it.
+
+Buffer access rules:
+
+1. To scan a page for tuples, one must hold a pin and either shared or
+exclusive content lock.  To examine the commit status (XIDs and status bits)
+of a tuple in a shared buffer, one must likewise hold a pin and either shared
+or exclusive lock.
+
+2. Once one has determined that a tuple is interesting (visible to the
+current transaction) one may drop the content lock, yet continue to access
+the tuple's data for as long as one holds the buffer pin.  This is what is
+typically done by heap scans, since the tuple returned by heap_fetch
+contains a pointer to tuple data in the shared buffer.  Therefore the
+tuple cannot go away while the pin is held (see rule #5).  Its state could
+change, but that is assumed not to matter after the initial determination
+of visibility is made.
+
+3. To add a tuple or change the xmin/xmax fields of an existing tuple,
+one must hold a pin and an exclusive content lock on the containing buffer.
+This ensures that no one else might see a partially-updated state of the
+tuple while they are doing visibility checks.
+
+4. It is considered OK to update tuple commit status bits (ie, OR the
+values HEAP_XMIN_COMMITTED, HEAP_XMIN_INVALID, HEAP_XMAX_COMMITTED, or
+HEAP_XMAX_INVALID into t_infomask) while holding only a shared lock and
+pin on a buffer.  This is OK because another backend looking at the tuple
+at about the same time would OR the same bits into the field, so there
+is little or no risk of conflicting update; what's more, if there did
+manage to be a conflict it would merely mean that one bit-update would
+be lost and need to be done again later.  These four bits are only hints
+(they cache the results of transaction status lookups in pg_xact), so no
+great harm is done if they get reset to zero by conflicting updates.
+Note, however, that a tuple is frozen by setting both HEAP_XMIN_INVALID
+and HEAP_XMIN_COMMITTED; this is a critical update and accordingly requires
+an exclusive buffer lock (and it must also be WAL-logged).
+
+5. To physically remove a tuple or compact free space on a page, one
+must hold a pin and an exclusive lock, *and* observe while holding the
+exclusive lock that the buffer's shared reference count is one (ie,
+no other backend holds a pin).  If these conditions are met then no other
+backend can perform a page scan until the exclusive lock is dropped, and
+no other backend can be holding a reference to an existing tuple that it
+might expect to examine again.  Note that another backend might pin the
+buffer (increment the refcount) while one is performing the cleanup, but
+it won't be able to actually examine the page until it acquires shared
+or exclusive content lock.
+
+
+Obtaining the lock needed under rule #5 is done by the bufmgr routines
+LockBufferForCleanup() or ConditionalLockBufferForCleanup().  They first get
+an exclusive lock and then check to see if the shared pin count is currently
+1.  If not, ConditionalLockBufferForCleanup() releases the exclusive lock and
+then returns false, while LockBufferForCleanup() releases the exclusive lock
+(but not the caller's pin) and waits until signaled by another backend,
+whereupon it tries again.  The signal will occur when UnpinBuffer decrements
+the shared pin count to 1.  As indicated above, this operation might have to
+wait a good while before it acquires the lock, but that shouldn't matter much
+for concurrent VACUUM.  The current implementation only supports a single
+waiter for pin-count-1 on any particular shared buffer.  This is enough for
+VACUUM's use, since we don't allow multiple VACUUMs concurrently on a single
+relation anyway.  Anyone wishing to obtain a cleanup lock outside of recovery
+or a VACUUM must use the conditional variant of the function.
+
+
+Buffer Manager's Internal Locking
+---------------------------------
+
+Before PostgreSQL 8.1, all operations of the shared buffer manager itself
+were protected by a single system-wide lock, the BufMgrLock, which
+unsurprisingly proved to be a source of contention.  The new locking scheme
+avoids grabbing system-wide exclusive locks in common code paths.  It works
+like this:
+
+* There is a system-wide LWLock, the BufMappingLock, that notionally
+protects the mapping from buffer tags (page identifiers) to buffers.
+(Physically, it can be thought of as protecting the hash table maintained
+by buf_table.c.)  To look up whether a buffer exists for a tag, it is
+sufficient to obtain share lock on the BufMappingLock.  Note that one
+must pin the found buffer, if any, before releasing the BufMappingLock.
+To alter the page assignment of any buffer, one must hold exclusive lock
+on the BufMappingLock.  This lock must be held across adjusting the buffer's
+header fields and changing the buf_table hash table.  The only common
+operation that needs exclusive lock is reading in a page that was not
+in shared buffers already, which will require at least a kernel call
+and usually a wait for I/O, so it will be slow anyway.
+
+* As of PG 8.2, the BufMappingLock has been split into NUM_BUFFER_PARTITIONS
+separate locks, each guarding a portion of the buffer tag space.  This allows
+further reduction of contention in the normal code paths.  The partition
+that a particular buffer tag belongs to is determined from the low-order
+bits of the tag's hash value.  The rules stated above apply to each partition
+independently.  If it is necessary to lock more than one partition at a time,
+they must be locked in partition-number order to avoid risk of deadlock.
+
+* A separate system-wide spinlock, buffer_strategy_lock, provides mutual
+exclusion for operations that access the buffer free list or select
+buffers for replacement.  A spinlock is used here rather than a lightweight
+lock for efficiency; no other locks of any sort should be acquired while
+buffer_strategy_lock is held.  This is essential to allow buffer replacement
+to happen in multiple backends with reasonable concurrency.
+
+* Each buffer header contains a spinlock that must be taken when examining
+or changing fields of that buffer header.  This allows operations such as
+ReleaseBuffer to make local state changes without taking any system-wide
+lock.  We use a spinlock, not an LWLock, since there are no cases where
+the lock needs to be held for more than a few instructions.
+
+Note that a buffer header's spinlock does not control access to the data
+held within the buffer.  Each buffer header also contains an LWLock, the
+"buffer content lock", that *does* represent the right to access the data
+in the buffer.  It is used per the rules above.
+
+There is yet another set of per-buffer LWLocks, the io_in_progress locks,
+that are used to wait for I/O on a buffer to complete.  The process doing
+a read or write takes exclusive lock for the duration, and processes that
+need to wait for completion try to take shared locks (which they release
+immediately upon obtaining).  XXX on systems where an LWLock represents
+nontrivial resources, it's fairly annoying to need so many locks.  Possibly
+we could use per-backend LWLocks instead (a buffer header would then contain
+a field to show which backend is doing its I/O).
+
+
+Normal Buffer Replacement Strategy
+----------------------------------
+
+There is a "free list" of buffers that are prime candidates for replacement.
+In particular, buffers that are completely free (contain no valid page) are
+always in this list.  We could also throw buffers into this list if we
+consider their pages unlikely to be needed soon; however, the current
+algorithm never does that.  The list is singly-linked using fields in the
+buffer headers; we maintain head and tail pointers in global variables.
+(Note: although the list links are in the buffer headers, they are
+considered to be protected by the buffer_strategy_lock, not the buffer-header
+spinlocks.)  To choose a victim buffer to recycle when there are no free
+buffers available, we use a simple clock-sweep algorithm, which avoids the
+need to take system-wide locks during common operations.  It works like
+this:
+
+Each buffer header contains a usage counter, which is incremented (up to a
+small limit value) whenever the buffer is pinned.  (This requires only the
+buffer header spinlock, which would have to be taken anyway to increment the
+buffer reference count, so it's nearly free.)
+
+The "clock hand" is a buffer index, nextVictimBuffer, that moves circularly
+through all the available buffers.  nextVictimBuffer is protected by the
+buffer_strategy_lock.
+
+The algorithm for a process that needs to obtain a victim buffer is:
+
+1. Obtain buffer_strategy_lock.
+
+2. If buffer free list is nonempty, remove its head buffer.  Release
+buffer_strategy_lock.  If the buffer is pinned or has a nonzero usage count,
+it cannot be used; ignore it go back to step 1.  Otherwise, pin the buffer,
+and return it.
+
+3. Otherwise, the buffer free list is empty.  Select the buffer pointed to by
+nextVictimBuffer, and circularly advance nextVictimBuffer for next time.
+Release buffer_strategy_lock.
+
+4. If the selected buffer is pinned or has a nonzero usage count, it cannot
+be used.  Decrement its usage count (if nonzero), reacquire
+buffer_strategy_lock, and return to step 3 to examine the next buffer.
+
+5. Pin the selected buffer, and return.
+
+(Note that if the selected buffer is dirty, we will have to write it out
+before we can recycle it; if someone else pins the buffer meanwhile we will
+have to give up and try another buffer.  This however is not a concern
+of the basic select-a-victim-buffer algorithm.)
+
+
+Buffer Ring Replacement Strategy
+---------------------------------
+
+When running a query that needs to access a large number of pages just once,
+such as VACUUM or a large sequential scan, a different strategy is used.
+A page that has been touched only by such a scan is unlikely to be needed
+again soon, so instead of running the normal clock sweep algorithm and
+blowing out the entire buffer cache, a small ring of buffers is allocated
+using the normal clock sweep algorithm and those buffers are reused for the
+whole scan.  This also implies that much of the write traffic caused by such
+a statement will be done by the backend itself and not pushed off onto other
+processes.
+
+For sequential scans, a 256KB ring is used. That's small enough to fit in L2
+cache, which makes transferring pages from OS cache to shared buffer cache
+efficient.  Even less would often be enough, but the ring must be big enough
+to accommodate all pages in the scan that are pinned concurrently.  256KB
+should also be enough to leave a small cache trail for other backends to
+join in a synchronized seq scan.  If a ring buffer is dirtied and its LSN
+updated, we would normally have to write and flush WAL before we could
+re-use the buffer; in this case we instead discard the buffer from the ring
+and (later) choose a replacement using the normal clock-sweep algorithm.
+Hence this strategy works best for scans that are read-only (or at worst
+update hint bits).  In a scan that modifies every page in the scan, like a
+bulk UPDATE or DELETE, the buffers in the ring will always be dirtied and
+the ring strategy effectively degrades to the normal strategy.
+
+VACUUM uses a 256KB ring like sequential scans, but dirty pages are not
+removed from the ring.  Instead, WAL is flushed if needed to allow reuse of
+the buffers.  Before introducing the buffer ring strategy in 8.3, VACUUM's
+buffers were sent to the freelist, which was effectively a buffer ring of 1
+buffer, resulting in excessive WAL flushing.  Allowing VACUUM to update
+256KB between WAL flushes should be more efficient.
+
+Bulk writes work similarly to VACUUM.  Currently this applies only to
+COPY IN and CREATE TABLE AS SELECT.  (Might it be interesting to make
+seqscan UPDATE and DELETE use the bulkwrite strategy?)  For bulk writes
+we use a ring size of 16MB (but not more than 1/8th of shared_buffers).
+Smaller sizes have been shown to result in the COPY blocking too often
+for WAL flushes.  While it's okay for a background vacuum to be slowed by
+doing its own WAL flushing, we'd prefer that COPY not be subject to that,
+so we let it use up a bit more of the buffer arena.
+
+
+Background Writer's Processing
+------------------------------
+
+The background writer is designed to write out pages that are likely to be
+recycled soon, thereby offloading the writing work from active backends.
+To do this, it scans forward circularly from the current position of
+nextVictimBuffer (which it does not change!), looking for buffers that are
+dirty and not pinned nor marked with a positive usage count.  It pins,
+writes, and releases any such buffer.
+
+If we can assume that reading nextVictimBuffer is an atomic action, then
+the writer doesn't even need to take buffer_strategy_lock in order to look
+for buffers to write; it needs only to spinlock each buffer header for long
+enough to check the dirtybit.  Even without that assumption, the writer
+only needs to take the lock long enough to read the variable value, not
+while scanning the buffers.  (This is a very substantial improvement in
+the contention cost of the writer compared to PG 8.0.)
+
+The background writer takes shared content lock on a buffer while writing it
+out (and anyone else who flushes buffer contents to disk must do so too).
+This ensures that the page image transferred to disk is reasonably consistent.
+We might miss a hint-bit update or two but that isn't a problem, for the same
+reasons mentioned under buffer access rules.
+
+As of 8.4, background writer starts during recovery mode when there is
+some form of potentially extended recovery to perform. It performs an
+identical service to normal processing, except that checkpoints it
+writes are technically restartpoints.

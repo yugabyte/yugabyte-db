@@ -1,0 +1,123 @@
+# ----------
+# src/test/regress/parallel_schedule
+#
+# By convention, we put no more than twenty tests in any one parallel group;
+# this limits the number of connections needed to run the tests.
+# ----------
+
+# run tablespace by itself, and first, because it forces a checkpoint;
+# we'd prefer not to have checkpoints later in the tests because that
+# interferes with crash-recovery testing.
+test: tablespace
+
+# ----------
+# The first group of parallel tests
+# ----------
+test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeric txid uuid enum money rangetypes pg_lsn regproc
+
+# Depends on things setup during char, varchar and text
+test: strings
+# Depends on int2, int4, int8, float4, float8
+test: numerology
+
+# ----------
+# The second group of parallel tests
+# ----------
+test: point lseg line box path polygon circle date time timetz timestamp timestamptz interval abstime reltime tinterval inet macaddr macaddr8 tstypes
+
+# ----------
+# Another group of parallel tests
+# geometry depends on point, lseg, box, path, polygon and circle
+# horology depends on interval, timetz, timestamp, timestamptz, reltime and abstime
+# ----------
+test: geometry horology regex oidjoins type_sanity opr_sanity misc_sanity comments expressions
+
+# ----------
+# These four each depend on the previous one
+# ----------
+test: insert
+test: insert_conflict
+test: create_function_1
+test: create_type
+test: create_table
+test: create_function_2
+
+# ----------
+# Load huge amounts of data
+# We should split the data files into single files and then
+# execute two copy tests parallel, to check that copy itself
+# is concurrent safe.
+# ----------
+test: copy copyselect copydml
+
+# ----------
+# More groups of parallel tests
+# ----------
+test: create_misc create_operator
+# These depend on the above two
+test: create_index create_view
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: create_aggregate create_function_3 create_cast constraints triggers inherit create_table_like typed_table vacuum drop_if_exists updatable_views rolenames roleattributes create_am
+
+# ----------
+# sanity_check does a vacuum, affecting the sort order of SELECT *
+# results. So it should not run parallel to other tests.
+# ----------
+test: sanity_check
+
+# ----------
+# Believe it or not, select creates a table, subsequent
+# tests need.
+# ----------
+test: errors
+test: select
+ignore: random
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace prepared_xacts delete
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: alter_generic alter_operator misc psql async dbsize misc_functions sysviews tsrf tidscan stats_ext
+
+# rules cannot run concurrently with any test that creates a view
+test: rules psql_crosstab amutils
+
+# run by itself so it can run parallel workers
+test: select_parallel
+
+# no relation related tests can be put in this group
+test: publication subscription
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock json jsonb json_encoding indirect_toast equivclass
+# ----------
+# Another group of parallel tests
+# NB: temp.sql does a reconnect which transiently uses 2 connections,
+# so keep this parallel group to at most 19 tests
+# ----------
+test: plancache limit plpgsql copy2 temp domain rangefuncs prepare without_oid conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
+
+# ----------
+# Another group of parallel tests
+# ----------
+test: identity
+
+# event triggers cannot run concurrently with any test that runs DDL
+test: event_trigger
+
+# run stats by itself because its delay may be insufficient under heavy load
+test: stats

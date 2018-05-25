@@ -1,0 +1,254 @@
+--
+-- Tests to exercise the plan caching/invalidation mechanism
+--
+CREATE TEMP TABLE pcachetest AS SELECT * FROM int8_tbl;
+-- create and use a cached plan
+PREPARE prepstmt AS SELECT * FROM pcachetest;
+EXECUTE prepstmt;
+        q1        |        q2         
+------------------+-------------------
+              123 |               456
+              123 |  4567890123456789
+ 4567890123456789 |               123
+ 4567890123456789 |  4567890123456789
+ 4567890123456789 | -4567890123456789
+(5 rows)
+
+-- and one with parameters
+PREPARE prepstmt2(bigint) AS SELECT * FROM pcachetest WHERE q1 = $1;
+EXECUTE prepstmt2(123);
+ q1  |        q2        
+-----+------------------
+ 123 |              456
+ 123 | 4567890123456789
+(2 rows)
+
+-- invalidate the plans and see what happens
+DROP TABLE pcachetest;
+EXECUTE prepstmt;
+ERROR:  relation "pcachetest" does not exist
+EXECUTE prepstmt2(123);
+ERROR:  relation "pcachetest" does not exist
+-- recreate the temp table (this demonstrates that the raw plan is
+-- purely textual and doesn't depend on OIDs, for instance)
+CREATE TEMP TABLE pcachetest AS SELECT * FROM int8_tbl ORDER BY 2;
+EXECUTE prepstmt;
+        q1        |        q2         
+------------------+-------------------
+ 4567890123456789 | -4567890123456789
+ 4567890123456789 |               123
+              123 |               456
+              123 |  4567890123456789
+ 4567890123456789 |  4567890123456789
+(5 rows)
+
+EXECUTE prepstmt2(123);
+ q1  |        q2        
+-----+------------------
+ 123 |              456
+ 123 | 4567890123456789
+(2 rows)
+
+-- prepared statements should prevent change in output tupdesc,
+-- since clients probably aren't expecting that to change on the fly
+ALTER TABLE pcachetest ADD COLUMN q3 bigint;
+EXECUTE prepstmt;
+ERROR:  cached plan must not change result type
+EXECUTE prepstmt2(123);
+ERROR:  cached plan must not change result type
+-- but we're nice guys and will let you undo your mistake
+ALTER TABLE pcachetest DROP COLUMN q3;
+EXECUTE prepstmt;
+        q1        |        q2         
+------------------+-------------------
+ 4567890123456789 | -4567890123456789
+ 4567890123456789 |               123
+              123 |               456
+              123 |  4567890123456789
+ 4567890123456789 |  4567890123456789
+(5 rows)
+
+EXECUTE prepstmt2(123);
+ q1  |        q2        
+-----+------------------
+ 123 |              456
+ 123 | 4567890123456789
+(2 rows)
+
+-- Try it with a view, which isn't directly used in the resulting plan
+-- but should trigger invalidation anyway
+CREATE TEMP VIEW pcacheview AS
+  SELECT * FROM pcachetest;
+PREPARE vprep AS SELECT * FROM pcacheview;
+EXECUTE vprep;
+        q1        |        q2         
+------------------+-------------------
+ 4567890123456789 | -4567890123456789
+ 4567890123456789 |               123
+              123 |               456
+              123 |  4567890123456789
+ 4567890123456789 |  4567890123456789
+(5 rows)
+
+CREATE OR REPLACE TEMP VIEW pcacheview AS
+  SELECT q1, q2/2 AS q2 FROM pcachetest;
+EXECUTE vprep;
+        q1        |        q2         
+------------------+-------------------
+ 4567890123456789 | -2283945061728394
+ 4567890123456789 |                61
+              123 |               228
+              123 |  2283945061728394
+ 4567890123456789 |  2283945061728394
+(5 rows)
+
+-- Check basic SPI plan invalidation
+create function cache_test(int) returns int as $$
+declare total int;
+begin
+	create temp table t1(f1 int);
+	insert into t1 values($1);
+	insert into t1 values(11);
+	insert into t1 values(12);
+	insert into t1 values(13);
+	select sum(f1) into total from t1;
+	drop table t1;
+	return total;
+end
+$$ language plpgsql;
+select cache_test(1);
+ cache_test 
+------------
+         37
+(1 row)
+
+select cache_test(2);
+ cache_test 
+------------
+         38
+(1 row)
+
+select cache_test(3);
+ cache_test 
+------------
+         39
+(1 row)
+
+-- Check invalidation of plpgsql "simple expression"
+create temp view v1 as
+  select 2+2 as f1;
+create function cache_test_2() returns int as $$
+begin
+	return f1 from v1;
+end$$ language plpgsql;
+select cache_test_2();
+ cache_test_2 
+--------------
+            4
+(1 row)
+
+create or replace temp view v1 as
+  select 2+2+4 as f1;
+select cache_test_2();
+ cache_test_2 
+--------------
+            8
+(1 row)
+
+create or replace temp view v1 as
+  select 2+2+4+(select max(unique1) from tenk1) as f1;
+select cache_test_2();
+ cache_test_2 
+--------------
+        10007
+(1 row)
+
+--- Check that change of search_path is honored when re-using cached plan
+create schema s1
+  create table abc (f1 int);
+create schema s2
+  create table abc (f1 int);
+insert into s1.abc values(123);
+insert into s2.abc values(456);
+set search_path = s1;
+prepare p1 as select f1 from abc;
+execute p1;
+ f1  
+-----
+ 123
+(1 row)
+
+set search_path = s2;
+select f1 from abc;
+ f1  
+-----
+ 456
+(1 row)
+
+execute p1;
+ f1  
+-----
+ 456
+(1 row)
+
+alter table s1.abc add column f2 float8;   -- force replan
+execute p1;
+ f1  
+-----
+ 456
+(1 row)
+
+drop schema s1 cascade;
+NOTICE:  drop cascades to table s1.abc
+drop schema s2 cascade;
+NOTICE:  drop cascades to table abc
+reset search_path;
+-- Check that invalidation deals with regclass constants
+create temp sequence seq;
+prepare p2 as select nextval('seq');
+execute p2;
+ nextval 
+---------
+       1
+(1 row)
+
+drop sequence seq;
+create temp sequence seq;
+execute p2;
+ nextval 
+---------
+       1
+(1 row)
+
+-- Check DDL via SPI, immediately followed by SPI plan re-use
+-- (bug in original coding)
+create function cachebug() returns void as $$
+declare r int;
+begin
+  drop table if exists temptable cascade;
+  create temp table temptable as select * from generate_series(1,3) as f1;
+  create temp view vv as select * from temptable;
+  for r in select * from vv loop
+    raise notice '%', r;
+  end loop;
+end$$ language plpgsql;
+select cachebug();
+NOTICE:  table "temptable" does not exist, skipping
+NOTICE:  1
+NOTICE:  2
+NOTICE:  3
+ cachebug 
+----------
+ 
+(1 row)
+
+select cachebug();
+NOTICE:  drop cascades to view vv
+NOTICE:  1
+NOTICE:  2
+NOTICE:  3
+ cachebug 
+----------
+ 
+(1 row)
+

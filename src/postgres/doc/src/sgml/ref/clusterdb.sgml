@@ -1,0 +1,332 @@
+<!--
+doc/src/sgml/ref/clusterdb.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="APP-CLUSTERDB">
+ <indexterm zone="app-clusterdb">
+  <primary>clusterdb</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>clusterdb</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname id="clusterdb">clusterdb</refname>
+  <refpurpose>cluster a <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>clusterdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <group choice="opt"><arg choice="plain"><option>--verbose</option></arg><arg choice="plain"><option>-v</option></arg></group>
+
+   <arg choice="plain" rep="repeat">
+     <arg choice="opt">
+       <group choice="plain">
+         <arg choice="plain"><option>--table</option></arg>
+         <arg choice="plain"><option>-t</option></arg>
+       </group>
+       <replaceable>table</replaceable>
+     </arg>
+   </arg>
+
+   <arg choice="opt"><replaceable>dbname</replaceable></arg>
+  </cmdsynopsis>
+
+  <cmdsynopsis>
+   <command>clusterdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <group choice="opt"><arg choice="plain"><option>--verbose</option></arg><arg choice="plain"><option>-v</option></arg></group>
+   <group choice="plain"><arg choice="plain"><option>--all</option></arg><arg choice="plain"><option>-a</option></arg></group>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <application>clusterdb</application> is a utility for reclustering tables
+   in a <productname>PostgreSQL</productname> database.  It finds tables
+   that have previously been clustered, and clusters them again on the same
+   index that was last used.  Tables that have never been clustered are not
+   affected.
+  </para>
+
+  <para>
+   <application>clusterdb</application> is a wrapper around the SQL
+   command <xref linkend="SQL-CLUSTER">.
+   There is no effective difference between clustering databases via
+   this utility and via other methods for accessing the server.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    <application>clusterdb</application> accepts the following command-line arguments:
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-a</></term>
+      <term><option>--all</></term>
+      <listitem>
+       <para>
+        Cluster all databases.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option><optional>-d</> <replaceable class="parameter">dbname</replaceable></></term>
+      <term><option><optional>--dbname=</><replaceable class="parameter">dbname</replaceable></></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to be clustered.
+        If this is not specified and <option>-a</option> (or
+        <option>--all</option>) is not used, the database name is read
+        from the environment variable <envar>PGDATABASE</envar>.  If
+        that is not set, the user name specified for the connection is
+        used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</></term>
+      <term><option>--echo</></term>
+      <listitem>
+       <para>
+        Echo the commands that <application>clusterdb</application> generates
+        and sends to the server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-q</></term>
+      <term><option>--quiet</></term>
+      <listitem>
+       <para>
+        Do not display progress messages.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-t <replaceable class="parameter">table</replaceable></></term>
+      <term><option>--table=<replaceable class="parameter">table</replaceable></></term>
+      <listitem>
+       <para>
+        Cluster <replaceable class="parameter">table</replaceable> only.
+        Multiple tables can be clustered by writing multiple
+        <option>-t</> switches.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-v</></term>
+      <term><option>--verbose</></term>
+      <listitem>
+       <para>
+        Print detailed information during processing.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    <varlistentry>
+      <term><option>-V</></term>
+      <term><option>--version</></term>
+      <listitem>
+      <para>
+      Print the <application>clusterdb</application> version and exit.
+      </para>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+      <term><option>-?</></term>
+      <term><option>--help</></term>
+      <listitem>
+      <para>
+      Show help about <application>clusterdb</application> command line
+      arguments, and exit.
+      </para>
+      </listitem>
+    </varlistentry>
+
+    </variablelist>
+   </para>
+
+   <para>
+    <application>clusterdb</application> also accepts
+    the following command-line arguments for connection parameters:
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">host</replaceable></></term>
+      <term><option>--host=<replaceable class="parameter">host</replaceable></></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the server is
+        running.  If the value begins with a slash, it is used as the
+        directory for the Unix domain socket.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or local Unix domain socket file
+        extension on which the server
+        is listening for connections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></></term>
+      <listitem>
+       <para>
+        User name to connect as.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</></term>
+      <term><option>--no-password</></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</></term>
+      <term><option>--password</></term>
+      <listitem>
+       <para>
+        Force <application>clusterdb</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>clusterdb</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>clusterdb</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</> to avoid the extra
+        connection attempt.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--maintenance-db=<replaceable class="parameter">dbname</replaceable></></term>
+      <listitem>
+       <para>
+         Specifies the name of the database to connect to discover what other
+         databases should be clustered. If not specified, the
+         <literal>postgres</literal> database will be used,
+         and if that does not exist, <literal>template1</literal> will be used.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATABASE</envar></term>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</> utilities,
+   also uses the environment variables supported by <application>libpq</>
+   (see <xref linkend="libpq-envars">).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Diagnostics</title>
+
+  <para>
+   In case of difficulty, see <xref linkend="SQL-CLUSTER">
+   and <xref linkend="APP-PSQL"> for
+   discussions of potential problems and error messages.
+   The database server must be running at the
+   targeted host.  Also, any default connection settings and environment
+   variables used by the <application>libpq</application> front-end
+   library will apply.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+   <para>
+    To cluster the database <literal>test</literal>:
+<screen>
+<prompt>$ </prompt><userinput>clusterdb test</userinput>
+</screen>
+   </para>
+
+   <para>
+    To cluster a single table
+    <literal>foo</literal> in a database named
+    <literal>xyzzy</literal>:
+<screen>
+<prompt>$ </prompt><userinput>clusterdb --table=foo xyzzy</userinput>
+</screen></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-cluster"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

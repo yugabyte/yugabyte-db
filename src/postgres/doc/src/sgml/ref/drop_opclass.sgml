@@ -1,0 +1,149 @@
+<!--
+doc/src/sgml/ref/drop_opclass.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-DROPOPCLASS">
+ <indexterm zone="sql-dropopclass">
+  <primary>DROP OPERATOR CLASS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP OPERATOR CLASS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP OPERATOR CLASS</refname>
+  <refpurpose>remove an operator class</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP OPERATOR CLASS [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable> USING <replaceable class="PARAMETER">index_method</replaceable> [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP OPERATOR CLASS</command> drops an existing operator class.
+   To execute this command you must be the owner of the operator class.
+  </para>
+
+  <para>
+   <command>DROP OPERATOR CLASS</command> does not drop any of the operators
+   or functions referenced by the class.  If there are any indexes depending
+   on the operator class, you will need to specify
+   <literal>CASCADE</> for the drop to complete.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the operator class does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_method</replaceable></term>
+    <listitem>
+     <para>
+      The name of the index access method the operator class is for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the operator class (such as
+      indexes), and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend">).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the operator class if any objects depend on it.
+      This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <command>DROP OPERATOR CLASS</> will not drop the operator family
+   containing the class, even if there is nothing else left in the
+   family (in particular, in the case where the family was implicitly
+   created by <command>CREATE OPERATOR CLASS</>).  An empty operator
+   family is harmless, but for the sake of tidiness you might wish to
+   remove the family with <command>DROP OPERATOR FAMILY</>; or perhaps
+   better, use <command>DROP OPERATOR FAMILY</> in the first place.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Remove the B-tree operator class <literal>widget_ops</literal>:
+
+<programlisting>
+DROP OPERATOR CLASS widget_ops USING btree;
+</programlisting>
+
+   This command will not succeed if there are any existing indexes
+   that use the operator class.  Add <literal>CASCADE</> to drop
+   such indexes along with the operator class.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>DROP OPERATOR CLASS</command> statement in the
+   SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alteropclass"></member>
+   <member><xref linkend="sql-createopclass"></member>
+   <member><xref linkend="sql-dropopfamily"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

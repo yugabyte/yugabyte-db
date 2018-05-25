@@ -1,0 +1,252 @@
+<!-- doc/src/sgml/dfunc.sgml -->
+
+<sect2 id="dfunc">
+ <title>Compiling and Linking Dynamically-loaded Functions</title>
+
+ <para>
+  Before you are able to use your
+  <productname>PostgreSQL</productname> extension functions written in
+  C, they must be compiled and linked in a special way to produce a
+  file that can be dynamically loaded by the server.  To be precise, a
+  <firstterm>shared library</firstterm> needs to be
+  created.<indexterm><primary>shared library</></indexterm>
+
+ </para>
+
+ <para>
+  For information beyond what is contained in this section
+  you should read the documentation of your
+  operating system, in particular the manual pages for the C compiler,
+  <command>cc</command>, and the link editor, <command>ld</command>.
+  In addition, the <productname>PostgreSQL</productname> source code
+  contains several working examples in the
+  <filename>contrib</filename> directory.  If you rely on these
+  examples you will make your modules dependent on the availability
+  of the <productname>PostgreSQL</productname> source code, however.
+ </para>
+
+ <para>
+  Creating shared libraries is generally analogous to linking
+  executables: first the source files are compiled into object files,
+  then the object files are linked together.  The object files need to
+  be created as <firstterm>position-independent code</firstterm>
+  (<acronym>PIC</acronym>),<indexterm><primary>PIC</></> which
+  conceptually means that they can be placed at an arbitrary location
+  in memory when they are loaded by the executable.  (Object files
+  intended for executables are usually not compiled that way.)  The
+  command to link a shared library contains special flags to
+  distinguish it from linking an executable (at least in theory
+  &mdash; on some systems the practice is much uglier).
+ </para>
+
+ <para>
+  In the following examples we assume that your source code is in a
+  file <filename>foo.c</filename> and we will create a shared library
+  <filename>foo.so</filename>.  The intermediate object file will be
+  called <filename>foo.o</filename> unless otherwise noted.  A shared
+  library can contain more than one object file, but we only use one
+  here.
+ </para>
+
+<!--
+  Note: Reading GNU Libtool sources is generally a good way of
+  figuring out this information.  The methods used within PostgreSQL
+  source code are not necessarily ideal.
+-->
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <systemitem class="osname">FreeBSD</>
+     <indexterm><primary>FreeBSD</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag to create <acronym>PIC</acronym> is
+      <option>-fPIC</option>.  To create shared libraries the compiler
+      flag is <option>-shared</option>.
+<programlisting>
+gcc -fPIC -c foo.c
+gcc -shared -o foo.so foo.o
+</programlisting>
+      This is applicable as of version 3.0 of
+      <systemitem class="osname">FreeBSD</>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">HP-UX</>
+     <indexterm><primary>HP-UX</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag of the system compiler to create
+      <acronym>PIC</acronym> is <option>+z</option>.  When using
+      <application>GCC</application> it's <option>-fPIC</option>. The
+      linker flag for shared libraries is <option>-b</option>.  So:
+<programlisting>
+cc +z -c foo.c
+</programlisting>
+      or:
+<programlisting>
+gcc -fPIC -c foo.c
+</programlisting>
+      and then:
+<programlisting>
+ld -b -o foo.sl foo.o
+</programlisting>
+      <systemitem class="osname">HP-UX</> uses the extension
+      <filename>.sl</filename> for shared libraries, unlike most other
+      systems.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">Linux</>
+     <indexterm><primary>Linux</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag to create <acronym>PIC</acronym> is
+      <option>-fPIC</option>.
+      The compiler flag to create a shared library is
+      <option>-shared</option>.  A complete example looks like this:
+<programlisting>
+cc -fPIC -c foo.c
+cc -shared -o foo.so foo.o
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">macOS</>
+     <indexterm><primary>macOS</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      Here is an example.  It assumes the developer tools are installed.
+<programlisting>
+cc -c foo.c
+cc -bundle -flat_namespace -undefined suppress -o foo.so foo.o
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">NetBSD</>
+     <indexterm><primary>NetBSD</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag to create <acronym>PIC</acronym> is
+      <option>-fPIC</option>.  For <acronym>ELF</acronym> systems, the
+      compiler with the flag <option>-shared</option> is used to link
+      shared libraries.  On the older non-ELF systems, <literal>ld
+      -Bshareable</literal> is used.
+<programlisting>
+gcc -fPIC -c foo.c
+gcc -shared -o foo.so foo.o
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">OpenBSD</>
+     <indexterm><primary>OpenBSD</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag to create <acronym>PIC</acronym> is
+      <option>-fPIC</option>.  <literal>ld -Bshareable</literal> is
+      used to link shared libraries.
+<programlisting>
+gcc -fPIC -c foo.c
+ld -Bshareable -o foo.so foo.o
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <systemitem class="osname">Solaris</>
+     <indexterm><primary>Solaris</><secondary>shared library</></>
+    </term>
+    <listitem>
+     <para>
+      The compiler flag to create <acronym>PIC</acronym> is
+      <option>-KPIC</option> with the Sun compiler and
+      <option>-fPIC</option> with <application>GCC</>.  To
+      link shared libraries, the compiler option is
+      <option>-G</option> with either compiler or alternatively
+      <option>-shared</option> with <application>GCC</>.
+<programlisting>
+cc -KPIC -c foo.c
+cc -G -o foo.so foo.o
+</programlisting>
+      or
+<programlisting>
+gcc -fPIC -c foo.c
+gcc -G -o foo.so foo.o
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+
+ <tip>
+  <para>
+   If this is too complicated for you, you should consider using
+   <ulink url="http://www.gnu.org/software/libtool/">
+   <productname>GNU Libtool</productname></ulink>,
+   which hides the platform differences behind a uniform interface.
+  </para>
+ </tip>
+
+ <para>
+  The resulting shared library file can then be loaded into
+  <productname>PostgreSQL</productname>.  When specifying the file name
+  to the <command>CREATE FUNCTION</command> command, one must give it
+  the name of the shared library file, not the intermediate object file.
+  Note that the system's standard shared-library extension (usually
+  <literal>.so</literal> or <literal>.sl</literal>) can be omitted from
+  the <command>CREATE FUNCTION</command> command, and normally should
+  be omitted for best portability.
+ </para>
+
+ <para>
+  Refer back to <xref linkend="xfunc-c-dynload"> about where the
+  server expects to find the shared library files.
+ </para>
+
+<!--
+Under AIX, object files are compiled normally but building the shared
+library requires a couple of steps.  First, create the object file:
+.nf
+cc <other flags> -c foo.c
+.fi
+You must then create a symbol \*(lqexports\*(rq file for the object
+file:
+.nf
+mkldexport foo.o `pwd` &gt; foo.exp
+.fi
+Finally, you can create the shared library:
+.nf
+ld <other flags> -H512 -T512 -o foo.so -e _nostart \e
+   -bI:.../lib/postgres.exp -bE:foo.exp foo.o \e
+   -lm -lc 2>/dev/null
+.fi
+  -->
+
+</sect2>

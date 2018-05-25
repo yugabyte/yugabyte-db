@@ -1,0 +1,18 @@
+# Set appropriate default compiler options if using xlc
+# Note: configure will add -qnoansialias if the compiler accepts it,
+# even if user specifies a non-default CFLAGS setting.
+if test "$GCC" != yes ; then
+  case $host_os in
+    aix3.2.5 | aix4.1*)
+      CFLAGS="-O -qmaxmem=16384 -qsrcmsg"
+      ;;
+    *)
+      CFLAGS="-O2 -qmaxmem=16384 -qsrcmsg"
+      ;;
+  esac
+fi
+
+# Native memset() is faster, tested on:
+# 	AIX 5.1 and 5.2, XLC 6.0 (IBM's cc)
+# 	AIX 5.3 ML3, gcc 4.0.1
+MEMSET_LOOP_LIMIT=0

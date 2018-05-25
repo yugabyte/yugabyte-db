@@ -1,0 +1,154 @@
+<!--
+doc/src/sgml/ref/drop_operator.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-DROPOPERATOR">
+ <indexterm zone="sql-dropoperator">
+  <primary>DROP OPERATOR</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP OPERATOR</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP OPERATOR</refname>
+  <refpurpose>remove an operator</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP OPERATOR [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable> ( { <replaceable class="PARAMETER">left_type</replaceable> | NONE } , { <replaceable class="PARAMETER">right_type</replaceable> | NONE } ) [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP OPERATOR</command> drops an existing operator from
+   the database system.  To execute this command you must be the owner
+   of the operator.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the operator does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing operator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">left_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type of the operator's left operand; write
+      <literal>NONE</literal> if the operator has no left operand.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">right_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type of the operator's right operand; write
+      <literal>NONE</literal> if the operator has no right operand.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the operator (such as views
+      using it), and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend">).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the operator if any objects depend on it.  This
+      is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Remove the power operator <literal>a^b</literal> for type <type>integer</type>:
+<programlisting>
+DROP OPERATOR ^ (integer, integer);
+</programlisting>
+  </para>
+
+  <para>
+   Remove the left unary bitwise complement operator
+   <literal>~b</literal> for type <type>bit</type>:
+<programlisting>
+DROP OPERATOR ~ (none, bit);
+</programlisting>
+  </para>
+
+  <para>
+   Remove the right unary factorial operator <literal>x!</literal>
+   for type <type>bigint</type>:
+<programlisting>
+DROP OPERATOR ! (bigint, none);
+</programlisting></para>
+
+  <para>
+   Remove multiple operators in one command:
+<programlisting>
+DROP OPERATOR ~ (none, bit), ! (bigint, none);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>DROP OPERATOR</command> statement in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createoperator"></member>
+   <member><xref linkend="sql-alteroperator"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

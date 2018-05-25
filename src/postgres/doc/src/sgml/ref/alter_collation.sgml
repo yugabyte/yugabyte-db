@@ -1,0 +1,183 @@
+<!--
+doc/src/sgml/ref/alter_collation.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTERCOLLATION">
+ <indexterm zone="sql-altercollation">
+  <primary>ALTER COLLATION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER COLLATION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER COLLATION</refname>
+  <refpurpose>change the definition of a collation</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER COLLATION <replaceable>name</replaceable> REFRESH VERSION
+
+ALTER COLLATION <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+ALTER COLLATION <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER COLLATION <replaceable>name</replaceable> SET SCHEMA <replaceable>new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER COLLATION</command> changes the definition of a
+   collation.
+  </para>
+
+  <para>
+   You must own the collation to use <command>ALTER COLLATION</>.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the collation's schema.  (These restrictions enforce that altering the
+   owner doesn't do anything you couldn't do by dropping and recreating the
+   collation. However, a superuser can alter ownership of any collation
+   anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing collation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the collation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the collation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the collation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>REFRESH VERSION</literal></term>
+    <listitem>
+     <para>
+      Update the collation's version.
+      See <xref linkend="sql-altercollation-notes"
+      endterm="sql-altercollation-notes-title"> below.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-altercollation-notes">
+  <title id="sql-altercollation-notes-title">Notes</title>
+
+  <para>
+   When using collations provided by the ICU library, the ICU-specific version
+   of the collator is recorded in the system catalog when the collation object
+   is created.  When the collation is used, the current version is
+   checked against the recorded version, and a warning is issued when there is
+   a mismatch, for example:
+<screen>
+WARNING:  collation "xx-x-icu" has version mismatch
+DETAIL:  The collation in the database was created using version 1.2.3.4, but the operating system provides version 2.3.4.5.
+HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION pg_catalog."xx-x-icu" REFRESH VERSION, or build PostgreSQL with the right library version.
+</screen>
+   A change in collation definitions can lead to corrupt indexes and other
+   problems because the database system relies on stored objects having a
+   certain sort order.  Generally, this should be avoided, but it can happen
+   in legitimate circumstances, such as when
+   using <command>pg_upgrade</command> to upgrade to server binaries linked
+   with a newer version of ICU.  When this happens, all objects depending on
+   the collation should be rebuilt, for example,
+   using <command>REINDEX</command>.  When that is done, the collation version
+   can be refreshed using the command <literal>ALTER COLLATION ... REFRESH
+   VERSION</literal>.  This will update the system catalog to record the
+   current collator version and will make the warning go away.  Note that this
+   does not actually check whether all affected objects have been rebuilt
+   correctly.
+  </para>
+
+  <para>
+   The following query can be used to identify all collations in the current
+   database that need to be refreshed and the objects that depend on them:
+<programlisting><![CDATA[
+SELECT pg_describe_object(refclassid, refobjid, refobjsubid) AS "Collation",
+       pg_describe_object(classid, objid, objsubid) AS "Object"
+  FROM pg_depend d JOIN pg_collation c
+       ON refclassid = 'pg_collation'::regclass AND refobjid = c.oid
+  WHERE c.collversion <> pg_collation_actual_version(c.oid)
+  ORDER BY 1, 2;
+]]></programlisting>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To rename the collation <literal>de_DE</literal> to
+   <literal>german</literal>:
+<programlisting>
+ALTER COLLATION "de_DE" RENAME TO german;
+</programlisting>
+  </para>
+
+  <para>
+   To change the owner of the collation <literal>en_US</literal> to
+   <literal>joe</literal>:
+<programlisting>
+ALTER COLLATION "en_US" OWNER TO joe;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER COLLATION</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createcollation"></member>
+   <member><xref linkend="sql-dropcollation"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

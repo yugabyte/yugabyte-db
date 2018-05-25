@@ -1,0 +1,62 @@
+#include <stdlib.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+exec sql include ../regression;
+
+exec sql whenever sqlerror sqlprint;
+
+exec sql define AMOUNT 6;
+exec sql define NAMELEN 8;
+
+exec sql type intarray is int[AMOUNT];
+typedef int intarray[AMOUNT];
+
+int
+main(void)
+{
+exec sql begin declare section;
+exec sql ifdef NAMELEN;
+	typedef char string[NAMELEN];
+	intarray amount;
+	char name[AMOUNT][NAMELEN];
+	char letter[AMOUNT][1];
+#if 0
+	int not_used;
+#endif
+exec sql endif;
+exec sql end declare section;
+	int i,j;
+
+	ECPGdebug(1, stderr);
+
+	exec sql connect to REGRESSDB1;
+
+	exec sql create table test (name char(NAMELEN), amount int, letter char(1));
+	exec sql commit;
+
+	exec sql insert into Test (name, amount, letter) values ('false', 1, 'f');
+	exec sql insert into test (name, amount, letter) values ('true', 2, 't');
+	exec sql commit;
+
+	exec sql select * into :name, :amount, :letter from test;
+
+	for (i=0, j=sqlca.sqlerrd[2]; i<j; i++)
+	{
+		exec sql begin declare section;
+		string n;
+		char l = letter[i][0];
+		int a = amount[i];
+		exec sql end declare section;
+
+		strncpy(n, name[i], NAMELEN);
+		printf("name[%d]=%8.8s\tamount[%d]=%d\tletter[%d]=%c\n", i, n, i, a, i, l);
+	}
+
+	exec sql drop table test;
+	exec sql commit;
+	exec sql disconnect;
+
+	return (0);
+}

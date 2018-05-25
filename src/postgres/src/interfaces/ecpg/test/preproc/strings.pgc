@@ -1,0 +1,27 @@
+#include <../regression.h>
+
+exec sql begin declare section;
+#include <strings.h>
+exec sql end declare section;
+
+int main(void)
+{
+  ECPGdebug(1, stderr);
+
+  exec sql connect to REGRESSDB1;
+
+  exec sql set standard_conforming_strings to on;
+
+  exec sql select 'abcdef',
+                  N'abcdef' AS foo,
+                  E'abc\bdef' AS "foo",
+                  U&'d\0061t\0061' AS U&"foo",
+                  U&'d!+000061t!+000061' uescape '!',
+                  $foo$abc$def$foo$
+                  into :s1, :s2, :s3, :s4, :s5, :s6;
+
+  printf("%s %s %s %s %s %s\n", s1, s2, s3, s4, s5, s6);
+
+  exec sql disconnect;
+  return (0);
+}

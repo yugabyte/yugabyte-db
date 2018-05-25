@@ -1,0 +1,576 @@
+CREATE EXTENSION intarray;
+-- Check whether any of our opclasses fail amvalidate
+SELECT amname, opcname
+FROM pg_opclass opc LEFT JOIN pg_am am ON am.oid = opcmethod
+WHERE opc.oid >= 16384 AND NOT amvalidate(opc.oid);
+ amname | opcname 
+--------+---------
+(0 rows)
+
+SELECT intset(1234);
+ intset 
+--------
+ {1234}
+(1 row)
+
+SELECT icount('{1234234,234234}');
+ icount 
+--------
+      2
+(1 row)
+
+SELECT sort('{1234234,-30,234234}');
+         sort         
+----------------------
+ {-30,234234,1234234}
+(1 row)
+
+SELECT sort('{1234234,-30,234234}','asc');
+         sort         
+----------------------
+ {-30,234234,1234234}
+(1 row)
+
+SELECT sort('{1234234,-30,234234}','desc');
+         sort         
+----------------------
+ {1234234,234234,-30}
+(1 row)
+
+SELECT sort_asc('{1234234,-30,234234}');
+       sort_asc       
+----------------------
+ {-30,234234,1234234}
+(1 row)
+
+SELECT sort_desc('{1234234,-30,234234}');
+      sort_desc       
+----------------------
+ {1234234,234234,-30}
+(1 row)
+
+SELECT uniq('{1234234,-30,-30,234234,-30}');
+           uniq           
+--------------------------
+ {1234234,-30,234234,-30}
+(1 row)
+
+SELECT uniq(sort_asc('{1234234,-30,-30,234234,-30}'));
+         uniq         
+----------------------
+ {-30,234234,1234234}
+(1 row)
+
+SELECT idx('{1234234,-30,-30,234234,-30}',-30);
+ idx 
+-----
+   2
+(1 row)
+
+SELECT subarray('{1234234,-30,-30,234234,-30}',2,3);
+     subarray     
+------------------
+ {-30,-30,234234}
+(1 row)
+
+SELECT subarray('{1234234,-30,-30,234234,-30}',-1,1);
+ subarray 
+----------
+ {-30}
+(1 row)
+
+SELECT subarray('{1234234,-30,-30,234234,-30}',0,-1);
+         subarray         
+--------------------------
+ {1234234,-30,-30,234234}
+(1 row)
+
+SELECT #'{1234234,234234}'::int[];
+ ?column? 
+----------
+        2
+(1 row)
+
+SELECT '{123,623,445}'::int[] + 1245;
+      ?column?      
+--------------------
+ {123,623,445,1245}
+(1 row)
+
+SELECT '{123,623,445}'::int[] + 445;
+     ?column?      
+-------------------
+ {123,623,445,445}
+(1 row)
+
+SELECT '{123,623,445}'::int[] + '{1245,87,445}';
+         ?column?          
+---------------------------
+ {123,623,445,1245,87,445}
+(1 row)
+
+SELECT '{123,623,445}'::int[] - 623;
+ ?column?  
+-----------
+ {123,445}
+(1 row)
+
+SELECT '{123,623,445}'::int[] - '{1623,623}';
+ ?column?  
+-----------
+ {123,445}
+(1 row)
+
+SELECT '{123,623,445}'::int[] | 623;
+   ?column?    
+---------------
+ {123,445,623}
+(1 row)
+
+SELECT '{123,623,445}'::int[] | 1623;
+      ?column?      
+--------------------
+ {123,445,623,1623}
+(1 row)
+
+SELECT '{123,623,445}'::int[] | '{1623,623}';
+      ?column?      
+--------------------
+ {123,445,623,1623}
+(1 row)
+
+SELECT '{123,623,445}'::int[] & '{1623,623}';
+ ?column? 
+----------
+ {623}
+(1 row)
+
+SELECT '{-1,3,1}'::int[] & '{1,2}';
+ ?column? 
+----------
+ {1}
+(1 row)
+
+--test query_int
+SELECT '1'::query_int;
+ query_int 
+-----------
+ 1
+(1 row)
+
+SELECT ' 1'::query_int;
+ query_int 
+-----------
+ 1
+(1 row)
+
+SELECT '1 '::query_int;
+ query_int 
+-----------
+ 1
+(1 row)
+
+SELECT ' 1 '::query_int;
+ query_int 
+-----------
+ 1
+(1 row)
+
+SELECT ' ! 1 '::query_int;
+ query_int 
+-----------
+ !1
+(1 row)
+
+SELECT '!1'::query_int;
+ query_int 
+-----------
+ !1
+(1 row)
+
+SELECT '1|2'::query_int;
+ query_int 
+-----------
+ 1 | 2
+(1 row)
+
+SELECT '1|!2'::query_int;
+ query_int 
+-----------
+ 1 | !2
+(1 row)
+
+SELECT '!1|2'::query_int;
+ query_int 
+-----------
+ !1 | 2
+(1 row)
+
+SELECT '!1|!2'::query_int;
+ query_int 
+-----------
+ !1 | !2
+(1 row)
+
+SELECT '!(!1|!2)'::query_int;
+  query_int   
+--------------
+ !( !1 | !2 )
+(1 row)
+
+SELECT '!(!1|2)'::query_int;
+  query_int  
+-------------
+ !( !1 | 2 )
+(1 row)
+
+SELECT '!(1|!2)'::query_int;
+  query_int  
+-------------
+ !( 1 | !2 )
+(1 row)
+
+SELECT '!(1|2)'::query_int;
+ query_int  
+------------
+ !( 1 | 2 )
+(1 row)
+
+SELECT '1&2'::query_int;
+ query_int 
+-----------
+ 1 & 2
+(1 row)
+
+SELECT '!1&2'::query_int;
+ query_int 
+-----------
+ !1 & 2
+(1 row)
+
+SELECT '1&!2'::query_int;
+ query_int 
+-----------
+ 1 & !2
+(1 row)
+
+SELECT '!1&!2'::query_int;
+ query_int 
+-----------
+ !1 & !2
+(1 row)
+
+SELECT '(1&2)'::query_int;
+ query_int 
+-----------
+ 1 & 2
+(1 row)
+
+SELECT '1&(2)'::query_int;
+ query_int 
+-----------
+ 1 & 2
+(1 row)
+
+SELECT '!(1)&2'::query_int;
+ query_int 
+-----------
+ !1 & 2
+(1 row)
+
+SELECT '!(1&2)'::query_int;
+ query_int  
+------------
+ !( 1 & 2 )
+(1 row)
+
+SELECT '1|2&3'::query_int;
+ query_int 
+-----------
+ 1 | 2 & 3
+(1 row)
+
+SELECT '1|(2&3)'::query_int;
+ query_int 
+-----------
+ 1 | 2 & 3
+(1 row)
+
+SELECT '(1|2)&3'::query_int;
+   query_int   
+---------------
+ ( 1 | 2 ) & 3
+(1 row)
+
+SELECT '1|2&!3'::query_int;
+ query_int  
+------------
+ 1 | 2 & !3
+(1 row)
+
+SELECT '1|!2&3'::query_int;
+ query_int  
+------------
+ 1 | !2 & 3
+(1 row)
+
+SELECT '!1|2&3'::query_int;
+ query_int  
+------------
+ !1 | 2 & 3
+(1 row)
+
+SELECT '!1|(2&3)'::query_int;
+ query_int  
+------------
+ !1 | 2 & 3
+(1 row)
+
+SELECT '!(1|2)&3'::query_int;
+   query_int    
+----------------
+ !( 1 | 2 ) & 3
+(1 row)
+
+SELECT '(!1|2)&3'::query_int;
+   query_int    
+----------------
+ ( !1 | 2 ) & 3
+(1 row)
+
+SELECT '1|(2|(4|(5|6)))'::query_int;
+           query_int           
+-------------------------------
+ 1 | ( 2 | ( 4 | ( 5 | 6 ) ) )
+(1 row)
+
+SELECT '1|2|4|5|6'::query_int;
+           query_int           
+-------------------------------
+ ( ( ( 1 | 2 ) | 4 ) | 5 ) | 6
+(1 row)
+
+SELECT '1&(2&(4&(5&6)))'::query_int;
+     query_int     
+-------------------
+ 1 & 2 & 4 & 5 & 6
+(1 row)
+
+SELECT '1&2&4&5&6'::query_int;
+     query_int     
+-------------------
+ 1 & 2 & 4 & 5 & 6
+(1 row)
+
+SELECT '1&(2&(4&(5|6)))'::query_int;
+       query_int       
+-----------------------
+ 1 & 2 & 4 & ( 5 | 6 )
+(1 row)
+
+SELECT '1&(2&(4&(5|!6)))'::query_int;
+       query_int        
+------------------------
+ 1 & 2 & 4 & ( 5 | !6 )
+(1 row)
+
+CREATE TABLE test__int( a int[] );
+\copy test__int from 'data/test__int.data'
+ANALYZE test__int;
+SELECT count(*) from test__int WHERE a && '{23,50}';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23|50';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{23,50}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23&50';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '50&68';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
+ count 
+-------
+    21
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
+ count 
+-------
+    21
+(1 row)
+
+CREATE INDEX text_idx on test__int using gist ( a gist__int_ops );
+SELECT count(*) from test__int WHERE a && '{23,50}';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23|50';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{23,50}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23&50';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '50&68';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
+ count 
+-------
+    21
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
+ count 
+-------
+    21
+(1 row)
+
+DROP INDEX text_idx;
+CREATE INDEX text_idx on test__int using gist ( a gist__intbig_ops );
+SELECT count(*) from test__int WHERE a && '{23,50}';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23|50';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{23,50}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23&50';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '50&68';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
+ count 
+-------
+    21
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
+ count 
+-------
+    21
+(1 row)
+
+DROP INDEX text_idx;
+CREATE INDEX text_idx on test__int using gin ( a gin__int_ops );
+SELECT count(*) from test__int WHERE a && '{23,50}';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23|50';
+ count 
+-------
+   403
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{23,50}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '23&50';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}';
+ count 
+-------
+    12
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '50&68';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
+ count 
+-------
+    21
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
+ count 
+-------
+    21
+(1 row)
+
