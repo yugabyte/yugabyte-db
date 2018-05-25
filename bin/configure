@@ -23,9 +23,9 @@ if [[ -f $ETC_RELEASE_FILE ]]; then
   . $ETC_RELEASE_FILE
 
   if [[ $ID = "ubuntu" ]]; then
-    install_cmd=( apt-get install -y sasl2-bin file python )
+    install_cmd=( apt-get install -y file python )
   elif [[ $ID = "centos" ]]; then
-    install_cmd=( yum install -y cyrus-sasl cyrus-sasl-plain file )
+    install_cmd=( yum install -y file )
   fi
   if [[ $( id -u ) != "0" ]]; then
     install_cmd=( sudo "${install_cmd[@]}" )
