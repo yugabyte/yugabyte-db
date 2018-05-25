@@ -7,7 +7,7 @@ $ ./yb-docker-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
-We set the number of [shards](../../architecture/concepts/sharding/) per tserver to 4 so we can better observe the load balancing during scaling.
+We set the number of [shards](/architecture/concepts/sharding/) per tserver to 4 so we can better observe the load balancing during scaling.
 Considering there are 3 tservers and replication factor 3, there will be 36 total shards per table.
 
 ```{.sh .copy .separator-dollar}
@@ -30,7 +30,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 4096
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](/quick-start/run-sample-apps/).
 
 ```sh
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |

@@ -22,7 +22,7 @@ You can view the tablet servers on the [tablet servers page](http://localhost:70
 
 ## 2. Start a workload
 
-Let us run a simple key-value workload in a separate shell.
+Run a simple key-value workload in a separate shell.
 
 ```{.sh .copy .separator-dollar}
 $ java -jar java/yb-sample-apps.jar \

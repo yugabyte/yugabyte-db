@@ -20,11 +20,11 @@ menu:
     <a class="section-link icon-offset" href="cloud-native/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/cloud_native.png" aria-hidden="true" />
-        <div class="articles">2 articles</div>
+        <div class="articles">4 articles</div>
         <div class="title">Cloud Native</div>
       </div>
       <div class="body">
-        Linear scalability and fault tolerance.
+        Linear scalability, fault tolerance, observability and orchestration readiness.
       </div>
     </a>
   </div>

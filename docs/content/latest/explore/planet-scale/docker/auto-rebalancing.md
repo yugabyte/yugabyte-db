@@ -19,6 +19,10 @@ $ ./yb-docker-ctl create --num_shards_per_tserver 4
 Run the Cassandra sample key-value app against the local universe by typing the following command.
 
 ```{.sh .copy .separator-dollar}
+$ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
+```
+
+```{.sh .copy .separator-dollar}
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes localhost:9042 \
                                     --num_threads_write 1 \

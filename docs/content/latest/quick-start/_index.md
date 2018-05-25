@@ -88,5 +88,5 @@ menu:
 </div>
 
 {{< note title="Note" >}}
-Running local clusters is not recommended for production environments. You can either deploy the [Community Edition] (../deploy/multi-node-cluster/) manually on a set of instances or use the [Enterprise Edition](../deploy/enterprise-edition/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
+Running local clusters is not recommended for production environments. You can either deploy the [Community Edition](/deploy/multi-node-cluster/) manually on a set of instances or use the [Enterprise Edition](/deploy/enterprise-edition/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
 {{< /note >}}
