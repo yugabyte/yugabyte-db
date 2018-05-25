@@ -428,6 +428,7 @@ Status TabletPeer::SubmitWrite(
         tablet_->SafeTime(RequireLease::kTrue).ToUint64());
     // Global limit is ignored by caller, so we don't set it.
     operation->state()->completion_callback()->OperationCompleted();
+    tablet_->metrics()->restart_read_requests->Increment();
     return Status::OK();
   }
   auto driver = VERIFY_RESULT(NewLeaderOperationDriver(std::move(operation)));
