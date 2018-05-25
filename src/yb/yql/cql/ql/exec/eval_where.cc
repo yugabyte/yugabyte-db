@@ -123,6 +123,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   // Then, the executor will use them to produce the partitions that need to be read.
   bool is_multi_partition = false;
   uint64_t partitions_count = 0;
+  TnodeContext *tnode_context = exec_context().tnode_context();
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
     CHECK(col_desc->is_hash()) << "Unexpected non partition column in this context";
@@ -142,7 +143,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
           col_pb.set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
           RETURN_NOT_OK(EvalExpr(&col_pb, QLTableRow::empty_row()));
-          exec_context().hash_values_options()->push_back({col_pb});
+          tnode_context->hash_values_options()->push_back({col_pb});
         }
         break;
       }
@@ -170,8 +171,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
 
         // Adding partition options information to the execution context.
         partitions_count *= set_values.size();
-        exec_context().hash_values_options()->emplace_back();
-        auto& options = exec_context().hash_values_options()->back();
+        tnode_context->hash_values_options()->emplace_back();
+        auto& options = tnode_context->hash_values_options()->back();
         for (auto& value_pb : set_values) {
           options.emplace_back();
           options.back().set_column_id(col_desc->id());
@@ -187,7 +188,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   }
 
   // Set the partitions count in the execution context, will be 0 if not IN conditions found.
-  exec_context().set_partitions_count(partitions_count);
+  tnode_context->set_partitions_count(partitions_count);
 
   // Skip generation of query condition if where clause is empty.
   if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty() &&

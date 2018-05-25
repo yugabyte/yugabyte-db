@@ -36,6 +36,10 @@ METRIC_DEFINE_histogram(
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute,
+    "Number of retries to successfully execute a SQL query", yb::MetricUnit::kOperations,
+    "Number of retries to successfully execute a SQL query", 60000000LU, 2);
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
     "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a SELECT statement", 60000000LU, 2);
@@ -93,6 +97,9 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest.Instantiate(metric_entity);
   num_rounds_to_analyze_ql_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze.Instantiate(
+          metric_entity);
+  num_retries_to_execute_ql_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute.Instantiate(
           metric_entity);
 
   ql_select_ =

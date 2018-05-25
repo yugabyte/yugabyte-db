@@ -136,6 +136,9 @@ class Executor : public QLExprExecutor {
   // Use a keyspace.
   CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
 
+  // Re-execute the current statement.
+  void Reexecute();
+
   //------------------------------------------------------------------------------------------------
   // Result processing.
 
@@ -165,7 +168,8 @@ class Executor : public QLExprExecutor {
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   Result<bool> FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
                                      const std::shared_ptr<client::YBqlReadOp>& op,
-                                     ExecContext* exec_context);
+                                     ExecContext* exec_context,
+                                     TnodeContext* tnode_context);
 
   // Aggregate all result sets from all tablet servers to form the requested resultset.
   CHECKED_STATUS AggregateResultSets(const PTSelectStmt* pt_select);
@@ -327,6 +331,9 @@ class Executor : public QLExprExecutor {
 
   // QLMetrics to keep track of node parsing etc.
   const QLMetrics* ql_metrics_;
+
+  // Rescheduled Execute callback.
+  Callback<void(void)> rescheduled_execute_cb_;
 
   // Rescheduled FlushAsync callback.
   Callback<void(void)> rescheduled_flush_async_cb_;
