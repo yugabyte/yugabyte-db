@@ -96,7 +96,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private boolean mainInstance = false;
 
   // Keyspace name.
-  private static String keyspace = "ybdemo_keyspace";
+  public static String keyspace = "ybdemo_keyspace";
 
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
@@ -647,5 +647,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
 
   public static long numOps() {
     return numKeysRead.get() + numKeysWritten.get();
+  }
+
+  public static void resetOps() {
+    numKeysRead.set(0);
+    numKeysWritten.set(0);
   }
 }
