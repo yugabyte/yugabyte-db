@@ -123,7 +123,11 @@ public class Main {
     return AppBase.numOps();
   }
 
-  private void terminate() {
+  public void resetOps() {
+    AppBase.resetOps();
+  }
+
+  public void terminate() {
     if (cmdLineOpts.doErrorChecking()) {
       if (numOps() == 0) {
         LOG.fatal("Expected non-zero number of IOPS.");

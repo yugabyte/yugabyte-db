@@ -37,13 +37,18 @@ DEFINE_int32(
     yb_client_num_reactors, 16,
     "Number of reactor threads for the yb client to communicate with different tservers.");
 
+DEFINE_int32(
+    yb_client_admin_operation_timeout_sec, 60,
+    "The number of seconds after which an admin operation should timeout.");
+
 namespace yb {
 
 namespace client {
 
 YBClientBuilder::Data::Data()
     : num_reactors_(FLAGS_yb_client_num_reactors),
-      default_admin_operation_timeout_(MonoDelta::FromSeconds(60)),
+      default_admin_operation_timeout_(
+          MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec)),
       default_rpc_timeout_(MonoDelta::FromSeconds(60)),
       metric_entity_(nullptr) {}
 

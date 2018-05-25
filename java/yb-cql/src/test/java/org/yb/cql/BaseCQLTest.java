@@ -120,8 +120,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
-    socketOptions.setReadTimeoutMillis(60 * 1000);
-    socketOptions.setConnectTimeoutMillis(60 * 1000);
+    socketOptions.setReadTimeoutMillis(120 * 1000);
+    socketOptions.setConnectTimeoutMillis(120 * 1000);
     return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               .withQueryOptions(queryOptions)
@@ -363,6 +363,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected void dropTable(String tableName) throws Exception {
     String dropStmt = String.format("DROP TABLE %s;", tableName);
+    LOG.info("Executing drop table: " + dropStmt);
     session.execute(dropStmt);
   }
 

@@ -51,9 +51,9 @@ public class CassandraStockTicker extends AppBase {
   // The structure to hold all the stock ticker info.
   static List<TickerInfo> tickers = new CopyOnWriteArrayList<TickerInfo>();
   // The table that has the raw ticker data.
-  private String tickerTableRaw = "stock_ticker_raw";
+  public static String tickerTableRaw = "stock_ticker_raw";
   // The table that has the downsampled minutely data.
-  private String tickerTableMin = "stock_ticker_1min";
+  private static String tickerTableMin = "stock_ticker_1min";
   // The total number of rows read from the DB so far.
   private static AtomicLong num_rows_read;
   static Random random = new Random();
