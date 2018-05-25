@@ -107,7 +107,9 @@ public enum TaskType {
 
   CloudSetup("subtasks.cloud.CloudSetup"),
 
-  BackupTable("subtasks.BackupTable");
+  BackupTable("subtasks.BackupTable"),
+  
+  WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly");
 
   private String relativeClassPath;
 

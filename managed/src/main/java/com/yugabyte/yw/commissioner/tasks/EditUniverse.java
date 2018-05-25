@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
@@ -44,7 +45,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Update the user intent.
       writeUserIntentToUniverse();
@@ -134,7 +135,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       createPlacementInfoTask(tserversToBeRemoved, userIntent.replicationFactor)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
+      
       if (!nodesToBeRemoved.isEmpty()) {
         // Wait for %age completion of the tablet move from master.
         createWaitForDataMoveTask()
@@ -149,6 +150,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createWaitForLoadBalanceTask()
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
+      
+      if (PlacementInfoUtil.didAffinitizedLeadersChange(
+            universe.getUniverseDetails().getPrimaryCluster().placementInfo, 
+            taskParams().getPrimaryCluster().placementInfo)) {
+        createWaitForLeadersOnPreferredOnlyTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
+
 
       if (!newMasters.isEmpty()) {
         // Now finalize the master quorum change tasks.

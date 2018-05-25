@@ -82,8 +82,8 @@ public class PlacementInfoUtil {
    * @param newPlacementInfo Desired placement for the Cluster.
    * @return True if the affinitized leader info has changed and there are no new AZs, else false.
    */
-  private static boolean didAffinitizedLeadersChange(PlacementInfo oldPlacementInfo,
-                                                     PlacementInfo newPlacementInfo) {
+  public static boolean didAffinitizedLeadersChange(PlacementInfo oldPlacementInfo,
+                                                    PlacementInfo newPlacementInfo) {
 
     // Map between the old placement's AZs and the affinitized leader info.
     HashMap<UUID, Boolean> oldAZMap = new HashMap<UUID, Boolean>();

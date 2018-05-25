@@ -47,6 +47,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
@@ -892,6 +893,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     waitForMove.initialize(params);
     // Add it to the task list.
     subTaskGroup.addTask(waitForMove);
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+  
+  /**
+   * Creates a task to wait for leaders to be on preferred regions only.
+   * @return the created task group.
+   */
+  public SubTaskGroup createWaitForLeadersOnPreferredOnlyTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeadersOnPreferredOnly", executor);
+    WaitForLeadersOnPreferredOnly.Params params = new WaitForLeadersOnPreferredOnly.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Create the task.
+    WaitForLeadersOnPreferredOnly waitForLeadersOnPreferredOnly = new WaitForLeadersOnPreferredOnly();
+    waitForLeadersOnPreferredOnly.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(waitForLeadersOnPreferredOnly);
     // Add the task list to the task queue.
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
