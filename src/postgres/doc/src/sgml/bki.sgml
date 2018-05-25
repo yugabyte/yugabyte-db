@@ -1,0 +1,360 @@
+<!-- doc/src/sgml/bki.sgml -->
+
+<chapter id="bki">
+ <title><acronym>BKI</acronym> Backend Interface</title>
+
+ <para>
+  Backend Interface (<acronym>BKI</acronym>) files are scripts in a
+  special language that is understood by the
+  <productname>PostgreSQL</productname> backend when running in the
+  <quote>bootstrap</quote> mode.  The bootstrap mode allows system catalogs
+  to be created and filled from scratch, whereas ordinary SQL commands
+  require the catalogs to exist already.
+  <acronym>BKI</acronym> files can therefore be used to create the
+  database system in the first place.  (And they are probably not
+  useful for anything else.)
+ </para>
+
+ <para>
+  <application>initdb</application> uses a <acronym>BKI</acronym> file
+  to do part of its job when creating a new database cluster.  The
+  input file used by <application>initdb</application> is created as
+  part of building and installing <productname>PostgreSQL</productname>
+  by a program named <filename>genbki.pl</filename>, which reads some
+  specially formatted C header files in the <filename>src/include/catalog/</>
+  directory of the source tree.  The created <acronym>BKI</acronym> file
+  is called <filename>postgres.bki</filename> and is
+  normally installed in the
+  <filename>share</filename> subdirectory of the installation tree.
+ </para>
+
+ <para>
+  Related information can be found in the documentation for
+  <application>initdb</application>.
+ </para>
+
+ <sect1 id="bki-format">
+  <title><acronym>BKI</acronym> File Format</title>
+
+  <para>
+   This section describes how the <productname>PostgreSQL</productname>
+   backend interprets <acronym>BKI</acronym> files.  This description
+   will be easier to understand if the <filename>postgres.bki</filename>
+   file is at hand as an example.
+  </para>
+
+  <para>
+   <acronym>BKI</acronym> input consists of a sequence of commands.  Commands are made up
+   of a number of tokens, depending on the syntax of the command.
+   Tokens are usually separated by whitespace, but need not be if
+   there is no ambiguity.  There is no special command separator; the
+   next token that syntactically cannot belong to the preceding
+   command starts a new one.  (Usually you would put a new command on
+   a new line, for clarity.)  Tokens can be certain key words, special
+   characters (parentheses, commas, etc.), numbers, or double-quoted
+   strings.  Everything is case sensitive.
+  </para>
+
+  <para>
+   Lines starting with <literal>#</literal> are ignored.
+  </para>
+
+ </sect1>
+
+ <sect1 id="bki-commands">
+  <title><acronym>BKI</acronym> Commands</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal>create</>
+     <replaceable class="parameter">tablename</replaceable>
+     <replaceable class="parameter">tableoid</replaceable>
+     <optional><literal>bootstrap</></optional>
+     <optional><literal>shared_relation</></optional>
+     <optional><literal>without_oids</></optional>
+     <optional><literal>rowtype_oid</> <replaceable>oid</></optional>
+     (<replaceable class="parameter">name1</replaceable> =
+     <replaceable class="parameter">type1</replaceable>
+     <optional>FORCE NOT NULL | FORCE NULL </optional> <optional>,
+     <replaceable class="parameter">name2</replaceable> =
+     <replaceable class="parameter">type2</replaceable>
+     <optional>FORCE NOT NULL | FORCE NULL </optional>,
+     ...</optional>)
+    </term>
+
+    <listitem>
+     <para>
+      Create a table named <replaceable
+      class="parameter">tablename</replaceable>, and having the OID
+      <replaceable class="parameter">tableoid</replaceable>,
+      with the columns given in parentheses.
+     </para>
+
+     <para>
+      The following column types are supported directly by
+      <filename>bootstrap.c</>: <type>bool</type>,
+      <type>bytea</type>, <type>char</type> (1 byte),
+      <type>name</type>, <type>int2</type>,
+      <type>int4</type>, <type>regproc</type>, <type>regclass</type>,
+      <type>regtype</type>, <type>text</type>,
+      <type>oid</type>, <type>tid</type>, <type>xid</type>,
+      <type>cid</type>, <type>int2vector</type>, <type>oidvector</type>,
+      <type>_int4</type> (array), <type>_text</type> (array),
+      <type>_oid</type> (array), <type>_char</type> (array),
+      <type>_aclitem</type> (array).  Although it is possible to create
+      tables containing columns of other types, this cannot be done until
+      after <structname>pg_type</> has been created and filled with
+      appropriate entries.  (That effectively means that only these
+      column types can be used in bootstrapped tables, but non-bootstrap
+      catalogs can contain any built-in type.)
+     </para>
+
+     <para>
+      When <literal>bootstrap</> is specified,
+      the table will only be created on disk; nothing is entered into
+      <structname>pg_class</structname>,
+      <structname>pg_attribute</structname>, etc, for it.  Thus the
+      table will not be accessible by ordinary SQL operations until
+      such entries are made the hard way (with <literal>insert</>
+      commands).  This option is used for creating
+      <structname>pg_class</structname> etc themselves.
+     </para>
+
+     <para>
+      The table is created as shared if <literal>shared_relation</> is
+      specified.
+      It will have OIDs unless <literal>without_oids</> is specified.
+      The table's row type OID (<structname>pg_type</> OID) can optionally
+      be specified via the <literal>rowtype_oid</> clause; if not specified,
+      an OID is automatically generated for it.  (The <literal>rowtype_oid</>
+      clause is useless if <literal>bootstrap</> is specified, but it can be
+      provided anyway for documentation.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>open</> <replaceable class="parameter">tablename</replaceable>
+    </term>
+
+    <listitem>
+     <para>
+      Open the table named
+      <replaceable class="parameter">tablename</replaceable>
+      for insertion of data.  Any currently open table is closed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>close</> <optional><replaceable class="parameter">tablename</replaceable></optional>
+    </term>
+
+    <listitem>
+     <para>
+      Close the open table.  The name of the table can be given as a
+      cross-check, but this is not required.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>insert</> <optional><literal>OID =</> <replaceable class="parameter">oid_value</replaceable></optional> <literal>(</> <replaceable class="parameter">value1</replaceable> <replaceable class="parameter">value2</replaceable> ... <literal>)</>
+    </term>
+
+    <listitem>
+     <para>
+      Insert a new row into the open table using <replaceable
+      class="parameter">value1</replaceable>, <replaceable
+      class="parameter">value2</replaceable>, etc., for its column
+      values and <replaceable
+      class="parameter">oid_value</replaceable> for its OID.  If
+      <replaceable class="parameter">oid_value</replaceable> is zero
+      (0) or the clause is omitted, and the table has OIDs, then the
+      next available OID is assigned.
+     </para>
+
+     <para>
+      NULL values can be specified using the special key word
+      <literal>_null_</literal>.  Values containing spaces must be
+      double quoted.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>declare</> <optional><literal>unique</></optional>
+     <literal>index</> <replaceable class="parameter">indexname</replaceable>
+     <replaceable class="parameter">indexoid</replaceable>
+     <literal>on</> <replaceable class="parameter">tablename</replaceable>
+     <literal>using</> <replaceable class="parameter">amname</replaceable>
+     <literal>(</> <replaceable class="parameter">opclass1</replaceable>
+     <replaceable class="parameter">name1</replaceable>
+     <optional>, ...</optional> <literal>)</>
+    </term>
+
+    <listitem>
+     <para>
+      Create an index named <replaceable
+      class="parameter">indexname</replaceable>, having OID
+      <replaceable class="parameter">indexoid</replaceable>,
+      on the table named
+      <replaceable class="parameter">tablename</replaceable>, using the
+      <replaceable class="parameter">amname</replaceable> access
+      method.  The fields to index are called <replaceable
+      class="parameter">name1</replaceable>, <replaceable
+      class="parameter">name2</replaceable> etc., and the operator
+      classes to use are <replaceable
+      class="parameter">opclass1</replaceable>, <replaceable
+      class="parameter">opclass2</replaceable> etc., respectively.
+      The index file is created and appropriate catalog entries are
+      made for it, but the index contents are not initialized by this command.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>declare toast</>
+     <replaceable class="parameter">toasttableoid</replaceable>
+     <replaceable class="parameter">toastindexoid</replaceable>
+     <literal>on</> <replaceable class="parameter">tablename</replaceable>
+    </term>
+
+    <listitem>
+     <para>
+      Create a TOAST table for the table named
+      <replaceable class="parameter">tablename</replaceable>.
+      The TOAST table is assigned OID
+      <replaceable class="parameter">toasttableoid</replaceable>
+      and its index is assigned OID
+      <replaceable class="parameter">toastindexoid</replaceable>.
+      As with <literal>declare index</>, filling of the index
+      is postponed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>build indices</></term>
+
+    <listitem>
+     <para>
+      Fill in the indices that have previously been declared.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+ </sect1>
+
+ <sect1 id="bki-structure">
+  <title>Structure of the Bootstrap <acronym>BKI</acronym> File</title>
+
+  <para>
+   The <literal>open</> command cannot be used until the tables it uses
+   exist and have entries for the table that is to be opened.
+   (These minimum tables are <structname>pg_class</>,
+   <structname>pg_attribute</>, <structname>pg_proc</>, and
+   <structname>pg_type</>.)   To allow those tables themselves to be filled,
+   <literal>create</> with the <literal>bootstrap</> option implicitly opens
+   the created table for data insertion.
+  </para>
+
+  <para>
+   Also, the <literal>declare index</> and <literal>declare toast</>
+   commands cannot be used until the system catalogs they need have been
+   created and filled in.
+  </para>
+
+  <para>
+   Thus, the structure of the <filename>postgres.bki</filename> file has to
+   be:
+   <orderedlist>
+    <listitem>
+     <para>
+      <literal>create bootstrap</> one of the critical tables
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>insert</> data describing at least the critical tables
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>close</>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Repeat for the other critical tables.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>create</> (without <literal>bootstrap</>) a noncritical table
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>open</>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>insert</> desired data
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>close</>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Repeat for the other noncritical tables.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Define indexes and toast tables.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>build indices</>
+     </para>
+    </listitem>
+   </orderedlist>
+  </para>
+
+  <para>
+   There are doubtless other, undocumented ordering dependencies.
+  </para>
+ </sect1>
+
+ <sect1 id="bki-example">
+  <title>Example</title>
+
+  <para>
+   The following sequence of commands will create the
+   table <literal>test_table</literal> with OID 420, having two columns
+   <literal>cola</literal> and <literal>colb</literal> of type
+   <type>int4</type> and <type>text</type>, respectively, and insert
+   two rows into the table:
+<programlisting>
+create test_table 420 (cola = int4, colb = text)
+open test_table
+insert OID=421 ( 1 "value1" )
+insert OID=422 ( 2 _null_ )
+close test_table
+</programlisting>
+  </para>
+ </sect1>
+</chapter>

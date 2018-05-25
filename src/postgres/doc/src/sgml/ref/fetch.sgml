@@ -1,0 +1,418 @@
+<!--
+doc/src/sgml/ref/fetch.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-FETCH">
+
+ <indexterm zone="sql-fetch">
+  <primary>FETCH</primary>
+ </indexterm>
+
+ <indexterm zone="sql-fetch">
+  <primary>cursor</primary>
+  <secondary>FETCH</secondary>
+ </indexterm>
+ <refmeta>
+  <refentrytitle>FETCH</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>FETCH</refname>
+  <refpurpose>retrieve rows from a query using a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<!-- Note the "direction" bit is also in ref/move.sgml -->
+<synopsis>
+FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <replaceable class="PARAMETER">cursor_name</replaceable>
+
+<phrase>where <replaceable class="PARAMETER">direction</replaceable> can be empty or one of:</phrase>
+
+    NEXT
+    PRIOR
+    FIRST
+    LAST
+    ABSOLUTE <replaceable class="PARAMETER">count</replaceable>
+    RELATIVE <replaceable class="PARAMETER">count</replaceable>
+    <replaceable class="PARAMETER">count</replaceable>
+    ALL
+    FORWARD
+    FORWARD <replaceable class="PARAMETER">count</replaceable>
+    FORWARD ALL
+    BACKWARD
+    BACKWARD <replaceable class="PARAMETER">count</replaceable>
+    BACKWARD ALL
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>FETCH</command> retrieves rows using a previously-created cursor.
+  </para>
+
+  <para>
+   A cursor has an associated position, which is used by
+   <command>FETCH</>.  The cursor position can be before the first row of the
+   query result, on any particular row of the result, or after the last row
+   of the result.  When created, a cursor is positioned before the first row.
+   After fetching some rows, the cursor is positioned on the row most recently
+   retrieved.  If <command>FETCH</> runs off the end of the available rows
+   then the cursor is left positioned after the last row, or before the first
+   row if fetching backward.  <command>FETCH ALL</> or <command>FETCH BACKWARD
+   ALL</> will always leave the cursor positioned after the last row or before
+   the first row.
+  </para>
+
+  <para>
+   The forms <literal>NEXT</>, <literal>PRIOR</>, <literal>FIRST</>,
+   <literal>LAST</>, <literal>ABSOLUTE</>, <literal>RELATIVE</> fetch
+   a single row after moving the cursor appropriately.  If there is no
+   such row, an empty result is returned, and the cursor is left
+   positioned before the first row or after the last row as
+   appropriate.
+  </para>
+
+  <para>
+   The forms using <literal>FORWARD</> and <literal>BACKWARD</>
+   retrieve the indicated number of rows moving in the forward or
+   backward direction, leaving the cursor positioned on the
+   last-returned row (or after/before all rows, if the <replaceable
+   class="PARAMETER">count</replaceable> exceeds the number of rows
+   available).
+  </para>
+
+  <para>
+   <literal>RELATIVE 0</>, <literal>FORWARD 0</>, and
+   <literal>BACKWARD 0</> all request fetching the current row without
+   moving the cursor, that is, re-fetching the most recently fetched
+   row.  This will succeed unless the cursor is positioned before the
+   first row or after the last row; in which case, no row is returned.
+  </para>
+
+  <note>
+   <para>
+    This page describes usage of cursors at the SQL command level.
+    If you are trying to use cursors inside a <application>PL/pgSQL</>
+    function, the rules are different &mdash;
+    see <xref linkend="plpgsql-cursors">.
+   </para>
+  </note>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="PARAMETER">direction</replaceable></term>
+    <listitem>
+     <para><replaceable class="PARAMETER">direction</replaceable> defines
+      the fetch direction and number of rows to fetch.  It can be one
+      of the following:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>NEXT</literal></term>
+        <listitem>
+         <para>
+          Fetch the next row. This is the default if <replaceable
+          class="PARAMETER">direction</replaceable> is omitted.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>PRIOR</literal></term>
+        <listitem>
+         <para>
+          Fetch the prior row.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>FIRST</literal></term>
+        <listitem>
+         <para>
+          Fetch the first row of the query (same as <literal>ABSOLUTE 1</literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>LAST</literal></term>
+        <listitem>
+         <para>
+          Fetch the last row of the query (same as <literal>ABSOLUTE -1</literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>ABSOLUTE <replaceable class="PARAMETER">count</replaceable></literal></term>
+        <listitem>
+         <para>
+          Fetch the <replaceable
+          class="PARAMETER">count</replaceable>'th row of the query,
+          or the <literal>abs(<replaceable
+          class="PARAMETER">count</replaceable>)</literal>'th row from
+          the end if <replaceable
+          class="PARAMETER">count</replaceable> is negative.  Position
+          before first row or after last row if <replaceable
+          class="PARAMETER">count</replaceable> is out of range; in
+          particular, <literal>ABSOLUTE 0</literal> positions before
+          the first row.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>RELATIVE <replaceable class="PARAMETER">count</replaceable></literal></term>
+        <listitem>
+         <para>
+          Fetch the <replaceable
+          class="PARAMETER">count</replaceable>'th succeeding row, or
+          the <literal>abs(<replaceable
+          class="PARAMETER">count</replaceable>)</literal>'th prior
+          row if <replaceable class="PARAMETER">count</replaceable> is
+          negative.  <literal>RELATIVE 0</literal> re-fetches the
+          current row, if any.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><replaceable class="PARAMETER">count</replaceable></term>
+        <listitem>
+         <para>
+          Fetch the next <replaceable
+          class="PARAMETER">count</replaceable> rows (same as
+          <literal>FORWARD <replaceable
+          class="PARAMETER">count</replaceable></literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>ALL</literal></term>
+        <listitem>
+         <para>
+          Fetch all remaining rows (same as <literal>FORWARD ALL</literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>FORWARD</literal></term>
+        <listitem>
+         <para>
+          Fetch the next row (same as <literal>NEXT</literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>FORWARD <replaceable class="PARAMETER">count</replaceable></literal></term>
+        <listitem>
+         <para>
+          Fetch the next <replaceable
+          class="PARAMETER">count</replaceable> rows.
+          <literal>FORWARD 0</literal> re-fetches the current row.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>FORWARD ALL</literal></term>
+        <listitem>
+         <para>
+          Fetch all remaining rows.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>BACKWARD</literal></term>
+        <listitem>
+         <para>
+          Fetch the prior row (same as <literal>PRIOR</literal>).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>BACKWARD <replaceable class="PARAMETER">count</replaceable></literal></term>
+        <listitem>
+         <para>
+          Fetch the prior <replaceable
+          class="PARAMETER">count</replaceable> rows (scanning
+          backwards).  <literal>BACKWARD 0</literal> re-fetches the
+          current row.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>BACKWARD ALL</literal></term>
+        <listitem>
+         <para>
+          Fetch all prior rows (scanning backwards).
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">count</replaceable></term>
+    <listitem>
+     <para><replaceable class="PARAMETER">count</replaceable> is a
+      possibly-signed integer constant, determining the location or
+      number of rows to fetch.  For <literal>FORWARD</> and
+      <literal>BACKWARD</> cases, specifying a negative <replaceable
+      class="PARAMETER">count</replaceable> is equivalent to changing
+      the sense of <literal>FORWARD</> and <literal>BACKWARD</>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">cursor_name</replaceable></term>
+    <listitem>
+     <para>
+      An open cursor's name.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, a <command>FETCH</> command returns a command
+   tag of the form
+<screen>
+FETCH <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows fetched (possibly zero).  Note that in
+   <application>psql</application>, the command tag will not actually be
+   displayed, since <application>psql</application> displays the fetched
+   rows instead.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The cursor should be declared with the <literal>SCROLL</literal>
+   option if one intends to use any variants of <command>FETCH</>
+   other than <command>FETCH NEXT</> or <command>FETCH FORWARD</> with
+   a positive count.  For simple queries
+   <productname>PostgreSQL</productname> will allow backwards fetch
+   from cursors not declared with <literal>SCROLL</literal>, but this
+   behavior is best not relied on. If the cursor is declared with
+   <literal>NO SCROLL</literal>, no backward fetches are allowed.
+  </para>
+
+  <para>
+   <literal>ABSOLUTE</literal> fetches are not any faster than
+   navigating to the desired row with a relative move: the underlying
+   implementation must traverse all the intermediate rows anyway.
+   Negative absolute fetches are even worse: the query must be read to
+   the end to find the last row, and then traversed backward from
+   there.  However, rewinding to the start of the query (as with
+   <literal>FETCH ABSOLUTE 0</literal>) is fast.
+  </para>
+
+  <para>
+   <xref linkend="sql-declare">
+   is used to define a cursor.  Use
+   <xref linkend="sql-move">
+   to change cursor position without retrieving data.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   The following example traverses a table using a cursor:
+
+<programlisting>
+BEGIN WORK;
+
+-- Set up a cursor:
+DECLARE liahona SCROLL CURSOR FOR SELECT * FROM films;
+
+-- Fetch the first 5 rows in the cursor liahona:
+FETCH FORWARD 5 FROM liahona;
+
+ code  |          title          | did | date_prod  |   kind   |  len
+-------+-------------------------+-----+------------+----------+-------
+ BL101 | The Third Man           | 101 | 1949-12-23 | Drama    | 01:44
+ BL102 | The African Queen       | 101 | 1951-08-11 | Romantic | 01:43
+ JL201 | Une Femme est une Femme | 102 | 1961-03-12 | Romantic | 01:25
+ P_301 | Vertigo                 | 103 | 1958-11-14 | Action   | 02:08
+ P_302 | Becket                  | 103 | 1964-02-03 | Drama    | 02:28
+
+-- Fetch the previous row:
+FETCH PRIOR FROM liahona;
+
+ code  |  title  | did | date_prod  |  kind  |  len
+-------+---------+-----+------------+--------+-------
+ P_301 | Vertigo | 103 | 1958-11-14 | Action | 02:08
+
+-- Close the cursor and end the transaction:
+CLOSE liahona;
+COMMIT WORK;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL standard defines <command>FETCH</command> for use in
+   embedded SQL only.  The variant of <command>FETCH</command>
+   described here returns the data as if it were a
+   <command>SELECT</command> result rather than placing it in host
+   variables.  Other than this point, <command>FETCH</command> is
+   fully upward-compatible with the SQL standard.
+  </para>
+
+  <para>
+   The <command>FETCH</command> forms involving
+   <literal>FORWARD</literal> and <literal>BACKWARD</literal>, as well
+   as the forms <literal>FETCH <replaceable
+   class="PARAMETER">count</replaceable></literal> and <literal>FETCH
+   ALL</literal>, in which <literal>FORWARD</literal> is implicit, are
+   <productname>PostgreSQL</productname> extensions.
+  </para>
+
+  <para>
+   The SQL standard allows only <literal>FROM</> preceding the cursor
+   name; the option to use <literal>IN</>, or to leave them out altogether, is
+   an extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-close"></member>
+   <member><xref linkend="sql-declare"></member>
+   <member><xref linkend="sql-move"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

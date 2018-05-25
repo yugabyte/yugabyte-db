@@ -1,0 +1,5 @@
+/pg_basebackup
+/pg_receivewal
+/pg_recvlogical
+
+/tmp_check/

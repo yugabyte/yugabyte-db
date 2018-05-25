@@ -1,0 +1,131 @@
+<!--
+doc/src/sgml/ref/drop_schema.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-DROPSCHEMA">
+ <indexterm zone="sql-dropschema">
+  <primary>DROP SCHEMA</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP SCHEMA</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP SCHEMA</refname>
+  <refpurpose>remove a schema</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP SCHEMA [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable> [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP SCHEMA</command> removes schemas from the database.
+  </para>
+
+  <para>
+   A schema can only be dropped by its owner or a superuser.  Note that
+   the owner can drop the schema (and thereby all contained objects)
+   even if they do not own some of the objects within the schema.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the schema does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects (tables, functions, etc.) that are
+      contained in the schema,
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend">).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the schema if it contains any objects.  This is
+      the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Using the <literal>CASCADE</literal> option might make the command
+   remove objects in other schemas besides the one(s) named.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To remove schema <literal>mystuff</literal> from the database,
+   along with everything it contains:
+
+<programlisting>
+DROP SCHEMA mystuff CASCADE;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP SCHEMA</command> is fully conforming with the SQL
+   standard, except that the standard only allows one schema to be
+   dropped per command, and apart from the
+   <literal>IF EXISTS</> option, which is a <productname>PostgreSQL</>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterschema"></member>
+   <member><xref linkend="sql-createschema"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

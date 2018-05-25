@@ -1,0 +1,234 @@
+Parsed test spec with 3 sessions
+
+starting permutation: wx1 wx2 c1 c2 read
+step wx1: UPDATE accounts SET balance = balance - 200 WHERE accountid = 'checking';
+step wx2: UPDATE accounts SET balance = balance + 450 WHERE accountid = 'checking'; <waiting ...>
+step c1: COMMIT;
+step wx2: <... completed>
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid      balance        
+
+checking       850            
+savings        600            
+
+starting permutation: wy1 wy2 c1 c2 read
+step wy1: UPDATE accounts SET balance = balance + 500 WHERE accountid = 'checking';
+step wy2: UPDATE accounts SET balance = balance + 1000 WHERE accountid = 'checking' AND balance < 1000; <waiting ...>
+step c1: COMMIT;
+step wy2: <... completed>
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid      balance        
+
+checking       1100           
+savings        600            
+
+starting permutation: upsert1 upsert2 c1 c2 read
+step upsert1: 
+	WITH upsert AS
+	  (UPDATE accounts SET balance = balance + 500
+	   WHERE accountid = 'savings'
+	   RETURNING accountid)
+	INSERT INTO accounts SELECT 'savings', 500
+	  WHERE NOT EXISTS (SELECT 1 FROM upsert);
+
+step upsert2: 
+	WITH upsert AS
+	  (UPDATE accounts SET balance = balance + 1234
+	   WHERE accountid = 'savings'
+	   RETURNING accountid)
+	INSERT INTO accounts SELECT 'savings', 1234
+	  WHERE NOT EXISTS (SELECT 1 FROM upsert);
+ <waiting ...>
+step c1: COMMIT;
+step upsert2: <... completed>
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid      balance        
+
+checking       600            
+savings        2334           
+
+starting permutation: readp1 writep1 readp2 c1 c2
+step readp1: SELECT tableoid::regclass, ctid, * FROM p WHERE b IN (0, 1) AND c = 0 FOR UPDATE;
+tableoid       ctid           a              b              c              
+
+c1             (0,1)          0              0              0              
+c1             (0,4)          0              1              0              
+c2             (0,1)          1              0              0              
+c2             (0,4)          1              1              0              
+c3             (0,1)          2              0              0              
+c3             (0,4)          2              1              0              
+step writep1: UPDATE p SET b = -1 WHERE a = 1 AND b = 1 AND c = 0;
+step readp2: SELECT tableoid::regclass, ctid, * FROM p WHERE b IN (0, 1) AND c = 0 FOR UPDATE; <waiting ...>
+step c1: COMMIT;
+step readp2: <... completed>
+tableoid       ctid           a              b              c              
+
+c1             (0,1)          0              0              0              
+c1             (0,4)          0              1              0              
+c2             (0,1)          1              0              0              
+c3             (0,1)          2              0              0              
+c3             (0,4)          2              1              0              
+step c2: COMMIT;
+
+starting permutation: writep2 returningp1 c1 c2
+step writep2: UPDATE p SET b = -b WHERE a = 1 AND c = 0;
+step returningp1: 
+	WITH u AS ( UPDATE p SET b = b WHERE a > 0 RETURNING * )
+	  SELECT * FROM u;
+ <waiting ...>
+step c1: COMMIT;
+step returningp1: <... completed>
+a              b              c              
+
+1              0              0              
+1              0              1              
+1              0              2              
+1              -1             0              
+1              1              1              
+1              1              2              
+1              -2             0              
+1              2              1              
+1              2              2              
+1              -3             0              
+2              0              0              
+2              0              1              
+2              0              2              
+2              1              0              
+2              1              1              
+2              1              2              
+2              2              0              
+2              2              1              
+2              2              2              
+2              3              0              
+step c2: COMMIT;
+
+starting permutation: wx2 partiallock c2 c1 read
+step wx2: UPDATE accounts SET balance = balance + 450 WHERE accountid = 'checking';
+step partiallock: 
+	SELECT * FROM accounts a1, accounts a2
+	  WHERE a1.accountid = a2.accountid
+	  FOR UPDATE OF a1;
+ <waiting ...>
+step c2: COMMIT;
+step partiallock: <... completed>
+accountid      balance        accountid      balance        
+
+checking       1050           checking       600            
+savings        600            savings        600            
+step c1: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid      balance        
+
+checking       1050           
+savings        600            
+
+starting permutation: wx2 lockwithvalues c2 c1 read
+step wx2: UPDATE accounts SET balance = balance + 450 WHERE accountid = 'checking';
+step lockwithvalues: 
+	SELECT * FROM accounts a1, (values('checking'),('savings')) v(id)
+	  WHERE a1.accountid = v.id
+	  FOR UPDATE OF a1;
+ <waiting ...>
+step c2: COMMIT;
+step lockwithvalues: <... completed>
+accountid      balance        id             
+
+checking       1050           checking       
+savings        600            savings        
+step c1: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid      balance        
+
+checking       1050           
+savings        600            
+
+starting permutation: updateforss readforss c1 c2
+step updateforss: 
+	UPDATE table_a SET value = 'newTableAValue' WHERE id = 1;
+	UPDATE table_b SET value = 'newTableBValue' WHERE id = 1;
+
+step readforss: 
+	SELECT ta.id AS ta_id, ta.value AS ta_value,
+		(SELECT ROW(tb.id, tb.value)
+		 FROM table_b tb WHERE ta.id = tb.id) AS tb_row
+	FROM table_a ta
+	WHERE ta.id = 1 FOR UPDATE OF ta;
+ <waiting ...>
+step c1: COMMIT;
+step readforss: <... completed>
+ta_id          ta_value       tb_row         
+
+1              newTableAValue (1,tableBValue)
+step c2: COMMIT;
+
+starting permutation: wrtwcte readwcte c1 c2
+step wrtwcte: UPDATE table_a SET value = 'tableAValue2' WHERE id = 1;
+step readwcte: 
+	WITH
+	    cte1 AS (
+	      SELECT id FROM table_b WHERE value = 'tableBValue'
+	    ),
+	    cte2 AS (
+	      SELECT * FROM table_a
+	      WHERE id = (SELECT id FROM cte1)
+	      FOR UPDATE
+	    )
+	SELECT * FROM cte2;
+ <waiting ...>
+step c1: COMMIT;
+step c2: COMMIT;
+step readwcte: <... completed>
+id             value          
+
+1              tableAValue2   
+
+starting permutation: wrjt selectjoinforupdate c2 c1
+step wrjt: UPDATE jointest SET data = 42 WHERE id = 7;
+step selectjoinforupdate: 
+	set enable_nestloop to 0;
+	set enable_hashjoin to 0;
+	set enable_seqscan to 0;
+	explain (costs off)
+	select * from jointest a join jointest b on a.id=b.id for update;
+	select * from jointest a join jointest b on a.id=b.id for update;
+ <waiting ...>
+step c2: COMMIT;
+step selectjoinforupdate: <... completed>
+QUERY PLAN     
+
+LockRows       
+  ->  Merge Join
+        Merge Cond: (a.id = b.id)
+        ->  Index Scan using jointest_id_idx on jointest a
+        ->  Index Scan using jointest_id_idx on jointest b
+id             data           id             data           
+
+1              0              1              0              
+2              0              2              0              
+3              0              3              0              
+4              0              4              0              
+5              0              5              0              
+6              0              6              0              
+7              42             7              42             
+8              0              8              0              
+9              0              9              0              
+10             0              10             0              
+step c1: COMMIT;
+
+starting permutation: wrtwcte multireadwcte c1 c2
+step wrtwcte: UPDATE table_a SET value = 'tableAValue2' WHERE id = 1;
+step multireadwcte: 
+	WITH updated AS (
+	  UPDATE table_a SET value = 'tableAValue3' WHERE id = 1 RETURNING id
+	)
+	SELECT (SELECT id FROM updated) AS subid, * FROM updated;
+ <waiting ...>
+step c1: COMMIT;
+step c2: COMMIT;
+step multireadwcte: <... completed>
+subid          id             
+
+1              1              

@@ -1,0 +1,678 @@
+src/backend/access/nbtree/README
+
+Btree Indexing
+==============
+
+This directory contains a correct implementation of Lehman and Yao's
+high-concurrency B-tree management algorithm (P. Lehman and S. Yao,
+Efficient Locking for Concurrent Operations on B-Trees, ACM Transactions
+on Database Systems, Vol 6, No. 4, December 1981, pp 650-670).  We also
+use a simplified version of the deletion logic described in Lanin and
+Shasha (V. Lanin and D. Shasha, A Symmetric Concurrent B-Tree Algorithm,
+Proceedings of 1986 Fall Joint Computer Conference, pp 380-389).
+
+The basic Lehman & Yao Algorithm
+--------------------------------
+
+Compared to a classic B-tree, L&Y adds a right-link pointer to each page,
+to the page's right sibling.  It also adds a "high key" to each page, which
+is an upper bound on the keys that are allowed on that page.  These two
+additions make it possible detect a concurrent page split, which allows the
+tree to be searched without holding any read locks (except to keep a single
+page from being modified while reading it).
+
+When a search follows a downlink to a child page, it compares the page's
+high key with the search key.  If the search key is greater than the high
+key, the page must've been split concurrently, and you must follow the
+right-link to find the new page containing the key range you're looking
+for.  This might need to be repeated, if the page has been split more than
+once.
+
+Differences to the Lehman & Yao algorithm
+-----------------------------------------
+
+We have made the following changes in order to incorporate the L&Y algorithm
+into Postgres:
+
+The requirement that all btree keys be unique is too onerous,
+but the algorithm won't work correctly without it.  Fortunately, it is
+only necessary that keys be unique on a single tree level, because L&Y
+only use the assumption of key uniqueness when re-finding a key in a
+parent page (to determine where to insert the key for a split page).
+Therefore, we can use the link field to disambiguate multiple
+occurrences of the same user key: only one entry in the parent level
+will be pointing at the page we had split.  (Indeed we need not look at
+the real "key" at all, just at the link field.)  We can distinguish
+items at the leaf level in the same way, by examining their links to
+heap tuples; we'd never have two items for the same heap tuple.
+
+Lehman and Yao assume that the key range for a subtree S is described
+by Ki < v <= Ki+1 where Ki and Ki+1 are the adjacent keys in the parent
+page.  This does not work for nonunique keys (for example, if we have
+enough equal keys to spread across several leaf pages, there *must* be
+some equal bounding keys in the first level up).  Therefore we assume
+Ki <= v <= Ki+1 instead.  A search that finds exact equality to a
+bounding key in an upper tree level must descend to the left of that
+key to ensure it finds any equal keys in the preceding page.  An
+insertion that sees the high key of its target page is equal to the key
+to be inserted has a choice whether or not to move right, since the new
+key could go on either page.  (Currently, we try to find a page where
+there is room for the new key without a split.)
+
+Lehman and Yao don't require read locks, but assume that in-memory
+copies of tree pages are unshared.  Postgres shares in-memory buffers
+among backends.  As a result, we do page-level read locking on btree
+pages in order to guarantee that no record is modified while we are
+examining it.  This reduces concurrency but guarantees correct
+behavior.  An advantage is that when trading in a read lock for a
+write lock, we need not re-read the page after getting the write lock.
+Since we're also holding a pin on the shared buffer containing the
+page, we know that buffer still contains the page and is up-to-date.
+
+We support the notion of an ordered "scan" of an index as well as
+insertions, deletions, and simple lookups.  A scan in the forward
+direction is no problem, we just use the right-sibling pointers that
+L&Y require anyway.  (Thus, once we have descended the tree to the
+correct start point for the scan, the scan looks only at leaf pages
+and never at higher tree levels.)  To support scans in the backward
+direction, we also store a "left sibling" link much like the "right
+sibling".  (This adds an extra step to the L&Y split algorithm: while
+holding the write lock on the page being split, we also lock its former
+right sibling to update that page's left-link.  This is safe since no
+writer of that page can be interested in acquiring a write lock on our
+page.)  A backwards scan has one additional bit of complexity: after
+following the left-link we must account for the possibility that the
+left sibling page got split before we could read it.  So, we have to
+move right until we find a page whose right-link matches the page we
+came from.  (Actually, it's even harder than that; see deletion discussion
+below.)
+
+Page read locks are held only for as long as a scan is examining a page.
+To minimize lock/unlock traffic, an index scan always searches a leaf page
+to identify all the matching items at once, copying their heap tuple IDs
+into backend-local storage.  The heap tuple IDs are then processed while
+not holding any page lock within the index.  We do continue to hold a pin
+on the leaf page in some circumstances, to protect against concurrent
+deletions (see below).  In this state the scan is effectively stopped
+"between" pages, either before or after the page it has pinned.  This is
+safe in the presence of concurrent insertions and even page splits, because
+items are never moved across pre-existing page boundaries --- so the scan
+cannot miss any items it should have seen, nor accidentally return the same
+item twice.  The scan must remember the page's right-link at the time it
+was scanned, since that is the page to move right to; if we move right to
+the current right-link then we'd re-scan any items moved by a page split.
+We don't similarly remember the left-link, since it's best to use the most
+up-to-date left-link when trying to move left (see detailed move-left
+algorithm below).
+
+In most cases we release our lock and pin on a page before attempting
+to acquire pin and lock on the page we are moving to.  In a few places
+it is necessary to lock the next page before releasing the current one.
+This is safe when moving right or up, but not when moving left or down
+(else we'd create the possibility of deadlocks).
+
+Lehman and Yao fail to discuss what must happen when the root page
+becomes full and must be split.  Our implementation is to split the
+root in the same way that any other page would be split, then construct
+a new root page holding pointers to both of the resulting pages (which
+now become siblings on the next level of the tree).  The new root page
+is then installed by altering the root pointer in the meta-data page (see
+below).  This works because the root is not treated specially in any
+other way --- in particular, searches will move right using its link
+pointer if the link is set.  Therefore, searches will find the data
+that's been moved into the right sibling even if they read the meta-data
+page before it got updated.  This is the same reasoning that makes a
+split of a non-root page safe.  The locking considerations are similar too.
+
+When an inserter recurses up the tree, splitting internal pages to insert
+links to pages inserted on the level below, it is possible that it will
+need to access a page above the level that was the root when it began its
+descent (or more accurately, the level that was the root when it read the
+meta-data page).  In this case the stack it made while descending does not
+help for finding the correct page.  When this happens, we find the correct
+place by re-descending the tree until we reach the level one above the
+level we need to insert a link to, and then moving right as necessary.
+(Typically this will take only two fetches, the meta-data page and the new
+root, but in principle there could have been more than one root split
+since we saw the root.  We can identify the correct tree level by means of
+the level numbers stored in each page.  The situation is rare enough that
+we do not need a more efficient solution.)
+
+Lehman and Yao assume fixed-size keys, but we must deal with
+variable-size keys.  Therefore there is not a fixed maximum number of
+keys per page; we just stuff in as many as will fit.  When we split a
+page, we try to equalize the number of bytes, not items, assigned to
+each of the resulting pages.  Note we must include the incoming item in
+this calculation, otherwise it is possible to find that the incoming
+item doesn't fit on the split page where it needs to go!
+
+The Deletion Algorithm
+----------------------
+
+Before deleting a leaf item, we get a super-exclusive lock on the target
+page, so that no other backend has a pin on the page when the deletion
+starts.  This is not necessary for correctness in terms of the btree index
+operations themselves; as explained above, index scans logically stop
+"between" pages and so can't lose their place.  The reason we do it is to
+provide an interlock between non-full VACUUM and indexscans.  Since VACUUM
+deletes index entries before reclaiming heap tuple line pointers, the
+super-exclusive lock guarantees that VACUUM can't reclaim for re-use a
+line pointer that an indexscanning process might be about to visit.  This
+guarantee works only for simple indexscans that visit the heap in sync
+with the index scan, not for bitmap scans.  We only need the guarantee
+when using non-MVCC snapshot rules; when using an MVCC snapshot, it
+doesn't matter if the heap tuple is replaced with an unrelated tuple at
+the same TID, because the new tuple won't be visible to our scan anyway.
+Therefore, a scan using an MVCC snapshot which has no other confounding
+factors will not hold the pin after the page contents are read.  The
+current reasons for exceptions, where a pin is still needed, are if the
+index is not WAL-logged or if the scan is an index-only scan.  If later
+work allows the pin to be dropped for all cases we will be able to
+simplify the vacuum code, since the concept of a super-exclusive lock
+for btree indexes will no longer be needed.
+
+Because a pin is not always held, and a page can be split even while
+someone does hold a pin on it, it is possible that an indexscan will
+return items that are no longer stored on the page it has a pin on, but
+rather somewhere to the right of that page.  To ensure that VACUUM can't
+prematurely remove such heap tuples, we require btbulkdelete to obtain a
+super-exclusive lock on every leaf page in the index, even pages that
+don't contain any deletable tuples.  Any scan which could yield incorrect
+results if the tuple at a TID matching the scan's range and filter
+conditions were replaced by a different tuple while the scan is in
+progress must hold the pin on each index page until all index entries read
+from the page have been processed.  This guarantees that the btbulkdelete
+call cannot return while any indexscan is still holding a copy of a
+deleted index tuple if the scan could be confused by that.  Note that this
+requirement does not say that btbulkdelete must visit the pages in any
+particular order.  (See also on-the-fly deletion, below.)
+
+There is no such interlocking for deletion of items in internal pages,
+since backends keep no lock nor pin on a page they have descended past.
+Hence, when a backend is ascending the tree using its stack, it must
+be prepared for the possibility that the item it wants is to the left of
+the recorded position (but it can't have moved left out of the recorded
+page).  Since we hold a lock on the lower page (per L&Y) until we have
+re-found the parent item that links to it, we can be assured that the
+parent item does still exist and can't have been deleted.  Also, because
+we are matching downlink page numbers and not data keys, we don't have any
+problem with possibly misidentifying the parent item.
+
+Page Deletion
+-------------
+
+We consider deleting an entire page from the btree only when it's become
+completely empty of items.  (Merging partly-full pages would allow better
+space reuse, but it seems impractical to move existing data items left or
+right to make this happen --- a scan moving in the opposite direction
+might miss the items if so.)  Also, we *never* delete the rightmost page
+on a tree level (this restriction simplifies the traversal algorithms, as
+explained below).  Page deletion always begins from an empty leaf page.  An
+internal page can only be deleted as part of a branch leading to a leaf
+page, where each internal page has only one child and that child is also to
+be deleted.
+
+Deleting a leaf page is a two-stage process.  In the first stage, the page
+is unlinked from its parent, and marked as half-dead.  The parent page must
+be found using the same type of search as used to find the parent during an
+insertion split.  We lock the target and the parent pages, change the
+target's downlink to point to the right sibling, and remove its old
+downlink.  This causes the target page's key space to effectively belong to
+its right sibling.  (Neither the left nor right sibling pages need to
+change their "high key" if any; so there is no problem with possibly not
+having enough space to replace a high key.)  At the same time, we mark the
+target page as half-dead, which causes any subsequent searches to ignore it
+and move right (or left, in a backwards scan).  This leaves the tree in a
+similar state as during a page split: the page has no downlink pointing to
+it, but it's still linked to its siblings.
+
+(Note: Lanin and Shasha prefer to make the key space move left, but their
+argument for doing so hinges on not having left-links, which we have
+anyway.  So we simplify the algorithm by moving key space right.)
+
+To preserve consistency on the parent level, we cannot merge the key space
+of a page into its right sibling unless the right sibling is a child of
+the same parent --- otherwise, the parent's key space assignment changes
+too, meaning we'd have to make bounding-key updates in its parent, and
+perhaps all the way up the tree.  Since we can't possibly do that
+atomically, we forbid this case.  That means that the rightmost child of a
+parent node can't be deleted unless it's the only remaining child, in which
+case we will delete the parent too (see below).
+
+In the second-stage, the half-dead leaf page is unlinked from its siblings.
+We first lock the left sibling (if any) of the target, the target page
+itself, and its right sibling (there must be one) in that order.  Then we
+update the side-links in the siblings, and mark the target page deleted.
+
+When we're about to delete the last remaining child of a parent page, things
+are slightly more complicated.  In the first stage, we leave the immediate
+parent of the leaf page alone, and remove the downlink to the parent page
+instead, from the grandparent.  If it's the last child of the grandparent
+too, we recurse up until we find a parent with more than one child, and
+remove the downlink of that page.  The leaf page is marked as half-dead, and
+the block number of the page whose downlink was removed is stashed in the
+half-dead leaf page.  This leaves us with a chain of internal pages, with
+one downlink each, leading to the half-dead leaf page, and no downlink
+pointing to the topmost page in the chain.
+
+While we recurse up to find the topmost parent in the chain, we keep the
+leaf page locked, but don't need to hold locks on the intermediate pages
+between the leaf and the topmost parent -- insertions into upper tree levels
+happen only as a result of splits of child pages, and that can't happen as
+long as we're keeping the leaf locked.  The internal pages in the chain
+cannot acquire new children afterwards either, because the leaf page is
+marked as half-dead and won't be split.
+
+Removing the downlink to the top of the to-be-deleted chain effectively
+transfers the key space to the right sibling for all the intermediate levels
+too, in one atomic operation.  A concurrent search might still visit the
+intermediate pages, but it will move right when it reaches the half-dead page
+at the leaf level.
+
+In the second stage, the topmost page in the chain is unlinked from its
+siblings, and the half-dead leaf page is updated to point to the next page
+down in the chain.  This is repeated until there are no internal pages left
+in the chain.  Finally, the half-dead leaf page itself is unlinked from its
+siblings.
+
+A deleted page cannot be reclaimed immediately, since there may be other
+processes waiting to reference it (ie, search processes that just left the
+parent, or scans moving right or left from one of the siblings).  These
+processes must observe that the page is marked dead and recover
+accordingly.  Searches and forward scans simply follow the right-link
+until they find a non-dead page --- this will be where the deleted page's
+key-space moved to.
+
+Moving left in a backward scan is complicated because we must consider
+the possibility that the left sibling was just split (meaning we must find
+the rightmost page derived from the left sibling), plus the possibility
+that the page we were just on has now been deleted and hence isn't in the
+sibling chain at all anymore.  So the move-left algorithm becomes:
+0. Remember the page we are on as the "original page".
+1. Follow the original page's left-link (we're done if this is zero).
+2. If the current page is live and its right-link matches the "original
+   page", we are done.
+3. Otherwise, move right one or more times looking for a live page whose
+   right-link matches the "original page".  If found, we are done.  (In
+   principle we could scan all the way to the right end of the index, but
+   in practice it seems better to give up after a small number of tries.
+   It's unlikely the original page's sibling split more than a few times
+   while we were in flight to it; if we do not find a matching link in a
+   few tries, then most likely the original page is deleted.)
+4. Return to the "original page".  If it is still live, return to step 1
+   (we guessed wrong about it being deleted, and should restart with its
+   current left-link).  If it is dead, move right until a non-dead page
+   is found (there must be one, since rightmost pages are never deleted),
+   mark that as the new "original page", and return to step 1.
+This algorithm is correct because the live page found by step 4 will have
+the same left keyspace boundary as the page we started from.  Therefore,
+when we ultimately exit, it must be on a page whose right keyspace
+boundary matches the left boundary of where we started --- which is what
+we need to be sure we don't miss or re-scan any items.
+
+A deleted page can only be reclaimed once there is no scan or search that
+has a reference to it; until then, it must stay in place with its
+right-link undisturbed.  We implement this by waiting until all active
+snapshots and registered snapshots as of the deletion are gone; which is
+overly strong, but is simple to implement within Postgres.  When marked
+dead, a deleted page is labeled with the next-transaction counter value.
+VACUUM can reclaim the page for re-use when this transaction number is
+older than RecentGlobalXmin.  As collateral damage, this implementation
+also waits for running XIDs with no snapshots and for snapshots taken
+until the next transaction to allocate an XID commits.
+
+Reclaiming a page doesn't actually change its state on disk --- we simply
+record it in the shared-memory free space map, from which it will be
+handed out the next time a new page is needed for a page split.  The
+deleted page's contents will be overwritten by the split operation.
+(Note: if we find a deleted page with an extremely old transaction
+number, it'd be worthwhile to re-mark it with FrozenTransactionId so that
+a later xid wraparound can't cause us to think the page is unreclaimable.
+But in more normal situations this would be a waste of a disk write.)
+
+Because we never delete the rightmost page of any level (and in particular
+never delete the root), it's impossible for the height of the tree to
+decrease.  After massive deletions we might have a scenario in which the
+tree is "skinny", with several single-page levels below the root.
+Operations will still be correct in this case, but we'd waste cycles
+descending through the single-page levels.  To handle this we use an idea
+from Lanin and Shasha: we keep track of the "fast root" level, which is
+the lowest single-page level.  The meta-data page keeps a pointer to this
+level as well as the true root.  All ordinary operations initiate their
+searches at the fast root not the true root.  When we split a page that is
+alone on its level or delete the next-to-last page on a level (both cases
+are easily detected), we have to make sure that the fast root pointer is
+adjusted appropriately.  In the split case, we do this work as part of the
+atomic update for the insertion into the parent level; in the delete case
+as part of the atomic update for the delete (either way, the metapage has
+to be the last page locked in the update to avoid deadlock risks).  This
+avoids race conditions if two such operations are executing concurrently.
+
+VACUUM needs to do a linear scan of an index to search for deleted pages
+that can be reclaimed because they are older than all open transactions.
+For efficiency's sake, we'd like to use the same linear scan to search for
+deletable tuples.  Before Postgres 8.2, btbulkdelete scanned the leaf pages
+in index order, but it is possible to visit them in physical order instead.
+The tricky part of this is to avoid missing any deletable tuples in the
+presence of concurrent page splits: a page split could easily move some
+tuples from a page not yet passed over by the sequential scan to a
+lower-numbered page already passed over.  (This wasn't a concern for the
+index-order scan, because splits always split right.)  To implement this,
+we provide a "vacuum cycle ID" mechanism that makes it possible to
+determine whether a page has been split since the current btbulkdelete
+cycle started.  If btbulkdelete finds a page that has been split since
+it started, and has a right-link pointing to a lower page number, then
+it temporarily suspends its sequential scan and visits that page instead.
+It must continue to follow right-links and vacuum dead tuples until
+reaching a page that either hasn't been split since btbulkdelete started,
+or is above the location of the outer sequential scan.  Then it can resume
+the sequential scan.  This ensures that all tuples are visited.  It may be
+that some tuples are visited twice, but that has no worse effect than an
+inaccurate index tuple count (and we can't guarantee an accurate count
+anyway in the face of concurrent activity).  Note that this still works
+if the has-been-recently-split test has a small probability of false
+positives, so long as it never gives a false negative.  This makes it
+possible to implement the test with a small counter value stored on each
+index page.
+
+On-the-Fly Deletion Of Index Tuples
+-----------------------------------
+
+If a process visits a heap tuple and finds that it's dead and removable
+(ie, dead to all open transactions, not only that process), then we can
+return to the index and mark the corresponding index entry "known dead",
+allowing subsequent index scans to skip visiting the heap tuple.  The
+"known dead" marking works by setting the index item's lp_flags state
+to LP_DEAD.  This is currently only done in plain indexscans, not bitmap
+scans, because only plain scans visit the heap and index "in sync" and so
+there's not a convenient way to do it for bitmap scans.
+
+Once an index tuple has been marked LP_DEAD it can actually be removed
+from the index immediately; since index scans only stop "between" pages,
+no scan can lose its place from such a deletion.  We separate the steps
+because we allow LP_DEAD to be set with only a share lock (it's exactly
+like a hint bit for a heap tuple), but physically removing tuples requires
+exclusive lock.  In the current code we try to remove LP_DEAD tuples when
+we are otherwise faced with having to split a page to do an insertion (and
+hence have exclusive lock on it already).
+
+This leaves the index in a state where it has no entry for a dead tuple
+that still exists in the heap.  This is not a problem for the current
+implementation of VACUUM, but it could be a problem for anything that
+explicitly tries to find index entries for dead tuples.  (However, the
+same situation is created by REINDEX, since it doesn't enter dead
+tuples into the index.)
+
+It's sufficient to have an exclusive lock on the index page, not a
+super-exclusive lock, to do deletion of LP_DEAD items.  It might seem
+that this breaks the interlock between VACUUM and indexscans, but that is
+not so: as long as an indexscanning process has a pin on the page where
+the index item used to be, VACUUM cannot complete its btbulkdelete scan
+and so cannot remove the heap tuple.  This is another reason why
+btbulkdelete has to get a super-exclusive lock on every leaf page, not
+only the ones where it actually sees items to delete.  So that we can
+handle the cases where we attempt LP_DEAD flagging for a page after we
+have released its pin, we remember the LSN of the index page when we read
+the index tuples from it; we do not attempt to flag index tuples as dead
+if the we didn't hold the pin the entire time and the LSN has changed.
+
+WAL Considerations
+------------------
+
+The insertion and deletion algorithms in themselves don't guarantee btree
+consistency after a crash.  To provide robustness, we depend on WAL
+replay.  A single WAL entry is effectively an atomic action --- we can
+redo it from the log if it fails to complete.
+
+Ordinary item insertions (that don't force a page split) are of course
+single WAL entries, since they only affect one page.  The same for
+leaf-item deletions (if the deletion brings the leaf page to zero items,
+it is now a candidate to be deleted, but that is a separate action).
+
+An insertion that causes a page split is logged as a single WAL entry for
+the changes occurring on the insertion's level --- including update of the
+right sibling's left-link --- followed by a second WAL entry for the
+insertion on the parent level (which might itself be a page split, requiring
+an additional insertion above that, etc).
+
+For a root split, the followon WAL entry is a "new root" entry rather than
+an "insertion" entry, but details are otherwise much the same.
+
+Because splitting involves multiple atomic actions, it's possible that the
+system crashes between splitting a page and inserting the downlink for the
+new half to the parent.  After recovery, the downlink for the new page will
+be missing.  The search algorithm works correctly, as the page will be found
+by following the right-link from its left sibling, although if a lot of
+downlinks in the tree are missing, performance will suffer.  A more serious
+consequence is that if the page without a downlink gets split again, the
+insertion algorithm will fail to find the location in the parent level to
+insert the downlink.
+
+Our approach is to create any missing downlinks on-the-fly, when searching
+the tree for a new insertion.  It could be done during searches, too, but
+it seems best not to put any extra updates in what would otherwise be a
+read-only operation (updating is not possible in hot standby mode anyway).
+It would seem natural to add the missing downlinks in VACUUM, but since
+inserting a downlink might require splitting a page, it might fail if you
+run out of disk space.  That would be bad during VACUUM - the reason for
+running VACUUM in the first place might be that you run out of disk space,
+and now VACUUM won't finish because you're out of disk space.  In contrast,
+an insertion can require enlarging the physical file anyway.
+
+To identify missing downlinks, when a page is split, the left page is
+flagged to indicate that the split is not yet complete (INCOMPLETE_SPLIT).
+When the downlink is inserted to the parent, the flag is cleared atomically
+with the insertion.  The child page is kept locked until the insertion in
+the parent is finished and the flag in the child cleared, but can be
+released immediately after that, before recursing up the tree if the parent
+also needs to be split.  This ensures that incompletely split pages should
+not be seen under normal circumstances; only if insertion to the parent
+has failed for some reason.
+
+We flag the left page, even though it's the right page that's missing the
+downlink, because it's more convenient to know already when following the
+right-link from the left page to the right page that it will need to have
+its downlink inserted to the parent.
+
+When splitting a non-root page that is alone on its level, the required
+metapage update (of the "fast root" link) is performed and logged as part
+of the insertion into the parent level.  When splitting the root page, the
+metapage update is handled as part of the "new root" action.
+
+Each step in page deletion is logged as a separate WAL entry: marking the
+leaf as half-dead and removing the downlink is one record, and unlinking a
+page is a second record.  If vacuum is interrupted for some reason, or the
+system crashes, the tree is consistent for searches and insertions.  The
+next VACUUM will find the half-dead leaf page and continue the deletion.
+
+Before 9.4, we used to keep track of incomplete splits and page deletions
+during recovery and finish them immediately at end of recovery, instead of
+doing it lazily at the next  insertion or vacuum.  However, that made the
+recovery much more complicated, and only fixed the problem when crash
+recovery was performed.  An incomplete split can also occur if an otherwise
+recoverable error, like out-of-memory or out-of-disk-space, happens while
+inserting the downlink to the parent.
+
+Scans during Recovery
+---------------------
+
+The btree index type can be safely used during recovery. During recovery
+we have at most one writer and potentially many readers. In that
+situation the locking requirements can be relaxed and we do not need
+double locking during block splits. Each WAL record makes changes to a
+single level of the btree using the correct locking sequence and so
+is safe for concurrent readers. Some readers may observe a block split
+in progress as they descend the tree, but they will simply move right
+onto the correct page.
+
+During recovery all index scans start with ignore_killed_tuples = false
+and we never set kill_prior_tuple. We do this because the oldest xmin
+on the standby server can be older than the oldest xmin on the master
+server, which means tuples can be marked as killed even when they are
+still visible on the standby. We don't WAL log tuple killed bits, but
+they can still appear in the standby because of full page writes. So
+we must always ignore them in standby, and that means it's not worth
+setting them either.
+
+Note that we talk about scans that are started during recovery. We go to
+a little trouble to allow a scan to start during recovery and end during
+normal running after recovery has completed. This is a key capability
+because it allows running applications to continue while the standby
+changes state into a normally running server.
+
+The interlocking required to avoid returning incorrect results from
+non-MVCC scans is not required on standby nodes. That is because
+HeapTupleSatisfiesUpdate(), HeapTupleSatisfiesSelf(),
+HeapTupleSatisfiesDirty() and HeapTupleSatisfiesVacuum() are only
+ever used during write transactions, which cannot exist on the standby.
+MVCC scans are already protected by definition, so HeapTupleSatisfiesMVCC()
+is not a problem.  That leaves concern only for HeapTupleSatisfiesToast().
+HeapTupleSatisfiesToast() doesn't use MVCC semantics, though that's
+because it doesn't need to - if the main heap row is visible then the
+toast rows will also be visible. So as long as we follow a toast
+pointer from a visible (live) tuple the corresponding toast rows
+will also be visible, so we do not need to recheck MVCC on them.
+There is one minor exception, which is that the optimizer sometimes
+looks at the boundaries of value ranges using SnapshotDirty, which
+could result in returning a newer value for query statistics; this
+would affect the query plan in rare cases, but not the correctness.
+The risk window is small since the stats look at the min and max values
+in the index, so the scan retrieves a tid then immediately uses it
+to look in the heap. It is unlikely that the tid could have been
+deleted, vacuumed and re-inserted in the time taken to look in the heap
+via direct tid access. So we ignore that scan type as a problem.
+
+Other Things That Are Handy to Know
+-----------------------------------
+
+Page zero of every btree is a meta-data page.  This page stores the
+location of the root page --- both the true root and the current effective
+root ("fast" root).  To avoid fetching the metapage for every single index
+search, we cache a copy of the meta-data information in the index's
+relcache entry (rd_amcache).  This is a bit ticklish since using the cache
+implies following a root page pointer that could be stale.  However, a
+backend following a cached pointer can sufficiently verify whether it
+reached the intended page; either by checking the is-root flag when it
+is going to the true root, or by checking that the page has no siblings
+when going to the fast root.  At worst, this could result in descending
+some extra tree levels if we have a cached pointer to a fast root that is
+now above the real fast root.  Such cases shouldn't arise often enough to
+be worth optimizing; and in any case we can expect a relcache flush will
+discard the cached metapage before long, since a VACUUM that's moved the
+fast root pointer can be expected to issue a statistics update for the
+index.
+
+The algorithm assumes we can fit at least three items per page
+(a "high key" and two real data items).  Therefore it's unsafe
+to accept items larger than 1/3rd page size.  Larger items would
+work sometimes, but could cause failures later on depending on
+what else gets put on their page.
+
+"ScanKey" data structures are used in two fundamentally different ways
+in this code, which we describe as "search" scankeys and "insertion"
+scankeys.  A search scankey is the kind passed to btbeginscan() or
+btrescan() from outside the btree code.  The sk_func pointers in a search
+scankey point to comparison functions that return boolean, such as int4lt.
+There might be more than one scankey entry for a given index column, or
+none at all.  (We require the keys to appear in index column order, but
+the order of multiple keys for a given column is unspecified.)  An
+insertion scankey uses the same array-of-ScanKey data structure, but the
+sk_func pointers point to btree comparison support functions (ie, 3-way
+comparators that return int4 values interpreted as <0, =0, >0).  In an
+insertion scankey there is exactly one entry per index column.  Insertion
+scankeys are built within the btree code (eg, by _bt_mkscankey()) and are
+used to locate the starting point of a scan, as well as for locating the
+place to insert a new index tuple.  (Note: in the case of an insertion
+scankey built from a search scankey, there might be fewer keys than
+index columns, indicating that we have no constraints for the remaining
+index columns.)  After we have located the starting point of a scan, the
+original search scankey is consulted as each index entry is sequentially
+scanned to decide whether to return the entry and whether the scan can
+stop (see _bt_checkkeys()).
+
+Notes About Data Representation
+-------------------------------
+
+The right-sibling link required by L&Y is kept in the page "opaque
+data" area, as is the left-sibling link, the page level, and some flags.
+The page level counts upwards from zero at the leaf level, to the tree
+depth minus 1 at the root.  (Counting up from the leaves ensures that we
+don't need to renumber any existing pages when splitting the root.)
+
+The Postgres disk block data format (an array of items) doesn't fit
+Lehman and Yao's alternating-keys-and-pointers notion of a disk page,
+so we have to play some games.
+
+On a page that is not rightmost in its tree level, the "high key" is
+kept in the page's first item, and real data items start at item 2.
+The link portion of the "high key" item goes unused.  A page that is
+rightmost has no "high key", so data items start with the first item.
+Putting the high key at the left, rather than the right, may seem odd,
+but it avoids moving the high key as we add data items.
+
+On a leaf page, the data items are simply links to (TIDs of) tuples
+in the relation being indexed, with the associated key values.
+
+On a non-leaf page, the data items are down-links to child pages with
+bounding keys.  The key in each data item is the *lower* bound for
+keys on that child page, so logically the key is to the left of that
+downlink.  The high key (if present) is the upper bound for the last
+downlink.  The first data item on each such page has no lower bound
+--- or lower bound of minus infinity, if you prefer.  The comparison
+routines must treat it accordingly.  The actual key stored in the
+item is irrelevant, and need not be stored at all.  This arrangement
+corresponds to the fact that an L&Y non-leaf page has one more pointer
+than key.
+
+Notes to Operator Class Implementors
+------------------------------------
+
+With this implementation, we require each supported combination of
+datatypes to supply us with a comparison procedure via pg_amproc.
+This procedure must take two nonnull values A and B and return an int32 < 0,
+0, or > 0 if A < B, A = B, or A > B, respectively.  The procedure must
+not return INT_MIN for "A < B", since the value may be negated before
+being tested for sign.  A null result is disallowed, too.  See nbtcompare.c
+for examples.
+
+There are some basic assumptions that a btree operator family must satisfy:
+
+An = operator must be an equivalence relation; that is, for all non-null
+values A,B,C of the datatype:
+
+	A = A is true						reflexive law
+	if A = B, then B = A					symmetric law
+	if A = B and B = C, then A = C				transitive law
+
+A < operator must be a strong ordering relation; that is, for all non-null
+values A,B,C:
+
+	A < A is false						irreflexive law
+	if A < B and B < C, then A < C				transitive law
+
+Furthermore, the ordering is total; that is, for all non-null values A,B:
+
+	exactly one of A < B, A = B, and B < A is true		trichotomy law
+
+(The trichotomy law justifies the definition of the comparison support
+procedure, of course.)
+
+The other three operators are defined in terms of these two in the obvious way,
+and must act consistently with them.
+
+For an operator family supporting multiple datatypes, the above laws must hold
+when A,B,C are taken from any datatypes in the family.  The transitive laws
+are the trickiest to ensure, as in cross-type situations they represent
+statements that the behaviors of two or three different operators are
+consistent.  As an example, it would not work to put float8 and numeric into
+an opfamily, at least not with the current semantics that numerics are
+converted to float8 for comparison to a float8.  Because of the limited
+accuracy of float8, this means there are distinct numeric values that will
+compare equal to the same float8 value, and thus the transitive law fails.
+
+It should be fairly clear why a btree index requires these laws to hold within
+a single datatype: without them there is no ordering to arrange the keys with.
+Also, index searches using a key of a different datatype require comparisons
+to behave sanely across two datatypes.  The extensions to three or more
+datatypes within a family are not strictly required by the btree index
+mechanism itself, but the planner relies on them for optimization purposes.

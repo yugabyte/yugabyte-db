@@ -1,0 +1,118 @@
+src/test/isolation/README
+
+Isolation tests
+===============
+
+This directory contains a set of tests for concurrent behaviors in
+PostgreSQL.  These tests require running multiple interacting transactions,
+which requires management of multiple concurrent connections, and therefore
+can't be tested using the normal pg_regress program.  The name "isolation"
+comes from the fact that the original motivation was to test the
+serializable isolation level; but tests for other sorts of concurrent
+behaviors have been added as well.
+
+To run the tests, you need to have a server running at the default port
+expected by libpq.  (You can set PGPORT and so forth in your environment
+to control this.)  Then run
+    make installcheck
+To run just specific test(s), you can do something like
+    ./pg_isolation_regress fk-contention fk-deadlock
+(look into the specs/ subdirectory to see the available tests).
+
+The prepared-transactions test requires the server's
+max_prepared_transactions parameter to be set to at least 3; therefore it
+is not run by default.  To include it in the test run, use
+    make installcheck-prepared-txns
+
+To define tests with overlapping transactions, we use test specification
+files with a custom syntax, which is described in the next section.  To add
+a new test, place a spec file in the specs/ subdirectory, add the expected
+output in the expected/ subdirectory, and add the test's name to the
+isolation_schedule file.
+
+isolationtester is a program that uses libpq to open multiple connections,
+and executes a test specified by a spec file. A libpq connection string
+specifies the server and database to connect to; defaults derived from
+environment variables are used otherwise.
+
+pg_isolation_regress is a tool similar to pg_regress, but instead of using
+psql to execute a test, it uses isolationtester.  It accepts all the same
+command-line arguments as pg_regress.
+
+
+Test specification
+==================
+
+Each isolation test is defined by a specification file, stored in the specs
+subdirectory. A test specification consists of four parts, in this order:
+
+setup { <SQL> }
+
+  The given SQL block is executed once, in one session only, before running
+  the test.  Create any test tables or other required objects here.  This
+  part is optional.  Multiple setup blocks are allowed if needed; each is
+  run separately, in the given order.  (The reason for allowing multiple
+  setup blocks is that each block is run as a single PQexec submission,
+  and some statements such as VACUUM cannot be combined with others in such
+  a block.)
+
+teardown { <SQL> }
+
+  The teardown SQL block is executed once after the test is finished. Use
+  this to clean up in preparation for the next permutation, e.g dropping
+  any test tables created by setup. This part is optional.
+
+session "<name>"
+
+  There are normally several "session" parts in a spec file. Each
+  session is executed in its own connection. A session part consists
+  of three parts: setup, teardown and one or more "steps". The per-session
+  setup and teardown parts have the same syntax as the per-test setup and
+  teardown described above, but they are executed in each session. The
+  setup part typically contains a "BEGIN" command to begin a transaction.
+
+  Each step has the syntax
+
+  step "<name>" { <SQL> }
+
+  where <name> is a name identifying this step, and SQL is a SQL statement
+  (or statements, separated by semicolons) that is executed in the step.
+  Step names must be unique across the whole spec file.
+
+permutation "<step name>" ...
+
+  A permutation line specifies a list of steps that are run in that order.
+  Any number of permutation lines can appear.  If no permutation lines are
+  given, the test program automatically generates all possible orderings
+  of the steps from each session (running the steps of any one session in
+  order).  Note that the list of steps in a manually specified
+  "permutation" line doesn't actually have to be a permutation of the
+  available steps; it could for instance repeat some steps more than once,
+  or leave others out.
+
+Lines beginning with a # are considered comments.
+
+For each permutation of the session steps (whether these are manually
+specified in the spec file, or automatically generated), the isolation
+tester runs the main setup part, then per-session setup parts, then
+the selected session steps, then per-session teardown, then the main
+teardown script.  Each selected step is sent to the connection associated
+with its session.
+
+
+Support for blocking commands
+=============================
+
+Each step may contain commands that block until further action has been taken
+(most likely, some other session runs a step that unblocks it or causes a
+deadlock).  A test that uses this ability must manually specify valid
+permutations, i.e. those that would not expect a blocked session to execute a
+command.  If a test fails to follow that rule, isolationtester will cancel it
+after 60 seconds.  If the cancel doesn't work, isolationtester will exit
+uncleanly after a total of 75 seconds of wait time.  Testing invalid
+permutations should be avoided because they can make the isolation tests take
+a very long time to run, and they serve no useful testing purpose.
+
+Note that isolationtester recognizes that a command has blocked by looking
+to see if it is shown as waiting in the pg_locks view; therefore, only
+blocks on heavyweight locks will be detected.

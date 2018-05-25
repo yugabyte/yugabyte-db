@@ -1,0 +1,127 @@
+<!--
+doc/src/sgml/ref/alter_conversion.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTERCONVERSION">
+ <indexterm zone="sql-alterconversion">
+  <primary>ALTER CONVERSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER CONVERSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER CONVERSION</refname>
+  <refpurpose>change the definition of a conversion</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER CONVERSION <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+ALTER CONVERSION <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER CONVERSION <replaceable>name</replaceable> SET SCHEMA <replaceable>new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER CONVERSION</command> changes the definition of a
+   conversion.
+  </para>
+
+  <para>
+   You must own the conversion to use <command>ALTER CONVERSION</>.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the conversion's schema.  (These restrictions enforce that altering the
+   owner doesn't do anything you couldn't do by dropping and recreating the
+   conversion. However, a superuser can alter ownership of any conversion
+   anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing conversion.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the conversion.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the conversion.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the conversion.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To rename the conversion <literal>iso_8859_1_to_utf8</literal> to
+   <literal>latin1_to_unicode</literal>:
+<programlisting>
+ALTER CONVERSION iso_8859_1_to_utf8 RENAME TO latin1_to_unicode;
+</programlisting>
+  </para>
+
+  <para>
+   To change the owner of the conversion <literal>iso_8859_1_to_utf8</literal> to
+   <literal>joe</literal>:
+<programlisting>
+ALTER CONVERSION iso_8859_1_to_utf8 OWNER TO joe;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER CONVERSION</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createconversion"></member>
+   <member><xref linkend="sql-dropconversion"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

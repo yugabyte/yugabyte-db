@@ -1,0 +1,69 @@
+<!--
+doc/src/sgml/ref/create_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-CREATEGROUP">
+ <indexterm zone="sql-creategroup">
+  <primary>CREATE GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE GROUP</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE GROUP</refname>
+  <refpurpose>define a new database role</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE GROUP <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replaceable class="PARAMETER">option</replaceable> [ ... ] ]
+
+<phrase>where <replaceable class="PARAMETER">option</replaceable> can be:</phrase>
+
+      SUPERUSER | NOSUPERUSER
+    | CREATEDB | NOCREATEDB
+    | CREATEROLE | NOCREATEROLE
+    | INHERIT | NOINHERIT
+    | LOGIN | NOLOGIN
+    | [ ENCRYPTED ] PASSWORD '<replaceable class="PARAMETER">password</replaceable>'
+    | VALID UNTIL '<replaceable class="PARAMETER">timestamp</replaceable>'
+    | IN ROLE <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    | IN GROUP <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    | ROLE <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    | ADMIN <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    | USER <replaceable class="PARAMETER">role_name</replaceable> [, ...]
+    | SYSID <replaceable class="PARAMETER">uid</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE GROUP</command> is now an alias for
+   <xref linkend="sql-createrole">.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>CREATE GROUP</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createrole"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

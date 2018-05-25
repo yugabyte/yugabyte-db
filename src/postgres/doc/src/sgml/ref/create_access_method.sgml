@@ -1,0 +1,118 @@
+<!--
+doc/src/sgml/ref/create_access_method.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-create-access-method">
+ <indexterm zone="sql-create-access-method">
+  <primary>CREATE ACCESS METHOD</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE ACCESS METHOD</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE ACCESS METHOD</refname>
+  <refpurpose>define a new access method</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE ACCESS METHOD <replaceable class="parameter">name</replaceable>
+    TYPE <replaceable class="parameter">access_method_type</replaceable>
+    HANDLER <replaceable class="parameter">handler_function</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE ACCESS METHOD</command> creates a new access method.
+  </para>
+
+  <para>
+   The access method name must be unique within the database.
+  </para>
+
+  <para>
+   Only superusers can define new access methods.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the access method to be created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">access_method_type</replaceable></term>
+    <listitem>
+     <para>
+      This clause specifies the type of access method to define.
+      Only <literal>INDEX</literal> is supported at present.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">handler_function</replaceable></term>
+    <listitem>
+     <para>
+      <replaceable class="parameter">handler_function</replaceable> is the
+      name (possibly schema-qualified) of a previously registered function
+      that represents the access method.  The handler function must be
+      declared to take a single argument of type <type>internal</>,
+      and its return type depends on the type of access method;
+      for <literal>INDEX</literal> access methods, it must
+      be <type>index_am_handler</type>.  The C-level API that the handler
+      function must implement varies depending on the type of access method.
+      The index access method API is described in <xref linkend="indexam">.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Create an index access method <literal>heptree</> with
+   handler function <literal>heptree_handler</>:
+<programlisting>
+CREATE ACCESS METHOD heptree TYPE INDEX HANDLER heptree_handler;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE ACCESS METHOD</command> is a
+   <productname>PostgreSQL</> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-drop-access-method"></member>
+   <member><xref linkend="sql-createopclass"></member>
+   <member><xref linkend="sql-createopfamily"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

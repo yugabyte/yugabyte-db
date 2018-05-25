@@ -1,0 +1,664 @@
+# LANGUAGE message translation file for ecpg
+# Copyright (C) 2009 PostgreSQL Global Development Group
+# This file is distributed under the same license as the PostgreSQL package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2009.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PostgreSQL 10\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
+"POT-Creation-Date: 2018-03-05 23:08+0000\n"
+"PO-Revision-Date: 2018-03-06 16:31+0900\n"
+"Last-Translator: Kyotaro HORIGUCHI <horiguchi.kyotaro@lab.ntt.co.jp>\n"
+"Language-Team: jpug-doc <jpug-doc@ml.postgresql.jp>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+
+#: descriptor.c:64
+#, c-format
+msgid "variable \"%s\" must have a numeric type"
+msgstr "変数\"%s\"は数値型でなければなりません"
+
+#: descriptor.c:124 descriptor.c:146
+#, c-format
+msgid "descriptor \"%s\" does not exist"
+msgstr "%s記述子は存在しません"
+
+#: descriptor.c:161 descriptor.c:213
+#, c-format
+msgid "descriptor header item \"%d\" does not exist"
+msgstr "記述子ヘッダ項目%dは存在しません"
+
+#: descriptor.c:183
+#, c-format
+msgid "nullable is always 1"
+msgstr "nullableは常に1です"
+
+#: descriptor.c:186
+#, c-format
+msgid "key_member is always 0"
+msgstr "key_memberは常に0です"
+
+#: descriptor.c:280
+#, c-format
+msgid "descriptor item \"%s\" is not implemented"
+msgstr "記述子項目%sは実装されていません"
+
+#: descriptor.c:290
+#, c-format
+msgid "descriptor item \"%s\" cannot be set"
+msgstr "記述子項目%sは設定できません"
+
+#: ecpg.c:35
+#, c-format
+msgid ""
+"%s is the PostgreSQL embedded SQL preprocessor for C programs.\n"
+"\n"
+msgstr ""
+"%sはCプログラム用のPostgreSQL埋込みSQLプリプロセッサです。\n"
+"\n"
+
+#: ecpg.c:37
+#, c-format
+msgid ""
+"Usage:\n"
+"  %s [OPTION]... FILE...\n"
+"\n"
+msgstr ""
+"使用方法:\n"
+"  %s [オプション]... ファイル...\n"
+"\n"
+
+#: ecpg.c:40
+#, c-format
+msgid "Options:\n"
+msgstr "オプション:\n"
+
+#: ecpg.c:41
+#, c-format
+msgid ""
+"  -c             automatically generate C code from embedded SQL code;\n"
+"                 this affects EXEC SQL TYPE\n"
+msgstr ""
+"  -c             埋め込まれたSQLコードを元にC言語コードを自動的に生成します\n"
+"                 これはEXEC SQL TYPEに影響を与えます\n"
+
+#: ecpg.c:43
+#, c-format
+msgid ""
+"  -C MODE        set compatibility mode; MODE can be one of\n"
+"                 \"INFORMIX\", \"INFORMIX_SE\"\n"
+msgstr ""
+"  -C MODE        互換モードを設定します。MODEには\"INFORMIX\", \"INFORMIX_SE\"\n"
+"                 のいずれかを設定することができます\n"
+
+#: ecpg.c:46
+#, c-format
+msgid "  -d             generate parser debug output\n"
+msgstr "  -d             パーサのデバッグ出力を有効にします\n"
+
+#: ecpg.c:48
+#, c-format
+msgid "  -D SYMBOL      define SYMBOL\n"
+msgstr "  -D SYMBOL      シンボル SYMBOL を定義します\n"
+
+#: ecpg.c:49
+#, c-format
+msgid "  -h             parse a header file, this option includes option \"-c\"\n"
+msgstr "  -h             ヘッダファイルをパースします。このオプションには\"-c\"オプションが含まれます\n"
+
+#: ecpg.c:50
+#, c-format
+msgid "  -i             parse system include files as well\n"
+msgstr "  -i             システムインクルードファイルもパースします\n"
+
+#: ecpg.c:51
+#, c-format
+msgid "  -I DIRECTORY   search DIRECTORY for include files\n"
+msgstr "  -I DIRECTORY   DIRECTORYからインクルードファイルを検索します\n"
+
+#: ecpg.c:52
+#, c-format
+msgid "  -o OUTFILE     write result to OUTFILE\n"
+msgstr "  -o OUTFILE     結果をOUTFILEに出力します\n"
+
+#: ecpg.c:53
+#, c-format
+msgid ""
+"  -r OPTION      specify run-time behavior; OPTION can be:\n"
+"                 \"no_indicator\", \"prepare\", \"questionmarks\"\n"
+msgstr ""
+"  -r OPTION      実行時の動作を指定します。オプションは次のいずれかを取ることができます。\n"
+"                 \"no_indicator\"、\"prepare\"、\"questionmarks\"\n"
+
+#: ecpg.c:55
+#, c-format
+msgid "  --regression   run in regression testing mode\n"
+msgstr "  --regression   リグレッション試験モードで実行します\n"
+
+#: ecpg.c:56
+#, c-format
+msgid "  -t             turn on autocommit of transactions\n"
+msgstr "  -t             トランザクションの自動コミットを有効にします\n"
+
+#: ecpg.c:57
+#, c-format
+msgid "  -V, --version  output version information, then exit\n"
+msgstr "  -V, --version  バージョン情報を出力して、終了します\n"
+
+#: ecpg.c:58
+#, c-format
+msgid "  -?, --help     show this help, then exit\n"
+msgstr "  -?, --help     このヘルプを表示して、終了します\n"
+
+#: ecpg.c:59
+#, c-format
+msgid ""
+"\n"
+"If no output file is specified, the name is formed by adding .c to the\n"
+"input file name, after stripping off .pgc if present.\n"
+msgstr ""
+"\n"
+"出力ファイルが指定されていない場合、入力ファイルの名前に.cを付けた名前になります。\n"
+"ただし、もし.pgcがある場合はこれを取り除いてから.cが付けられます。\n"
+
+#: ecpg.c:61
+#, c-format
+msgid ""
+"\n"
+"Report bugs to <pgsql-bugs@postgresql.org>.\n"
+msgstr ""
+"\n"
+"不具合は<pgsql-bugs@postgresql.org>に報告してください。\n"
+
+#: ecpg.c:139
+#, c-format
+msgid "%s: could not locate my own executable path\n"
+msgstr "%s: 自身の実行ファイルの場所がわかりません\n"
+
+#: ecpg.c:174 ecpg.c:327 ecpg.c:337
+#, c-format
+msgid "%s: could not open file \"%s\": %s\n"
+msgstr "%s: ファイル\"%s\"をオープンできませんでした: %s\n"
+
+#: ecpg.c:213 ecpg.c:226 ecpg.c:242 ecpg.c:268
+#, c-format
+msgid "Try \"%s --help\" for more information.\n"
+msgstr "詳細は\"%s --help\"を実行してください。\n"
+
+#: ecpg.c:237
+#, c-format
+msgid "%s: parser debug support (-d) not available\n"
+msgstr "%s: パーサデバッグのサポート(-d)を利用できません\n"
+
+#: ecpg.c:256
+#, c-format
+msgid "%s, the PostgreSQL embedded C preprocessor, version %s\n"
+msgstr "%s, PostgreSQL埋込みC言語プリプロセッサ, バージョン%s\n"
+
+#: ecpg.c:258
+#, c-format
+msgid "EXEC SQL INCLUDE ... search starts here:\n"
+msgstr "EXEC SQL INCLUDE ... 検索が始まります\n"
+
+#: ecpg.c:261
+#, c-format
+msgid "end of search list\n"
+msgstr "検索リストの終端です\n"
+
+#: ecpg.c:267
+#, c-format
+msgid "%s: no input files specified\n"
+msgstr "%s: 入力ファイルが指定されていません\n"
+
+#: ecpg.c:460
+#, c-format
+msgid "cursor \"%s\" has been declared but not opened"
+msgstr "カーソル%sは宣言されましたが、オープンされていません"
+
+#: ecpg.c:473 preproc.y:127
+#, c-format
+msgid "could not remove output file \"%s\"\n"
+msgstr "出力ファイル\"%s\"を削除できませんでした\n"
+
+#: pgc.l:431
+#, c-format
+msgid "unterminated /* comment"
+msgstr "/*コメントが閉じていません"
+
+#: pgc.l:444
+#, c-format
+msgid "invalid bit string literal"
+msgstr "無効なビット列リテラルです"
+
+#: pgc.l:453
+#, c-format
+msgid "unterminated bit string literal"
+msgstr "ビット文字列リテラルの終端がありません"
+
+#: pgc.l:469
+#, c-format
+msgid "unterminated hexadecimal string literal"
+msgstr "16進数文字列リテラルの終端がありません"
+
+#: pgc.l:547
+#, c-format
+msgid "unterminated quoted string"
+msgstr "文字列の引用符が閉じていません"
+
+#: pgc.l:605 pgc.l:618
+#, c-format
+msgid "zero-length delimited identifier"
+msgstr "区切りつき識別子の長さがゼロです"
+
+#: pgc.l:626
+#, c-format
+msgid "unterminated quoted identifier"
+msgstr "識別子の引用符が閉じていません"
+
+#: pgc.l:881
+#, c-format
+msgid "nested /* ... */ comments"
+msgstr "入れ子状の /* ... */ コメント"
+
+#: pgc.l:974
+#, c-format
+msgid "missing identifier in EXEC SQL UNDEF command"
+msgstr "EXEC SQL UNDEFコマンドにおいて識別子がありません"
+
+#: pgc.l:1020 pgc.l:1034
+#, c-format
+msgid "missing matching \"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\""
+msgstr "対応する\"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\"がありません"
+
+#: pgc.l:1023 pgc.l:1036 pgc.l:1212
+#, c-format
+msgid "missing \"EXEC SQL ENDIF;\""
+msgstr "\"EXEC SQL ENDIF;\"がありません"
+
+#: pgc.l:1052 pgc.l:1071
+#, c-format
+msgid "more than one EXEC SQL ELSE"
+msgstr "1つ以上のEXEC SQL ELSE\"が存在します"
+
+#: pgc.l:1093 pgc.l:1107
+#, c-format
+msgid "unmatched EXEC SQL ENDIF"
+msgstr "EXEC SQL ENDIFに対応するものがありません"
+
+#: pgc.l:1127
+#, c-format
+msgid "too many nested EXEC SQL IFDEF conditions"
+msgstr "入れ子状のEXEC SQL IFDEF条件が多すぎます"
+
+#: pgc.l:1160
+#, c-format
+msgid "missing identifier in EXEC SQL IFDEF command"
+msgstr "EXEC SQL IFDEFコマンドにおいて識別子がありません"
+
+#: pgc.l:1169
+#, c-format
+msgid "missing identifier in EXEC SQL DEFINE command"
+msgstr "EXEC SQL DEFINEコマンドにおいて識別子がありません"
+
+#: pgc.l:1202
+#, c-format
+msgid "syntax error in EXEC SQL INCLUDE command"
+msgstr "EXEC SQL INCLUDEコマンドにおいて構文エラーがあります"
+
+#: pgc.l:1251
+#, c-format
+msgid "internal error: unreachable state; please report this to <pgsql-bugs@postgresql.org>"
+msgstr "内部エラー: 到達しないはずの状態です。<pgsql-bugs@postgresql.org>まで報告してください"
+
+#: pgc.l:1376
+#, c-format
+msgid "Error: include path \"%s/%s\" is too long on line %d, skipping\n"
+msgstr "エラー:行番号%3$dのインクルードパス\"%1$s/%2$s\"が長すぎます。無視しました。\n"
+
+#: pgc.l:1399
+#, c-format
+msgid "could not open include file \"%s\" on line %d"
+msgstr "行番号%2$dのインクルードファイル\"%1$s\"をオープンすることができませんでした"
+
+#: preproc.y:31
+msgid "syntax error"
+msgstr "構文エラー"
+
+#: preproc.y:81
+#, c-format
+msgid "WARNING: "
+msgstr "警告: "
+
+#: preproc.y:84
+#, c-format
+msgid "ERROR: "
+msgstr "エラー: "
+
+#: preproc.y:508
+#, c-format
+msgid "cursor \"%s\" does not exist"
+msgstr "カーソル\"%s\"は存在しません"
+
+#: preproc.y:537
+#, c-format
+msgid "initializer not allowed in type definition"
+msgstr "型定義では初期化子は許されません"
+
+#: preproc.y:539
+#, c-format
+msgid "type name \"string\" is reserved in Informix mode"
+msgstr "型名\"string\"はInformixモードですでに予約されています"
+
+#: preproc.y:546 preproc.y:15397
+#, c-format
+msgid "type \"%s\" is already defined"
+msgstr "\"%s\"型はすでに定義されています"
+
+#: preproc.y:570 preproc.y:16055 preproc.y:16375 variable.c:620
+#, c-format
+msgid "multidimensional arrays for simple data types are not supported"
+msgstr "単純なデータ型の多次元配列はサポートされていません"
+
+#: preproc.y:1674
+#, c-format
+msgid "AT option not allowed in CLOSE DATABASE statement"
+msgstr "CLOSE DATABASE文ではATオプションは許されません"
+
+#: preproc.y:1883
+#, c-format
+msgid "AT option not allowed in CONNECT statement"
+msgstr "CONNECT文ではATオプションは許されません"
+
+#: preproc.y:1917
+#, c-format
+msgid "AT option not allowed in DISCONNECT statement"
+msgstr "DISCONNECT文ではATオプションは許されません"
+
+#: preproc.y:1972
+#, c-format
+msgid "AT option not allowed in SET CONNECTION statement"
+msgstr "SET CONNECTION文ではATオプションは許されません"
+
+#: preproc.y:1994
+#, c-format
+msgid "AT option not allowed in TYPE statement"
+msgstr "TYPE文ではATオプションは許されません"
+
+#: preproc.y:2003
+#, c-format
+msgid "AT option not allowed in VAR statement"
+msgstr "VAR文ではATオプションは許されません"
+
+#: preproc.y:2010
+#, c-format
+msgid "AT option not allowed in WHENEVER statement"
+msgstr "WHENEVER文ではATオプションは許されません"
+
+#: preproc.y:2079 preproc.y:2251 preproc.y:2256 preproc.y:2372 preproc.y:3954
+#: preproc.y:5504 preproc.y:5513 preproc.y:5813 preproc.y:7349 preproc.y:8786
+#: preproc.y:8791 preproc.y:11523 preproc.y:12144
+#, c-format
+msgid "unsupported feature will be passed to server"
+msgstr "サーバに未サポート機能が渡されます"
+
+#: preproc.y:2630
+#, c-format
+msgid "SHOW ALL is not implemented"
+msgstr "SHOW ALLは実装されていません"
+
+#: preproc.y:3306
+#, c-format
+msgid "COPY FROM STDIN is not implemented"
+msgstr "COPY FROM STDINは実装されていません"
+
+#: preproc.y:9689 preproc.y:14986
+#, c-format
+msgid "using variable \"%s\" in different declare statements is not supported"
+msgstr "異なったdeclareステートメントにおける変数\"%s\"の使用はサポートされていません"
+
+#: preproc.y:9691 preproc.y:14988
+#, c-format
+msgid "cursor \"%s\" is already defined"
+msgstr "カーソル\"%s\"はすでに定義されています"
+
+#: preproc.y:10121
+#, c-format
+msgid "no longer supported LIMIT #,# syntax passed to server"
+msgstr "サーバに渡されるLIMIT #,#構文はもはやサポートされていません"
+
+#: preproc.y:10437 preproc.y:10444
+#, c-format
+msgid "subquery in FROM must have an alias"
+msgstr "FROM句の副問い合わせは別名を持たなければなりません"
+
+#: preproc.y:14716
+#, c-format
+msgid "CREATE TABLE AS cannot specify INTO"
+msgstr "CREATE TABLE ASはINTOを指定できません"
+
+#: preproc.y:14752
+#, c-format
+msgid "expected \"@\", found \"%s\""
+msgstr "想定では\"@\"、結果では\"%s\""
+
+#: preproc.y:14764
+#, c-format
+msgid "only protocols \"tcp\" and \"unix\" and database type \"postgresql\" are supported"
+msgstr "プロトコルでは\"tcp\"および\"unix\"のみ、データベースの種類では\"postgresql\"のみがサポートされています"
+
+#: preproc.y:14767
+#, c-format
+msgid "expected \"://\", found \"%s\""
+msgstr "想定では\"://\"、結果では\"%s\""
+
+#: preproc.y:14772
+#, c-format
+msgid "Unix-domain sockets only work on \"localhost\" but not on \"%s\""
+msgstr "Unixドメインソケットは\"localhost\"でのみで動作し、\"%s\"では動作しません"
+
+#: preproc.y:14798
+#, c-format
+msgid "expected \"postgresql\", found \"%s\""
+msgstr "想定では\"postgresql\"、結果では\"%s\""
+
+#: preproc.y:14801
+#, c-format
+msgid "invalid connection type: %s"
+msgstr "無効な接続種類: %s"
+
+#: preproc.y:14810
+#, c-format
+msgid "expected \"@\" or \"://\", found \"%s\""
+msgstr "想定では\"@または\"\"://\"、結果では\"%s\""
+
+#: preproc.y:14885 preproc.y:14903
+#, c-format
+msgid "invalid data type"
+msgstr "無効なデータ型"
+
+#: preproc.y:14914 preproc.y:14931
+#, c-format
+msgid "incomplete statement"
+msgstr "不完全な文"
+
+#: preproc.y:14917 preproc.y:14934
+#, c-format
+msgid "unrecognized token \"%s\""
+msgstr "認識できないトークン\"%s\""
+
+#: preproc.y:15208
+#, c-format
+msgid "only data types numeric and decimal have precision/scale argument"
+msgstr "数値データ型または10進数データ型のみが精度/位取り引数と取ることができます"
+
+#: preproc.y:15220
+#, c-format
+msgid "interval specification not allowed here"
+msgstr "時間間隔の指定はここでは許されません"
+
+#: preproc.y:15372 preproc.y:15424
+#, c-format
+msgid "too many levels in nested structure/union definition"
+msgstr "構造体/ユニオンの定義の入れ子レベルが深すぎます"
+
+#: preproc.y:15563
+#, c-format
+msgid "pointers to varchar are not implemented"
+msgstr "varcharを指し示すポインタは実装されていません"
+
+#: preproc.y:15750 preproc.y:15775
+#, c-format
+msgid "using unsupported DESCRIBE statement"
+msgstr "未サポートのDESCRIBE文の使用"
+
+#: preproc.y:16022
+#, c-format
+msgid "initializer not allowed in EXEC SQL VAR command"
+msgstr "EXEC SQL VARコマンドでは初期化子は許されません"
+
+#: preproc.y:16333
+#, c-format
+msgid "arrays of indicators are not allowed on input"
+msgstr "指示子配列は入力として許されません"
+
+#: preproc.y:16554
+#, c-format
+msgid "operator not allowed in variable definition"
+msgstr "変数定義では演算子は許されません"
+
+#. translator: %s is typically the translation of "syntax error"
+#: preproc.y:16595
+#, c-format
+msgid "%s at or near \"%s\""
+msgstr "\"%2$s\"またはその近辺で%1$s"
+
+#: type.c:18 type.c:30
+#, c-format
+msgid "out of memory"
+msgstr "メモリ不足です"
+
+#: type.c:212 type.c:674
+#, c-format
+msgid "unrecognized variable type code %d"
+msgstr "認識できない変数型コード%d"
+
+#: type.c:261
+#, c-format
+msgid "variable \"%s\" is hidden by a local variable of a different type"
+msgstr "変数\"%s\"は、異なった型を持つローカル変数により隠蔽されています"
+
+#: type.c:263
+#, c-format
+msgid "variable \"%s\" is hidden by a local variable"
+msgstr "変数\"%s\"はローカル変数により隠蔽されています"
+
+#: type.c:275
+#, c-format
+msgid "indicator variable \"%s\" is hidden by a local variable of a different type"
+msgstr "指示子変数\"%s\"は、異なった型を持つローカル変数により隠蔽されています"
+
+#: type.c:277
+#, c-format
+msgid "indicator variable \"%s\" is hidden by a local variable"
+msgstr "指示子変数\"%s\"はローカル変数により隠蔽されています"
+
+#: type.c:285
+#, c-format
+msgid "indicator for array/pointer has to be array/pointer"
+msgstr "配列/ポインタ用の指示子は配列/ポインタでなければなりません"
+
+#: type.c:289
+#, c-format
+msgid "nested arrays are not supported (except strings)"
+msgstr "入れ子状の配列はサポートされません (文字列は除きます)"
+
+#: type.c:331
+#, c-format
+msgid "indicator for struct has to be a struct"
+msgstr "構造体用の指示子は構造体でなければなりません"
+
+#: type.c:351 type.c:372 type.c:392
+#, c-format
+msgid "indicator for simple data type has to be simple"
+msgstr "単純なデータ型用の指示子は単純型でなければなりません"
+
+#: type.c:615
+#, c-format
+msgid "indicator struct \"%s\" has too few members"
+msgstr "指示子構造体\"%s\"のメンバが足りません"
+
+#: type.c:622
+#, c-format
+msgid "indicator struct \"%s\" has too many members"
+msgstr "指示子構造体\"%s\"のメンバが多すぎます"
+
+#: type.c:733
+#, c-format
+msgid "unrecognized descriptor item code %d"
+msgstr "認識できない記述子項目コード%dです"
+
+#: variable.c:89 variable.c:116
+#, c-format
+msgid "incorrectly formed variable \"%s\""
+msgstr "正しく成形されていない変数\"%s\"です"
+
+#: variable.c:139
+#, c-format
+msgid "variable \"%s\" is not a pointer"
+msgstr "変数\"%s\"はポインタではありません"
+
+#: variable.c:142 variable.c:167
+#, c-format
+msgid "variable \"%s\" is not a pointer to a structure or a union"
+msgstr "変数\"%s\"は構造体またはユニオンを指し示すポインタではありません"
+
+#: variable.c:154
+#, c-format
+msgid "variable \"%s\" is neither a structure nor a union"
+msgstr "変数\"%s\"は構造体でもユニオンでもありません"
+
+#: variable.c:164
+#, c-format
+msgid "variable \"%s\" is not an array"
+msgstr "変数\"%s\"は配列ではありません"
+
+#: variable.c:233 variable.c:255
+#, c-format
+msgid "variable \"%s\" is not declared"
+msgstr "変数\"%s\"は宣言されていません"
+
+#: variable.c:494
+#, c-format
+msgid "indicator variable must have an integer type"
+msgstr "指示子変数は整数型でなければなりません"
+
+#: variable.c:506
+#, c-format
+msgid "unrecognized data type name \"%s\""
+msgstr "データ型名\"%s\"は認識できません"
+
+#: variable.c:517 variable.c:525 variable.c:542 variable.c:545
+#, c-format
+msgid "multidimensional arrays are not supported"
+msgstr "多次元配列はサポートされません"
+
+#: variable.c:534
+#, c-format
+msgid "multilevel pointers (more than 2 levels) are not supported; found %d level"
+msgid_plural "multilevel pointers (more than 2 levels) are not supported; found %d levels"
+msgstr[0] "複数レベルのポインタ（2レベル以上）はサポートされません。%dレベルあります"
+msgstr[1] "複数レベルのポインタ（2レベル以上）はサポートされません。%dレベルあります"
+
+#: variable.c:539
+#, c-format
+msgid "pointer to pointer is not supported for this data type"
+msgstr "このデータ型では、ポインタを指し示すポインタはサポートされていません"
+
+#: variable.c:559
+#, c-format
+msgid "multidimensional arrays for structures are not supported"
+msgstr "構造体の多次元配列はサポートされていません"

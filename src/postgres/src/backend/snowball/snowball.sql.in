@@ -1,0 +1,42 @@
+/*
+ * text search configuration for _LANGNAME_ language
+ *
+ * Copyright (c) 2007-2017, PostgreSQL Global Development Group
+ *
+ * src/backend/snowball/snowball.sql.in
+ *
+ * _LANGNAME_ and certain other macros are replaced for each language;
+ * see the Makefile for details.
+ *
+ * Note: this file is read in single-user -j mode, which means that the
+ * command terminator is semicolon-newline-newline; whenever the backend
+ * sees that, it stops and executes what it's got.  If you write a lot of
+ * statements without empty lines between, they'll all get quoted to you
+ * in any error message about one of them, so don't do that.  Also, you
+ * cannot write a semicolon immediately followed by an empty line in a
+ * string literal (including a function body!) or a multiline comment.
+ */
+
+CREATE TEXT SEARCH DICTIONARY _DICTNAME_
+	(TEMPLATE = snowball, Language = _LANGNAME_ _STOPWORDS_);
+
+COMMENT ON TEXT SEARCH DICTIONARY _DICTNAME_ IS 'snowball stemmer for _LANGNAME_ language';
+
+CREATE TEXT SEARCH CONFIGURATION _CFGNAME_
+	(PARSER = default);
+
+COMMENT ON TEXT SEARCH CONFIGURATION _CFGNAME_ IS 'configuration for _LANGNAME_ language';
+
+ALTER TEXT SEARCH CONFIGURATION _CFGNAME_ ADD MAPPING
+	FOR email, url, url_path, host, file, version,
+	    sfloat, float, int, uint,
+	    numword, hword_numpart, numhword
+	WITH simple;
+
+ALTER TEXT SEARCH CONFIGURATION _CFGNAME_ ADD MAPPING
+    FOR asciiword, hword_asciipart, asciihword
+	WITH _ASCDICTNAME_;
+
+ALTER TEXT SEARCH CONFIGURATION _CFGNAME_ ADD MAPPING
+    FOR word, hword_part, hword
+	WITH _NONASCDICTNAME_;

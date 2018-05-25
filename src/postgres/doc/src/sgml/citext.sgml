@@ -1,0 +1,265 @@
+<!-- doc/src/sgml/citext.sgml -->
+
+<sect1 id="citext" xreflabel="citext">
+ <title>citext</title>
+
+ <indexterm zone="citext">
+  <primary>citext</primary>
+ </indexterm>
+
+ <para>
+  The <filename>citext</> module provides a case-insensitive
+  character string type, <type>citext</>. Essentially, it internally calls
+  <function>lower</> when comparing values. Otherwise, it behaves almost
+  exactly like <type>text</>.
+ </para>
+
+ <sect2>
+  <title>Rationale</title>
+
+  <para>
+   The standard approach to doing case-insensitive matches
+   in <productname>PostgreSQL</> has been to use the <function>lower</>
+   function when comparing values, for example
+
+<programlisting>
+SELECT * FROM tab WHERE lower(col) = LOWER(?);
+</programlisting>
+  </para>
+
+  <para>
+   This works reasonably well, but has a number of drawbacks:
+  </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      It makes your SQL statements verbose, and you always have to remember to
+      use <function>lower</> on both the column and the query value.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      It won't use an index, unless you create a functional index using
+      <function>lower</>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      If you declare a column as <literal>UNIQUE</> or <literal>PRIMARY
+      KEY</>, the implicitly generated index is case-sensitive.  So it's
+      useless for case-insensitive searches, and it won't enforce
+      uniqueness case-insensitively.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    The <type>citext</> data type allows you to eliminate calls
+    to <function>lower</> in SQL queries, and allows a primary key to
+    be case-insensitive. <type>citext</> is locale-aware, just
+    like <type>text</>, which means that the matching of upper case and
+    lower case characters is dependent on the rules of
+    the database's <literal>LC_CTYPE</> setting. Again, this behavior is
+    identical to the use of <function>lower</> in queries. But because it's
+    done transparently by the data type, you don't have to remember to do
+    anything special in your queries.
+   </para>
+
+ </sect2>
+
+ <sect2>
+  <title>How to Use It</title>
+
+  <para>
+   Here's a simple example of usage:
+
+<programlisting>
+CREATE TABLE users (
+    nick CITEXT PRIMARY KEY,
+    pass TEXT   NOT NULL
+);
+
+INSERT INTO users VALUES ( 'larry',  md5(random()::text) );
+INSERT INTO users VALUES ( 'Tom',    md5(random()::text) );
+INSERT INTO users VALUES ( 'Damian', md5(random()::text) );
+INSERT INTO users VALUES ( 'NEAL',   md5(random()::text) );
+INSERT INTO users VALUES ( 'Bj&oslash;rn',  md5(random()::text) );
+
+SELECT * FROM users WHERE nick = 'Larry';
+</programlisting>
+
+   The <command>SELECT</> statement will return one tuple, even though
+   the <structfield>nick</> column was set to <literal>larry</> and the query
+   was for <literal>Larry</>.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>String Comparison Behavior</title>
+
+  <para>
+   <type>citext</> performs comparisons by converting each string to lower
+   case (as though <function>lower</> were called) and then comparing the
+   results normally.  Thus, for example, two strings are considered equal
+   if <function>lower</> would produce identical results for them.
+  </para>
+
+  <para>
+   In order to emulate a case-insensitive collation as closely as possible,
+   there are <type>citext</>-specific versions of a number of string-processing
+   operators and functions.  So, for example, the regular expression
+   operators <literal>~</> and <literal>~*</> exhibit the same behavior when
+   applied to <type>citext</>: they both match case-insensitively.
+   The same is true
+   for <literal>!~</> and <literal>!~*</>, as well as for the
+   <literal>LIKE</> operators <literal>~~</> and <literal>~~*</>, and
+   <literal>!~~</> and <literal>!~~*</>. If you'd like to match
+   case-sensitively, you can cast the operator's arguments to <type>text</>.
+  </para>
+
+  <para>
+   Similarly, all of the following functions perform matching
+   case-insensitively if their arguments are <type>citext</>:
+  </para>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+      <function>regexp_match()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>regexp_matches()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>regexp_replace()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>regexp_split_to_array()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>regexp_split_to_table()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>replace()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>split_part()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>strpos()</>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+      <function>translate()</>
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   For the regexp functions, if you want to match case-sensitively, you can
+   specify the <quote>c</> flag to force a case-sensitive match.  Otherwise,
+   you must cast to <type>text</> before using one of these functions if
+   you want case-sensitive behavior.
+  </para>
+
+ </sect2>
+
+ <sect2>
+  <title>Limitations</title>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <type>citext</>'s case-folding behavior depends on
+      the <literal>LC_CTYPE</> setting of your database. How it compares
+      values is therefore determined when the database is created.
+      It is not truly
+      case-insensitive in the terms defined by the Unicode standard.
+      Effectively, what this means is that, as long as you're happy with your
+      collation, you should be happy with <type>citext</>'s comparisons. But
+      if you have data in different languages stored in your database, users
+      of one language may find their query results are not as expected if the
+      collation is for another language.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      As of <productname>PostgreSQL</> 9.1, you can attach a
+      <literal>COLLATE</> specification to <type>citext</> columns or data
+      values.  Currently, <type>citext</> operators will honor a non-default
+      <literal>COLLATE</> specification while comparing case-folded strings,
+      but the initial folding to lower case is always done according to the
+      database's <literal>LC_CTYPE</> setting (that is, as though
+      <literal>COLLATE "default"</> were given).  This may be changed in a
+      future release so that both steps follow the input <literal>COLLATE</>
+      specification.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+       <type>citext</> is not as efficient as <type>text</> because the
+       operator functions and the B-tree comparison functions must make copies
+       of the data and convert it to lower case for comparisons. It is,
+       however, slightly more efficient than using <function>lower</> to get
+       case-insensitive matching.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <type>citext</> doesn't help much if you need data to compare
+      case-sensitively in some contexts and case-insensitively in other
+      contexts.  The standard answer is to use the <type>text</> type and
+      manually use the <function>lower</> function when you need to compare
+      case-insensitively; this works all right if case-insensitive comparison
+      is needed only infrequently.  If you need case-insensitive behavior most
+      of the time and case-sensitive infrequently, consider storing the data
+      as <type>citext</> and explicitly casting the column to <type>text</>
+      when you want case-sensitive comparison.  In either situation, you will
+      need two indexes if you want both types of searches to be fast.
+    </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The schema containing the <type>citext</> operators must be
+      in the current <varname>search_path</> (typically <literal>public</>);
+      if it is not, the normal case-sensitive <type>text</> operators
+      will be invoked instead.
+    </para>
+    </listitem>
+   </itemizedlist>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   David E. Wheeler <email>david@kineticode.com</email>
+  </para>
+
+  <para>
+    Inspired by the original <type>citext</> module by Donald Fraser.
+  </para>
+
+ </sect2>
+
+</sect1>

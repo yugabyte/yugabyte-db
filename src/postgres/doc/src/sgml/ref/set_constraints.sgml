@@ -1,0 +1,121 @@
+<!-- doc/src/sgml/ref/set_constraints.sgml -->
+<refentry id="SQL-SET-CONSTRAINTS">
+ <indexterm zone="sql-set-constraints">
+  <primary>SET CONSTRAINTS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SET CONSTRAINTS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SET CONSTRAINTS</refname>
+  <refpurpose>set constraint check timing for the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SET CONSTRAINTS { ALL | <replaceable class="parameter">name</replaceable> [, ...] } { DEFERRED | IMMEDIATE }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>SET CONSTRAINTS</command> sets the behavior of constraint
+   checking within the current transaction. <literal>IMMEDIATE</literal>
+   constraints are checked at the end of each
+   statement. <literal>DEFERRED</literal> constraints are not checked until
+   transaction commit.  Each constraint has its own
+   <literal>IMMEDIATE</literal> or <literal>DEFERRED</literal> mode.
+  </para>
+
+  <para>
+   Upon creation, a constraint is given one of three
+   characteristics: <literal>DEFERRABLE INITIALLY DEFERRED</literal>,
+   <literal>DEFERRABLE INITIALLY IMMEDIATE</literal>, or
+   <literal>NOT DEFERRABLE</literal>. The third
+   class is always <literal>IMMEDIATE</literal> and is not affected by the
+   <command>SET CONSTRAINTS</command> command.  The first two classes start
+   every transaction in the indicated mode, but their behavior can be changed
+   within a transaction by <command>SET CONSTRAINTS</command>.
+  </para>
+
+  <para>
+   <command>SET CONSTRAINTS</command> with a list of constraint names changes
+   the mode of just those constraints (which must all be deferrable).  Each
+   constraint name can be schema-qualified.  The
+   current schema search path is used to find the first matching name if
+   no schema name is specified.  <command>SET CONSTRAINTS ALL</command>
+   changes the mode of all deferrable constraints.
+  </para>
+
+  <para>
+   When <command>SET CONSTRAINTS</command> changes the mode of a constraint
+   from <literal>DEFERRED</literal>
+   to <literal>IMMEDIATE</literal>, the new mode takes effect
+   retroactively: any outstanding data modifications that would have
+   been checked at the end of the transaction are instead checked during the
+   execution of the <command>SET CONSTRAINTS</command> command.
+   If any such constraint is violated, the <command>SET CONSTRAINTS</command>
+   fails (and does not change the constraint mode).  Thus, <command>SET
+   CONSTRAINTS</command> can be used to force checking of constraints to
+   occur at a specific point in a transaction.
+  </para>
+
+  <para>
+   Currently, only <literal>UNIQUE</>, <literal>PRIMARY KEY</>,
+   <literal>REFERENCES</> (foreign key), and <literal>EXCLUDE</>
+   constraints are affected by this setting.
+   <literal>NOT NULL</> and <literal>CHECK</> constraints are
+   always checked immediately when a row is inserted or modified
+   (<emphasis>not</> at the end of the statement).
+   Uniqueness and exclusion constraints that have not been declared
+   <literal>DEFERRABLE</> are also checked immediately.
+  </para>
+
+  <para>
+   The firing of triggers that are declared as <quote>constraint triggers</>
+   is also controlled by this setting &mdash; they fire at the same time
+   that the associated constraint should be checked.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Because <productname>PostgreSQL</productname> does not require constraint
+   names to be unique within a schema (but only per-table), it is possible
+   that there is more than one match for a specified constraint name.
+   In this case <command>SET CONSTRAINTS</command> will act on all matches.
+   For a non-schema-qualified name, once a match or matches have been found in
+   some schema in the search path, schemas appearing later in the path are not
+   searched.
+  </para>
+
+  <para>
+   This command only alters the behavior of constraints within the
+   current transaction.  Issuing this outside of a transaction block
+   emits a warning and otherwise has no effect.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   This command complies with the behavior defined in the SQL
+   standard, except for the limitation that, in
+   <productname>PostgreSQL</productname>, it does not apply to
+   <literal>NOT NULL</> and <literal>CHECK</> constraints.
+   Also, <productname>PostgreSQL</productname> checks non-deferrable
+   uniqueness constraints immediately, not at end of statement as the
+   standard would suggest.
+  </para>
+
+ </refsect1>
+</refentry>

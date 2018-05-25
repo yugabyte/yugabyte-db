@@ -1,0 +1,63 @@
+CREATE EXTENSION unaccent;
+-- must have a UTF8 database
+SELECT getdatabaseencoding();
+ getdatabaseencoding 
+---------------------
+ UTF8
+(1 row)
+
+SET client_encoding TO 'KOI8';
+SELECT unaccent('foobar');
+ unaccent 
+----------
+ foobar
+(1 row)
+
+SELECT unaccent('£ΜΛΑ');
+ unaccent 
+----------
+ ΕΜΛΑ
+(1 row)
+
+SELECT unaccent('³φιλ');
+ unaccent 
+----------
+ εφιλ
+(1 row)
+
+SELECT unaccent('unaccent', 'foobar');
+ unaccent 
+----------
+ foobar
+(1 row)
+
+SELECT unaccent('unaccent', '£ΜΛΑ');
+ unaccent 
+----------
+ ΕΜΛΑ
+(1 row)
+
+SELECT unaccent('unaccent', '³φιλ');
+ unaccent 
+----------
+ εφιλ
+(1 row)
+
+SELECT ts_lexize('unaccent', 'foobar');
+ ts_lexize 
+-----------
+ 
+(1 row)
+
+SELECT ts_lexize('unaccent', '£ΜΛΑ');
+ ts_lexize 
+-----------
+ {ΕΜΛΑ}
+(1 row)
+
+SELECT ts_lexize('unaccent', '³φιλ');
+ ts_lexize 
+-----------
+ {εφιλ}
+(1 row)
+

@@ -1,0 +1,104 @@
+<!-- doc/src/sgml/ref/drop_conversion.sgml -->
+
+<refentry id="SQL-DROPCONVERSION">
+ <indexterm zone="sql-dropconversion">
+  <primary>DROP CONVERSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP CONVERSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP CONVERSION</refname>
+  <refpurpose>remove a conversion</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP CONVERSION [ IF EXISTS ] <replaceable>name</replaceable> [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-dropconversion-description">
+  <title>Description</title>
+
+  <para>
+   <command>DROP CONVERSION</command> removes a previously defined conversion.
+   To be able to drop a conversion, you must own the conversion.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <variablelist>
+    <varlistentry>
+     <term><literal>IF EXISTS</literal></term>
+     <listitem>
+      <para>
+       Do not throw an error if the conversion does not exist.
+       A notice is issued in this case.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the conversion. The conversion name can be
+       schema-qualified.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>CASCADE</literal></term>
+     <term><literal>RESTRICT</literal></term>
+
+     <listitem>
+      <para>
+       These key words do not have any effect, since there are no
+       dependencies on conversions.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-dropconversion-examples">
+  <title>Examples</title>
+
+  <para>
+   To drop the conversion named <literal>myname</>:
+<programlisting>
+DROP CONVERSION myname;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-dropconversion-compat">
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>DROP CONVERSION</command> statement in the SQL
+   standard, but a <command>DROP TRANSLATION</command> statement that
+   goes along with the <command>CREATE TRANSLATION</command> statement
+   that is similar to the <command>CREATE CONVERSION</command>
+   statement in PostgreSQL.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterconversion"></member>
+   <member><xref linkend="sql-createconversion"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

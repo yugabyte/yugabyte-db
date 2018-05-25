@@ -1,0 +1,32 @@
+src/backend/parser/README
+
+Parser
+======
+
+This directory does more than tokenize and parse SQL queries.  It also
+creates Query structures for the various complex queries that are passed
+to the optimizer and then executor.
+
+parser.c	things start here
+scan.l		break query into tokens
+scansup.c	handle escapes in input strings
+gram.y		parse the tokens and produce a "raw" parse tree
+analyze.c	top level of parse analysis for optimizable queries
+parse_agg.c	handle aggregates, like SUM(col1),  AVG(col2), ...
+parse_clause.c	handle clauses like WHERE, ORDER BY, GROUP BY, ...
+parse_coerce.c	handle coercing expressions to different data types
+parse_collate.c	assign collation information in completed expressions
+parse_cte.c	handle Common Table Expressions (WITH clauses)
+parse_expr.c	handle expressions like col, col + 3, x = 3 or x = 4
+parse_func.c	handle functions, table.column and column identifiers
+parse_node.c	create nodes for various structures
+parse_oper.c	handle operators in expressions
+parse_param.c	handle Params (for the cases used in the core backend)
+parse_relation.c support routines for tables and column handling
+parse_target.c	handle the result list of the query
+parse_type.c	support routines for data type handling
+parse_utilcmd.c	parse analysis for utility commands (done at execution time)
+
+See also src/common/keywords.c, which contains the table of standard
+keywords and the keyword lookup function.  We separated that out because
+various frontend code wants to use it too.

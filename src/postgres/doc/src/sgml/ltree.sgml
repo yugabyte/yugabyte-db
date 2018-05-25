@@ -1,0 +1,692 @@
+<!-- doc/src/sgml/ltree.sgml -->
+
+<sect1 id="ltree" xreflabel="ltree">
+ <title>ltree</title>
+
+ <indexterm zone="ltree">
+  <primary>ltree</primary>
+ </indexterm>
+
+ <para>
+  This module implements a data type <type>ltree</> for representing
+  labels of data stored in a hierarchical tree-like structure.
+  Extensive facilities for searching through label trees are provided.
+ </para>
+
+ <sect2>
+  <title>Definitions</title>
+
+  <para>
+   A <firstterm>label</firstterm> is a sequence of alphanumeric characters
+   and underscores (for example, in C locale the characters
+   <literal>A-Za-z0-9_</> are allowed).  Labels must be less than 256 bytes
+   long.
+  </para>
+
+  <para>
+   Examples: <literal>42</>, <literal>Personal_Services</>
+  </para>
+
+  <para>
+   A <firstterm>label path</firstterm> is a sequence of zero or more
+   labels separated by dots, for example <literal>L1.L2.L3</>, representing
+   a path from the root of a hierarchical tree to a particular node.  The
+   length of a label path must be less than 65kB, but keeping it under 2kB is
+   preferable.
+  </para>
+
+  <para>
+   Example: <literal>Top.Countries.Europe.Russia</literal>
+  </para>
+
+  <para>
+   The <filename>ltree</> module provides several data types:
+  </para>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     <type>ltree</type> stores a label path.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <type>lquery</type> represents a regular-expression-like pattern
+     for matching <type>ltree</> values.  A simple word matches that
+     label within a path.  A star symbol (<literal>*</>) matches zero
+     or more labels.  For example:
+<synopsis>
+foo         <lineannotation>Match the exact label path <literal>foo</></lineannotation>
+*.foo.*     <lineannotation>Match any label path containing the label <literal>foo</></lineannotation>
+*.foo       <lineannotation>Match any label path whose last label is <literal>foo</></lineannotation>
+</synopsis>
+    </para>
+
+    <para>
+     Star symbols can also be quantified to restrict how many labels
+     they can match:
+<synopsis>
+*{<replaceable>n</>}        <lineannotation>Match exactly <replaceable>n</> labels</lineannotation>
+*{<replaceable>n</>,}       <lineannotation>Match at least <replaceable>n</> labels</lineannotation>
+*{<replaceable>n</>,<replaceable>m</>}      <lineannotation>Match at least <replaceable>n</> but not more than <replaceable>m</> labels</lineannotation>
+*{,<replaceable>m</>}       <lineannotation>Match at most <replaceable>m</> labels &mdash; same as </lineannotation> *{0,<replaceable>m</>}
+</synopsis>
+    </para>
+
+    <para>
+     There are several modifiers that can be put at the end of a non-star
+     label in <type>lquery</> to make it match more than just the exact match:
+<synopsis>
+@           <lineannotation>Match case-insensitively, for example <literal>a@</> matches <literal>A</></lineannotation>
+*           <lineannotation>Match any label with this prefix, for example <literal>foo*</> matches <literal>foobar</></lineannotation>
+%           <lineannotation>Match initial underscore-separated words</lineannotation>
+</synopsis>
+     The behavior of <literal>%</> is a bit complicated.  It tries to match
+     words rather than the entire label.  For example
+     <literal>foo_bar%</> matches <literal>foo_bar_baz</> but not
+     <literal>foo_barbaz</>.  If combined with <literal>*</>, prefix
+     matching applies to each word separately, for example
+     <literal>foo_bar%*</> matches <literal>foo1_bar2_baz</> but
+     not <literal>foo1_br2_baz</>.
+    </para>
+
+    <para>
+     Also, you can write several possibly-modified labels separated with
+     <literal>|</> (OR) to match any of those labels, and you can put
+     <literal>!</> (NOT) at the start to match any label that doesn't
+     match any of the alternatives.
+    </para>
+
+    <para>
+     Here's an annotated example of <type>lquery</type>:
+<programlisting>
+Top.*{0,2}.sport*@.!football|tennis.Russ*|Spain
+a.  b.     c.      d.               e.
+</programlisting>
+     This query will match any label path that:
+    </para>
+    <orderedlist numeration="loweralpha">
+     <listitem>
+      <para>
+       begins with the label <literal>Top</literal>
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       and next has zero to two labels before
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       a label beginning with the case-insensitive prefix <literal>sport</literal>
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       then a label not matching <literal>football</literal> nor
+       <literal>tennis</literal>
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       and then ends with a label beginning with <literal>Russ</literal> or
+       exactly matching <literal>Spain</literal>.
+      </para>
+     </listitem>
+    </orderedlist>
+   </listitem>
+
+   <listitem>
+    <para><type>ltxtquery</type> represents a full-text-search-like
+    pattern for matching <type>ltree</> values.  An
+    <type>ltxtquery</type> value contains words, possibly with the
+    modifiers <literal>@</>, <literal>*</>, <literal>%</> at the end;
+    the modifiers have the same meanings as in <type>lquery</>.
+    Words can be combined with <literal>&amp;</> (AND),
+    <literal>|</> (OR), <literal>!</> (NOT), and parentheses.
+    The key difference from
+    <type>lquery</> is that <type>ltxtquery</type> matches words without
+    regard to their position in the label path.
+    </para>
+
+    <para>
+     Here's an example <type>ltxtquery</type>:
+<programlisting>
+Europe &amp; Russia*@ &amp; !Transportation
+</programlisting>
+     This will match paths that contain the label <literal>Europe</literal> and
+     any label beginning with <literal>Russia</literal> (case-insensitive),
+     but not paths containing the label <literal>Transportation</literal>.
+     The location of these words within the path is not important.
+     Also, when <literal>%</> is used, the word can be matched to any
+     underscore-separated word within a label, regardless of position.
+    </para>
+   </listitem>
+
+  </itemizedlist>
+
+  <para>
+   Note: <type>ltxtquery</> allows whitespace between symbols, but
+   <type>ltree</> and <type>lquery</> do not.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Operators and Functions</title>
+
+  <para>
+   Type <type>ltree</> has the usual comparison operators
+   <literal>=</>, <literal>&lt;&gt;</literal>,
+   <literal>&lt;</>, <literal>&gt;</>, <literal>&lt;=</>, <literal>&gt;=</>.
+   Comparison sorts in the order of a tree traversal, with the children
+   of a node sorted by label text.  In addition, the specialized
+   operators shown in <xref linkend="ltree-op-table"> are available.
+  </para>
+
+  <table id="ltree-op-table">
+   <title><type>ltree</> Operators</title>
+
+   <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Operator</entry>
+      <entry>Returns</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><type>ltree</> <literal>@&gt;</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>is left argument an ancestor of right (or equal)?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>&lt;@</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>is left argument a descendant of right (or equal)?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>~</> <type>lquery</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>lquery</> <literal>~</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>?</> <type>lquery[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match any <type>lquery</> in array?</entry>
+     </row>
+
+     <row>
+      <entry><type>lquery[]</> <literal>?</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match any <type>lquery</> in array?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>@</> <type>ltxtquery</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match <type>ltxtquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltxtquery</> <literal>@</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> match <type>ltxtquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>||</> <type>ltree</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>concatenate <type>ltree</> paths</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>||</> <type>text</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>convert text to <type>ltree</> and concatenate</entry>
+     </row>
+
+     <row>
+      <entry><type>text</> <literal>||</> <type>ltree</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>convert text to <type>ltree</> and concatenate</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>@&gt;</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain an ancestor of <type>ltree</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>&lt;@</> <type>ltree[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain an ancestor of <type>ltree</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>&lt;@</> <type>ltree</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain a descendant of <type>ltree</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree</> <literal>@&gt;</> <type>ltree[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain a descendant of <type>ltree</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>~</> <type>lquery</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain any path matching <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>lquery</> <literal>~</> <type>ltree[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain any path matching <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>?</> <type>lquery[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> array contain any path matching any <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>lquery[]</> <literal>?</> <type>ltree[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does <type>ltree</> array contain any path matching any <type>lquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>@</> <type>ltxtquery</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain any path matching <type>ltxtquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltxtquery</> <literal>@</> <type>ltree[]</></entry>
+      <entry><type>boolean</type></entry>
+      <entry>does array contain any path matching <type>ltxtquery</>?</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>?@&gt;</> <type>ltree</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>first array entry that is an ancestor of <type>ltree</>; NULL if none</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>?&lt;@</> <type>ltree</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>first array entry that is a descendant of <type>ltree</>; NULL if none</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>?~</> <type>lquery</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>first array entry that matches <type>lquery</>; NULL if none</entry>
+     </row>
+
+     <row>
+      <entry><type>ltree[]</> <literal>?@</> <type>ltxtquery</></entry>
+      <entry><type>ltree</type></entry>
+      <entry>first array entry that matches <type>ltxtquery</>; NULL if none</entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   The operators <literal>&lt;@</literal>, <literal>@&gt;</literal>,
+   <literal>@</literal> and <literal>~</literal> have analogues
+   <literal>^&lt;@</>, <literal>^@&gt;</>, <literal>^@</>,
+   <literal>^~</literal>, which are the same except they do not use
+   indexes.  These are useful only for testing purposes.
+  </para>
+
+  <para>
+   The available functions are shown in <xref linkend="ltree-func-table">.
+  </para>
+
+  <table id="ltree-func-table">
+   <title><type>ltree</> Functions</title>
+
+   <tgroup cols="5">
+    <thead>
+     <row>
+      <entry>Function</entry>
+      <entry>Return Type</entry>
+      <entry>Description</entry>
+      <entry>Example</entry>
+      <entry>Result</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><function>subltree(ltree, int start, int end)</function><indexterm><primary>subltree</primary></indexterm></entry>
+      <entry><type>ltree</type></entry>
+      <entry>subpath of <type>ltree</> from position <parameter>start</> to
+       position <parameter>end</>-1 (counting from 0)</entry>
+      <entry><literal>subltree('Top.Child1.Child2',1,2)</literal></entry>
+      <entry><literal>Child1</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>subpath(ltree, int offset, int len)</function><indexterm><primary>subpath</primary></indexterm></entry>
+      <entry><type>ltree</type></entry>
+      <entry>subpath of <type>ltree</> starting at position
+       <parameter>offset</>, length <parameter>len</>.
+       If <parameter>offset</> is negative, subpath starts that far from the
+       end of the path.  If <parameter>len</> is negative, leaves that many
+       labels off the end of the path.</entry>
+      <entry><literal>subpath('Top.Child1.Child2',0,2)</literal></entry>
+      <entry><literal>Top.Child1</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>subpath(ltree, int offset)</function></entry>
+      <entry><type>ltree</type></entry>
+      <entry>subpath of <type>ltree</> starting at position
+       <parameter>offset</>, extending to end of path.
+       If <parameter>offset</> is negative, subpath starts that far from the
+       end of the path.</entry>
+      <entry><literal>subpath('Top.Child1.Child2',1)</literal></entry>
+      <entry><literal>Child1.Child2</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>nlevel(ltree)</function><indexterm><primary>nlevel</primary></indexterm></entry>
+      <entry><type>integer</type></entry>
+      <entry>number of labels in path</entry>
+      <entry><literal>nlevel('Top.Child1.Child2')</literal></entry>
+      <entry><literal>3</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>index(ltree a, ltree b)</function><indexterm><primary>index</primary></indexterm></entry>
+      <entry><type>integer</type></entry>
+      <entry>position of first occurrence of <parameter>b</> in
+       <parameter>a</>; -1 if not found</entry>
+      <entry><literal>index('0.1.2.3.5.4.5.6.8.5.6.8','5.6')</literal></entry>
+      <entry><literal>6</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>index(ltree a, ltree b, int offset)</function></entry>
+      <entry><type>integer</type></entry>
+      <entry>position of first occurrence of <parameter>b</> in
+       <parameter>a</>, searching starting at <parameter>offset</>;
+       negative <parameter>offset</> means start <parameter>-offset</>
+       labels from the end of the path</entry>
+      <entry><literal>index('0.1.2.3.5.4.5.6.8.5.6.8','5.6',-4)</literal></entry>
+      <entry><literal>9</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>text2ltree(text)</function><indexterm><primary>text2ltree</primary></indexterm></entry>
+      <entry><type>ltree</type></entry>
+      <entry>cast <type>text</> to <type>ltree</></entry>
+      <entry><literal></literal></entry>
+      <entry><literal></literal></entry>
+     </row>
+
+     <row>
+      <entry><function>ltree2text(ltree)</function><indexterm><primary>ltree2text</primary></indexterm></entry>
+      <entry><type>text</type></entry>
+      <entry>cast <type>ltree</> to <type>text</></entry>
+      <entry><literal></literal></entry>
+      <entry><literal></literal></entry>
+     </row>
+
+     <row>
+      <entry><function>lca(ltree, ltree, ...)</function><indexterm><primary>lca</primary></indexterm></entry>
+      <entry><type>ltree</type></entry>
+      <entry>lowest common ancestor, i.e., longest common prefix of paths
+       (up to 8 arguments supported)</entry>
+      <entry><literal>lca('1.2.2.3','1.2.3.4.5.6')</literal></entry>
+      <entry><literal>1.2</literal></entry>
+     </row>
+
+     <row>
+      <entry><function>lca(ltree[])</function></entry>
+      <entry><type>ltree</type></entry>
+      <entry>lowest common ancestor, i.e., longest common prefix of paths</entry>
+      <entry><literal>lca(array['1.2.2.3'::ltree,'1.2.3'])</literal></entry>
+      <entry><literal>1.2</literal></entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+ </sect2>
+
+ <sect2>
+  <title>Indexes</title>
+  <para>
+   <filename>ltree</> supports several types of indexes that can speed
+   up the indicated operators:
+  </para>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     B-tree index over <type>ltree</>:
+     <literal>&lt;</>, <literal>&lt;=</>, <literal>=</>,
+     <literal>&gt;=</>, <literal>&gt;</literal>
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     GiST index over <type>ltree</>:
+     <literal>&lt;</>, <literal>&lt;=</>, <literal>=</>,
+     <literal>&gt;=</>, <literal>&gt;</>,
+     <literal>@&gt;</>, <literal>&lt;@</>,
+     <literal>@</>, <literal>~</>, <literal>?</literal>
+    </para>
+    <para>
+     Example of creating such an index:
+    </para>
+<programlisting>
+CREATE INDEX path_gist_idx ON test USING GIST (path);
+</programlisting>
+   </listitem>
+   <listitem>
+    <para>
+     GiST index over <type>ltree[]</>:
+     <literal>ltree[] &lt;@ ltree</>, <literal>ltree @&gt; ltree[]</>,
+     <literal>@</>, <literal>~</>, <literal>?</literal>
+    </para>
+    <para>
+     Example of creating such an index:
+    </para>
+<programlisting>
+CREATE INDEX path_gist_idx ON test USING GIST (array_path);
+</programlisting>
+    <para>
+     Note: This index type is lossy.
+    </para>
+   </listitem>
+  </itemizedlist>
+ </sect2>
+
+ <sect2>
+  <title>Example</title>
+
+  <para>
+   This example uses the following data (also available in file
+   <filename>contrib/ltree/ltreetest.sql</> in the source distribution):
+  </para>
+
+<programlisting>
+CREATE TABLE test (path ltree);
+INSERT INTO test VALUES ('Top');
+INSERT INTO test VALUES ('Top.Science');
+INSERT INTO test VALUES ('Top.Science.Astronomy');
+INSERT INTO test VALUES ('Top.Science.Astronomy.Astrophysics');
+INSERT INTO test VALUES ('Top.Science.Astronomy.Cosmology');
+INSERT INTO test VALUES ('Top.Hobbies');
+INSERT INTO test VALUES ('Top.Hobbies.Amateurs_Astronomy');
+INSERT INTO test VALUES ('Top.Collections');
+INSERT INTO test VALUES ('Top.Collections.Pictures');
+INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy');
+INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy.Stars');
+INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy.Galaxies');
+INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy.Astronauts');
+CREATE INDEX path_gist_idx ON test USING GIST (path);
+CREATE INDEX path_idx ON test USING BTREE (path);
+</programlisting>
+
+  <para>
+   Now, we have a table <structname>test</> populated with data describing
+   the hierarchy shown below:
+  </para>
+
+<literallayout class="monospaced">
+                        Top
+                     /   |  \
+             Science Hobbies Collections
+                 /       |              \
+        Astronomy   Amateurs_Astronomy Pictures
+           /  \                            |
+Astrophysics  Cosmology                Astronomy
+                                        /  |    \
+                                 Galaxies Stars Astronauts
+</literallayout>
+
+  <para>
+   We can do inheritance:
+<screen>
+ltreetest=&gt; SELECT path FROM test WHERE path &lt;@ 'Top.Science';
+                path
+------------------------------------
+ Top.Science
+ Top.Science.Astronomy
+ Top.Science.Astronomy.Astrophysics
+ Top.Science.Astronomy.Cosmology
+(4 rows)
+</screen>
+  </para>
+
+  <para>
+   Here are some examples of path matching:
+<screen>
+ltreetest=&gt; SELECT path FROM test WHERE path ~ '*.Astronomy.*';
+                     path
+-----------------------------------------------
+ Top.Science.Astronomy
+ Top.Science.Astronomy.Astrophysics
+ Top.Science.Astronomy.Cosmology
+ Top.Collections.Pictures.Astronomy
+ Top.Collections.Pictures.Astronomy.Stars
+ Top.Collections.Pictures.Astronomy.Galaxies
+ Top.Collections.Pictures.Astronomy.Astronauts
+(7 rows)
+
+ltreetest=&gt; SELECT path FROM test WHERE path ~ '*.!pictures@.*.Astronomy.*';
+                path
+------------------------------------
+ Top.Science.Astronomy
+ Top.Science.Astronomy.Astrophysics
+ Top.Science.Astronomy.Cosmology
+(3 rows)
+</screen>
+  </para>
+
+  <para>
+   Here are some examples of full text search:
+<screen>
+ltreetest=&gt; SELECT path FROM test WHERE path @ 'Astro*% &amp; !pictures@';
+                path
+------------------------------------
+ Top.Science.Astronomy
+ Top.Science.Astronomy.Astrophysics
+ Top.Science.Astronomy.Cosmology
+ Top.Hobbies.Amateurs_Astronomy
+(4 rows)
+
+ltreetest=&gt; SELECT path FROM test WHERE path @ 'Astro* &amp; !pictures@';
+                path
+------------------------------------
+ Top.Science.Astronomy
+ Top.Science.Astronomy.Astrophysics
+ Top.Science.Astronomy.Cosmology
+(3 rows)
+</screen>
+  </para>
+
+  <para>
+   Path construction using functions:
+<screen>
+ltreetest=&gt; SELECT subpath(path,0,2)||'Space'||subpath(path,2) FROM test WHERE path &lt;@ 'Top.Science.Astronomy';
+                 ?column?
+------------------------------------------
+ Top.Science.Space.Astronomy
+ Top.Science.Space.Astronomy.Astrophysics
+ Top.Science.Space.Astronomy.Cosmology
+(3 rows)
+</screen>
+  </para>
+
+  <para>
+   We could simplify this by creating a SQL function that inserts a label
+   at a specified position in a path:
+<screen>
+CREATE FUNCTION ins_label(ltree, int, text) RETURNS ltree
+    AS 'select subpath($1,0,$2) || $3 || subpath($1,$2);'
+    LANGUAGE SQL IMMUTABLE;
+
+ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.Science.Astronomy';
+                ins_label
+------------------------------------------
+ Top.Science.Space.Astronomy
+ Top.Science.Space.Astronomy.Astrophysics
+ Top.Science.Space.Astronomy.Cosmology
+(3 rows)
+</screen>
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Transforms</title>
+
+  <para>
+   Additional extensions are available that implement transforms for
+   the <type>ltree</type> type for PL/Python.  The extensions are
+   called <literal>ltree_plpythonu</literal>, <literal>ltree_plpython2u</literal>,
+   and <literal>ltree_plpython3u</literal>
+   (see <xref linkend="plpython-python23"> for the PL/Python naming
+   convention).  If you install these transforms and specify them when
+   creating a function, <type>ltree</type> values are mapped to Python lists.
+   (The reverse is currently not supported, however.)
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Authors</title>
+
+  <para>
+   All work was done by Teodor Sigaev (<email>teodor@stack.net</email>) and
+   Oleg Bartunov (<email>oleg@sai.msu.su</email>). See
+   <ulink url="http://www.sai.msu.su/~megera/postgres/gist/"></ulink> for
+   additional information. Authors would like to thank Eugeny Rodichev for
+   helpful discussions. Comments and bug reports are welcome.
+  </para>
+ </sect2>
+
+</sect1>

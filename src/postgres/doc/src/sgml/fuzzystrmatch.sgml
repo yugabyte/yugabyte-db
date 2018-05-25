@@ -1,0 +1,238 @@
+<!-- doc/src/sgml/fuzzystrmatch.sgml -->
+
+<sect1 id="fuzzystrmatch" xreflabel="fuzzystrmatch">
+ <title>fuzzystrmatch</title>
+
+ <indexterm zone="fuzzystrmatch">
+  <primary>fuzzystrmatch</primary>
+ </indexterm>
+
+ <para>
+  The <filename>fuzzystrmatch</> module provides several
+  functions to determine similarities and distance between strings.
+ </para>
+
+ <caution>
+  <para>
+   At present, the <function>soundex</>, <function>metaphone</>,
+   <function>dmetaphone</>, and <function>dmetaphone_alt</> functions do
+   not work well with multibyte encodings (such as UTF-8).
+  </para>
+ </caution>
+
+ <sect2>
+  <title>Soundex</title>
+
+  <para>
+   The Soundex system is a method of matching similar-sounding names
+   by converting them to the same code.  It was initially used by the
+   United States Census in 1880, 1900, and 1910.  Note that Soundex
+   is not very useful for non-English names.
+  </para>
+
+  <para>
+   The <filename>fuzzystrmatch</> module provides two functions
+   for working with Soundex codes:
+  </para>
+
+  <indexterm>
+   <primary>soundex</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>difference</primary>
+  </indexterm>
+
+<synopsis>
+soundex(text) returns text
+difference(text, text) returns int
+</synopsis>
+
+  <para>
+   The <function>soundex</> function converts a string to its Soundex code.
+   The <function>difference</> function converts two strings to their Soundex
+   codes and then reports the number of matching code positions.  Since
+   Soundex codes have four characters, the result ranges from zero to four,
+   with zero being no match and four being an exact match.  (Thus, the
+   function is misnamed &mdash; <function>similarity</> would have been
+   a better name.)
+  </para>
+
+  <para>
+   Here are some usage examples:
+  </para>
+
+<programlisting>
+SELECT soundex('hello world!');
+
+SELECT soundex('Anne'), soundex('Ann'), difference('Anne', 'Ann');
+SELECT soundex('Anne'), soundex('Andrew'), difference('Anne', 'Andrew');
+SELECT soundex('Anne'), soundex('Margaret'), difference('Anne', 'Margaret');
+
+CREATE TABLE s (nm text);
+
+INSERT INTO s VALUES ('john');
+INSERT INTO s VALUES ('joan');
+INSERT INTO s VALUES ('wobbly');
+INSERT INTO s VALUES ('jack');
+
+SELECT * FROM s WHERE soundex(nm) = soundex('john');
+
+SELECT * FROM s WHERE difference(s.nm, 'john') &gt; 2;
+</programlisting>
+ </sect2>
+
+ <sect2>
+  <title>Levenshtein</title>
+
+  <para>
+   This function calculates the Levenshtein distance between two strings:
+  </para>
+
+  <indexterm>
+   <primary>levenshtein</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>levenshtein_less_equal</primary>
+  </indexterm>
+
+<synopsis>
+levenshtein(text source, text target, int ins_cost, int del_cost, int sub_cost) returns int
+levenshtein(text source, text target) returns int
+levenshtein_less_equal(text source, text target, int ins_cost, int del_cost, int sub_cost, int max_d) returns int
+levenshtein_less_equal(text source, text target, int max_d) returns int
+</synopsis>
+
+  <para>
+   Both <literal>source</literal> and <literal>target</literal> can be any
+   non-null string, with a maximum of 255 characters.  The cost parameters
+   specify how much to charge for a character insertion, deletion, or
+   substitution, respectively.  You can omit the cost parameters, as in
+   the second version of the function; in that case they all default to 1.
+  </para>
+
+  <para>
+   <function>levenshtein_less_equal</function> is an accelerated version of the
+   Levenshtein function for use when only small distances are of interest.
+   If the actual distance is less than or equal to <literal>max_d</>,
+   then <function>levenshtein_less_equal</function> returns the correct
+   distance; otherwise it returns some value greater than <literal>max_d</>.
+   If <literal>max_d</> is negative then the behavior is the same as
+   <function>levenshtein</function>.
+  </para>
+
+  <para>
+   Examples:
+  </para>
+
+<screen>
+test=# SELECT levenshtein('GUMBO', 'GAMBOL');
+ levenshtein
+-------------
+           2
+(1 row)
+
+test=# SELECT levenshtein('GUMBO', 'GAMBOL', 2,1,1);
+ levenshtein
+-------------
+           3
+(1 row)
+
+test=# SELECT levenshtein_less_equal('extensive', 'exhaustive',2);
+ levenshtein_less_equal
+------------------------
+                      3
+(1 row)
+
+test=# SELECT levenshtein_less_equal('extensive', 'exhaustive',4);
+ levenshtein_less_equal
+------------------------
+                      4
+(1 row)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Metaphone</title>
+
+  <para>
+   Metaphone, like Soundex, is based on the idea of constructing a
+   representative code for an input string.  Two strings are then
+   deemed similar if they have the same codes.
+  </para>
+
+  <para>
+   This function calculates the metaphone code of an input string:
+  </para>
+
+  <indexterm>
+   <primary>metaphone</primary>
+  </indexterm>
+
+<synopsis>
+metaphone(text source, int max_output_length) returns text
+</synopsis>
+
+  <para>
+   <literal>source</literal> has to be a non-null string with a maximum of
+   255 characters.  <literal>max_output_length</literal> sets the maximum
+   length of the output metaphone code; if longer, the output is truncated
+   to this length.
+  </para>
+
+  <para>
+   Example:
+  </para>
+
+<screen>
+test=# SELECT metaphone('GUMBO', 4);
+ metaphone
+-----------
+ KM
+(1 row)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Double Metaphone</title>
+
+  <para>
+   The Double Metaphone system computes two <quote>sounds like</> strings
+   for a given input string &mdash; a <quote>primary</> and an
+   <quote>alternate</>.  In most cases they are the same, but for non-English
+   names especially they can be a bit different, depending on pronunciation.
+   These functions compute the primary and alternate codes:
+  </para>
+
+  <indexterm>
+   <primary>dmetaphone</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>dmetaphone_alt</primary>
+  </indexterm>
+
+<synopsis>
+dmetaphone(text source) returns text
+dmetaphone_alt(text source) returns text
+</synopsis>
+
+  <para>
+   There is no length limit on the input strings.
+  </para>
+
+  <para>
+   Example:
+  </para>
+
+<screen>
+test=# select dmetaphone('gumbo');
+ dmetaphone
+------------
+ KMP
+(1 row)
+</screen>
+ </sect2>
+
+</sect1>

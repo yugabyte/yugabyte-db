@@ -1,0 +1,121 @@
+<!--
+doc/src/sgml/ref/reassign_owned.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-REASSIGN-OWNED">
+ <indexterm zone="sql-reassign-owned">
+  <primary>REASSIGN OWNED</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>REASSIGN OWNED</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>REASSIGN OWNED</refname>
+  <refpurpose>change the ownership of database objects owned by a database role</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+REASSIGN OWNED BY { <replaceable class="PARAMETER">old_role</replaceable> | CURRENT_USER | SESSION_USER } [, ...]
+               TO { <replaceable class="PARAMETER">new_role</replaceable> | CURRENT_USER | SESSION_USER }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>REASSIGN OWNED</command> instructs the system to change
+   the ownership of database objects owned by any of the
+   <replaceable class="PARAMETER">old_roles</replaceable> to
+   <replaceable class="PARAMETER">new_role</replaceable>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="PARAMETER">old_role</replaceable></term>
+    <listitem>
+     <para>
+      The name of a role. The ownership of all the objects within the
+      current database, and of all shared objects (databases, tablespaces),
+      owned by this role will be reassigned to
+      <replaceable class="PARAMETER">new_role</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">new_role</replaceable></term>
+    <listitem>
+     <para>
+      The name of the role that will be made the new owner of the
+      affected objects.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <command>REASSIGN OWNED</command> is often used to prepare for the
+   removal of one or more roles. Because <command>REASSIGN
+   OWNED</command> does not affect objects within other databases,
+   it is usually necessary to execute this command in each database
+   that contains objects owned by a role that is to be removed.
+  </para>
+
+  <para>
+   <command>REASSIGN OWNED</command> requires privileges on both the
+   source role(s) and the target role.
+  </para>
+
+  <para>
+   The <xref linkend="sql-drop-owned"> command is an alternative that
+   simply drops all the database objects owned by one or more roles.
+  </para>
+
+  <para>
+   The <command>REASSIGN OWNED</command> command does not affect any
+   privileges granted to the <replaceable class="PARAMETER">old_roles</> for
+   objects that are not owned by them.  Use <command>DROP OWNED</command> to
+   revoke such privileges.
+  </para>
+
+  <para>
+   See <xref linkend="role-removal"> for more discussion.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The <command>REASSIGN OWNED</command> command is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-drop-owned"></member>
+   <member><xref linkend="sql-droprole"></member>
+   <member><xref linkend="sql-alterdatabase"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>
