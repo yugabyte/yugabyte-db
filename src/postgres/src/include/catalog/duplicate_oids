@@ -1,0 +1,36 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+BEGIN
+{
+	@ARGV = (glob("pg_*.h"), qw(indexing.h toasting.h));
+}
+
+my %oidcounts;
+
+while (<>)
+{
+	next if /^CATALOG\(.*BKI_BOOTSTRAP/;
+	next
+	  unless /^DATA\(insert *OID *= *(\d+)/
+		  || /^CATALOG\([^,]*, *(\d+).*BKI_ROWTYPE_OID\((\d+)\)/
+		  || /^CATALOG\([^,]*, *(\d+)/
+		  || /^DECLARE_INDEX\([^,]*, *(\d+)/
+		  || /^DECLARE_UNIQUE_INDEX\([^,]*, *(\d+)/
+		  || /^DECLARE_TOAST\([^,]*, *(\d+), *(\d+)/;
+	$oidcounts{$1}++;
+	$oidcounts{$2}++ if $2;
+}
+
+my $found = 0;
+
+foreach my $oid (sort { $a <=> $b } keys %oidcounts)
+{
+	next unless $oidcounts{$oid} > 1;
+	$found = 1;
+	print "$oid\n";
+}
+
+exit $found;

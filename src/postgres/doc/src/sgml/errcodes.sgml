@@ -1,0 +1,89 @@
+<!-- doc/src/sgml/errcodes.sgml -->
+
+<appendix id="errcodes-appendix">
+ <title><productname>PostgreSQL</productname> Error Codes</title>
+
+ <indexterm zone="errcodes-appendix">
+  <primary>error codes</primary>
+  <secondary>list of</secondary>
+ </indexterm>
+
+ <para>
+  All messages emitted by the <productname>PostgreSQL</productname>
+  server are assigned five-character error codes that follow the SQL
+  standard's conventions for <quote>SQLSTATE</> codes.  Applications
+  that need to know which error condition has occurred should usually
+  test the error code, rather than looking at the textual error
+  message.  The error codes are less likely to change across
+  <productname>PostgreSQL</> releases, and also are not subject to
+  change due to localization of error messages. Note that some, but
+  not all, of the error codes produced by <productname>PostgreSQL</>
+  are defined by the SQL standard; some additional error codes for
+  conditions not defined by the standard have been invented or
+  borrowed from other databases.
+ </para>
+
+ <para>
+  According to the standard, the first two characters of an error code
+  denote a class of errors, while the last three characters indicate
+  a specific condition within that class.  Thus, an application that
+  does not recognize the specific error code might still be able to infer
+  what to do from the error class.
+ </para>
+
+ <para>
+  <xref linkend="errcodes-table"> lists all the error codes defined in
+  <productname>PostgreSQL</productname> &version;.  (Some are not actually
+  used at present, but are defined by the SQL standard.)
+  The error classes are also shown.  For each error class there is a
+  <quote>standard</> error code having the last three characters
+  <literal>000</>.  This code is used only for error conditions that fall
+  within the class but do not have any more-specific code assigned.
+ </para>
+
+ <para>
+  The symbol shown in the column <quote>Condition Name</quote> is
+  the condition name to use in <application>PL/pgSQL</>.  Condition
+  names can be written in either upper or lower case.  (Note that
+  <application>PL/pgSQL</> does not recognize warning, as opposed to error,
+  condition names; those are classes 00, 01, and 02.)
+ </para>
+
+ <para>
+  For some types of errors, the server reports the name of a database object
+  (a table, table column, data type, or constraint) associated with the error;
+  for example, the name of the unique constraint that caused a
+  <symbol>unique_violation</> error.  Such names are supplied in separate
+  fields of the error report message so that applications need not try to
+  extract them from the possibly-localized human-readable text of the message.
+  As of <productname>PostgreSQL</> 9.3, complete coverage for this feature
+  exists only for errors in SQLSTATE class 23 (integrity constraint
+  violation), but this is likely to be expanded in future.
+ </para>
+
+
+<table id="errcodes-table">
+ <title><productname>PostgreSQL</productname> Error Codes</title>
+
+ <tgroup cols="2">
+  <colspec colnum="1" colname="errorcode">
+  <colspec colnum="2" colname="condname">
+  <spanspec namest="errorcode" nameend="condname" spanname="span12">
+
+  <thead>
+   <row>
+    <entry>Error Code</entry>
+    <entry>Condition Name</entry>
+   </row>
+  </thead>
+
+  <tbody>
+
+    &errcodes-table;
+
+  </tbody>
+ </tgroup>
+</table>
+
+
+</appendix>

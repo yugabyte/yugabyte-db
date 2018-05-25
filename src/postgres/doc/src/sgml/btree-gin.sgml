@@ -1,0 +1,59 @@
+<!-- doc/src/sgml/btree-gin.sgml -->
+
+<sect1 id="btree-gin" xreflabel="btree_gin">
+ <title>btree_gin</title>
+
+ <indexterm zone="btree-gin">
+  <primary>btree_gin</primary>
+ </indexterm>
+
+ <para>
+  <filename>btree_gin</> provides sample GIN operator classes that
+  implement B-tree equivalent behavior for the data types
+  <type>int2</>, <type>int4</>, <type>int8</>, <type>float4</>,
+  <type>float8</>, <type>timestamp with time zone</>,
+  <type>timestamp without time zone</>, <type>time with time zone</>,
+  <type>time without time zone</>, <type>date</>, <type>interval</>,
+  <type>oid</>, <type>money</>, <type>"char"</>,
+  <type>varchar</>, <type>text</>, <type>bytea</>, <type>bit</>,
+  <type>varbit</>, <type>macaddr</>, <type>macaddr8</>, <type>inet</>,
+  <type>cidr</>, and all <type>enum</> types.
+ </para>
+
+ <para>
+  In general, these operator classes will not outperform the equivalent
+  standard B-tree index methods, and they lack one major feature of the
+  standard B-tree code: the ability to enforce uniqueness.  However,
+  they are useful for GIN testing and as a base for developing other
+  GIN operator classes.  Also, for queries that test both a GIN-indexable
+  column and a B-tree-indexable column, it might be more efficient to create
+  a multicolumn GIN index that uses one of these operator classes than to create
+  two separate indexes that would have to be combined via bitmap ANDing.
+ </para>
+
+ <sect2>
+  <title>Example Usage</title>
+
+<programlisting>
+CREATE TABLE test (a int4);
+-- create index
+CREATE INDEX testidx ON test USING GIN (a);
+-- query
+SELECT * FROM test WHERE a &lt; 10;
+</programlisting>
+
+ </sect2>
+
+ <sect2>
+  <title>Authors</title>
+
+  <para>
+   Teodor Sigaev (<email>teodor@stack.net</email>) and
+   Oleg Bartunov (<email>oleg@sai.msu.su</email>).  See
+   <ulink url="http://www.sai.msu.su/~megera/oddmuse/index.cgi/Gin"></ulink>
+   for additional information.
+  </para>
+
+ </sect2>
+
+</sect1>

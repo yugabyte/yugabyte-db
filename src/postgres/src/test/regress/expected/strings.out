@@ -1,0 +1,1660 @@
+--
+-- STRINGS
+-- Test various data entry syntaxes.
+--
+-- SQL string continuation syntax
+-- E021-03 character string literals
+SELECT 'first line'
+' - next line'
+	' - third line'
+	AS "Three lines to one";
+         Three lines to one          
+-------------------------------------
+ first line - next line - third line
+(1 row)
+
+-- illegal string continuation syntax
+SELECT 'first line'
+' - next line' /* this comment is not allowed here */
+' - third line'
+	AS "Illegal comment within continuation";
+ERROR:  syntax error at or near "' - third line'"
+LINE 3: ' - third line'
+        ^
+-- Unicode escapes
+SET standard_conforming_strings TO on;
+SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
+ data 
+------
+ data
+(1 row)
+
+SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061" UESCAPE '*';
+ dat\+000061 
+-------------
+ dat\+000061
+(1 row)
+
+SELECT U&' \' UESCAPE '!' AS "tricky";
+ tricky 
+--------
+  \
+(1 row)
+
+SELECT 'tricky' AS U&"\" UESCAPE '!';
+   \    
+--------
+ tricky
+(1 row)
+
+SELECT U&'wrong: \061';
+ERROR:  invalid Unicode escape value at or near "\061'"
+LINE 1: SELECT U&'wrong: \061';
+                         ^
+SELECT U&'wrong: \+0061';
+ERROR:  invalid Unicode escape value at or near "\+0061'"
+LINE 1: SELECT U&'wrong: \+0061';
+                         ^
+SELECT U&'wrong: +0061' UESCAPE '+';
+ERROR:  invalid Unicode escape character at or near "+'"
+LINE 1: SELECT U&'wrong: +0061' UESCAPE '+';
+                                         ^
+SET standard_conforming_strings TO off;
+SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061" UESCAPE '*';
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061...
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+SELECT U&' \' UESCAPE '!' AS "tricky";
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&' \' UESCAPE '!' AS "tricky";
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+SELECT 'tricky' AS U&"\" UESCAPE '!';
+   \    
+--------
+ tricky
+(1 row)
+
+SELECT U&'wrong: \061';
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&'wrong: \061';
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+SELECT U&'wrong: \+0061';
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&'wrong: \+0061';
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+SELECT U&'wrong: +0061' UESCAPE '+';
+ERROR:  unsafe use of string constant with Unicode escapes
+LINE 1: SELECT U&'wrong: +0061' UESCAPE '+';
+               ^
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+RESET standard_conforming_strings;
+-- bytea
+SET bytea_output TO hex;
+SELECT E'\\xDeAdBeEf'::bytea;
+   bytea    
+------------
+ \xdeadbeef
+(1 row)
+
+SELECT E'\\x De Ad Be Ef '::bytea;
+   bytea    
+------------
+ \xdeadbeef
+(1 row)
+
+SELECT E'\\xDeAdBeE'::bytea;
+ERROR:  invalid hexadecimal data: odd number of digits
+LINE 1: SELECT E'\\xDeAdBeE'::bytea;
+               ^
+SELECT E'\\xDeAdBeEx'::bytea;
+ERROR:  invalid hexadecimal digit: "x"
+LINE 1: SELECT E'\\xDeAdBeEx'::bytea;
+               ^
+SELECT E'\\xDe00BeEf'::bytea;
+   bytea    
+------------
+ \xde00beef
+(1 row)
+
+SELECT E'DeAdBeEf'::bytea;
+       bytea        
+--------------------
+ \x4465416442654566
+(1 row)
+
+SELECT E'De\\000dBeEf'::bytea;
+       bytea        
+--------------------
+ \x4465006442654566
+(1 row)
+
+SELECT E'De\123dBeEf'::bytea;
+       bytea        
+--------------------
+ \x4465536442654566
+(1 row)
+
+SELECT E'De\\123dBeEf'::bytea;
+       bytea        
+--------------------
+ \x4465536442654566
+(1 row)
+
+SELECT E'De\\678dBeEf'::bytea;
+ERROR:  invalid input syntax for type bytea
+LINE 1: SELECT E'De\\678dBeEf'::bytea;
+               ^
+SET bytea_output TO escape;
+SELECT E'\\xDeAdBeEf'::bytea;
+      bytea       
+------------------
+ \336\255\276\357
+(1 row)
+
+SELECT E'\\x De Ad Be Ef '::bytea;
+      bytea       
+------------------
+ \336\255\276\357
+(1 row)
+
+SELECT E'\\xDe00BeEf'::bytea;
+      bytea       
+------------------
+ \336\000\276\357
+(1 row)
+
+SELECT E'DeAdBeEf'::bytea;
+  bytea   
+----------
+ DeAdBeEf
+(1 row)
+
+SELECT E'De\\000dBeEf'::bytea;
+    bytea    
+-------------
+ De\000dBeEf
+(1 row)
+
+SELECT E'De\\123dBeEf'::bytea;
+  bytea   
+----------
+ DeSdBeEf
+(1 row)
+
+--
+-- test conversions between various string types
+-- E021-10 implicit casting among the character data types
+--
+SELECT CAST(f1 AS text) AS "text(char)" FROM CHAR_TBL;
+ text(char) 
+------------
+ a
+ ab
+ abcd
+ abcd
+(4 rows)
+
+SELECT CAST(f1 AS text) AS "text(varchar)" FROM VARCHAR_TBL;
+ text(varchar) 
+---------------
+ a
+ ab
+ abcd
+ abcd
+(4 rows)
+
+SELECT CAST(name 'namefield' AS text) AS "text(name)";
+ text(name) 
+------------
+ namefield
+(1 row)
+
+-- since this is an explicit cast, it should truncate w/o error:
+SELECT CAST(f1 AS char(10)) AS "char(text)" FROM TEXT_TBL;
+ char(text) 
+------------
+ doh!      
+ hi de ho n
+(2 rows)
+
+-- note: implicit-cast case is tested in char.sql
+SELECT CAST(f1 AS char(20)) AS "char(text)" FROM TEXT_TBL;
+      char(text)      
+----------------------
+ doh!                
+ hi de ho neighbor   
+(2 rows)
+
+SELECT CAST(f1 AS char(10)) AS "char(varchar)" FROM VARCHAR_TBL;
+ char(varchar) 
+---------------
+ a         
+ ab        
+ abcd      
+ abcd      
+(4 rows)
+
+SELECT CAST(name 'namefield' AS char(10)) AS "char(name)";
+ char(name) 
+------------
+ namefield 
+(1 row)
+
+SELECT CAST(f1 AS varchar) AS "varchar(text)" FROM TEXT_TBL;
+   varchar(text)   
+-------------------
+ doh!
+ hi de ho neighbor
+(2 rows)
+
+SELECT CAST(f1 AS varchar) AS "varchar(char)" FROM CHAR_TBL;
+ varchar(char) 
+---------------
+ a
+ ab
+ abcd
+ abcd
+(4 rows)
+
+SELECT CAST(name 'namefield' AS varchar) AS "varchar(name)";
+ varchar(name) 
+---------------
+ namefield
+(1 row)
+
+--
+-- test SQL string functions
+-- E### and T### are feature reference numbers from SQL99
+--
+-- E021-09 trim function
+SELECT TRIM(BOTH FROM '  bunch o blanks  ') = 'bunch o blanks' AS "bunch o blanks";
+ bunch o blanks 
+----------------
+ t
+(1 row)
+
+SELECT TRIM(LEADING FROM '  bunch o blanks  ') = 'bunch o blanks  ' AS "bunch o blanks  ";
+ bunch o blanks   
+------------------
+ t
+(1 row)
+
+SELECT TRIM(TRAILING FROM '  bunch o blanks  ') = '  bunch o blanks' AS "  bunch o blanks";
+   bunch o blanks 
+------------------
+ t
+(1 row)
+
+SELECT TRIM(BOTH 'x' FROM 'xxxxxsome Xsxxxxx') = 'some Xs' AS "some Xs";
+ some Xs 
+---------
+ t
+(1 row)
+
+-- E021-06 substring expression
+SELECT SUBSTRING('1234567890' FROM 3) = '34567890' AS "34567890";
+ 34567890 
+----------
+ t
+(1 row)
+
+SELECT SUBSTRING('1234567890' FROM 4 FOR 3) = '456' AS "456";
+ 456 
+-----
+ t
+(1 row)
+
+-- T581 regular expression substring (with SQL99's bizarre regexp syntax)
+SELECT SUBSTRING('abcdefg' FROM 'a#"(b_d)#"%' FOR '#') AS "bcd";
+ bcd 
+-----
+ bcd
+(1 row)
+
+-- No match should return NULL
+SELECT SUBSTRING('abcdefg' FROM '#"(b_d)#"%' FOR '#') IS NULL AS "True";
+ True 
+------
+ t
+(1 row)
+
+-- Null inputs should return NULL
+SELECT SUBSTRING('abcdefg' FROM '(b|c)' FOR NULL) IS NULL AS "True";
+ True 
+------
+ t
+(1 row)
+
+SELECT SUBSTRING(NULL FROM '(b|c)' FOR '#') IS NULL AS "True";
+ True 
+------
+ t
+(1 row)
+
+SELECT SUBSTRING('abcdefg' FROM NULL FOR '#') IS NULL AS "True";
+ True 
+------
+ t
+(1 row)
+
+-- PostgreSQL extension to allow omitting the escape character;
+-- here the regexp is taken as Posix syntax
+SELECT SUBSTRING('abcdefg' FROM 'c.e') AS "cde";
+ cde 
+-----
+ cde
+(1 row)
+
+-- With a parenthesized subexpression, return only what matches the subexpr
+SELECT SUBSTRING('abcdefg' FROM 'b(.*)f') AS "cde";
+ cde 
+-----
+ cde
+(1 row)
+
+-- PostgreSQL extension to allow using back reference in replace string;
+SELECT regexp_replace('1112223333', E'(\\d{3})(\\d{3})(\\d{4})', E'(\\1) \\2-\\3');
+ regexp_replace 
+----------------
+ (111) 222-3333
+(1 row)
+
+SELECT regexp_replace('AAA   BBB   CCC   ', E'\\s+', ' ', 'g');
+ regexp_replace 
+----------------
+ AAA BBB CCC 
+(1 row)
+
+SELECT regexp_replace('AAA', '^|$', 'Z', 'g');
+ regexp_replace 
+----------------
+ ZAAAZ
+(1 row)
+
+SELECT regexp_replace('AAA aaa', 'A+', 'Z', 'gi');
+ regexp_replace 
+----------------
+ Z Z
+(1 row)
+
+-- invalid regexp option
+SELECT regexp_replace('AAA aaa', 'A+', 'Z', 'z');
+ERROR:  invalid regexp option: "z"
+-- set so we can tell NULL from empty string
+\pset null '\\N'
+-- return all matches from regexp
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(beque)$re$);
+ regexp_matches 
+----------------
+ {bar,beque}
+(1 row)
+
+-- test case insensitive
+SELECT regexp_matches('foObARbEqUEbAz', $re$(bar)(beque)$re$, 'i');
+ regexp_matches 
+----------------
+ {bAR,bEqUE}
+(1 row)
+
+-- global option - more than one match
+SELECT regexp_matches('foobarbequebazilbarfbonk', $re$(b[^b]+)(b[^b]+)$re$, 'g');
+ regexp_matches 
+----------------
+ {bar,beque}
+ {bazil,barf}
+(2 rows)
+
+-- empty capture group (matched empty string)
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(.*)(beque)$re$);
+ regexp_matches 
+----------------
+ {bar,"",beque}
+(1 row)
+
+-- no match
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(.+)(beque)$re$);
+ regexp_matches 
+----------------
+(0 rows)
+
+-- optional capture group did not match, null entry in array
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(.+)?(beque)$re$);
+  regexp_matches  
+------------------
+ {bar,NULL,beque}
+(1 row)
+
+-- no capture groups
+SELECT regexp_matches('foobarbequebaz', $re$barbeque$re$);
+ regexp_matches 
+----------------
+ {barbeque}
+(1 row)
+
+-- start/end-of-line matches are of zero length
+SELECT regexp_matches('foo' || chr(10) || 'bar' || chr(10) || 'bequq' || chr(10) || 'baz', '^', 'mg');
+ regexp_matches 
+----------------
+ {""}
+ {""}
+ {""}
+ {""}
+(4 rows)
+
+SELECT regexp_matches('foo' || chr(10) || 'bar' || chr(10) || 'bequq' || chr(10) || 'baz', '$', 'mg');
+ regexp_matches 
+----------------
+ {""}
+ {""}
+ {""}
+ {""}
+(4 rows)
+
+SELECT regexp_matches('1' || chr(10) || '2' || chr(10) || '3' || chr(10) || '4' || chr(10), '^.?', 'mg');
+ regexp_matches 
+----------------
+ {1}
+ {2}
+ {3}
+ {4}
+ {""}
+(5 rows)
+
+SELECT regexp_matches(chr(10) || '1' || chr(10) || '2' || chr(10) || '3' || chr(10) || '4' || chr(10), '.?$', 'mg');
+ regexp_matches 
+----------------
+ {""}
+ {1}
+ {""}
+ {2}
+ {""}
+ {3}
+ {""}
+ {4}
+ {""}
+ {""}
+(10 rows)
+
+SELECT regexp_matches(chr(10) || '1' || chr(10) || '2' || chr(10) || '3' || chr(10) || '4', '.?$', 'mg');
+ regexp_matches 
+----------------
+ {""}
+ {1}
+ {""}
+ {2}
+ {""}
+ {3}
+ {""}
+ {4}
+ {""}
+(9 rows)
+
+-- give me errors
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(beque)$re$, 'gz');
+ERROR:  invalid regexp option: "z"
+SELECT regexp_matches('foobarbequebaz', $re$(barbeque$re$);
+ERROR:  invalid regular expression: parentheses () not balanced
+SELECT regexp_matches('foobarbequebaz', $re$(bar)(beque){2,1}$re$);
+ERROR:  invalid regular expression: invalid repetition count(s)
+-- split string on regexp
+SELECT foo, length(foo) FROM regexp_split_to_table('the quick brown fox jumps over the lazy dog', $re$\s+$re$) AS foo;
+  foo  | length 
+-------+--------
+ the   |      3
+ quick |      5
+ brown |      5
+ fox   |      3
+ jumps |      5
+ over  |      4
+ the   |      3
+ lazy  |      4
+ dog   |      3
+(9 rows)
+
+SELECT regexp_split_to_array('the quick brown fox jumps over the lazy dog', $re$\s+$re$);
+             regexp_split_to_array             
+-----------------------------------------------
+ {the,quick,brown,fox,jumps,over,the,lazy,dog}
+(1 row)
+
+SELECT foo, length(foo) FROM regexp_split_to_table('the quick brown fox jumps over the lazy dog', $re$\s*$re$) AS foo;
+ foo | length 
+-----+--------
+ t   |      1
+ h   |      1
+ e   |      1
+ q   |      1
+ u   |      1
+ i   |      1
+ c   |      1
+ k   |      1
+ b   |      1
+ r   |      1
+ o   |      1
+ w   |      1
+ n   |      1
+ f   |      1
+ o   |      1
+ x   |      1
+ j   |      1
+ u   |      1
+ m   |      1
+ p   |      1
+ s   |      1
+ o   |      1
+ v   |      1
+ e   |      1
+ r   |      1
+ t   |      1
+ h   |      1
+ e   |      1
+ l   |      1
+ a   |      1
+ z   |      1
+ y   |      1
+ d   |      1
+ o   |      1
+ g   |      1
+(35 rows)
+
+SELECT regexp_split_to_array('the quick brown fox jumps over the lazy dog', $re$\s*$re$);
+                          regexp_split_to_array                          
+-------------------------------------------------------------------------
+ {t,h,e,q,u,i,c,k,b,r,o,w,n,f,o,x,j,u,m,p,s,o,v,e,r,t,h,e,l,a,z,y,d,o,g}
+(1 row)
+
+SELECT foo, length(foo) FROM regexp_split_to_table('the quick brown fox jumps over the lazy dog', '') AS foo;
+ foo | length 
+-----+--------
+ t   |      1
+ h   |      1
+ e   |      1
+     |      1
+ q   |      1
+ u   |      1
+ i   |      1
+ c   |      1
+ k   |      1
+     |      1
+ b   |      1
+ r   |      1
+ o   |      1
+ w   |      1
+ n   |      1
+     |      1
+ f   |      1
+ o   |      1
+ x   |      1
+     |      1
+ j   |      1
+ u   |      1
+ m   |      1
+ p   |      1
+ s   |      1
+     |      1
+ o   |      1
+ v   |      1
+ e   |      1
+ r   |      1
+     |      1
+ t   |      1
+ h   |      1
+ e   |      1
+     |      1
+ l   |      1
+ a   |      1
+ z   |      1
+ y   |      1
+     |      1
+ d   |      1
+ o   |      1
+ g   |      1
+(43 rows)
+
+SELECT regexp_split_to_array('the quick brown fox jumps over the lazy dog', '');
+                                          regexp_split_to_array                                          
+---------------------------------------------------------------------------------------------------------
+ {t,h,e," ",q,u,i,c,k," ",b,r,o,w,n," ",f,o,x," ",j,u,m,p,s," ",o,v,e,r," ",t,h,e," ",l,a,z,y," ",d,o,g}
+(1 row)
+
+-- case insensitive
+SELECT foo, length(foo) FROM regexp_split_to_table('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'i') AS foo;
+            foo            | length 
+---------------------------+--------
+ th                        |      2
+  QUick bROWn FOx jUMPs ov |     25
+ r Th                      |      4
+  lazy dOG                 |      9
+(4 rows)
+
+SELECT regexp_split_to_array('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'i');
+                regexp_split_to_array                
+-----------------------------------------------------
+ {th," QUick bROWn FOx jUMPs ov","r Th"," lazy dOG"}
+(1 row)
+
+-- no match of pattern
+SELECT foo, length(foo) FROM regexp_split_to_table('the quick brown fox jumps over the lazy dog', 'nomatch') AS foo;
+                     foo                     | length 
+---------------------------------------------+--------
+ the quick brown fox jumps over the lazy dog |     43
+(1 row)
+
+SELECT regexp_split_to_array('the quick brown fox jumps over the lazy dog', 'nomatch');
+              regexp_split_to_array              
+-------------------------------------------------
+ {"the quick brown fox jumps over the lazy dog"}
+(1 row)
+
+-- some corner cases
+SELECT regexp_split_to_array('123456','1');
+ regexp_split_to_array 
+-----------------------
+ {"",23456}
+(1 row)
+
+SELECT regexp_split_to_array('123456','6');
+ regexp_split_to_array 
+-----------------------
+ {12345,""}
+(1 row)
+
+SELECT regexp_split_to_array('123456','.');
+ regexp_split_to_array  
+------------------------
+ {"","","","","","",""}
+(1 row)
+
+-- errors
+SELECT foo, length(foo) FROM regexp_split_to_table('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'zippy') AS foo;
+ERROR:  invalid regexp option: "z"
+SELECT regexp_split_to_array('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'iz');
+ERROR:  invalid regexp option: "z"
+-- global option meaningless for regexp_split
+SELECT foo, length(foo) FROM regexp_split_to_table('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'g') AS foo;
+ERROR:  regexp_split_to_table does not support the global option
+SELECT regexp_split_to_array('thE QUick bROWn FOx jUMPs ovEr The lazy dOG', 'e', 'g');
+ERROR:  regexp_split_to_array does not support the global option
+-- change NULL-display back
+\pset null ''
+-- E021-11 position expression
+SELECT POSITION('4' IN '1234567890') = '4' AS "4";
+ 4 
+---
+ t
+(1 row)
+
+SELECT POSITION('5' IN '1234567890') = '5' AS "5";
+ 5 
+---
+ t
+(1 row)
+
+-- T312 character overlay function
+SELECT OVERLAY('abcdef' PLACING '45' FROM 4) AS "abc45f";
+ abc45f 
+--------
+ abc45f
+(1 row)
+
+SELECT OVERLAY('yabadoo' PLACING 'daba' FROM 5) AS "yabadaba";
+ yabadaba 
+----------
+ yabadaba
+(1 row)
+
+SELECT OVERLAY('yabadoo' PLACING 'daba' FROM 5 FOR 0) AS "yabadabadoo";
+ yabadabadoo 
+-------------
+ yabadabadoo
+(1 row)
+
+SELECT OVERLAY('babosa' PLACING 'ubb' FROM 2 FOR 4) AS "bubba";
+ bubba 
+-------
+ bubba
+(1 row)
+
+--
+-- test LIKE
+-- Be sure to form every test as a LIKE/NOT LIKE pair.
+--
+-- simplest examples
+-- E061-04 like predicate
+SELECT 'hawkeye' LIKE 'h%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT LIKE 'h%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'hawkeye' LIKE 'H%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'hawkeye' NOT LIKE 'H%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' LIKE 'indio%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'hawkeye' NOT LIKE 'indio%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' LIKE 'h%eye' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT LIKE 'h%eye' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' LIKE '_ndio' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'indio' NOT LIKE '_ndio' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' LIKE 'in__o' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'indio' NOT LIKE 'in__o' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' LIKE 'in_o' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' NOT LIKE 'in_o' AS "true";
+ true 
+------
+ t
+(1 row)
+
+-- unused escape character
+SELECT 'hawkeye' LIKE 'h%' ESCAPE '#' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT LIKE 'h%' ESCAPE '#' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' LIKE 'ind_o' ESCAPE '$' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'indio' NOT LIKE 'ind_o' ESCAPE '$' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+-- escape character
+-- E061-05 like predicate with escape clause
+SELECT 'h%' LIKE 'h#%' ESCAPE '#' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'h%' NOT LIKE 'h#%' ESCAPE '#' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'h%wkeye' LIKE 'h#%' ESCAPE '#' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'h%wkeye' NOT LIKE 'h#%' ESCAPE '#' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'h%wkeye' LIKE 'h#%%' ESCAPE '#' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'h%wkeye' NOT LIKE 'h#%%' ESCAPE '#' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'h%awkeye' LIKE 'h#%a%k%e' ESCAPE '#' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'h%awkeye' NOT LIKE 'h#%a%k%e' ESCAPE '#' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'indio' LIKE '_ndio' ESCAPE '$' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'indio' NOT LIKE '_ndio' ESCAPE '$' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'i_dio' LIKE 'i$_d_o' ESCAPE '$' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'i_dio' NOT LIKE 'i$_d_o' ESCAPE '$' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'i_dio' LIKE 'i$_nd_o' ESCAPE '$' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'i_dio' NOT LIKE 'i$_nd_o' ESCAPE '$' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'i_dio' LIKE 'i$_d%o' ESCAPE '$' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'i_dio' NOT LIKE 'i$_d%o' ESCAPE '$' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+-- escape character same as pattern character
+SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'be_r' LIKE '__e__r' ESCAPE '_' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'be_r' NOT LIKE '__e__r' ESCAPE '_' AS "true";
+ true 
+------
+ t
+(1 row)
+
+--
+-- test ILIKE (case-insensitive LIKE)
+-- Be sure to form every test as an ILIKE/NOT ILIKE pair.
+--
+SELECT 'hawkeye' ILIKE 'h%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT ILIKE 'h%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'hawkeye' ILIKE 'H%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT ILIKE 'H%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'hawkeye' ILIKE 'H%Eye' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'hawkeye' NOT ILIKE 'H%Eye' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'Hawkeye' ILIKE 'h%' AS "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'Hawkeye' NOT ILIKE 'h%' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+--
+-- test %/_ combination cases, cf bugs #4821 and #5478
+--
+SELECT 'foo' LIKE '_%' as t, 'f' LIKE '_%' as t, '' LIKE '_%' as f;
+ t | t | f 
+---+---+---
+ t | t | f
+(1 row)
+
+SELECT 'foo' LIKE '%_' as t, 'f' LIKE '%_' as t, '' LIKE '%_' as f;
+ t | t | f 
+---+---+---
+ t | t | f
+(1 row)
+
+SELECT 'foo' LIKE '__%' as t, 'foo' LIKE '___%' as t, 'foo' LIKE '____%' as f;
+ t | t | f 
+---+---+---
+ t | t | f
+(1 row)
+
+SELECT 'foo' LIKE '%__' as t, 'foo' LIKE '%___' as t, 'foo' LIKE '%____' as f;
+ t | t | f 
+---+---+---
+ t | t | f
+(1 row)
+
+SELECT 'jack' LIKE '%____%' AS t;
+ t 
+---
+ t
+(1 row)
+
+--
+-- test implicit type conversion
+--
+-- E021-07 character concatenation
+SELECT 'unknown' || ' and unknown' AS "Concat unknown types";
+ Concat unknown types 
+----------------------
+ unknown and unknown
+(1 row)
+
+SELECT text 'text' || ' and unknown' AS "Concat text to unknown type";
+ Concat text to unknown type 
+-----------------------------
+ text and unknown
+(1 row)
+
+SELECT char(20) 'characters' || ' and text' AS "Concat char to unknown type";
+ Concat char to unknown type 
+-----------------------------
+ characters and text
+(1 row)
+
+SELECT text 'text' || char(20) ' and characters' AS "Concat text to char";
+ Concat text to char 
+---------------------
+ text and characters
+(1 row)
+
+SELECT text 'text' || varchar ' and varchar' AS "Concat text to varchar";
+ Concat text to varchar 
+------------------------
+ text and varchar
+(1 row)
+
+--
+-- test substr with toasted text values
+--
+CREATE TABLE toasttest(f1 text);
+insert into toasttest values(repeat('1234567890',10000));
+insert into toasttest values(repeat('1234567890',10000));
+--
+-- Ensure that some values are uncompressed, to test the faster substring
+-- operation used in that case
+--
+alter table toasttest alter column f1 set storage external;
+insert into toasttest values(repeat('1234567890',10000));
+insert into toasttest values(repeat('1234567890',10000));
+-- If the starting position is zero or less, then return from the start of the string
+-- adjusting the length to be consistent with the "negative start" per SQL.
+SELECT substr(f1, -1, 5) from toasttest;
+ substr 
+--------
+ 123
+ 123
+ 123
+ 123
+(4 rows)
+
+-- If the length is less than zero, an ERROR is thrown.
+SELECT substr(f1, 5, -1) from toasttest;
+ERROR:  negative substring length not allowed
+-- If no third argument (length) is provided, the length to the end of the
+-- string is assumed.
+SELECT substr(f1, 99995) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+-- If start plus length is > string length, the result is truncated to
+-- string length
+SELECT substr(f1, 99995, 10) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+DROP TABLE toasttest;
+--
+-- test substr with toasted bytea values
+--
+CREATE TABLE toasttest(f1 bytea);
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+--
+-- Ensure that some values are uncompressed, to test the faster substring
+-- operation used in that case
+--
+alter table toasttest alter column f1 set storage external;
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+-- If the starting position is zero or less, then return from the start of the string
+-- adjusting the length to be consistent with the "negative start" per SQL.
+SELECT substr(f1, -1, 5) from toasttest;
+ substr 
+--------
+ 123
+ 123
+ 123
+ 123
+(4 rows)
+
+-- If the length is less than zero, an ERROR is thrown.
+SELECT substr(f1, 5, -1) from toasttest;
+ERROR:  negative substring length not allowed
+-- If no third argument (length) is provided, the length to the end of the
+-- string is assumed.
+SELECT substr(f1, 99995) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+-- If start plus length is > string length, the result is truncated to
+-- string length
+SELECT substr(f1, 99995, 10) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+DROP TABLE toasttest;
+-- test internally compressing datums
+-- this tests compressing a datum to a very small size which exercises a
+-- corner case in packed-varlena handling: even though small, the compressed
+-- datum must be given a 4-byte header because there are no bits to indicate
+-- compression in a 1-byte header
+CREATE TABLE toasttest (c char(4096));
+INSERT INTO toasttest VALUES('x');
+SELECT length(c), c::text FROM toasttest;
+ length | c 
+--------+---
+      1 | x
+(1 row)
+
+SELECT c FROM toasttest;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                c                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ x                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+(1 row)
+
+DROP TABLE toasttest;
+--
+-- test length
+--
+SELECT length('abcdef') AS "length_6";
+ length_6 
+----------
+        6
+(1 row)
+
+--
+-- test strpos
+--
+SELECT strpos('abcdef', 'cd') AS "pos_3";
+ pos_3 
+-------
+     3
+(1 row)
+
+SELECT strpos('abcdef', 'xy') AS "pos_0";
+ pos_0 
+-------
+     0
+(1 row)
+
+--
+-- test replace
+--
+SELECT replace('abcdef', 'de', '45') AS "abc45f";
+ abc45f 
+--------
+ abc45f
+(1 row)
+
+SELECT replace('yabadabadoo', 'ba', '123') AS "ya123da123doo";
+ ya123da123doo 
+---------------
+ ya123da123doo
+(1 row)
+
+SELECT replace('yabadoo', 'bad', '') AS "yaoo";
+ yaoo 
+------
+ yaoo
+(1 row)
+
+--
+-- test split_part
+--
+select split_part('joeuser@mydatabase','@',0) AS "an error";
+ERROR:  field position must be greater than zero
+select split_part('joeuser@mydatabase','@',1) AS "joeuser";
+ joeuser 
+---------
+ joeuser
+(1 row)
+
+select split_part('joeuser@mydatabase','@',2) AS "mydatabase";
+ mydatabase 
+------------
+ mydatabase
+(1 row)
+
+select split_part('joeuser@mydatabase','@',3) AS "empty string";
+ empty string 
+--------------
+ 
+(1 row)
+
+select split_part('@joeuser@mydatabase@','@',2) AS "joeuser";
+ joeuser 
+---------
+ joeuser
+(1 row)
+
+--
+-- test to_hex
+--
+select to_hex(256*256*256 - 1) AS "ffffff";
+ ffffff 
+--------
+ ffffff
+(1 row)
+
+select to_hex(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "ffffffff";
+ ffffffff 
+----------
+ ffffffff
+(1 row)
+
+--
+-- MD5 test suite - from IETF RFC 1321
+-- (see: ftp://ftp.rfc-editor.org/in-notes/rfc1321.txt)
+--
+select md5('') = 'd41d8cd98f00b204e9800998ecf8427e' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('a') = '0cc175b9c0f1b6a831c399e269772661' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('abc') = '900150983cd24fb0d6963f7d28e17f72' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('message digest') = 'f96b697d7cb7938d525a2f31aaf161d0' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('abcdefghijklmnopqrstuvwxyz') = 'c3fcd3d76192e4007dfb496cca67e13b' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') = 'd174ab98d277d9f5a5611c2c9f419d9f' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('12345678901234567890123456789012345678901234567890123456789012345678901234567890') = '57edf4a22be3c955ac49da2e2107b67a' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5(''::bytea) = 'd41d8cd98f00b204e9800998ecf8427e' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('a'::bytea) = '0cc175b9c0f1b6a831c399e269772661' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('abc'::bytea) = '900150983cd24fb0d6963f7d28e17f72' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('message digest'::bytea) = 'f96b697d7cb7938d525a2f31aaf161d0' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('abcdefghijklmnopqrstuvwxyz'::bytea) = 'c3fcd3d76192e4007dfb496cca67e13b' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'::bytea) = 'd174ab98d277d9f5a5611c2c9f419d9f' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+select md5('12345678901234567890123456789012345678901234567890123456789012345678901234567890'::bytea) = '57edf4a22be3c955ac49da2e2107b67a' AS "TRUE";
+ TRUE 
+------
+ t
+(1 row)
+
+--
+-- test behavior of escape_string_warning and standard_conforming_strings options
+--
+set escape_string_warning = off;
+set standard_conforming_strings = off;
+show escape_string_warning;
+ escape_string_warning 
+-----------------------
+ off
+(1 row)
+
+show standard_conforming_strings;
+ standard_conforming_strings 
+-----------------------------
+ off
+(1 row)
+
+set escape_string_warning = on;
+set standard_conforming_strings = on;
+show escape_string_warning;
+ escape_string_warning 
+-----------------------
+ on
+(1 row)
+
+show standard_conforming_strings;
+ standard_conforming_strings 
+-----------------------------
+ on
+(1 row)
+
+select 'a\bcd' as f1, 'a\b''cd' as f2, 'a\b''''cd' as f3, 'abcd\'   as f4, 'ab\''cd' as f5, '\\' as f6;
+  f1   |   f2   |   f3    |  f4   |   f5   | f6 
+-------+--------+---------+-------+--------+----
+ a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+(1 row)
+
+set standard_conforming_strings = off;
+select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
+               ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
+                               ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
+                                                 ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: ...bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'  ...
+                                                             ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: ...'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd'...
+                                                             ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+WARNING:  nonstandard use of \\ in a string literal
+LINE 1: ...'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as ...
+                                                             ^
+HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
+  f1   |   f2   |   f3    |  f4   |   f5   | f6 
+-------+--------+---------+-------+--------+----
+ a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+(1 row)
+
+set escape_string_warning = off;
+set standard_conforming_strings = on;
+select 'a\bcd' as f1, 'a\b''cd' as f2, 'a\b''''cd' as f3, 'abcd\'   as f4, 'ab\''cd' as f5, '\\' as f6;
+  f1   |   f2   |   f3    |  f4   |   f5   | f6 
+-------+--------+---------+-------+--------+----
+ a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+(1 row)
+
+set standard_conforming_strings = off;
+select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
+  f1   |   f2   |   f3    |  f4   |   f5   | f6 
+-------+--------+---------+-------+--------+----
+ a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+(1 row)
+
+--
+-- Additional string functions
+--
+SELECT initcap('hi THOMAS');
+  initcap  
+-----------
+ Hi Thomas
+(1 row)
+
+SELECT lpad('hi', 5, 'xy');
+ lpad  
+-------
+ xyxhi
+(1 row)
+
+SELECT lpad('hi', 5);
+ lpad  
+-------
+    hi
+(1 row)
+
+SELECT lpad('hi', -5, 'xy');
+ lpad 
+------
+ 
+(1 row)
+
+SELECT lpad('hello', 2);
+ lpad 
+------
+ he
+(1 row)
+
+SELECT lpad('hi', 5, '');
+ lpad 
+------
+ hi
+(1 row)
+
+SELECT rpad('hi', 5, 'xy');
+ rpad  
+-------
+ hixyx
+(1 row)
+
+SELECT rpad('hi', 5);
+ rpad  
+-------
+ hi   
+(1 row)
+
+SELECT rpad('hi', -5, 'xy');
+ rpad 
+------
+ 
+(1 row)
+
+SELECT rpad('hello', 2);
+ rpad 
+------
+ he
+(1 row)
+
+SELECT rpad('hi', 5, '');
+ rpad 
+------
+ hi
+(1 row)
+
+SELECT ltrim('zzzytrim', 'xyz');
+ ltrim 
+-------
+ trim
+(1 row)
+
+SELECT translate('', '14', 'ax');
+ translate 
+-----------
+ 
+(1 row)
+
+SELECT translate('12345', '14', 'ax');
+ translate 
+-----------
+ a23x5
+(1 row)
+
+SELECT ascii('x');
+ ascii 
+-------
+   120
+(1 row)
+
+SELECT ascii('');
+ ascii 
+-------
+     0
+(1 row)
+
+SELECT chr(65);
+ chr 
+-----
+ A
+(1 row)
+
+SELECT chr(0);
+ERROR:  null character not permitted
+SELECT repeat('Pg', 4);
+  repeat  
+----------
+ PgPgPgPg
+(1 row)
+
+SELECT repeat('Pg', -4);
+ repeat 
+--------
+ 
+(1 row)
+
+SELECT trim(E'\\000'::bytea from E'\\000Tom\\000'::bytea);
+ btrim 
+-------
+ Tom
+(1 row)
+
+SELECT btrim(E'\\000trim\\000'::bytea, E'\\000'::bytea);
+ btrim 
+-------
+ trim
+(1 row)
+
+SELECT btrim(''::bytea, E'\\000'::bytea);
+ btrim 
+-------
+ 
+(1 row)
+
+SELECT btrim(E'\\000trim\\000'::bytea, ''::bytea);
+    btrim     
+--------------
+ \000trim\000
+(1 row)
+
+SELECT encode(overlay(E'Th\\000omas'::bytea placing E'Th\\001omas'::bytea from 2),'escape');
+   encode    
+-------------
+ TTh\x01omas
+(1 row)
+
+SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 8),'escape');
+       encode       
+--------------------
+ Th\000omas\x02\x03
+(1 row)
+
+SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 5 for 3),'escape');
+     encode      
+-----------------
+ Th\000o\x02\x03
+(1 row)
+

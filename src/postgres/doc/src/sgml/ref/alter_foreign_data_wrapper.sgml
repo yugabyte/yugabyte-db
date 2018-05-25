@@ -1,0 +1,188 @@
+<!--
+doc/src/sgml/ref/alter_foreign_data_wrapper.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTERFOREIGNDATAWRAPPER">
+ <indexterm zone="sql-alterforeigndatawrapper">
+  <primary>ALTER FOREIGN DATA WRAPPER</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER FOREIGN DATA WRAPPER</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER FOREIGN DATA WRAPPER</refname>
+  <refpurpose>change the definition of a foreign-data wrapper</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER FOREIGN DATA WRAPPER <replaceable class="parameter">name</replaceable>
+    [ HANDLER <replaceable class="parameter">handler_function</replaceable> | NO HANDLER ]
+    [ VALIDATOR <replaceable class="parameter">validator_function</replaceable> | NO VALIDATOR ]
+    [ OPTIONS ( [ ADD | SET | DROP ] <replaceable class="PARAMETER">option</replaceable> ['<replaceable class="PARAMETER">value</replaceable>'] [, ... ]) ]
+ALTER FOREIGN DATA WRAPPER <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER FOREIGN DATA WRAPPER <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER FOREIGN DATA WRAPPER</command> changes the
+   definition of a foreign-data wrapper.  The first form of the
+   command changes the support functions or the generic options of the
+   foreign-data wrapper (at least one clause is required).  The second
+   form changes the owner of the foreign-data wrapper.
+  </para>
+
+  <para>
+   Only superusers can alter foreign-data wrappers.  Additionally,
+   only superusers can own foreign-data wrappers.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing foreign-data wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>HANDLER <replaceable class="parameter">handler_function</replaceable></literal></term>
+    <listitem>
+     <para>
+      Specifies a new handler function for the foreign-data wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NO HANDLER</literal></term>
+    <listitem>
+     <para>
+      This is used to specify that the foreign-data wrapper should no
+      longer have a handler function.
+     </para>
+     <para>
+      Note that foreign tables that use a foreign-data wrapper with no
+      handler cannot be accessed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VALIDATOR <replaceable class="parameter">validator_function</replaceable></literal></term>
+    <listitem>
+     <para>
+      Specifies a new validator function for the foreign-data wrapper.
+     </para>
+
+     <para>
+      Note that it is possible that pre-existing options of the foreign-data
+      wrapper, or of dependent servers, user mappings, or foreign tables, are
+      invalid according to the new validator.  <productname>PostgreSQL</> does
+      not check for this.  It is up to the user to make sure that these
+      options are correct before using the modified foreign-data wrapper.
+      However, any options specified in this <command>ALTER FOREIGN DATA
+      WRAPPER</> command will be checked using the new validator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NO VALIDATOR</literal></term>
+    <listitem>
+     <para>
+      This is used to specify that the foreign-data wrapper should no
+      longer have a validator function.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OPTIONS ( [ ADD | SET | DROP ] <replaceable class="PARAMETER">option</replaceable> ['<replaceable class="PARAMETER">value</replaceable>'] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      Change options for the foreign-data
+      wrapper.  <literal>ADD</>, <literal>SET</>, and <literal>DROP</>
+      specify the action to be performed.  <literal>ADD</> is assumed
+      if no operation is explicitly specified.  Option names must be
+      unique; names and values are also validated using the foreign
+      data wrapper's validator function, if any.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the foreign-data wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the foreign-data wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change a foreign-data wrapper <literal>dbi</>, add
+   option <literal>foo</>, drop <literal>bar</>:
+<programlisting>
+ALTER FOREIGN DATA WRAPPER dbi OPTIONS (ADD foo '1', DROP 'bar');
+</programlisting>
+  </para>
+
+  <para>
+   Change the foreign-data wrapper <literal>dbi</> validator
+   to <literal>bob.myvalidator</>:
+<programlisting>
+ALTER FOREIGN DATA WRAPPER dbi VALIDATOR bob.myvalidator;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER FOREIGN DATA WRAPPER</command> conforms to ISO/IEC
+   9075-9 (SQL/MED), except that the <literal>HANDLER</literal>,
+   <literal>VALIDATOR</>, <literal>OWNER TO</>, and <literal>RENAME</literal>
+   clauses are extensions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createforeigndatawrapper"></member>
+   <member><xref linkend="sql-dropforeigndatawrapper"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

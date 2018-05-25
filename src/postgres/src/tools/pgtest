@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# src/tools/pgtest [-n] [...]
+
+# This runs a build/initdb/regression test suite
+#
+# This will start a temporary postmaster, so you have to
+# have enough kernel resources to run two postmasters or
+# stop your main postmaster before running this script.
+#
+# Use -n to prevent 'make clean'
+
+MAKE="make"
+
+[ ! -d src ] && echo "This must be run from the top of the PostgreSQL source tree" 1>&2 && exit 1
+
+trap "rm -rf /tmp/$$" 0 1 2 3 15
+mkdir /tmp/$$
+TMP="/tmp/$$"
+
+if [ "X$1" != "X-n" ]
+then	PGCLEAN=clean
+else	shift
+fi
+
+# Run "make check" and store return code in $TMP/ret.
+# Display output but also capture it in $TMP/0.
+($MAKE "$@" $PGCLEAN check 2>&1; echo "$?" > $TMP/ret) | tee  $TMP/0
+
+# If success, display warnings
+if [ $(cat $TMP/ret) -eq 0 ]
+then	cat $TMP/0 |
+	# The following grep's have to be adjusted for your setup because
+	# certain warnings are acceptable.
+	grep -i warning |
+	grep -v setproctitle |
+	grep -v find_rule |
+	grep -v yy_flex_realloc
+fi
+
+# return original make error code
+exit `cat $TMP/ret`

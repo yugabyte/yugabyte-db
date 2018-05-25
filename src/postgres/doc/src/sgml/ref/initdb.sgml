@@ -1,0 +1,462 @@
+<!--
+doc/src/sgml/ref/initdb.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="APP-INITDB">
+ <indexterm zone="app-initdb">
+  <primary>initdb</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>initdb</refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>initdb</refname>
+  <refpurpose>create a new <productname>PostgreSQL</productname> database cluster</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>initdb</command>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <group choice="plain">
+    <group choice="opt">
+     <arg choice="plain"><option>--pgdata</option></arg>
+     <arg choice="plain"><option>-D</option></arg>
+    </group>
+    <replaceable> directory</replaceable>
+   </group>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="R1-APP-INITDB-1">
+  <title>
+   Description
+  </title>
+  <para>
+   <command>initdb</command> creates a new
+   <productname>PostgreSQL</productname> database cluster.  A database
+   cluster is a collection of databases that are managed by a single
+   server instance.
+  </para>
+
+  <para>
+   Creating a database cluster consists of creating the directories in
+   which the database data will live, generating the shared catalog
+   tables (tables that belong to the whole cluster rather than to any
+   particular database), and creating the <literal>template1</literal>
+   and <literal>postgres</literal> databases. When you later create a
+   new database, everything in the <literal>template1</literal> database is
+   copied.  (Therefore, anything installed in <literal>template1</literal>
+   is automatically copied into each database created later.)
+   The <literal>postgres</literal> database is a default database meant
+   for use by users, utilities and third party applications.
+  </para>
+
+  <para>
+   Although <command>initdb</command> will attempt to create the
+   specified data directory, it might not have permission if the parent
+   directory of the desired data directory is root-owned. To initialize
+   in such a setup, create an empty data directory as root, then use
+   <command>chown</command> to assign ownership of that directory to the
+   database user account, then <command>su</command> to become the
+   database user to run <command>initdb</command>.
+  </para>
+
+  <para>
+   <command>initdb</command> must be run as the user that will own the
+   server process, because the server needs to have access to the
+   files and directories that <command>initdb</command> creates.
+   Since the server cannot be run as root, you must not run
+   <command>initdb</command> as root either.  (It will in fact refuse
+   to do so.)
+  </para>
+
+  <para>
+   <command>initdb</command> initializes the database cluster's default
+   locale and character set encoding. The character set encoding,
+   collation order (<literal>LC_COLLATE</>) and character set classes
+   (<literal>LC_CTYPE</>, e.g. upper, lower, digit) can be set separately
+   for a database when it is created. <command>initdb</command> determines
+   those settings for the <literal>template1</literal> database, which will
+   serve as the default for all other databases.
+  </para>
+
+  <para>
+   To alter the default collation order or character set classes, use the
+   <option>--lc-collate</option> and <option>--lc-ctype</option> options.
+   Collation orders other than <literal>C</> or <literal>POSIX</> also have
+   a performance penalty.  For these reasons it is important to choose the
+   right locale when running <command>initdb</command>.
+  </para>
+
+  <para>
+   The remaining locale categories can be changed later when the server
+   is started.  You can also use <option>--locale</option> to set the
+   default for all locale categories, including collation order and
+   character set classes. All server locale values (<literal>lc_*</>) can
+   be displayed via <command>SHOW ALL</>.
+   More details can be found in <xref linkend="locale">.
+  </para>
+
+  <para>
+   To alter the default encoding, use the <option>--encoding</option>.
+   More details can be found in <xref linkend="multibyte">.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><option>-A <replaceable class="parameter">authmethod</replaceable></option></term>
+      <term><option>--auth=<replaceable class="parameter">authmethod</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the default authentication method for local
+        users used in <filename>pg_hba.conf</> (<literal>host</literal>
+        and <literal>local</literal> lines).  <command>initdb</command> will
+        prepopulate <filename>pg_hba.conf</filename> entries using the
+        specified authentication method for non-replication as well as
+        replication connections.
+       </para>
+
+       <para>
+        Do not use <literal>trust</> unless you trust all local users on your
+        system.  <literal>trust</> is the default for ease of installation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--auth-host=<replaceable class="parameter">authmethod</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the authentication method for local users via
+        TCP/IP connections used in <filename>pg_hba.conf</>
+        (<literal>host</literal> lines).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--auth-local=<replaceable class="parameter">authmethod</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the authentication method for local users via
+        Unix-domain socket connections used in <filename>pg_hba.conf</>
+        (<literal>local</literal> lines).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-D <replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the directory where the database cluster
+        should be stored. This is the only information required by
+        <command>initdb</command>, but you can avoid writing it by
+        setting the <envar>PGDATA</envar> environment variable, which
+        can be convenient since the database server
+        (<command>postgres</command>) can find the database
+        directory later by the same variable.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-E <replaceable class="parameter">encoding</replaceable></option></term>
+      <term><option>--encoding=<replaceable class="parameter">encoding</replaceable></option></term>
+      <listitem>
+       <para>
+        Selects the encoding of the template database. This will also
+        be the default encoding of any database you create later,
+        unless you override it there.  The default is derived from the locale, or
+        <literal>SQL_ASCII</literal> if that does not work. The character sets supported by
+        the <productname>PostgreSQL</productname> server are described
+        in <xref linkend="multibyte-charset-supported">.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="app-initdb-data-checksums" xreflabel="data checksums">
+      <term><option>-k</option></term>
+      <term><option>--data-checksums</option></term>
+      <listitem>
+       <para>
+        Use checksums on data pages to help detect corruption by the
+        I/O system that would otherwise be silent. Enabling checksums
+        may incur a noticeable performance penalty. This option can only
+        be set during initialization, and cannot be changed later. If
+        set, checksums are calculated for all objects, in all databases.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--locale=<replaceable>locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets the default locale for the database cluster.  If this
+        option is not specified, the locale is inherited from the
+        environment that <command>initdb</command> runs in. Locale
+        support is described in <xref linkend="locale">.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--lc-collate=<replaceable>locale</replaceable></option></term>
+      <term><option>--lc-ctype=<replaceable>locale</replaceable></option></term>
+      <term><option>--lc-messages=<replaceable>locale</replaceable></option></term>
+      <term><option>--lc-monetary=<replaceable>locale</replaceable></option></term>
+      <term><option>--lc-numeric=<replaceable>locale</replaceable></option></term>
+      <term><option>--lc-time=<replaceable>locale</replaceable></option></term>
+
+      <listitem>
+       <para>
+        Like <option>--locale</option>, but only sets the locale in
+        the specified category.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-locale</option></term>
+      <listitem>
+       <para>
+        Equivalent to <option>--locale=C</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-N</option></term>
+      <term><option>--no-sync</option></term>
+      <listitem>
+       <para>
+        By default, <command>initdb</command> will wait for all files to be
+        written safely to disk.  This option causes <command>initdb</command>
+        to return without waiting, which is faster, but means that a
+        subsequent operating system crash can leave the data directory
+        corrupt.  Generally, this option is useful for testing, but should not
+        be used when creating a production installation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--pwfile=<replaceable>filename</></option></term>
+      <listitem>
+       <para>
+        Makes <command>initdb</command> read the database superuser's password
+        from a file.  The first line of the file is taken as the password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-S</option></term>
+      <term><option>--sync-only</option></term>
+      <listitem>
+       <para>
+        Safely write all database files to disk and exit.  This does not
+        perform any of the normal <application>initdb</> operations.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-T <replaceable>config</></option></term>
+      <term><option>--text-search-config=<replaceable>config</></option></term>
+      <listitem>
+       <para>
+        Sets the default text search configuration.
+        See <xref linkend="guc-default-text-search-config"> for further information.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        Selects the user name of the database superuser. This defaults
+        to the name of the effective user running
+        <command>initdb</command>. It is really not important what the
+        superuser's name is, but one might choose to keep the
+        customary name <systemitem>postgres</systemitem>, even if the operating
+        system user's name is different.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option></term>
+      <term><option>--pwprompt</option></term>
+      <listitem>
+       <para>
+        Makes <command>initdb</command> prompt for a password
+        to give the database superuser. If you don't plan on using password
+        authentication, this is not important.  Otherwise you won't be
+        able to use password authentication until you have a password
+        set up.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-X <replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>--waldir=<replaceable class="parameter">directory</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the directory where the write-ahead log
+        should be stored.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+
+   <para>
+    Other, less commonly used, options are also available:
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-d</option></term>
+      <term><option>--debug</option></term>
+      <listitem>
+       <para>
+        Print debugging output from the bootstrap backend and a few other
+        messages of lesser interest for the general public.
+        The bootstrap backend is the program <command>initdb</command>
+        uses to create the catalog tables.  This option generates a tremendous
+        amount of extremely boring output.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-L <replaceable class="parameter">directory</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies where <command>initdb</command> should find
+        its input files to initialize the database cluster.  This is
+        normally not necessary.  You will be told if you need to
+        specify their location explicitly.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-n</option></term>
+      <term><option>--no-clean</option></term>
+      <listitem>
+       <para>
+        By default, when <command>initdb</command>
+        determines that an error prevented it from completely creating the database
+        cluster, it removes any files it might have created before discovering
+        that it cannot finish the job. This option inhibits tidying-up and is
+        thus useful for debugging.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+   <para>
+    Other options:
+
+    <variablelist>
+     <varlistentry>
+       <term><option>-V</></term>
+       <term><option>--version</></term>
+       <listitem>
+       <para>
+       Print the <application>initdb</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-?</></term>
+       <term><option>--help</></term>
+       <listitem>
+       <para>
+       Show help about <application>initdb</application> command line
+       arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATA</envar></term>
+
+    <listitem>
+     <para>
+      Specifies the directory where the database cluster is to be
+      stored; can be overridden using the <option>-D</option> option.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>TZ</envar></term>
+
+    <listitem>
+     <para>
+      Specifies the default time zone of the created database cluster.  The
+      value should be a full time zone name
+      (see <xref linkend="datatype-timezones">).
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</> utilities,
+   also uses the environment variables supported by <application>libpq</>
+   (see <xref linkend="libpq-envars">).
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <command>initdb</command> can also be invoked via
+   <command>pg_ctl initdb</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-pg-ctl"></member>
+   <member><xref linkend="app-postgres"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

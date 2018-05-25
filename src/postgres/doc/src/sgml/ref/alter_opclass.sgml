@@ -1,0 +1,124 @@
+<!--
+doc/src/sgml/ref/alter_opclass.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTEROPCLASS">
+ <indexterm zone="sql-alteropclass">
+  <primary>ALTER OPERATOR CLASS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER OPERATOR CLASS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER OPERATOR CLASS</refname>
+  <refpurpose>change the definition of an operator class</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER OPERATOR CLASS <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    RENAME TO <replaceable>new_name</replaceable>
+
+ALTER OPERATOR CLASS <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR CLASS <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    SET SCHEMA <replaceable>new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER OPERATOR CLASS</command> changes the definition of
+   an operator class.
+  </para>
+
+  <para>
+   You must own the operator class to use <command>ALTER OPERATOR CLASS</>.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the operator class's schema.  (These restrictions enforce that altering the
+   owner doesn't do anything you couldn't do by dropping and recreating the
+   operator class.  However, a superuser can alter ownership of any operator
+   class anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing operator
+      class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_method</replaceable></term>
+    <listitem>
+     <para>
+      The name of the index method this operator class is for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+ </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER OPERATOR CLASS</command> statement in
+   the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createopclass"></member>
+   <member><xref linkend="sql-dropopclass"></member>
+   <member><xref linkend="sql-alteropfamily"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

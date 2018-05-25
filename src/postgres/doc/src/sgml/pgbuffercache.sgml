@@ -1,0 +1,192 @@
+<!-- doc/src/sgml/pgbuffercache.sgml -->
+
+<sect1 id="pgbuffercache" xreflabel="pg_buffercache">
+ <title>pg_buffercache</title>
+
+ <indexterm zone="pgbuffercache">
+  <primary>pg_buffercache</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_buffercache</filename> module provides a means for
+  examining what's happening in the shared buffer cache in real time.
+ </para>
+
+ <indexterm>
+  <primary>pg_buffercache_pages</primary>
+ </indexterm>
+
+ <para>
+  The module provides a C function <function>pg_buffercache_pages</function>
+  that returns a set of records, plus a view
+  <structname>pg_buffercache</structname> that wraps the function for
+  convenient use.
+ </para>
+
+ <para>
+  By default use is restricted to superusers and members of the
+  <literal>pg_read_all_stats</literal> role. Access may be granted to others
+  using <command>GRANT</command>.
+ </para>
+
+ <sect2>
+  <title>The <structname>pg_buffercache</structname> View</title>
+
+  <para>
+   The definitions of the columns exposed by the view are shown in <xref linkend="pgbuffercache-columns">.
+  </para>
+
+  <table id="pgbuffercache-columns">
+   <title><structname>pg_buffercache</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+    <tbody>
+
+     <row>
+      <entry><structfield>bufferid</structfield></entry>
+      <entry><type>integer</type></entry>
+      <entry></entry>
+      <entry>ID, in the range 1..<varname>shared_buffers</></entry>
+     </row>
+
+     <row>
+      <entry><structfield>relfilenode</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal>pg_class.relfilenode</literal></entry>
+      <entry>Filenode number of the relation</entry>
+     </row>
+
+     <row>
+      <entry><structfield>reltablespace</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal>pg_tablespace.oid</literal></entry>
+      <entry>Tablespace OID of the relation</entry>
+     </row>
+
+     <row>
+      <entry><structfield>reldatabase</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal>pg_database.oid</literal></entry>
+      <entry>Database OID of the relation</entry>
+     </row>
+
+     <row>
+      <entry><structfield>relforknumber</structfield></entry>
+      <entry><type>smallint</type></entry>
+      <entry></entry>
+      <entry>Fork number within the relation;  see
+      <filename>include/common/relpath.h</></entry>
+     </row>
+
+     <row>
+      <entry><structfield>relblocknumber</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Page number within the relation</entry>
+     </row>
+
+     <row>
+      <entry><structfield>isdirty</structfield></entry>
+      <entry><type>boolean</type></entry>
+      <entry></entry>
+      <entry>Is the page dirty?</entry>
+     </row>
+
+     <row>
+      <entry><structfield>usagecount</structfield></entry>
+      <entry><type>smallint</type></entry>
+      <entry></entry>
+      <entry>Clock-sweep access count</entry>
+     </row>
+
+     <row>
+      <entry><structfield>pinning_backends</structfield></entry>
+      <entry><type>integer</type></entry>
+      <entry></entry>
+      <entry>Number of backends pinning this buffer</entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   There is one row for each buffer in the shared cache. Unused buffers are
+   shown with all fields null except <structfield>bufferid</>.  Shared system
+   catalogs are shown as belonging to database zero.
+  </para>
+
+  <para>
+   Because the cache is shared by all the databases, there will normally be
+   pages from relations not belonging to the current database.  This means
+   that there may not be matching join rows in <structname>pg_class</> for
+   some rows, or that there could even be incorrect joins.  If you are
+   trying to join against <structname>pg_class</>, it's a good idea to
+   restrict the join to rows having <structfield>reldatabase</> equal to
+   the current database's OID or zero.
+  </para>
+
+  <para>
+   When the <structname>pg_buffercache</> view is accessed, internal buffer
+   manager locks are taken for long enough to copy all the buffer state
+   data that the view will display.
+   This ensures that the view produces a consistent set of results, while not
+   blocking normal buffer activity longer than necessary.  Nonetheless there
+   could be some impact on database performance if this view is read often.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Sample Output</title>
+
+<screen>
+regression=# SELECT c.relname, count(*) AS buffers
+             FROM pg_buffercache b INNER JOIN pg_class c
+             ON b.relfilenode = pg_relation_filenode(c.oid) AND
+                b.reldatabase IN (0, (SELECT oid FROM pg_database
+                                      WHERE datname = current_database()))
+             GROUP BY c.relname
+             ORDER BY 2 DESC
+             LIMIT 10;
+
+             relname             | buffers
+---------------------------------+---------
+ tenk2                           |     345
+ tenk1                           |     141
+ pg_proc                         |      46
+ pg_class                        |      45
+ pg_attribute                    |      43
+ pg_class_relname_nsp_index      |      30
+ pg_proc_proname_args_nsp_index  |      28
+ pg_attribute_relid_attnam_index |      26
+ pg_depend                       |      22
+ pg_depend_reference_index       |      20
+(10 rows)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Authors</title>
+
+  <para>
+   Mark Kirkwood <email>markir@paradise.net.nz</email>
+  </para>
+
+  <para>
+   Design suggestions: Neil Conway <email>neilc@samurai.com</email>
+  </para>
+
+  <para>
+   Debugging advice: Tom Lane <email>tgl@sss.pgh.pa.us</email>
+  </para>
+ </sect2>
+
+</sect1>

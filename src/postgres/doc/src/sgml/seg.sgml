@@ -1,0 +1,397 @@
+<!-- doc/src/sgml/seg.sgml -->
+
+<sect1 id="seg" xreflabel="seg">
+ <title>seg</title>
+
+ <indexterm zone="seg">
+  <primary>seg</primary>
+ </indexterm>
+
+ <para>
+  This module implements a data type <type>seg</> for
+  representing line segments, or floating point intervals.
+  <type>seg</> can represent uncertainty in the interval endpoints,
+  making it especially useful for representing laboratory measurements.
+ </para>
+
+ <sect2>
+  <title>Rationale</title>
+
+  <para>
+   The geometry of measurements is usually more complex than that of a
+   point in a numeric continuum. A measurement is usually a segment of
+   that continuum with somewhat fuzzy limits. The measurements come out
+   as intervals because of uncertainty and randomness, as well as because
+   the value being measured may naturally be an interval indicating some
+   condition, such as the temperature range of stability of a protein.
+  </para>
+
+  <para>
+   Using just common sense, it appears more convenient to store such data
+   as intervals, rather than pairs of numbers. In practice, it even turns
+   out more efficient in most applications.
+  </para>
+
+  <para>
+   Further along the line of common sense, the fuzziness of the limits
+   suggests that the use of traditional numeric data types leads to a
+   certain loss of information. Consider this: your instrument reads
+   6.50, and you input this reading into the database. What do you get
+   when you fetch it? Watch:
+
+<screen>
+test=&gt; select 6.50 :: float8 as "pH";
+ pH
+---
+6.5
+(1 row)
+</screen>
+
+   In the world of measurements, 6.50 is not the same as 6.5. It may
+   sometimes be critically different. The experimenters usually write
+   down (and publish) the digits they trust. 6.50 is actually a fuzzy
+   interval contained within a bigger and even fuzzier interval, 6.5,
+   with their center points being (probably) the only common feature they
+   share. We definitely do not want such different data items to appear the
+   same.
+  </para>
+
+  <para>
+   Conclusion? It is nice to have a special data type that can record the
+   limits of an interval with arbitrarily variable precision. Variable in
+   the sense that each data element records its own precision.
+  </para>
+
+  <para>
+   Check this out:
+
+<screen>
+test=&gt; select '6.25 .. 6.50'::seg as "pH";
+          pH
+------------
+6.25 .. 6.50
+(1 row)
+</screen>
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Syntax</title>
+
+  <para>
+   The external representation of an interval is formed using one or two
+   floating-point numbers joined by the range operator (<literal>..</literal>
+   or <literal>...</literal>).  Alternatively, it can be specified as a
+   center point plus or minus a deviation.
+   Optional certainty indicators (<literal>&lt;</literal>,
+   <literal>&gt;</literal> or <literal>~</literal>) can be stored as well.
+   (Certainty indicators are ignored by all the built-in operators, however.)
+   <xref linkend="seg-repr-table"> gives an overview of allowed
+   representations; <xref linkend="seg-input-examples"> shows some
+   examples.
+  </para>
+
+  <para>
+   In <xref linkend="seg-repr-table">, <replaceable>x</>, <replaceable>y</>, and
+   <replaceable>delta</> denote
+   floating-point numbers.  <replaceable>x</> and <replaceable>y</>, but
+   not <replaceable>delta</>, can be preceded by a certainty indicator.
+  </para>
+
+  <table id="seg-repr-table">
+   <title><type>seg</> External Representations</title>
+   <tgroup cols="2">
+    <tbody>
+     <row>
+      <entry><literal><replaceable>x</></literal></entry>
+      <entry>Single value (zero-length interval)
+      </entry>
+     </row>
+     <row>
+      <entry><literal><replaceable>x</> .. <replaceable>y</></literal></entry>
+      <entry>Interval from <replaceable>x</> to <replaceable>y</>
+      </entry>
+     </row>
+     <row>
+      <entry><literal><replaceable>x</> (+-) <replaceable>delta</></literal></entry>
+      <entry>Interval from <replaceable>x</> - <replaceable>delta</> to
+      <replaceable>x</> + <replaceable>delta</>
+      </entry>
+     </row>
+     <row>
+      <entry><literal><replaceable>x</> ..</literal></entry>
+      <entry>Open interval with lower bound <replaceable>x</>
+      </entry>
+     </row>
+     <row>
+      <entry><literal>.. <replaceable>x</></literal></entry>
+      <entry>Open interval with upper bound <replaceable>x</>
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <table id="seg-input-examples">
+   <title>Examples of Valid <type>seg</> Input</title>
+   <tgroup cols="2">
+    <tbody>
+     <row>
+      <entry><literal>5.0</literal></entry>
+      <entry>
+       Creates a zero-length segment (a point, if you will)
+      </entry>
+     </row>
+     <row>
+      <entry><literal>~5.0</literal></entry>
+      <entry>
+       Creates a zero-length segment and records
+       <literal>~</> in the data.  <literal>~</literal> is ignored
+       by <type>seg</> operations, but
+       is preserved as a comment.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>&lt;5.0</literal></entry>
+      <entry>
+       Creates a point at 5.0.  <literal>&lt;</literal> is ignored but
+       is preserved as a comment.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>&gt;5.0</literal></entry>
+      <entry>
+       Creates a point at 5.0.  <literal>&gt;</literal> is ignored but
+       is preserved as a comment.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>5(+-)0.3</literal></entry>
+      <entry>
+        Creates an interval <literal>4.7 .. 5.3</literal>.
+        Note that the <literal>(+-)</> notation isn't preserved.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>50 .. </literal></entry>
+      <entry>Everything that is greater than or equal to 50</entry>
+     </row>
+     <row>
+      <entry><literal>.. 0</literal></entry>
+      <entry>Everything that is less than or equal to 0</entry>
+     </row>
+     <row>
+      <entry><literal>1.5e-2 .. 2E-2 </literal></entry>
+      <entry>Creates an interval <literal>0.015 .. 0.02</literal></entry>
+     </row>
+     <row>
+      <entry><literal>1 ... 2</literal></entry>
+      <entry>
+       The same as <literal>1...2</literal>, or <literal>1 .. 2</literal>,
+       or <literal>1..2</literal>
+       (spaces around the range operator are ignored)
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   Because <literal>...</> is widely used in data sources, it is allowed
+   as an alternative spelling of <literal>..</>.  Unfortunately, this
+   creates a parsing ambiguity: it is not clear whether the upper bound
+   in <literal>0...23</> is meant to be <literal>23</> or <literal>0.23</>.
+   This is resolved by requiring at least one digit before the decimal
+   point in all numbers in <type>seg</> input.
+  </para>
+
+  <para>
+   As a sanity check, <type>seg</> rejects intervals with the lower bound
+   greater than the upper, for example <literal>5 .. 2</>.
+  </para>
+
+ </sect2>
+
+ <sect2>
+  <title>Precision</title>
+
+  <para>
+   <type>seg</> values are stored internally as pairs of 32-bit floating point
+   numbers. This means that numbers with more than 7 significant digits
+   will be truncated.
+  </para>
+
+  <para>
+   Numbers with 7 or fewer significant digits retain their
+   original precision. That is, if your query returns 0.00, you will be
+   sure that the trailing zeroes are not the artifacts of formatting: they
+   reflect the precision of the original data. The number of leading
+   zeroes does not affect precision: the value 0.0067 is considered to
+   have just 2 significant digits.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Usage</title>
+
+  <para>
+   The <filename>seg</> module includes a GiST index operator class for
+   <type>seg</> values.
+   The operators supported by the GiST operator class are shown in <xref linkend="seg-gist-operators">.
+  </para>
+
+  <table id="seg-gist-operators">
+   <title>Seg GiST Operators</title>
+   <tgroup cols="2">
+    <thead>
+     <row>
+      <entry>Operator</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><literal>[a, b] &lt;&lt; [c, d]</literal></entry>
+      <entry>[a, b] is entirely to the left of [c, d].  That is, [a,
+       b] &lt;&lt; [c, d] is true if b &lt; c and false otherwise.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] &gt;&gt; [c, d]</literal></entry>
+      <entry>[a, b] is entirely to the right of [c, d].  That is, [a,
+       b] &gt;&gt; [c, d] is true if a &gt; d and false otherwise.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] &amp;&lt; [c, d]</literal></entry>
+      <entry>Overlaps or is left of &mdash; This might be better read
+       as <quote>does not extend to right of</quote>.  It is true when
+       b &lt;= d.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] &amp;&gt; [c, d]</literal></entry>
+      <entry>Overlaps or is right of &mdash; This might be better read
+       as <quote>does not extend to left of</quote>.  It is true when
+       a &gt;= c.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] = [c, d]</literal></entry>
+      <entry>Same as &mdash; The segments [a, b] and [c, d] are
+       identical, that is, a = c and b = d.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] &amp;&amp; [c, d]</literal></entry>
+      <entry>The segments [a, b] and [c, d] overlap.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] @&gt; [c, d]</literal></entry>
+      <entry>The segment [a, b] contains the segment [c, d], that is,
+       a &lt;= c and b &gt;= d.</entry>
+     </row>
+
+     <row>
+      <entry><literal>[a, b] &lt;@ [c, d]</literal></entry>
+      <entry>The segment [a, b] is contained in [c, d], that is, a
+       &gt;= c and b &lt;= d.</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   (Before PostgreSQL 8.2, the containment operators <literal>@&gt;</> and <literal>&lt;@</> were
+   respectively called <literal>@</> and <literal>~</>.  These names are still available, but are
+   deprecated and will eventually be retired.  Notice that the old names
+   are reversed from the convention formerly followed by the core geometric
+   data types!)
+  </para>
+
+  <para>
+   The standard B-tree operators are also provided, for example
+
+  <informaltable>
+    <tgroup cols="2">
+     <thead>
+      <row>
+       <entry>Operator</entry>
+       <entry>Description</entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry><literal>[a, b] &lt; [c, d]</literal></entry>
+       <entry>Less than</entry>
+      </row>
+
+      <row>
+       <entry><literal>[a, b] &gt; [c, d]</literal></entry>
+       <entry>Greater than</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </informaltable>
+
+   These operators do not make a lot of sense for any practical
+   purpose but sorting. These operators first compare (a) to (c),
+   and if these are equal, compare (b) to (d). That results in
+   reasonably good sorting in most cases, which is useful if
+   you want to use ORDER BY with this type.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Notes</title>
+
+  <para>
+   For examples of usage, see the regression test <filename>sql/seg.sql</>.
+  </para>
+
+  <para>
+   The mechanism that converts <literal>(+-)</> to regular ranges
+   isn't completely accurate in determining the number of significant digits
+   for the boundaries.  For example, it adds an extra digit to the lower
+   boundary if the resulting interval includes a power of ten:
+
+<screen>
+postgres=&gt; select '10(+-)1'::seg as seg;
+      seg
+---------
+9.0 .. 11             -- should be: 9 .. 11
+</screen>
+  </para>
+
+  <para>
+   The performance of an R-tree index can largely depend on the initial
+   order of input values. It may be very helpful to sort the input table
+   on the <type>seg</> column; see the script <filename>sort-segments.pl</>
+   for an example.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Credits</title>
+
+  <para>
+   Original author: Gene Selkov, Jr. <email>selkovjr@mcs.anl.gov</email>,
+   Mathematics and Computer Science Division, Argonne National Laboratory.
+  </para>
+
+  <para>
+   My thanks are primarily to Prof. Joe Hellerstein
+   (<ulink url="http://db.cs.berkeley.edu/jmh/"></ulink>) for elucidating the
+   gist of the GiST (<ulink url="http://gist.cs.berkeley.edu/"></ulink>). I am
+   also grateful to all Postgres developers, present and past, for enabling
+   myself to create my own world and live undisturbed in it. And I would like
+   to acknowledge my gratitude to Argonne Lab and to the U.S. Department of
+   Energy for the years of faithful support of my database research.
+  </para>
+
+ </sect2>
+
+</sect1>

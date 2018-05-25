@@ -1,0 +1,2676 @@
+<!-- doc/src/sgml/syntax.sgml -->
+
+<chapter id="sql-syntax">
+ <title>SQL Syntax</title>
+
+ <indexterm zone="sql-syntax">
+  <primary>syntax</primary>
+  <secondary>SQL</secondary>
+ </indexterm>
+
+ <para>
+  This chapter describes the syntax of SQL.  It forms the foundation
+  for understanding the following chapters which will go into detail
+  about how SQL commands are applied to define and modify data.
+ </para>
+
+ <para>
+  We also advise users who are already familiar with SQL to read this
+  chapter carefully because it contains several rules and concepts that
+  are implemented inconsistently among SQL databases or that are
+  specific to <productname>PostgreSQL</productname>.
+ </para>
+
+ <sect1 id="sql-syntax-lexical">
+  <title>Lexical Structure</title>
+
+  <indexterm>
+   <primary>token</primary>
+  </indexterm>
+
+  <para>
+   SQL input consists of a sequence of
+   <firstterm>commands</firstterm>.  A command is composed of a
+   sequence of <firstterm>tokens</firstterm>, terminated by a
+   semicolon (<quote>;</quote>).  The end of the input stream also
+   terminates a command.  Which tokens are valid depends on the syntax
+   of the particular command.
+  </para>
+
+  <para>
+   A token can be a <firstterm>key word</firstterm>, an
+   <firstterm>identifier</firstterm>, a <firstterm>quoted
+   identifier</firstterm>, a <firstterm>literal</firstterm> (or
+   constant), or a special character symbol.  Tokens are normally
+   separated by whitespace (space, tab, newline), but need not be if
+   there is no ambiguity (which is generally only the case if a
+   special character is adjacent to some other token type).
+  </para>
+
+   <para>
+    For example, the following is (syntactically) valid SQL input:
+<programlisting>
+SELECT * FROM MY_TABLE;
+UPDATE MY_TABLE SET A = 5;
+INSERT INTO MY_TABLE VALUES (3, 'hi there');
+</programlisting>
+    This is a sequence of three commands, one per line (although this
+    is not required; more than one command can be on a line, and
+    commands can usefully be split across lines).
+   </para>
+
+  <para>
+   Additionally, <firstterm>comments</firstterm> can occur in SQL
+   input.  They are not tokens, they are effectively equivalent to
+   whitespace.
+  </para>
+
+  <para>
+   The SQL syntax is not very consistent regarding what tokens
+   identify commands and which are operands or parameters.  The first
+   few tokens are generally the command name, so in the above example
+   we would usually speak of a <quote>SELECT</quote>, an
+   <quote>UPDATE</quote>, and an <quote>INSERT</quote> command.  But
+   for instance the <command>UPDATE</command> command always requires
+   a <token>SET</token> token to appear in a certain position, and
+   this particular variation of <command>INSERT</command> also
+   requires a <token>VALUES</token> in order to be complete.  The
+   precise syntax rules for each command are described in <xref linkend="reference">.
+  </para>
+
+  <sect2 id="sql-syntax-identifiers">
+   <title>Identifiers and Key Words</title>
+
+   <indexterm zone="sql-syntax-identifiers">
+    <primary>identifier</primary>
+    <secondary>syntax of</secondary>
+   </indexterm>
+
+   <indexterm zone="sql-syntax-identifiers">
+    <primary>name</primary>
+    <secondary>syntax of</secondary>
+   </indexterm>
+
+   <indexterm zone="sql-syntax-identifiers">
+    <primary>key word</primary>
+    <secondary>syntax of</secondary>
+   </indexterm>
+
+   <para>
+    Tokens such as <token>SELECT</token>, <token>UPDATE</token>, or
+    <token>VALUES</token> in the example above are examples of
+    <firstterm>key words</firstterm>, that is, words that have a fixed
+    meaning in the SQL language.  The tokens <token>MY_TABLE</token>
+    and <token>A</token> are examples of
+    <firstterm>identifiers</firstterm>.  They identify names of
+    tables, columns, or other database objects, depending on the
+    command they are used in.  Therefore they are sometimes simply
+    called <quote>names</quote>.  Key words and identifiers have the
+    same lexical structure, meaning that one cannot know whether a
+    token is an identifier or a key word without knowing the language.
+    A complete list of key words can be found in <xref
+    linkend="sql-keywords-appendix">.
+   </para>
+
+   <para>
+    SQL identifiers and key words must begin with a letter
+    (<literal>a</literal>-<literal>z</literal>, but also letters with
+    diacritical marks and non-Latin letters) or an underscore
+    (<literal>_</literal>).  Subsequent characters in an identifier or
+    key word can be letters, underscores, digits
+    (<literal>0</literal>-<literal>9</literal>), or dollar signs
+    (<literal>$</>).  Note that dollar signs are not allowed in identifiers
+    according to the letter of the SQL standard, so their use might render
+    applications less portable.
+    The SQL standard will not define a key word that contains
+    digits or starts or ends with an underscore, so identifiers of this
+    form are safe against possible conflict with future extensions of the
+    standard.
+   </para>
+
+   <para>
+    <indexterm><primary>identifier</primary><secondary>length</secondary></indexterm>
+    The system uses no more than <symbol>NAMEDATALEN</symbol>-1
+    bytes of an identifier; longer names can be written in
+    commands, but they will be truncated.  By default,
+    <symbol>NAMEDATALEN</symbol> is 64 so the maximum identifier
+    length is 63 bytes. If this limit is problematic, it can be raised by
+    changing the <symbol>NAMEDATALEN</symbol> constant in
+    <filename>src/include/pg_config_manual.h</filename>.
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>case sensitivity</primary>
+     <secondary>of SQL commands</secondary>
+    </indexterm>
+    Key words and unquoted identifiers are case insensitive.  Therefore:
+<programlisting>
+UPDATE MY_TABLE SET A = 5;
+</programlisting>
+    can equivalently be written as:
+<programlisting>
+uPDaTE my_TabLE SeT a = 5;
+</programlisting>
+    A convention often used is to write key words in upper
+    case and names in lower case, e.g.:
+<programlisting>
+UPDATE my_table SET a = 5;
+</programlisting>
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>quotation marks</primary>
+     <secondary>and identifiers</secondary>
+    </indexterm>
+    There is a second kind of identifier:  the <firstterm>delimited
+    identifier</firstterm> or <firstterm>quoted
+    identifier</firstterm>.  It is formed by enclosing an arbitrary
+    sequence of characters in double-quotes
+    (<literal>"</literal>). <!-- " font-lock mania --> A delimited
+    identifier is always an identifier, never a key word.  So
+    <literal>"select"</literal> could be used to refer to a column or
+    table named <quote>select</quote>, whereas an unquoted
+    <literal>select</literal> would be taken as a key word and
+    would therefore provoke a parse error when used where a table or
+    column name is expected.  The example can be written with quoted
+    identifiers like this:
+<programlisting>
+UPDATE "my_table" SET "a" = 5;
+</programlisting>
+   </para>
+
+   <para>
+    Quoted identifiers can contain any character, except the character
+    with code zero.  (To include a double quote, write two double quotes.)
+    This allows constructing table or column names that would
+    otherwise not be possible, such as ones containing spaces or
+    ampersands.  The length limitation still applies.
+   </para>
+
+   <indexterm>
+     <primary>Unicode escape</primary>
+     <secondary>in identifiers</secondary>
+   </indexterm>
+
+   <para>
+    A variant of quoted
+    identifiers allows including escaped Unicode characters identified
+    by their code points.  This variant starts
+    with <literal>U&amp;</literal> (upper or lower case U followed by
+    ampersand) immediately before the opening double quote, without
+    any spaces in between, for example <literal>U&amp;"foo"</literal>.
+    (Note that this creates an ambiguity with the
+    operator <literal>&amp;</literal>.  Use spaces around the operator to
+    avoid this problem.)  Inside the quotes, Unicode characters can be
+    specified in escaped form by writing a backslash followed by the
+    four-digit hexadecimal code point number or alternatively a
+    backslash followed by a plus sign followed by a six-digit
+    hexadecimal code point number.  For example, the
+    identifier <literal>"data"</literal> could be written as
+<programlisting>
+U&amp;"d\0061t\+000061"
+</programlisting>
+    The following less trivial example writes the Russian
+    word <quote>slon</quote> (elephant) in Cyrillic letters:
+<programlisting>
+U&amp;"\0441\043B\043E\043D"
+</programlisting>
+   </para>
+
+   <para>
+    If a different escape character than backslash is desired, it can
+    be specified using
+    the <literal>UESCAPE</literal><indexterm><primary>UESCAPE</primary></indexterm>
+    clause after the string, for example:
+<programlisting>
+U&amp;"d!0061t!+000061" UESCAPE '!'
+</programlisting>
+    The escape character can be any single character other than a
+    hexadecimal digit, the plus sign, a single quote, a double quote,
+    or a whitespace character.  Note that the escape character is
+    written in single quotes, not double quotes.
+   </para>
+
+   <para>
+    To include the escape character in the identifier literally, write
+    it twice.
+   </para>
+
+   <para>
+    The Unicode escape syntax works only when the server encoding is
+    <literal>UTF8</>.  When other server encodings are used, only code
+    points in the ASCII range (up to <literal>\007F</literal>) can be
+    specified.  Both the 4-digit and the 6-digit form can be used to
+    specify UTF-16 surrogate pairs to compose characters with code
+    points larger than U+FFFF, although the availability of the
+    6-digit form technically makes this unnecessary.  (Surrogate
+    pairs are not stored directly, but combined into a single
+    code point that is then encoded in UTF-8.)
+   </para>
+
+   <para>
+    Quoting an identifier also makes it case-sensitive, whereas
+    unquoted names are always folded to lower case.  For example, the
+    identifiers <literal>FOO</literal>, <literal>foo</literal>, and
+    <literal>"foo"</literal> are considered the same by
+    <productname>PostgreSQL</productname>, but
+    <literal>"Foo"</literal> and <literal>"FOO"</literal> are
+    different from these three and each other.  (The folding of
+    unquoted names to lower case in <productname>PostgreSQL</> is
+    incompatible with the SQL standard, which says that unquoted names
+    should be folded to upper case.  Thus, <literal>foo</literal>
+    should be equivalent to <literal>"FOO"</literal> not
+    <literal>"foo"</literal> according to the standard.  If you want
+    to write portable applications you are advised to always quote a
+    particular name or never quote it.)
+   </para>
+  </sect2>
+
+
+  <sect2 id="sql-syntax-constants">
+   <title>Constants</title>
+
+   <indexterm zone="sql-syntax-constants">
+    <primary>constant</primary>
+   </indexterm>
+
+   <para>
+    There are three kinds of <firstterm>implicitly-typed
+    constants</firstterm> in <productname>PostgreSQL</productname>:
+    strings, bit strings, and numbers.
+    Constants can also be specified with explicit types, which can
+    enable more accurate representation and more efficient handling by
+    the system. These alternatives are discussed in the following
+    subsections.
+   </para>
+
+   <sect3 id="sql-syntax-strings">
+    <title>String Constants</title>
+
+    <indexterm zone="sql-syntax-strings">
+     <primary>character string</primary>
+     <secondary>constant</secondary>
+    </indexterm>
+
+    <para>
+     <indexterm>
+      <primary>quotation marks</primary>
+      <secondary>escaping</secondary>
+     </indexterm>
+     A string constant in SQL is an arbitrary sequence of characters
+     bounded by single quotes (<literal>'</literal>), for example
+     <literal>'This is a string'</literal>.  To include
+     a single-quote character within a string constant,
+     write two adjacent single quotes, e.g.,
+     <literal>'Dianne''s horse'</literal>.
+     Note that this is <emphasis>not</> the same as a double-quote
+     character (<literal>"</>). <!-- font-lock sanity: " -->
+    </para>
+
+    <para>
+     Two string constants that are only separated by whitespace
+     <emphasis>with at least one newline</emphasis> are concatenated
+     and effectively treated as if the string had been written as one
+     constant.  For example:
+<programlisting>
+SELECT 'foo'
+'bar';
+</programlisting>
+     is equivalent to:
+<programlisting>
+SELECT 'foobar';
+</programlisting>
+     but:
+<programlisting>
+SELECT 'foo'      'bar';
+</programlisting>
+     is not valid syntax.  (This slightly bizarre behavior is specified
+     by <acronym>SQL</acronym>; <productname>PostgreSQL</productname> is
+     following the standard.)
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-strings-escape">
+    <title>String Constants with C-style Escapes</title>
+
+     <indexterm zone="sql-syntax-strings-escape">
+      <primary>escape string syntax</primary>
+     </indexterm>
+     <indexterm zone="sql-syntax-strings-escape">
+      <primary>backslash escapes</primary>
+     </indexterm>
+
+    <para>
+     <productname>PostgreSQL</productname> also accepts <quote>escape</>
+     string constants, which are an extension to the SQL standard.
+     An escape string constant is specified by writing the letter
+     <literal>E</literal> (upper or lower case) just before the opening single
+     quote, e.g., <literal>E'foo'</>.  (When continuing an escape string
+     constant across lines, write <literal>E</> only before the first opening
+     quote.)
+     Within an escape string, a backslash character (<literal>\</>) begins a
+     C-like <firstterm>backslash escape</> sequence, in which the combination
+     of backslash and following character(s) represent a special byte
+     value, as shown in <xref linkend="sql-backslash-table">.
+    </para>
+
+     <table id="sql-backslash-table">
+      <title>Backslash Escape Sequences</title>
+      <tgroup cols="2">
+      <thead>
+       <row>
+        <entry>Backslash Escape Sequence</>
+        <entry>Interpretation</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><literal>\b</literal></entry>
+        <entry>backspace</entry>
+       </row>
+       <row>
+        <entry><literal>\f</literal></entry>
+        <entry>form feed</entry>
+       </row>
+       <row>
+        <entry><literal>\n</literal></entry>
+        <entry>newline</entry>
+       </row>
+       <row>
+        <entry><literal>\r</literal></entry>
+        <entry>carriage return</entry>
+       </row>
+       <row>
+        <entry><literal>\t</literal></entry>
+        <entry>tab</entry>
+       </row>
+       <row>
+        <entry>
+         <literal>\<replaceable>o</replaceable></literal>,
+         <literal>\<replaceable>oo</replaceable></literal>,
+         <literal>\<replaceable>ooo</replaceable></literal>
+         (<replaceable>o</replaceable> = 0 - 7)
+        </entry>
+        <entry>octal byte value</entry>
+       </row>
+       <row>
+        <entry>
+         <literal>\x<replaceable>h</replaceable></literal>,
+         <literal>\x<replaceable>hh</replaceable></literal>
+         (<replaceable>h</replaceable> = 0 - 9, A - F)
+        </entry>
+        <entry>hexadecimal byte value</entry>
+       </row>
+       <row>
+        <entry>
+         <literal>\u<replaceable>xxxx</replaceable></literal>,
+         <literal>\U<replaceable>xxxxxxxx</replaceable></literal>
+         (<replaceable>x</replaceable> = 0 - 9, A - F)
+        </entry>
+        <entry>16 or 32-bit hexadecimal Unicode character value</entry>
+       </row>
+      </tbody>
+      </tgroup>
+     </table>
+
+    <para>
+     Any other
+     character following a backslash is taken literally. Thus, to
+     include a backslash character, write two backslashes (<literal>\\</>).
+     Also, a single quote can be included in an escape string by writing
+     <literal>\'</literal>, in addition to the normal way of <literal>''</>.
+    </para>
+
+    <para>
+     It is your responsibility that the byte sequences you create,
+     especially when using the octal or hexadecimal escapes, compose
+     valid characters in the server character set encoding.  When the
+     server encoding is UTF-8, then the Unicode escapes or the
+     alternative Unicode escape syntax, explained
+     in <xref linkend="sql-syntax-strings-uescape">, should be used
+     instead.  (The alternative would be doing the UTF-8 encoding by
+     hand and writing out the bytes, which would be very cumbersome.)
+    </para>
+
+    <para>
+     The Unicode escape syntax works fully only when the server
+     encoding is <literal>UTF8</>.  When other server encodings are
+     used, only code points in the ASCII range (up
+     to <literal>\u007F</>) can be specified.  Both the 4-digit and
+     the 8-digit form can be used to specify UTF-16 surrogate pairs to
+     compose characters with code points larger than U+FFFF, although
+     the availability of the 8-digit form technically makes this
+     unnecessary.  (When surrogate pairs are used when the server
+     encoding is <literal>UTF8</>, they are first combined into a
+     single code point that is then encoded in UTF-8.)
+    </para>
+
+    <caution>
+    <para>
+     If the configuration parameter
+     <xref linkend="guc-standard-conforming-strings"> is <literal>off</>,
+     then <productname>PostgreSQL</productname> recognizes backslash escapes
+     in both regular and escape string constants.  However, as of
+     <productname>PostgreSQL</> 9.1, the default is <literal>on</>, meaning
+     that backslash escapes are recognized only in escape string constants.
+     This behavior is more standards-compliant, but might break applications
+     which rely on the historical behavior, where backslash escapes
+     were always recognized.  As a workaround, you can set this parameter
+     to <literal>off</>, but it is better to migrate away from using backslash
+     escapes.  If you need to use a backslash escape to represent a special
+     character, write the string constant with an <literal>E</>.
+    </para>
+
+    <para>
+     In addition to <varname>standard_conforming_strings</>, the configuration
+     parameters <xref linkend="guc-escape-string-warning"> and
+     <xref linkend="guc-backslash-quote"> govern treatment of backslashes
+     in string constants.
+    </para>
+    </caution>
+
+    <para>
+     The character with the code zero cannot be in a string constant.
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-strings-uescape">
+    <title>String Constants with Unicode Escapes</title>
+
+    <indexterm  zone="sql-syntax-strings-uescape">
+     <primary>Unicode escape</primary>
+     <secondary>in string constants</secondary>
+    </indexterm>
+
+    <para>
+     <productname>PostgreSQL</productname> also supports another type
+     of escape syntax for strings that allows specifying arbitrary
+     Unicode characters by code point.  A Unicode escape string
+     constant starts with <literal>U&amp;</literal> (upper or lower case
+     letter U followed by ampersand) immediately before the opening
+     quote, without any spaces in between, for
+     example <literal>U&amp;'foo'</literal>.  (Note that this creates an
+     ambiguity with the operator <literal>&amp;</literal>.  Use spaces
+     around the operator to avoid this problem.)  Inside the quotes,
+     Unicode characters can be specified in escaped form by writing a
+     backslash followed by the four-digit hexadecimal code point
+     number or alternatively a backslash followed by a plus sign
+     followed by a six-digit hexadecimal code point number.  For
+     example, the string <literal>'data'</literal> could be written as
+<programlisting>
+U&amp;'d\0061t\+000061'
+</programlisting>
+     The following less trivial example writes the Russian
+     word <quote>slon</quote> (elephant) in Cyrillic letters:
+<programlisting>
+U&amp;'\0441\043B\043E\043D'
+</programlisting>
+    </para>
+
+    <para>
+     If a different escape character than backslash is desired, it can
+     be specified using
+     the <literal>UESCAPE</literal><indexterm><primary>UESCAPE</primary></indexterm>
+     clause after the string, for example:
+<programlisting>
+U&amp;'d!0061t!+000061' UESCAPE '!'
+</programlisting>
+     The escape character can be any single character other than a
+     hexadecimal digit, the plus sign, a single quote, a double quote,
+     or a whitespace character.
+    </para>
+
+    <para>
+     The Unicode escape syntax works only when the server encoding is
+     <literal>UTF8</>.  When other server encodings are used, only
+     code points in the ASCII range (up to <literal>\007F</literal>)
+     can be specified.  Both the 4-digit and the 6-digit form can be
+     used to specify UTF-16 surrogate pairs to compose characters with
+     code points larger than U+FFFF, although the availability of the
+     6-digit form technically makes this unnecessary.  (When surrogate
+     pairs are used when the server encoding is <literal>UTF8</>, they
+     are first combined into a single code point that is then encoded
+     in UTF-8.)
+    </para>
+
+    <para>
+     Also, the Unicode escape syntax for string constants only works
+     when the configuration
+     parameter <xref linkend="guc-standard-conforming-strings"> is
+     turned on.  This is because otherwise this syntax could confuse
+     clients that parse the SQL statements to the point that it could
+     lead to SQL injections and similar security issues.  If the
+     parameter is set to off, this syntax will be rejected with an
+     error message.
+    </para>
+
+    <para>
+     To include the escape character in the string literally, write it
+     twice.
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-dollar-quoting">
+    <title>Dollar-quoted String Constants</title>
+
+     <indexterm>
+      <primary>dollar quoting</primary>
+     </indexterm>
+
+    <para>
+     While the standard syntax for specifying string constants is usually
+     convenient, it can be difficult to understand when the desired string
+     contains many single quotes or backslashes, since each of those must
+     be doubled. To allow more readable queries in such situations,
+     <productname>PostgreSQL</productname> provides another way, called
+     <quote>dollar quoting</quote>, to write string constants.
+     A dollar-quoted string constant
+     consists of a dollar sign (<literal>$</literal>), an optional
+     <quote>tag</quote> of zero or more characters, another dollar
+     sign, an arbitrary sequence of characters that makes up the
+     string content, a dollar sign, the same tag that began this
+     dollar quote, and a dollar sign. For example, here are two
+     different ways to specify the string <quote>Dianne's horse</>
+     using dollar quoting:
+<programlisting>
+$$Dianne's horse$$
+$SomeTag$Dianne's horse$SomeTag$
+</programlisting>
+     Notice that inside the dollar-quoted string, single quotes can be
+     used without needing to be escaped.  Indeed, no characters inside
+     a dollar-quoted string are ever escaped: the string content is always
+     written literally.  Backslashes are not special, and neither are
+     dollar signs, unless they are part of a sequence matching the opening
+     tag.
+    </para>
+
+    <para>
+     It is possible to nest dollar-quoted string constants by choosing
+     different tags at each nesting level.  This is most commonly used in
+     writing function definitions.  For example:
+<programlisting>
+$function$
+BEGIN
+    RETURN ($1 ~ $q$[\t\r\n\v\\]$q$);
+END;
+$function$
+</programlisting>
+     Here, the sequence <literal>$q$[\t\r\n\v\\]$q$</> represents a
+     dollar-quoted literal string <literal>[\t\r\n\v\\]</>, which will
+     be recognized when the function body is executed by
+     <productname>PostgreSQL</>.  But since the sequence does not match
+     the outer dollar quoting delimiter <literal>$function$</>, it is
+     just some more characters within the constant so far as the outer
+     string is concerned.
+    </para>
+
+    <para>
+     The tag, if any, of a dollar-quoted string follows the same rules
+     as an unquoted identifier, except that it cannot contain a dollar sign.
+     Tags are case sensitive, so <literal>$tag$String content$tag$</literal>
+     is correct, but <literal>$TAG$String content$tag$</literal> is not.
+    </para>
+
+    <para>
+     A dollar-quoted string that follows a keyword or identifier must
+     be separated from it by whitespace; otherwise the dollar quoting
+     delimiter would be taken as part of the preceding identifier.
+    </para>
+
+    <para>
+     Dollar quoting is not part of the SQL standard, but it is often a more
+     convenient way to write complicated string literals than the
+     standard-compliant single quote syntax.  It is particularly useful when
+     representing string constants inside other constants, as is often needed
+     in procedural function definitions.  With single-quote syntax, each
+     backslash in the above example would have to be written as four
+     backslashes, which would be reduced to two backslashes in parsing the
+     original string constant, and then to one when the inner string constant
+     is re-parsed during function execution.
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-bit-strings">
+    <title>Bit-string Constants</title>
+
+    <indexterm zone="sql-syntax-bit-strings">
+     <primary>bit string</primary>
+     <secondary>constant</secondary>
+    </indexterm>
+
+    <para>
+     Bit-string constants look like regular string constants with a
+     <literal>B</literal> (upper or lower case) immediately before the
+     opening quote (no intervening whitespace), e.g.,
+     <literal>B'1001'</literal>.  The only characters allowed within
+     bit-string constants are <literal>0</literal> and
+     <literal>1</literal>.
+    </para>
+
+    <para>
+     Alternatively, bit-string constants can be specified in hexadecimal
+     notation, using a leading <literal>X</literal> (upper or lower case),
+     e.g., <literal>X'1FF'</literal>.  This notation is equivalent to
+     a bit-string constant with four binary digits for each hexadecimal digit.
+    </para>
+
+    <para>
+     Both forms of bit-string constant can be continued
+     across lines in the same way as regular string constants.
+     Dollar quoting cannot be used in a bit-string constant.
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-constants-numeric">
+    <title>Numeric Constants</title>
+
+    <indexterm>
+     <primary>number</primary>
+     <secondary>constant</secondary>
+    </indexterm>
+
+    <para>
+     Numeric constants are accepted in these general forms:
+<synopsis>
+<replaceable>digits</replaceable>
+<replaceable>digits</replaceable>.<optional><replaceable>digits</replaceable></optional><optional>e<optional>+-</optional><replaceable>digits</replaceable></optional>
+<optional><replaceable>digits</replaceable></optional>.<replaceable>digits</replaceable><optional>e<optional>+-</optional><replaceable>digits</replaceable></optional>
+<replaceable>digits</replaceable>e<optional>+-</optional><replaceable>digits</replaceable>
+</synopsis>
+     where <replaceable>digits</replaceable> is one or more decimal
+     digits (0 through 9).  At least one digit must be before or after the
+     decimal point, if one is used.  At least one digit must follow the
+     exponent marker (<literal>e</literal>), if one is present.
+     There cannot be any spaces or other characters embedded in the
+     constant.  Note that any leading plus or minus sign is not actually
+     considered part of the constant; it is an operator applied to the
+     constant.
+    </para>
+
+    <para>
+     These are some examples of valid numeric constants:
+<literallayout>
+42
+3.5
+4.
+.001
+5e2
+1.925e-3
+</literallayout>
+    </para>
+
+    <para>
+     <indexterm><primary>integer</primary></indexterm>
+     <indexterm><primary>bigint</primary></indexterm>
+     <indexterm><primary>numeric</primary></indexterm>
+     A numeric constant that contains neither a decimal point nor an
+     exponent is initially presumed to be type <type>integer</> if its
+     value fits in type <type>integer</> (32 bits); otherwise it is
+     presumed to be type <type>bigint</> if its
+     value fits in type <type>bigint</> (64 bits); otherwise it is
+     taken to be type <type>numeric</>.  Constants that contain decimal
+     points and/or exponents are always initially presumed to be type
+     <type>numeric</>.
+    </para>
+
+    <para>
+     The initially assigned data type of a numeric constant is just a
+     starting point for the type resolution algorithms.  In most cases
+     the constant will be automatically coerced to the most
+     appropriate type depending on context.  When necessary, you can
+     force a numeric value to be interpreted as a specific data type
+     by casting it.<indexterm><primary>type cast</primary></indexterm>
+     For example, you can force a numeric value to be treated as type
+     <type>real</> (<type>float4</>) by writing:
+
+<programlisting>
+REAL '1.23'  -- string style
+1.23::REAL   -- PostgreSQL (historical) style
+</programlisting>
+
+     These are actually just special cases of the general casting
+     notations discussed next.
+    </para>
+   </sect3>
+
+   <sect3 id="sql-syntax-constants-generic">
+    <title>Constants of Other Types</title>
+
+    <indexterm>
+     <primary>data type</primary>
+     <secondary>constant</secondary>
+    </indexterm>
+
+    <para>
+     A constant of an <emphasis>arbitrary</emphasis> type can be
+     entered using any one of the following notations:
+<synopsis>
+<replaceable>type</replaceable> '<replaceable>string</replaceable>'
+'<replaceable>string</replaceable>'::<replaceable>type</replaceable>
+CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
+</synopsis>
+     The string constant's text is passed to the input conversion
+     routine for the type called <replaceable>type</replaceable>. The
+     result is a constant of the indicated type.  The explicit type
+     cast can be omitted if there is no ambiguity as to the type the
+     constant must be (for example, when it is assigned directly to a
+     table column), in which case it is automatically coerced.
+    </para>
+
+    <para>
+     The string constant can be written using either regular SQL
+     notation or dollar-quoting.
+    </para>
+
+    <para>
+     It is also possible to specify a type coercion using a function-like
+     syntax:
+<synopsis>
+<replaceable>typename</replaceable> ( '<replaceable>string</replaceable>' )
+</synopsis>
+     but not all type names can be used in this way; see <xref
+     linkend="sql-syntax-type-casts"> for details.
+    </para>
+
+    <para>
+     The <literal>::</literal>, <literal>CAST()</literal>, and
+     function-call syntaxes can also be used to specify run-time type
+     conversions of arbitrary expressions, as discussed in <xref
+     linkend="sql-syntax-type-casts">.  To avoid syntactic ambiguity, the
+     <literal><replaceable>type</> '<replaceable>string</>'</literal>
+     syntax can only be used to specify the type of a simple literal constant.
+     Another restriction on the
+     <literal><replaceable>type</> '<replaceable>string</>'</literal>
+     syntax is that it does not work for array types; use <literal>::</literal>
+     or <literal>CAST()</literal> to specify the type of an array constant.
+    </para>
+
+    <para>
+     The <literal>CAST()</> syntax conforms to SQL.  The
+     <literal><replaceable>type</> '<replaceable>string</>'</literal>
+     syntax is a generalization of the standard: SQL specifies this syntax only
+     for a few data types, but <productname>PostgreSQL</productname> allows it
+     for all types.  The syntax with
+     <literal>::</literal> is historical <productname>PostgreSQL</productname>
+     usage, as is the function-call syntax.
+    </para>
+   </sect3>
+  </sect2>
+
+  <sect2 id="sql-syntax-operators">
+   <title>Operators</title>
+
+   <indexterm zone="sql-syntax-operators">
+    <primary>operator</primary>
+    <secondary>syntax</secondary>
+   </indexterm>
+
+   <para>
+    An operator name is a sequence of up to <symbol>NAMEDATALEN</symbol>-1
+    (63 by default) characters from the following list:
+<literallayout>
++ - * / &lt; &gt; = ~ ! @ # % ^ &amp; | ` ?
+</literallayout>
+
+    There are a few restrictions on operator names, however:
+    <itemizedlist>
+     <listitem>
+      <para>
+       <literal>--</literal> and <literal>/*</literal> cannot appear
+       anywhere in an operator name, since they will be taken as the
+       start of a comment.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       A multiple-character operator name cannot end in <literal>+</> or <literal>-</>,
+       unless the name also contains at least one of these characters:
+<literallayout>
+~ ! @ # % ^ &amp; | ` ?
+</literallayout>
+       For example, <literal>@-</literal> is an allowed operator name,
+       but <literal>*-</literal> is not.  This restriction allows
+       <productname>PostgreSQL</productname> to parse SQL-compliant
+       queries without requiring spaces between tokens.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    When working with non-SQL-standard operator names, you will usually
+    need to separate adjacent operators with spaces to avoid ambiguity.
+    For example, if you have defined a left unary operator named <literal>@</literal>,
+    you cannot write <literal>X*@Y</literal>; you must write
+    <literal>X* @Y</literal> to ensure that
+    <productname>PostgreSQL</productname> reads it as two operator names
+    not one.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-syntax-special-chars">
+   <title>Special Characters</title>
+
+  <para>
+   Some characters that are not alphanumeric have a special meaning
+   that is different from being an operator.  Details on the usage can
+   be found at the location where the respective syntax element is
+   described.  This section only exists to advise the existence and
+   summarize the purposes of these characters.
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      A dollar sign (<literal>$</literal>) followed by digits is used
+      to represent a positional parameter in the body of a function
+      definition or a prepared statement.  In other contexts the
+      dollar sign can be part of an identifier or a dollar-quoted string
+      constant.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Parentheses (<literal>()</literal>) have their usual meaning to
+      group expressions and enforce precedence.  In some cases
+      parentheses are required as part of the fixed syntax of a
+      particular SQL command.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Brackets (<literal>[]</literal>) are used to select the elements
+      of an array.  See <xref linkend="arrays"> for more information
+      on arrays.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Commas (<literal>,</literal>) are used in some syntactical
+      constructs to separate the elements of a list.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The semicolon (<literal>;</literal>) terminates an SQL command.
+      It cannot appear anywhere within a command, except within a
+      string constant or quoted identifier.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The colon (<literal>:</literal>) is used to select
+      <quote>slices</quote> from arrays. (See <xref
+      linkend="arrays">.)  In certain SQL dialects (such as Embedded
+      SQL), the colon is used to prefix variable names.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The asterisk (<literal>*</literal>) is used in some contexts to denote
+      all the fields of a table row or composite value.  It also
+      has a special meaning when used as the argument of an
+      aggregate function, namely that the aggregate does not require
+      any explicit parameter.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The period (<literal>.</literal>) is used in numeric
+      constants, and to separate schema, table, and column names.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   </para>
+  </sect2>
+
+  <sect2 id="sql-syntax-comments">
+   <title>Comments</title>
+
+   <indexterm zone="sql-syntax-comments">
+    <primary>comment</primary>
+    <secondary sortas="SQL">in SQL</secondary>
+   </indexterm>
+
+   <para>
+    A comment is a sequence of characters beginning with
+    double dashes and extending to the end of the line, e.g.:
+<programlisting>
+-- This is a standard SQL comment
+</programlisting>
+   </para>
+
+   <para>
+    Alternatively, C-style block comments can be used:
+<programlisting>
+/* multiline comment
+ * with nesting: /* nested block comment */
+ */
+</programlisting>
+    where the comment begins with <literal>/*</literal> and extends to
+    the matching occurrence of <literal>*/</literal>. These block
+    comments nest, as specified in the SQL standard but unlike C, so that one can
+    comment out larger blocks of code that might contain existing block
+    comments.
+   </para>
+
+   <para>
+    A comment is removed from the input stream before further syntax
+    analysis and is effectively replaced by whitespace.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-precedence">
+   <title>Operator Precedence</title>
+
+   <indexterm zone="sql-precedence">
+    <primary>operator</primary>
+    <secondary>precedence</secondary>
+   </indexterm>
+
+   <para>
+    <xref linkend="sql-precedence-table"> shows the precedence and
+    associativity of the operators in <productname>PostgreSQL</>.
+    Most operators have the same precedence and are left-associative.
+    The precedence and associativity of the operators is hard-wired
+    into the parser.
+   </para>
+
+   <para>
+    You will
+    sometimes need to add parentheses when using combinations of
+    binary and unary operators.  For instance:
+<programlisting>
+SELECT 5 ! - 6;
+</programlisting>
+   will be parsed as:
+<programlisting>
+SELECT 5 ! (- 6);
+</programlisting>
+    because the parser has no idea &mdash; until it is too late
+    &mdash; that <token>!</token> is defined as a postfix operator,
+    not an infix one.  To get the desired behavior in this case, you
+    must write:
+<programlisting>
+SELECT (5 !) - 6;
+</programlisting>
+    This is the price one pays for extensibility.
+   </para>
+
+   <table id="sql-precedence-table">
+    <title>Operator Precedence (highest to lowest)</title>
+
+    <tgroup cols="3">
+     <thead>
+      <row>
+       <entry>Operator/Element</entry>
+       <entry>Associativity</entry>
+       <entry>Description</entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry><token>.</token></entry>
+       <entry>left</entry>
+       <entry>table/column name separator</entry>
+      </row>
+
+      <row>
+       <entry><token>::</token></entry>
+       <entry>left</entry>
+       <entry><productname>PostgreSQL</productname>-style typecast</entry>
+      </row>
+
+      <row>
+       <entry><token>[</token> <token>]</token></entry>
+       <entry>left</entry>
+       <entry>array element selection</entry>
+      </row>
+
+      <row>
+       <entry><token>+</token> <token>-</token></entry>
+       <entry>right</entry>
+       <entry>unary plus, unary minus</entry>
+      </row>
+
+      <row>
+       <entry><token>^</token></entry>
+       <entry>left</entry>
+       <entry>exponentiation</entry>
+      </row>
+
+      <row>
+       <entry><token>*</token> <token>/</token> <token>%</token></entry>
+       <entry>left</entry>
+       <entry>multiplication, division, modulo</entry>
+      </row>
+
+      <row>
+       <entry><token>+</token> <token>-</token></entry>
+       <entry>left</entry>
+       <entry>addition, subtraction</entry>
+      </row>
+
+      <row>
+       <entry>(any other operator)</entry>
+       <entry>left</entry>
+       <entry>all other native and user-defined operators</entry>
+      </row>
+
+      <row>
+       <entry><token>BETWEEN</token> <token>IN</token> <token>LIKE</token> <token>ILIKE</token> <token>SIMILAR</token></entry>
+       <entry></entry>
+       <entry>range containment, set membership, string matching</entry>
+      </row>
+
+      <row>
+       <entry><token>&lt;</token> <token>&gt;</token> <token>=</token> <token>&lt;=</token> <token>&gt;=</token> <token>&lt;&gt;</token>
+</entry>
+       <entry></entry>
+       <entry>comparison operators</entry>
+      </row>
+
+      <row>
+       <entry><token>IS</token> <token>ISNULL</token> <token>NOTNULL</token></entry>
+       <entry></entry>
+       <entry><literal>IS TRUE</>, <literal>IS FALSE</>, <literal>IS
+       NULL</>, <literal>IS DISTINCT FROM</>, etc</entry>
+      </row>
+
+      <row>
+       <entry><token>NOT</token></entry>
+       <entry>right</entry>
+       <entry>logical negation</entry>
+      </row>
+
+      <row>
+       <entry><token>AND</token></entry>
+       <entry>left</entry>
+       <entry>logical conjunction</entry>
+      </row>
+
+      <row>
+       <entry><token>OR</token></entry>
+       <entry>left</entry>
+       <entry>logical disjunction</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <para>
+    Note that the operator precedence rules also apply to user-defined
+    operators that have the same names as the built-in operators
+    mentioned above.  For example, if you define a
+    <quote>+</quote> operator for some custom data type it will have
+    the same precedence as the built-in <quote>+</quote> operator, no
+    matter what yours does.
+   </para>
+
+   <para>
+    When a schema-qualified operator name is used in the
+    <literal>OPERATOR</> syntax, as for example in:
+<programlisting>
+SELECT 3 OPERATOR(pg_catalog.+) 4;
+</programlisting>
+    the <literal>OPERATOR</> construct is taken to have the default precedence
+    shown in <xref linkend="sql-precedence-table"> for
+    <quote>any other operator</>.  This is true no matter
+    which specific operator appears inside <literal>OPERATOR()</>.
+   </para>
+
+   <note>
+    <para>
+     <productname>PostgreSQL</> versions before 9.5 used slightly different
+     operator precedence rules.  In particular, <token>&lt;=</token>
+     <token>&gt;=</token> and <token>&lt;&gt;</token> used to be treated as
+     generic operators; <literal>IS</> tests used to have higher priority;
+     and <literal>NOT BETWEEN</> and related constructs acted inconsistently,
+     being taken in some cases as having the precedence of <literal>NOT</>
+     rather than <literal>BETWEEN</>.  These rules were changed for better
+     compliance with the SQL standard and to reduce confusion from
+     inconsistent treatment of logically equivalent constructs.  In most
+     cases, these changes will result in no behavioral change, or perhaps
+     in <quote>no such operator</> failures which can be resolved by adding
+     parentheses.  However there are corner cases in which a query might
+     change behavior without any parsing error being reported.  If you are
+     concerned about whether these changes have silently broken something,
+     you can test your application with the configuration
+     parameter <xref linkend="guc-operator-precedence-warning"> turned on
+     to see if any warnings are logged.
+    </para>
+   </note>
+  </sect2>
+ </sect1>
+
+ <sect1 id="sql-expressions">
+  <title>Value Expressions</title>
+
+  <indexterm zone="sql-expressions">
+   <primary>expression</primary>
+   <secondary>syntax</secondary>
+  </indexterm>
+
+  <indexterm zone="sql-expressions">
+   <primary>value expression</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>scalar</primary>
+   <see>expression</see>
+  </indexterm>
+
+  <para>
+   Value expressions are used in a variety of contexts, such
+   as in the target list of the <command>SELECT</command> command, as
+   new column values in <command>INSERT</command> or
+   <command>UPDATE</command>, or in search conditions in a number of
+   commands.  The result of a value expression is sometimes called a
+   <firstterm>scalar</firstterm>, to distinguish it from the result of
+   a table expression (which is a table).  Value expressions are
+   therefore also called <firstterm>scalar expressions</firstterm> (or
+   even simply <firstterm>expressions</firstterm>).  The expression
+   syntax allows the calculation of values from primitive parts using
+   arithmetic, logical, set, and other operations.
+  </para>
+
+  <para>
+   A value expression is one of the following:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      A constant or literal value
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A column reference
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A positional parameter reference, in the body of a function definition
+      or prepared statement
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A subscripted expression
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A field selection expression
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      An operator invocation
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A function call
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      An aggregate expression
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A window function call
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A type cast
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A collation expression
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A scalar subquery
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      An array constructor
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A row constructor
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Another value expression in parentheses (used to group
+      subexpressions and override
+      precedence<indexterm><primary>parenthesis</></>)
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   In addition to this list, there are a number of constructs that can
+   be classified as an expression but do not follow any general syntax
+   rules.  These generally have the semantics of a function or
+   operator and are explained in the appropriate location in <xref
+   linkend="functions">.  An example is the <literal>IS NULL</literal>
+   clause.
+  </para>
+
+  <para>
+   We have already discussed constants in <xref
+   linkend="sql-syntax-constants">.  The following sections discuss
+   the remaining options.
+  </para>
+
+  <sect2 id="sql-expressions-column-refs">
+   <title>Column References</title>
+
+   <indexterm>
+    <primary>column reference</primary>
+   </indexterm>
+
+   <para>
+    A column can be referenced in the form:
+<synopsis>
+<replaceable>correlation</replaceable>.<replaceable>columnname</replaceable>
+</synopsis>
+   </para>
+
+   <para>
+    <replaceable>correlation</replaceable> is the name of a
+    table (possibly qualified with a schema name), or an alias for a table
+    defined by means of a <literal>FROM</literal> clause.
+    The correlation name and separating dot can be omitted if the column name
+    is unique across all the tables being used in the current query.  (See also <xref linkend="queries">.)
+   </para>
+  </sect2>
+
+  <sect2 id="sql-expressions-parameters-positional">
+   <title>Positional Parameters</title>
+
+   <indexterm>
+    <primary>parameter</primary>
+    <secondary>syntax</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>$</primary>
+   </indexterm>
+
+   <para>
+    A positional parameter reference is used to indicate a value
+    that is supplied externally to an SQL statement.  Parameters are
+    used in SQL function definitions and in prepared queries.  Some
+    client libraries also support specifying data values separately
+    from the SQL command string, in which case parameters are used to
+    refer to the out-of-line data values.
+    The form of a parameter reference is:
+<synopsis>
+$<replaceable>number</replaceable>
+</synopsis>
+   </para>
+
+   <para>
+    For example, consider the definition of a function,
+    <function>dept</function>, as:
+
+<programlisting>
+CREATE FUNCTION dept(text) RETURNS dept
+    AS $$ SELECT * FROM dept WHERE name = $1 $$
+    LANGUAGE SQL;
+</programlisting>
+
+    Here the <literal>$1</literal> references the value of the first
+    function argument whenever the function is invoked.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-expressions-subscripts">
+   <title>Subscripts</title>
+
+   <indexterm>
+    <primary>subscript</primary>
+   </indexterm>
+
+   <para>
+    If an expression yields a value of an array type, then a specific
+    element of the array value can be extracted by writing
+<synopsis>
+<replaceable>expression</replaceable>[<replaceable>subscript</replaceable>]
+</synopsis>
+    or multiple adjacent elements (an <quote>array slice</>) can be extracted
+    by writing
+<synopsis>
+<replaceable>expression</replaceable>[<replaceable>lower_subscript</replaceable>:<replaceable>upper_subscript</replaceable>]
+</synopsis>
+    (Here, the brackets <literal>[ ]</literal> are meant to appear literally.)
+    Each <replaceable>subscript</replaceable> is itself an expression,
+    which must yield an integer value.
+   </para>
+
+   <para>
+    In general the array <replaceable>expression</replaceable> must be
+    parenthesized, but the parentheses can be omitted when the expression
+    to be subscripted is just a column reference or positional parameter.
+    Also, multiple subscripts can be concatenated when the original array
+    is multidimensional.
+    For example:
+
+<programlisting>
+mytable.arraycolumn[4]
+mytable.two_d_column[17][34]
+$1[10:42]
+(arrayfunction(a,b))[42]
+</programlisting>
+
+    The parentheses in the last example are required.
+    See <xref linkend="arrays"> for more about arrays.
+   </para>
+  </sect2>
+
+  <sect2 id="field-selection">
+   <title>Field Selection</title>
+
+   <indexterm>
+    <primary>field selection</primary>
+   </indexterm>
+
+   <para>
+    If an expression yields a value of a composite type (row type), then a
+    specific field of the row can be extracted by writing
+<synopsis>
+<replaceable>expression</replaceable>.<replaceable>fieldname</replaceable>
+</synopsis>
+   </para>
+
+   <para>
+    In general the row <replaceable>expression</replaceable> must be
+    parenthesized, but the parentheses can be omitted when the expression
+    to be selected from is just a table reference or positional parameter.
+    For example:
+
+<programlisting>
+mytable.mycolumn
+$1.somecolumn
+(rowfunction(a,b)).col3
+</programlisting>
+
+    (Thus, a qualified column reference is actually just a special case
+    of the field selection syntax.)  An important special case is
+    extracting a field from a table column that is of a composite type:
+
+<programlisting>
+(compositecol).somefield
+(mytable.compositecol).somefield
+</programlisting>
+
+    The parentheses are required here to show that
+    <structfield>compositecol</> is a column name not a table name,
+    or that <structname>mytable</> is a table name not a schema name
+    in the second case.
+   </para>
+
+   <para>
+    You can ask for all fields of a composite value by
+    writing <literal>.*</literal>:
+<programlisting>
+(compositecol).*
+</programlisting>
+    This notation behaves differently depending on context;
+    see <xref linkend="rowtypes-usage"> for details.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-expressions-operator-calls">
+   <title>Operator Invocations</title>
+
+   <indexterm>
+    <primary>operator</primary>
+    <secondary>invocation</secondary>
+   </indexterm>
+
+   <para>
+    There are three possible syntaxes for an operator invocation:
+    <simplelist>
+     <member><replaceable>expression</replaceable> <replaceable>operator</replaceable> <replaceable>expression</replaceable> (binary infix operator)</member>
+     <member><replaceable>operator</replaceable> <replaceable>expression</replaceable> (unary prefix operator)</member>
+     <member><replaceable>expression</replaceable> <replaceable>operator</replaceable> (unary postfix operator)</member>
+    </simplelist>
+    where the <replaceable>operator</replaceable> token follows the syntax
+    rules of <xref linkend="sql-syntax-operators">, or is one of the
+    key words <token>AND</token>, <token>OR</token>, and
+    <token>NOT</token>, or is a qualified operator name in the form:
+<synopsis>
+<literal>OPERATOR(</><replaceable>schema</><literal>.</><replaceable>operatorname</><literal>)</>
+</synopsis>
+    Which particular operators exist and whether
+    they are unary or binary depends on what operators have been
+    defined by the system or the user.  <xref linkend="functions">
+    describes the built-in operators.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-expressions-function-calls">
+   <title>Function Calls</title>
+
+   <indexterm>
+    <primary>function</primary>
+    <secondary>invocation</secondary>
+   </indexterm>
+
+   <para>
+    The syntax for a function call is the name of a function
+    (possibly qualified with a schema name), followed by its argument list
+    enclosed in parentheses:
+
+<synopsis>
+<replaceable>function_name</replaceable> (<optional><replaceable>expression</replaceable> <optional>, <replaceable>expression</replaceable> ... </optional></optional> )
+</synopsis>
+   </para>
+
+   <para>
+    For example, the following computes the square root of 2:
+<programlisting>
+sqrt(2)
+</programlisting>
+   </para>
+
+   <para>
+    The list of built-in functions is in <xref linkend="functions">.
+    Other functions can be added by the user.
+   </para>
+
+   <para>
+    The arguments can optionally have names attached.
+    See <xref linkend="sql-syntax-calling-funcs"> for details.
+   </para>
+
+   <note>
+    <para>
+     A function that takes a single argument of composite type can
+     optionally be called using field-selection syntax, and conversely
+     field selection can be written in functional style.  That is, the
+     notations <literal>col(table)</> and <literal>table.col</> are
+     interchangeable.  This behavior is not SQL-standard but is provided
+     in <productname>PostgreSQL</> because it allows use of functions to
+     emulate <quote>computed fields</>.  For more information see
+     <xref linkend="rowtypes-usage">.
+    </para>
+   </note>
+  </sect2>
+
+  <sect2 id="syntax-aggregates">
+   <title>Aggregate Expressions</title>
+
+   <indexterm zone="syntax-aggregates">
+    <primary>aggregate function</primary>
+    <secondary>invocation</secondary>
+   </indexterm>
+
+   <indexterm zone="syntax-aggregates">
+    <primary>ordered-set aggregate</primary>
+   </indexterm>
+
+   <indexterm zone="syntax-aggregates">
+    <primary>WITHIN GROUP</primary>
+   </indexterm>
+
+   <indexterm zone="syntax-aggregates">
+    <primary>FILTER</primary>
+   </indexterm>
+
+   <para>
+    An <firstterm>aggregate expression</firstterm> represents the
+    application of an aggregate function across the rows selected by a
+    query.  An aggregate function reduces multiple inputs to a single
+    output value, such as the sum or average of the inputs.  The
+    syntax of an aggregate expression is one of the following:
+
+<synopsis>
+<replaceable>aggregate_name</replaceable> (<replaceable>expression</replaceable> [ , ... ] [ <replaceable>order_by_clause</replaceable> ] ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+<replaceable>aggregate_name</replaceable> (ALL <replaceable>expression</replaceable> [ , ... ] [ <replaceable>order_by_clause</replaceable> ] ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+<replaceable>aggregate_name</replaceable> (DISTINCT <replaceable>expression</replaceable> [ , ... ] [ <replaceable>order_by_clause</replaceable> ] ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+<replaceable>aggregate_name</replaceable> ( * ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+<replaceable>aggregate_name</replaceable> ( [ <replaceable>expression</replaceable> [ , ... ] ] ) WITHIN GROUP ( <replaceable>order_by_clause</replaceable> ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+</synopsis>
+
+    where <replaceable>aggregate_name</replaceable> is a previously
+    defined aggregate (possibly qualified with a schema name) and
+    <replaceable>expression</replaceable> is
+    any value expression that does not itself contain an aggregate
+    expression or a window function call.  The optional
+    <replaceable>order_by_clause</replaceable> and
+    <replaceable>filter_clause</replaceable> are described below.
+   </para>
+
+   <para>
+    The first form of aggregate expression invokes the aggregate
+    once for each input row.
+    The second form is the same as the first, since
+    <literal>ALL</literal> is the default.
+    The third form invokes the aggregate once for each distinct value
+    of the expression (or distinct set of values, for multiple expressions)
+    found in the input rows.
+    The fourth form invokes the aggregate once for each input row; since no
+    particular input value is specified, it is generally only useful
+    for the <function>count(*)</function> aggregate function.
+    The last form is used with <firstterm>ordered-set</> aggregate
+    functions, which are described below.
+   </para>
+
+   <para>
+    Most aggregate functions ignore null inputs, so that rows in which
+    one or more of the expression(s) yield null are discarded.  This
+    can be assumed to be true, unless otherwise specified, for all
+    built-in aggregates.
+   </para>
+
+   <para>
+    For example, <literal>count(*)</literal> yields the total number
+    of input rows; <literal>count(f1)</literal> yields the number of
+    input rows in which <literal>f1</literal> is non-null, since
+    <function>count</> ignores nulls; and
+    <literal>count(distinct f1)</literal> yields the number of
+    distinct non-null values of <literal>f1</literal>.
+   </para>
+
+   <para>
+    Ordinarily, the input rows are fed to the aggregate function in an
+    unspecified order.  In many cases this does not matter; for example,
+    <function>min</> produces the same result no matter what order it
+    receives the inputs in.  However, some aggregate functions
+    (such as <function>array_agg</> and <function>string_agg</>) produce
+    results that depend on the ordering of the input rows.  When using
+    such an aggregate, the optional <replaceable>order_by_clause</> can be
+    used to specify the desired ordering.  The <replaceable>order_by_clause</>
+    has the same syntax as for a query-level <literal>ORDER BY</> clause, as
+    described in <xref linkend="queries-order">, except that its expressions
+    are always just expressions and cannot be output-column names or numbers.
+    For example:
+<programlisting>
+SELECT array_agg(a ORDER BY b DESC) FROM table;
+</programlisting>
+   </para>
+
+   <para>
+    When dealing with multiple-argument aggregate functions, note that the
+    <literal>ORDER BY</> clause goes after all the aggregate arguments.
+    For example, write this:
+<programlisting>
+SELECT string_agg(a, ',' ORDER BY a) FROM table;
+</programlisting>
+    not this:
+<programlisting>
+SELECT string_agg(a ORDER BY a, ',') FROM table;  -- incorrect
+</programlisting>
+    The latter is syntactically valid, but it represents a call of a
+    single-argument aggregate function with two <literal>ORDER BY</> keys
+    (the second one being rather useless since it's a constant).
+   </para>
+
+   <para>
+    If <literal>DISTINCT</> is specified in addition to an
+    <replaceable>order_by_clause</>, then all the <literal>ORDER BY</>
+    expressions must match regular arguments of the aggregate; that is,
+    you cannot sort on an expression that is not included in the
+    <literal>DISTINCT</> list.
+   </para>
+
+   <note>
+    <para>
+     The ability to specify both <literal>DISTINCT</> and <literal>ORDER BY</>
+     in an aggregate function is a <productname>PostgreSQL</> extension.
+    </para>
+   </note>
+
+   <para>
+    Placing <literal>ORDER BY</> within the aggregate's regular argument
+    list, as described so far, is used when ordering the input rows for
+    general-purpose and statistical aggregates, for which ordering is
+    optional.  There is a
+    subclass of aggregate functions called <firstterm>ordered-set
+    aggregates</> for which an <replaceable>order_by_clause</replaceable>
+    is <emphasis>required</>, usually because the aggregate's computation is
+    only sensible in terms of a specific ordering of its input rows.
+    Typical examples of ordered-set aggregates include rank and percentile
+    calculations.  For an ordered-set aggregate,
+    the <replaceable>order_by_clause</replaceable> is written
+    inside <literal>WITHIN GROUP (...)</>, as shown in the final syntax
+    alternative above.  The expressions in
+    the <replaceable>order_by_clause</replaceable> are evaluated once per
+    input row just like regular aggregate arguments, sorted as per
+    the <replaceable>order_by_clause</replaceable>'s requirements, and fed
+    to the aggregate function as input arguments.  (This is unlike the case
+    for a non-<literal>WITHIN GROUP</> <replaceable>order_by_clause</>,
+    which is not treated as argument(s) to the aggregate function.)  The
+    argument expressions preceding <literal>WITHIN GROUP</>, if any, are
+    called <firstterm>direct arguments</> to distinguish them from
+    the <firstterm>aggregated arguments</> listed in
+    the <replaceable>order_by_clause</replaceable>.  Unlike regular aggregate
+    arguments, direct arguments are evaluated only once per aggregate call,
+    not once per input row.  This means that they can contain variables only
+    if those variables are grouped by <literal>GROUP BY</>; this restriction
+    is the same as if the direct arguments were not inside an aggregate
+    expression at all.  Direct arguments are typically used for things like
+    percentile fractions, which only make sense as a single value per
+    aggregation calculation.  The direct argument list can be empty; in this
+    case, write just <literal>()</> not <literal>(*)</>.
+    (<productname>PostgreSQL</> will actually accept either spelling, but
+    only the first way conforms to the SQL standard.)
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>median</primary>
+     <seealso>percentile</seealso>
+    </indexterm>
+    An example of an ordered-set aggregate call is:
+
+<programlisting>
+SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY income) FROM households;
+ percentile_cont
+-----------------
+           50489
+</programlisting>
+
+   which obtains the 50th percentile, or median, value of
+   the <structfield>income</> column from table <structname>households</>.
+   Here, <literal>0.5</> is a direct argument; it would make no sense
+   for the percentile fraction to be a value varying across rows.
+   </para>
+
+   <para>
+    If <literal>FILTER</literal> is specified, then only the input
+    rows for which the <replaceable>filter_clause</replaceable>
+    evaluates to true are fed to the aggregate function; other rows
+    are discarded.  For example:
+<programlisting>
+SELECT
+    count(*) AS unfiltered,
+    count(*) FILTER (WHERE i < 5) AS filtered
+FROM generate_series(1,10) AS s(i);
+ unfiltered | filtered
+------------+----------
+         10 |        4
+(1 row)
+</programlisting>
+   </para>
+
+   <para>
+    The predefined aggregate functions are described in <xref
+    linkend="functions-aggregate">.  Other aggregate functions can be added
+    by the user.
+   </para>
+
+   <para>
+    An aggregate expression can only appear in the result list or
+    <literal>HAVING</> clause of a <command>SELECT</> command.
+    It is forbidden in other clauses, such as <literal>WHERE</>,
+    because those clauses are logically evaluated before the results
+    of aggregates are formed.
+   </para>
+
+   <para>
+    When an aggregate expression appears in a subquery (see
+    <xref linkend="sql-syntax-scalar-subqueries"> and
+    <xref linkend="functions-subquery">), the aggregate is normally
+    evaluated over the rows of the subquery.  But an exception occurs
+    if the aggregate's arguments (and <replaceable>filter_clause</replaceable>
+    if any) contain only outer-level variables:
+    the aggregate then belongs to the nearest such outer level, and is
+    evaluated over the rows of that query.  The aggregate expression
+    as a whole is then an outer reference for the subquery it appears in,
+    and acts as a constant over any one evaluation of that subquery.
+    The restriction about
+    appearing only in the result list or <literal>HAVING</> clause
+    applies with respect to the query level that the aggregate belongs to.
+   </para>
+  </sect2>
+
+  <sect2 id="syntax-window-functions">
+   <title>Window Function Calls</title>
+
+   <indexterm zone="syntax-window-functions">
+    <primary>window function</primary>
+    <secondary>invocation</secondary>
+   </indexterm>
+
+   <indexterm zone="syntax-window-functions">
+    <primary>OVER clause</primary>
+   </indexterm>
+
+   <para>
+    A <firstterm>window function call</firstterm> represents the application
+    of an aggregate-like function over some portion of the rows selected
+    by a query.  Unlike non-window aggregate calls, this is not tied
+    to grouping of the selected rows into a single output row &mdash; each
+    row remains separate in the query output.  However the window function
+    has access to all the rows that would be part of the current row's
+    group according to the grouping specification (<literal>PARTITION BY</>
+    list) of the window function call.
+    The syntax of a window function call is one of the following:
+
+<synopsis>
+<replaceable>function_name</replaceable> (<optional><replaceable>expression</replaceable> <optional>, <replaceable>expression</replaceable> ... </optional></optional>) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ] OVER <replaceable>window_name</replaceable>
+<replaceable>function_name</replaceable> (<optional><replaceable>expression</replaceable> <optional>, <replaceable>expression</replaceable> ... </optional></optional>) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ] OVER ( <replaceable class="parameter">window_definition</replaceable> )
+<replaceable>function_name</replaceable> ( * ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ] OVER <replaceable>window_name</replaceable>
+<replaceable>function_name</replaceable> ( * ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ] OVER ( <replaceable class="parameter">window_definition</replaceable> )
+</synopsis>
+    where <replaceable class="parameter">window_definition</replaceable>
+    has the syntax
+<synopsis>
+[ <replaceable class="parameter">existing_window_name</replaceable> ]
+[ PARTITION BY <replaceable class="parameter">expression</replaceable> [, ...] ]
+[ ORDER BY <replaceable class="parameter">expression</replaceable> [ ASC | DESC | USING <replaceable class="parameter">operator</replaceable> ] [ NULLS { FIRST | LAST } ] [, ...] ]
+[ <replaceable class="parameter">frame_clause</replaceable> ]
+</synopsis>
+    and the optional <replaceable class="parameter">frame_clause</replaceable>
+    can be one of
+<synopsis>
+{ RANGE | ROWS } <replaceable>frame_start</>
+{ RANGE | ROWS } BETWEEN <replaceable>frame_start</> AND <replaceable>frame_end</>
+</synopsis>
+    where <replaceable>frame_start</> and <replaceable>frame_end</> can be
+    one of
+<synopsis>
+UNBOUNDED PRECEDING
+<replaceable>value</replaceable> PRECEDING
+CURRENT ROW
+<replaceable>value</replaceable> FOLLOWING
+UNBOUNDED FOLLOWING
+</synopsis>
+   </para>
+
+   <para>
+    Here, <replaceable>expression</replaceable> represents any value
+    expression that does not itself contain window function calls.
+   </para>
+
+   <para>
+    <replaceable>window_name</replaceable> is a reference to a named window
+    specification defined in the query's <literal>WINDOW</literal> clause.
+    Alternatively, a full <replaceable>window_definition</replaceable> can
+    be given within parentheses, using the same syntax as for defining a
+    named window in the <literal>WINDOW</literal> clause; see the
+    <xref linkend="sql-select"> reference page for details.  It's worth
+    pointing out that <literal>OVER wname</> is not exactly equivalent to
+    <literal>OVER (wname ...)</>; the latter implies copying and modifying the
+    window definition, and will be rejected if the referenced window
+    specification includes a frame clause.
+   </para>
+
+   <para>
+    The <literal>PARTITION BY</> clause groups the rows of the query into
+    <firstterm>partitions</>, which are processed separately by the window
+    function.  <literal>PARTITION BY</> works similarly to a query-level
+    <literal>GROUP BY</> clause, except that its expressions are always just
+    expressions and cannot be output-column names or numbers.
+    Without <literal>PARTITION BY</>, all rows produced by the query are
+    treated as a single partition.
+    The <literal>ORDER BY</> clause determines the order in which the rows
+    of a partition are processed by the window function.  It works similarly
+    to a query-level <literal>ORDER BY</> clause, but likewise cannot use
+    output-column names or numbers.  Without <literal>ORDER BY</>, rows are
+    processed in an unspecified order.
+   </para>
+
+   <para>
+    The <replaceable class="parameter">frame_clause</replaceable> specifies
+    the set of rows constituting the <firstterm>window frame</>, which is a
+    subset of the current partition, for those window functions that act on
+    the frame instead of the whole partition.  The frame can be specified in
+    either <literal>RANGE</> or <literal>ROWS</> mode; in either case, it
+    runs from the <replaceable>frame_start</> to the
+    <replaceable>frame_end</>.  If <replaceable>frame_end</> is omitted,
+    it defaults to <literal>CURRENT ROW</>.
+   </para>
+
+   <para>
+    A <replaceable>frame_start</> of <literal>UNBOUNDED PRECEDING</> means
+    that the frame starts with the first row of the partition, and similarly
+    a <replaceable>frame_end</> of <literal>UNBOUNDED FOLLOWING</> means
+    that the frame ends with the last row of the partition.
+   </para>
+
+   <para>
+    In <literal>RANGE</> mode, a <replaceable>frame_start</> of
+    <literal>CURRENT ROW</> means the frame starts with the current row's
+    first <firstterm>peer</> row (a row that <literal>ORDER BY</> considers
+    equivalent to the current row), while a <replaceable>frame_end</> of
+    <literal>CURRENT ROW</> means the frame ends with the last equivalent
+    <literal>ORDER BY</> peer.  In <literal>ROWS</> mode, <literal>CURRENT ROW</> simply means
+    the current row.
+   </para>
+
+   <para>
+    The <replaceable>value</> <literal>PRECEDING</> and
+    <replaceable>value</> <literal>FOLLOWING</> cases are currently only
+    allowed in <literal>ROWS</> mode.  They indicate that the frame starts
+    or ends the specified number of rows before or after the current row.
+    <replaceable>value</replaceable> must be an integer expression not
+    containing any variables, aggregate functions, or window functions.
+    The value must not be null or negative; but it can be zero, which
+    just selects the current row.
+   </para>
+
+   <para>
+    The default framing option is <literal>RANGE UNBOUNDED PRECEDING</>,
+    which is the same as <literal>RANGE BETWEEN UNBOUNDED PRECEDING AND
+    CURRENT ROW</>.  With <literal>ORDER BY</>, this sets the frame to be
+    all rows from the partition start up through the current row's last
+    <literal>ORDER BY</> peer.  Without <literal>ORDER BY</>, all rows of the partition are
+    included in the window frame, since all rows become peers of the current
+    row.
+   </para>
+
+   <para>
+    Restrictions are that
+    <replaceable>frame_start</> cannot be <literal>UNBOUNDED FOLLOWING</>,
+    <replaceable>frame_end</> cannot be <literal>UNBOUNDED PRECEDING</>,
+    and the <replaceable>frame_end</> choice cannot appear earlier in the
+    above list than the <replaceable>frame_start</> choice &mdash; for example
+    <literal>RANGE BETWEEN CURRENT ROW AND <replaceable>value</>
+    PRECEDING</literal> is not allowed.
+   </para>
+
+   <para>
+    If <literal>FILTER</literal> is specified, then only the input
+    rows for which the <replaceable>filter_clause</replaceable>
+    evaluates to true are fed to the window function; other rows
+    are discarded.  Only window functions that are aggregates accept
+    a <literal>FILTER</literal> clause.
+   </para>
+
+   <para>
+    The built-in window functions are described in <xref
+    linkend="functions-window-table">.  Other window functions can be added by
+    the user.  Also, any built-in or user-defined general-purpose or
+    statistical aggregate can be used as a window function.  (Ordered-set
+    and hypothetical-set aggregates cannot presently be used as window functions.)
+   </para>
+
+   <para>
+    The syntaxes using <literal>*</> are used for calling parameter-less
+    aggregate functions as window functions, for example
+    <literal>count(*) OVER (PARTITION BY x ORDER BY y)</>.
+    The asterisk (<literal>*</>) is customarily not used for
+    window-specific functions.  Window-specific functions do not
+    allow <literal>DISTINCT</> or <literal>ORDER BY</> to be used within the
+    function argument list.
+   </para>
+
+   <para>
+    Window function calls are permitted only in the <literal>SELECT</literal>
+    list and the <literal>ORDER BY</> clause of the query.
+   </para>
+
+   <para>
+    More information about window functions can be found in
+    <xref linkend="tutorial-window">,
+    <xref linkend="functions-window">, and
+    <xref linkend="queries-window">.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-syntax-type-casts">
+   <title>Type Casts</title>
+
+   <indexterm>
+    <primary>data type</primary>
+    <secondary>type cast</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>type cast</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>::</primary>
+   </indexterm>
+
+   <para>
+    A type cast specifies a conversion from one data type to another.
+    <productname>PostgreSQL</productname> accepts two equivalent syntaxes
+    for type casts:
+<synopsis>
+CAST ( <replaceable>expression</replaceable> AS <replaceable>type</replaceable> )
+<replaceable>expression</replaceable>::<replaceable>type</replaceable>
+</synopsis>
+    The <literal>CAST</> syntax conforms to SQL; the syntax with
+    <literal>::</literal> is historical <productname>PostgreSQL</productname>
+    usage.
+   </para>
+
+   <para>
+    When a cast is applied to a value expression of a known type, it
+    represents a run-time type conversion.  The cast will succeed only
+    if a suitable type conversion operation has been defined.  Notice that this
+    is subtly different from the use of casts with constants, as shown in
+    <xref linkend="sql-syntax-constants-generic">.  A cast applied to an
+    unadorned string literal represents the initial assignment of a type
+    to a literal constant value, and so it will succeed for any type
+    (if the contents of the string literal are acceptable input syntax for the
+    data type).
+   </para>
+
+   <para>
+    An explicit type cast can usually be omitted if there is no ambiguity as
+    to the type that a value expression must produce (for example, when it is
+    assigned to a table column); the system will automatically apply a
+    type cast in such cases.  However, automatic casting is only done for
+    casts that are marked <quote>OK to apply implicitly</>
+    in the system catalogs.  Other casts must be invoked with
+    explicit casting syntax.  This restriction is intended to prevent
+    surprising conversions from being applied silently.
+   </para>
+
+   <para>
+    It is also possible to specify a type cast using a function-like
+    syntax:
+<synopsis>
+<replaceable>typename</replaceable> ( <replaceable>expression</replaceable> )
+</synopsis>
+    However, this only works for types whose names are also valid as
+    function names.  For example, <literal>double precision</literal>
+    cannot be used this way, but the equivalent <literal>float8</literal>
+    can.  Also, the names <literal>interval</>, <literal>time</>, and
+    <literal>timestamp</> can only be used in this fashion if they are
+    double-quoted, because of syntactic conflicts.  Therefore, the use of
+    the function-like cast syntax leads to inconsistencies and should
+    probably be avoided.
+   </para>
+
+   <note>
+    <para>
+     The function-like syntax is in fact just a function call.  When
+     one of the two standard cast syntaxes is used to do a run-time
+     conversion, it will internally invoke a registered function to
+     perform the conversion.  By convention, these conversion functions
+     have the same name as their output type, and thus the <quote>function-like
+     syntax</> is nothing more than a direct invocation of the underlying
+     conversion function.  Obviously, this is not something that a portable
+     application should rely on.  For further details see
+     <xref linkend="sql-createcast">.
+    </para>
+   </note>
+  </sect2>
+
+  <sect2 id="sql-syntax-collate-exprs">
+   <title>Collation Expressions</title>
+
+   <indexterm>
+    <primary>COLLATE</primary>
+   </indexterm>
+
+   <para>
+    The <literal>COLLATE</literal> clause overrides the collation of
+    an expression.  It is appended to the expression it applies to:
+<synopsis>
+<replaceable>expr</replaceable> COLLATE <replaceable>collation</replaceable>
+</synopsis>
+    where <replaceable>collation</replaceable> is a possibly
+    schema-qualified identifier.  The <literal>COLLATE</literal>
+    clause binds tighter than operators; parentheses can be used when
+    necessary.
+   </para>
+
+   <para>
+    If no collation is explicitly specified, the database system
+    either derives a collation from the columns involved in the
+    expression, or it defaults to the default collation of the
+    database if no column is involved in the expression.
+   </para>
+
+   <para>
+    The two common uses of the <literal>COLLATE</literal> clause are
+    overriding the sort order in an <literal>ORDER BY</> clause, for
+    example:
+<programlisting>
+SELECT a, b, c FROM tbl WHERE ... ORDER BY a COLLATE "C";
+</programlisting>
+    and overriding the collation of a function or operator call that
+    has locale-sensitive results, for example:
+<programlisting>
+SELECT * FROM tbl WHERE a &gt; 'foo' COLLATE "C";
+</programlisting>
+    Note that in the latter case the <literal>COLLATE</> clause is
+    attached to an input argument of the operator we wish to affect.
+    It doesn't matter which argument of the operator or function call the
+    <literal>COLLATE</> clause is attached to, because the collation that is
+    applied by the operator or function is derived by considering all
+    arguments, and an explicit <literal>COLLATE</> clause will override the
+    collations of all other arguments.  (Attaching non-matching
+    <literal>COLLATE</> clauses to more than one argument, however, is an
+    error.  For more details see <xref linkend="collation">.)
+    Thus, this gives the same result as the previous example:
+<programlisting>
+SELECT * FROM tbl WHERE a COLLATE "C" &gt; 'foo';
+</programlisting>
+    But this is an error:
+<programlisting>
+SELECT * FROM tbl WHERE (a &gt; 'foo') COLLATE "C";
+</programlisting>
+    because it attempts to apply a collation to the result of the
+    <literal>&gt;</> operator, which is of the non-collatable data type
+    <type>boolean</>.
+   </para>
+  </sect2>
+
+  <sect2 id="sql-syntax-scalar-subqueries">
+   <title>Scalar Subqueries</title>
+
+   <indexterm>
+    <primary>subquery</primary>
+   </indexterm>
+
+   <para>
+    A scalar subquery is an ordinary
+    <command>SELECT</command> query in parentheses that returns exactly one
+    row with one column.  (See <xref linkend="queries"> for information about writing queries.)
+    The <command>SELECT</command> query is executed
+    and the single returned value is used in the surrounding value expression.
+    It is an error to use a query that
+    returns more than one row or more than one column as a scalar subquery.
+    (But if, during a particular execution, the subquery returns no rows,
+    there is no error; the scalar result is taken to be null.)
+    The subquery can refer to variables from the surrounding query,
+    which will act as constants during any one evaluation of the subquery.
+    See also <xref linkend="functions-subquery"> for other expressions involving subqueries.
+   </para>
+
+   <para>
+    For example, the following finds the largest city population in each
+    state:
+<programlisting>
+SELECT name, (SELECT max(pop) FROM cities WHERE cities.state = states.name)
+    FROM states;
+</programlisting>
+   </para>
+  </sect2>
+
+  <sect2 id="sql-syntax-array-constructors">
+   <title>Array Constructors</title>
+
+   <indexterm>
+    <primary>array</primary>
+    <secondary>constructor</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>ARRAY</primary>
+   </indexterm>
+
+   <para>
+    An array constructor is an expression that builds an
+    array value using values for its member elements.  A simple array
+    constructor
+    consists of the key word <literal>ARRAY</literal>, a left square bracket
+    <literal>[</>, a list of expressions (separated by commas) for the
+    array element values, and finally a right square bracket <literal>]</>.
+    For example:
+<programlisting>
+SELECT ARRAY[1,2,3+4];
+  array
+---------
+ {1,2,7}
+(1 row)
+</programlisting>
+    By default,
+    the array element type is the common type of the member expressions,
+    determined using the same rules as for <literal>UNION</> or
+    <literal>CASE</> constructs (see <xref linkend="typeconv-union-case">).
+    You can override this by explicitly casting the array constructor to the
+    desired type, for example:
+<programlisting>
+SELECT ARRAY[1,2,22.7]::integer[];
+  array
+----------
+ {1,2,23}
+(1 row)
+</programlisting>
+    This has the same effect as casting each expression to the array
+    element type individually.
+    For more on casting, see <xref linkend="sql-syntax-type-casts">.
+   </para>
+
+   <para>
+    Multidimensional array values can be built by nesting array
+    constructors.
+    In the inner constructors, the key word <literal>ARRAY</literal> can
+    be omitted.  For example, these produce the same result:
+
+<programlisting>
+SELECT ARRAY[ARRAY[1,2], ARRAY[3,4]];
+     array
+---------------
+ {{1,2},{3,4}}
+(1 row)
+
+SELECT ARRAY[[1,2],[3,4]];
+     array
+---------------
+ {{1,2},{3,4}}
+(1 row)
+</programlisting>
+
+    Since multidimensional arrays must be rectangular, inner constructors
+    at the same level must produce sub-arrays of identical dimensions.
+    Any cast applied to the outer <literal>ARRAY</> constructor propagates
+    automatically to all the inner constructors.
+  </para>
+
+  <para>
+    Multidimensional array constructor elements can be anything yielding
+    an array of the proper kind, not only a sub-<literal>ARRAY</> construct.
+    For example:
+<programlisting>
+CREATE TABLE arr(f1 int[], f2 int[]);
+
+INSERT INTO arr VALUES (ARRAY[[1,2],[3,4]], ARRAY[[5,6],[7,8]]);
+
+SELECT ARRAY[f1, f2, '{{9,10},{11,12}}'::int[]] FROM arr;
+                     array
+------------------------------------------------
+ {{{1,2},{3,4}},{{5,6},{7,8}},{{9,10},{11,12}}}
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   You can construct an empty array, but since it's impossible to have an
+   array with no type, you must explicitly cast your empty array to the
+   desired type.  For example:
+<programlisting>
+SELECT ARRAY[]::integer[];
+ array
+-------
+ {}
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   It is also possible to construct an array from the results of a
+   subquery.  In this form, the array constructor is written with the
+   key word <literal>ARRAY</literal> followed by a parenthesized (not
+   bracketed) subquery. For example:
+<programlisting>
+SELECT ARRAY(SELECT oid FROM pg_proc WHERE proname LIKE 'bytea%');
+                                 array
+-----------------------------------------------------------------------
+ {2011,1954,1948,1952,1951,1244,1950,2005,1949,1953,2006,31,2412,2413}
+(1 row)
+
+SELECT ARRAY(SELECT ARRAY[i, i*2] FROM generate_series(1,5) AS a(i));
+              array
+----------------------------------
+ {{1,2},{2,4},{3,6},{4,8},{5,10}}
+(1 row)
+</programlisting>
+   The subquery must return a single column.
+   If the subquery's output column is of a non-array type, the resulting
+   one-dimensional array will have an element for each row in the
+   subquery result, with an element type matching that of the
+   subquery's output column.
+   If the subquery's output column is of an array type, the result will be
+   an array of the same type but one higher dimension; in this case all
+   the subquery rows must yield arrays of identical dimensionality, else
+   the result would not be rectangular.
+  </para>
+
+  <para>
+   The subscripts of an array value built with <literal>ARRAY</literal>
+   always begin with one.  For more information about arrays, see
+   <xref linkend="arrays">.
+  </para>
+
+  </sect2>
+
+  <sect2 id="sql-syntax-row-constructors">
+   <title>Row Constructors</title>
+
+   <indexterm>
+    <primary>composite type</primary>
+    <secondary>constructor</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>row type</primary>
+    <secondary>constructor</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>ROW</primary>
+   </indexterm>
+
+   <para>
+    A row constructor is an expression that builds a row value (also
+    called a composite value) using values
+    for its member fields.  A row constructor consists of the key word
+    <literal>ROW</literal>, a left parenthesis, zero or more
+    expressions (separated by commas) for the row field values, and finally
+    a right parenthesis.  For example:
+<programlisting>
+SELECT ROW(1,2.5,'this is a test');
+</programlisting>
+    The key word <literal>ROW</> is optional when there is more than one
+    expression in the list.
+   </para>
+
+   <para>
+    A row constructor can include the syntax
+    <replaceable>rowvalue</replaceable><literal>.*</literal>,
+    which will be expanded to a list of the elements of the row value,
+    just as occurs when the <literal>.*</> syntax is used at the top level
+    of a <command>SELECT</> list (see <xref linkend="rowtypes-usage">).
+    For example, if table <literal>t</> has
+    columns <literal>f1</> and <literal>f2</>, these are the same:
+<programlisting>
+SELECT ROW(t.*, 42) FROM t;
+SELECT ROW(t.f1, t.f2, 42) FROM t;
+</programlisting>
+   </para>
+
+   <note>
+    <para>
+     Before <productname>PostgreSQL</productname> 8.2, the
+     <literal>.*</literal> syntax was not expanded in row constructors, so
+     that writing <literal>ROW(t.*, 42)</> created a two-field row whose first
+     field was another row value.  The new behavior is usually more useful.
+     If you need the old behavior of nested row values, write the inner
+     row value without <literal>.*</literal>, for instance
+     <literal>ROW(t, 42)</>.
+    </para>
+   </note>
+
+   <para>
+    By default, the value created by a <literal>ROW</> expression is of
+    an anonymous record type.  If necessary, it can be cast to a named
+    composite type &mdash; either the row type of a table, or a composite type
+    created with <command>CREATE TYPE AS</>.  An explicit cast might be needed
+    to avoid ambiguity.  For example:
+<programlisting>
+CREATE TABLE mytable(f1 int, f2 float, f3 text);
+
+CREATE FUNCTION getf1(mytable) RETURNS int AS 'SELECT $1.f1' LANGUAGE SQL;
+
+-- No cast needed since only one getf1() exists
+SELECT getf1(ROW(1,2.5,'this is a test'));
+ getf1
+-------
+     1
+(1 row)
+
+CREATE TYPE myrowtype AS (f1 int, f2 text, f3 numeric);
+
+CREATE FUNCTION getf1(myrowtype) RETURNS int AS 'SELECT $1.f1' LANGUAGE SQL;
+
+-- Now we need a cast to indicate which function to call:
+SELECT getf1(ROW(1,2.5,'this is a test'));
+ERROR:  function getf1(record) is not unique
+
+SELECT getf1(ROW(1,2.5,'this is a test')::mytable);
+ getf1
+-------
+     1
+(1 row)
+
+SELECT getf1(CAST(ROW(11,'this is a test',2.5) AS myrowtype));
+ getf1
+-------
+    11
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Row constructors can be used to build composite values to be stored
+   in a composite-type table column, or to be passed to a function that
+   accepts a composite parameter.  Also,
+   it is possible to compare two row values or test a row with
+   <literal>IS NULL</> or <literal>IS NOT NULL</>, for example:
+<programlisting>
+SELECT ROW(1,2.5,'this is a test') = ROW(1, 3, 'not the same');
+
+SELECT ROW(table.*) IS NULL FROM table;  -- detect all-null rows
+</programlisting>
+   For more detail see <xref linkend="functions-comparisons">.
+   Row constructors can also be used in connection with subqueries,
+   as discussed in <xref linkend="functions-subquery">.
+  </para>
+
+  </sect2>
+
+  <sect2 id="syntax-express-eval">
+   <title>Expression Evaluation Rules</title>
+
+   <indexterm>
+    <primary>expression</primary>
+    <secondary>order of evaluation</secondary>
+   </indexterm>
+
+   <para>
+    The order of evaluation of subexpressions is not defined.  In
+    particular, the inputs of an operator or function are not necessarily
+    evaluated left-to-right or in any other fixed order.
+   </para>
+
+   <para>
+    Furthermore, if the result of an expression can be determined by
+    evaluating only some parts of it, then other subexpressions
+    might not be evaluated at all.  For instance, if one wrote:
+<programlisting>
+SELECT true OR somefunc();
+</programlisting>
+    then <literal>somefunc()</literal> would (probably) not be called
+    at all. The same would be the case if one wrote:
+<programlisting>
+SELECT somefunc() OR true;
+</programlisting>
+    Note that this is not the same as the left-to-right
+    <quote>short-circuiting</quote> of Boolean operators that is found
+    in some programming languages.
+   </para>
+
+   <para>
+    As a consequence, it is unwise to use functions with side effects
+    as part of complex expressions.  It is particularly dangerous to
+    rely on side effects or evaluation order in <literal>WHERE</> and <literal>HAVING</> clauses,
+    since those clauses are extensively reprocessed as part of
+    developing an execution plan.  Boolean
+    expressions (<literal>AND</>/<literal>OR</>/<literal>NOT</> combinations) in those clauses can be reorganized
+    in any manner allowed by the laws of Boolean algebra.
+   </para>
+
+   <para>
+    When it is essential to force evaluation order, a <literal>CASE</>
+    construct (see <xref linkend="functions-conditional">) can be
+    used.  For example, this is an untrustworthy way of trying to
+    avoid division by zero in a <literal>WHERE</> clause:
+<programlisting>
+SELECT ... WHERE x &gt; 0 AND y/x &gt; 1.5;
+</programlisting>
+    But this is safe:
+<programlisting>
+SELECT ... WHERE CASE WHEN x &gt; 0 THEN y/x &gt; 1.5 ELSE false END;
+</programlisting>
+    A <literal>CASE</> construct used in this fashion will defeat optimization
+    attempts, so it should only be done when necessary.  (In this particular
+    example, it would be better to sidestep the problem by writing
+    <literal>y &gt; 1.5*x</> instead.)
+   </para>
+
+   <para>
+    <literal>CASE</> is not a cure-all for such issues, however.
+    One limitation of the technique illustrated above is that it does not
+    prevent early evaluation of constant subexpressions.
+    As described in <xref linkend="xfunc-volatility">, functions and
+    operators marked <literal>IMMUTABLE</literal> can be evaluated when
+    the query is planned rather than when it is executed.  Thus for example
+<programlisting>
+SELECT CASE WHEN x &gt; 0 THEN x ELSE 1/0 END FROM tab;
+</programlisting>
+    is likely to result in a division-by-zero failure due to the planner
+    trying to simplify the constant subexpression,
+    even if every row in the table has <literal>x &gt; 0</> so that the
+    <literal>ELSE</> arm would never be entered at run time.
+   </para>
+
+   <para>
+    While that particular example might seem silly, related cases that don't
+    obviously involve constants can occur in queries executed within
+    functions, since the values of function arguments and local variables
+    can be inserted into queries as constants for planning purposes.
+    Within <application>PL/pgSQL</> functions, for example, using an
+    <literal>IF</>-<literal>THEN</>-<literal>ELSE</> statement to protect
+    a risky computation is much safer than just nesting it in a
+    <literal>CASE</> expression.
+   </para>
+
+   <para>
+    Another limitation of the same kind is that a <literal>CASE</> cannot
+    prevent evaluation of an aggregate expression contained within it,
+    because aggregate expressions are computed before other
+    expressions in a <literal>SELECT</> list or <literal>HAVING</> clause
+    are considered.  For example, the following query can cause a
+    division-by-zero error despite seemingly having protected against it:
+<programlisting>
+SELECT CASE WHEN min(employees) > 0
+            THEN avg(expenses / employees)
+       END
+    FROM departments;
+</programlisting>
+    The <function>min()</> and <function>avg()</> aggregates are computed
+    concurrently over all the input rows, so if any row
+    has <structfield>employees</> equal to zero, the division-by-zero error
+    will occur before there is any opportunity to test the result of
+    <function>min()</>.  Instead, use a <literal>WHERE</>
+    or <literal>FILTER</> clause to prevent problematic input rows from
+    reaching an aggregate function in the first place.
+   </para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="sql-syntax-calling-funcs">
+  <title>Calling Functions</title>
+
+   <indexterm zone="sql-syntax-calling-funcs">
+    <primary>notation</primary>
+    <secondary>functions</secondary>
+   </indexterm>
+
+   <para>
+    <productname>PostgreSQL</productname> allows functions that have named
+    parameters to be called using either <firstterm>positional</firstterm> or
+    <firstterm>named</firstterm> notation.  Named notation is especially
+    useful for functions that have a large number of parameters, since it
+    makes the associations between parameters and actual arguments more
+    explicit and reliable.
+    In positional notation, a function call is written with
+    its argument values in the same order as they are defined in the function
+    declaration.  In named notation, the arguments are matched to the
+    function parameters by name and can be written in any order.
+   </para>
+
+   <para>
+    In either notation, parameters that have default values given in the
+    function declaration need not be written in the call at all.  But this
+    is particularly useful in named notation, since any combination of
+    parameters can be omitted; while in positional notation parameters can
+    only be omitted from right to left.
+   </para>
+
+   <para>
+    <productname>PostgreSQL</productname> also supports
+    <firstterm>mixed</firstterm> notation, which combines positional and
+    named notation.  In this case, positional parameters are written first
+    and named parameters appear after them.
+   </para>
+
+   <para>
+    The following examples will illustrate the usage of all three
+    notations, using the following function definition:
+<programlisting>
+CREATE FUNCTION concat_lower_or_upper(a text, b text, uppercase boolean DEFAULT false)
+RETURNS text
+AS
+$$
+ SELECT CASE
+        WHEN $3 THEN UPPER($1 || ' ' || $2)
+        ELSE LOWER($1 || ' ' || $2)
+        END;
+$$
+LANGUAGE SQL IMMUTABLE STRICT;
+</programlisting>
+    Function <function>concat_lower_or_upper</function> has two mandatory
+    parameters, <literal>a</literal> and <literal>b</literal>.  Additionally
+    there is one optional parameter <literal>uppercase</literal> which defaults
+    to <literal>false</literal>.  The <literal>a</literal> and
+    <literal>b</literal> inputs will be concatenated, and forced to either
+    upper or lower case depending on the <literal>uppercase</literal>
+    parameter.  The remaining details of this function
+    definition are not important here (see <xref linkend="extend"> for
+    more information).
+   </para>
+
+   <sect2 id="sql-syntax-calling-funcs-positional">
+    <title>Using Positional Notation</title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>positional notation</secondary>
+    </indexterm>
+
+    <para>
+     Positional notation is the traditional mechanism for passing arguments
+     to functions in <productname>PostgreSQL</productname>.  An example is:
+<screen>
+SELECT concat_lower_or_upper('Hello', 'World', true);
+ concat_lower_or_upper 
+-----------------------
+ HELLO WORLD
+(1 row)
+</screen>
+     All arguments are specified in order.  The result is upper case since
+     <literal>uppercase</literal> is specified as <literal>true</literal>.
+     Another example is:
+<screen>
+SELECT concat_lower_or_upper('Hello', 'World');
+ concat_lower_or_upper 
+-----------------------
+ hello world
+(1 row)
+</screen>
+     Here, the <literal>uppercase</literal> parameter is omitted, so it
+     receives its default value of <literal>false</literal>, resulting in
+     lower case output.  In positional notation, arguments can be omitted
+     from right to left so long as they have defaults.
+    </para>
+   </sect2>
+
+   <sect2 id="sql-syntax-calling-funcs-named">
+    <title>Using Named Notation</title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>named notation</secondary>
+    </indexterm>
+
+    <para>
+     In named notation, each argument's name is specified using
+     <literal>=&gt;</literal> to separate it from the argument expression.
+     For example:
+<screen>
+SELECT concat_lower_or_upper(a =&gt; 'Hello', b =&gt; 'World');
+ concat_lower_or_upper 
+-----------------------
+ hello world
+(1 row)
+</screen>
+     Again, the argument <literal>uppercase</literal> was omitted
+     so it is set to <literal>false</literal> implicitly.  One advantage of
+     using named notation is that the arguments may be specified in any
+     order, for example:
+<screen>
+SELECT concat_lower_or_upper(a =&gt; 'Hello', b =&gt; 'World', uppercase =&gt; true);
+ concat_lower_or_upper 
+-----------------------
+ HELLO WORLD
+(1 row)
+
+SELECT concat_lower_or_upper(a =&gt; 'Hello', uppercase =&gt; true, b =&gt; 'World');
+ concat_lower_or_upper 
+-----------------------
+ HELLO WORLD
+(1 row)
+</screen>
+    </para>
+
+    <para>
+      An older syntax based on ":=" is supported for backward compatibility:
+<screen>
+SELECT concat_lower_or_upper(a := 'Hello', uppercase := true, b := 'World');
+ concat_lower_or_upper 
+-----------------------
+ HELLO WORLD
+(1 row)
+</screen>
+    </para>
+   </sect2>
+
+  <sect2 id="sql-syntax-calling-funcs-mixed">
+   <title>Using Mixed Notation</title>
+
+   <indexterm>
+    <primary>function</primary>
+    <secondary>mixed notation</secondary>
+   </indexterm>
+
+   <para>
+    The mixed notation combines positional and named notation. However, as
+    already mentioned, named arguments cannot precede positional arguments.
+    For example:
+<screen>
+SELECT concat_lower_or_upper('Hello', 'World', uppercase =&gt; true);
+ concat_lower_or_upper 
+-----------------------
+ HELLO WORLD
+(1 row)
+</screen>
+    In the above query, the arguments <literal>a</literal> and
+    <literal>b</literal> are specified positionally, while
+    <literal>uppercase</> is specified by name.  In this example,
+    that adds little except documentation.  With a more complex function
+    having numerous parameters that have default values, named or mixed
+    notation can save a great deal of writing and reduce chances for error.
+   </para>
+
+   <note>
+    <para>
+     Named and mixed call notations currently cannot be used when calling an
+     aggregate function (but they do work when an aggregate function is used
+     as a window function).
+    </para>
+   </note>
+  </sect2>
+ </sect1>
+
+</chapter>

@@ -1,0 +1,933 @@
+<!-- doc/src/sgml/trigger.sgml -->
+
+ <chapter id="triggers">
+  <title>Triggers</title>
+
+  <indexterm zone="triggers">
+   <primary>trigger</primary>
+  </indexterm>
+
+  <para>
+   This chapter provides general information about writing trigger functions.
+   Trigger functions can be written in most of the available procedural
+   languages, including
+   <application>PL/pgSQL</application> (<xref linkend="plpgsql">),
+   <application>PL/Tcl</application> (<xref linkend="pltcl">),
+   <application>PL/Perl</application> (<xref linkend="plperl">), and
+   <application>PL/Python</application> (<xref linkend="plpython">).
+   After reading this chapter, you should consult the chapter for
+   your favorite procedural language to find out the language-specific
+   details of writing a trigger in it.
+  </para>
+
+  <para>
+   It is also possible to write a trigger function in C, although
+   most people find it easier to use one of the procedural languages.
+   It is not currently possible to write a trigger function in the
+   plain SQL function language.
+  </para>
+
+  <sect1 id="trigger-definition">
+   <title>Overview of Trigger Behavior</title>
+
+   <para>
+    A trigger is a specification that the database should automatically
+    execute a particular function whenever a certain type of operation is
+    performed.  Triggers can be attached to tables (partitioned or not),
+    views, and foreign tables.
+  </para>
+
+  <para>
+    On tables and foreign tables, triggers can be defined to execute either
+    before or after any <command>INSERT</command>, <command>UPDATE</command>,
+    or <command>DELETE</command> operation, either once per modified row,
+    or once per <acronym>SQL</acronym> statement.
+    <command>UPDATE</command> triggers can moreover be set to fire only if
+    certain columns are mentioned in the <literal>SET</literal> clause of
+    the <command>UPDATE</command> statement.  Triggers can also fire
+    for <command>TRUNCATE</command> statements.  If a trigger event occurs,
+    the trigger's function is called at the appropriate time to handle the
+    event.
+   </para>
+
+   <para>
+    On views, triggers can be defined to execute instead of
+    <command>INSERT</command>, <command>UPDATE</command>, or
+    <command>DELETE</command> operations.
+    Such <literal>INSTEAD OF</literal> triggers
+    are fired once for each row that needs to be modified in the view.
+    It is the responsibility of the
+    trigger's function to perform the necessary modifications to the view's
+    underlying base table(s) and, where appropriate, return the modified
+    row as it will appear in the view.  Triggers on views can also be defined
+    to execute once per <acronym>SQL</acronym> statement, before or after
+    <command>INSERT</command>, <command>UPDATE</command>, or
+    <command>DELETE</command> operations.
+    However, such triggers are fired only if there is also
+    an <literal>INSTEAD OF</literal> trigger on the view.  Otherwise,
+    any statement targeting the view must be rewritten into a statement
+    affecting its underlying base table(s), and then the triggers
+    that will be fired are the ones attached to the base table(s).
+   </para>
+
+   <para>
+    The trigger function must be defined before the trigger itself can be
+    created.  The trigger function must be declared as a
+    function taking no arguments and returning type <literal>trigger</>.
+    (The trigger function receives its input through a specially-passed
+    <structname>TriggerData</> structure, not in the form of ordinary function
+    arguments.)
+   </para>
+
+   <para>
+    Once a suitable trigger function has been created, the trigger is
+    established with
+    <xref linkend="sql-createtrigger">.
+    The same trigger function can be used for multiple triggers.
+   </para>
+
+   <para>
+    <productname>PostgreSQL</productname> offers both <firstterm>per-row</>
+    triggers and <firstterm>per-statement</> triggers.  With a per-row
+    trigger, the trigger function
+    is invoked once for each row that is affected by the statement
+    that fired the trigger. In contrast, a per-statement trigger is
+    invoked only once when an appropriate statement is executed,
+    regardless of the number of rows affected by that statement. In
+    particular, a statement that affects zero rows will still result
+    in the execution of any applicable per-statement triggers. These
+    two types of triggers are sometimes called <firstterm>row-level</>
+    triggers and <firstterm>statement-level</> triggers,
+    respectively. Triggers on <command>TRUNCATE</command> may only be
+    defined at statement level, not per-row.
+   </para>
+
+   <para>
+    Triggers are also classified according to whether they fire
+    <firstterm>before</>, <firstterm>after</>, or
+    <firstterm>instead of</> the operation. These are referred to
+    as <literal>BEFORE</> triggers, <literal>AFTER</> triggers, and
+    <literal>INSTEAD OF</> triggers respectively.
+    Statement-level <literal>BEFORE</> triggers naturally fire before the
+    statement starts to do anything, while statement-level <literal>AFTER</>
+    triggers fire at the very end of the statement.  These types of
+    triggers may be defined on tables, views, or foreign tables.  Row-level
+    <literal>BEFORE</> triggers fire immediately before a particular row is
+    operated on, while row-level <literal>AFTER</> triggers fire at the end of
+    the statement (but before any statement-level <literal>AFTER</> triggers).
+    These types of triggers may only be defined on non-partitioned tables and
+    foreign tables, not views.  <literal>INSTEAD OF</> triggers may only be
+    defined on views, and only at row level; they fire immediately as each
+    row in the view is identified as needing to be operated on.
+   </para>
+
+   <para>
+    A statement that targets a parent table in an inheritance or partitioning
+    hierarchy does not cause the statement-level triggers of affected child
+    tables to be fired; only the parent table's statement-level triggers are
+    fired.  However, row-level triggers of any affected child tables will be
+    fired.
+   </para>
+
+   <para>
+    If an <command>INSERT</command> contains an <literal>ON CONFLICT
+    DO UPDATE</> clause, it is possible that the effects of
+    row-level <literal>BEFORE</> <command>INSERT</command> triggers and
+    row-level <literal>BEFORE</literal> <command>UPDATE</command> triggers can
+    both be applied in a way that is apparent from the final state of
+    the updated row, if an <varname>EXCLUDED</> column is referenced.
+    There need not be an <varname>EXCLUDED</> column reference for
+    both sets of row-level <literal>BEFORE</literal> triggers to execute,
+    though.  The
+    possibility of surprising outcomes should be considered when there
+    are both <literal>BEFORE</> <command>INSERT</command> and
+    <literal>BEFORE</> <command>UPDATE</command> row-level triggers
+    that change a row being inserted/updated (this can be
+    problematic even if the modifications are more or less equivalent, if
+    they're not also idempotent).  Note that statement-level
+    <command>UPDATE</command> triggers are executed when <literal>ON
+    CONFLICT DO UPDATE</> is specified, regardless of whether or not
+    any rows were affected by the <command>UPDATE</command> (and
+    regardless of whether the alternative <command>UPDATE</command>
+    path was ever taken).  An <command>INSERT</command> with an
+    <literal>ON CONFLICT DO UPDATE</> clause will execute
+    statement-level <literal>BEFORE</> <command>INSERT</command>
+    triggers first, then statement-level <literal>BEFORE</>
+    <command>UPDATE</command> triggers, followed by statement-level
+    <literal>AFTER</> <command>UPDATE</command> triggers and finally
+    statement-level <literal>AFTER</> <command>INSERT</command>
+    triggers.
+   </para>
+
+   <para>
+    Trigger functions invoked by per-statement triggers should always
+    return <symbol>NULL</symbol>. Trigger functions invoked by per-row
+    triggers can return a table row (a value of
+    type <structname>HeapTuple</structname>) to the calling executor,
+    if they choose.  A row-level trigger fired before an operation has
+    the following choices:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       It can return <symbol>NULL</> to skip the operation for the
+       current row. This instructs the executor to not perform the
+       row-level operation that invoked the trigger (the insertion,
+       modification, or deletion of a particular table row).
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       For row-level <command>INSERT</command>
+       and <command>UPDATE</command> triggers only, the returned row
+       becomes the row that will be inserted or will replace the row
+       being updated.  This allows the trigger function to modify the
+       row being inserted or updated.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    A row-level <literal>BEFORE</> trigger that does not intend to cause
+    either of these behaviors must be careful to return as its result the same
+    row that was passed in (that is, the <varname>NEW</varname> row
+    for <command>INSERT</command> and <command>UPDATE</command>
+    triggers, the <varname>OLD</varname> row for
+    <command>DELETE</command> triggers).
+   </para>
+
+   <para>
+    A row-level <literal>INSTEAD OF</> trigger should either return
+    <symbol>NULL</> to indicate that it did not modify any data from
+    the view's underlying base tables, or it should return the view
+    row that was passed in (the <varname>NEW</varname> row
+    for <command>INSERT</command> and <command>UPDATE</command>
+    operations, or the <varname>OLD</varname> row for
+    <command>DELETE</command> operations). A nonnull return value is
+    used to signal that the trigger performed the necessary data
+    modifications in the view.  This will cause the count of the number
+    of rows affected by the command to be incremented. For
+    <command>INSERT</> and <command>UPDATE</> operations, the trigger
+    may modify the <varname>NEW</> row before returning it.  This will
+    change the data returned by
+    <command>INSERT RETURNING</> or <command>UPDATE RETURNING</>,
+    and is useful when the view will not show exactly the same data
+    that was provided.
+   </para>
+
+   <para>
+    The return value is ignored for row-level triggers fired after an
+    operation, and so they can return <symbol>NULL</>.
+   </para>
+
+   <para>
+    If more than one trigger is defined for the same event on the same
+    relation, the triggers will be fired in alphabetical order by
+    trigger name.  In the case of <literal>BEFORE</> and
+    <literal>INSTEAD OF</> triggers, the possibly-modified row returned by
+    each trigger becomes the input to the next trigger.  If any
+    <literal>BEFORE</> or <literal>INSTEAD OF</> trigger returns
+    <symbol>NULL</>, the operation is abandoned for that row and subsequent
+    triggers are not fired (for that row).
+   </para>
+
+   <para>
+    A trigger definition can also specify a Boolean <literal>WHEN</>
+    condition, which will be tested to see whether the trigger should
+    be fired.  In row-level triggers the <literal>WHEN</> condition can
+    examine the old and/or new values of columns of the row.  (Statement-level
+    triggers can also have <literal>WHEN</> conditions, although the feature
+    is not so useful for them.)  In a <literal>BEFORE</> trigger, the
+    <literal>WHEN</>
+    condition is evaluated just before the function is or would be executed,
+    so using <literal>WHEN</> is not materially different from testing the
+    same condition at the beginning of the trigger function.  However, in
+    an <literal>AFTER</> trigger, the <literal>WHEN</> condition is evaluated
+    just after the row update occurs, and it determines whether an event is
+    queued to fire the trigger at the end of statement.  So when an
+    <literal>AFTER</> trigger's
+    <literal>WHEN</> condition does not return true, it is not necessary
+    to queue an event nor to re-fetch the row at end of statement.  This
+    can result in significant speedups in statements that modify many
+    rows, if the trigger only needs to be fired for a few of the rows.
+    <literal>INSTEAD OF</> triggers do not support
+    <literal>WHEN</> conditions.
+   </para>
+
+   <para>
+    Typically, row-level <literal>BEFORE</> triggers are used for checking or
+    modifying the data that will be inserted or updated.  For example,
+    a <literal>BEFORE</> trigger might be used to insert the current time into a
+    <type>timestamp</type> column, or to check that two elements of the row are
+    consistent. Row-level <literal>AFTER</> triggers are most sensibly
+    used to propagate the updates to other tables, or make consistency
+    checks against other tables.  The reason for this division of labor is
+    that an <literal>AFTER</> trigger can be certain it is seeing the final
+    value of the row, while a <literal>BEFORE</> trigger cannot; there might
+    be other <literal>BEFORE</> triggers firing after it.  If you have no
+    specific reason to make a trigger <literal>BEFORE</> or
+    <literal>AFTER</>, the <literal>BEFORE</> case is more efficient, since
+    the information about
+    the operation doesn't have to be saved until end of statement.
+   </para>
+
+   <para>
+    If a trigger function executes SQL commands then these
+    commands might fire triggers again. This is known as cascading
+    triggers.  There is no direct limitation on the number of cascade
+    levels.  It is possible for cascades to cause a recursive invocation
+    of the same trigger; for example, an <command>INSERT</command>
+    trigger might execute a command that inserts an additional row
+    into the same table, causing the <command>INSERT</command> trigger
+    to be fired again.  It is the trigger programmer's responsibility
+    to avoid infinite recursion in such scenarios.
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>trigger</>
+     <secondary>arguments for trigger functions</>
+    </indexterm>
+    When a trigger is being defined, arguments can be specified for
+    it. The purpose of including arguments in the
+    trigger definition is to allow different triggers with similar
+    requirements to call the same function.  As an example, there
+    could be a generalized trigger function that takes as its
+    arguments two column names and puts the current user in one and
+    the current time stamp in the other.  Properly written, this
+    trigger function would be independent of the specific table it is
+    triggering on.  So the same function could be used for
+    <command>INSERT</command> events on any table with suitable
+    columns, to automatically track creation of records in a
+    transaction table for example. It could also be used to track
+    last-update events if defined as an <command>UPDATE</command>
+    trigger.
+   </para>
+
+   <para>
+    Each programming language that supports triggers has its own method
+    for making the trigger input data available to the trigger function.
+    This input data includes the type of trigger event (e.g.,
+    <command>INSERT</command> or <command>UPDATE</command>) as well as any
+    arguments that were listed in <command>CREATE TRIGGER</>.
+    For a row-level trigger, the input data also includes the
+    <varname>NEW</varname> row for <command>INSERT</command> and
+    <command>UPDATE</command> triggers, and/or the <varname>OLD</varname> row
+    for <command>UPDATE</command> and <command>DELETE</command> triggers.
+   </para>
+
+   <para>
+    By default, statement-level triggers do not have any way to examine the
+    individual row(s) modified by the statement.  But an <literal>AFTER
+    STATEMENT</> trigger can request that <firstterm>transition tables</>
+    be created to make the sets of affected rows available to the trigger.
+    <literal>AFTER ROW</> triggers can also request transition tables, so
+    that they can see the total changes in the table as well as the change in
+    the individual row they are currently being fired for.  The method for
+    examining the transition tables again depends on the programming language
+    that is being used, but the typical approach is to make the transition
+    tables act like read-only temporary tables that can be accessed by SQL
+    commands issued within the trigger function.
+   </para>
+
+  </sect1>
+
+  <sect1 id="trigger-datachanges">
+   <title>Visibility of Data Changes</title>
+
+   <para>
+    If you execute SQL commands in your trigger function, and these
+    commands access the table that the trigger is for, then
+    you need to be aware of the data visibility rules, because they determine
+    whether these SQL commands will see the data change that the trigger
+    is fired for.  Briefly:
+
+    <itemizedlist>
+
+     <listitem>
+      <para>
+       Statement-level triggers follow simple visibility rules: none of
+       the changes made by a statement are visible to statement-level
+       <literal>BEFORE</literal> triggers, whereas all
+       modifications are visible to statement-level <literal>AFTER</>
+       triggers.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The data change (insertion, update, or deletion) causing the
+       trigger to fire is naturally <emphasis>not</emphasis> visible
+       to SQL commands executed in a row-level <literal>BEFORE</> trigger,
+       because it hasn't happened yet.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       However, SQL commands executed in a row-level <literal>BEFORE</>
+       trigger <emphasis>will</emphasis> see the effects of data
+       changes for rows previously processed in the same outer
+       command.  This requires caution, since the ordering of these
+       change events is not in general predictable; a SQL command that
+       affects multiple rows can visit the rows in any order.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Similarly, a row-level <literal>INSTEAD OF</> trigger will see the
+       effects of data changes made by previous firings of <literal>INSTEAD
+       OF</> triggers in the same outer command.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       When a row-level <literal>AFTER</> trigger is fired, all data
+       changes made
+       by the outer command are already complete, and are visible to
+       the invoked trigger function.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    If your trigger function is written in any of the standard procedural
+    languages, then the above statements apply only if the function is
+    declared <literal>VOLATILE</>.  Functions that are declared
+    <literal>STABLE</> or <literal>IMMUTABLE</> will not see changes made by
+    the calling command in any case.
+   </para>
+
+   <para>
+    Further information about data visibility rules can be found in
+    <xref linkend="spi-visibility">.  The example in <xref
+    linkend="trigger-example"> contains a demonstration of these rules.
+   </para>
+  </sect1>
+
+  <sect1 id="trigger-interface">
+   <title>Writing Trigger Functions in C</title>
+
+   <indexterm zone="trigger-interface">
+    <primary>trigger</primary>
+    <secondary>in C</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>transition tables</primary>
+    <secondary>referencing from C trigger</secondary>
+   </indexterm>
+
+   <para>
+    This section describes the low-level details of the interface to a
+    trigger function.  This information is only needed when writing
+    trigger functions in C.  If you are using a higher-level language then
+    these details are handled for you.  In most cases you should consider
+    using a procedural language before writing your triggers in C.  The
+    documentation of each procedural language explains how to write a
+    trigger in that language.
+   </para>
+
+   <para>
+    Trigger functions must use the <quote>version 1</> function manager
+    interface.
+   </para>
+
+   <para>
+    When a function is called by the trigger manager, it is not passed
+    any normal arguments, but it is passed a <quote>context</>
+    pointer pointing to a <structname>TriggerData</> structure.  C
+    functions can check whether they were called from the trigger
+    manager or not by executing the macro:
+<programlisting>
+CALLED_AS_TRIGGER(fcinfo)
+</programlisting>
+    which expands to:
+<programlisting>
+((fcinfo)-&gt;context != NULL &amp;&amp; IsA((fcinfo)-&gt;context, TriggerData))
+</programlisting>
+    If this returns true, then it is safe to cast
+    <literal>fcinfo-&gt;context</> to type <literal>TriggerData
+    *</literal> and make use of the pointed-to
+    <structname>TriggerData</> structure.  The function must
+    <emphasis>not</emphasis> alter the <structname>TriggerData</>
+    structure or any of the data it points to.
+   </para>
+
+   <para>
+    <structname>struct TriggerData</structname> is defined in
+    <filename>commands/trigger.h</filename>:
+
+<programlisting>
+typedef struct TriggerData
+{
+    NodeTag          type;
+    TriggerEvent     tg_event;
+    Relation         tg_relation;
+    HeapTuple        tg_trigtuple;
+    HeapTuple        tg_newtuple;
+    Trigger         *tg_trigger;
+    Buffer           tg_trigtuplebuf;
+    Buffer           tg_newtuplebuf;
+    Tuplestorestate *tg_oldtable;
+    Tuplestorestate *tg_newtable;
+} TriggerData;
+</programlisting>
+
+    where the members are defined as follows:
+
+    <variablelist>
+     <varlistentry>
+      <term><structfield>type</></term>
+      <listitem>
+       <para>
+        Always <literal>T_TriggerData</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_event</></term>
+      <listitem>
+       <para>
+        Describes the event for which the function is called. You can use the
+        following macros to examine <literal>tg_event</literal>:
+
+        <variablelist>
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_BEFORE(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger fired before the operation.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_AFTER(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger fired after the operation.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_INSTEAD(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger fired instead of the operation.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_FOR_ROW(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger fired for a row-level event.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_FOR_STATEMENT(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger fired for a statement-level event.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_BY_INSERT(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger was fired by an <command>INSERT</command> command.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_BY_UPDATE(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger was fired by an <command>UPDATE</command> command.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_BY_DELETE(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger was fired by a <command>DELETE</command> command.
+           </para>
+          </listitem>
+         </varlistentry>
+
+         <varlistentry>
+          <term><literal>TRIGGER_FIRED_BY_TRUNCATE(tg_event)</literal></term>
+          <listitem>
+           <para>
+            Returns true if the trigger was fired by a <command>TRUNCATE</command> command.
+           </para>
+          </listitem>
+         </varlistentry>
+        </variablelist>
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_relation</></term>
+      <listitem>
+       <para>
+        A pointer to a structure describing the relation that the trigger fired for.
+        Look at <filename>utils/rel.h</> for details about
+        this structure.  The most interesting things are
+        <literal>tg_relation-&gt;rd_att</> (descriptor of the relation
+        tuples) and <literal>tg_relation-&gt;rd_rel-&gt;relname</>
+        (relation name; the type is not <type>char*</> but
+        <type>NameData</>; use
+        <literal>SPI_getrelname(tg_relation)</> to get a <type>char*</> if you
+        need a copy of the name).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_trigtuple</></term>
+      <listitem>
+       <para>
+        A pointer to the row for which the trigger was fired. This is
+        the row being inserted, updated, or deleted.  If this trigger
+        was fired for an <command>INSERT</command> or
+        <command>DELETE</command> then this is what you should return
+        from the function if you don't want to replace the row with
+        a different one (in the case of <command>INSERT</command>) or
+        skip the operation.  For triggers on foreign tables, values of system
+        columns herein are unspecified.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_newtuple</></term>
+      <listitem>
+       <para>
+        A pointer to the new version of the row, if the trigger was
+        fired for an <command>UPDATE</command>, and <symbol>NULL</> if
+        it is for an <command>INSERT</command> or a
+        <command>DELETE</command>. This is what you have to return
+        from the function if the event is an <command>UPDATE</command>
+        and you don't want to replace this row by a different one or
+        skip the operation.  For triggers on foreign tables, values of system
+        columns herein are unspecified.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_trigger</></term>
+      <listitem>
+       <para>
+        A pointer to a structure of type <structname>Trigger</>,
+        defined in <filename>utils/reltrigger.h</>:
+
+<programlisting>
+typedef struct Trigger
+{
+    Oid         tgoid;
+    char       *tgname;
+    Oid         tgfoid;
+    int16       tgtype;
+    char        tgenabled;
+    bool        tgisinternal;
+    Oid         tgconstrrelid;
+    Oid         tgconstrindid;
+    Oid         tgconstraint;
+    bool        tgdeferrable;
+    bool        tginitdeferred;
+    int16       tgnargs;
+    int16       tgnattr;
+    int16      *tgattr;
+    char      **tgargs;
+    char       *tgqual;
+    char       *tgoldtable;
+    char       *tgnewtable;
+} Trigger;
+</programlisting>
+
+       where <structfield>tgname</> is the trigger's name,
+       <structfield>tgnargs</> is the number of arguments in
+       <structfield>tgargs</>, and <structfield>tgargs</> is an array of
+       pointers to the arguments specified in the <command>CREATE
+       TRIGGER</command> statement. The other members are for internal use
+       only.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_trigtuplebuf</></term>
+      <listitem>
+       <para>
+        The buffer containing <structfield>tg_trigtuple</structfield>, or <symbol>InvalidBuffer</symbol> if there
+        is no such tuple or it is not stored in a disk buffer.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_newtuplebuf</></term>
+      <listitem>
+       <para>
+        The buffer containing <structfield>tg_newtuple</structfield>, or <symbol>InvalidBuffer</symbol> if there
+        is no such tuple or it is not stored in a disk buffer.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_oldtable</></term>
+      <listitem>
+       <para>
+        A pointer to a structure of type <structname>Tuplestorestate</structname>
+        containing zero or more rows in the format specified by
+        <structfield>tg_relation</structfield>, or a <symbol>NULL</> pointer
+        if there is no <literal>OLD TABLE</literal> transition relation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><structfield>tg_newtable</></term>
+      <listitem>
+       <para>
+        A pointer to a structure of type <structname>Tuplestorestate</structname>
+        containing zero or more rows in the format specified by
+        <structfield>tg_relation</structfield>, or a <symbol>NULL</> pointer
+        if there is no <literal>NEW TABLE</literal> transition relation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+
+   <para>
+    To allow queries issued through SPI to reference transition tables, see
+    <xref linkend="spi-spi-register-trigger-data">.
+   </para>
+
+   <para>
+    A trigger function must return either a
+    <structname>HeapTuple</> pointer or a <symbol>NULL</> pointer
+    (<emphasis>not</> an SQL null value, that is, do not set <parameter>isNull</parameter> true).
+    Be careful to return either
+    <structfield>tg_trigtuple</> or <structfield>tg_newtuple</>,
+    as appropriate, if you don't want to modify the row being operated on.
+   </para>
+  </sect1>
+
+  <sect1 id="trigger-example">
+   <title>A Complete Trigger Example</title>
+
+   <para>
+    Here is a very simple example of a trigger function written in C.
+    (Examples of triggers written in procedural languages can be found
+    in the documentation of the procedural languages.)
+   </para>
+
+   <para>
+    The function <function>trigf</> reports the number of rows in the
+    table <structname>ttest</> and skips the actual operation if the
+    command attempts to insert a null value into the column
+    <structfield>x</>. (So the trigger acts as a not-null constraint but
+    doesn't abort the transaction.)
+   </para>
+
+   <para>
+    First, the table definition:
+<programlisting>
+CREATE TABLE ttest (
+    x integer
+);
+</programlisting>
+   </para>
+
+   <para>
+    This is the source code of the trigger function:
+<programlisting><![CDATA[
+#include "postgres.h"
+#include "fmgr.h"
+#include "executor/spi.h"       /* this is what you need to work with SPI */
+#include "commands/trigger.h"   /* ... triggers ... */
+#include "utils/rel.h"          /* ... and relations */
+
+PG_MODULE_MAGIC;
+
+PG_FUNCTION_INFO_V1(trigf);
+
+Datum
+trigf(PG_FUNCTION_ARGS)
+{
+    TriggerData *trigdata = (TriggerData *) fcinfo->context;
+    TupleDesc   tupdesc;
+    HeapTuple   rettuple;
+    char       *when;
+    bool        checknull = false;
+    bool        isnull;
+    int         ret, i;
+
+    /* make sure it's called as a trigger at all */
+    if (!CALLED_AS_TRIGGER(fcinfo))
+        elog(ERROR, "trigf: not called by trigger manager");
+
+    /* tuple to return to executor */
+    if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
+        rettuple = trigdata->tg_newtuple;
+    else
+        rettuple = trigdata->tg_trigtuple;
+
+    /* check for null values */
+    if (!TRIGGER_FIRED_BY_DELETE(trigdata->tg_event)
+        && TRIGGER_FIRED_BEFORE(trigdata->tg_event))
+        checknull = true;
+
+    if (TRIGGER_FIRED_BEFORE(trigdata->tg_event))
+        when = "before";
+    else
+        when = "after ";
+
+    tupdesc = trigdata->tg_relation->rd_att;
+
+    /* connect to SPI manager */
+    if ((ret = SPI_connect()) < 0)
+        elog(ERROR, "trigf (fired %s): SPI_connect returned %d", when, ret);
+
+    /* get number of rows in table */
+    ret = SPI_exec("SELECT count(*) FROM ttest", 0);
+
+    if (ret < 0)
+        elog(ERROR, "trigf (fired %s): SPI_exec returned %d", when, ret);
+
+    /* count(*) returns int8, so be careful to convert */
+    i = DatumGetInt64(SPI_getbinval(SPI_tuptable->vals[0],
+                                    SPI_tuptable->tupdesc,
+                                    1,
+                                    &isnull));
+
+    elog (INFO, "trigf (fired %s): there are %d rows in ttest", when, i);
+
+    SPI_finish();
+
+    if (checknull)
+    {
+        SPI_getbinval(rettuple, tupdesc, 1, &isnull);
+        if (isnull)
+            rettuple = NULL;
+    }
+
+    return PointerGetDatum(rettuple);
+}
+]]>
+</programlisting>
+   </para>
+
+   <para>
+    After you have compiled the source code (see <xref
+    linkend="dfunc">), declare the function and the triggers:
+<programlisting>
+CREATE FUNCTION trigf() RETURNS trigger
+    AS '<replaceable>filename</>'
+    LANGUAGE C;
+
+CREATE TRIGGER tbefore BEFORE INSERT OR UPDATE OR DELETE ON ttest
+    FOR EACH ROW EXECUTE PROCEDURE trigf();
+
+CREATE TRIGGER tafter AFTER INSERT OR UPDATE OR DELETE ON ttest
+    FOR EACH ROW EXECUTE PROCEDURE trigf();
+</programlisting>
+   </para>
+
+   <para>
+    Now you can test the operation of the trigger:
+<screen>
+=&gt; INSERT INTO ttest VALUES (NULL);
+INFO:  trigf (fired before): there are 0 rows in ttest
+INSERT 0 0
+
+-- Insertion skipped and AFTER trigger is not fired
+
+=&gt; SELECT * FROM ttest;
+ x
+---
+(0 rows)
+
+=&gt; INSERT INTO ttest VALUES (1);
+INFO:  trigf (fired before): there are 0 rows in ttest
+INFO:  trigf (fired after ): there are 1 rows in ttest
+                                       ^^^^^^^^
+                             remember what we said about visibility.
+INSERT 167793 1
+vac=&gt; SELECT * FROM ttest;
+ x
+---
+ 1
+(1 row)
+
+=&gt; INSERT INTO ttest SELECT x * 2 FROM ttest;
+INFO:  trigf (fired before): there are 1 rows in ttest
+INFO:  trigf (fired after ): there are 2 rows in ttest
+                                       ^^^^^^
+                             remember what we said about visibility.
+INSERT 167794 1
+=&gt; SELECT * FROM ttest;
+ x
+---
+ 1
+ 2
+(2 rows)
+
+=&gt; UPDATE ttest SET x = NULL WHERE x = 2;
+INFO:  trigf (fired before): there are 2 rows in ttest
+UPDATE 0
+=&gt; UPDATE ttest SET x = 4 WHERE x = 2;
+INFO:  trigf (fired before): there are 2 rows in ttest
+INFO:  trigf (fired after ): there are 2 rows in ttest
+UPDATE 1
+vac=&gt; SELECT * FROM ttest;
+ x
+---
+ 1
+ 4
+(2 rows)
+
+=&gt; DELETE FROM ttest;
+INFO:  trigf (fired before): there are 2 rows in ttest
+INFO:  trigf (fired before): there are 1 rows in ttest
+INFO:  trigf (fired after ): there are 0 rows in ttest
+INFO:  trigf (fired after ): there are 0 rows in ttest
+                                       ^^^^^^
+                             remember what we said about visibility.
+DELETE 2
+=&gt; SELECT * FROM ttest;
+ x
+---
+(0 rows)
+</screen>
+
+   </para>
+
+   <para>
+    There are more complex examples in
+    <filename>src/test/regress/regress.c</filename> and
+    in <xref linkend="contrib-spi">.
+   </para>
+  </sect1>
+ </chapter>

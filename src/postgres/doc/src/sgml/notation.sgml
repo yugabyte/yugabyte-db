@@ -1,0 +1,31 @@
+<!-- doc/src/sgml/notation.sgml -->
+
+<sect1 id="notation">
+ <title>Conventions</title>
+
+ <para>
+  The following conventions are used in the synopsis of a command:
+  brackets (<literal>[</literal> and <literal>]</literal>) indicate
+  optional parts.  (In the synopsis of a Tcl command, question marks
+  (<literal>?</>) are used instead, as is usual in Tcl.)  Braces
+  (<literal>{</literal> and <literal>}</literal>) and vertical lines
+  (<literal>|</literal>) indicate that you must choose one
+  alternative.  Dots (<literal>...</>) mean that the preceding element
+  can be repeated.
+ </para>
+
+ <para>
+  Where it enhances the clarity, SQL commands are preceded by the
+  prompt <literal>=&gt;</>, and shell commands are preceded by the
+  prompt <literal>$</>.  Normally, prompts are not shown, though.
+ </para>
+
+ <para>
+  An <firstterm>administrator</firstterm> is generally a person who is
+  in charge of installing and running the server.  A <firstterm>user</firstterm>
+  could be anyone who is using, or wants to use, any part of the
+  <productname>PostgreSQL</productname> system.  These terms should not
+  be interpreted too narrowly; this book does not have fixed
+  presumptions about system administration procedures.
+ </para>
+</sect1>

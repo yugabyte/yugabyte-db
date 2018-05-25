@@ -1,0 +1,114 @@
+<!-- doc/src/sgml/ref/drop_cast.sgml -->
+
+<refentry id="SQL-DROPCAST">
+ <indexterm zone="sql-dropcast">
+  <primary>DROP CAST</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP CAST</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP CAST</refname>
+  <refpurpose>remove a cast</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP CAST [ IF EXISTS ] (<replaceable>source_type</replaceable> AS <replaceable>target_type</replaceable>) [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-dropcast-description">
+  <title>Description</title>
+
+  <para>
+   <command>DROP CAST</command> removes a previously defined cast.
+  </para>
+
+  <para>
+   To be able to drop a cast, you must own the source or the target
+   data type.  These are the same privileges that are required to
+   create a cast.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the cast does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>source_type</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the source data type of the cast.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>target_type</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the target data type of the cast.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>CASCADE</literal></term>
+     <term><literal>RESTRICT</literal></term>
+
+     <listitem>
+      <para>
+       These key words do not have any effect, since there are no
+       dependencies on casts.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-dropcast-examples">
+  <title>Examples</title>
+
+  <para>
+   To drop the cast from type <type>text</type> to type <type>int</type>:
+<programlisting>
+DROP CAST (text AS int);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-dropcast-compat">
+  <title>Compatibility</title>
+
+  <para>
+   The <command>DROP CAST</command> command conforms to the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createcast"></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

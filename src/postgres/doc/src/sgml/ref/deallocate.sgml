@@ -1,0 +1,98 @@
+<!--
+doc/src/sgml/ref/deallocate.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-DEALLOCATE">
+ <indexterm zone="sql-deallocate">
+  <primary>DEALLOCATE</primary>
+ </indexterm>
+
+ <indexterm zone="sql-deallocate">
+  <primary>prepared statements</primary>
+  <secondary>removing</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DEALLOCATE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DEALLOCATE</refname>
+  <refpurpose>deallocate a prepared statement</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DEALLOCATE [ PREPARE ] { <replaceable class="parameter">name</replaceable> | ALL }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DEALLOCATE</command> is used to deallocate a previously
+   prepared SQL statement. If you do not explicitly deallocate a
+   prepared statement, it is deallocated when the session ends.
+  </para>
+
+  <para>
+   For more information on prepared statements, see <xref
+   linkend="sql-prepare">.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>PREPARE</literal></term>
+    <listitem>
+     <para>
+      This key word is ignored.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the prepared statement to deallocate.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALL</literal></term>
+    <listitem>
+     <para>
+      Deallocate all prepared statements.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL standard includes a <command>DEALLOCATE</command>
+   statement, but it is only for use in embedded SQL.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-execute"></member>
+   <member><xref linkend="sql-prepare"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

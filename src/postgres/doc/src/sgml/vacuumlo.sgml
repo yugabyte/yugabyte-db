@@ -1,0 +1,193 @@
+<!-- doc/src/sgml/vacuumlo.sgml -->
+
+<refentry id="vacuumlo">
+ <indexterm zone="vacuumlo">
+  <primary>vacuumlo</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>vacuumlo</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>vacuumlo</refname>
+  <refpurpose>remove orphaned large objects from a <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>vacuumlo</command>
+   <arg choice="opt" rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="plain" rep="repeat"><replaceable>dbname</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+ <para>
+  <application>vacuumlo</> is a simple utility program that will remove any
+  <quote>orphaned</> large objects from a
+  <productname>PostgreSQL</> database.  An orphaned large object (LO) is
+  considered to be any LO whose OID does not appear in any <type>oid</> or
+  <type>lo</> data column of the database.
+ </para>
+
+ <para>
+  If you use this, you may also be interested in the <function>lo_manage</>
+  trigger in the <xref linkend="lo"> module.
+  <function>lo_manage</> is useful to try
+  to avoid creating orphaned LOs in the first place.
+ </para>
+
+  <para>
+   All databases named on the command line are processed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>vacuumlo</application> accepts the following command-line arguments:
+
+  <variablelist>
+   <varlistentry>
+    <term><option>-l</option> <replaceable>limit</></term>
+    <listitem>
+     <para>
+      Remove no more than <replaceable>limit</> large objects per
+      transaction (default 1000).  Since the server acquires a lock per LO
+      removed, removing too many LOs in one transaction risks exceeding
+      <xref linkend="guc-max-locks-per-transaction">.  Set the limit to
+      zero if you want all removals done in a single transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-n</option></term>
+    <listitem>
+     <para>Don't remove anything, just show what would be done.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-v</option></term>
+    <listitem>
+     <para>Write a lot of progress messages.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-V</></term>
+    <term><option>--version</></term>
+    <listitem>
+     <para>
+      Print the <application>vacuumlo</application> version and exit.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-?</></term>
+    <term><option>--help</></term>
+    <listitem>
+     <para>
+      Show help about <application>vacuumlo</application> command line
+      arguments, and exit.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  </para>
+
+  <para>
+   <application>vacuumlo</application> also accepts the following command-line
+   arguments for connection parameters:
+
+  <variablelist>
+   <varlistentry>
+    <term><option>-h</option> <replaceable>hostname</></term>
+    <listitem>
+     <para>Database server's host.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-p</option> <replaceable>port</></term>
+    <listitem>
+     <para>Database server's port.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-U</option> <replaceable>username</></term>
+    <listitem>
+     <para>User name to connect as.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-w</></term>
+    <term><option>--no-password</></term>
+    <listitem>
+     <para>
+      Never issue a password prompt.  If the server requires password
+      authentication and a password is not available by other means
+      such as a <filename>.pgpass</filename> file, the connection
+      attempt will fail.  This option can be useful in batch jobs and
+      scripts where no user is present to enter a password.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-W</option></term>
+    <listitem>
+     <para>
+      Force <application>vacuumlo</application> to prompt for a
+      password before connecting to a database.
+     </para>
+
+     <para>
+      This option is never essential, since
+      <application>vacuumlo</application> will automatically prompt
+      for a password if the server demands password authentication.
+      However, <application>vacuumlo</application> will waste a
+      connection attempt finding out that the server wants a password.
+      In some cases it is worth typing <option>-W</> to avoid the extra
+      connection attempt.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <application>vacuumlo</application> works by the following method:
+   First, <application>vacuumlo</> builds a temporary table which contains all
+   of the OIDs of the large objects in the selected database.  It then scans
+   through all columns in the database that are of type
+   <type>oid</> or <type>lo</>, and removes matching entries from the temporary
+   table.  (Note: Only types with these names are considered; in particular,
+   domains over them are not considered.)  The remaining entries in the
+   temporary table identify orphaned LOs.  These are removed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Author</title>
+
+  <para>
+   Peter Mount <email>peter@retep.org.uk</email>
+  </para>
+ </refsect1>
+
+</refentry>

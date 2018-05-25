@@ -1,0 +1,158 @@
+<!-- doc/src/sgml/features.sgml -->
+
+<appendix id="features">
+ <title>SQL Conformance</title>
+
+ <para>
+  This section attempts to outline to what extent
+  <productname>PostgreSQL</productname> conforms to the current SQL
+  standard.  The following information is not a full statement of
+  conformance, but it presents the main topics in as much detail as is
+  both reasonable and useful for users.
+ </para>
+
+ <para>
+  The formal name of the SQL standard is ISO/IEC 9075 <quote>Database
+  Language SQL</quote>.  A revised version of the standard is released
+  from time to time; the most recent update appearing in 2011.
+  The 2011 version is referred to as ISO/IEC 9075:2011, or simply as SQL:2011.
+  The versions prior to that were SQL:2008, SQL:2003, SQL:1999, and SQL-92.  Each version
+  replaces the previous one, so claims of conformance to earlier
+  versions have no official merit.
+  <productname>PostgreSQL</productname> development aims for
+  conformance with the latest official version of the standard where
+  such conformance does not contradict traditional features or common
+  sense.  Many of the features required by the SQL
+  standard are supported, though sometimes with slightly differing
+  syntax or function.  Further moves towards conformance can be
+  expected over time.
+ </para>
+
+ <para>
+  <acronym>SQL-92</acronym> defined three feature sets for
+  conformance: Entry, Intermediate, and Full.  Most database
+  management systems claiming <acronym>SQL</acronym> standard
+  conformance were conforming at only the Entry level, since the
+  entire set of features in the Intermediate and Full levels was
+  either too voluminous or in conflict with legacy behaviors.
+ </para>
+
+ <para>
+  Starting with <acronym>SQL:1999</acronym>, the SQL standard defines
+  a large set of individual features rather than the ineffectively
+  broad three levels found in <acronym>SQL-92</acronym>.  A large
+  subset of these features represents the <quote>Core</quote>
+  features, which every conforming SQL implementation must supply.
+  The rest of the features are purely optional.  Some optional
+  features are grouped together to form <quote>packages</quote>, which
+  SQL implementations can claim conformance to, thus claiming
+  conformance to particular groups of features.
+ </para>
+
+ <para>
+  The standard versions beginning with <acronym>SQL:2003</acronym>
+  are also split into a number
+  of parts.  Each is known by a shorthand name.  Note that these parts
+  are not consecutively numbered.
+
+  <itemizedlist>
+   <listitem><para>ISO/IEC 9075-1 Framework (SQL/Framework)</para><indexterm><primary>SQL/Framework</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-2 Foundation (SQL/Foundation)</para><indexterm><primary>SQL/Foundation</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-3 Call Level Interface (SQL/CLI)</para><indexterm><primary>SQL/CLI</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-4 Persistent Stored Modules (SQL/PSM)</para><indexterm><primary>SQL/PSM</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-9 Management of External Data (SQL/MED)</para><indexterm><primary>SQL/MED</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-10 Object Language Bindings (SQL/OLB)</para><indexterm><primary>SQL/OLB</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-11 Information and Definition Schemas (SQL/Schemata)</para><indexterm><primary>SQL/Schemata</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-13 Routines and Types using the Java Language (SQL/JRT)</para><indexterm><primary>SQL/JRT</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-14 XML-related specifications (SQL/XML)</para><indexterm><primary>SQL/XML</primary></indexterm></listitem>
+  </itemizedlist>
+ </para>
+
+ <para>
+  The <productname>PostgreSQL</productname> core covers parts 1, 2, 9,
+  11, and 14.  Part 3 is covered by the ODBC driver, and part 13 is
+  covered by the PL/Java plug-in, but exact conformance is currently
+  not being verified for these components.  There are currently no
+  implementations of parts 4 and 10
+  for <productname>PostgreSQL</productname>.
+ </para>
+
+ <para>
+  PostgreSQL supports most of the major features of SQL:2011.  Out of
+  179 mandatory features required for full Core conformance,
+  PostgreSQL conforms to at least 160.  In addition, there is a long
+  list of supported optional features.  It might be worth noting that at
+  the time of writing, no current version of any database management
+  system claims full conformance to Core SQL:2011.
+ </para>
+
+ <para>
+  In the following two sections, we provide a list of those features
+  that <productname>PostgreSQL</productname> supports, followed by a
+  list of the features defined in <acronym>SQL:2011</acronym> which
+  are not yet supported in <productname>PostgreSQL</productname>.
+  Both of these lists are approximate: There might be minor details that
+  are nonconforming for a feature that is listed as supported, and
+  large parts of an unsupported feature might in fact be implemented.
+  The main body of the documentation always contains the most accurate
+  information about what does and does not work.
+ </para>
+
+ <note>
+  <para>
+   Feature codes containing a hyphen are subfeatures.  Therefore, if a
+   particular subfeature is not supported, the main feature is listed
+   as unsupported even if some other subfeatures are supported.
+  </para>
+ </note>
+
+  <sect1 id="features-sql-standard">
+   <title>Supported Features</title>
+
+   <para>
+    <informaltable>
+     <tgroup cols="4">
+      <thead>
+       <row>
+        <entry>Identifier</entry>
+        <entry>Package</entry>
+        <entry>Description</entry>
+        <entry>Comment</entry>
+       </row>
+      </thead>
+
+      &features-supported;
+
+     </tgroup>
+    </informaltable>
+   </para>
+  </sect1>
+
+  <sect1 id="unsupported-features-sql-standard">
+   <title>Unsupported Features</title>
+
+   <para>
+    The following features defined in <acronym>SQL:2011</acronym> are not
+    implemented in this release of
+    <productname>PostgreSQL</productname>. In a few cases, equivalent
+    functionality is available.
+
+    <informaltable>
+     <tgroup cols="4">
+      <thead>
+       <row>
+        <entry>Identifier</entry>
+        <entry>Package</entry>
+        <entry>Description</entry>
+        <entry>Comment</entry>
+       </row>
+      </thead>
+
+      &features-unsupported;
+
+     </tgroup>
+    </informaltable>
+   </para>
+  </sect1>
+
+ </appendix>

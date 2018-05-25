@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# unused_oids
+#
+# src/include/catalog/unused_oids
+#
+#	finds blocks of manually-assignable oids that have not already been
+#	claimed by post_hackers.  primarily useful for finding available
+#	oids for new internal functions.  the numbers printed are inclusive
+#	ranges of unused oids.
+#
+#	before using a large empty block, make sure you aren't about
+#	to take over what was intended as expansion space for something
+#	else.
+#
+#	run this script in src/include/catalog.
+#
+
+
+AWK="awk"
+
+# Get FirstBootstrapObjectId from access/transam.h
+FIRSTOBJECTID=`grep '#define[ 	]*FirstBootstrapObjectId' ../access/transam.h | $AWK '{ print $3 }'`
+export FIRSTOBJECTID
+
+# this part (down to the uniq step) should match the duplicate_oids script
+# note: we exclude BKI_BOOTSTRAP relations since they are expected to have
+# matching DATA lines in pg_class.h and pg_type.h
+
+cat pg_*.h toasting.h indexing.h | \
+egrep -v -e '^CATALOG\(.*BKI_BOOTSTRAP' | \
+sed -n	-e 's/^DATA(insert *OID *= *\([0-9][0-9]*\).*$/\1/p' \
+	-e 's/^CATALOG([^,]*, *\([0-9][0-9]*\).*BKI_ROWTYPE_OID(\([0-9][0-9]*\)).*$/\1,\2/p' \
+	-e 's/^CATALOG([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
+	-e 's/^DECLARE_INDEX([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
+	-e 's/^DECLARE_UNIQUE_INDEX([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
+	-e 's/^DECLARE_TOAST([^,]*, *\([0-9][0-9]*\), *\([0-9][0-9]*\).*$/\1,\2/p' | \
+tr ',' '\n' | \
+sort -n | \
+uniq | \
+$AWK '
+BEGIN {
+	last = 0;
+}
+/^[0-9]/ {
+	if ($1 > last + 1) {
+		if ($1 > last + 2) {
+			print last + 1, "-", $1 - 1;
+		} else {
+			print last + 1;
+		}
+	}
+	last = $1;
+}
+END {
+	print last + 1, "-", ENVIRON["FIRSTOBJECTID"]-1;
+}'

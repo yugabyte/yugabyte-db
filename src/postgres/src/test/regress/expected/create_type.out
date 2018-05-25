@@ -1,0 +1,156 @@
+--
+-- CREATE_TYPE
+--
+--
+-- Note: widget_in/out were created in create_function_1, without any
+-- prior shell-type creation.  These commands therefore complete a test
+-- of the "old style" approach of making the functions first.
+--
+CREATE TYPE widget (
+   internallength = 24,
+   input = widget_in,
+   output = widget_out,
+   typmod_in = numerictypmodin,
+   typmod_out = numerictypmodout,
+   alignment = double
+);
+CREATE TYPE city_budget (
+   internallength = 16,
+   input = int44in,
+   output = int44out,
+   element = int4,
+   category = 'x',   -- just to verify the system will take it
+   preferred = true  -- ditto
+);
+-- Test creation and destruction of shell types
+CREATE TYPE shell;
+CREATE TYPE shell;   -- fail, type already present
+ERROR:  type "shell" already exists
+DROP TYPE shell;
+DROP TYPE shell;     -- fail, type not exist
+ERROR:  type "shell" does not exist
+-- also, let's leave one around for purposes of pg_dump testing
+CREATE TYPE myshell;
+--
+-- Test type-related default values (broken in releases before PG 7.2)
+--
+-- This part of the test also exercises the "new style" approach of making
+-- a shell type and then filling it in.
+--
+CREATE TYPE int42;
+CREATE TYPE text_w_default;
+-- Make dummy I/O routines using the existing internal support for int4, text
+CREATE FUNCTION int42_in(cstring)
+   RETURNS int42
+   AS 'int4in'
+   LANGUAGE internal STRICT IMMUTABLE;
+NOTICE:  return type int42 is only a shell
+CREATE FUNCTION int42_out(int42)
+   RETURNS cstring
+   AS 'int4out'
+   LANGUAGE internal STRICT IMMUTABLE;
+NOTICE:  argument type int42 is only a shell
+CREATE FUNCTION text_w_default_in(cstring)
+   RETURNS text_w_default
+   AS 'textin'
+   LANGUAGE internal STRICT IMMUTABLE;
+NOTICE:  return type text_w_default is only a shell
+CREATE FUNCTION text_w_default_out(text_w_default)
+   RETURNS cstring
+   AS 'textout'
+   LANGUAGE internal STRICT IMMUTABLE;
+NOTICE:  argument type text_w_default is only a shell
+CREATE TYPE int42 (
+   internallength = 4,
+   input = int42_in,
+   output = int42_out,
+   alignment = int4,
+   default = 42,
+   passedbyvalue
+);
+CREATE TYPE text_w_default (
+   internallength = variable,
+   input = text_w_default_in,
+   output = text_w_default_out,
+   alignment = int4,
+   default = 'zippo'
+);
+CREATE TABLE default_test (f1 text_w_default, f2 int42);
+INSERT INTO default_test DEFAULT VALUES;
+SELECT * FROM default_test;
+  f1   | f2 
+-------+----
+ zippo | 42
+(1 row)
+
+-- Test stand-alone composite type
+CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
+CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
+  SELECT * FROM default_test;
+' LANGUAGE SQL;
+SELECT * FROM get_default_test();
+  f1   | f2 
+-------+----
+ zippo | 42
+(1 row)
+
+-- Test comments
+COMMENT ON TYPE bad IS 'bad comment';
+ERROR:  type "bad" does not exist
+COMMENT ON TYPE default_test_row IS 'good comment';
+COMMENT ON TYPE default_test_row IS NULL;
+COMMENT ON COLUMN default_test_row.nope IS 'bad comment';
+ERROR:  column "nope" of relation "default_test_row" does not exist
+COMMENT ON COLUMN default_test_row.f1 IS 'good comment';
+COMMENT ON COLUMN default_test_row.f1 IS NULL;
+-- Check shell type create for existing types
+CREATE TYPE text_w_default;		-- should fail
+ERROR:  type "text_w_default" already exists
+DROP TYPE default_test_row CASCADE;
+NOTICE:  drop cascades to function get_default_test()
+DROP TABLE default_test;
+-- Check type create with input/output incompatibility
+CREATE TYPE not_existing_type (INPUT = array_in,
+    OUTPUT = array_out,
+    ELEMENT = int,
+    INTERNALLENGTH = 32);
+ERROR:  function array_out(not_existing_type) does not exist
+-- Check dependency transfer of opaque functions when creating a new type
+CREATE FUNCTION base_fn_in(cstring) RETURNS opaque AS 'boolin'
+    LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION base_fn_out(opaque) RETURNS opaque AS 'boolout'
+    LANGUAGE internal IMMUTABLE STRICT;
+CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
+WARNING:  changing argument type of function base_fn_out from "opaque" to base_type
+WARNING:  changing return type of function base_fn_in from opaque to base_type
+WARNING:  changing return type of function base_fn_out from opaque to cstring
+DROP FUNCTION base_fn_in(cstring); -- error
+ERROR:  cannot drop function base_fn_in(cstring) because other objects depend on it
+DETAIL:  type base_type depends on function base_fn_in(cstring)
+function base_fn_out(base_type) depends on type base_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP FUNCTION base_fn_out(opaque); -- error
+ERROR:  function base_fn_out(opaque) does not exist
+DROP TYPE base_type; -- error
+ERROR:  cannot drop type base_type because other objects depend on it
+DETAIL:  function base_fn_out(base_type) depends on type base_type
+function base_fn_in(cstring) depends on type base_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE base_type CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to function base_fn_out(base_type)
+drop cascades to function base_fn_in(cstring)
+-- Check usage of typmod with a user-defined type
+-- (we have borrowed numeric's typmod functions)
+CREATE TEMP TABLE mytab (foo widget(42,13,7));     -- should fail
+ERROR:  invalid NUMERIC type modifier
+LINE 1: CREATE TEMP TABLE mytab (foo widget(42,13,7));
+                                     ^
+CREATE TEMP TABLE mytab (foo widget(42,13));
+SELECT format_type(atttypid,atttypmod) FROM pg_attribute
+WHERE attrelid = 'mytab'::regclass AND attnum > 0;
+  format_type  
+---------------
+ widget(42,13)
+(1 row)
+

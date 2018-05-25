@@ -1,0 +1,98 @@
+--
+-- VACUUM
+--
+CREATE TABLE vactst (i INT);
+INSERT INTO vactst VALUES (1);
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst VALUES (0);
+SELECT count(*) FROM vactst;
+ count 
+-------
+  2049
+(1 row)
+
+DELETE FROM vactst WHERE i != 0;
+SELECT * FROM vactst;
+ i 
+---
+ 0
+(1 row)
+
+VACUUM FULL vactst;
+UPDATE vactst SET i = i + 1;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst SELECT * FROM vactst;
+INSERT INTO vactst VALUES (0);
+SELECT count(*) FROM vactst;
+ count 
+-------
+  2049
+(1 row)
+
+DELETE FROM vactst WHERE i != 0;
+VACUUM (FULL) vactst;
+DELETE FROM vactst;
+SELECT * FROM vactst;
+ i 
+---
+(0 rows)
+
+VACUUM (FULL, FREEZE) vactst;
+VACUUM (ANALYZE, FULL) vactst;
+CREATE TABLE vaccluster (i INT PRIMARY KEY);
+ALTER TABLE vaccluster CLUSTER ON vaccluster_pkey;
+CLUSTER vaccluster;
+CREATE FUNCTION do_analyze() RETURNS VOID VOLATILE LANGUAGE SQL
+	AS 'ANALYZE pg_am';
+CREATE FUNCTION wrap_do_analyze(c INT) RETURNS INT IMMUTABLE LANGUAGE SQL
+	AS 'SELECT $1 FROM do_analyze()';
+CREATE INDEX ON vaccluster(wrap_do_analyze(i));
+INSERT INTO vaccluster VALUES (1), (2);
+ANALYZE vaccluster;
+ERROR:  ANALYZE cannot be executed from VACUUM or ANALYZE
+CONTEXT:  SQL function "do_analyze" statement 1
+SQL function "wrap_do_analyze" statement 1
+VACUUM FULL pg_am;
+VACUUM FULL pg_class;
+VACUUM FULL pg_database;
+VACUUM FULL vaccluster;
+ERROR:  ANALYZE cannot be executed from VACUUM or ANALYZE
+CONTEXT:  SQL function "do_analyze" statement 1
+SQL function "wrap_do_analyze" statement 1
+VACUUM FULL vactst;
+VACUUM (DISABLE_PAGE_SKIPPING) vaccluster;
+DROP TABLE vaccluster;
+DROP TABLE vactst;
+-- partitioned table
+CREATE TABLE vacparted (a int, b char) PARTITION BY LIST (a);
+CREATE TABLE vacparted1 PARTITION OF vacparted FOR VALUES IN (1);
+INSERT INTO vacparted VALUES (1, 'a');
+UPDATE vacparted SET b = 'b';
+VACUUM (ANALYZE) vacparted;
+VACUUM (FULL) vacparted;
+VACUUM (FREEZE) vacparted;
+-- check behavior with duplicate column mentions
+VACUUM ANALYZE vacparted(a,b,a);
+ERROR:  column "a" of relation "vacparted" appears more than once
+ANALYZE vacparted(a,b,b);
+ERROR:  column "b" of relation "vacparted" appears more than once
+DROP TABLE vacparted;

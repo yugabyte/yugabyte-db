@@ -1,0 +1,375 @@
+<!--
+doc/src/sgml/ref/alter_type.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTERTYPE">
+ <indexterm zone="sql-altertype">
+  <primary>ALTER TYPE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER TYPE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER TYPE</refname>
+  <refpurpose>
+   change the definition of a type
+  </refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> <replaceable class="PARAMETER">action</replaceable> [, ... ]
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> OWNER TO { <replaceable class="PARAMETER">new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> RENAME ATTRIBUTE <replaceable class="PARAMETER">attribute_name</replaceable> TO <replaceable class="PARAMETER">new_attribute_name</replaceable> [ CASCADE | RESTRICT ]
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> RENAME TO <replaceable class="PARAMETER">new_name</replaceable>
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable>
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> ADD VALUE [ IF NOT EXISTS ] <replaceable class="PARAMETER">new_enum_value</replaceable> [ { BEFORE | AFTER } <replaceable class="PARAMETER">neighbor_enum_value</replaceable> ]
+ALTER TYPE <replaceable class="PARAMETER">name</replaceable> RENAME VALUE <replaceable class="PARAMETER">existing_enum_value</replaceable> TO <replaceable class="PARAMETER">new_enum_value</replaceable>
+
+<phrase>where <replaceable class="PARAMETER">action</replaceable> is one of:</phrase>
+
+    ADD ATTRIBUTE <replaceable class="PARAMETER">attribute_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [ COLLATE <replaceable class="PARAMETER">collation</replaceable> ] [ CASCADE | RESTRICT ]
+    DROP ATTRIBUTE [ IF EXISTS ] <replaceable class="PARAMETER">attribute_name</replaceable> [ CASCADE | RESTRICT ]
+    ALTER ATTRIBUTE <replaceable class="PARAMETER">attribute_name</replaceable> [ SET DATA ] TYPE <replaceable class="PARAMETER">data_type</replaceable> [ COLLATE <replaceable class="PARAMETER">collation</replaceable> ] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER TYPE</command> changes the definition of an existing type.
+   There are several subforms:
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ADD ATTRIBUTE</literal></term>
+    <listitem>
+     <para>
+      This form adds a new attribute to a composite type, using the same syntax as
+      <xref linkend="SQL-CREATETYPE">.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP ATTRIBUTE [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form drops an attribute from a composite type.
+      If <literal>IF EXISTS</literal> is specified and the attribute
+      does not exist, no error is thrown. In this case a notice
+      is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET DATA TYPE</literal></term>
+    <listitem>
+     <para>
+      This form changes the type of an attribute of a composite type.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OWNER</literal></term>
+    <listitem>
+     <para>
+      This form changes the owner of the type.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RENAME</literal></term>
+    <listitem>
+     <para>
+      This form changes the name of the type or the name of an
+      individual attribute of a composite type.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET SCHEMA</literal></term>
+    <listitem>
+     <para>
+      This form moves the type into another schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD VALUE [ IF NOT EXISTS ] [ BEFORE | AFTER ]</literal></term>
+    <listitem>
+     <para>
+      This form adds a new value to an enum type.  The new value's place in
+      the enum's ordering can be specified as being <literal>BEFORE</literal>
+      or <literal>AFTER</literal> one of the existing values.  Otherwise,
+      the new item is added at the end of the list of values.
+     </para>
+     <para>
+      If <literal>IF NOT EXISTS</literal> is specified, it is not an error if
+      the type already contains the new value: a notice is issued but no other
+      action is taken. Otherwise, an error will occur if the new value is
+      already present.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RENAME VALUE</literal></term>
+    <listitem>
+     <para>
+      This form renames a value of an enum type.
+      The value's place in the enum's ordering is not affected.
+      An error will occur if the specified value is not present or the new
+      name is already present.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  </para>
+
+  <para>
+   The <literal>ADD ATTRIBUTE</literal>, <literal>DROP
+   ATTRIBUTE</literal>, and <literal>ALTER ATTRIBUTE</literal> actions
+   can be combined into a list of multiple alterations to apply in
+   parallel.  For example, it is possible to add several attributes
+   and/or alter the type of several attributes in a single command.
+  </para>
+
+  <para>
+   You must own the type to use <command>ALTER TYPE</>.
+   To change the schema of a type, you must also have
+   <literal>CREATE</literal> privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the type's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the type.
+   However, a superuser can alter ownership of any type anyway.)
+   To add an attribute or alter an attribute type, you must also
+   have <literal>USAGE</literal> privilege on the data type.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="PARAMETER">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (possibly schema-qualified) of an existing type to
+        alter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name for the type.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_owner</replaceable></term>
+      <listitem>
+       <para>
+        The user name of the new owner of the type.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_schema</replaceable></term>
+      <listitem>
+       <para>
+        The new schema for the type.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">attribute_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the attribute to add, alter, or drop.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_attribute_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name of the attribute to be renamed.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">data_type</replaceable></term>
+      <listitem>
+       <para>
+        The data type of the attribute to add, or the new type of the
+        attribute to alter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_enum_value</replaceable></term>
+      <listitem>
+       <para>
+        The new value to be added to an enum type's list of values,
+        or the new name to be given to an existing value.
+        Like all enum literals, it needs to be quoted.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">neighbor_enum_value</replaceable></term>
+      <listitem>
+       <para>
+        The existing enum value that the new value should be added immediately
+        before or after in the enum type's sort ordering.
+        Like all enum literals, it needs to be quoted.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">existing_enum_value</replaceable></term>
+      <listitem>
+       <para>
+        The existing enum value that should be renamed.
+        Like all enum literals, it needs to be quoted.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>CASCADE</literal></term>
+      <listitem>
+       <para>
+        Automatically propagate the operation to typed tables of the
+        type being altered, and their descendants.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>RESTRICT</literal></term>
+      <listitem>
+       <para>
+        Refuse the operation if the type being altered is the type of a
+        typed table.  This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+  </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <command>ALTER TYPE ... ADD VALUE</> (the form that adds a new value to an
+   enum type) cannot be executed inside a transaction block.
+  </para>
+
+  <para>
+   Comparisons involving an added enum value will sometimes be slower than
+   comparisons involving only original members of the enum type.  This will
+   usually only occur if <literal>BEFORE</literal> or <literal>AFTER</literal>
+   is used to set the new value's sort position somewhere other than at the
+   end of the list.  However, sometimes it will happen even though the new
+   value is added at the end (this occurs if the OID counter <quote>wrapped
+   around</> since the original creation of the enum type).  The slowdown is
+   usually insignificant; but if it matters, optimal performance can be
+   regained by dropping and recreating the enum type, or by dumping and
+   reloading the database.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To rename a data type:
+<programlisting>
+ALTER TYPE electronic_mail RENAME TO email;
+</programlisting>
+  </para>
+
+  <para>
+   To change the owner of the type <literal>email</literal>
+   to <literal>joe</literal>:
+<programlisting>
+ALTER TYPE email OWNER TO joe;
+</programlisting>
+  </para>
+
+  <para>
+   To change the schema of the type <literal>email</literal>
+   to <literal>customers</literal>:
+<programlisting>
+ALTER TYPE email SET SCHEMA customers;
+</programlisting>
+  </para>
+
+  <para>
+   To add a new attribute to a type:
+<programlisting>
+ALTER TYPE compfoo ADD ATTRIBUTE f3 int;
+</programlisting>
+  </para>
+
+  <para>
+   To add a new value to an enum type in a particular sort position:
+<programlisting>
+ALTER TYPE colors ADD VALUE 'orange' AFTER 'red';
+</programlisting>
+  </para>
+
+  <para>
+   To rename an enum value:
+<programlisting>
+ALTER TYPE colors RENAME VALUE 'purple' TO 'mauve';
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The variants to add and drop attributes are part of the SQL
+   standard; the other variants are PostgreSQL extensions.
+  </para>
+ </refsect1>
+
+ <refsect1 id="SQL-ALTERTYPE-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createtype"></member>
+   <member><xref linkend="sql-droptype"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

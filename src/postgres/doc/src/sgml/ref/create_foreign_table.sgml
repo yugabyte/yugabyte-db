@@ -1,0 +1,371 @@
+<!-- doc/src/sgml/ref/create_foreign_table.sgml -->
+
+<refentry id="SQL-CREATEFOREIGNTABLE">
+ <indexterm zone="sql-createforeigntable">
+  <primary>CREATE FOREIGN TABLE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE FOREIGN TABLE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE FOREIGN TABLE</refname>
+  <refpurpose>define a new foreign table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="PARAMETER">table_name</replaceable> ( [
+  { <replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [ OPTIONS ( <replaceable class="PARAMETER">option</replaceable> '<replaceable class="PARAMETER">value</replaceable>' [, ... ] ) ] [ COLLATE <replaceable>collation</replaceable> ] [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
+    | <replaceable>table_constraint</replaceable> }
+    [, ... ]
+] )
+[ INHERITS ( <replaceable>parent_table</replaceable> [, ... ] ) ]
+  SERVER <replaceable class="parameter">server_name</replaceable>
+[ OPTIONS ( <replaceable class="PARAMETER">option</replaceable> '<replaceable class="PARAMETER">value</replaceable>' [, ... ] ) ]
+
+CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="PARAMETER">table_name</replaceable>
+  PARTITION OF <replaceable class="PARAMETER">parent_table</replaceable> [ (
+  { <replaceable class="PARAMETER">column_name</replaceable> [ WITH OPTIONS ] [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
+    | <replaceable>table_constraint</replaceable> }
+    [, ... ]
+) ] <replaceable class="PARAMETER">partition_bound_spec</replaceable>
+  SERVER <replaceable class="parameter">server_name</replaceable>
+[ OPTIONS ( <replaceable class="PARAMETER">option</replaceable> '<replaceable class="PARAMETER">value</replaceable>' [, ... ] ) ]
+
+<phrase>where <replaceable class="PARAMETER">column_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable> ]
+{ NOT NULL |
+  NULL |
+  CHECK ( <replaceable class="PARAMETER">expression</replaceable> ) [ NO INHERIT ] |
+  DEFAULT <replaceable>default_expr</replaceable> }
+
+<phrase>and <replaceable class="PARAMETER">table_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable> ]
+CHECK ( <replaceable class="PARAMETER">expression</replaceable> ) [ NO INHERIT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="SQL-CREATEFOREIGNTABLE-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE FOREIGN TABLE</command> creates a new foreign table
+   in the current database. The table will be owned by the user issuing the
+   command.
+  </para>
+
+  <para>
+   If a schema name is given (for example, <literal>CREATE FOREIGN TABLE
+   myschema.mytable ...</>) then the table is created in the specified
+   schema.  Otherwise it is created in the current schema.
+   The name of the foreign table must be
+   distinct from the name of any other foreign table, table, sequence, index,
+   view, or materialized view in the same schema.
+  </para>
+
+  <para>
+   <command>CREATE FOREIGN TABLE</command> also automatically creates a data
+   type that represents the composite type corresponding to one row of
+   the foreign table.  Therefore, foreign tables cannot have the same
+   name as any existing data type in the same schema.
+  </para>
+
+  <para>
+   If <literal>PARTITION OF</literal> clause is specified then the table is
+   created as a partition of <literal>parent_table</literal> with specified
+   bounds.
+  </para>
+
+  <para>
+   To be able to create a foreign table, you must have <literal>USAGE</literal>
+   privilege on the foreign server, as well as <literal>USAGE</literal>
+   privilege on all column types used in the table.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF NOT EXISTS</></term>
+    <listitem>
+     <para>
+      Do not throw an error if a relation with the same name already exists.
+      A notice is issued in this case.  Note that there is no guarantee that
+      the existing relation is anything like the one that would have been
+      created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table to be created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">column_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a column to be created in the new table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">data_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type of the column. This can include array
+      specifiers. For more information on the data types supported by
+      <productname>PostgreSQL</productname>, refer to <xref
+      linkend="datatype">.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>COLLATE <replaceable>collation</replaceable></literal></term>
+    <listitem>
+     <para>
+      The <literal>COLLATE</> clause assigns a collation to
+      the column (which must be of a collatable data type).
+      If not specified, the column data type's default collation is used.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>INHERITS ( <replaceable>parent_table</replaceable> [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      The optional <literal>INHERITS</> clause specifies a list of
+      tables from which the new foreign table automatically inherits
+      all columns.  Parent tables can be plain tables or foreign tables.
+      See the similar form of
+      <xref linkend="sql-createtable"> for more details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      An optional name for a column or table constraint.  If the
+      constraint is violated, the constraint name is present in error messages,
+      so constraint names like <literal>col must be positive</> can be used
+      to communicate helpful constraint information to client applications.
+      (Double-quotes are needed to specify constraint names that contain spaces.)
+      If a constraint name is not specified, the system generates a name.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NOT NULL</></term>
+    <listitem>
+     <para>
+      The column is not allowed to contain null values.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NULL</></term>
+    <listitem>
+     <para>
+      The column is allowed to contain null values. This is the default.
+     </para>
+
+     <para>
+      This clause is only provided for compatibility with
+      non-standard SQL databases.  Its use is discouraged in new
+      applications.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CHECK ( <replaceable class="PARAMETER">expression</replaceable> ) [ NO INHERIT ] </literal></term>
+    <listitem>
+     <para>
+      The <literal>CHECK</> clause specifies an expression producing a
+      Boolean result which each row in the foreign table is expected
+      to satisfy; that is, the expression should produce TRUE or UNKNOWN,
+      never FALSE, for all rows in the foreign table.
+      A check constraint specified as a column constraint should
+      reference that column's value only, while an expression
+      appearing in a table constraint can reference multiple columns.
+     </para>
+
+     <para>
+      Currently, <literal>CHECK</literal> expressions cannot contain
+      subqueries nor refer to variables other than columns of the
+      current row.  The system column <literal>tableoid</literal>
+      may be referenced, but not any other system column.
+     </para>
+
+     <para>
+      A constraint marked with <literal>NO INHERIT</> will not propagate to
+      child tables.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DEFAULT
+    <replaceable>default_expr</replaceable></literal></term>
+    <listitem>
+     <para>
+      The <literal>DEFAULT</> clause assigns a default data value for
+      the column whose column definition it appears within.  The value
+      is any variable-free expression (subqueries and cross-references
+      to other columns in the current table are not allowed).  The
+      data type of the default expression must match the data type of the
+      column.
+     </para>
+
+     <para>
+      The default expression will be used in any insert operation that
+      does not specify a value for the column.  If there is no default
+      for a column, then the default is null.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">server_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing foreign server to use for the foreign table.
+      For details on defining a server, see <xref
+      linkend="SQL-CREATESERVER">.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OPTIONS ( <replaceable class="PARAMETER">option</replaceable> '<replaceable class="PARAMETER">value</replaceable>' [, ...] )</literal></term>
+    <listitem>
+     <para>
+      Options to be associated with the new foreign table or one of its
+      columns.
+      The allowed option names and values are specific to each foreign
+      data wrapper and are validated using the foreign-data wrapper's
+      validator function.  Duplicate option names are not allowed (although
+      it's OK for a table option and a column option to have the same name).
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    Constraints on foreign tables (such as <literal>CHECK</>
+    or <literal>NOT NULL</> clauses) are not enforced by the
+    core <productname>PostgreSQL</> system, and most foreign data wrappers
+    do not attempt to enforce them either; that is, the constraint is
+    simply assumed to hold true.  There would be little point in such
+    enforcement since it would only apply to rows inserted or updated via
+    the foreign table, and not to rows modified by other means, such as
+    directly on the remote server.  Instead, a constraint attached to a
+    foreign table should represent a constraint that is being enforced by
+    the remote server.
+   </para>
+
+   <para>
+    Some special-purpose foreign data wrappers might be the only access
+    mechanism for the data they access, and in that case it might be
+    appropriate for the foreign data wrapper itself to perform constraint
+    enforcement.  But you should not assume that a wrapper does that
+    unless its documentation says so.
+   </para>
+
+   <para>
+    Although <productname>PostgreSQL</> does not attempt to enforce
+    constraints on foreign tables, it does assume that they are correct
+    for purposes of query optimization.  If there are rows visible in the
+    foreign table that do not satisfy a declared constraint, queries on
+    the table might produce incorrect answers.  It is the user's
+    responsibility to ensure that the constraint definition matches
+    reality.
+   </para>
+ </refsect1>
+
+ <refsect1 id="SQL-CREATEFOREIGNTABLE-examples">
+  <title>Examples</title>
+
+  <para>
+   Create foreign table <structname>films</>, which will be accessed through
+   the server <structname>film_server</>:
+
+<programlisting>
+CREATE FOREIGN TABLE films (
+    code        char(5) NOT NULL,
+    title       varchar(40) NOT NULL,
+    did         integer NOT NULL,
+    date_prod   date,
+    kind        varchar(10),
+    len         interval hour to minute
+)
+SERVER film_server;
+</programlisting></para>
+
+  <para>
+   Create foreign table <structname>measurement_y2016m07</>, which will be
+   accessed through the server <structname>server_07</>, as a partition
+   of the range partitioned table <structname>measurement</>:
+
+<programlisting>
+CREATE FOREIGN TABLE measurement_y2016m07
+    PARTITION OF measurement FOR VALUES FROM ('2016-07-01') TO ('2016-08-01')
+    SERVER server_07;
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1 id="SQL-CREATEFOREIGNTABLE-compatibility">
+  <title id="SQL-CREATEFOREIGNTABLE-compatibility-title">Compatibility</title>
+
+  <para>
+   The <command>CREATE FOREIGN TABLE</command> command largely conforms to the
+   <acronym>SQL</acronym> standard; however, much as with
+   <link linkend="sql-createtable"><command>CREATE TABLE</></link>,
+   <literal>NULL</> constraints and zero-column foreign tables are permitted.
+   The ability to specify column default values is also
+   a <productname>PostgreSQL</> extension.  Table inheritance, in the form
+   defined by <productname>PostgreSQL</productname>, is nonstandard.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterforeigntable"></member>
+   <member><xref linkend="sql-dropforeigntable"></member>
+   <member><xref linkend="sql-createtable"></member>
+   <member><xref linkend="sql-createserver"></member>
+   <member><xref linkend="sql-importforeignschema"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

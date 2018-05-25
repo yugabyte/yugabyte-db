@@ -1,0 +1,132 @@
+<!--
+doc/src/sgml/ref/alter_trigger.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-ALTERTRIGGER">
+ <indexterm zone="sql-altertrigger">
+  <primary>ALTER TRIGGER</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER TRIGGER</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER TRIGGER</refname>
+  <refpurpose>change the definition of a trigger</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER TRIGGER <replaceable class="PARAMETER">name</replaceable> ON <replaceable class="PARAMETER">table_name</replaceable> RENAME TO <replaceable class="PARAMETER">new_name</replaceable>
+ALTER TRIGGER <replaceable class="PARAMETER">name</replaceable> ON <replaceable class="PARAMETER">table_name</replaceable> DEPENDS ON EXTENSION <replaceable class="PARAMETER">extension_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER TRIGGER</command> changes properties of an existing
+   trigger.  The <literal>RENAME</literal> clause changes the name of
+   the given trigger without otherwise changing the trigger
+   definition.  The <literal>DEPENDS ON EXTENSION</literal> clause marks
+   the trigger as dependent on an extension, such that if the extension is
+   dropped, the trigger will automatically be dropped as well.
+  </para>
+
+  <para>
+   You must own the table on which the trigger acts to be allowed to change its properties.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="PARAMETER">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing trigger to alter.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the table on which this trigger acts.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the trigger.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">extension_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the extension that the trigger is to depend on.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    The ability to temporarily enable or disable a trigger is provided by
+    <xref linkend="SQL-ALTERTABLE">, not by
+    <command>ALTER TRIGGER</>, because <command>ALTER TRIGGER</> has no
+    convenient way to express the option of enabling or disabling all of
+    a table's triggers at once.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To rename an existing trigger:
+<programlisting>
+ALTER TRIGGER emp_stamp ON emp RENAME TO emp_track_chgs;
+</programlisting></para>
+
+  <para>
+   To mark a trigger as being dependent on an extension:
+<programlisting>
+ALTER TRIGGER emp_stamp ON emp DEPENDS ON EXTENSION emplib;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER TRIGGER</command> is a <productname>PostgreSQL</>
+   extension of the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-altertable"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

@@ -1,0 +1,133 @@
+<!--
+doc/src/sgml/ref/unlisten.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="SQL-UNLISTEN">
+ <indexterm zone="sql-unlisten">
+  <primary>UNLISTEN</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>UNLISTEN</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>UNLISTEN</refname>
+  <refpurpose>stop listening for a notification</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+UNLISTEN { <replaceable class="PARAMETER">channel</replaceable> | * }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>UNLISTEN</command> is used to remove an existing
+   registration for <command>NOTIFY</command> events.
+   <command>UNLISTEN</command> cancels any existing registration of
+   the current <productname>PostgreSQL</productname> session as a
+   listener on the notification channel named <replaceable
+   class="PARAMETER">channel</replaceable>.  The special wildcard
+   <literal>*</literal> cancels all listener registrations for the
+   current session.
+  </para>
+
+  <para>
+   <xref linkend="sql-notify">
+   contains a more extensive
+   discussion of the use of <command>LISTEN</command> and
+   <command>NOTIFY</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="PARAMETER">channel</replaceable></term>
+    <listitem>
+     <para>
+      Name of a notification channel (any identifier).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>*</literal></term>
+    <listitem>
+     <para>
+      All current listen registrations for this session are cleared.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   You can unlisten something you were not listening for; no warning or error
+   will appear.
+  </para>
+
+  <para>
+   At the end of each session, <command>UNLISTEN *</command> is
+   automatically executed.
+  </para>
+
+  <para>
+   A transaction that has executed <command>UNLISTEN</command> cannot be
+   prepared for two-phase commit.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To make a registration:
+
+<programlisting>
+LISTEN virtual;
+NOTIFY virtual;
+Asynchronous notification "virtual" received from server process with PID 8448.
+</programlisting>
+  </para>
+
+  <para>
+   Once <command>UNLISTEN</> has been executed, further <command>NOTIFY</>
+   messages will be ignored:
+
+<programlisting>
+UNLISTEN virtual;
+NOTIFY virtual;
+-- no NOTIFY event is received
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>UNLISTEN</command> command in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-listen"></member>
+   <member><xref linkend="sql-notify"></member>
+  </simplelist>
+ </refsect1>
+</refentry>

@@ -1,0 +1,133 @@
+CREATE TABLE ttable1 OF nothing;
+ERROR:  type "nothing" does not exist
+CREATE TYPE person_type AS (id int, name text);
+CREATE TABLE persons OF person_type;
+CREATE TABLE IF NOT EXISTS persons OF person_type;
+NOTICE:  relation "persons" already exists, skipping
+SELECT * FROM persons;
+ id | name 
+----+------
+(0 rows)
+
+\d persons
+              Table "public.persons"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ name   | text    |           |          | 
+Typed table of type: person_type
+
+CREATE FUNCTION get_all_persons() RETURNS SETOF person_type
+LANGUAGE SQL
+AS $$
+    SELECT * FROM persons;
+$$;
+SELECT * FROM get_all_persons();
+ id | name 
+----+------
+(0 rows)
+
+-- certain ALTER TABLE operations on typed tables are not allowed
+ALTER TABLE persons ADD COLUMN comment text;
+ERROR:  cannot add column to typed table
+ALTER TABLE persons DROP COLUMN name;
+ERROR:  cannot drop column from typed table
+ALTER TABLE persons RENAME COLUMN id TO num;
+ERROR:  cannot rename column of typed table
+ALTER TABLE persons ALTER COLUMN name TYPE varchar;
+ERROR:  cannot alter column type of typed table
+CREATE TABLE stuff (id int);
+ALTER TABLE persons INHERIT stuff;
+ERROR:  cannot change inheritance of typed table
+CREATE TABLE personsx OF person_type (myname WITH OPTIONS NOT NULL); -- error
+ERROR:  column "myname" does not exist
+CREATE TABLE persons2 OF person_type (
+    id WITH OPTIONS PRIMARY KEY,
+    UNIQUE (name)
+);
+\d persons2
+              Table "public.persons2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ name   | text    |           |          | 
+Indexes:
+    "persons2_pkey" PRIMARY KEY, btree (id)
+    "persons2_name_key" UNIQUE CONSTRAINT, btree (name)
+Typed table of type: person_type
+
+CREATE TABLE persons3 OF person_type (
+    PRIMARY KEY (id),
+    name WITH OPTIONS DEFAULT ''
+);
+\d persons3
+              Table "public.persons3"
+ Column |  Type   | Collation | Nullable | Default  
+--------+---------+-----------+----------+----------
+ id     | integer |           | not null | 
+ name   | text    |           |          | ''::text
+Indexes:
+    "persons3_pkey" PRIMARY KEY, btree (id)
+Typed table of type: person_type
+
+CREATE TABLE persons4 OF person_type (
+    name WITH OPTIONS NOT NULL,
+    name WITH OPTIONS DEFAULT ''  -- error, specified more than once
+);
+ERROR:  column "name" specified more than once
+DROP TYPE person_type RESTRICT;
+ERROR:  cannot drop type person_type because other objects depend on it
+DETAIL:  table persons depends on type person_type
+function get_all_persons() depends on type person_type
+table persons2 depends on type person_type
+table persons3 depends on type person_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE person_type CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table persons
+drop cascades to function get_all_persons()
+drop cascades to table persons2
+drop cascades to table persons3
+CREATE TABLE persons5 OF stuff; -- only CREATE TYPE AS types may be used
+ERROR:  type stuff is not a composite type
+DROP TABLE stuff;
+-- implicit casting
+CREATE TYPE person_type AS (id int, name text);
+CREATE TABLE persons OF person_type;
+INSERT INTO persons VALUES (1, 'test');
+CREATE FUNCTION namelen(person_type) RETURNS int LANGUAGE SQL AS $$ SELECT length($1.name) $$;
+SELECT id, namelen(persons) FROM persons;
+ id | namelen 
+----+---------
+  1 |       4
+(1 row)
+
+CREATE TABLE persons2 OF person_type (
+    id WITH OPTIONS PRIMARY KEY,
+    UNIQUE (name)
+);
+\d persons2
+              Table "public.persons2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ name   | text    |           |          | 
+Indexes:
+    "persons2_pkey" PRIMARY KEY, btree (id)
+    "persons2_name_key" UNIQUE CONSTRAINT, btree (name)
+Typed table of type: person_type
+
+CREATE TABLE persons3 OF person_type (
+    PRIMARY KEY (id),
+    name NOT NULL DEFAULT ''
+);
+\d persons3
+              Table "public.persons3"
+ Column |  Type   | Collation | Nullable | Default  
+--------+---------+-----------+----------+----------
+ id     | integer |           | not null | 
+ name   | text    |           | not null | ''::text
+Indexes:
+    "persons3_pkey" PRIMARY KEY, btree (id)
+Typed table of type: person_type
+

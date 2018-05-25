@@ -1,0 +1,336 @@
+<!-- doc/src/sgml/geqo.sgml -->
+
+ <chapter id="geqo">
+  <title>Genetic Query Optimizer</title>
+
+  <para>
+   <note>
+    <title>Author</title>
+    <para>
+     Written by Martin Utesch (<email>utesch@aut.tu-freiberg.de</email>)
+     for the Institute of Automatic Control at the University of Mining and Technology in Freiberg, Germany.
+    </para>
+   </note>
+  </para>
+
+  <sect1 id="geqo-intro">
+   <title>Query Handling as a Complex Optimization Problem</title>
+
+   <para>
+    Among all relational operators the most difficult one to process
+    and optimize is the <firstterm>join</firstterm>. The number of
+    possible query plans grows exponentially with the
+    number of joins in the query. Further optimization effort is
+    caused by the support of a variety of <firstterm>join
+    methods</firstterm> (e.g., nested loop, hash join, merge join in
+    <productname>PostgreSQL</productname>) to process individual joins
+    and a diversity of <firstterm>indexes</firstterm> (e.g.,
+    B-tree, hash, GiST and GIN in <productname>PostgreSQL</productname>) as
+    access paths for relations.
+   </para>
+
+   <para>
+    The normal <productname>PostgreSQL</productname> query optimizer
+    performs a <firstterm>near-exhaustive search</firstterm> over the
+    space of alternative strategies. This algorithm, first introduced
+    in IBM's System R database, produces a near-optimal join order,
+    but can take an enormous amount of time and memory space when the
+    number of joins in the query grows large. This makes the ordinary
+    <productname>PostgreSQL</productname> query optimizer
+    inappropriate for queries that join a large number of tables.
+   </para>
+
+   <para>
+    The Institute of Automatic Control at the University of Mining and
+    Technology, in Freiberg, Germany, encountered some problems when
+    it wanted to use <productname>PostgreSQL</productname> as the
+    backend for a decision support knowledge based system for the
+    maintenance of an electrical power grid. The DBMS needed to handle
+    large join queries for the inference machine of the knowledge
+    based system. The number of joins in these queries made using the
+    normal query optimizer infeasible.
+   </para>
+
+   <para>
+    In the following we describe the implementation of a
+    <firstterm>genetic algorithm</firstterm> to solve the join
+    ordering problem in a manner that is efficient for queries
+    involving large numbers of joins.
+   </para>
+  </sect1>
+
+  <sect1 id="geqo-intro2">
+   <title>Genetic Algorithms</title>
+
+   <para>
+    The genetic algorithm (<acronym>GA</acronym>) is a heuristic optimization method which
+    operates through randomized search. The set of possible solutions for the
+    optimization problem is considered as a
+    <firstterm>population</firstterm> of <firstterm>individuals</firstterm>.
+    The degree of adaptation of an individual to its environment is specified
+    by its <firstterm>fitness</firstterm>.
+   </para>
+
+   <para>
+    The coordinates of an individual in the search space are represented
+    by <firstterm>chromosomes</firstterm>, in essence a set of character
+    strings. A <firstterm>gene</firstterm> is a
+    subsection of a chromosome which encodes the value of a single parameter
+    being optimized. Typical encodings for a gene could be <firstterm>binary</firstterm> or
+    <firstterm>integer</firstterm>.
+   </para>
+
+   <para>
+    Through simulation of the evolutionary operations <firstterm>recombination</firstterm>,
+    <firstterm>mutation</firstterm>, and
+    <firstterm>selection</firstterm> new generations of search points are found
+    that show a higher average fitness than their ancestors.
+   </para>
+
+   <para>
+    According to the <systemitem class="resource">comp.ai.genetic</> <acronym>FAQ</acronym> it cannot be stressed too
+    strongly that a <acronym>GA</acronym> is not a pure random search for a solution to a
+    problem. A <acronym>GA</acronym> uses stochastic processes, but the result is distinctly
+    non-random (better than random).
+   </para>
+
+   <figure id="geqo-diagram">
+    <title>Structured Diagram of a Genetic Algorithm</title>
+
+    <informaltable frame="none">
+     <tgroup cols="2">
+      <tbody>
+       <row>
+        <entry>P(t)</entry>
+        <entry>generation of ancestors at a time t</entry>
+       </row>
+
+       <row>
+        <entry>P''(t)</entry>
+        <entry>generation of descendants at a time t</entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </informaltable>
+
+<literallayout class="monospaced">
++=========================================+
+|&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;  Algorithm GA  &lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;|
++=========================================+
+| INITIALIZE t := 0                       |
++=========================================+
+| INITIALIZE P(t)                         |
++=========================================+
+| evaluate FITNESS of P(t)                |
++=========================================+
+| while not STOPPING CRITERION do         |
+|   +-------------------------------------+
+|   | P'(t)  := RECOMBINATION{P(t)}       |
+|   +-------------------------------------+
+|   | P''(t) := MUTATION{P'(t)}           |
+|   +-------------------------------------+
+|   | P(t+1) := SELECTION{P''(t) + P(t)}  |
+|   +-------------------------------------+
+|   | evaluate FITNESS of P''(t)          |
+|   +-------------------------------------+
+|   | t := t + 1                          |
++===+=====================================+
+</literallayout>
+   </figure>
+  </sect1>
+
+  <sect1 id="geqo-pg-intro">
+   <title>Genetic Query Optimization (<acronym>GEQO</acronym>) in PostgreSQL</title>
+
+   <para>
+    The <acronym>GEQO</acronym> module approaches the query
+    optimization problem as though it were the well-known traveling salesman
+    problem (<acronym>TSP</acronym>).
+    Possible query plans are encoded as integer strings. Each string
+    represents the join order from one relation of the query to the next.
+    For example, the join tree
+<literallayout class="monospaced">
+   /\
+  /\ 2
+ /\ 3
+4  1
+</literallayout>
+    is encoded by the integer string '4-1-3-2',
+    which means, first join relation '4' and '1', then '3', and
+    then '2', where 1, 2, 3, 4 are relation IDs within the
+    <productname>PostgreSQL</productname> optimizer.
+   </para>
+
+   <para>
+    Specific characteristics of the <acronym>GEQO</acronym>
+    implementation in <productname>PostgreSQL</productname>
+    are:
+
+    <itemizedlist spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       Usage of a <firstterm>steady state</firstterm> <acronym>GA</acronym> (replacement of the least fit
+       individuals in a population, not whole-generational replacement)
+       allows fast convergence towards improved query plans. This is
+       essential for query handling with reasonable time;
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Usage of <firstterm>edge recombination crossover</firstterm>
+       which is especially suited to keep edge losses low for the
+       solution of the <acronym>TSP</acronym> by means of a
+       <acronym>GA</acronym>;
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Mutation as genetic operator is deprecated so that no repair
+       mechanisms are needed to generate legal <acronym>TSP</acronym> tours.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    Parts of the <acronym>GEQO</acronym> module are adapted from D. Whitley's
+    Genitor algorithm.
+   </para>
+
+   <para>
+    The <acronym>GEQO</acronym> module allows
+    the <productname>PostgreSQL</productname> query optimizer to
+    support large join queries effectively through
+    non-exhaustive search.
+   </para>
+
+  <sect2>
+   <title>Generating Possible Plans with <acronym>GEQO</acronym></title>
+
+   <para>
+    The <acronym>GEQO</acronym> planning process uses the standard planner
+    code to generate plans for scans of individual relations.  Then join
+    plans are developed using the genetic approach.  As shown above, each
+    candidate join plan is represented by a sequence in which to join
+    the base relations.  In the initial stage, the <acronym>GEQO</acronym>
+    code simply generates some possible join sequences at random.  For each
+    join sequence considered, the standard planner code is invoked to
+    estimate the cost of performing the query using that join sequence.
+    (For each step of the join sequence, all three possible join strategies
+    are considered; and all the initially-determined relation scan plans
+    are available.  The estimated cost is the cheapest of these
+    possibilities.)  Join sequences with lower estimated cost are considered
+    <quote>more fit</> than those with higher cost.  The genetic algorithm
+    discards the least fit candidates.  Then new candidates are generated
+    by combining genes of more-fit candidates &mdash; that is, by using
+    randomly-chosen portions of known low-cost join sequences to create
+    new sequences for consideration.  This process is repeated until a
+    preset number of join sequences have been considered; then the best
+    one found at any time during the search is used to generate the finished
+    plan.
+   </para>
+
+   <para>
+    This process is inherently nondeterministic, because of the randomized
+    choices made during both the initial population selection and subsequent
+    <quote>mutation</> of the best candidates.  To avoid surprising changes
+    of the selected plan, each run of the GEQO algorithm restarts its
+    random number generator with the current <xref linkend="guc-geqo-seed">
+    parameter setting.  As long as <varname>geqo_seed</> and the other
+    GEQO parameters are kept fixed, the same plan will be generated for a
+    given query (and other planner inputs such as statistics).  To experiment
+    with different search paths, try changing <varname>geqo_seed</>.
+   </para>
+
+  </sect2>
+
+  <sect2 id="geqo-future">
+   <title>Future Implementation Tasks for
+    <productname>PostgreSQL</> <acronym>GEQO</acronym></title>
+
+     <para>
+      Work is still needed to improve the genetic algorithm parameter
+      settings.
+      In file <filename>src/backend/optimizer/geqo/geqo_main.c</filename>,
+      routines
+      <function>gimme_pool_size</function> and <function>gimme_number_generations</function>,
+      we have to find a compromise for the parameter settings
+      to satisfy two competing demands:
+      <itemizedlist spacing="compact">
+       <listitem>
+        <para>
+         Optimality of the query plan
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         Computing time
+        </para>
+       </listitem>
+      </itemizedlist>
+     </para>
+
+     <para>
+      In the current implementation, the fitness of each candidate join
+      sequence is estimated by running the standard planner's join selection
+      and cost estimation code from scratch.  To the extent that different
+      candidates use similar sub-sequences of joins, a great deal of work
+      will be repeated.  This could be made significantly faster by retaining
+      cost estimates for sub-joins.  The problem is to avoid expending
+      unreasonable amounts of memory on retaining that state.
+     </para>
+
+     <para>
+      At a more basic level, it is not clear that solving query optimization
+      with a GA algorithm designed for TSP is appropriate.  In the TSP case,
+      the cost associated with any substring (partial tour) is independent
+      of the rest of the tour, but this is certainly not true for query
+      optimization.  Thus it is questionable whether edge recombination
+      crossover is the most effective mutation procedure.
+     </para>
+
+   </sect2>
+  </sect1>
+
+ <sect1 id="geqo-biblio">
+  <title>Further Reading</title>
+
+  <para>
+   The following resources contain additional information about
+   genetic algorithms:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <ulink url="http://www.aip.de/~ast/EvolCompFAQ/">
+      The Hitch-Hiker's Guide to Evolutionary Computation</ulink>, (FAQ for <ulink
+      url="news://comp.ai.genetic"></ulink>)
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <ulink url="http://www.red3d.com/cwr/evolve.html">
+      Evolutionary Computation and its application to art and design</ulink>, by
+      Craig Reynolds
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <xref linkend="ELMA04">
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <xref linkend="FONG">
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+ </sect1>
+</chapter>

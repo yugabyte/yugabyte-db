@@ -1,0 +1,386 @@
+src/backend/access/gin/README
+
+Gin for PostgreSQL
+==================
+
+Gin was sponsored by jfg://networks (http://www.jfg-networks.com/)
+
+Gin stands for Generalized Inverted Index and should be considered as a genie,
+not a drink.
+
+Generalized means that the index does not know which operation it accelerates.
+It instead works with custom strategies, defined for specific data types (read
+"Index Method Strategies" in the PostgreSQL documentation). In that sense, Gin
+is similar to GiST and differs from btree indices, which have predefined,
+comparison-based operations.
+
+An inverted index is an index structure storing a set of (key, posting list)
+pairs, where 'posting list' is a set of heap rows in which the key occurs.
+(A text document would usually contain many keys.)  The primary goal of
+Gin indices is support for highly scalable, full-text search in PostgreSQL.
+
+A Gin index consists of a B-tree index constructed over key values,
+where each key is an element of some indexed items (element of array, lexeme
+for tsvector) and where each tuple in a leaf page contains either a pointer to
+a B-tree over item pointers (posting tree), or a simple list of item pointers
+(posting list) if the list is small enough.
+
+Note: There is no delete operation in the key (entry) tree. The reason for
+this is that in our experience, the set of distinct words in a large corpus
+changes very slowly.  This greatly simplifies the code and concurrency
+algorithms.
+
+Core PostgreSQL includes built-in Gin support for one-dimensional arrays
+(eg. integer[], text[]).  The following operations are available:
+
+  * contains: value_array @> query_array
+  * overlaps: value_array && query_array
+  * is contained by: value_array <@ query_array
+
+Synopsis
+--------
+
+=# create index txt_idx on aa using gin(a);
+
+Features
+--------
+
+  * Concurrency
+  * Write-Ahead Logging (WAL).  (Recoverability from crashes.)
+  * User-defined opclasses.  (The scheme is similar to GiST.)
+  * Optimized index creation (Makes use of maintenance_work_mem to accumulate
+    postings in memory.)
+  * Text search support via an opclass
+  * Soft upper limit on the returned results set using a GUC variable:
+    gin_fuzzy_search_limit
+
+Gin Fuzzy Limit
+---------------
+
+There are often situations when a full-text search returns a very large set of
+results.  Since reading tuples from the disk and sorting them could take a
+lot of time, this is unacceptable for production.  (Note that the search
+itself is very fast.)
+
+Such queries usually contain very frequent lexemes, so the results are not
+very helpful. To facilitate execution of such queries Gin has a configurable
+soft upper limit on the size of the returned set, determined by the
+'gin_fuzzy_search_limit' GUC variable.  This is set to 0 by default (no
+limit).
+
+If a non-zero search limit is set, then the returned set is a subset of the
+whole result set, chosen at random.
+
+"Soft" means that the actual number of returned results could differ
+from the specified limit, depending on the query and the quality of the
+system's random number generator.
+
+From experience, a value of 'gin_fuzzy_search_limit' in the thousands
+(eg. 5000-20000) works well.  This means that 'gin_fuzzy_search_limit' will
+have no effect for queries returning a result set with less tuples than this
+number.
+
+Index structure
+---------------
+
+The "items" that a GIN index indexes are composite values that contain
+zero or more "keys".  For example, an item might be an integer array, and
+then the keys would be the individual integer values.  The index actually
+stores and searches for the key values, not the items per se.  In the
+pg_opclass entry for a GIN opclass, the opcintype is the data type of the
+items, and the opckeytype is the data type of the keys.  GIN is optimized
+for cases where items contain many keys and the same key values appear
+in many different items.
+
+A GIN index contains a metapage, a btree of key entries, and possibly
+"posting tree" pages, which hold the overflow when a key entry acquires
+too many heap tuple pointers to fit in a btree page.  Additionally, if the
+fast-update feature is enabled, there can be "list pages" holding "pending"
+key entries that haven't yet been merged into the main btree.  The list
+pages have to be scanned linearly when doing a search, so the pending
+entries should be merged into the main btree before there get to be too
+many of them.  The advantage of the pending list is that bulk insertion of
+a few thousand entries can be much faster than retail insertion.  (The win
+comes mainly from not having to do multiple searches/insertions when the
+same key appears in multiple new heap tuples.)
+
+Key entries are nominally of the same IndexTuple format as used in other
+index types, but since a leaf key entry typically refers to multiple heap
+tuples, there are significant differences.  (See GinFormTuple, which works
+by building a "normal" index tuple and then modifying it.)  The points to
+know are:
+
+* In a single-column index, a key tuple just contains the key datum, but
+in a multi-column index, a key tuple contains the pair (column number,
+key datum) where the column number is stored as an int2.  This is needed
+to support different key data types in different columns.  This much of
+the tuple is built by index_form_tuple according to the usual rules.
+The column number (if present) can never be null, but the key datum can
+be, in which case a null bitmap is present as usual.  (As usual for index
+tuples, the size of the null bitmap is fixed at INDEX_MAX_KEYS.)
+
+* If the key datum is null (ie, IndexTupleHasNulls() is true), then
+just after the nominal index data (ie, at offset IndexInfoFindDataOffset
+or IndexInfoFindDataOffset + sizeof(int2)) there is a byte indicating
+the "category" of the null entry.  These are the possible categories:
+	1 = ordinary null key value extracted from an indexable item
+	2 = placeholder for zero-key indexable item
+	3 = placeholder for null indexable item
+Placeholder null entries are inserted into the index because otherwise
+there would be no index entry at all for an empty or null indexable item,
+which would mean that full index scans couldn't be done and various corner
+cases would give wrong answers.  The different categories of null entries
+are treated as distinct keys by the btree, but heap itempointers for the
+same category of null entry are merged into one index entry just as happens
+with ordinary key entries.
+
+* In a key entry at the btree leaf level, at the next SHORTALIGN boundary,
+there is a list of item pointers, in compressed format (see Posting List
+Compression section), pointing to the heap tuples for which the indexable
+items contain this key. This is called the "posting list".
+
+If the list would be too big for the index tuple to fit on an index page, the
+ItemPointers are pushed out to a separate posting page or pages, and none
+appear in the key entry itself.  The separate pages are called a "posting
+tree" (see below); Note that in either case, the ItemPointers associated with
+a key can easily be read out in sorted order; this is relied on by the scan
+algorithms.
+
+* The index tuple header fields of a leaf key entry are abused as follows:
+
+1) Posting list case:
+
+* ItemPointerGetBlockNumber(&itup->t_tid) contains the offset from index
+  tuple start to the posting list.
+  Access macros: GinGetPostingOffset(itup) / GinSetPostingOffset(itup,n)
+
+* ItemPointerGetOffsetNumber(&itup->t_tid) contains the number of elements
+  in the posting list (number of heap itempointers).
+  Access macros: GinGetNPosting(itup) / GinSetNPosting(itup,n)
+
+* If IndexTupleHasNulls(itup) is true, the null category byte can be
+  accessed/set with GinGetNullCategory(itup,gs) / GinSetNullCategory(itup,gs,c)
+
+* The posting list can be accessed with GinGetPosting(itup)
+
+* If GinITupIsCompressed(itup), the posting list is stored in compressed
+  format. Otherwise it is just an array of ItemPointers. New tuples are always
+  stored in compressed format, uncompressed items can be present if the
+  database was migrated from 9.3 or earlier version.
+
+2) Posting tree case:
+
+* ItemPointerGetBlockNumber(&itup->t_tid) contains the index block number
+  of the root of the posting tree.
+  Access macros: GinGetPostingTree(itup) / GinSetPostingTree(itup, blkno)
+
+* ItemPointerGetOffsetNumber(&itup->t_tid) contains the magic number
+  GIN_TREE_POSTING, which distinguishes this from the posting-list case
+  (it's large enough that that many heap itempointers couldn't possibly
+  fit on an index page).  This value is inserted automatically by the
+  GinSetPostingTree macro.
+
+* If IndexTupleHasNulls(itup) is true, the null category byte can be
+  accessed/set with GinGetNullCategory(itup,gs) / GinSetNullCategory(itup,gs,c)
+
+* The posting list is not present and must not be accessed.
+
+Use the macro GinIsPostingTree(itup) to determine which case applies.
+
+In both cases, itup->t_info & INDEX_SIZE_MASK contains actual total size of
+tuple, and the INDEX_VAR_MASK and INDEX_NULL_MASK bits have their normal
+meanings as set by index_form_tuple.
+
+Index tuples in non-leaf levels of the btree contain the optional column
+number, key datum, and null category byte as above.  They do not contain
+a posting list.  ItemPointerGetBlockNumber(&itup->t_tid) is the downlink
+to the next lower btree level, and ItemPointerGetOffsetNumber(&itup->t_tid)
+is InvalidOffsetNumber.  Use the access macros GinGetDownlink/GinSetDownlink
+to get/set the downlink.
+
+Index entries that appear in "pending list" pages work a tad differently as
+well.  The optional column number, key datum, and null category byte are as
+for other GIN index entries.  However, there is always exactly one heap
+itempointer associated with a pending entry, and it is stored in the t_tid
+header field just as in non-GIN indexes.  There is no posting list.
+Furthermore, the code that searches the pending list assumes that all
+entries for a given heap tuple appear consecutively in the pending list and
+are sorted by the column-number-plus-key-datum.  The GIN_LIST_FULLROW page
+flag bit tells whether entries for a given heap tuple are spread across
+multiple pending-list pages.  If GIN_LIST_FULLROW is set, the page contains
+all the entries for one or more heap tuples.  If GIN_LIST_FULLROW is clear,
+the page contains entries for only one heap tuple, *and* they are not all
+the entries for that tuple.  (Thus, a heap tuple whose entries do not all
+fit on one pending-list page must have those pages to itself, even if this
+results in wasting much of the space on the preceding page and the last
+page for the tuple.)
+
+Posting tree
+------------
+
+If a posting list is too large to store in-line in a key entry, a posting tree
+is created. A posting tree is a B-tree structure, where the ItemPointer is
+used as the key.
+
+Internal posting tree pages use the standard PageHeader and the same "opaque"
+struct as other GIN page, but do not contain regular index tuples. Instead,
+the contents of the page is an array of PostingItem structs. Each PostingItem
+consists of the block number of the child page, and the right bound of that
+child page, as an ItemPointer. The right bound of the page is stored right
+after the page header, before the PostingItem array.
+
+Posting tree leaf pages also use the standard PageHeader and opaque struct,
+and the right bound of the page is stored right after the page header, but
+the page content comprises of a number of compressed posting lists. The
+compressed posting lists are stored one after each other, between page header
+and pd_lower. The space between pd_lower and pd_upper is unused, which allows
+full-page images of posting tree leaf pages to skip the unused space in middle
+(buffer_std = true in XLogRecData).
+
+The item pointers are stored in a number of independent compressed posting
+lists (also called segments), instead of one big one, to make random access
+to a given item pointer faster: to find an item in a compressed list, you
+have to read the list from the beginning, but when the items are split into
+multiple lists, you can first skip over to the list containing the item you're
+looking for, and read only that segment. Also, an update only needs to
+re-encode the affected segment.
+
+Posting List Compression
+------------------------
+
+To fit as many item pointers on a page as possible, posting tree leaf pages
+and posting lists stored inline in entry tree leaf tuples use a lightweight
+form of compression. We take advantage of the fact that the item pointers
+are stored in sorted order. Instead of storing the block and offset number of
+each item pointer separately, we store the difference from the previous item.
+That in itself doesn't do much, but it allows us to use so-called varbyte
+encoding to compress them.
+
+Varbyte encoding is a method to encode integers, allowing smaller numbers to
+take less space at the cost of larger numbers. Each integer is represented by
+variable number of bytes. High bit of each byte in varbyte encoding determines
+whether the next byte is still part of this number. Therefore, to read a single
+varbyte encoded number, you have to read bytes until you find a byte with the
+high bit not set.
+
+When encoding, the block and offset number forming the item pointer are
+combined into a single integer. The offset number is stored in the 11 low
+bits (see MaxHeapTuplesPerPageBits in ginpostinglist.c), and the block number
+is stored in the higher bits. That requires 43 bits in total, which
+conveniently fits in at most 6 bytes.
+
+A compressed posting list is passed around and stored on disk in a
+PackedPostingList struct. The first item in the list is stored uncompressed
+as a regular ItemPointerData, followed by the length of the list in bytes,
+followed by the packed items.
+
+Concurrency
+-----------
+
+The entry tree and each posting tree is a B-tree, with right-links connecting
+sibling pages at the same level. This is the same structure that is used in
+the regular B-tree indexam (invented by Lehman & Yao), but we don't support
+scanning a GIN trees backwards, so we don't need left-links.
+
+To avoid deadlocks, B-tree pages must always be locked in the same order:
+left to right, and bottom to top. When searching, the tree is traversed from
+top to bottom, so the lock on the parent page must be released before
+descending to the next level. Concurrent page splits move the keyspace to
+right, so after following a downlink, the page actually containing the key
+we're looking for might be somewhere to the right of the page we landed on.
+In that case, we follow the right-links until we find the page we're looking
+for.
+
+To delete a page, the page's left sibling, the target page, and its parent,
+are locked in that order, and the page is marked as deleted. However, a
+concurrent search might already have read a pointer to the page, and might be
+just about to follow it. A page can be reached via the right-link of its left
+sibling, or via its downlink in the parent.
+
+To prevent a backend from reaching a deleted page via a right-link, when
+following a right-link the lock on the previous page is not released until
+the lock on next page has been acquired.
+
+The downlink is more tricky. A search descending the tree must release the
+lock on the parent page before locking the child, or it could deadlock with
+a concurrent split of the child page; a page split locks the parent, while
+already holding a lock on the child page. However, posting trees are only
+fully searched from left to right, starting from the leftmost leaf. (The
+tree-structure is only needed by insertions, to quickly find the correct
+insert location). So as long as we don't delete the leftmost page on each
+level, a search can never follow a downlink to page that's about to be
+deleted.
+
+The previous paragraph's reasoning only applies to searches, and only to
+posting trees. To protect from inserters following a downlink to a deleted
+page, vacuum simply locks out all concurrent insertions to the posting tree,
+by holding a super-exclusive lock on the parent page of subtree with deletable
+pages. Inserters hold a pin on the root page, but searches do not, so while
+new searches cannot begin while root page is locked, any already-in-progress
+scans can continue concurrently with vacuum in corresponding subtree of
+posting tree. To exclude interference with readers vacuum takes exclusive
+locks in a depth-first scan in left-to-right order of page tuples. Leftmost
+page is never deleted. Thus before deleting any page we obtain exclusive
+lock on any left page, effectively excluding deadlock with any reader, despite
+taking parent lock before current and left lock after current. We take left
+lock not for a concurrency reasons, but rather in need to mark page dirty.
+In the entry tree, we never delete pages.
+
+(This is quite different from the mechanism the btree indexam uses to make
+page-deletions safe; it stamps the deleted pages with an XID and keeps the
+deleted pages around with the right-link intact until all concurrent scans
+have finished.)
+
+Compatibility
+-------------
+
+Compression of TIDs was introduced in 9.4. Some GIN indexes could remain in
+uncompressed format because of pg_upgrade from 9.3 or earlier versions.
+For compatibility, old uncompressed format is also supported. Following
+rules are used to handle it:
+
+* GIN_ITUP_COMPRESSED flag marks index tuples that contain a posting list.
+This flag is stored in high bit of ItemPointerGetBlockNumber(&itup->t_tid).
+Use GinItupIsCompressed(itup) to check the flag.
+
+* Posting tree pages in the new format are marked with the GIN_COMPRESSED flag.
+  Macros GinPageIsCompressed(page) and GinPageSetCompressed(page) are used to
+  check and set this flag.
+
+* All scan operations check format of posting list add use corresponding code
+to read its content.
+
+* When updating an index tuple containing an uncompressed posting list, it
+will be replaced with new index tuple containing a compressed list.
+
+* When updating an uncompressed posting tree leaf page, it's compressed.
+
+* If vacuum finds some dead TIDs in uncompressed posting lists, they are
+converted into compressed posting lists. This assumes that the compressed
+posting list fits in the space occupied by the uncompressed list. IOW, we
+assume that the compressed version of the page, with the dead items removed,
+takes less space than the old uncompressed version.
+
+Limitations
+-----------
+
+  * Gin doesn't use scan->kill_prior_tuple & scan->ignore_killed_tuples
+  * Gin searches entries only by equality matching, or simple range
+    matching using the "partial match" feature.
+
+TODO
+----
+
+Nearest future:
+
+  * Opclasses for more types (no programming, just many catalog changes)
+
+Distant future:
+
+  * Replace B-tree of entries to something like GiST
+
+Authors
+-------
+
+Original work was done by Teodor Sigaev (teodor@sigaev.ru) and Oleg Bartunov
+(oleg@sai.msu.su).

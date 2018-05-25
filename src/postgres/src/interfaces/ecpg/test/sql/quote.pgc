@@ -1,0 +1,61 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+EXEC SQL INCLUDE ../regression;
+
+int main() {
+  EXEC SQL BEGIN DECLARE SECTION;
+    char var[25];
+    int i;
+  EXEC SQL END DECLARE SECTION;
+
+  ECPGdebug(1, stderr);
+  EXEC SQL CONNECT TO REGRESSDB1;
+
+  EXEC SQL SET AUTOCOMMIT TO ON;
+  EXEC SQL WHENEVER SQLWARNING SQLPRINT;
+  EXEC SQL WHENEVER SQLERROR SQLPRINT;
+
+  EXEC SQL CREATE TABLE "My_Table" ( Item1 int, Item2 text );
+
+  EXEC SQL SET standard_conforming_strings TO off;
+
+  EXEC SQL SHOW standard_conforming_strings INTO :var;
+  printf("Standard conforming strings: %s\n", var);
+
+  /* this is a\\b actually */
+  EXEC SQL INSERT INTO "My_Table" VALUES ( 1, 'a\\\\b' );
+  /* this is a\\b */
+  EXEC SQL INSERT INTO "My_Table" VALUES ( 1, E'a\\\\b' );
+
+  EXEC SQL SET standard_conforming_strings TO on;
+
+  EXEC SQL SHOW standard_conforming_strings INTO :var;
+  printf("Standard conforming strings: %s\n", var);
+
+  /* this is a\\\\b actually */
+  EXEC SQL INSERT INTO "My_Table" VALUES ( 2, 'a\\\\b' );
+  /* this is a\\b */
+  EXEC SQL INSERT INTO "My_Table" VALUES ( 2, E'a\\\\b' );
+
+  EXEC SQL BEGIN;
+  EXEC SQL DECLARE C CURSOR FOR SELECT * FROM "My_Table";
+
+  EXEC SQL OPEN C;
+
+  EXEC SQL WHENEVER NOT FOUND DO BREAK;
+
+  while (true)
+  {
+	EXEC SQL FETCH C INTO :i, :var;
+	printf("value: %d %s\n", i, var);
+  }
+
+  EXEC SQL ROLLBACK;
+  EXEC SQL DROP TABLE "My_Table";
+
+  EXEC SQL DISCONNECT ALL;
+
+  return 0;
+}
