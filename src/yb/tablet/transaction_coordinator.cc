@@ -81,14 +81,6 @@ std::chrono::microseconds GetTransactionTimeout() {
 
 namespace {
 
-void InvokeAbortCallback(const TransactionAbortCallback& callback,
-                         TransactionStatus status,
-                         HybridTime time = HybridTime::kInvalid) {
-  DCHECK((!time.is_valid()) || (status == TransactionStatus::COMMITTED))
-      << "Status: " << TransactionStatus_Name(status) << ", time: " << time;
-  callback(TransactionStatusResult{status, time});
-}
-
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
@@ -126,7 +118,14 @@ class TransactionState {
       : context_(*context),
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
-        last_touch_(last_touch) {}
+        last_touch_(last_touch) {
+  }
+
+  ~TransactionState() {
+    DCHECK(abort_waiters_.empty());
+    DCHECK(request_queue_.empty());
+    DCHECK(replicating_ == nullptr);
+  }
 
   // Id of transaction.
   const TransactionId& id() const {
@@ -197,10 +196,9 @@ class TransactionState {
     }
   }
 
-  // Clear all locks on this transaction.
-  // Currently there is only one lock, but user of this function should not care about that.
-  void ClearLocks(const Status& status) {
-    VLOG_WITH_PREFIX(1) << "ClearLocks";
+  // Clear requests of this transaction.
+  void ClearRequests(const Status& status) {
+    VLOG_WITH_PREFIX(1) << "ClearRequests: " << status;
     if (replicating_ != nullptr) {
       replicating_->completion_callback()->CompleteWithStatus(status);
       replicating_ = nullptr;
@@ -211,10 +209,7 @@ class TransactionState {
     }
     request_queue_.clear();
 
-    for (auto& waiter : abort_waiters_) {
-      waiter(status);
-    }
-    abort_waiters_.clear();
+    NotifyAbortWaiters(status);
   }
 
   CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
@@ -243,17 +238,16 @@ class TransactionState {
     return Status::OK();
   }
 
-  void Abort(TransactionAbortCallback callback, std::unique_lock<std::mutex>* lock) {
+  TransactionStatus Abort(TransactionAbortCallback* callback) {
     if (ShouldBeCommitted()) {
-      lock->unlock();
-      InvokeAbortCallback(callback, TransactionStatus::COMMITTED);
+      return TransactionStatus::COMMITTED;
     } else if (status_ == TransactionStatus::ABORTED) {
-      lock->unlock();
-      InvokeAbortCallback(callback, TransactionStatus::ABORTED);
+      return TransactionStatus::ABORTED;
     } else {
       CHECK_EQ(TransactionStatus::PENDING, status_);
-      abort_waiters_.emplace_back(std::move(callback));
+      abort_waiters_.emplace_back(std::move(*callback));
       Abort();
+      return TransactionStatus::PENDING;
     }
   }
 
@@ -438,10 +432,7 @@ class TransactionState {
 
     status_ = TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index();
-    for (auto& waiter : abort_waiters_) {
-      InvokeAbortCallback(waiter, status_);
-    }
-    abort_waiters_.clear();
+    NotifyAbortWaiters(TransactionStatusResult{status_});
     return Status::OK();
   }
 
@@ -455,6 +446,7 @@ class TransactionState {
     for (const auto& tablet : unnotified_tablets_) {
       context_.NotifyApplying({tablet, id_, commit_time_});
     }
+    NotifyAbortWaiters(TransactionStatusResult{TransactionStatus::COMMITTED});
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
@@ -489,6 +481,13 @@ class TransactionState {
       SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
     }
     return Status::OK();
+  }
+
+  void NotifyAbortWaiters(const Result<TransactionStatusResult>& result) {
+    for (auto& waiter : abort_waiters_) {
+      waiter(result);
+    }
+    abort_waiters_.clear();
   }
 
   TransactionStateContext& context_;
@@ -590,13 +589,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         lock.unlock();
-        InvokeAbortCallback(callback, TransactionStatus::ABORTED);
+        callback(TransactionStatusResult{TransactionStatus::ABORTED});
         return;
       }
       postponed_leader_actions_.leader = true;
-      managed_transactions_.modify(it, [&callback, &lock](TransactionState& transaction) {
-        transaction.Abort(std::move(callback), &lock);
-      });
+      auto status = Modify(it).Abort(&callback);
+      if (callback) {
+        callback(TransactionStatusResult{status});
+        return;
+      }
       actions.Swap(&postponed_leader_actions_);
     }
 
@@ -632,18 +633,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
       postponed_leader_actions_.leader = data.mode == ProcessingMode::LEADER;
-      auto it = get(*id, data.state.status(), data.hybrid_time);
+      auto it = GetTransaction(*id, data.state.status(), data.hybrid_time);
       if (it == managed_transactions_.end()) {
         return Status::OK();
       }
-      managed_transactions_.modify(
-          it, [&](TransactionState& ts) {
-            result = ts.ProcessReplicated(data);
-          });
-      if (it->Completed()) {
-        VLOG_WITH_PREFIX(1) << Format("Erase: $0", *it);
-        managed_transactions_.erase(it);
-      }
+      result = Modify(it).ProcessReplicated(data);
+      CheckCompleted(it);
       actions.Swap(&postponed_leader_actions_);
     }
     ExecutePostponedLeaderActions(&actions);
@@ -673,10 +668,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           it, [&](TransactionState& ts) {
             ts.ProcessAborted(data);
           });
-      if (it->Completed()) {
-        VLOG_WITH_PREFIX(1) << Format("Erase: $0", *it);
-        managed_transactions_.erase(it);
-      }
+      CheckCompleted(it);
       actions.Swap(&postponed_leader_actions_);
     }
     ExecutePostponedLeaderActions(&actions);
@@ -688,7 +680,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   void ClearLocks(const Status& status) {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     for (auto it = managed_transactions_.begin(); it != managed_transactions_.end(); ++it) {
-      managed_transactions_.modify(it, std::bind(&TransactionState::ClearLocks, _1, status));
+      managed_transactions_.modify(it, std::bind(&TransactionState::ClearRequests, _1, status));
     }
   }
 
@@ -716,7 +708,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
     PostponedLeaderActions actions;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::unique_lock<std::mutex> lock(managed_mutex_);
       postponed_leader_actions_.leader = true;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
@@ -724,6 +716,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           it = managed_transactions_.emplace(
               this, *id, context_.clock().Now(), log_prefix_).first;
         } else {
+          lock.unlock();
           LOG_WITH_PREFIX(WARNING) << "Request to unknown transaction " << id << ": "
                                    << state.ShortDebugString();
           request->completion_callback()->CompleteWithStatus(
@@ -732,9 +725,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
       }
 
-      managed_transactions_.modify(it, [&request](TransactionState& state) {
-        state.Handle(std::move(request));
-      });
+      Modify(it).Handle(std::move(request));
       postponed_leader_actions_.Swap(&actions);
     }
 
@@ -780,6 +771,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       >
   > ManagedTransactions;
 
+  static TransactionState& Modify(const ManagedTransactions::iterator& it) {
+    return const_cast<TransactionState&>(*it);
+  }
+
   void ExecutePostponedLeaderActions(PostponedLeaderActions* actions) {
     if (!actions->leader) {
       return;
@@ -820,9 +815,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
   }
 
-  ManagedTransactions::iterator get(const TransactionId& id,
-                                    TransactionStatus status,
-                                    HybridTime hybrid_time) {
+  ManagedTransactions::iterator GetTransaction(const TransactionId& id,
+                                               TransactionStatus status,
+                                               HybridTime hybrid_time) {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
@@ -847,7 +842,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.updates.push_back(std::move(state));
       return true;
     } else {
-      VLOG_WITH_PREFIX(1) << "Submit update transaction on non leader";
+      auto status = STATUS(IllegalState, "Submit update transaction on non leader");
+      VLOG_WITH_PREFIX(1) << status;
+      state->completion_callback()->CompleteWithStatus(status);
       return false;
     }
   }
@@ -898,6 +895,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       SchedulePoll();
     }
     ExecutePostponedLeaderActions(&actions);
+  }
+
+  void CheckCompleted(ManagedTransactions::iterator it) {
+    if (it->Completed()) {
+      auto status = STATUS_FORMAT(Aborted, "Transaction completed: $0", *it);
+      VLOG_WITH_PREFIX(1) << status;
+      Modify(it).ClearRequests(status);
+      managed_transactions_.erase(it);
+    }
   }
 
   TransactionCoordinatorContext& context_;

@@ -1386,6 +1386,10 @@ void YBSession::FlushAsync(boost::function<void(const Status&)> callback) {
   data_->FlushAsync(std::move(callback));
 }
 
+std::future<Status> YBSession::FlushFuture() {
+  return MakeFuture<Status>([this](auto callback) { this->FlushAsync(std::move(callback)); });
+}
+
 bool YBSession::HasPendingOperations() const {
   return data_->HasPendingOperations();
 }

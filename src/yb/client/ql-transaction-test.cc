@@ -747,13 +747,92 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 }
 
 TEST_F(QLTransactionTest, SimpleWriteConflict) {
-  google::FlagSaver flag_saver;
-
   auto transaction = CreateTransaction();
   WriteRows(CreateSession(transaction));
   WriteRows(CreateSession());
 
   ASSERT_NOK(transaction->CommitFuture().get());
+}
+
+TEST_F(QLTransactionTest, WriteConflicts) {
+  struct ActiveTransaction {
+    YBTransactionPtr transaction;
+    YBSessionPtr session;
+    std::future<Status> flush_future;
+    std::future<Status> commit_future;
+  };
+
+  constexpr size_t kActiveTransactions = 50;
+  constexpr auto kTestTime = 60s;
+  constexpr int kTotalKeys = 5;
+  std::vector<ActiveTransaction> active_transactions;
+
+  auto stop = std::chrono::steady_clock::now() + kTestTime;
+  int value = 0;
+  size_t tries = 0;
+  size_t written = 0;
+  size_t flushed = 0;
+  for (;;) {
+    auto expired = std::chrono::steady_clock::now() >= stop;
+    if (expired) {
+      if (active_transactions.empty()) {
+        break;
+      }
+      LOG(INFO) << "Time expired, remaining transactions: " << active_transactions.size();
+    }
+    while (!expired && active_transactions.size() < kActiveTransactions) {
+      auto key = RandomUniformInt(1, kTotalKeys);
+      ActiveTransaction active_txn;
+      active_txn.transaction = CreateTransaction();
+      active_txn.session = CreateSession(active_txn.transaction);
+      ASSERT_OK(active_txn.session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+      const auto op = table_.NewInsertOp();
+      auto* const req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      table_.AddInt32ColumnValue(req, kValueColumn, ++value);
+      ASSERT_OK(active_txn.session->Apply(op));
+      active_txn.flush_future = active_txn.session->FlushFuture();
+
+      ++tries;
+      active_transactions.push_back(std::move(active_txn));
+    }
+
+    auto w = active_transactions.begin();
+    for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
+      if (!i->commit_future.valid()) {
+        if (i->flush_future.wait_for(0s) == std::future_status::ready) {
+          auto flush_status = i->flush_future.get();
+          if (!flush_status.ok()) {
+            LOG(INFO) << "Flush failed: " << flush_status;
+            continue;
+          }
+          ++flushed;
+          i->commit_future = i->transaction->CommitFuture();
+        }
+      } else if (i->commit_future.wait_for(0s) == std::future_status::ready) {
+        auto commit_status = i->commit_future.get();
+        if (!commit_status.ok()) {
+          LOG(INFO) << "Commit failed: " << commit_status;
+          continue;
+        }
+        ++written;
+        continue;
+      }
+
+      if (w != i) {
+        *w = std::move(*i);
+      }
+      ++w;
+    }
+    active_transactions.erase(w, active_transactions.end());
+
+    std::this_thread::sleep_for(100ms);
+  }
+
+  ASSERT_GE(written, kTotalKeys);
+  ASSERT_GE(flushed, written);
+  ASSERT_GE(flushed, kActiveTransactions);
+  ASSERT_GE(tries, flushed);
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
