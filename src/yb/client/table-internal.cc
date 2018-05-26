@@ -41,6 +41,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 
 namespace yb {
@@ -96,6 +97,8 @@ Status YBTable::Data::Open() {
   req.mutable_table()->set_table_id(info_.table_id);
   req.set_require_tablets_running(true);
   Status s;
+
+  BackoffWaiter waiter(deadline.ToSteadyTimePoint(), std::chrono::seconds(1) /* max_wait */);
   // TODO: replace this with Async RPC-retrier based RPC in the next revision,
   // adding exponential backoff and allowing this to be used safely in a
   // a reactor thread.
@@ -104,11 +107,6 @@ Status YBTable::Data::Open() {
 
     // Have we already exceeded our deadline?
     MonoTime now = MonoTime::Now();
-    if (deadline.ComesBefore(now)) {
-      const char* msg = "OpenTable timed out after deadline expired";
-      LOG(ERROR) << msg;
-      return STATUS(TimedOut, msg);
-    }
 
     // See YBClient::Data::SyncLeaderMasterRpc().
     MonoTime rpc_deadline = now;
@@ -166,9 +164,7 @@ Status YBTable::Data::Open() {
     }
     if (!s.ok()) {
       LOG(WARNING) << "Error getting table locations: " << s.ToString() << ", retrying.";
-      continue;
-    }
-    if (resp.tablet_locations_size() > 0) {
+    } else if (resp.tablet_locations_size() > 0) {
       DCHECK(partitions_.empty());
       partitions_.clear();
       partitions_.reserve(resp.tablet_locations().size());
@@ -179,8 +175,11 @@ Status YBTable::Data::Open() {
       break;
     }
 
-    /* TODO: Use exponential backoff instead */
-    base::SleepForMilliseconds(100);
+    if (!waiter.Wait()) {
+      const char* msg = "OpenTable timed out";
+      LOG(ERROR) << msg;
+      return STATUS(TimedOut, msg);
+    }
   }
 
 
