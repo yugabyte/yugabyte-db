@@ -541,6 +541,7 @@ class YBTransaction::Impl final {
           ready_ = true;
           waiters_.swap(waiters);
         }
+        VLOG_WITH_PREFIX(1) << "Created, notifying waiters: " << waiters.size();
         for (const auto& waiter : waiters) {
           waiter(Status::OK());
         }

@@ -1027,6 +1027,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // For FlushAsync, 'cb' must remain valid until it is invoked.
   CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
   void FlushAsync(boost::function<void(const Status&)> callback);
+  std::future<Status> FlushFuture();
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
