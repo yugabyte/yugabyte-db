@@ -1,8 +1,20 @@
 Changelog
 =========
 
+(WIP) version 1.1.2:
+--------------------
+
+  **New features**
+
+    - Add support for INCLUDE on hypothetical indexes (pg11+)
+    - Add support for parallel hypothetical index scan (pg11+)
+
+  **Bug fixes:**
+
+    - Fix support for pg11, thanks to Christoph Berg for the report
+
 2018-03-20 version 1.1.1:
-------------------
+-------------------------
 
   **Bug fixes**:
 
@@ -10,7 +22,6 @@ Changelog
       report.
     - Support hypothetical indexes on materialized view, thanks to Andrew Kane
       for the report.
-
 
   **Miscellaneous**:
 
