@@ -108,7 +108,8 @@ typedef struct hypoEntry
 #endif
 
 	/* index descriptor informations */
-	int			ncolumns;		/* number of columns, only 1 for now */
+	int			ncolumns;		/* number of columns */
+	int			nkeycolumns;	/* number of key columns */
 	short int  *indexkeys;		/* attnums */
 	Oid		   *indexcollations;	/* OIDs of collations of index columns */
 	Oid		   *opfamily;		/* OIDs of operator families for columns */
@@ -180,7 +181,8 @@ PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 PG_FUNCTION_INFO_V1(hypopg_get_indexdef);
 
-static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns,
+static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int nkeycolumns,
+			  int ninccolumns,
 			  List *options);
 static Oid	hypo_getNewOid(Oid relid);
 static void hypo_addEntry(hypoEntry *entry);
@@ -288,7 +290,8 @@ _PG_fini(void)
  * valid.
  */
 static hypoEntry *
-hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
+hypo_newEntry(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
+		List *options)
 {
 	/* must be declared "volatile", because used in a PG_CATCH() */
 	hypoEntry  *volatile entry;
@@ -360,18 +363,18 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	ReleaseSysCache(tuple);
 	entry->indexname = palloc0(NAMEDATALEN);
 	/* palloc all arrays */
-	entry->indexkeys = palloc0(sizeof(short int) * ncolumns);
-	entry->indexcollations = palloc0(sizeof(Oid) * ncolumns);
-	entry->opfamily = palloc0(sizeof(Oid) * ncolumns);
-	entry->opclass = palloc0(sizeof(Oid) * ncolumns);
-	entry->opcintype = palloc0(sizeof(Oid) * ncolumns);
+	entry->indexkeys = palloc0(sizeof(short int) * (nkeycolumns + ninccolumns));
+	entry->indexcollations = palloc0(sizeof(Oid) * nkeycolumns);
+	entry->opfamily = palloc0(sizeof(Oid) * nkeycolumns);
+	entry->opclass = palloc0(sizeof(Oid) * nkeycolumns);
+	entry->opcintype = palloc0(sizeof(Oid) * nkeycolumns);
 	/* only palloc sort related fields if needed */
 	if ((entry->relam == BTREE_AM_OID) || (entry->amcanorder))
 	{
 		if (entry->relam != BTREE_AM_OID)
-			entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
-		entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
-		entry->nulls_first = palloc0(sizeof(bool) * ncolumns);
+			entry->sortopfamily = palloc0(sizeof(Oid) * nkeycolumns);
+		entry->reverse_sort = palloc0(sizeof(bool) * nkeycolumns);
+		entry->nulls_first = palloc0(sizeof(bool) * nkeycolumns);
 	}
 	else
 	{
@@ -380,7 +383,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 		entry->nulls_first = NULL;
 	}
 #if PG_VERSION_NUM >= 90500
-	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
+	entry->canreturn = palloc0(sizeof(bool) * (nkeycolumns + ninccolumns));
 #endif
 	entry->indexprs = NIL;
 	entry->indpred = NIL;
@@ -529,10 +532,10 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	Form_pg_attribute attform;
 	Oid			relid;
 	StringInfoData indexRelationName;
-	int			ncolumns;
+	int			nkeycolumns,
+				ninccolumns;
 	ListCell   *lc;
 	int			attn;
-
 
 	relid =
 		RangeVarGetRelid(node->relation, AccessShareLock, false);
@@ -540,16 +543,21 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	/* Run parse analysis ... */
 	node = transformIndexStmt(relid, node, queryString);
 
-	ncolumns = list_length(node->indexParams);
+	nkeycolumns = list_length(node->indexParams);
+#if PG_VERSION_NUM >= 110000
+	if (list_intersection(node->indexParams, node->indexIncludingParams) != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("hypopg: included columns must not intersect with key columns")));
 
-	if (ncolumns > INDEX_MAX_KEYS)
+	ninccolumns = list_length(node->indexIncludingParams);
+#else
+	ninccolumns = 0;
+#endif
+
+	if (nkeycolumns > INDEX_MAX_KEYS)
 		elog(ERROR, "hypopg: cannot use more thant %d columns in an index",
 			 INDEX_MAX_KEYS);
-
-#if PG_VERSION_NUM >= 110000
-	if (node->indexIncludingParams)
-		elog(ERROR, "hypopg: INCLUDE clause is not yet supported.");
-#endif
 
 	initStringInfo(&indexRelationName);
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
@@ -565,7 +573,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	appendStringInfo(&indexRelationName, "%s", node->relation->relname);
 
 	/* now create the hypothetical index entry */
-	entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
+	entry = hypo_newEntry(relid, node->accessMethod, nkeycolumns, ninccolumns,
 						  node->options);
 
 	PG_TRY();
@@ -578,14 +586,15 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				   errmsg("hypopg: access method \"%s\" does not support unique indexes",
 						  node->accessMethod)));
-		if (ncolumns > 1 && !entry->amcanmulticol)
+		if (nkeycolumns > 1 && !entry->amcanmulticol)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			  errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
 					 node->accessMethod)));
 
 		entry->unique = node->unique;
-		entry->ncolumns = ncolumns;
+		entry->ncolumns = nkeycolumns + ninccolumns;
+		entry->nkeycolumns = nkeycolumns;
 
 		/* handle predicate if present */
 		if (node->whereClause)
@@ -803,14 +812,14 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 			attn++;
 		}
-		Assert(attn == ncolumns);
+		Assert(attn == nkeycolumns);
 
 		/*
 		 * We disallow indexes on system columns other than OID.  They would
 		 * not necessarily get updated correctly, and they don't seem useful
 		 * anyway.
 		 */
-		for (attn = 0; attn < ncolumns; attn++)
+		for (attn = 0; attn < nkeycolumns; attn++)
 		{
 			AttrNumber	attno = entry->indexkeys[attn];
 
@@ -819,6 +828,76 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				   errmsg("hypopg: index creation on system columns is not supported")));
 		}
+
+#if PG_VERSION_NUM >= 110000
+		attn = nkeycolumns;
+		foreach(lc, node->indexIncludingParams)
+		{
+			IndexElem  *attribute = (IndexElem *) lfirst(lc);
+			Oid			atttype = InvalidOid;
+
+			appendStringInfo(&indexRelationName, "_");
+
+			/* Handle not supported features as in ComputeIndexAttrs() */
+			if (attribute->collation)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("hypopg: including column does not support a collation")));
+			if (attribute->opclass)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("hypopg: including column does not support an operator class")));
+			if (attribute->ordering != SORTBY_DEFAULT)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("hypopg: including column does not support ASC/DESC options")));
+			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("hypopg: including column does not support NULLS FIRST/LAST options")));
+
+			/*
+			 * Process the column-or-expression to be indexed.
+			 */
+			if (attribute->name != NULL)
+			{
+				/* Simple index attribute */
+				appendStringInfo(&indexRelationName, "%s", attribute->name);
+				/* get the attribute catalog info */
+				tuple = SearchSysCacheAttName(relid, attribute->name);
+
+				if (!HeapTupleIsValid(tuple))
+				{
+					elog(ERROR, "hypopg: column \"%s\" does not exist",
+						 attribute->name);
+				}
+				attform = (Form_pg_attribute) GETSTRUCT(tuple);
+
+				/* setup the attnum */
+				entry->indexkeys[attn] = attform->attnum;
+
+				/* get the atttype */
+				atttype = attform->atttypid;
+
+				ReleaseSysCache(tuple);
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("hypopg: expressions are not supported in included columns")));
+			}
+
+			ind_avg_width += hypo_estimate_index_colsize(entry, attn);
+
+			/* per-column IOS information */
+			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
+												  node->accessMethod);
+
+			attn++;
+		}
+		Assert(attn == (nkeycolumns + ninccolumns));
+#endif
 
 		/*
 		 * Also check for system columns used in expressions or predicates.
@@ -899,7 +978,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		 * type.  But given the lack of current or foreseeable amcanorder
 		 * index types, it's not worth expending more effort on now.
 		 */
-		for (attn = 0; attn < ncolumns; attn++)
+		for (attn = 0; attn < nkeycolumns; attn++)
 		{
 			Oid			ltopr;
 			Oid			btopfamily;
@@ -1140,6 +1219,12 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 {
 	IndexOptInfo *index;
 	int			ncolumns,
+				/*
+				 * For convenience and readability, use nkeycolumns even for
+				 * pg10- version.  In this case, this var will be initialized
+				 * to ncolumns
+				 */
+				nkeycolumns,
 				i;
 
 
@@ -1155,14 +1240,15 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	index->rel = rel;
 	index->ncolumns = ncolumns = entry->ncolumns;
 #if PG_VERSION_NUM >= 110000
-	/* FIXME change this when support for INCLUDE will be added */
-	index->nkeycolumns = ncolumns = entry->ncolumns;
+	index->nkeycolumns = nkeycolumns = entry->nkeycolumns;
+#else
+	nkeycolumns = ncolumns;
 #endif
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
+	index->indexcollations = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opfamily = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opcintype = (Oid *) palloc(sizeof(int) * nkeycolumns);
 
 #if PG_VERSION_NUM >= 90500
 	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
@@ -1171,10 +1257,10 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	if ((index->relam == BTREE_AM_OID) || entry->amcanorder)
 	{
 		if (index->relam != BTREE_AM_OID)
-			index->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+			index->sortopfamily = palloc0(sizeof(Oid) * nkeycolumns);
 
-		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+		index->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+		index->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
 	}
 	else
 	{
@@ -1186,12 +1272,16 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	for (i = 0; i < ncolumns; i++)
 	{
 		index->indexkeys[i] = entry->indexkeys[i];
-		index->indexcollations[i] = entry->indexcollations[i];
-		index->opfamily[i] = entry->opfamily[i];
-		index->opcintype[i] = entry->opcintype[i];
 #if PG_VERSION_NUM >= 90500
 		index->canreturn[i] = entry->canreturn[i];
 #endif
+	}
+
+	for (i = 0; i < nkeycolumns; i++)
+	{
+		index->opfamily[i] = entry->opfamily[i];
+		index->opcintype[i] = entry->opcintype[i];
+		index->indexcollations[i] = entry->indexcollations[i];
 	}
 
 	/*
@@ -1207,7 +1297,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		 */
 		index->sortopfamily = index->opfamily;
 
-		for (i = 0; i < ncolumns; i++)
+		for (i = 0; i < nkeycolumns; i++)
 		{
 			index->reverse_sort[i] = entry->reverse_sort[i];
 			index->nulls_first[i] = entry->nulls_first[i];
@@ -1217,7 +1307,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	{
 		if (entry->sortopfamily)
 		{
-			for (i = 0; i < ncolumns; i++)
+			for (i = 0; i < nkeycolumns; i++)
 			{
 				index->sortopfamily[i] = entry->sortopfamily[i];
 				index->reverse_sort[i] = entry->reverse_sort[i];
@@ -1634,7 +1724,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 	context = deparse_context_for(get_rel_name(entry->relid), entry->relid);
 
-	for (keyno=0; keyno<entry->ncolumns; keyno++)
+	for (keyno=0; keyno<entry->nkeycolumns; keyno++)
 	{
 		Oid			indcoll;
 		Oid			keycoltype;
@@ -1714,6 +1804,24 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	}
 
 	appendStringInfo(&buf, ")");
+
+#if PG_VERSION_NUM >= 110000
+	Assert(entry->ncolumns >= entry->nkeycolumns);
+
+	if (entry->ncolumns > entry->nkeycolumns)
+	{
+		appendStringInfo(&buf, " INCLUDE (");
+		for (keyno=entry->nkeycolumns; keyno<entry->ncolumns; keyno++)
+		{
+			if (keyno != entry->nkeycolumns)
+				appendStringInfo(&buf, ", ");
+
+			appendStringInfo(&buf, "%s", get_attname(entry->relid,
+						entry->indexkeys[keyno], false));
+		}
+		appendStringInfo(&buf, ")");
+	}
+#endif
 
 	if (entry->options)
 	{
@@ -1931,8 +2039,10 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		 * no NULL handling
 		 * fixed additional bloat: 20%
 		 *
-		 * I'll also need to read more carefully nbtree code to check if
-		 * this is accurate enough.
+		 * XXX For now there's no estimation of the non-leaf pages, and thus no
+		 * special handling of INCLUDE-d columns.  The extra space required by
+		 * non-leaf pages is approximatively included in the additional bloat
+		 * added.
 		 *
 		 */
 		line_size = ind_avg_width +
