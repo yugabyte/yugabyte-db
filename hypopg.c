@@ -546,6 +546,11 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		elog(ERROR, "hypopg: cannot use more thant %d columns in an index",
 			 INDEX_MAX_KEYS);
 
+#if PG_VERSION_NUM >= 110000
+	if (node->indexIncludingParams)
+		elog(ERROR, "hypopg: INCLUDE clause is not yet supported.");
+#endif
+
 	initStringInfo(&indexRelationName);
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
 	appendStringInfo(&indexRelationName, "_");
@@ -1149,6 +1154,10 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 												 * relation, TODO */
 	index->rel = rel;
 	index->ncolumns = ncolumns = entry->ncolumns;
+#if PG_VERSION_NUM >= 110000
+	/* FIXME change this when support for INCLUDE will be added */
+	index->nkeycolumns = ncolumns = entry->ncolumns;
+#endif
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
