@@ -145,6 +145,9 @@ typedef struct hypoEntry
 	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+#if PG_VERSION_NUM >= 110000
+	bool		amcanparallel;	/* does AM support parallel scan? */
+#endif
 	bool		amcanunique; /* does AM support UNIQUE indexes? */
 	bool		amcanmulticol; /* does AM support multi-column indexes? */
 
@@ -335,6 +338,9 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->amcanmulticol = amroutine->amcanmulticol;
 	amoptions = amroutine->amoptions;
 	entry->amcanorder = amroutine->amcanorder;
+#if PG_VERSION_NUM >= 110000
+	entry->amcanparallel = amroutine->amcanparallel;
+#endif
 #else
 	/* Up to 9.5, all information is available in the pg_am tuple */
 	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
@@ -1230,6 +1236,9 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	index->amsearchnulls = entry->amsearchnulls;
 	index->amhasgettuple = entry->amhasgettuple;
 	index->amhasgetbitmap = entry->amhasgetbitmap;
+#if PG_VERSION_NUM >= 110000
+	index->amcanparallel = entry->amcanparallel;
+#endif
 
 	/* these has already been handled in hypo_entry_store_parsetree() if any */
 	index->indexprs = list_copy(entry->indexprs);
