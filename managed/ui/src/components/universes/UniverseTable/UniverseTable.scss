@@ -10,7 +10,7 @@
 
 .universe-list-item {
   background-color: white;
-  border-radius: 4px;
+  border-radius: 7px !important;
   border: none;
   box-shadow: 0 1px 1px rgba(35, 35, 39, 0.05);
   color: $YB_TEXT_COLOR;
@@ -40,6 +40,7 @@ a:hover .universe-name-cell {
 
 .universe-list-item .list-group-item {
   margin: 0;
+  border-radius: 7px;
   margin-bottom: 20px;
   padding: 0;
   line-height: 1.3;

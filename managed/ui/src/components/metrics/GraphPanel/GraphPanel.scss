@@ -21,6 +21,7 @@
   border-top: none;
   background-color: #fff;
   border-radius: 0;
+  overflow: hidden;
   margin-bottom: 20px;
   &:last-child {
     margin-bottom: 0;
@@ -39,8 +40,8 @@
         color: $YB_VIOLET_TEXT;
 
         &:after {
-          top: 10px;
-          left: 14px;
+          top: 12px;
+          left: 13px;
           color: $YB_VIOLET;
         }
         &:hover {
@@ -55,8 +56,8 @@
       &:after {
         position: absolute;
         color: $YB_VIOLET_TEXT_LIGHT;
-        top: 8px;
-        left: 12px;
+        top: 9px;
+        left: 11px;
       }
       &:hover {
         background-color: darken($YB_VIOLET_TEXT, 2%);
