@@ -6,13 +6,29 @@
 
 .universe-display-item-container {
   height: 178px;
-  background-color: white;
   margin-bottom: 16px;
   padding: 12px 14px;
-  border-radius: 3px;
-  box-shadow: 0 1px 1px rgba(35, 35, 41, 0.1);
   color: $YB_TEXT_COLOR;
-  @include transition(0.125s);
+  position: relative;
+
+  &:before {
+    position: absolute;
+    content: "";
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    @include transition(0.125s);
+    background-color: white;
+    border-radius: 7px;
+    box-shadow: 0 1px 1px rgba(35, 35, 41, 0.1);
+  }
+
+  * {
+    position: relative;
+    z-index: 1;
+  }
 
   .universe-status {
     position: relative;
@@ -40,7 +56,6 @@
     font-weight: 400;
     color: $YB_TEXT_COLOR;
     opacity: 0.4;
-    top: -6px;
   }
 
   .status-icon {
@@ -77,17 +92,18 @@
   }
 }
 
-.create-universe-button,
-.universe-display-item-container {
-  @include transition(0.3s);
-}
 
 a:hover > {
-  .create-universe-button,
-  .universe-display-item-container {
-    transform: scale(1.02, 1.02);
-    transform-origin: 50% 50%;
-    box-shadow: 0 3px 7px rgba(35, 35, 41, 0.2);
+  .create-universe-button:hover, .universe-display-item-container {
+
+    &:before {
+      @include transition(0.3s);
+      transform: scale(1.03, 1.03);
+      background-color: #fff;
+      transform-origin: 50% 50%;
+      border: none;
+      box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2);
+    }
 
     .display-name {
       color: $YB_ORANGE;
@@ -102,15 +118,23 @@ a:hover > {
 
 
 .create-universe-button {
-  border-radius: 4px;
   height: 178px;
   margin-bottom: 10px;
   padding: 50px 0 4px 0;
-  border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
   text-align: center;
+  position: relative;
 
-  &:hover {
-    background: rgba(white, 0.5);
+  &:before {
+    position: absolute;
+    border-radius: 7px;
+    content: "";
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    @include transition(0.125s);
+    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
   }
 }
 

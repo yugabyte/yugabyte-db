@@ -125,17 +125,18 @@
       min-width: auto;
       opacity: 1;
       font-size: 14px;
-      &:focus, &:hover {
-        opacity: 0.6;
+      &:hover {
+        color: $YB_ORANGE;
       }
     }
     li.active {
       > a {
         opacity: 1;
-        border-bottom: 4px solid $YB_VIOLET_TEXT;
+        border-bottom: 4px solid $YB_ORANGE;
         &:focus, &:hover {
+          color: inherit;
           border: none;
-          border-bottom: 4px solid $YB_VIOLET_TEXT;
+          border-bottom: 4px solid $YB_ORANGE;
           margin-top: 0;
           z-index: 2;
         }
@@ -330,7 +331,7 @@ h2 {
   }
   .yb-map-legend {
     margin: 10px;
-    border-radius: 4px;
+    border-radius: 7px;
   }
   .leaflet-container {
     height: 340px;
@@ -352,7 +353,7 @@ h2 {
   border: none;
   min-height: 80px;
   background-color: #fff;
-  border-radius: 4px;
+  border-radius: 7px;
   padding-left: 70px;
   &:before {
     content: 'Costs';
