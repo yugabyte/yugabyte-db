@@ -136,13 +136,17 @@ Status QLEnv::ApplyChildTransactionResult(const ChildTransactionResultPB& result
 }
 
 void QLEnv::CommitTransaction(CommitCallback callback) {
-  if (!transaction_) {
+  if (transaction_ == nullptr) {
     LOG(DFATAL) << "No transaction to commit";
     return;
   }
+  // SetTransaction() must be called before the Commit() call instead of after because when the
+  // commit callback is invoked, it will finish the current transaction, return the response and
+  // make the CQLProcessor available for the next statement and its operations would be aborted by
+  // SetTransaction().
+  session_->SetTransaction(nullptr);
   shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
   transaction->Commit(std::move(callback));
-  session_->SetTransaction(nullptr);
 }
 
 CHECKED_STATUS QLEnv::Apply(std::shared_ptr<client::YBqlOp> op) {
@@ -258,13 +262,13 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 
 void QLEnv::Reset() {
   session_->Abort();
+  session_->SetTransaction(nullptr);
   requested_callback_ = nullptr;
   flush_status_ = Status::OK();
   op_errors_.clear();
   if (transaction_ != nullptr) {
     shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
     transaction->Abort();
-    session_->SetTransaction(nullptr);
   }
 }
 
