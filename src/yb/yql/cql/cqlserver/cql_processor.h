@@ -90,9 +90,6 @@ class CQLProcessor : public ql::QLProcessor {
   // Send response back to client.
   void SendResponse(const CQLResponse& response);
 
-  // Return Processor back to Service.
-  void Return();
-
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;
 
