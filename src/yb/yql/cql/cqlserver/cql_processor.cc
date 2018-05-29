@@ -127,10 +127,6 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
 CQLProcessor::~CQLProcessor() {
 }
 
-void CQLProcessor::Return() {
-  service_impl_->ReturnProcessor(pos_);
-}
-
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
   unique_ptr<CQLRequest> request;
@@ -144,7 +140,6 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
                                 &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     SendResponse(*response);
-    service_impl_->ReturnProcessor(pos_);
     return;
   }
 
@@ -190,7 +185,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   stmts_.clear();
   parse_trees_.clear();
   SetCurrentCall(nullptr);
-  Return();
+  service_impl_->ReturnProcessor(pos_);
 }
 
 CQLResponse* CQLProcessor::ProcessRequest(const CQLRequest& req) {
