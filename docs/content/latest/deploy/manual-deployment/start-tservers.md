@@ -18,8 +18,8 @@ For any cluster, the number of nodes on which the YB-TServers need to be started
 As an example scenario, let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
-      - We would need to run the YB-TServer process on the nodes (`node-a`, `node-b`, `node-c`)
-      - Let us assume their IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`
+      - We would need to run the YB-TServer process on the nodes (`node-a`, `node-b`, `node-c`, `node-d`)
+      - Let us assume the master IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
@@ -44,13 +44,13 @@ $ ./bin/yb-tserver \
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
 
-- Make sure all the 3 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
+- Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```{.sh .copy .separator-dollar}
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
-In all the 3 yb-tserver logs, you should see log messages similar to the following.
+In all the 4 yb-tserver logs, you should see log messages similar to the following.
 
 ```sh
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
