@@ -114,6 +114,11 @@ METRIC_DEFINE_counter(tablet, transaction_conflicts,
   yb::MetricUnit::kRequests,
   "Number of conflicts detected among uncommitted distributed transactions.");
 
+METRIC_DEFINE_counter(tablet, expired_transactions,
+  "Expired Distributed Transactions",
+  yb::MetricUnit::kRequests,
+  "Number of expired distributed transactions.");
+
 using strings::Substitute;
 
 namespace yb {
@@ -127,7 +132,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
     MINIT(leader_memory_pressure_rejections),
-    MINIT(transaction_conflicts) {
+    MINIT(transaction_conflicts),
+    MINIT(expired_transactions) {
 }
 #undef MINIT
 
