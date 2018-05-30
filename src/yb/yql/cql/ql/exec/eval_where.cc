@@ -96,16 +96,24 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         req->set_hash_code(hash_code);
         break;
       case QL_OP_LESS_THAN:
-        if (hash_code > YBPartition::kMinHashCode) {
-          req->set_max_hash_code(hash_code - 1);
-        } else {
-          // Token hash smaller than min implies no results.
-          *no_results = true;
-          return Status::OK();
+        // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
+        // adds no real restriction). So we skip (do nothing) in that case.
+        if (result.int64_value() != INT64_MIN) {
+          if (hash_code > YBPartition::kMinHashCode) {
+            req->set_max_hash_code(hash_code - 1);
+          } else {
+            // Token hash smaller than min implies no results.
+            *no_results = true;
+            return Status::OK();
+          }
         }
         break;
       case QL_OP_LESS_THAN_EQUAL:
-        req->set_max_hash_code(hash_code);
+        // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
+        // adds no real restriction). So we skip (do nothing) in that case.
+        if (result.int64_value() != INT64_MIN) {
+          req->set_max_hash_code(hash_code);
+        }
         break;
       case QL_OP_EQUAL:
         req->set_hash_code(hash_code);
