@@ -1,3 +1,9 @@
+hypopg (1.1.2-1) unstable; urgency=low
+
+  * New upstream version with PG11 support.
+
+ -- Julien Rouhaud <rjuju123@gmail.com>  Wed, 30 May 2018 04:50:12 +0100
+
 hypopg (1.1.1-1) unstable; urgency=low
 
   * Initial release.
