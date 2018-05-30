@@ -1474,6 +1474,29 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
       0, 0);
 
   //------------------------------------------------------------------------------------------------
+  // Testing Select with token range limits
+  //------------------------------------------------------------------------------------------------
+  // Entire range: [min, max].
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", INT64_MIN, "<=", INT64_MAX), processor, rows, 0, 10);
+
+  // Entire range: [min, min] (upper bound min is treated as a special case in Cassandra).
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", INT64_MIN, "<=", INT64_MIN), processor, rows, 0, 10);
+
+  // Entire range: [min, min). (upper bound min is treated as a special case in Cassandra).
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", INT64_MIN, "<", INT64_MIN), processor, rows, 0, 10);
+
+  // Empty range: (max, max].
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">", INT64_MAX, "<=", INT64_MAX), processor, rows, 0, 0);
+
+  // Empty range: (max, min] (max as strict lower bound already excludes all hashes).
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">", INT64_MAX, "<=", INT64_MIN), processor, rows, 0, 0);
+
+  //------------------------------------------------------------------------------------------------
   // Testing Select with exact partition key (equal condition with token)
   //------------------------------------------------------------------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) = $0";
