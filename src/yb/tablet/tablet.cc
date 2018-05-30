@@ -354,7 +354,8 @@ Tablet::Tablet(
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata->fs_manager()->uuid(),
         transaction_coordinator_context,
-        transaction_participant_.get());
+        transaction_participant_.get(),
+        metrics_->expired_transactions.get());
   }
 
   flush_stats_ = make_shared<TabletFlushStats>();

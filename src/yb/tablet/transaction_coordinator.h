@@ -92,7 +92,8 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         TransactionParticipant* transaction_participant);
+                         TransactionParticipant* transaction_participant,
+                         Counter* expired_metric);
   ~TransactionCoordinator();
 
   // Used to pass arguments to ProcessReplicated.
