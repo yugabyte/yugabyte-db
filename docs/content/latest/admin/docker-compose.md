@@ -13,7 +13,7 @@ aliases:
 
 Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters.
 
-## Create a single node cluster
+## 1. Create a single node cluster
 
 ### Pull the container
 
@@ -66,26 +66,27 @@ services:
 $ docker-compose up -d
 ```
 
-Clients can now connect to YugaByte’s Cassandra service at localhost:9042, to YugaByte’s Redis service at localhost:6379, and to YugaByte’s PostgreSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
-
-## Connect to YCQL, YEDIS APIs, and PostgreSQL(Beta) APIs
+## 2. Setup the YEDIS API
 
 ```{.sh .copy .separator-dollar}
-# connect to cassandra service on port 9042 via cqlsh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
 
-```{.sh .copy .separator-dollar}
-# connect to redis service on port 6379 via redis-cli
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
-```
+Clients can now connect to the YCQL service at localhost:9042, to the YEDIS API at localhost:6379, and to the PostgreSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
 
-```{.sh .copy .separator-dollar}
-# connect to PostgreSQL service on port 5433 via psql
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/psql
-```
 
-## Stop the cluster
+## 3. Test the various YugaByte DB APIs
+
+Follow the instructions in the Quick Start section with Docker using the links below.
+
+- [YCQL API](/quick-start/test-cassandra/#docker)
+
+- [YEDIS API](/quick-start/test-redis/#docker)
+
+- [PostgreSQL API (Beta)](/quick-start/test-postgresql/#docker)
+
+
+## 4. Stop the cluster
 
 ```{.sh .copy .separator-dollar}
 $ docker-compose down

@@ -1,7 +1,7 @@
 ---
-title: 2. Install Software
+title: Install Software
 linkTitle: 2. Install Software
-description: 2. Install Software
+description: Install Software
 aliases:
   - /deploy/manual-deployment/install-software
 menu:

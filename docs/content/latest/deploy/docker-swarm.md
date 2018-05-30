@@ -36,7 +36,7 @@ This tutorial uses [Docker Machine](https://docs.docker.com/machine/) to create 
 
 As noted in [Docker docs](https://docs.docker.com/engine/swarm/swarm-tutorial/#use-docker-for-mac-or-docker-for-windows), the host on which Docker for Mac or Docker for Windows is installed does not itself participate in the swarm. The included version of Docker Machine is used to create the swarm nodes using VirtualBox (for macOS) and Hyper-V (for Windows). 
 
-## Step 1. Create swarm nodes
+## 1. Create swarm nodes
 
 Following bash script is a simpler form of Docker's own swarm beginner tutorial [bash script](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-vbox-setup.sh). You can use this for Linux and macOS. If you are using Windows, then download and change the [powershell Hyper-V version](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-hyperv-setup.ps1) of the same script.
 
@@ -111,7 +111,7 @@ worker2   -        virtualbox   Running   tcp://192.168.99.101:2376           v1
 worker3   -        virtualbox   Running   tcp://192.168.99.102:2376           v18.05.0-ce  
 ```
 
-## Step 2. Create overlay network
+## 2. Create overlay network
 
 - SSH into the worker1 node where the swarm manager is running.
 ```{.sh .copy .separator-dollar}
@@ -124,7 +124,7 @@ $ docker-machine ssh worker1
 $ docker network create --driver overlay --attachable yugabytedb
 ```
 
-## Step 3. Create yb-master services
+## 3. Create yb-master services
 
 - Create 3 yb-master [`replicated`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) services each with replicas set to 1. This is the [only way](https://github.com/moby/moby/issues/30963) in Docker Swarm today to get stable network identies for each of yb-master containers that we will need to provide as input for creating the yb-tserver service in the next step. 
 
@@ -183,7 +183,7 @@ ah6wfodd4noh        yb-master3          replicated          1/1                 
 
 - View the yb-master admin UI by going to the port 7000 of any node, courtesy of the publish option used when yb-master1 was created. For e.g., we can see from Step 1 that worker2's IP address is 192.168.99.101. So, http://192.168.99.101:7000 takes us to the yb-master admin UI.
 
-## Step 4. Create yb-tserver service
+## 4. Create yb-tserver service
 
 - Create a single yb-tserver [`global`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) service so that swarm can then automatically spawn 1 container/task on each worker node. Each time we add a node to the swarm, the swarm orchestrator creates a task and the scheduler assigns the task to the new node. 
 
@@ -221,7 +221,9 @@ n6padh2oqjk7        yb-tserver          global              3/3                 
 ```
 - Now we can go to http://192.168.99.101:9000 to see the yb-tserver admin UI.
 
-## Step 5. Test YCQL API
+## 5. Test the client APIs
+
+### YCQL API
 
 - Find the container ID of the yb-tserver running on worker1. Use the first param of `docker ps` output.
 
@@ -239,7 +241,7 @@ cqlsh>
 
 - Follow the test instructions as noted in [Quick Start](/quick-start/test-cassandra/).
 
-## Step 6. Test YEDIS API
+### YEDIS API
 
 - Find the container ID of the yb-master running on worker1. Use the first param of `docker ps` output.
 
@@ -256,7 +258,7 @@ I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' c
 
 - Follow the test instructions as noted in [Quick Start](/quick-start/test-redis/).
 
-## Step 7. Test PostgreSQL API
+### PostgreSQL API
 
 - Install the `postgresql` client in the yb-tserver container.
 
@@ -281,7 +283,7 @@ root=>
 
 - Follow the test instructions as noted in [Quick Start](/quick-start/test-postgresql/).
 
-## Step 8. Test fault-tolerance with node failure
+## 6. Test fault-tolerance with node failure
 
 Docker Swarm ensures that the yb-tserver `global` service will always have 1 yb-tserver container running on every node. If the yb-tserver container on any node dies, then Docker Swarm will bring it back on.
 
@@ -291,7 +293,7 @@ $ docker kill <ybtserver_container_id>
 
 Observe the output of `docker ps` every few seconds till you see that the yb-tserver container is re-spawned by Docker Swarm.
 
-## Step 9. Test auto-scaling with node addition
+## 7. Test auto-scaling with node addition
 
 - On the host machine, get worker token for new worker nodes to use to join the existing swarm.
 
@@ -338,7 +340,7 @@ ah6wfodd4noh        yb-master3          replicated          1/1                 
 n6padh2oqjk7        yb-tserver          global              4/4                 yugabytedb/yugabyte:latest   *:9000->9000/tcp 
 ```
 
-## Step 10. Remove services and destroy nodes
+## 8. Remove services and destroy nodes
 
 - Stop the machines.
 

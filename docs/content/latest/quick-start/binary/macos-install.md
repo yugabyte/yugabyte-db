@@ -16,11 +16,11 @@ Python 2.7.10
 Download the YugaByte DB CE package as shown below.
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.1.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.2.0-darwin.tar.gz
 ```
 
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-1.0.1.0-darwin.tar.gz && cd yugabyte-1.0.1.0/
+$ tar xvfz yugabyte-ce-1.0.2.0-darwin.tar.gz && cd yugabyte-1.0.2.0/
 ```
 
 ## Configure

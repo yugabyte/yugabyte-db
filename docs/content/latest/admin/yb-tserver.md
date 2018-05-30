@@ -80,3 +80,21 @@ List of all tablets managed by this specific instance, sorted by the table name.
 List of all utilities available to debug the performance of this specific instance.
 
 ![tserver-debug](/images/admin/tserver-debug.png)
+
+
+## Default ports reference
+
+The various default ports are listed below. 
+
+Service | Type | Port 
+--------|------| -------
+`yb-master` | rpc | 7100
+`yb-master` | admin web server | 7000
+`yb-tserver` | rpc | 9100
+`yb-tserver` | admin web server | 9000
+`ycql` | rpc | 9042
+`ycql` | admin web server | 12000
+`yedis` | rpc | 6379
+`yedis` | admin web server | 11000
+`pgsql` | rpc | 5433
+`pgsql` | admin web server | 13000

@@ -1,7 +1,7 @@
 ---
-title: 4. Start YB-TServers
+title: Start YB-TServers
 linkTitle: 4. Start YB-TServers
-description: 4. Start YB-TServers
+description: Start YB-TServers
 aliases:
   - /deploy/manual-deployment/start-tservers
 menu:
@@ -74,3 +74,4 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 ```
 
 {{< tip title="Tip" >}}Remember to add the command with which you launched `yb-tserver` to a cron to restart it if it goes down.{{< /tip >}}<br>
+

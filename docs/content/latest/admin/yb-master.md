@@ -75,3 +75,12 @@ List of all nodes (aka yb-tservers) present in the cluster.
 List of all utilities available to debug the performance of the cluster.
 
 ![master-debug](/images/admin/master-debug.png)
+
+## Default ports reference
+
+The various default ports are listed below. 
+
+Service | Type | Port 
+--------|------| -------
+`yb-master` | rpc | 7100
+`yb-master` | admin web server | 7000

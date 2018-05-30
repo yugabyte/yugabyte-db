@@ -1,7 +1,7 @@
 ---
-title: 3. Start YB-Masters
+title: Start YB-Masters
 linkTitle: 3. Start YB-Masters
-description: 3. Start YB-Masters
+description: Start YB-Masters
 aliases:
   - /deploy/manual-deployment/start-masters
 menu:

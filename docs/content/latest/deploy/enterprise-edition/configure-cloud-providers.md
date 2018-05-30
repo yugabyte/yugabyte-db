@@ -80,4 +80,4 @@ The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that
 
 ## Next step
 
-You are now ready to create YugaByte DB universes as outlined  in the [next section](../../../manage/enterprise-edition/create-universe/).
+You are now ready to create YugaByte DB universes as outlined in the next section.

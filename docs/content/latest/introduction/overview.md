@@ -14,7 +14,7 @@ menu:
 
 ## What is YugaByte DB?
 
-YugaByte DB is an open source, transactional, high performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte DB is Apache 2.0 open source, transactional, high-performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
 In terms of data model and APIs, YugaByte DB currently supports 3 APIs. 
 
@@ -22,7 +22,7 @@ In terms of data model and APIs, YugaByte DB currently supports 3 APIs.
 
 2. [Redis-compatible YEDIS](/api/redis/) - YugaByte DB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 
-3. PostgreSQL (Beta) - Compatible with the SQL language in PostgreSQL.
+3. [PostgreSQL (Beta)]((/api/postgresql/)) - Compatible with the SQL language in PostgreSQL.
 
 ## What makes YugaByte DB unique?
 
@@ -41,8 +41,14 @@ YugaByte DB is a single operational database that brings together 3 must-have ne
 
 ### 3. Planet-Scale
 
-- [Global data distribution](https://www.yugabyte.com/solutions/deployments/multi-region/) that brings consistent data close to users through multi-region and multi-cloud deployments.
+- [Global data distribution](/explore/planet-scale/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
 
-- Built for the container era with highly elastic scaling and infrastructure portability, including [Kubernetes-driven orchestration](/quick-start/install/#kubernetes).
+- [Auto-sharding](/explore/planet-scale/auto-sharding/) and [auto-rebalancing](/explore/planet-scale/auto-rebalancing/) to ensure uniform load balancing across all nodes even for very large clusters.
+
+### 4. Cloud Native
+
+- Built for the container era with [highly elastic scaling](/explore/cloud-native/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](/quick-start/install/#kubernetes).
+
+- [Self-healing database](/explore/cloud-native/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
 

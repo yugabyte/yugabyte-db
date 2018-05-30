@@ -1,6 +1,6 @@
 ## Prerequisite
 
-Prometheus is installed on your local machine. If you have done so already, follow the links below.
+Prometheus is installed on your local machine. If you have not done so already, follow the links below.
 
 - [Download Prometheus](https://prometheus.io/download/)
 - [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)

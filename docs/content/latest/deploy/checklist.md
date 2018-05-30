@@ -86,10 +86,10 @@ Service | Type | Port
 `yb-master` | admin web server | 7000
 `yb-tserver` | rpc | 9100
 `yb-tserver` | admin web server | 9000
-`cql` | rpc | 9042
-`cql` | admin web server | 12000
-`redis` | rpc | 6379
-`redis` | admin web server | 11000
+`ycql` | rpc | 9042
+`ycql` | admin web server | 12000
+`yedis` | rpc | 6379
+`yedis` | admin web server | 11000
 `pgsql` | rpc | 5433
 `pgsql` | admin web server | 13000
 

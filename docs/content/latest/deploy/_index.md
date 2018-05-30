@@ -16,7 +16,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/checklist/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Checklist</div>
       </div>
       <div class="body">
@@ -27,7 +27,8 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/multi-node-cluster/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="articles">5 articles</div>
         <div class="title">Manual Deployment</div>
       </div>
       <div class="body">
@@ -38,7 +39,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/kubernetes/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
@@ -49,7 +50,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/docker-swarm/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/docker-swarm.png" aria-hidden="true" />
         <div class="title">Docker Swarm</div>
       </div>
       <div class="body">
@@ -60,7 +61,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="/deploy/public-clouds/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/community.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
         <div class="title">Public Clouds</div>
       </div>

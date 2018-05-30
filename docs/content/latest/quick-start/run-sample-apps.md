@@ -10,9 +10,9 @@ menu:
     weight: 150
 ---
 
-After trying out [Cassandra](../test-cassandra/) and [Redis](../test-redis/) cli based commands on the local cluster, follow the instructions below to run some sample apps against the cluster as well as look at some of the configuration details of the cluster.
+After trying out the [YCQL](../test-cassandra/) and [YEDIS](../test-redis/) APIs on the local cluster using CLIs, follow the instructions below to run a few sample apps against the cluster as well as look at the configuration details of the cluster.
 
-We will show how to run a sample key-value workload against both the CQL service and the Redis service.
+We will show how to run a sample key-value workload against both the YCQL and YEDIS APIs.
 
 ## Prerequisites
 

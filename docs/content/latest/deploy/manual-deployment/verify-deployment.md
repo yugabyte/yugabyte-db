@@ -1,7 +1,7 @@
 ---
-title: 5. Verify Deployment
+title: Verify Deployment
 linkTitle: 5. Verify Deployment
-description: 5. Verify Deployment
+description: Verify Deployment
 aliases:
   - /deploy/manual-deployment/verify-deployment
 menu:
@@ -39,18 +39,35 @@ You should now be able to view the master dashboard on the ip address of any mas
 ## Connect clients
 
 - Clients can connect to YugaByte DB's YCQL API at
-```sh
+```{.sh .copy}
 172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042
 ```
 
 - Clients can connect to YugaByte DB's YEDIS API at
-```sh
+```{.sh .copy}
 172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
 ```
 
 - Clients can connect to YugaByte DB's PostgreSQL (Beta) API at
-```sh
+```{.sh .copy}
 172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433
 ```
 
+
+## Default ports reference
+
+The above deployment uses the various default ports listed below. 
+
+Service | Type | Port 
+--------|------| -------
+`yb-master` | rpc | 7100
+`yb-master` | admin web server | 7000
+`yb-tserver` | rpc | 9100
+`yb-tserver` | admin web server | 9000
+`ycql` | rpc | 9042
+`ycql` | admin web server | 12000
+`yedis` | rpc | 6379
+`yedis` | admin web server | 11000
+`pgsql` | rpc | 5433
+`pgsql` | admin web server | 13000
 

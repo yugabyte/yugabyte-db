@@ -1,7 +1,7 @@
 ---
-title: 1. System Configuration
+title: System Configuration
 linkTitle: 1. System Configuration
-description: 1. System Configuration
+description: System Configuration
 aliases:
   - /deploy/manual-deployment/system-config
 menu:
@@ -13,7 +13,7 @@ menu:
 
 Do the following configuration steps on each of the nodes in the cluster.
 
-## Ntp
+## ntp
 
  If your instance does not have public Internet access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
 
