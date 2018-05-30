@@ -62,6 +62,7 @@ struct TabletMetrics {
 
   scoped_refptr<Counter> leader_memory_pressure_rejections;
   scoped_refptr<Counter> transaction_conflicts;
+  scoped_refptr<Counter> expired_transactions;
 };
 
 class ScopedTabletMetricsTracker {

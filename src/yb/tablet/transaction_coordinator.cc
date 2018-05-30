@@ -95,6 +95,8 @@ class TransactionStateContext {
 
   virtual void NotifyApplying(NotifyApplyingData data) = 0;
 
+  virtual Counter& expired_metric() = 0;
+
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state) = 0;
@@ -162,7 +164,11 @@ class TransactionState {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
-    return std::chrono::microseconds(passed) > GetTransactionTimeout();
+    if (std::chrono::microseconds(passed) > GetTransactionTimeout()) {
+      context_.expired_metric().Increment();
+      return true;
+    }
+    return false;
   }
 
   // Whether this transaction has completed.
@@ -532,8 +538,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
  public:
   Impl(const std::string& permanent_uuid,
        TransactionCoordinatorContext* context,
-       TransactionParticipant* transaction_participant)
+       TransactionParticipant* transaction_participant,
+       Counter* expired_metric)
       : context_(*context), transaction_participant_(*transaction_participant),
+        expired_metric_(*expired_metric),
         log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
   }
 
@@ -849,6 +857,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
   }
 
+  Counter& expired_metric() override {
+    return expired_metric_;
+  }
+
+
   void SchedulePoll() {
     poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
         std::bind(&Impl::Poll, this, _1),
@@ -908,6 +921,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   TransactionCoordinatorContext& context_;
   TransactionParticipant& transaction_participant_;
+  Counter& expired_metric_;
   const std::string log_prefix_;
 
   std::mutex managed_mutex_;
@@ -926,8 +940,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
 TransactionCoordinator::TransactionCoordinator(const std::string& permanent_uuid,
                                                TransactionCoordinatorContext* context,
-                                               TransactionParticipant* transaction_participant)
-    : impl_(new Impl(permanent_uuid, context, transaction_participant)) {
+                                               TransactionParticipant* transaction_participant,
+                                               Counter* expired_metric)
+    : impl_(new Impl(permanent_uuid, context, transaction_participant, expired_metric)) {
 }
 
 TransactionCoordinator::~TransactionCoordinator() {

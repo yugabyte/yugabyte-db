@@ -18,6 +18,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
@@ -338,7 +339,11 @@ public class TestTransaction extends BaseCQLTest {
   }
 
   private int getTransactionConflictsCount(String tableName) throws Exception {
-    return getTableCounterMetric(tableName, "transaction_conflicts");
+    return getTableCounterMetric(DEFAULT_TEST_KEYSPACE, tableName, "transaction_conflicts");
+  }
+
+  private int getExpiredTransactionsCount() throws Exception {
+    return getTableCounterMetric("system", "transactions", "expired_transactions");
   }
 
   private int getRetriesCount() throws Exception {
@@ -414,10 +419,20 @@ public class TestTransaction extends BaseCQLTest {
       session.execute("create table test_timeout (k int primary key, v int) " +
                       "with transactions = {'enabled' : true};");
 
-      thrown.expect(com.datastax.driver.core.exceptions.OperationTimedOutException.class);
-      session.execute("begin transaction" +
-                      "  insert into test_timeout (k, v) values (1, 1);" +
-                      "end transaction;");
+      int initialExpiredTransactions = getExpiredTransactionsCount();
+      LOG.info("Initial expired transactions = {}", initialExpiredTransactions);
+
+      try {
+        thrown.expect(com.datastax.driver.core.exceptions.OperationTimedOutException.class);
+        session.execute("begin transaction" +
+                        "  insert into test_timeout (k, v) values (1, 1);" +
+                        "end transaction;");
+      } catch (com.datastax.driver.core.exceptions.OperationTimedOutException e) {
+        int currentExpiredTransactions = getExpiredTransactionsCount();
+        LOG.info("Current expired transactions = {}", currentExpiredTransactions);
+        assertTrue(currentExpiredTransactions > initialExpiredTransactions);
+        throw e;
+      }
     } finally {
       // Destroy the recreated cluster when done.
       destroyMiniCluster();
