@@ -926,6 +926,40 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testIntegerBounds() throws Exception {
+    session.execute("CREATE TABLE test_int_bounds(h int primary key, " +
+        "t tinyint, s smallint, i int, b bigint)");
+
+    String insertStmt = "INSERT INTO test_int_bounds(h, %s) VALUES (1, %s)";
+
+    // Test upper bounds.
+    session.execute(String.format(insertStmt, "t", "127"));
+    session.execute(String.format(insertStmt, "s", "32767"));
+    session.execute(String.format(insertStmt, "i", "2147483647"));
+    session.execute(String.format(insertStmt, "b", "9223372036854775807"));
+    assertQuery("SELECT t, s, i, b FROM test_int_bounds WHERE h = 1",
+        "Row[127, 32767, 2147483647, 9223372036854775807]");
+
+    runInvalidStmt(String.format(insertStmt, "t", "128"));
+    runInvalidStmt(String.format(insertStmt, "s", "32768"));
+    runInvalidStmt(String.format(insertStmt, "i", "2147483648"));
+    runInvalidStmt(String.format(insertStmt, "b", "9223372036854775808"));
+
+    // Test lower bounds.
+    session.execute(String.format(insertStmt, "t", "-128"));
+    session.execute(String.format(insertStmt, "s", "-32768"));
+    session.execute(String.format(insertStmt, "i", "-2147483648"));
+    session.execute(String.format(insertStmt, "b", "-9223372036854775808"));
+    assertQuery("SELECT t, s, i, b FROM test_int_bounds WHERE h = 1",
+        "Row[-128, -32768, -2147483648, -9223372036854775808]");
+
+    runInvalidStmt(String.format(insertStmt, "t", "-129"));
+    runInvalidStmt(String.format(insertStmt, "s", "-32769"));
+    runInvalidStmt(String.format(insertStmt, "i", "-2147483649"));
+    runInvalidStmt(String.format(insertStmt, "b", "-9223372036854775809"));
+  }
+
+  @Test
   public void testCasts() throws Exception {
     // Create test table.
     session.execute("CREATE TABLE test_local (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +
@@ -975,7 +1009,7 @@ public class TestSelect extends BaseCQLTest {
 
     // Try edge cases.
     session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6) values (2147483647, 2.5, " +
-        "3.3, 65535, 9223372036854775807, '2147483647')");
+        "3.3, 32767, 9223372036854775807, '2147483647')");
     selectAndVerify("SELECT CAST(c1 as int) FROM test_local WHERE c1 = 2147483647", 2147483647);
     selectAndVerify("SELECT CAST(c1 as bigint) FROM test_local WHERE c1 = 2147483647", 2147483647L);
     selectAndVerify("SELECT CAST(c1 as smallint) FROM test_local WHERE c1 = 2147483647",
