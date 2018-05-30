@@ -16,7 +16,6 @@
 #include "yb/common/jsonb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/yql/cql/ql/exec/executor.h"
-// #include "yb/util/jsonb.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfunc.h"
 #include "yb/util/net/inetaddress.h"
