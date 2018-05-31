@@ -357,6 +357,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  // Return the table type of the table
+  TableType GetTableType() const;
+
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
   // Add multiple tablets to this table.

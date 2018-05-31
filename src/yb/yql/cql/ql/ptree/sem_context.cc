@@ -121,7 +121,9 @@ Status SemContext::LookupTable(const YBTableName& name,
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
   *table = GetTableDesc(name);
-  if (*table == nullptr || ((*table)->IsIndex() && !FLAGS_allow_index_table_read_write)) {
+  if (*table == nullptr || ((*table)->IsIndex() && !FLAGS_allow_index_table_read_write) ||
+      // Only looking for CQL tables.
+      (*table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*table);
@@ -138,7 +140,9 @@ Status SemContext::LookupIndex(const TableId& index_id,
                                MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
   VLOG(3) << "Loading table descriptor for " << index_id;
   *index_table = GetTableDesc(index_id);
-  if (*index_table == nullptr || !(*index_table)->IsIndex()) {
+  if (*index_table == nullptr || !(*index_table)->IsIndex() ||
+      // Only looking for CQL Indexes.
+      (*index_table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*index_table);

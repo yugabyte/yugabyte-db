@@ -5634,6 +5634,11 @@ const std::string TableInfo::indexed_table_id() const {
   return l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
 }
 
+TableType TableInfo::GetTableType() const {
+  auto l = LockForRead();
+  return l->data().pb.table_type();
+}
+
 bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
   std::lock_guard<simple_spinlock> l(lock_);
   return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != NULL;

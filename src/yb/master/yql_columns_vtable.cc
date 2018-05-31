@@ -58,7 +58,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     const string& table_name = table->name();
 
     // Hide redis table from YQL.
-    if (keyspace_name == common::kRedisKeyspaceName && table_name == common::kRedisTableName) {
+    if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
       continue;
     }
 
