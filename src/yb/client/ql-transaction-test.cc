@@ -33,6 +33,7 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -43,6 +44,7 @@
 using namespace std::literals; // NOLINT
 
 using yb::tablet::GetTransactionTimeout;
+using yb::tablet::TabletPeer;
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -57,6 +59,8 @@ DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
 DECLARE_string(time_source);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
+DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
 
 namespace yb {
@@ -847,6 +851,56 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
   ASSERT_OK(WaitFor(
       [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+
+  // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
+  {
+    auto session = CreateSession();
+    VERIFY_ROW(session, 1, 1);
+    VERIFY_ROW(session, 2, 2);
+  }
+
+  ASSERT_EQ(CountIntents(), 0);
+
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
+  FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
+
+  // Write { 1 -> 1, 2 -> 2 }.
+  {
+    auto session = CreateSession();
+    ASSERT_OK(WriteRow(session, 1, 1));
+    ASSERT_OK(WriteRow(session, 2, 2));
+  }
+
+  {
+    // Start T1.
+    auto txn = CreateTransaction();
+    auto session = CreateSession(txn);
+
+    // T1: Update { 1 -> 11, 2 -> 12 }.
+    ASSERT_OK(UpdateRow(session, 1, 11));
+    ASSERT_OK(UpdateRow(session, 2, 12));
+
+    // T1: Should read { 1 -> 11, 2 -> 12 }.
+    VERIFY_ROW(session, 1, 11);
+    VERIFY_ROW(session, 2, 12);
+
+    txn->Abort();
+  }
+
+  ASSERT_OK(WaitFor(
+      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+
+  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_aborted_intent_cleanup_ms));
+  tserver::TSTabletManager::TabletPeers peers;
+  cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
+  for (std::shared_ptr<tablet::TabletPeer>  peer : peers) {
+    peer->tablet()->ForceRocksDBCompactInTest();
+  }
 
   // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
   {

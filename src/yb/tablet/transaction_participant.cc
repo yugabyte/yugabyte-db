@@ -43,6 +43,8 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
+DECLARE_uint64(aborted_intent_cleanup_ms);
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -186,6 +188,123 @@ class RemoveIntentsTask : public rpc::ThreadPoolTask {
   TransactionId id_;
   std::atomic<bool> used_{false};
   RunningTransactionPtr transaction_;
+};
+
+class CleanupAbortsTask : public rpc::ThreadPoolTask {
+ public:
+  CleanupAbortsTask(TransactionIntentApplier* applier,
+                     TransactionIdSet&& transactions_to_cleanup,
+                     TransactionParticipant* transaction_participant)
+      : applier_(applier), transactions_to_cleanup_(transactions_to_cleanup),
+        transaction_participant_(transaction_participant) {}
+
+  void Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task) {
+    retain_self_ = cleanup_task;
+  }
+
+  void Run() override {
+    HybridTime now = transaction_participant_->context()->Now();
+    CountDownLatch latch(transactions_to_cleanup_.size());
+    TransactionStatusManager *status_manager = transaction_participant_;
+
+    for (const TransactionId& transactionId : transactions_to_cleanup_) {
+      VLOG(1) << "Checking if transaction needs to be cleaned up: " << transactionId;
+
+      // If transaction is committed, no action required
+      auto commit_time = status_manager->LocalCommitTime(transactionId);
+      if (commit_time.is_valid()) {
+        if (commit_time.GetPhysicalValueMicros() <
+            now.GetPhysicalValueMicros() - (FLAGS_aborted_intent_cleanup_ms * 1000)) {
+          LOG(WARNING) << "Transaction Id: " << transactionId << " committed too long ago.";
+        }
+        std::lock_guard<std::mutex> guard(mutex_);
+        transactions_to_cleanup_.erase(transactionId);
+        latch.CountDown();
+        continue;
+      }
+
+      // Get transaction status
+      StatusRequest request = {
+          &transactionId,
+          now,
+          now,
+          0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
+          // So we cannot accept status with time >= read_ht and < global_limit_ht.
+          [transactionId, this, &latch](Result<TransactionStatusResult> result) {
+            // Best effort
+            // Status of abort will result in cleanup of intents
+            if (result.ok() && (result->status == TransactionStatus::ABORTED)) {
+              VLOG(3) << "Transaction being cleaned " << transactionId << ".";
+            } else {
+              std::lock_guard<std::mutex> guard(mutex_);
+              this->transactions_to_cleanup_.erase(transactionId);
+            }
+            latch.CountDown();
+          }
+      };
+      status_manager->RequestStatusAt(request);
+    }
+
+    latch.Wait();
+
+    // Update now to reflect time on the coordinator
+    now = transaction_participant_->context()->Now();
+
+    // The calls to RequestStatusAt would have updated the local clock of the participant.
+    // Wait for the propagated time to reach the current hybrid time.
+    HybridTime safetime;
+    const MicrosTime kMinSleepUs = 10000;
+    const MicrosTime kMaxSleepUs = 100000;
+    const MicrosTime kMaxTotalSleepUs = 10000000;
+    MicrosTime total_sleep_time = 0;
+    while (now >= (safetime = applier_->ApplierSafeTime())) {
+      if (total_sleep_time > kMaxTotalSleepUs) {
+        LOG(WARNING) << "Tablet application did not catch up in : " << kMaxTotalSleepUs <<
+                     " microseconds";
+        return;
+      }
+      MicrosTime difference_us = now.GetPhysicalValueMicros() - safetime.GetPhysicalValueMicros();
+      if (difference_us < kMinSleepUs) {
+        difference_us = kMinSleepUs;
+      } else if (difference_us > kMaxSleepUs) {
+        difference_us = kMaxSleepUs;
+      }
+      SleepFor(MonoDelta::FromMicroseconds(difference_us));
+      total_sleep_time += difference_us;
+    }
+
+    for (const TransactionId transactionId : transactions_to_cleanup_) {
+      // If transaction is committed, no action required
+      // TODO(dtxn) : Do batch processing of transactions,
+      // because LocalCommitTime will acquire lock per each call.
+      auto commit_time = status_manager->LocalCommitTime(transactionId);
+      if (commit_time.is_valid()) {
+        transactions_to_cleanup_.erase(transactionId);
+      }
+    }
+
+    WARN_NOT_OK(applier_->RemoveIntents(transactions_to_cleanup_),
+                "RemoveIntents for transaction cleanup in compaction failed.");
+    if (transactions_to_cleanup_.size() > 0) {
+      LOG(INFO) << "Number of aborted transactions cleaned up:" << transactions_to_cleanup_.size();
+    }
+  }
+
+  void Done(const Status& status) override {
+    transactions_to_cleanup_.clear();
+    retain_self_ = nullptr;
+  }
+
+  virtual ~CleanupAbortsTask() {
+    LOG(INFO) << "Cleanup Aborts Task finished.";
+  }
+
+ private:
+  TransactionIntentApplier* applier_;
+  TransactionIdSet transactions_to_cleanup_;
+  TransactionParticipant* transaction_participant_;
+  std::shared_ptr<CleanupAbortsTask> retain_self_;
+  std::mutex mutex_;
 };
 
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -648,6 +767,14 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     (**it).Abort(client(), std::move(callback), &lock);
   }
 
+  void Cleanup(TransactionIdSet&& set,
+               TransactionParticipant* transactionParticipant) {
+    std::shared_ptr<CleanupAbortsTask> cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
+        &applier_, std::move(set), transactionParticipant);
+    cleanup_aborts_task->Prepare(cleanup_aborts_task);
+    transactionParticipant->context()->thread_pool().Enqueue(cleanup_aborts_task.get());
+  }
+
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -921,6 +1048,10 @@ void TransactionParticipant::UnregisterRequest(int64_t request) {
 void TransactionParticipant::Abort(const TransactionId& id,
                                    TransactionStatusCallback callback) {
   return impl_->Abort(id, std::move(callback));
+}
+
+void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
+  return impl_->Cleanup(std::move(set), this);
 }
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {

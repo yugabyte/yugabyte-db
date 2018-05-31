@@ -133,7 +133,7 @@ void PrepareNonTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch);
 
 // Enumerates intents corresponding to provided key value pairs.
-// For each key in generates a strong intent and for each parent of each it generates a weak one.
+// For each key it generates a strong intent and for each parent of each it generates a weak one.
 // functor should accept 3 arguments:
 // intent_kind - kind of intent weak or strong
 // value_slice - value of intent

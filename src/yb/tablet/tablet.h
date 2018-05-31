@@ -192,6 +192,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
   // in case of a timeout.
   using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, MonoTime)>;
+  using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
   // Create a new tablet.
   //
@@ -233,6 +234,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
 
   CHECKED_STATUS RemoveIntents(const TransactionId& id) override;
+
+  CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) override;
+
+  HybridTime ApplierSafeTime() override;
 
   // Finish the Prepare phase of a write transaction.
   //

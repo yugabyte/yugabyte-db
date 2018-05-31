@@ -42,6 +42,8 @@ using namespace std::placeholders;
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
+DEFINE_bool(transaction_disable_proactive_cleanup_in_tests, false,
+            "Disable cleanup of intents in abort path.");
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
@@ -423,6 +425,10 @@ class YBTransaction::Impl final {
   }
 
   void DoAbortCleanup(const YBTransactionPtr& transaction) {
+    if (FLAGS_transaction_disable_proactive_cleanup_in_tests) {
+      return;
+    }
+
     VLOG_WITH_PREFIX(1) << "Cleaning up intents for " << metadata_.transaction_id;
 
     std::vector<std::string> tablet_ids;
