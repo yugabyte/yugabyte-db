@@ -51,6 +51,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
 
+  // This is set during configure to figure out which cluster type is intended to be modified.
   public String currentClusterType = "primary";
 
   // This should be a globally unique name - it is a combination of the customer id and the universe
@@ -103,6 +104,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public PlacementInfo placementInfo = null;
     
     // The cluster index by which node names are sorted when shown in UI.
+    // This is set internally by the placement util in the server, client should not set it.
     public int index = 0;
 
     /**
@@ -116,7 +118,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      * @param clusterType One of [PRIMARY, ASYNC]
      * @param userIntent  Customized UserIntent describing the desired state of this Cluster.
      */
-    private Cluster(ClusterType clusterType, UserIntent userIntent) {
+    public Cluster(ClusterType clusterType, UserIntent userIntent) {
       assert clusterType != null && userIntent != null;
       this.clusterType = clusterType;
       this.userIntent = userIntent;
@@ -134,6 +136,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return clusterJson;
+    }
+
+    public boolean equals(Cluster other) {
+      return uuid.equals(other.uuid);
     }
   }
 
@@ -194,8 +200,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public String toString() {
-      return "UserIntent " + "for universe=" + universeName + " type="
-             + instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
+      return "UserIntent " + "for universe=" + universeName + " type=" +
+             instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
              ", deviceInfo=" + deviceInfo;
@@ -264,7 +270,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
-
   /**
    * Add a primary cluster with the specified UserIntent and PlacementInfo to the list of clusters
    * if one does not already exist. Otherwise, update the existing primary cluster with the
@@ -298,9 +303,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    *
    * @param userIntent UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param clusterUuid uuid of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
-  public Cluster upsertCluster(UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
+  public Cluster upsertCluster(UserIntent userIntent, PlacementInfo placementInfo,
+                               UUID clusterUuid) {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster != null) {
       if (userIntent != null) {
@@ -310,12 +317,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         cluster.placementInfo = placementInfo;
       }
     } else {
-      cluster = new Cluster(ClusterType.ASYNC, (userIntent == null) ? new UserIntent() : userIntent);
+      cluster = new Cluster(ClusterType.ASYNC, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
       clusters.add(cluster);
     }
     cluster.setUuid(clusterUuid);
     return cluster;
+  }
+
+  /**
+   * Delete a cluster with the specified uuid from the list of clusters.
+   *
+   * @param clusterUuid the uuid of the cluster we are deleting.
+   */
+  public void deleteCluster(UUID clusterUuid) {
+    Cluster cluster = getClusterByUuid(clusterUuid);
+    if (cluster == null) {
+      throw new IllegalArgumentException("UUID " + clusterUuid + " not found in universe " +
+                                         universeUUID);
+    }
+
+    clusters.remove(cluster);
   }
 
   /**
@@ -326,11 +348,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonIgnore
   public Cluster getPrimaryCluster() {
      List<Cluster> foundClusters = clusters.stream()
-         .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
-         .collect(Collectors.toList());
+                                           .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
+                                           .collect(Collectors.toList());
      if (foundClusters.size() > 1) {
        throw new RuntimeException("Multiple primary clusters found in params for universe " +
-           universeUUID.toString());
+                                  universeUUID.toString());
      }
      return Iterables.getOnlyElement(foundClusters, null);
   }
@@ -359,11 +381,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getPrimaryCluster();
     }
     List<Cluster> foundClusters =  clusters.stream()
-            .filter(c -> c.uuid.equals(uuid))
-            .collect(Collectors.toList());
+                                           .filter(c -> c.uuid.equals(uuid))
+                                           .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
       throw new RuntimeException("Multiple clusters with uuid " + uuid.toString() +
-              " found in params for universe " + universeUUID.toString());
+          " found in params for universe " + universeUUID.toString());
     }
     return Iterables.getOnlyElement(foundClusters, null);
   }
@@ -377,7 +399,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public Set<NodeDetails> getNodesInCluster(UUID uuid) {
     if (nodeDetailsSet == null) return null;
     return nodeDetailsSet.stream()
-            .filter(n -> n.isInPlacement(uuid))
-            .collect(Collectors.toSet());
+                         .filter(n -> n.isInPlacement(uuid))
+                         .collect(Collectors.toSet());
   }
 }

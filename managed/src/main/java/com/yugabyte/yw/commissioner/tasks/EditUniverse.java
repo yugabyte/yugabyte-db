@@ -7,9 +7,12 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,18 +57,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // changes the universe name before submitting.
       updateNodeNames();
 
-      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
       UserIntent userIntent = primaryCluster.userIntent;
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       LOG.info("Configure numNodes={}, numMasters={}", userIntent.numNodes,
                userIntent.replicationFactor);
 
       Collection<NodeDetails> nodesToBeRemoved =
-        PlacementInfoUtil.getNodesToBeRemoved(primaryNodes);
+          PlacementInfoUtil.getNodesToBeRemoved(primaryNodes);
 
       Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(primaryNodes);
+          PlacementInfoUtil.getNodesToProvision(primaryNodes);
 
       // Set the old nodes' state to to-be-removed.
       if (!nodesToBeRemoved.isEmpty()) {
@@ -127,7 +131,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(primaryNodes);
+      Collection<NodeDetails> tserversToBeRemoved =
+          PlacementInfoUtil.getTserversToBeRemoved(primaryNodes);
 
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
@@ -137,7 +142,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         tserversToBeRemoved.addAll(nodesToBeRemoved);
       }
 
-      createPlacementInfoTask(tserversToBeRemoved, userIntent.replicationFactor)
+      // Update the blacklist servers on master leader.
+      createPlacementInfoTask(tserversToBeRemoved)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       
       if (!nodesToBeRemoved.isEmpty()) {
@@ -154,11 +160,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createWaitForLoadBalanceTask()
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
-      
+
       if (PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo, 
-            taskParams().getPrimaryCluster().placementInfo)) {
-        createWaitForLeadersOnPreferredOnlyTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+              universeDetails.getPrimaryCluster().placementInfo,
+              primaryCluster.placementInfo)) {
+        createWaitForLeadersOnPreferredOnlyTask();
       }
 
       if (!newMasters.isEmpty()) {

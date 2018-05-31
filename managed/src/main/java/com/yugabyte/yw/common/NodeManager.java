@@ -65,10 +65,13 @@ public class NodeManager extends DevopsBase {
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.get(nodeTaskParam.universeUUID);
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
-    nodeDetails = nodeDetails != null ? nodeDetails : universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    if (nodeDetails == null) {
+      nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+      LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
+    }
     return universe.getUniverseDetails()
-            .getClusterByUuid(nodeDetails.placementUuid)
-            .userIntent;
+                   .getClusterByUuid(nodeDetails.placementUuid)
+                   .userIntent;
   }
 
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
@@ -171,6 +174,10 @@ public class NodeManager extends DevopsBase {
     String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
+
+    if (masterAddresses == null || masterAddresses.isEmpty()) {
+      LOG.warn("No valid masters found during configure for {}.", taskParam.universeUUID);
+    }
 
     if (!taskParam.isMasterInShellMode) {
       subcommand.add("--master_addresses_for_master");

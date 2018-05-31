@@ -1,0 +1,61 @@
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.yw.commissioner.tasks.subtasks;
+
+import java.util.Set;
+import java.util.UUID;
+
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Universe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class DeleteClusterFromUniverse extends AbstractTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(DeleteClusterFromUniverse.class);
+
+  public static class Params extends AbstractTaskParams {
+    // The universe against which we run this task.
+    public UUID universeUUID;
+    // The cluster we are removing from above universe.
+    public UUID clusterUUID;
+  }
+
+  @Override
+  protected Params taskParams() {
+    return (Params)taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return super.getName() + "'(" + taskParams().universeUUID + " " +
+        taskParams().clusterUUID + ")'";
+  }
+
+  @Override
+  public void run() {
+    try {
+      LOG.info("Running {}", getName());
+      // Create the update lambda.
+      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.deleteCluster(taskParams().clusterUUID);
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      Universe.saveDetails(taskParams().universeUUID, updater);
+      LOG.info("Delete cluster {} done.", taskParams().clusterUUID);
+    } catch (Exception e) {
+      String msg = getName() + " failed with exception "  + e.getMessage();
+      LOG.warn(msg, e.getMessage());
+      throw new RuntimeException(msg, e);
+    }
+  }
+}
