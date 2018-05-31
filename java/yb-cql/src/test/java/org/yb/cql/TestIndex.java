@@ -20,6 +20,7 @@ import org.junit.Test;
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ColumnDefinitions.Definition;
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
@@ -429,5 +430,45 @@ public class TestIndex extends BaseCQLTest {
                            Arrays.asList("i5.c2"),
                            new Object[] {"c"},
                            "Row[1, a, 2, b, 3, c]");
+  }
+
+  @Test
+  public void testRestarts() throws Exception {
+
+    // Test concurrent inserts into a table with secondary index, which require a read of the
+    // table in order to update the index. For consistent update of the index, the read and write
+    // operations are executed in a distributed transaction. With multiple writes happening in
+    // parallel, some reads may require a restart. Verify that there are restarts and the inserts
+    // are retried without error.
+    session.execute("create table test_restart (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_restart_by_v on test_restart (v);");
+
+    PreparedStatement insertStmt = session.prepare(
+        "insert into test_restart (k, v) values (1, 1000);");
+
+    final int PARALLEL_WRITE_COUNT = 5;
+
+    int initialRestarts = getRestartsCount("test_restart");
+    int initialRetries = getRetriesCount();
+    LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
+
+    while (true) {
+      Set<ResultSetFuture> results = new HashSet<ResultSetFuture>();
+      for (int i = 0; i < PARALLEL_WRITE_COUNT; i++) {
+        results.add(session.executeAsync(insertStmt.bind()));
+      }
+      for (ResultSetFuture result : results) {
+        result.get();
+      }
+      int currentRestarts = getRestartsCount("test_restart");
+      int currentRetries = getRetriesCount();
+      LOG.info("Current restarts = {}, retries = {}", currentRestarts, currentRetries);
+      if (currentRestarts > initialRestarts && currentRetries > initialRetries)
+        break;
+    }
+
+    // Also verify that the rows are inserted indeed.
+    assertQuery("select k, v from test_restart", "Row[1, 1000]");
   }
 }

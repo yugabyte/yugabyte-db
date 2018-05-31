@@ -54,7 +54,7 @@ using strings::Substitute;
 Executor::Executor(QLEnv *ql_env, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       ql_metrics_(ql_metrics),
-      rescheduled_execute_cb_(Bind(&Executor::Reexecute, Unretained(this))),
+      rescheduled_reexecute_cb_(Bind(&Executor::ReExecute, Unretained(this))),
       rescheduled_flush_async_cb_(Bind(&Executor::FlushAsync, Unretained(this))),
       flush_async_cb_(Bind(&Executor::FlushAsyncDone, Unretained(this))) {
 }
@@ -133,7 +133,7 @@ Status Executor::Execute(const string &ql_stmt, const ParseTree &parse_tree,
   return ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
 }
 
-void Executor::Reexecute() {
+void Executor::ReExecute() {
   for (ExecContext& exec_context : exec_contexts_) {
     const ParseTree* parse_tree = exec_context.parse_tree();
     const Status s = ProcessStatementStatus(*parse_tree, ExecTreeNode(parse_tree->root().get()));
@@ -1331,6 +1331,9 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op,
   const QLResponsePB &resp = op->response();
   CHECK(resp.has_status()) << "QLResponsePB status missing";
   if (resp.status() != QLResponsePB::YQL_STATUS_OK) {
+    if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+      return STATUS(TryAgain, resp.error_message());
+    }
     const ErrorCode errcode = QLStatusToErrorCode(resp.status());
     return exec_context->Error(tnode, resp.error_message().c_str(), errcode);
   }
@@ -1376,7 +1379,8 @@ Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
 void Executor::StatementExecuted(const Status& s) {
   // When executing a transaction, the following transient errors may happen for which the YCQL
   // service will reschedule the transaction to be re-executed:
-  // - TryAgain - when the transaction has a write conflict with another transaction
+  // - TryAgain - when the transaction has a write conflict with another transaction or read-
+  //              restart is required.
   // - Expired - when the transaction expires due to missed heartbeat
   // - TimedOut - when a tablet times out while contacting the tranaction status tablet
   // The transaction will be retried repeatedly until the CQL client times out and closes the
@@ -1386,8 +1390,8 @@ void Executor::StatementExecuted(const Status& s) {
       exec_context.Reset();
     }
     result_ = nullptr;
-    ql_env_->Reset();
-    return ql_env_->RescheduleCurrentCall(&rescheduled_execute_cb_);
+    ql_env_->Reset(ReExecute::kTrue);
+    return ql_env_->RescheduleCurrentCall(&rescheduled_reexecute_cb_);
   }
 
   // Update metrics for all statements executed.

@@ -598,4 +598,18 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
     return value;
   }
+
+  public int getRestartsCount(String tableName) throws Exception {
+    return getTableCounterMetric(DEFAULT_TEST_KEYSPACE, tableName, "restart_read_requests");
+  }
+
+  public int getRetriesCount() throws Exception {
+    int totalSum = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      totalSum += new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server")
+                  .getHistogram("handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute")
+                  .totalSum;
+    }
+    return totalSum;
+  }
 }
