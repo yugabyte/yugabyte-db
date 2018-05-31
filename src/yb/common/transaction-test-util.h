@@ -44,6 +44,9 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
   }
 
+  void Cleanup(TransactionIdSet&& set) override {
+  }
+
   int64_t RegisterRequest() override {
     return 0;
   }

@@ -67,6 +67,8 @@ class TransactionIntentApplier {
  public:
   virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
   virtual CHECKED_STATUS RemoveIntents(const TransactionId& transaction_id) = 0;
+  virtual CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) = 0;
+  virtual HybridTime ApplierSafeTime() = 0;
 
  protected:
   ~TransactionIntentApplier() {}
@@ -109,6 +111,8 @@ class TransactionParticipant : public TransactionStatusManager {
   void RequestStatusAt(const StatusRequest& request) override;
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
+
+  void Cleanup(TransactionIdSet &&set) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 

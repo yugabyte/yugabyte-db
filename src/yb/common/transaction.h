@@ -41,6 +41,7 @@ namespace yb {
 
 using TransactionId = boost::uuids::uuid;
 typedef boost::hash<TransactionId> TransactionIdHash;
+using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
 inline TransactionId GenerateTransactionId() { return Uuid::Generate(); }
 
@@ -110,6 +111,8 @@ class TransactionStatusManager {
   virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
+
+  virtual void Cleanup(TransactionIdSet&& set) = 0;
 
  private:
   friend class RequestScope;

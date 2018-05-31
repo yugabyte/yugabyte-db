@@ -954,7 +954,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     log,
                                     tablet->GetMetricEntity(),
                                     raft_pool(),
-                                    append_pool(),
+                                    tablet_prepare_pool(),
                                     &server_->rpc_server()->thread_pool());
 
     if (!s.ok()) {
