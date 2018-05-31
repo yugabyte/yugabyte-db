@@ -41,8 +41,8 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
 
-    // Hide redis table from YQL.
-    if (nsInfo->name() == common::kRedisKeyspaceName && table->name() == common::kRedisTableName) {
+    // Hide non-YQL tables.
+    if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
       continue;
     }
 

@@ -392,6 +392,24 @@ public class TestTransaction extends BaseCQLTest {
   }
 
   @Test
+  public void testSystemTransactionsTable() throws Exception {
+    createTables();
+    // Insert into multiple tables and ensure all rows are written with same writetime.
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                    "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
+                    "  insert into test_txn3 (k, c1, c2) values (?, ?, ?);" +
+                    "end transaction;",
+            Integer.valueOf(1), Integer.valueOf(1), "v1",
+            Integer.valueOf(2), Integer.valueOf(2), "v2",
+            Integer.valueOf(3), Integer.valueOf(3), "v3");
+
+    thrown.expect(com.datastax.driver.core.exceptions.InvalidQueryException.class);
+    thrown.expectMessage("Table Not Found");
+    Iterator<Row> rows = session.execute("SELECT * FROM system.transactions").iterator();
+  }
+
+  @Test
   public void testTimeout() throws Exception {
     try {
       // Test transaction timeout by recreating the cluster with missed heartbeat periods equals 0
