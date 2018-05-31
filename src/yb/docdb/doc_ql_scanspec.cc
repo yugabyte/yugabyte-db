@@ -73,11 +73,14 @@ DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
     return DocKey();
   }
 
+  // TODO: Require hash codes to be specified if hashed_components is not empty and update
+  // callers to provide it.
+  // https://yugabyte.atlassian.net/browse/ENG-3416
+
   DocKeyHash min_hash = hash_code_ == kUnspecifiedHashCode_ ?
       std::numeric_limits<DocKeyHash>::min() : static_cast<DocKeyHash> (hash_code_);
   DocKeyHash max_hash = max_hash_code_ == kUnspecifiedHashCode_ ?
       std::numeric_limits<DocKeyHash>::max() : static_cast<DocKeyHash> (max_hash_code_);
-
 
   // if hash_code not set (-1) default to 0 (start from the beginning)
   return DocKey(lower_bound ? min_hash : max_hash,
