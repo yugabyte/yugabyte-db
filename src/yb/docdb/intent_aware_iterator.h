@@ -34,6 +34,7 @@ namespace docdb {
 class Value;
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
+YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 // Caches transaction statuses fetched by single IntentAwareIterator.
 // Thread safety is not required, because IntentAwareIterator is used in a single thread only.
@@ -117,7 +118,7 @@ class IntentAwareIterator {
   void SeekToLastDocKey();
 
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
-  // provided
+  // provided.
   void PrevDocKey(const DocKey& doc_key);
 
   // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
@@ -149,12 +150,20 @@ class IntentAwareIterator {
       DocHybridTime* max_deleted_ts,
       Value* result_value = nullptr);
 
+  void DebugDump();
+
  private:
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(const Slice& slice);
 
   // Skips regular entries with hybrid time after read limit.
-  void SkipFutureRecords();
+  // If `is_forward` is `false` and `iter_` is positioned to the earliest record for the current
+  // key, there are two cases:
+  // 1 - record has hybrid time <= read limit: does nothing.
+  // 2 - record has hybrid time > read limit: will skip all records for this key, since all of
+  // them are after earliest record which is after read limit. Then will act the same way on
+  // previous key.
+  void SkipFutureRecords(Direction direction);
 
   // Skips intents with hybrid time after read limit.
   void SkipFutureIntents();
@@ -191,7 +200,6 @@ class IntentAwareIterator {
   void ProcessIntent();
 
   void UpdateResolvedIntentSubDocKeyEncoded();
-  void DebugDump();
 
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular();
@@ -207,6 +215,8 @@ class IntentAwareIterator {
   const TransactionOperationContextOpt txn_op_context_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   std::unique_ptr<rocksdb::Iterator> iter_;
+  // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from
+  // the stack and record time satisfies read_time_ criteria.
   bool iter_valid_ = false;
   Status status_;
   HybridTime max_seen_ht_ = HybridTime::kMin;

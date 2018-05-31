@@ -53,6 +53,8 @@ std::vector<ColumnId> CreateColumnIds(size_t count) {
   return result;
 }
 
+constexpr int32_t kFixedHashCode = 0;
+
 } // namespace
 
 class DocOperationTest : public DocDBTestBase {
@@ -191,6 +193,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
     QLReadRequestPB ql_read_req;
     ql_read_req.add_hashed_column_values()->mutable_value()->set_int32_value(primary_key);
+    ql_read_req.set_hash_code(kFixedHashCode);
+    ql_read_req.set_max_hash_code(kFixedHashCode);
 
     QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
@@ -331,7 +335,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  const DocKey doc_key(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)),
+                       PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue::Int32(2)), HybridTime(1000)));
@@ -381,7 +386,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_FALSE(iter.HasNext());
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue::kTombstone), HybridTime(1001)));
@@ -402,8 +407,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
-  DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
-                             rocksdb::kDefaultQueryId);
+  DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
+                             /* request = */ nullptr, rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
@@ -418,7 +423,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   EXPECT_EQ(101, value_map.TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(
@@ -449,8 +454,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
-  DocQLScanSpec ql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
-                                    rocksdb::kDefaultQueryId);
+  DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
+                                    hashed_components_system, nullptr, rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter_system(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
@@ -477,22 +482,14 @@ int32_t NewInt(std::mt19937_64* rng, std::unordered_set<int32_t>* existing) {
   }
 }
 
-template<class It>
-std::pair<It, It> GetIteratorRange(It begin, It end, It it, QLOperator op) {
-  switch (op) {
-    case QL_OP_EQUAL:
-      return std::make_pair(it, it + 1);
-    case QL_OP_LESS_THAN:
-      return std::make_pair(begin, it);
-    case QL_OP_LESS_THAN_EQUAL:
-      return std::make_pair(begin, it + 1);
-    case QL_OP_GREATER_THAN:
-      return std::make_pair(it + 1, end);
-    case QL_OP_GREATER_THAN_EQUAL:
-      return std::make_pair(it, end);
-    default: // We should not handle all cases here
-      LOG(FATAL) << "Unexpected op: " << QLOperator_Name(op);
-      return std::make_pair(begin, end);
+int32_t NewInt(std::mt19937_64* rng, std::unordered_set<int32_t>* existing,
+    const int32_t min, const int32_t max) {
+  std::uniform_int_distribution<int32_t> distribution(min, max);
+  for (;;) {
+    auto result = distribution(*rng);
+    if (existing->insert(result).second) {
+      return result;
+    }
   }
 }
 
@@ -502,28 +499,110 @@ struct RowData {
   int32_t v;
 };
 
+struct RowDataWithHt {
+  RowData data;
+  HybridTime ht;
+};
+
 bool operator==(const RowData& lhs, const RowData& rhs) {
   return lhs.k == rhs.k && lhs.r == rhs.r && lhs.v == rhs.v;
 }
 
 bool operator<(const RowData& lhs, const RowData& rhs) {
+  return lhs.k == rhs.k ? (lhs.r == rhs.r ? lhs.v < rhs.v : lhs.r < rhs.r) : lhs.k < rhs.k;
+}
+
+bool IsSameKey(const RowData& lhs, const RowData& rhs) {
+  return lhs.k == rhs.k && lhs.r == rhs.r;
+}
+
+bool IsKeyLessThan(const RowData& lhs, const RowData& rhs) {
   return lhs.k == rhs.k ? lhs.r < rhs.r : lhs.k < rhs.k;
 }
 
 std::ostream& operator<<(std::ostream& out, const RowData& row) {
-  return out << "{ k = " << row.k << ", r = " << row.r << ", v = " << row.v << " }";
+  return out << "{ k: " << row.k << " r: " << row.r << " v: " << row.v << " }";
+}
+
+bool IsSameKey(const RowDataWithHt& lhs, const RowDataWithHt& rhs) {
+  return IsSameKey(lhs.data, rhs.data);
+}
+
+bool IsKeyLessThan(const RowDataWithHt& lhs, const RowDataWithHt& rhs) {
+  return IsKeyLessThan(lhs.data, rhs.data);
+}
+
+bool operator<(const RowDataWithHt& lhs, const RowDataWithHt& rhs) {
+  return IsSameKey(lhs, rhs)
+      ? (lhs.ht == rhs.ht ? lhs.data < rhs.data : lhs.ht > rhs.ht)
+      : IsKeyLessThan(lhs, rhs);
+}
+
+std::ostream& operator<<(std::ostream& out, const RowDataWithHt& row) {
+  return out << "{ data: " << row.data << " ht: " << row.ht << " }";
+}
+
+template<class It>
+It MoveForwardToNextKey(It it, const It end) {
+  return std::find_if_not(it, end, [it](auto k) { return IsSameKey(k, *it); });
+}
+
+template<class It>
+It MoveBackToBeginningOfCurrentKey(const It begin, It it) {
+
+  return std::lower_bound(begin, it, *it, [](auto k1, auto k2) { return IsKeyLessThan(k1, k2); });
+}
+
+template<class It>
+std::pair<It, It> GetIteratorRange(const It begin, const It end, const It it, QLOperator op) {
+  switch (op) {
+    case QL_OP_EQUAL:
+      {
+        return std::make_pair(MoveBackToBeginningOfCurrentKey(begin, it),
+            MoveForwardToNextKey(it, end));
+      }
+    case QL_OP_LESS_THAN:
+      {
+        return std::make_pair(begin, MoveBackToBeginningOfCurrentKey(begin, it));
+      }
+    case QL_OP_LESS_THAN_EQUAL:
+      {
+        return std::make_pair(begin, MoveForwardToNextKey(it, end));
+      }
+    case QL_OP_GREATER_THAN:
+      {
+        return std::make_pair(MoveForwardToNextKey(it, end), end);
+      }
+    case QL_OP_GREATER_THAN_EQUAL:
+      {
+        return std::make_pair(MoveBackToBeginningOfCurrentKey(begin, it), end);
+      }
+    default: // We should not handle all cases here
+      LOG(FATAL) << "Unexpected op: " << QLOperator_Name(op);
+      return std::make_pair(begin, end);
+  }
 }
 
 class DocOperationRangeFilterTest : public DocOperationTest {
  public:
   void TestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan = true);
  private:
+  void TestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan,
+      size_t num_rows_per_key);
 };
 
-// Currently we test using one column and one scan type.
-// TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
 void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType schema_type,
     bool is_forward_scan) {
+  TestWithSortingType(schema_type, is_forward_scan, 1 /* num_rows_per_key */);
+  ASSERT_OK(DestroyRocksDB());
+  ASSERT_OK(ReopenRocksDB());
+  TestWithSortingType(schema_type, is_forward_scan, 5 /* num_rows_per_key */);
+}
+
+  // Currently we test using one column and one scan type.
+// TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
+void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType schema_type,
+    const bool is_forward_scan, const size_t num_rows_per_key) {
   ASSERT_OK(DisableCompactions());
 
   ColumnSchema hash_column("k", INT32, false, true);
@@ -532,30 +611,35 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
   auto columns = { hash_column, range_column, value_column };
   Schema schema(columns, CreateColumnIds(columns.size()), 2);
 
-  auto t = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0);
+  constexpr uint32_t kMinTime = 500;
+  constexpr uint32_t kMaxTime = 1500;
+  constexpr int32_t kNumKeys = 20;
 
   std::mt19937_64 rng;
   Seed(&rng);
   std::unordered_set<int32_t> used_ints;
-  int32_t key = NewInt(&rng, &used_ints);
-  std::vector<RowData> rows;
-  constexpr int32_t kNumRows = 20;
-  for (int32_t i = 0; i != kNumRows; ++i) {
-    RowData row = {key,
-                   NewInt(&rng, &used_ints),
-                   NewInt(&rng, &used_ints)};
-    rows.push_back(row);
+  int32_t h_key = NewInt(&rng, &used_ints);
+  std::vector<RowDataWithHt> rows;
+  for (int32_t i = 0; i != kNumKeys; ++i) {
+    int32_t r_key = NewInt(&rng, &used_ints);
+    for (int32_t j = 0; j < num_rows_per_key; ++j) {
+      RowData row_data = {h_key, r_key, NewInt(&rng, &used_ints)};
+      auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
+          NewInt(&rng, &used_ints, kMinTime, kMaxTime), 0);
+      RowDataWithHt row = {row_data, ht};
+      rows.push_back(row);
+      WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
+                  schema,
+                  { row_data.k, row_data.r, row_data.v },
+                  1000,
+                  ht);
+    }
 
-    WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
-                schema,
-                { row.k, row.r, row.v },
-                1000,
-                t);
     ASSERT_OK(FlushRocksDbAndWait());
   }
   std::vector<rocksdb::LiveFileMetaData> live_files;
   rocksdb()->GetLiveFilesMetaData(&live_files);
-  ASSERT_EQ(kNumRows, live_files.size());
+  ASSERT_EQ(kNumKeys, live_files.size());
 
   std::shuffle(rows.begin(), rows.end(), rng);
   auto ordered_rows = rows;
@@ -571,48 +655,72 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
 
   auto old_iterators =
       rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
-  for (auto op : operators) {
+  for (const auto op : operators) {
     LOG(INFO) << "Testing: " << QLOperator_Name(op);
-    for (auto& row : rows) {
-      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue::Int32(key) };
+    for (const auto& row : rows) {
+      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue::Int32(h_key) };
       QLConditionPB condition;
       condition.add_operands()->set_column_id(1_ColId);
       condition.set_op(op);
-      condition.add_operands()->mutable_value()->set_int32_value(row.r);
-
+      condition.add_operands()->mutable_value()->set_int32_value(row.data.r);
       auto it = std::lower_bound(ordered_rows.begin(), ordered_rows.end(), row);
-      auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
-
-      std::vector<RowData> expected_rows(range.first, range.second);
-      if (is_forward_scan == (schema_type == ColumnSchema::SortingType::kDescending)) {
-        std::reverse(expected_rows.begin(), expected_rows.end());
+      LOG(INFO) << "Bound: " << yb::ToString(*it);
+      const auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
+      std::vector<int32_t> ht_diffs;
+      if (op == QL_OP_EQUAL) {
+        ht_diffs = {0};
+      } else {
+        ht_diffs = {-1, 0, 1};
       }
-      DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, &condition,
-                                 rocksdb::kDefaultQueryId, is_forward_scan);
-      DocRowwiseIterator ql_iter(
-          schema, schema, boost::none, doc_db(),
-          MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
-      ASSERT_OK(ql_iter.Init(ql_scan_spec));
-      LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
-      it = expected_rows.begin();
-      while(ql_iter.HasNext()) {
-        QLTableRow value_map;
-        ASSERT_OK(ql_iter.NextRow(&value_map));
-        ASSERT_EQ(3, value_map.ColumnCount());
+      for (auto ht_diff : ht_diffs) {
+        std::vector<RowDataWithHt> expected_rows;
+        auto read_ht = ReadHybridTime::FromMicros(row.ht.GetPhysicalValueMicros() + ht_diff);
+        LOG(INFO) << "Read time: " << read_ht;
+        size_t keys_in_range = range.first < range.second;
+        for (auto it_r = range.first; it_r < range.second;) {
+          auto it = it_r;
+          if (it_r->ht <= read_ht.read) {
+            expected_rows.emplace_back(*it_r);
+            while (it_r < range.second && IsSameKey(*it_r, *it)) {
+              ++it_r;
+            }
+          } else {
+            ++it_r;
+          }
+          if (it_r < range.second && !IsSameKey(*it_r, *it)) {
+            ++keys_in_range;
+          }
+        }
 
-        RowData fetched_row = { value_map.TestValue(0_ColId).value.int32_value(),
-                                value_map.TestValue(1_ColId).value.int32_value(),
-                                value_map.TestValue(2_ColId).value.int32_value() };
-        LOG(INFO) << "Fetched row: " << fetched_row;
-        ASSERT_EQ(*it, fetched_row);
-        it++;
+        if (is_forward_scan == (schema_type == ColumnSchema::SortingType::kDescending)) {
+          std::reverse(expected_rows.begin(), expected_rows.end());
+        }
+        DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
+                                   &condition, rocksdb::kDefaultQueryId, is_forward_scan);
+        DocRowwiseIterator ql_iter(
+            schema, schema, boost::none, doc_db(), MonoTime::Max() /* deadline */, read_ht);
+        ASSERT_OK(ql_iter.Init(ql_scan_spec));
+        LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
+        it = expected_rows.begin();
+        while(ql_iter.HasNext()) {
+          QLTableRow value_map;
+          ASSERT_OK(ql_iter.NextRow(&value_map));
+          ASSERT_EQ(3, value_map.ColumnCount());
+
+          RowData fetched_row = { value_map.TestValue(0_ColId).value.int32_value(),
+                                  value_map.TestValue(1_ColId).value.int32_value(),
+                                  value_map.TestValue(2_ColId).value.int32_value() };
+          LOG(INFO) << "Fetched row: " << fetched_row;
+          ASSERT_EQ(fetched_row, it->data);
+          it++;
+        }
+        ASSERT_EQ(expected_rows.end(), it);
+        auto new_iterators =
+            rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+
+        ASSERT_EQ(keys_in_range, new_iterators - old_iterators);
+        old_iterators = new_iterators;
       }
-      ASSERT_EQ(expected_rows.end(), it);
-      auto new_iterators =
-          rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
-
-      ASSERT_EQ(range.second - range.first, new_iterators - old_iterators);
-      old_iterators = new_iterators;
     }
   }
 }
@@ -677,7 +785,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
   ql_writereq_pb.set_type(
       QLWriteRequestPB_QLStmtType::QLWriteRequestPB_QLStmtType_QL_STMT_UPDATE);
 
-  ql_writereq_pb.set_hash_code(0);
+  ql_writereq_pb.set_hash_code(kFixedHashCode);
   AddPrimaryKeyColumn(&ql_writereq_pb, 1);
   AddColumnValues(schema, {10, 20, 30}, &ql_writereq_pb);
   ql_writereq_pb.set_ttl(2000);

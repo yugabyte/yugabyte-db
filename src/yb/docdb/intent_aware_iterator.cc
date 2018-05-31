@@ -201,9 +201,8 @@ bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
 }
 
 std::string DebugDumpKeyToStr(const Slice &key) {
-  SubDocKey key_decoded;
-  CHECK(key_decoded.FullyDecodeFrom(key).ok());
-  return key.ToDebugHexString() + " (" + key_decoded.ToString() + ")";
+  return key.ToDebugString() + " " + key.ToDebugHexString() + " (" +
+      SubDocKey::DebugSliceToString(key) + ")";
 }
 
 std::string DebugDumpKeyToStr(const KeyBytes &key) {
@@ -354,11 +353,12 @@ void IntentAwareIterator::SeekToLastDocKey() {
   if (intent_iter_) {
     // TODO (dtxn): Implement SeekToLast when inten intents are present. Since part of the
     // is made of intents, we may have to avoid that. This is needed when distributed txns are fully
-    // supported.
+    // supported. See ENG-3376.
     return;
   }
   iter_->SeekToLast();
-  if (!iter_->Valid()) {
+  SkipFutureRecords(Direction::kBackward);
+  if (!iter_valid_) {
     return;
   }
   // Seek to the first rocksdb kv-pair for this row.
@@ -373,6 +373,7 @@ void IntentAwareIterator::SeekToLastDocKey() {
 
 void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
   Seek(doc_key);
+  // TODO(dtxn) - also should move back intent iterator. See ENG-3376.
   if (!status_.ok()) {
     return;
   }
@@ -381,8 +382,9 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
     return;
   }
   iter_->Prev();
-  if (!iter_->Valid()) {
-    iter_valid_ = false; // TODO(dtxn) support reverse scan with read restart
+  SkipFutureRecords(Direction::kBackward);
+  if (!iter_valid_) {
+    // TODO(dtxn) support reverse scan with read restart
     return;
   }
   Slice key_slice = iter_->key();
@@ -396,7 +398,7 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
 
 bool IntentAwareIterator::valid() {
   if (skip_future_records_needed_) {
-    SkipFutureRecords();
+    SkipFutureRecords(Direction::kForward);
     skip_future_records_needed_ = false;
   }
   if (skip_future_intents_needed_) {
@@ -543,6 +545,7 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
 }
 
 void IntentAwareIterator::DebugDump() {
+  bool is_valid = valid();
   LOG(INFO) << ">> IntentAwareIterator dump";
   LOG(INFO) << "iter_->Valid(): " << iter_->Valid();
   if (iter_->Valid()) {
@@ -559,7 +562,7 @@ void IntentAwareIterator::DebugDump() {
     LOG(INFO) << "resolved_intent_sub_doc_key_encoded_: "
               << DebugDumpKeyToStr(resolved_intent_sub_doc_key_encoded_);
   }
-  LOG(INFO) << "valid(): " << valid();
+  LOG(INFO) << "valid(): " << is_valid;
   if (valid()) {
     DocHybridTime doc_ht;
     auto key = FetchKey(&doc_ht);
@@ -663,7 +666,7 @@ void IntentAwareIterator::PopPrefix() {
               : SubDocKey::DebugSliceToString(prefix_stack_.back()));
 }
 
-void IntentAwareIterator::SkipFutureRecords() {
+void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
   if (!status_.ok()) {
     return;
   }
@@ -701,7 +704,19 @@ void IntentAwareIterator::SkipFutureRecords() {
       return;
     }
     VLOG(4) << "Skipping because of time: " << SubDocKey::DebugSliceToString(iter_->key());
-    iter_->Next(); // TODO(dtxn) use seek with the same key, but read limit as doc hybrid time.
+    switch (direction) {
+      case Direction::kForward:
+        iter_->Next(); // TODO(dtxn) use seek with the same key, but read limit as doc hybrid time.
+        break;
+      case Direction::kBackward:
+        iter_->Prev();
+        break;
+      default:
+        status_ = STATUS_FORMAT(Corruption, "Unexpected direction: $0", direction);
+        LOG(ERROR) << status_;
+        iter_valid_ = false;
+        return;
+    }
   }
   iter_valid_ = false;
 }
