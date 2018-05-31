@@ -44,9 +44,6 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     // The universe against which this node's details should be saved.
     public UUID universeUUID;
 
-    // Number of replicas in the placement info.
-    public int numReplicas;
-
     // If present, then we intend to decommission these nodes.
     public Set<String> blacklistNodes = null;
   }
@@ -64,8 +61,8 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "'(" + taskParams().universeUUID + " num:" + taskParams().numReplicas
-        + " " + taskParams().blacklistNodes + ")'";
+    return super.getName() + "'(" + taskParams().universeUUID + " " +
+        taskParams().blacklistNodes + ")'";
   }
 
   @Override
@@ -78,7 +75,6 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       client = ybService.getClient(hostPorts);
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(client,
                                                                    taskParams().universeUUID,
-                                                                   taskParams().numReplicas,
                                                                    taskParams().blacklistNodes);
       modifyConfig.doCall();
     } catch (Exception e) {
@@ -92,19 +88,16 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
   // TODO: in future, AbstractModifyMasterClusterConfig.run() should have retries.
   public static class ModifyUniverseConfig extends AbstractModifyMasterClusterConfig {
     UUID universeUUID;
-    int numReplicas;
     Set<String> blacklistNodes;
 
     public ModifyUniverseConfig(YBClient client,
                                 UUID universeUUID,
-                                int numReplicas,
                                 Set<String> blacklistNodes) {
       super(client);
       this.universeUUID = universeUUID;
-      this.numReplicas = numReplicas;
       this.blacklistNodes = blacklistNodes;
     }
-    
+
     public void generatePlacementInfoPB(Master.PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
       PlacementInfo placementInfo = cluster.placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
@@ -132,7 +125,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       placementInfoPB.setPlacementUuid(ByteString.copyFromUtf8(cluster.uuid.toString()));
       placementInfoPB.build();
     }
-    
+
     public void addAffinitizedPlacements(Master.ReplicationInfoPB.Builder replicationInfoPB, 
                                          PlacementInfo placementInfo) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
@@ -155,7 +148,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     }
 
     @Override
-    protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+    public Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
       Universe universe = Universe.get(universeUUID);
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
@@ -167,12 +160,10 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       // Build the live replicas from the replication info.
       Master.PlacementInfoPB.Builder placementInfoPB =
           replicationInfoPB.getLiveReplicasBuilder();
-      // Set the replication factor to the number of masters.
-      LOG.info("Starting modify config with {} masters.", numReplicas);
       // Create the placement info for the universe.
       PlacementInfo placementInfo = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
       generatePlacementInfoPB(placementInfoPB, universe.getUniverseDetails().getPrimaryCluster());
-      
+
       List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       for (Cluster cluster : readOnlyClusters) {
         Master.PlacementInfoPB.Builder placementInfoReadPB = replicationInfoPB.addReadReplicasBuilder();

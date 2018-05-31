@@ -15,6 +15,10 @@ public enum TaskType {
 
   CreateUniverse("CreateUniverse"),
 
+  ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
+
+  ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
+
   DestroyUniverse("DestroyUniverse"),
 
   DeleteTable("DeleteTable"),
@@ -91,6 +95,8 @@ public enum TaskType {
   WaitForServer("subtasks.WaitForServer"),
 
   WaitForTServerHeartBeats("subtasks.WaitForTServerHeartBeats"),
+
+  DeleteClusterFromUniverse("subtasks.DeleteClusterFromUniverse"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
