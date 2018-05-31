@@ -92,6 +92,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
+  void Cleanup(TransactionIdSet&& set) override {
+    Fail();
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

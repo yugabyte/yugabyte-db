@@ -360,6 +360,7 @@ void TabletPeer::Shutdown() {
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
+    prepare_thread_.reset();
     tablet_.reset();
     state_.store(TabletStatePB::SHUTDOWN, std::memory_order_release);
   }

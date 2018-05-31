@@ -30,6 +30,7 @@ set(DOCDB_SRCS
     doc_boundary_values_extractor.cc
     docdb.cc
     docdb_compaction_filter.cc
+    docdb_compaction_filter_intents.cc
     docdb-internal.cc
     docdb_rocksdb_util.cc
     docdb_util.cc

@@ -71,6 +71,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/primitive_value.h"
@@ -112,6 +113,9 @@ DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
             "Use at your own risk!");
 TAG_FLAG(tablet_do_dup_key_checks, unsafe);
+
+DEFINE_bool(tablet_do_compaction_cleanup_for_intents, true,
+            "Whether to clean up intents for aborted transactions in compaction.");
 
 DEFINE_int32(tablet_bloom_block_size, 4096,
              "Block size of the bloom filters used for tablet keys.");
@@ -499,7 +503,12 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
-    rocksdb_options.compaction_filter_factory = nullptr;
+
+    if (FLAGS_tablet_do_compaction_cleanup_for_intents) {
+      rocksdb_options.compaction_filter_factory =
+          std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this);
+    }
+
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
     intents_db_.reset(intents_db);
@@ -1222,6 +1231,23 @@ CHECKED_STATUS Tablet::RemoveIntents(const TransactionId& id) {
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
   return intents_db_->Write(write_options, &intents_write_batch);
+}
+
+CHECKED_STATUS Tablet::RemoveIntents(const TransactionIdSet& transactions) {
+  rocksdb::WriteBatch intents_write_batch;
+  for (const TransactionId& id : transactions) {
+    RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
+        id, HybridTime() /* commit_ht */, nullptr /* regular_write_batch */,
+        intents_db_.get(), &intents_write_batch));
+  }
+
+  rocksdb::WriteOptions write_options;
+  InitRocksDBWriteOptions(&write_options);
+  return intents_db_->Write(write_options, &intents_write_batch);
+}
+
+HybridTime Tablet::ApplierSafeTime() {
+  return mvcc_manager()->SafeTime();
 }
 
 Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
