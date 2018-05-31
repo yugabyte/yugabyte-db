@@ -27,7 +27,6 @@ import org.yb.minicluster.MiniYBDaemon;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.ResultSetFuture;
 
 public class TestTransaction extends BaseCQLTest {
 
@@ -344,16 +343,6 @@ public class TestTransaction extends BaseCQLTest {
 
   private int getExpiredTransactionsCount() throws Exception {
     return getTableCounterMetric("system", "transactions", "expired_transactions");
-  }
-
-  private int getRetriesCount() throws Exception {
-    int totalSum = 0;
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      totalSum += new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server")
-                  .getHistogram("handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute")
-                  .totalSum;
-    }
-    return totalSum;
   }
 
   @Test

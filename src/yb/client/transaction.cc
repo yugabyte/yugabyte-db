@@ -205,7 +205,7 @@ class YBTransaction::Impl final {
         callback(STATUS(IllegalState, "Commit of child transaction is not allowed"));
         return;
       }
-      if (!restarts_.empty()) {
+      if (IsRestartRequired()) {
         callback(STATUS(
             IllegalState, "Commit of transaction that requires restart is not allowed"));
         return;
@@ -254,6 +254,10 @@ class YBTransaction::Impl final {
     StoreTabletReadRestart(tablet, restart_time.local_limit, &lock);
   }
 
+  bool IsRestartRequired() const {
+    return !restarts_.empty();
+  }
+
   std::shared_future<TransactionMetadata> TEST_GetMetadata() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (metadata_future_.valid()) {
@@ -281,7 +285,7 @@ class YBTransaction::Impl final {
       callback(status);
       return;
     }
-    if (!restarts_.empty()) {
+    if (IsRestartRequired()) {
       lock.unlock();
       callback(STATUS(IllegalState, "Restart required"));
       return;
@@ -701,6 +705,10 @@ void YBTransaction::Abort() {
 
 void YBTransaction::RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) {
   impl_->RestartRequired(tablet, restart_time);
+}
+
+bool YBTransaction::IsRestartRequired() const {
+  return impl_->IsRestartRequired();
 }
 
 YBTransactionPtr YBTransaction::CreateRestartedTransaction() {
