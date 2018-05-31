@@ -120,7 +120,12 @@ void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
     CHECK_OK(clock->Init());
     transaction_manager_ = std::make_unique<TransactionManager>(client_, clock);
   }
-  transaction_ = std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
+  if (transaction_ == nullptr) {
+    transaction_ =  std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
+  } else {
+    DCHECK(transaction_->IsRestartRequired());
+    transaction_ = transaction_->CreateRestartedTransaction();
+  }
   session_->SetTransaction(transaction_);
 }
 
@@ -260,13 +265,13 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
   metadata_cache_->RemoveCachedUDType(keyspace_name, type_name);
 }
 
-void QLEnv::Reset() {
+void QLEnv::Reset(const ReExecute reexecute) {
   session_->Abort();
   session_->SetTransaction(nullptr);
   requested_callback_ = nullptr;
   flush_status_ = Status::OK();
   op_errors_.clear();
-  if (transaction_ != nullptr) {
+  if (transaction_ != nullptr && !(transaction_->IsRestartRequired() && reexecute)) {
     shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
     transaction->Abort();
   }

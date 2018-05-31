@@ -39,6 +39,8 @@
 namespace yb {
 namespace ql {
 
+YB_STRONGLY_TYPED_BOOL(ReExecute);
+
 class QLEnv {
  public:
   //------------------------------------------------------------------------------------------------
@@ -162,8 +164,9 @@ class QLEnv {
 
   virtual void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
 
-  // Reset all env states or variables before executing the next statement.
-  void Reset();
+  // Reset all env states or variables before executing the next statement or re-executing the
+  // current one.
+  void Reset(ReExecute reexecute = ReExecute::kFalse);
 
   void SetCurrentCall(rpc::InboundCallPtr call);
 

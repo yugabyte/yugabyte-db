@@ -106,6 +106,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time);
 
+  bool IsRestartRequired() const;
+
   YBTransactionPtr CreateRestartedTransaction();
 
   // Prepares child data, so child transaction could be started in another server.

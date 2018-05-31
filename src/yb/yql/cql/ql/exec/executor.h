@@ -137,7 +137,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
 
   // Re-execute the current statement.
-  void Reexecute();
+  void ReExecute();
 
   //------------------------------------------------------------------------------------------------
   // Result processing.
@@ -332,8 +332,8 @@ class Executor : public QLExprExecutor {
   // QLMetrics to keep track of node parsing etc.
   const QLMetrics* ql_metrics_;
 
-  // Rescheduled Execute callback.
-  Callback<void(void)> rescheduled_execute_cb_;
+  // Rescheduled ReExecute callback.
+  Callback<void(void)> rescheduled_reexecute_cb_;
 
   // Rescheduled FlushAsync callback.
   Callback<void(void)> rescheduled_flush_async_cb_;
