@@ -63,6 +63,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Writes the user intent to the universe.
    */
   public Universe writeUserIntentToUniverse() {
+    return writeUserIntentToUniverse(false);
+  }
+
+  /**
+   * Writes the user intent to the universe.
+   * @param isReadOnly only readonly cluster info needs peristence.
+   */
+  public Universe writeUserIntentToUniverse(boolean isReadOnly) {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -76,12 +84,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
-        universeDetails.nodePrefix = taskParams().nodePrefix;
-        universeDetails.universeUUID = taskParams().universeUUID;
-        Cluster cluster = taskParams().getPrimaryCluster();
-        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
-
+        if (!isReadOnly) {
+          universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
+          universeDetails.nodePrefix = taskParams().nodePrefix;
+          universeDetails.universeUUID = taskParams().universeUUID;
+          Cluster cluster = taskParams().getPrimaryCluster();
+          universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+        } else {
+          // Combine the existing nodes with new read only cluster nodes.
+          universeDetails.nodeDetailsSet.addAll(taskParams().nodeDetailsSet);
+        }
         taskParams().getReadOnlyClusters().stream().forEach((async) -> {
           universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
         });
@@ -94,6 +106,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
     // Return the universe object that we have already updated.
     return universe;
+  }
+
+  /**
+   * Delete a cluster from the universe.
+   * @param clusterUUID uuid of the cluster user wants to delete.
+   */
+  public void deleteClusterFromUniverse(UUID clusterUUID) {
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.deleteCluster(clusterUUID);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(taskParams().universeUUID, updater);
+    LOG.info("Delete cluster {} done.", clusterUUID);
   }
 
   // Helper data structure to save the new name and index of nodes for quick lookup using the
@@ -112,22 +141,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  // Fix up the name of all the nodes. This fixes the name and the node index for being created
-  // nodes. Since universe name can be changed in the UI, and configure is not called
-  // before submitting Create, we fix up the node-prefix also to latest universe name.
-  public void updateNodeNames() {
-    PlacementInfoUtil.populateClusterIndices(taskParams());
-    Collection<NodeDetails> nodes = taskParams().nodeDetailsSet;
-    Universe universe = Universe.get(taskParams().universeUUID);
-    final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
-    String nodePrefix = taskParams().nodePrefix;
-    // Pick the univese name from the current in-memory state.
-    String univNewName = taskParams().getPrimaryCluster().userIntent.universeName;
-    boolean updateNodePrefix = !nodePrefix.contains(univNewName);
+  // The universe name can be changed in the UI, and say if configure is not called
+  // before submitting Create, we need to fix up the node-prefix also to latest universe name.
+  private String updateUniverseName(Universe universe) {
+    final String univNewName = taskParams().getPrimaryCluster().userIntent.universeName;
     final boolean univNameChanged = !universe.name.equals(univNewName);
+    String nodePrefix = taskParams().nodePrefix;
 
+    // Pick the universe name from the current in-memory state.
     // Note that `universe` should have the new name persisted before this call.
-    if (updateNodePrefix) {
+    if (!nodePrefix.contains(univNewName)) {
       if (univNameChanged) {
         LOG.warn("Universe name mismatched: expected {} but found {}. Updating to {}.",
                  univNewName, universe.name, univNewName);
@@ -136,12 +159,39 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       LOG.info("Updating node prefix to {}.", nodePrefix);
     }
 
+    // Persist the desired node information into the DB.
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        if (univNameChanged) {
+          universe.name = univNewName;
+        }
+      }
+    };
+    universe = Universe.saveDetails(taskParams().universeUUID, updater);
+
+    return nodePrefix;
+  }
+
+  // Fix up names of all the nodes. This fixes the name and the node index for being created nodes.
+  public void updateNodeNames() {
+    PlacementInfoUtil.populateClusterIndices(taskParams());
+    Universe universe = Universe.get(taskParams().universeUUID);
+    final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
+    String nodePrefix = taskParams().nodePrefix;
+
+    // Check if we need to change the universe name, only when creating a universe - when task
+    // contains a primary cluster.
+    if (taskParams().getPrimaryCluster() != null) {
+      nodePrefix = updateUniverseName(universe);
+    }
+
     for (Cluster cluster : taskParams().clusters) {
-      Set<NodeDetails> nodesInCluster = taskParams().getNodesInCluster(cluster.uuid);
-      Set<NodeDetails> nodesInUniverse = universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
-      int startIndex = PlacementInfoUtil.getStartIndex(nodesInUniverse);
+      Set<NodeDetails> nodesInClusterTask = taskParams().getNodesInCluster(cluster.uuid);
+      int startIndex = PlacementInfoUtil.getStartIndex(
+          universe.getUniverseDetails().getNodesInCluster(cluster.uuid));
       int iter = 0;
-      for (NodeDetails node : nodesInCluster) {
+      for (NodeDetails node : nodesInClusterTask) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           node.nodeIdx = startIndex + iter;
           String newName = nodePrefix + "-n" + node.nodeIdx;
@@ -172,9 +222,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             node.nodeName = newInfo.name;
             node.nodeIdx = newInfo.index;
           }
-        }
-        if (univNameChanged) {
-          universe.name = univNewName;
         }
       }
     };

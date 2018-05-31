@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -100,7 +101,7 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      
+
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
       Cluster c = taskParams.currentClusterType.equals("primary") ? 
           taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);         
@@ -350,6 +351,124 @@ public class UniverseController extends AuthenticatedController {
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
     return ApiResponse.success(response);
+  }
+
+  /**
+   * API that queues a task to create a read-only cluster in an existing universe.
+   * @return result of the cluster create operation.
+   */
+  public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
+    UniverseDefinitionTaskParams taskParams;
+    try {
+      LOG.info("Create cluster for {} in {}.", customerUUID, universeUUID);
+      // Get the user submitted form data.
+      ObjectNode formData = (ObjectNode) request().body().asJson();
+      taskParams = bindFormDataToTaskParams(formData);
+    } catch (Throwable t) {
+      return ApiResponse.error(BAD_REQUEST, t.getMessage());
+    }
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    Universe universe = null;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    try {
+      if (taskParams.clusters == null || taskParams.clusters.size() != 1) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid 'clusters' field/size: " +
+                                 taskParams.clusters + " for " + universeUUID);
+      }
+
+      // Set the provider code.
+      Cluster c = taskParams.clusters.get(0);
+      Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
+      c.userIntent.providerType = CloudType.valueOf(provider.code);
+      updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+
+      // Submit the task to create the cluster.
+      UUID taskUUID = commissioner.submit(TaskType.ReadOnlyClusterCreate, taskParams);
+      LOG.info("Submitted create cluster for {}:{}, task uuid = {}.",
+               universe.universeUUID, universe.name, taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(customer,
+                          universe.universeUUID,
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TaskType.Create,
+                          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
+               taskUUID, universe.universeUUID, universe.name);
+
+      ObjectNode resultNode = (ObjectNode)universe.toJson();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
+    } catch (Throwable t) {
+      LOG.error("Error creating cluster", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  /**
+   * API that queues a task to delete a read-only cluster in an existing universe.
+   * @return result of the cluster delete operation.
+   */
+  public Result clusterDelete(UUID customerUUID, UUID universeUUID, UUID clusterUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    Boolean isForceDelete = false;
+    if (request().getQueryString("isForceDelete") != null) {
+      isForceDelete = Boolean.valueOf(request().getQueryString("isForceDelete"));
+    }
+
+    try {
+      // Create the Commissioner task to destroy the universe.
+      ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+      taskParams.universeUUID = universeUUID;
+      taskParams.clusterUUID = clusterUUID;
+      taskParams.isForceDelete = isForceDelete;
+      taskParams.expectedUniverseVersion = universe.version;
+
+      // Submit the task to delete the cluster.
+      UUID taskUUID = commissioner.submit(TaskType.ReadOnlyClusterDelete, taskParams);
+      LOG.info("Submitted delete cluster for {} in {}, task uuid = {}.",
+               clusterUUID, universe.name, taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(customer,
+                          universe.universeUUID,
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TaskType.Delete,
+                          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
+               taskUUID, universe.universeUUID, universe.name);
+
+      ObjectNode resultNode = (ObjectNode)universe.toJson();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
+    } catch (Throwable t) {
+      LOG.error("Error deleting cluster ", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
   }
 
   public Result universeCost(UUID customerUUID, UUID universeUUID) {

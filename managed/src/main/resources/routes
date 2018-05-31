@@ -75,6 +75,10 @@ GET     /api/customers/:cUUID/universes/:uniUUID/status   com.yugabyte.yw.contro
 GET     /api/customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
 GET     /api/customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 
+# Cluster under universe
+POST    /api/customers/:cUUID/universes/:uniUUID/cluster              com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/universes/:uniUUID/cluster/:clustUUID   com.yugabyte.yw.controllers.UniverseController.clusterDelete(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID)
+
 # Table Management API
 GET     /api/customers/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.universeList(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /api/customers/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)

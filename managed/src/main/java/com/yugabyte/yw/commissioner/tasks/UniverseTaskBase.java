@@ -851,19 +851,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Creates a task list to update the placement information by making a call to the master leader
-   * of the cluster just created and adds it to the task queue.
+   * and adds it to the task queue.
    *
    * @param blacklistNodes    list of nodes which are being removed.
-   * @param replicationFactor replication factor of the universe.
    */
-  public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes,
-      int replicationFactor) {
+  public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
-    // Set the number of masters.
-    params.numReplicas = replicationFactor;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();
@@ -901,9 +897,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   
   /**
    * Creates a task to wait for leaders to be on preferred regions only.
-   * @return the created task group.
    */
-  public SubTaskGroup createWaitForLeadersOnPreferredOnlyTask() {
+  public void createWaitForLeadersOnPreferredOnlyTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeadersOnPreferredOnly", executor);
     WaitForLeadersOnPreferredOnly.Params params = new WaitForLeadersOnPreferredOnly.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -914,7 +909,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addTask(waitForLeadersOnPreferredOnly);
     // Add the task list to the task queue.
     subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
+    // Set the subgroup task type.
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.WaitForDataMigration);
   }
 
   /**

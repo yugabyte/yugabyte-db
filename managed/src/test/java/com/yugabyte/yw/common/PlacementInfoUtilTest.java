@@ -855,7 +855,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(azToNum, newAZToNum);
     }
   }
-  
+
   @Test
   public void testPopulateClusterIndices() {
     for (TestData t : testData) {
@@ -896,6 +896,39 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       readOnlyClusters = udtp.getReadOnlyClusters();
       assertEquals(1, readOnlyClusters.size());
       assertEquals(4, readOnlyClusters.get(0).index);
+    }
+  }
+
+  @Test
+  public void testNumNodesChangeDuringReadOnlyClusterCreate() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      UUID clusterUUID = UUID.randomUUID();
+      udtp.universeUUID = t.univUuid;
+      UserIntent userIntent = new UserIntent();
+      Region region = Region.create(t.provider, "region-2", "Region 2", "yb-image-1");
+      AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+      userIntent.numNodes = 1;
+      userIntent.replicationFactor = 1;
+      userIntent.ybSoftwareVersion = "yb-version";
+      userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = ImmutableList.of(region.uuid);
+      userIntent.universeName = t.univName;
+      udtp.upsertCluster(userIntent, null, clusterUUID);
+      universe.setUniverseDetails(udtp);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
+      Cluster readOnlyCluster = udtp.getReadOnlyClusters().get(0);
+      assertEquals(readOnlyCluster.uuid, clusterUUID);
+      readOnlyCluster.userIntent.numNodes = userIntent.numNodes + 2;
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
+      Set<NodeDetails> nodes = udtp.nodeDetailsSet;
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      Set<NodeDetails> readOnlyTservers = PlacementInfoUtil.getTserversToProvision(nodes);
+      assertEquals(3, readOnlyTservers.size());
+      for (NodeDetails node : readOnlyTservers) {
+        assertEquals(node.placementUuid, clusterUUID);
+      }
     }
   }
 }

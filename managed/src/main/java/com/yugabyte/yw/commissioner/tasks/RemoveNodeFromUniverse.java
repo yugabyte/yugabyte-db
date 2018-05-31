@@ -90,8 +90,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         UserIntent userIntent = universe.getUniverseDetails()
                                         .getClusterByUuid(currentNode.placementUuid)
                                         .userIntent;
-        createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)),
-                                userIntent.replicationFactor)
+        createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
         // Wait for data move and stop the tserver process only if it is reachable.

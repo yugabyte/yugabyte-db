@@ -98,7 +98,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Persist the placement info into the YB master leader.
-      createPlacementInfoTask(null /* blacklistNodes */, userIntent.replicationFactor)
+      createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for a master leader to hear from atleast replication factor number of tservers.
