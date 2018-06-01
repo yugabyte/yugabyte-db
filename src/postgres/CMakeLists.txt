@@ -10,14 +10,21 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
+# Invoke our PostgreSQL build script.
+#
+# We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
+# its own flags.
 add_custom_target(
   postgres
   COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
   --build_root "${YB_BUILD_ROOT}"
-  --cflags "${CMAKE_C_FLAGS}"
-  --cxxflags "${CMAKE_CXX_FLAGS}"
-  --ldflags "${CMAKE_SHARED_LINKER_FLAGS}"
-  --ldflags_ex "${CMAKE_EXE_LINKER_FLAGS}"
+
+  --cflags     " ${CMAKE_C_FLAGS}"
+  --cxxflags   " ${CMAKE_CXX_FLAGS}"
+  --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
+  --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
+
+  --compiler_type "$ENV{YB_COMPILER_TYPE}"
   DEPENDS yb_util)
 
 # Make sure we rebuild postgres before the master/tserver libraries.
