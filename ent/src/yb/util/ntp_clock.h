@@ -14,7 +14,7 @@
 #ifndef ENT_SRC_YB_UTIL_NTP_CLOCK_H
 #define ENT_SRC_YB_UTIL_NTP_CLOCK_H
 
-#include "../../../../src/yb/server/clock.h"
+#include "../../../../src/yb/util/physical_time.h"
 
 namespace yb {
 
