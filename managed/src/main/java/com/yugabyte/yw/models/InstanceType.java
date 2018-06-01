@@ -191,8 +191,7 @@ public class InstanceType extends Model {
   }
 
   public static class InstanceTypeDetails {
-  	public static final int DEFAULT_VOLUME_COUNT = 2;
-  	public static final int DEFAULT_VOLUME_SIZE_GB = 250;
+  	public static final int DEFAULT_VOLUME_COUNT = 1;
   	public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
 
     public List<VolumeDetails> volumeDetailsList;

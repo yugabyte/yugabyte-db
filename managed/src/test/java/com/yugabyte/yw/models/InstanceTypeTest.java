@@ -68,7 +68,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   	InstanceType.InstanceTypeDetails itDetails = InstanceType.InstanceTypeDetails.createGCPDefault();
   	assertNotNull(itDetails);
   	assertNotNull(itDetails.volumeDetailsList);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < InstanceType.InstanceTypeDetails.DEFAULT_VOLUME_COUNT; i++) {
     	InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
     	assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_GCP_VOLUME_SIZE_GB, v.volumeSizeGB.intValue());
     	assertEquals(InstanceType.VolumeType.SSD, v.volumeType);
