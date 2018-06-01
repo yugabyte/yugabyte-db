@@ -24,7 +24,7 @@ public class DeviceInfo {
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
     sb.append("volSize=").append(volumeSize);
-    sb.append(", numVols").append(numVolumes);
+    sb.append(", numVols=").append(numVolumes);
     sb.append(", mountPoints=").append(mountPoints);
     if (ebsType != null) {
       sb.append(", ebsType=").append(ebsType);
