@@ -232,7 +232,11 @@ PTHREAD_LIBS		= @PTHREAD_LIBS@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 
-override CPPFLAGS := $(ICU_CFLAGS) $(CPPFLAGS)
+ifndef YB_SRC_ROOT
+$(error YB_SRC_ROOT is not set)
+endif
+
+override CPPFLAGS := $(ICU_CFLAGS) $(CPPFLAGS) -I$(YB_SRC_ROOT)/src
 
 ifdef PGXS
 override CPPFLAGS := -I$(includedir_server) -I$(includedir_internal) $(CPPFLAGS)

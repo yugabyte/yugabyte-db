@@ -378,18 +378,15 @@ macro(YB_SETUP_SANITIZER SANITIZER)
   ADD_CXX_FLAGS("-nostdinc++")
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
 
-  # Strictly speaking, TSAN doesn't require dynamic linking. But it does
-  # require all code to be position independent, and the easiest way to
-  # guarantee that is via dynamic linking (not all 3rd party archives are
-  # compiled with -fPIC e.g. boost).
+  # Strictly speaking, TSAN doesn't require dynamic linking. But it does require all code to be
+  # position independent, and the easiest way to guarantee that is via dynamic linking (not all 3rd
+  # party archives are compiled with -fPIC e.g. boost).
   if("${YB_LINK}" STREQUAL "a")
     message("Using dynamic linking for ${SANITIZER}")
     set(YB_LINK "d")
   elseif("${YB_LINK}" STREQUAL "s")
     message(SEND_ERROR "Cannot use ${SANITIZER} with static linking")
   endif()
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
 endmacro()
 
 # ------------------------------------------------------------------------------------------------
@@ -619,7 +616,10 @@ endif()
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
 elseif(NOT "${USING_SANITIZERS}")
+  message("Specifying linker flags to not allow any undefined symbols")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+else()
+  message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
@@ -1652,6 +1652,11 @@ add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
+
+# PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
+add_subdirectory(src/postgres)
+# PostgreSQL-related YB C++ code.
+add_subdirectory(src/yb/postgres)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")
   include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")

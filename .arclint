@@ -4,7 +4,8 @@
      "(Makefile$)",
      "(src/yb/common/ql_type.h$)",
      "(\\.sql$)",
-     "(\\.txt$)"
+     "(\\.txt$)",
+     "(^src/postgres/.*$)"
   ],
   "linters": {
     "text": {

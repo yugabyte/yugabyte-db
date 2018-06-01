@@ -15,6 +15,7 @@
 
 # Checks syntax of a Python script. Based on this StackOverflow question: https://goo.gl/cfZLMe.
 
+import os
 import sys
 import traceback
 
@@ -25,6 +26,10 @@ def horizontal_line():
 
 if __name__ == '__main__':
     filename = sys.argv[1]
+    if not os.path.exists(filename):
+        print >>sys.stderr, "Python file does not exist, cannot check syntax: %s" % filename
+        sys.exit(1)
+
     source = open(filename, 'r').read() + '\n'
     try:
         compile(source, filename, 'exec')

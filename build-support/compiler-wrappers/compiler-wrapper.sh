@@ -206,11 +206,13 @@ if [[ $local_build_only == "false" &&
     run_remote_cmd "$build_host" "$0" "$@" 2>"$stderr_path"
     exit_code=$?
     set -e
-    # Saw an exit code 254 after this error: "write: Connection reset by peer".
-    if [[ $exit_code -eq 255 || $exit_code -eq 254 ]] || \
+    # Exit code 254: "write: Connection reset by peer".
+    # Exit code 126: "/usr/bin/env: bash: Input/output error"
+    if [[ $exit_code -eq 255 || $exit_code -eq 254 || $exit_code -eq 126 ]] || \
         egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
-Fatal error: can't create .*: Stale file handle\
+Fatal error: can't create .*: Stale file handle|\
+/usr/bin/env: bash: Input/output error\
 " "$stderr_path" >&2; then
       flush_stderr_file
       # TODO: distinguish between problems that can be retried on the same host, and problems

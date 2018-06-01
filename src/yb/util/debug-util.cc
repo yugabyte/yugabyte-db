@@ -223,7 +223,7 @@ const char* NormalizeSourceFilePath(const char* file_path) {
   }
 
   // This could be called arbitrarily early or late in program execution as part of backtrace,
-  // so we're only using basic C features here.
+  // so we're not using any static constants here.
 
   const char* const src_yb_subpath = strstr(file_path, "/src/yb/");
   if (src_yb_subpath != nullptr) {
@@ -244,6 +244,12 @@ const char* NormalizeSourceFilePath(const char* file_path) {
   if (cellar_gcc_subpath != nullptr) {
     // These are Linuxbrew gcc's standard headers. Keep the path starting from "gcc/...".
     return cellar_gcc_subpath + 8;
+  }
+
+  const char* const postgres_subpath = strstr(file_path, "/postgres_build/src/");
+  if (postgres_subpath != nullptr) {
+    // TODO: replace postgres_build with just postgres.
+    return postgres_subpath + 1;
   }
 
   return file_path;
