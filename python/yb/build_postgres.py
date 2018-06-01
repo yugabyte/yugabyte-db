@@ -44,6 +44,44 @@ class PostgresBuilder:
         self.pg_prefix = None
         self.build_type = None
         self.postgres_src_dir = None
+        self.compiler_type = None
+
+    def parse_args(self):
+        parser = argparse.ArgumentParser(
+            description='A tool for building the PostgreSQL code subtree in YugaByte DB codebase')
+        parser.add_argument('--build_root',
+                            default=os.environ.get('BUILD_ROOT'),
+                            help='YugaByte build root directory. The PostgreSQL build/install '
+                                 'directories will be created under here.')
+
+        parser.add_argument('--run_tests',
+                            action='store_true',
+                            help='Run PostgreSQL tests after building it.')
+
+        parser.add_argument('--clean',
+                            action='store_true',
+                            help='Clean PostgreSQL build and installation directories.')
+
+        parser.add_argument('--cflags', help='C compiler flags')
+        parser.add_argument('--cxxflags', help='C++ compiler flags')
+        parser.add_argument('--ldflags', help='Linker flags for all binaries')
+        parser.add_argument('--ldflags_ex', help='Linker flags for executables')
+        parser.add_argument('--compiler_type', help='Compiler type, e.g. gcc or clang')
+
+        self.args = parser.parse_args()
+        if not self.args.build_root:
+            raise RuntimeError("Neither BUILD_ROOT or --build-root specified")
+
+        self.build_root = os.path.abspath(self.args.build_root)
+        self.build_type = get_build_type_from_build_root(self.build_root)
+        self.pg_build_root = os.path.join(self.build_root, 'postgres_build')
+        self.pg_prefix = os.path.join(self.build_root, 'postgres')
+        self.build_type = get_build_type_from_build_root(self.build_root)
+        self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
+        self.compiler_type = self.args.compiler_type or os.getenv('YB_COMPILER_TYPE')
+        if not self.compiler_type:
+            raise RuntimeError(
+                "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
     def set_env_vars(self, step):
         if step not in ['configure', 'make']:
@@ -67,7 +105,7 @@ class PostgresBuilder:
             ' -DHAVE__BUILTIN_CONSTANT_P=1' +
             ' -DUSE_SSE42_CRC32C=1'
         )
-        if os.environ['YB_COMPILER_TYPE'] == 'gcc':
+        if self.compiler_type == 'gcc':
             additional_c_cxx_flags += ' -Wno-error=maybe-uninitialized'
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:
@@ -202,38 +240,6 @@ class PostgresBuilder:
                 run_program(make_cmd, capture_output=False)
                 run_program(['make', 'install'], capture_output=False)
                 logging.info("Successfully ran make in the %s directory", work_dir)
-
-    def parse_args(self):
-        parser = argparse.ArgumentParser(
-            description='A tool for building the PostgreSQL code subtree in YugaByte DB codebase')
-        parser.add_argument('--build_root',
-                            default=os.environ.get('BUILD_ROOT'),
-                            help='YugaByte build root directory. The PostgreSQL build/install '
-                                 'directories will be created under here.')
-
-        parser.add_argument('--run_tests',
-                            action='store_true',
-                            help='Run PostgreSQL tests after building it.')
-
-        parser.add_argument('--clean',
-                            action='store_true',
-                            help='Clean PostgreSQL build and installation directories.')
-
-        parser.add_argument('--cflags', help='C compiler flags')
-        parser.add_argument('--cxxflags', help='C++ compiler flags')
-        parser.add_argument('--ldflags', help='Linker flags for all binaries')
-        parser.add_argument('--ldflags_ex', help='Linker flags for executables')
-
-        self.args = parser.parse_args()
-        if not self.args.build_root:
-            raise RuntimeError("Neither BUILD_ROOT or --build-root specified")
-
-        self.build_root = os.path.abspath(self.args.build_root)
-        self.build_type = get_build_type_from_build_root(self.build_root)
-        self.pg_build_root = os.path.join(self.build_root, 'postgres_build')
-        self.pg_prefix = os.path.join(self.build_root, 'postgres')
-        self.build_type = get_build_type_from_build_root(self.build_root)
-        self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
 
     def run(self):
         self.parse_args()
