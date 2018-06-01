@@ -224,7 +224,7 @@ a {
     max-width: 100%;
   }
 
-  p, pre, *:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6) {
+  p, pre, ul, li, a {
     position: relative;
     z-index: 2;
   }
