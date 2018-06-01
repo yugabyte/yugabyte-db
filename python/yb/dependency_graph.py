@@ -21,8 +21,9 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from yb.common_util import group_by, make_set, get_build_type_from_build_root, \
-                           convert_to_non_ninja_build_root, get_bool_env_var  # nopep8
+from yb.common_util import \
+        group_by, make_set, get_build_type_from_build_root, get_yb_src_root_from_build_root, \
+        convert_to_non_ninja_build_root, get_bool_env_var  # nopep8
 from yb.command_util import mkdir_p  # nopep8
 
 
@@ -45,7 +46,7 @@ EXECUTABLE_FILE_NAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
 # Ignore some special-case CMake targets that do not have a one-to-one match with executables or
 # libraries.
-IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'gen_proto']
+IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'gen_proto', 'postgres']
 
 LIST_DEPS_CMD = 'deps'
 LIST_REVERSE_DEPS_CMD = 'rev-deps'
@@ -69,9 +70,7 @@ CATEGORY_DOES_NOT_AFFECT_TESTS = 'does_not_affect_tests'
 # reasonably tested already, by running doctests, this script, the packaging script, etc.  We can
 # remove "python" from this whitelist in the future.
 CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS = set(
-        ['java', 'c++', 'python', CATEGORY_DOES_NOT_AFFECT_TESTS,
-         # TODO: remove build_scripts from here (for testing only).
-         'build_scripts'])
+        ['java', 'c++', 'python', CATEGORY_DOES_NOT_AFFECT_TESTS])
 
 
 def is_object_file(path):
@@ -246,7 +245,7 @@ class Configuration:
         # tracking in the future.
         self.build_root_make = convert_to_non_ninja_build_root(self.build_root)
         self.build_type = get_build_type_from_build_root(self.build_root)
-        self.yb_src_root = os.path.dirname(os.path.dirname(self.build_root))
+        self.yb_src_root = get_yb_src_root_from_build_root(self.build_root, must_succeed=True)
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
         self.ent_src_dir_path = os.path.join(self.yb_src_root, 'ent', 'src')
         self.rel_path_base_dirs = set([self.build_root, os.path.join(self.src_dir_path, 'yb')])
@@ -256,8 +255,9 @@ class Configuration:
         if not self.file_regex and args.file_name_glob:
             self.file_regex = fnmatch.translate('*/' + args.file_name_glob)
 
-        assert os.path.exists(self.src_dir_path)
-        assert os.path.exists(self.ent_src_dir_path)
+        for dir_path in [self.src_dir_path, self.ent_src_dir_path]:
+            if not os.path.isdir(dir_path):
+                raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
 
 
 class DependencyGraphBuilder:
@@ -763,6 +763,9 @@ def get_file_category(rel_path):
     Categorize file changes so that we can decide what tests to run.
 
     @param rel_path: path relative to the source root (not to the build root)
+
+    >>> get_file_category('src/postgres/src/backend/executor/execScan.c')
+    'postgres'
     """
     basename = os.path.basename(rel_path)
 
@@ -779,6 +782,9 @@ def get_file_category(rel_path):
 
     if basename == 'CMakeLists.txt' or basename.endswith('.cmake'):
         return 'cmake'
+
+    if rel_path.startswith('src/postgres'):
+        return 'postgres'
 
     if rel_path.startswith('src/') or rel_path.startswith('ent/src/'):
         return 'c++'

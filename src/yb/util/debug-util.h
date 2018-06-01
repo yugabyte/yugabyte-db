@@ -75,6 +75,15 @@ std::string GetStackTrace(
     StackTraceLineFormat source_file_path_format = StackTraceLineFormat::DEFAULT,
     int num_top_frames_to_skip = 0);
 
+// Return the current stack trace without the top frame. Useful for implementing functions that
+// themselves have a "get/print stack trace at the call site" semantics. This is equivalent to
+// calling GetStackTrace(StackTraceLineFormat::DEFAULT, 1).
+inline std::string GetStackTraceWithoutTopFrame() {
+  // Note that here we specify num_top_frames_to_skip = 2, because we don't want either this
+  // function itself or its _caller_ to show up in the stack trace.
+  return GetStackTrace(StackTraceLineFormat::DEFAULT, /* num_top_frames_to_skip */ 2);
+}
+
 // Return the current stack trace, in hex form. This is significantly
 // faster than GetStackTrace() above, so should be used in performance-critical
 // places like TRACE() calls. If you really need blazing-fast speed, though,

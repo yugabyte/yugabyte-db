@@ -49,6 +49,14 @@ ifeq ($(with_systemd),yes)
 LIBS += -lsystemd
 endif
 
+ifndef YB_BUILD_ROOT
+$(error YB_BUILD_ROOT is not set)
+endif
+
+LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util
+
+CCLD = $(CXX)
+
 ##########################################################################
 
 all: submake-libpgport submake-schemapg postgres $(POSTGRES_IMP)
@@ -58,7 +66,7 @@ ifneq ($(PORTNAME), win32)
 ifneq ($(PORTNAME), aix)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) $(call expand_subsys,$^) $(LIBS) -o $@
+	$(CCLD) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) $(call expand_subsys,$^) $(LIBS) -o $@
 
 endif
 endif
@@ -67,7 +75,7 @@ endif
 ifeq ($(PORTNAME), cygwin)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) -Wl,--stack,$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(call expand_subsys,$^) $(LIBS) -o $@
+	$(CCLD) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) -Wl,--stack,$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(call expand_subsys,$^) $(LIBS) -o $@
 
 # libpostgres.a is actually built in the preceding rule, but we need this to
 # ensure it's newer than postgres; see notes in src/backend/parser/Makefile
@@ -80,7 +88,7 @@ ifeq ($(PORTNAME), win32)
 LIBS += -lsecur32
 
 postgres: $(OBJS) $(WIN32RES)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) -Wl,--stack=$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LIBS) -o $@$(X)
+	$(CCLD) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) -Wl,--stack=$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LIBS) -o $@$(X)
 
 # libpostgres.a is actually built in the preceding rule, but we need this to
 # ensure it's newer than postgres; see notes in src/backend/parser/Makefile
@@ -92,7 +100,7 @@ endif # win32
 ifeq ($(PORTNAME), aix)
 
 postgres: $(POSTGRES_IMP)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(call expand_subsys,$(OBJS)) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -Wl,-brtllib -o $@
+	$(CCLD) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(call expand_subsys,$(OBJS)) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -Wl,-brtllib -o $@
 
 $(POSTGRES_IMP): $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(call expand_subsys,$^)

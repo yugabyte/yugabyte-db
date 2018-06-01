@@ -169,17 +169,15 @@ void DumpStackTraceAndExit() {
   abort();
 }
 
-void InitializeGoogleLogging(const char *arg) {
+} // anonymous namespace
 
+void InitializeGoogleLogging(const char *arg) {
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
 
   log_fatal_handler_sink = std::make_unique<LogFatalHandlerSink>();
-
 }
-
-} // anonymous namespace
 
 void InitGoogleLoggingSafe(const char* arg) {
   SpinLockHolder l(&logging_mutex);

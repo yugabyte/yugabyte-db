@@ -57,7 +57,7 @@ static void check_root(const char *progname);
  * Any Postgres server process begins execution here.
  */
 int
-main(int argc, char *argv[])
+PostgresServerProcessMain(int argc, char *argv[])
 {
 	bool		do_check_root = true;
 

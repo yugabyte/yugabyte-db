@@ -1,4 +1,5 @@
 /pg_waldump
 # Source files copied from src/backend/access/rmgrdesc/
-/*desc.c
-/xlogreader.c
+# YugaByte change: commented these out, replaced them with symlinks.
+# /*desc.c
+# /xlogreader.c

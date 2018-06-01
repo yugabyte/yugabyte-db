@@ -1197,12 +1197,25 @@ is_jenkins() {
   return 1  # Probably running locally.
 }
 
-# Check if we're in a Jenkins master build (as opposed to a Phabricator build).
+# Check if we're in a Jenkins master build.
 is_jenkins_master_build() {
   if [[ -n ${JOB_NAME:-} && $JOB_NAME = *-master-* ]]; then
     return 0
   fi
   return 1
+}
+
+# Check if we're in a Jenkins Phabricator build (a pre-commit build).
+is_jenkins_phabricator_build() {
+  if [[ -z ${JOB_NAME:-} ]]; then
+    return 1  # No, not running on Jenkins.
+  fi
+
+  if [[ $JOB_NAME == *-phabricator-* || $JOB_NAME == *-phabricator ]]; then
+    return 0  # Yes, this is a Phabricator build.
+  fi
+
+  return 1  # No, some other kind of Jenkins job.
 }
 
 # Check if we're using an NFS partition in YugaByte's build environment.
@@ -1598,7 +1611,12 @@ activate_virtualenv() {
   set +u
   . "$virtualenv_dir"/bin/activate
   set -u
-  pip2 install -r "$YB_SRC_ROOT/requirements.txt"
+  local pip_no_cache=""
+  if [[ -n ${YB_PIP_NO_CACHE:-} ]]; then
+    pip_no_cache="--no-cache-dir"
+  fi
+
+  pip2 install -r "$YB_SRC_ROOT/requirements.txt" $pip_no_cache
   add_python_wrappers_dir_to_path
 }
 

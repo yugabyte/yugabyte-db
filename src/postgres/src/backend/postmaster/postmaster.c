@@ -135,6 +135,7 @@
 #include "storage/spin.h"
 #endif
 
+#include "yb/util/ybc_util.h"
 
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
@@ -580,6 +581,10 @@ PostmasterMain(int argc, char *argv[])
 	bool		listen_addr_saved = false;
 	int			i;
 	char	   *output_config_variable = NULL;
+
+	if (!YBCInit("postmaster", argv[0])) {
+		ExitPostmaster(1);
+	}
 
 	MyProcPid = PostmasterPid = getpid();
 

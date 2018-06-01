@@ -224,6 +224,7 @@ set(UTIL_SRCS
   varint.cc
   version_info.cc
   async_util.cc
+  ybc_util.cc
   ${UTIL_SRCS_EXTENSIONS}
   )
 
