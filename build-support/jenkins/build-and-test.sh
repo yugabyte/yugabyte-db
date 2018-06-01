@@ -189,11 +189,9 @@ run_python_tests
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
-if is_jenkins && \
-   ! is_jenkins_master_build && \
-   [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && \
+if is_jenkins && is_jenkins_phabricator_build && [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && \
    ! is_mac; then
-  log "Enabling running affected tests only as this seems to be a non-master Jenkins build"
+  log "Enabling running affected tests only as this seems to be a Phabricator Jenkins build"
   YB_RUN_AFFECTED_TESTS_ONLY=1
   # Use Make as we can only parse Make's build files to recover the dependency graph.
   YB_USE_NINJA=0
@@ -326,7 +324,21 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
-time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote
+# We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
+declare -i -r MAX_CMAKE_RETRIES=3
+declare -i cmake_attempt_index=0
+while [[ $cmake_attempt_index -lt $MAX_CMAKE_RETRIES ]]; do
+  let cmake_attempt_index+=1
+  if run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote; then
+    log "CMake succeeded after attempt $cmake_attempt_index"
+    break
+  fi
+  if [[ $cmake_attempt_index -eq $MAX_CMAKE_RETRIES ]]; then
+    log "CMake failed after $MAX_CMAKE_RETRIES attempts, giving up."
+    exit 1
+  fi
+  heading "CMake failed at attempt $cmake_attempt_index, re-trying"
+done
 
 # Only enable test core dumps for certain build types.
 if [[ $BUILD_TYPE != "asan" ]]; then

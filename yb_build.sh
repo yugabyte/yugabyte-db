@@ -150,6 +150,8 @@ Options:
   --stack-trace-error-status-re, --stesr
     When running tests, print stack traces when error statuses matching the given regex are
     generated. Only works in non-release mode.
+  --clean-postgres
+    Do a clean build of the PostgreSQL subtree.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -228,6 +230,7 @@ print_report() {
       echo "YUGABYTE BUILD SUMMARY"
       thick_horizontal_line
       print_report_line "%s" "Build type" "${build_type:-undefined}"
+      print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if ! is_mac; then
@@ -538,6 +541,7 @@ predefined_build_root=""
 java_test_name=""
 show_report=true
 running_any_tests=false
+clean_postgres=false
 
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -823,6 +827,9 @@ while [[ $# -gt 0 ]]; do
       export YB_STACK_TRACE_ON_ERROR_STATUS_RE=$2
       shift
     ;;
+    --clean-postgres)
+      clean_postgres=true
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -834,6 +841,7 @@ handle_predefined_build_root
 
 unset cmake_opts
 set_cmake_build_type_and_compiler_type
+log "YugaByte build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
 if "$verbose"; then
@@ -991,6 +999,9 @@ fi
 if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
+elif "$clean_postgres"; then
+  log "Removing 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
+  ( set -x; rm -rf "$BUILD_ROOT/postgres_build" "$BUILD_ROOT/postgres" )
 fi
 
 mkdir_safe "$BUILD_ROOT"

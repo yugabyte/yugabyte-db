@@ -105,8 +105,44 @@ def get_bool_env_var(env_var_name):
     return value.lower() in ['1', 't', 'true', 'y', 'yes']
 
 
-def is_yugabyte_git_repo_dir(d):
+def is_yb_src_root(d):
     for subdir in ['.git', 'src', 'java', 'bin', 'build-support']:
         if not os.path.exists(os.path.join(d, subdir)):
             return False
     return True
+
+
+def get_yb_src_root_from_build_root(build_dir, verbose=False, must_succeed=False):
+    """
+    Given a build directory, find the YB Git repository's root corresponding to it.
+    """
+    yb_src_root = None
+    current_dir = build_dir
+    while current_dir != '/':
+        subdir_candidates = [current_dir]
+        if current_dir.endswith('__build'):
+            subdir_candidates.append(current_dir[:-7])
+            if subdir_candidates[-1].endswith('/'):
+                subdir_candidates = subdir_candidates[:-1]
+
+        for git_subdir_candidate in subdir_candidates:
+            git_dir_candidate = os.path.join(current_dir, git_subdir_candidate)
+            if is_yb_src_root(git_dir_candidate):
+                yb_src_root = git_dir_candidate
+                break
+        if yb_src_root:
+            break
+        current_dir = os.path.dirname(current_dir)
+
+    if yb_src_root:
+        if verbose:
+            logging.info(
+                    "Found YB git repository root %s corresponding to the build directory %s",
+                    yb_src_root, build_dir)
+    else:
+        error_msg = "Could not find git repository root by walking up from %s" % build_dir
+        logging.warn(error_msg)
+        if must_succeed:
+            raise RuntimeError(error_msg)
+
+    return yb_src_root

@@ -213,6 +213,9 @@ void ShutdownLoggingSafe();
 // Writes all command-line flags to the log at level INFO.
 void LogCommandLineFlags();
 
+// Internal function. Used by tooling for integrating with PostgreSQL C codebase.
+void InitializeGoogleLogging(const char *arg);
+
 namespace logging_internal {
 // Internal implementation class used for throttling log messages.
 class LogThrottler {

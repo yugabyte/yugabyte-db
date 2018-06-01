@@ -49,7 +49,7 @@ from time import strftime, localtime
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
 
 
-from yb.common_util import is_yugabyte_git_repo_dir  # noqa
+from yb.common_util import get_yb_src_root_from_build_root  # noqa
 
 
 def main():
@@ -79,27 +79,7 @@ def main():
         # Handle the "external build" directory case, in which the code is located in e.g.
         # ~/code/yugabyte, and the build directories are inside ~/code/yugabyte__build.
         current_dir = os.getcwd()
-        git_repo_dir = None
-        while current_dir != '/':
-            subdir_candidates = [current_dir]
-            if current_dir.endswith('__build'):
-                subdir_candidates.append(current_dir[:-7])
-                if subdir_candidates[-1].endswith('/'):
-                    subdir_candidates = subdir_candidates[:-1]
-
-            for git_subdir_candidate in subdir_candidates:
-                git_dir_candidate = os.path.join(current_dir, git_subdir_candidate)
-                if is_yugabyte_git_repo_dir(git_dir_candidate):
-                    git_repo_dir = git_dir_candidate
-                    break
-            if git_repo_dir:
-                break
-            current_dir = os.path.dirname(current_dir)
-        if git_repo_dir:
-            logging.info("Found git repository root: %s", git_repo_dir)
-        else:
-            git_repo_dir = os.getcwd()
-            logging.warn("Could not find git repository root by walking up from %s", git_repo_dir)
+        git_repo_dir = get_yb_src_root_from_build_root(current_dir, verbose=True)
 
         try:
             git_work_dir_quoted = pipes.quote(git_repo_dir)
