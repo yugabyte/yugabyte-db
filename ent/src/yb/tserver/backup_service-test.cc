@@ -29,7 +29,8 @@ class BackupServiceTest : public TabletServerTestBase {
     StartTabletServer();
 
     backup_proxy_.reset(
-        new TabletServerBackupServiceProxy(client_messenger_, mini_server_->bound_rpc_addr()));
+        new TabletServerBackupServiceProxy(
+            proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
   gscoped_ptr<TabletServerBackupServiceProxy> backup_proxy_;
