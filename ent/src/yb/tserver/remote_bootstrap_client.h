@@ -16,9 +16,8 @@ class RemoteBootstrapClient : public yb::tserver::RemoteBootstrapClient {
  public:
   RemoteBootstrapClient(std::string tablet_id,
                         FsManager* fs_manager,
-                        std::shared_ptr<rpc::Messenger> messenger,
                         std::string client_permanent_uuid)
-      : super(tablet_id, fs_manager, messenger, client_permanent_uuid) {}
+      : super(tablet_id, fs_manager, client_permanent_uuid) {}
 
   CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener) override;
 
