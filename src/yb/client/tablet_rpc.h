@@ -78,10 +78,6 @@ class TabletInvoker {
   // there is no requirement that the read needs to hit the leader.
   void SelectTabletServerWithConsistentPrefix();
 
-  // Called when we finish initializing a TS proxy.
-  // Sends the RPC, provided there was no error.
-  void InitTSProxyCb(const Status& status);
-
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
   void FailToNewReplica(const Status& reason);

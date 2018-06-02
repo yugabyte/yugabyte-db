@@ -169,8 +169,8 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                          cluster_->messenger(),
-                                          &ts_map_));
+                                         &cluster_->proxy_cache(),
+                                         &ts_map_));
   YBClientBuilder builder;
   ASSERT_OK(cluster_->CreateClient(&builder, &client_));
 }
@@ -456,10 +456,10 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   gscoped_ptr<RemoteBootstrapClient> rb_client(
-      new RemoteBootstrapClient(tablet_id, fs_manager.get(),
-                                cluster_->messenger(), fs_manager->uuid()));
+      new RemoteBootstrapClient(tablet_id, fs_manager.get(), fs_manager->uuid()));
   scoped_refptr<tablet::TabletMetadata> meta;
   ASSERT_OK(rb_client->Start(cluster_->tablet_server(kTsIndex)->uuid(),
+                             &cluster_->proxy_cache(),
                              cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),
                              &meta));
 

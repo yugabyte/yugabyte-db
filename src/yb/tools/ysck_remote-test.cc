@@ -102,7 +102,7 @@ class RemoteYsckTest : public YBTest {
     // Make sure we can open the table.
     ASSERT_OK(client_->OpenTable(kTableName, &client_table_));
 
-    ASSERT_OK(RemoteYsckMaster::Build(master_rpc_addr_, &master_));
+    ASSERT_OK(RemoteYsckMaster::Build(HostPort(master_rpc_addr_), &master_));
     cluster_.reset(new YsckCluster(master_));
     ysck_.reset(new Ysck(cluster_));
   }
@@ -179,7 +179,7 @@ class RemoteYsckTest : public YBTest {
   shared_ptr<client::YBClient> client_;
 
  private:
-  Endpoint master_rpc_addr_;
+  HostPort master_rpc_addr_;
   std::shared_ptr<MiniCluster> mini_cluster_;
   client::YBSchema schema_;
   shared_ptr<client::YBTable> client_table_;

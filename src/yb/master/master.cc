@@ -349,10 +349,8 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
   for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
     ServerEntryPB peer_entry;
-    Status s = MasterUtil::GetMasterEntryForHost(messenger_,
-                                                 peer_addr,
-                                                 FLAGS_master_rpc_timeout_ms,
-                                                 &peer_entry);
+    Status s = GetMasterEntryForHost(
+        proxy_cache_.get(), peer_addr, FLAGS_master_rpc_timeout_ms, &peer_entry);
     if (!s.ok()) {
       s = s.CloneAndPrepend(
         Substitute("Unable to get registration information for peer ($0)",
@@ -368,9 +366,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
 Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   HostPort hp(hp_pb.host(), hp_pb.port());
-  Endpoint master_addr;
-  RETURN_NOT_OK(EndpointFromHostPort(hp, &master_addr));
-  MasterServiceProxy proxy(messenger_, master_addr);
+  MasterServiceProxy proxy(proxy_cache_.get(), hp);
   RemovedMasterUpdateRequestPB req;
   RemovedMasterUpdateResponsePB resp;
   rpc::RpcController controller;

@@ -148,7 +148,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void CreateTSProxies() {
     CHECK(tablet_servers_.empty());
     CHECK_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                          client_messenger_,
+                                          proxy_cache_.get(),
                                           &tablet_servers_));
   }
 

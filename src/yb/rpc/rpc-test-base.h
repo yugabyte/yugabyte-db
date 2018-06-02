@@ -40,7 +40,6 @@
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/proxy.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_context.h"
@@ -166,21 +165,23 @@ class RpcTestBase : public YBTest {
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
-  CHECKED_STATUS DoTestSyncCall(const Proxy &p, const RemoteMethod *method);
+  CHECKED_STATUS DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);
 
-  void DoTestSidecar(const Proxy &p,
+  void DoTestSidecar(Proxy* proxy,
                      std::vector<size_t> sizes,
                      Status::Code expected_code = Status::Code::kOk);
 
-  void DoTestExpectTimeout(const Proxy &p, const MonoDelta &timeout);
-  void StartTestServer(Endpoint* server_endpoind,
+  void DoTestExpectTimeout(Proxy* proxy, const MonoDelta &timeout);
+  void StartTestServer(HostPort* server_hostport,
                        const TestServerOptions& options = TestServerOptions());
-  void StartTestServerWithGeneratedCode(Endpoint* server_endpoind,
+  void StartTestServer(Endpoint* server_endpoint,
+                       const TestServerOptions& options = TestServerOptions());
+  void StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                         const TestServerOptions& options = TestServerOptions());
 
   // Start a simple socket listening on a local port, returning the address.
   // This isn't an RPC server -- just a plain socket which can be helpful for testing.
-  CHECKED_STATUS StartFakeServer(Socket *listen_sock, Endpoint* listen_endpoind);
+  CHECKED_STATUS StartFakeServer(Socket *listen_sock, HostPort* listen_hostport);
 
   Messenger& server_messenger() const { return server_->messenger(); }
   TestServer& server() const { return *server_; }

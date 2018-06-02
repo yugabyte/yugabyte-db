@@ -325,7 +325,8 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   MessengerBuilder builder(data_->client_name_);
   builder.set_num_reactors(data_->num_reactors_);
   builder.set_metric_entity(data_->metric_entity_);
-  RETURN_NOT_OK(builder.Build().MoveTo(&c->data_->messenger_));
+  c->data_->messenger_ = VERIFY_RESULT(builder.Build());
+  c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
@@ -716,6 +717,10 @@ const std::shared_ptr<rpc::Messenger>& YBClient::messenger() const {
   return data_->messenger_;
 }
 
+rpc::ProxyCache& YBClient::proxy_cache() const {
+  return *data_->proxy_cache_;
+}
+
 ThreadPool *YBClient::callback_threadpool() {
   return data_->cb_threadpool_.get();
 }
@@ -735,17 +740,8 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
   data_->meta_cache_->LookupTabletById(tablet_id, deadline, remote_tablet, callback);
 }
 
-Status YBClient::SetMasterLeaderSocket(Endpoint* leader_socket) {
-  HostPort leader_hostport = data_->leader_master_hostport();
-  std::vector<Endpoint> leader_addrs;
-  RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
-  if (leader_addrs.empty() || leader_addrs.size() > 1) {
-    return STATUS(IllegalState,
-      strings::Substitute("Unexpected master leader address size $0, expected only 1 leader "
-        "address.", leader_addrs.size()));
-  }
-  *leader_socket = leader_addrs[0];
-  return Status::OK();
+HostPort YBClient::GetMasterLeaderAddress() {
+  return data_->leader_master_hostport();
 }
 
 Status YBClient::ListMasters(
@@ -767,19 +763,19 @@ Status YBClient::ListMasters(
   return Status::OK();
 }
 
-Status YBClient::RefreshMasterLeaderSocket(Endpoint* leader_socket) {
+Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
 
-  return SetMasterLeaderSocket(leader_socket);
+  return GetMasterLeaderAddress();
 }
 
-Status YBClient::RemoveMasterFromClient(const Endpoint& remove) {
+Status YBClient::RemoveMasterFromClient(const HostPort& remove) {
   return data_->RemoveMasterAddress(remove);
 }
 
-Status YBClient::AddMasterToClient(const Endpoint& add) {
+Status YBClient::AddMasterToClient(const HostPort& add) {
   return data_->AddMasterAddress(add);
 }
 
@@ -790,7 +786,7 @@ Status YBClient::GetMasterUUID(const string& host,
   ServerEntryPB server;
   MonoDelta rpc_timeout = default_rpc_timeout();
   int timeout_ms = static_cast<int>(rpc_timeout.ToMilliseconds());
-  RETURN_NOT_OK(MasterUtil::GetMasterEntryForHost(data_->messenger_, hp, timeout_ms, &server));
+  RETURN_NOT_OK(GetMasterEntryForHost(data_->proxy_cache_.get(), hp, timeout_ms, &server));
 
   if (server.has_error()) {
     return STATUS(RuntimeError,

@@ -14,8 +14,7 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 

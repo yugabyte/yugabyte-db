@@ -78,8 +78,9 @@ class SysCatalogTest : public YBTest {
 
     // Create a client proxy to it.
     MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
-    proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
+    client_messenger_ = ASSERT_RESULT(bld.Build());
+    rpc::ProxyCache proxy_cache(client_messenger_);
+    proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
   }
 
   void TearDown() override {

@@ -86,9 +86,10 @@ YB_DEFINE_ENUM(BackoffStrategy, (kLinear)(kExponential));
 // All RPCs should use HandleResponse() to retry certain generic errors.
 class RpcRetrier {
  public:
-  RpcRetrier(MonoTime deadline, std::shared_ptr<rpc::Messenger> messenger)
+  RpcRetrier(MonoTime deadline, std::shared_ptr<Messenger> messenger, ProxyCache *proxy_cache)
       : deadline_(std::move(deadline)),
-        messenger_(std::move(messenger)) {
+        messenger_(std::move(messenger)),
+        proxy_cache_(*proxy_cache) {
     controller_.Reset();
   }
 
@@ -129,6 +130,10 @@ class RpcRetrier {
     return messenger_;
   }
 
+  ProxyCache& proxy_cache() const {
+    return proxy_cache_;
+  }
+
   int attempt_num() const { return attempt_num_; }
 
   void Abort();
@@ -155,6 +160,8 @@ class RpcRetrier {
   // Messenger to use when sending the RPC.
   std::shared_ptr<Messenger> messenger_;
 
+  ProxyCache& proxy_cache_;
+
   // RPC controller to use when sending the RPC.
   RpcController controller_;
 
@@ -173,9 +180,10 @@ class RpcRetrier {
 class Rpc : public RpcCommand {
  public:
   Rpc(const MonoTime& deadline,
-      const std::shared_ptr<rpc::Messenger>& messenger)
-      : retrier_(deadline, messenger) {
-      }
+      const std::shared_ptr<Messenger>& messenger,
+      ProxyCache* proxy_cache)
+      : retrier_(deadline, messenger, proxy_cache) {
+  }
 
   virtual ~Rpc() {}
 

@@ -36,7 +36,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
   TransactionRpcBase(const MonoTime& deadline,
                      internal::RemoteTablet* tablet,
                      YBClient* client)
-      : rpc::Rpc(deadline, client->messenger()),
+      : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
         invoker_(false /* consistent_prefix */,
                  client,

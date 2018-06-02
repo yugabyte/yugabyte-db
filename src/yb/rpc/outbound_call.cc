@@ -163,11 +163,11 @@ class RemoteMethodsCache {
 ///
 
 OutboundCall::OutboundCall(
-    const ConnectionId& conn_id, const RemoteMethod* remote_method,
+    const RemoteMethod* remote_method,
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
-    : conn_id_(conn_id),
+    : conn_id_(Endpoint(), 0),
       start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
@@ -177,12 +177,9 @@ OutboundCall::OutboundCall(
       trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
       remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)) {
-  if (PREDICT_FALSE(VLOG_IS_ON(1))) {
-    TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated to $0", conn_id_.ToString());
-  } else {
-    // Avoid expensive conn_id.ToString() in production.
-    TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
-  }
+  // Avoid expensive conn_id.ToString() in production.
+  TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
+
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
@@ -328,7 +325,7 @@ void OutboundCall::CallCallback() {
     // via bound parameters. We do this inside the timer because it's possible
     // the user has naughty destructors that block, and we want to account for that
     // time here if they happen to run on this thread.
-    callback_ = NULL;
+    callback_ = nullptr;
   }
   int64_t end_cycles = CycleClock::Now();
   int64_t wait_cycles = end_cycles - start_cycles;

@@ -111,70 +111,31 @@ RemoteTabletServer::RemoteTabletServer(
     : uuid_(uuid), proxy_(proxy) {
 }
 
-void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
-                                               const std::shared_ptr<std::vector<Endpoint>>& addrs,
-                                               YBClient* client,
-                                               const StatusCallback& user_callback,
-                                               const Status &result_status) {
-  Status s = result_status;
+Status RemoteTabletServer::InitProxy(YBClient* client) {
+  std::unique_lock<simple_spinlock> l(lock_);
 
-  if (s.ok() && addrs->empty()) {
-    s = STATUS(NotFound, "No addresses for " + hp.ToString());
-  }
-
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Failed to resolve address for TS " + uuid_);
-    user_callback.Run(s);
-    return;
-  }
-
-  if (VLOG_IS_ON(1)) {
-    const auto host_port_as_str = hp.ToString();
-    const auto resolved_to = yb::ToString((*addrs)[0]);
-    if (host_port_as_str != resolved_to) {
-      VLOG(1) << "Successfully resolved " << host_port_as_str << ": " << resolved_to;
+  if (!dns_resolve_histogram_) {
+    auto metric_entity = client->messenger()->metric_entity();
+    if (metric_entity) {
+      dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+          metric_entity);
     }
   }
 
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    proxy_.reset(new TabletServerServiceProxy(client->data_->messenger_, (*addrs)[0]));
+  if (proxy_) {
+    // Already have a proxy created.
+    return Status::OK();
   }
-  user_callback.Run(s);
-}
 
-void RemoteTabletServer::InitProxy(YBClient* client, const StatusCallback& cb) {
-  HostPort hp;
-  {
-    std::unique_lock<simple_spinlock> l(lock_);
-
-    if (!dns_resolve_histogram_) {
-      auto metric_entity = client->messenger()->metric_entity();
-      if (metric_entity) {
-        dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
-            metric_entity);
-      }
-    }
-
-    if (proxy_) {
-      // Already have a proxy created.
-      l.unlock();
-      cb.Run(Status::OK());
-      return;
-    }
-
-    CHECK(!rpc_hostports_.empty());
-    // TODO: if the TS advertises multiple host/ports, pick the right one
-    // based on some kind of policy. For now just use the first always.
-    hp = rpc_hostports_[0];
-  }
+  CHECK(!rpc_hostports_.empty());
 
   ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
 
-  auto addrs = std::make_shared<std::vector<Endpoint>>();
-  client->data_->dns_resolver_->ResolveAddresses(
-    hp, addrs.get(),
-    Bind(&RemoteTabletServer::DnsResolutionFinished, Unretained(this), hp, addrs, client, cb));
+  // TODO: if the TS advertises multiple host/ports, pick the right one
+  // based on some kind of policy. For now just use the first always.
+  proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), rpc_hostports_[0]));
+
+  return Status::OK();
 }
 
 void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
@@ -191,7 +152,7 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
 
 bool RemoteTabletServer::IsLocal() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return proxy_ != nullptr && proxy_->IsServiceLocal();
+  return proxy_ != nullptr && proxy_->proxy().IsServiceLocal();
 }
 
 const std::string& RemoteTabletServer::permanent_uuid() const {
@@ -463,7 +424,8 @@ class LookupRpc : public Rpc {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
             const MonoTime& deadline,
-            const shared_ptr<Messenger>& messenger);
+            const shared_ptr<Messenger>& messenger,
+            rpc::ProxyCache* proxy_cache);
 
   virtual ~LookupRpc();
 
@@ -504,8 +466,9 @@ class LookupRpc : public Rpc {
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
                      const MonoTime& deadline,
-                     const shared_ptr<Messenger>& messenger)
-    : Rpc(deadline, messenger),
+                     const shared_ptr<Messenger>& messenger,
+                     rpc::ProxyCache* proxy_cache)
+    : Rpc(deadline, messenger, proxy_cache),
       meta_cache_(meta_cache),
       retained_self_(meta_cache_->rpcs_.InvalidHandle()) {
   DCHECK(deadline.Initialized());
@@ -765,7 +728,8 @@ void MetaCache::LookupFailed(
 
   if (max_deadline) {
     rpc::StartRpc<LookupByKeyRpc>(
-        this, table, partition_group_start, max_deadline, client_->data_->messenger_);
+        this, table, partition_group_start, max_deadline, client_->data_->messenger_,
+        client_->data_->proxy_cache_.get());
   }
 }
 
@@ -776,8 +740,9 @@ class LookupByIdRpc : public LookupRpc {
                 TabletId tablet_id,
                 scoped_refptr<RemoteTablet>* remote_tablet,
                 const MonoTime& deadline,
-                const shared_ptr<Messenger>& messenger)
-      : LookupRpc(meta_cache, deadline, messenger),
+                const shared_ptr<Messenger>& messenger,
+                rpc::ProxyCache* proxy_cache)
+      : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
         user_cb_(std::move(user_cb)),
         tablet_id_(std::move(tablet_id)),
         remote_tablet_(remote_tablet) {}
@@ -833,8 +798,9 @@ class LookupByKeyRpc : public LookupRpc {
                  const YBTable* table,
                  MetaCache::PartitionGroupKey partition_group_start,
                  const MonoTime& deadline,
-                 const shared_ptr<Messenger>& messenger)
-      : LookupRpc(meta_cache, deadline, messenger),
+                 const shared_ptr<Messenger>& messenger,
+                 rpc::ProxyCache* proxy_cache)
+      : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
         table_(table->shared_from_this()),
         partition_group_start_(std::move(partition_group_start)) {
   }
@@ -975,7 +941,8 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
   }
 
   rpc::StartRpc<LookupByKeyRpc>(
-      this, table, partition_group_start, deadline, client_->data_->messenger_);
+      this, table, partition_group_start, deadline, client_->data_->messenger_,
+      client_->data_->proxy_cache_.get());
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
@@ -1003,7 +970,8 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   }
 
   rpc::StartRpc<LookupByIdRpc>(
-      this, callback, tablet_id, remote_tablet, deadline, client_->data_->messenger_);
+      this, callback, tablet_id, remote_tablet, deadline, client_->data_->messenger_,
+      client_->data_->proxy_cache_.get());
 }
 
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,

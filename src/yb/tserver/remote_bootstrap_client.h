@@ -87,7 +87,6 @@ class RemoteBootstrapClient {
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
   // 'client_permanent_uuid' is the permanent UUID of the caller server.
   RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager,
-                        std::shared_ptr<rpc::Messenger> messenger,
                         std::string client_permanent_uuid);
 
   // Attempt to clean up resources on the remote end by sending an
@@ -114,6 +113,7 @@ class RemoteBootstrapClient {
   // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
   CHECKED_STATUS Start(const std::string& bootstrap_peer_uuid,
+                       rpc::ProxyCache* proxy_cache,
                        const HostPort& bootstrap_peer_addr,
                        scoped_refptr<tablet::TabletMetadata>* metadata,
                        TSTabletManager* ts_manager = nullptr);
@@ -192,7 +192,6 @@ class RemoteBootstrapClient {
   // Set-once members.
   const std::string tablet_id_;
   FsManager* const fs_manager_;
-  const std::shared_ptr<rpc::Messenger> messenger_;
   const std::string permanent_uuid_;
 
   // State flags that enforce the progress of remote bootstrap.

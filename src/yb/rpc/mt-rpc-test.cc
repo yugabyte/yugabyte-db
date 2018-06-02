@@ -55,35 +55,34 @@ namespace rpc {
 class MultiThreadedRpcTest : public RpcTestBase {
  public:
   // Make a single RPC call.
-  void SingleCall(const Endpoint& server_addr, const RemoteMethod* method,
+  void SingleCall(const HostPort& server_addr, const RemoteMethod* method,
                   Status* result, CountDownLatch* latch) {
     LOG(INFO) << "Connecting to " << server_addr;
     shared_ptr<Messenger> client_messenger(CreateMessenger("ClientSC"));
-    Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
-    *result = DoTestSyncCall(p, method);
+    Proxy p(client_messenger, server_addr);
+    *result = DoTestSyncCall(&p, method);
     latch->CountDown();
   }
 
   // Make RPC calls until we see a failure.
-  void HammerServer(const Endpoint& server_addr, const RemoteMethod* method, Status* last_result) {
+  void HammerServer(const HostPort& server_addr, const RemoteMethod* method, Status* last_result) {
     shared_ptr<Messenger> client_messenger(CreateMessenger("ClientHS"));
     HammerServerWithMessenger(server_addr, method, last_result, client_messenger);
   }
 
   void HammerServerWithMessenger(
-      const Endpoint& server_addr, const RemoteMethod* method, Status* last_result,
+      const HostPort& server_addr, const RemoteMethod* method, Status* last_result,
       const shared_ptr<Messenger>& messenger) {
     LOG(INFO) << "Connecting to " << server_addr;
-    Proxy p(messenger, server_addr, GenericCalculatorService::static_service_name());
+    Proxy p(messenger, server_addr);
 
     int i = 0;
     while (true) {
       i++;
-      Status s = DoTestSyncCall(p, method);
+      Status s = DoTestSyncCall(&p, method);
       if (!s.ok()) {
         // Return on first failure.
-        LOG(INFO) << "Call failed. Shutting down client thread. Ran " << i << " calls: "
-            << s.ToString();
+        LOG(INFO) << "Call failed. Shutting down client thread. Ran " << i << " calls: " << s;
         *last_result = s;
         return;
       }
@@ -103,7 +102,7 @@ static void AssertShutdown(yb::Thread* thread, const Status* status) {
 // Simply verify that we don't hit any CHECK errors.
 TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
   // Set up server.
-  Endpoint server_addr;
+  HostPort server_addr;
   StartTestServer(&server_addr);
 
   const int kNumThreads = 4;
@@ -129,7 +128,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
 // a new connection. This is a regression test for KUDU-104.
 TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   // Set up server.
-  Endpoint server_addr;
+  HostPort server_addr;
   StartTestServer(&server_addr);
 
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
@@ -155,7 +154,8 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   SCOPED_TRACE(msg);
   ASSERT_TRUE(msg.find("Client RPC Messenger shutting down") != string::npos ||
               msg.find("Shutdown connection") != string::npos ||
-              msg.find("Unable to start connection negotiation thread") != string::npos)
+              msg.find("Unable to start connection negotiation thread") != string::npos ||
+              msg.find("Messenger already stopped") != string::npos)
               << "Status is actually: " << msg;
 }
 
@@ -201,7 +201,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   CountDownLatch latch(1);
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
-      &MultiThreadedRpcTest::SingleCall, this, server_addr,
+      &MultiThreadedRpcTest::SingleCall, this, HostPort::FromBoundEndpoint(server_addr),
       GenericCalculatorService::AddMethod(), &status[i], &latch, &threads[i]));
   }
 

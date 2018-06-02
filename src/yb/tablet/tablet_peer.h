@@ -105,6 +105,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
                                 const std::shared_future<client::YBClientPtr> &client_future,
                                 const scoped_refptr<server::Clock> &clock,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
+                                rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
                                 ThreadPool* raft_pool,
@@ -343,7 +344,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   OperationOrderVerifier operation_order_verifier_;
   scoped_refptr<log::Log> log_;
   std::shared_ptr<TabletClass> tablet_;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   gscoped_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;

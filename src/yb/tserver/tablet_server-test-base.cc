@@ -82,6 +82,7 @@ void TabletServerTestBase::SetUp() {
   key_schema_ = schema_.CreateKeyProjection();
 
   client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_);
 }
 
 void TabletServerTestBase::StartTabletServer() {
@@ -156,8 +157,8 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
 }
 
 void TabletServerTestBase::ResetClientProxies() {
-  CreateTsClientProxies(mini_server_->bound_rpc_addr(),
-                        client_messenger_,
+  CreateTsClientProxies(HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr()),
+                        proxy_cache_.get(),
                         &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_);
 }
 

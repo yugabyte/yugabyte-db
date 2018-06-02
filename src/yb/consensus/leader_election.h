@@ -195,7 +195,6 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   friend class RefCountedThreadSafe<LeaderElection>;
 
   struct VoterState {
-    std::future<Result<PeerProxyPtr>> proxy_future;
     PeerProxyPtr proxy;
     HostPort address;
 

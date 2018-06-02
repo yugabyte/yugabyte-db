@@ -115,7 +115,7 @@ client::YBSchema SimpleIntKeyYBSchema();
 // Note: The bare-pointer TServerDetails values must be deleted by the caller!
 // Consider using ValueDeleter (in gutil/stl_util.h) for that.
 Status CreateTabletServerMap(master::MasterServiceProxy* master_proxy,
-                             const std::shared_ptr<rpc::Messenger>& messenger,
+                             rpc::ProxyCache* proxy_cache,
                              TabletServerMap* ts_map);
 
 // Gets a vector containing the latest OpId for each of the given replicas.

@@ -40,6 +40,8 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/rpc/messenger.h"
+
 DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
 
 MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,

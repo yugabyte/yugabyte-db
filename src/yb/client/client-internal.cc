@@ -368,9 +368,7 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
                    rt->tablet_id(),
                    blacklist_string));
   }
-  Synchronizer s;
-  ret->InitProxy(client, s.AsStatusCallback());
-  RETURN_NOT_OK(s.Wait());
+  RETURN_NOT_OK(ret->InitProxy(client));
 
   *ts = ret;
   return Status::OK();
@@ -760,13 +758,15 @@ class GetTableSchemaRpc : public Rpc {
                     const YBTableName& table_name,
                     YBTable::Info* info,
                     const MonoTime& deadline,
-                    const shared_ptr<rpc::Messenger>& messenger);
+                    const shared_ptr<rpc::Messenger>& messenger,
+                    rpc::ProxyCache* proxy_cache);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
                     YBTable::Info* info,
                     const MonoTime& deadline,
-                    const shared_ptr<rpc::Messenger>& messenger);
+                    const shared_ptr<rpc::Messenger>& messenger,
+                    rpc::ProxyCache* proxy_cache);
 
   void SendRpc() override;
 
@@ -809,8 +809,9 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const YBTableName& table_name,
                                      YBTable::Info* info,
                                      const MonoTime& deadline,
-                                     const shared_ptr<rpc::Messenger>& messenger)
-    : Rpc(deadline, messenger),
+                                     const shared_ptr<rpc::Messenger>& messenger,
+                                     rpc::ProxyCache* proxy_cache)
+    : Rpc(deadline, messenger, proxy_cache),
       client_(DCHECK_NOTNULL(client)),
       user_cb_(std::move(user_cb)),
       table_identifier_(ToTableIdentifierPB(table_name)),
@@ -822,8 +823,9 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const TableId& table_id,
                                      YBTable::Info* info,
                                      const MonoTime& deadline,
-                                     const shared_ptr<rpc::Messenger>& messenger)
-    : Rpc(deadline, messenger),
+                                     const shared_ptr<rpc::Messenger>& messenger,
+                                     rpc::ProxyCache* proxy_cache)
+    : Rpc(deadline, messenger, proxy_cache),
       client_(DCHECK_NOTNULL(client)),
       user_cb_(std::move(user_cb)),
       table_identifier_(ToTableIdentifierPB(table_id)),
@@ -973,7 +975,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_name,
       info,
       deadline,
-      messenger_);
+      messenger_,
+      proxy_cache_.get());
   return sync.Wait();
 }
 
@@ -988,26 +991,23 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_id,
       info,
       deadline,
-      messenger_);
+      messenger_,
+      proxy_cache_.get());
   return sync.Wait();
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                             const HostPort& host_port) {
-  Endpoint leader_sock_addr;
   Status new_status = status;
-  if (new_status.ok()) {
-    new_status = EndpointFromHostPort(host_port, &leader_sock_addr);
-  }
 
-  vector<StatusCallback> cbs;
+  std::vector<StatusCallback> cbs;
   {
     std::lock_guard<simple_spinlock> l(leader_master_lock_);
     cbs.swap(leader_master_callbacks_);
 
     if (new_status.ok()) {
       leader_master_hostport_ = host_port;
-      master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_addr));
+      master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), host_port));
     }
 
     rpcs_.Unregister(&leader_master_rpc_);
@@ -1032,7 +1032,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
                                                const StatusCallback& cb) {
   DCHECK(deadline.Initialized());
 
-  vector<Endpoint> master_sockaddrs;
+  std::vector<HostPort> master_addrs;
   // Refresh the value of 'master_server_addrs_' if needed.
   Status s = ReinitializeMasterAddresses();
   {
@@ -1042,9 +1042,9 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
       return;
     }
     for (const string &master_server_addr : master_server_addrs_) {
-      vector<Endpoint> addrs;
+      std::vector<HostPort> addrs;
       // TODO: Do address resolution asynchronously as well.
-      s = ParseAddressList(master_server_addr, master::kMasterDefaultPort, &addrs);
+      s = HostPort::ParseStrings(master_server_addr, master::kMasterDefaultPort, &addrs);
       if (!s.ok()) {
         cb.Run(s);
         return;
@@ -1055,9 +1055,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
         return;
       }
 
-      for (auto addr : addrs) {
-        master_sockaddrs.push_back(addr);
-      }
+      master_addrs.insert(master_addrs.end(), addrs.begin(), addrs.end());
     }
   }
 
@@ -1075,20 +1073,20 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   // callback to leader_master_callbacks_.
   std::unique_lock<simple_spinlock> l(leader_master_lock_);
   leader_master_callbacks_.push_back(cb);
-  if (skip_resolution && !master_sockaddrs.empty()) {
+  if (skip_resolution && !master_addrs.empty()) {
     l.unlock();
-    LeaderMasterDetermined(Status::OK(), HostPort(master_sockaddrs.front()));
+    LeaderMasterDetermined(Status::OK(), master_addrs.front());
     return;
   }
   if (leader_master_rpc_ == rpcs_.InvalidHandle()) {
     // No one is sending a request yet - we need to be the one to do it.
     rpcs_.Register(
         std::make_shared<GetLeaderMasterRpc>(
-            Bind(&YBClient::Data::LeaderMasterDetermined,
-                Unretained(this)),
-            master_sockaddrs,
+            Bind(&YBClient::Data::LeaderMasterDetermined, Unretained(this)),
+            master_addrs,
             actual_deadline,
             messenger_,
+            proxy_cache_.get(),
             &rpcs_),
         &leader_master_rpc_);
     l.unlock();
@@ -1117,10 +1115,9 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 }
 
 // Add a given master to the master address list
-Status YBClient::Data::AddMasterAddress(const Endpoint& sockaddr) {
+Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-  HostPort host_port(sockaddr);
-  master_server_addrs_.push_back(host_port.ToString());
+  master_server_addrs_.push_back(addr.ToString());
   return Status::OK();
 }
 
@@ -1164,16 +1161,16 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
 }
 
 // Remove a given master from the list of master_server_addrs_
-Status YBClient::Data::RemoveMasterAddress(const Endpoint& sockaddr) {
+Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
   vector<HostPort> new_list;
 
   {
+    auto str = addr.ToString();
     std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-    RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
-      sockaddr,
-      master_server_addrs_,
-      0, // defaultPort
-      &new_list));
+    auto it = std::find(master_server_addrs_.begin(), master_server_addrs_.end(), str);
+    if (it != master_server_addrs_.end()) {
+      master_server_addrs_.erase(it);
+    }
   }
 
   RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));

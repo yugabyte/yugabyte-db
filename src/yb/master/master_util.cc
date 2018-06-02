@@ -25,13 +25,11 @@ using master::GetMasterRegistrationRequestPB;
 using master::GetMasterRegistrationResponsePB;
 using master::MasterServiceProxy;
 
-Status MasterUtil::GetMasterEntryForHost(const std::shared_ptr<rpc::Messenger>& messenger,
-                                         const HostPort& hostport,
-                                         int timeout,
-                                         ServerEntryPB* e) {
-  Endpoint sockaddr;
-  RETURN_NOT_OK(EndpointFromHostPort(hostport, &sockaddr));
-  MasterServiceProxy proxy(messenger, sockaddr);
+Status GetMasterEntryForHost(rpc::ProxyCache* proxy_cache,
+                             const HostPort& hostport,
+                             int timeout,
+                             ServerEntryPB* e) {
+  MasterServiceProxy proxy(proxy_cache, hostport);
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;
   rpc::RpcController controller;

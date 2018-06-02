@@ -196,13 +196,14 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const scoped_refptr<server::Clock>& clock,
     ReplicaOperationFactory* operation_factory,
     const shared_ptr<rpc::Messenger>& messenger,
+    rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     LostLeadershipListener lost_leadership_listener,
     ThreadPool* raft_pool) {
-  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger));
+  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger, proxy_cache));
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
@@ -637,7 +638,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
         // TODO(sergei) Currently we preserved synchronous DNS resolution in this case.
         // It is possible that it should be changed to async in future.
         // But it looks like it is not a problem to leave synchronous variant here.
-        election_state->proxy = VERIFY_RESULT(peer_proxy_factory_->NewProxyFuture(peer).get());
+        election_state->proxy = peer_proxy_factory_->NewProxy(peer);
         election_state->req.set_originator_uuid(req->dest_uuid());
         election_state->req.set_dest_uuid(new_leader_uuid);
         election_state->req.set_tablet_id(tablet_id);
@@ -2577,13 +2578,7 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
       // TODO(sergei) Currently we preserved synchronous DNS resolution in this case.
       // It is possible that it should be changed so async in future.
       // But look like it is not problem to leave synchronous variant here.
-      auto proxy_result = peer_proxy_factory_->NewProxyFuture(peer).get();
-      if (!proxy_result.ok()) {
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Unable to notify originator about lost election, "
-                                       << "failed to create proxy: " << proxy_result.status();
-        return;
-      }
-      auto proxy = std::move(*proxy_result);
+      auto proxy = peer_proxy_factory_->NewProxy(peer);
       LeaderElectionLostRequestPB req;
       req.set_dest_uuid(originator_uuid);
       req.set_election_lost_by_uuid(state_->GetPeerUuid());

@@ -200,7 +200,7 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
     voting_follower_uuids_.push_back(peer.permanent_uuid());
 
     auto state = std::make_unique<VoterState>();
-    state->proxy_future = proxy_factory->NewProxyFuture(peer);
+    state->proxy = proxy_factory->NewProxy(peer);
     state->address = HostPortFromPB(peer.last_known_addr());
     CHECK(voter_state_.emplace(peer.permanent_uuid(), std::move(state)).second);
   }
@@ -229,26 +229,12 @@ void LeaderElection::Run() {
   // single-node configuration, since we always pre-vote for ourselves).
   CheckForDecision();
 
-  auto deadline = std::chrono::steady_clock::now() + timeout_.ToSteadyDuration();
-  size_t voters_left = voting_follower_uuids_.size();
-  while (voters_left > 0) {
-    TrySendRequestToVoters(deadline, &voters_left);
-  }
-}
-
-void LeaderElection::TrySendRequestToVoters(
-    std::chrono::steady_clock::time_point deadline, size_t* voters_left) {
-  const auto kStepTimeout = 100ms;
-
-  auto step_deadline = std::min(deadline, std::chrono::steady_clock::now() + kStepTimeout);
-  bool last_step = step_deadline == deadline;
   // The rest of the code below is for a typical multi-node configuration.
   for (const std::string& voter_uuid : voting_follower_uuids_) {
     VoterState* state = nullptr;
     {
       std::lock_guard<Lock> guard(lock_);
       if (result_) { // Already have result.
-        *voters_left = 0;
         break;
       }
       auto it = voter_state_.find(voter_uuid);
@@ -256,38 +242,6 @@ void LeaderElection::TrySendRequestToVoters(
       state = it->second.get();
       // Safe to drop the lock because voter_state_ is not mutated outside of
       // the constructor / destructor. We do this to avoid deadlocks below.
-    }
-
-    // Already processed this voter.
-    if (state->proxy || !state->proxy_future.valid()) {
-      continue;
-    }
-
-    bool ready = state->proxy_future.wait_until(step_deadline) == std::future_status::ready;
-    if (!ready && !last_step) {
-      continue;
-    }
-
-    --*voters_left;
-    auto proxy_result = ready
-        ? state->proxy_future.get()
-        : STATUS_FORMAT(TimedOut, "Timed out trying to resolve host: $0, timeout: $1",
-                        state->address, timeout_);
-
-    // If we failed to construct the proxy, just record a 'NO' vote with the status
-    // that indicates why it failed.
-    if (!proxy_result.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Was unable to construct an RPC proxy to peer "
-                               << voter_uuid << ": " << proxy_result.status()
-                               << ". Counting it as a 'NO' vote.";
-      {
-        std::lock_guard<Lock> guard(lock_);
-        RecordVoteUnlocked(voter_uuid, VOTE_DENIED);
-      }
-      CheckForDecision();
-      continue;
-    } else {
-      state->proxy = std::move(*proxy_result);
     }
 
     // Send the RPC request.

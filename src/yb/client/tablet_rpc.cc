@@ -148,11 +148,7 @@ void TabletInvoker::Execute(const std::string& tablet_id) {
   }
 
   // Make sure we have a working proxy before sending out the RPC.
-  current_ts_->InitProxy(client_, Bind(&TabletInvoker::InitTSProxyCb, Unretained(this)));
-}
-
-void TabletInvoker::InitTSProxyCb(const Status& status) {
-  TRACE_TO(trace_, "InitTSProxyCb($0)", status.ToString(false));
+  auto status = current_ts_->InitProxy(client_);
 
   // Fail to a replica in the event of a DNS resolution failure.
   if (!status.ok()) {

@@ -69,6 +69,7 @@ class RpcServerBase {
  public:
   const RpcServer *rpc_server() const { return rpc_server_.get(); }
   const std::shared_ptr<rpc::Messenger>& messenger() const { return messenger_; }
+  rpc::ProxyCache& proxy_cache() { return *proxy_cache_; }
 
   // Return the first RPC address that this server has bound to.
   // FATALs if the server is not started.
@@ -115,6 +116,7 @@ class RpcServerBase {
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<RpcServer> rpc_server_;
   std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   bool is_first_run_;
 
   scoped_refptr<Clock> clock_;

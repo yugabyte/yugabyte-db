@@ -232,6 +232,7 @@ Status ExternalMiniCluster::Start() {
   builder.set_num_reactors(1);
   RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
                         "Failed to start Messenger for minicluster");
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
 
   Status s = Env::Default()->CreateDir(data_root_);
   if (!s.ok() && !s.IsAlreadyPresent()) {
@@ -451,14 +452,14 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusProxy() {
   auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
 
-  return std::make_shared<ConsensusServiceProxy>(messenger_, leader_master_sock);
+  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), leader_master_sock);
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
     scoped_refptr<ExternalMaster> master) {
   auto master_sock = master->bound_rpc_addr();
 
-  return std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
+  return std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
 }
 
 Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
@@ -471,8 +472,8 @@ Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* erro
   LeaderStepDownResponsePB lsd_resp;
   RpcController lsd_rpc;
   lsd_rpc.set_timeout(opts_.timeout_);
-  std::unique_ptr<ConsensusServiceProxy> proxy(new ConsensusServiceProxy(messenger_, host_port));
-  RETURN_NOT_OK(proxy->LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
+  ConsensusServiceProxy proxy(proxy_cache_.get(), host_port);
+  RETURN_NOT_OK(proxy.LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
   if (lsd_resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " received error "
                << lsd_resp.error().ShortDebugString();
@@ -539,15 +540,15 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   int num_attempts = 1;
   while (true) {
     ExternalMaster* leader = GetLeaderMaster();
-    std::unique_ptr<ConsensusServiceProxy>
-      leader_proxy(new ConsensusServiceProxy(messenger_, leader->bound_rpc_addr()));
+    auto leader_proxy = std::make_unique<ConsensusServiceProxy>(
+        proxy_cache_.get(), leader->bound_rpc_addr());
     string leader_uuid = leader->uuid();
 
     if (type == consensus::REMOVE_SERVER && leader_uuid == req.server().permanent_uuid()) {
       RETURN_NOT_OK(StepDownMasterLeaderAndWaitForNewLeader());
       leader = GetLeaderMaster();
       leader_uuid = leader->uuid();
-      leader_proxy.reset(new ConsensusServiceProxy(messenger_, leader->bound_rpc_addr()));
+      leader_proxy.reset(new ConsensusServiceProxy(proxy_cache_.get(), leader->bound_rpc_addr()));
     }
 
     req.set_dest_uuid(leader_uuid);
@@ -747,7 +748,7 @@ Status ExternalMiniCluster::GetLastOpIdForLeader(consensus::OpId* opid) {
   ExternalMaster* leader = GetLeaderMaster();
   auto leader_master_sock = leader->bound_rpc_addr();
   std::shared_ptr<ConsensusServiceProxy> leader_proxy =
-    std::make_shared<ConsensusServiceProxy>(messenger_, leader_master_sock);
+    std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), leader_master_sock);
 
   RETURN_NOT_OK(itest::GetLastOpIdForMasterReplica(
       leader_proxy,
@@ -898,7 +899,7 @@ void ExternalMiniCluster::AssertNoCrashes() {
 
 Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
                                                   const MonoDelta& timeout) {
-  TabletServerServiceProxy proxy(messenger_, ts->bound_rpc_addr());
+  TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
   ListTabletsRequestPB req;
   ListTabletsResponsePB resp;
 
@@ -969,7 +970,7 @@ Status ExternalMiniCluster::GetLeaderMasterIndex(int* idx) {
 
 Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   Synchronizer sync;
-  std::vector<Endpoint> addrs;
+  std::vector<HostPort> addrs;
   HostPort leader_master_hp;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(5));
@@ -985,6 +986,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
       addrs,
       deadline,
       messenger_,
+      proxy_cache_.get(),
       &rpcs);
   RETURN_NOT_OK(sync.Wait());
   rpcs.Shutdown();
@@ -1087,7 +1089,7 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy() {
 std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
   CHECK_LT(idx, masters_.size());
   return std::make_shared<MasterServiceProxy>(
-      messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr());
+      proxy_cache_.get(), CHECK_NOTNULL(master(idx))->bound_rpc_addr());
 }
 
 Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
@@ -1100,14 +1102,14 @@ Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
   return builder->Build(client);
 }
 
-Endpoint ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+HostPort ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return GetLeaderMaster()->bound_rpc_addr();
 }
 
 Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
                                     const string& flag,
                                     const string& value) {
-  server::GenericServiceProxy proxy(messenger_, daemon->bound_rpc_addr());
+  server::GenericServiceProxy proxy(proxy_cache_.get(), daemon->bound_rpc_addr());
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(30));
@@ -1142,8 +1144,7 @@ uint16_t ExternalMiniCluster::AllocateFreePort() {
 
 Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
   auto master_sock = master->bound_rpc_addr();
-  std::shared_ptr<ConsensusServiceProxy> master_proxy =
-    std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
+  auto master_proxy = std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
 
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(master->uuid());
@@ -1562,12 +1563,8 @@ HostPort ExternalDaemon::bound_rpc_hostport() const {
   return HostPortFromPB(status_->bound_rpc_addresses(0));
 }
 
-Endpoint ExternalDaemon::bound_rpc_addr() const {
-  HostPort hp = bound_rpc_hostport();
-  std::vector<Endpoint> addrs;
-  CHECK_OK(hp.ResolveAddresses(&addrs));
-  CHECK(!addrs.empty());
-  return addrs[0];
+HostPort ExternalDaemon::bound_rpc_addr() const {
+  return bound_rpc_hostport();
 }
 
 HostPort ExternalDaemon::bound_http_hostport() const {

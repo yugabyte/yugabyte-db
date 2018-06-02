@@ -413,16 +413,16 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   std::shared_ptr<YBSession> NewSession();
 
   // Return the socket address of the master leader for this client
-  CHECKED_STATUS SetMasterLeaderSocket(Endpoint* leader_socket);
+  HostPort GetMasterLeaderAddress();
 
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
-  CHECKED_STATUS RefreshMasterLeaderSocket(Endpoint* leader_socket);
+  Result<HostPort> RefreshMasterLeaderAddress();
 
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
-  CHECKED_STATUS AddMasterToClient(const Endpoint& add);
-  CHECKED_STATUS RemoveMasterFromClient(const Endpoint& remove);
+  CHECKED_STATUS AddMasterToClient(const HostPort& add);
+  CHECKED_STATUS RemoveMasterFromClient(const HostPort& remove);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -479,6 +479,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                         const StatusCallback& callback);
 
   const std::shared_ptr<rpc::Messenger>& messenger() const;
+
+  rpc::ProxyCache& proxy_cache() const;
 
  private:
   class Data;

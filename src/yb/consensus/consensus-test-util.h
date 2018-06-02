@@ -388,8 +388,8 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
   }
 
-  void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override {
-    waiter(PeerProxyPtr(new NoOpTestPeerProxy(pool_.get(), peer_pb)));
+  PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override {
+    return std::make_unique<NoOpTestPeerProxy>(pool_.get(), peer_pb);
   }
 
   gscoped_ptr<ThreadPool> pool_;
@@ -593,13 +593,11 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
   }
 
-  void NewProxy(const consensus::RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override {
+  PeerProxyPtr NewProxy(const consensus::RaftPeerPB& peer_pb) override {
     auto new_proxy = std::make_unique<LocalTestPeerProxy>(
         peer_pb.permanent_uuid(), pool_.get(), peers_);
     proxies_.push_back(new_proxy.get());
-    ASSERT_OK(pool_->SubmitFunc([waiter, new_proxy = new_proxy.release()] {
-      waiter(PeerProxyPtr(new_proxy));
-    }));
+    return new_proxy;
   }
 
   virtual const vector<LocalTestPeerProxy*>& GetProxies() {

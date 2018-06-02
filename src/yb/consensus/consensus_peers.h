@@ -293,23 +293,16 @@ class PeerProxy {
 };
 
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
-typedef std::function<void(Result<PeerProxyPtr>)> PeerProxyWaiter;
 
 // A peer proxy factory. Usually just obtains peers through the rpc implementation but can be
 // replaced for tests.
 class PeerProxyFactory {
  public:
-  virtual void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) = 0;
-
-  auto NewProxyFuture(const RaftPeerPB& peer_pb) {
-    return MakeFuture<Result<PeerProxyPtr>>([this, &peer_pb] (auto callback) {
-      this->NewProxy(peer_pb, callback);
-    });
-  }
+  virtual PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) = 0;
 
   virtual ~PeerProxyFactory() {}
 
-  virtual const std::shared_ptr<rpc::Messenger> messenger() const {
+  virtual std::shared_ptr<rpc::Messenger> messenger() const {
     return nullptr;
   }
 };
@@ -355,22 +348,23 @@ class RpcPeerProxy : public PeerProxy {
 // PeerProxyFactory implementation that generates RPCPeerProxies
 class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
-  explicit RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger);
+  RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache);
 
-  void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override;
+  PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override;
 
   virtual ~RpcPeerProxyFactory();
 
-  virtual const std::shared_ptr<rpc::Messenger> messenger() const override;
+  std::shared_ptr<rpc::Messenger> messenger() const override;
 
  private:
   std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::ProxyCache* const proxy_cache_;
 };
 
 // Query the consensus service at last known host/port that is specified in 'remote_peer' and set
 // the 'permanent_uuid' field based on the response.
 Status SetPermanentUuidForRemotePeer(
-    const std::shared_ptr<rpc::Messenger>& messenger,
+    rpc::ProxyCache* proxy_cache,
     std::chrono::steady_clock::duration timeout,
     RaftPeerPB* remote_peer);
 

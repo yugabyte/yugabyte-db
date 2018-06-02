@@ -81,7 +81,8 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
   void SetUp() override {
     RemoteBootstrapTest::SetUp();
     remote_bootstrap_proxy_.reset(
-        new RemoteBootstrapServiceProxy(client_messenger_, mini_server_->bound_rpc_addr()));
+        new RemoteBootstrapServiceProxy(
+            proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
   Status DoBeginRemoteBootstrapSession(const string& tablet_id,

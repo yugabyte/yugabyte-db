@@ -35,6 +35,7 @@ namespace yb {
 
 typedef boost::asio::ip::address IpAddress;
 typedef boost::asio::ip::basic_endpoint<boost::asio::ip::tcp> Endpoint;
+class HostPort;
 
 } // namespace yb
 

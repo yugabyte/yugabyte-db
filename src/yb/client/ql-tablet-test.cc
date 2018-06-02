@@ -192,7 +192,7 @@ class QLTabletTest : public QLDmlTestBase {
     }
     auto endpoint = tserver->server()->rpc_server()->GetBoundAddresses().front();
     auto proxy = std::make_unique<tserver::TabletServerServiceProxy>(
-        tserver->server()->messenger(), endpoint);
+        &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
 
     auto condition = [&]() -> Result<bool> {
       for (int i = begin; i != end; ++i) {

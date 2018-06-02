@@ -218,37 +218,18 @@ void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {
   instance_pb->set_instance_seqno(latest_seqno_);
 }
 
-Status TSDescriptor::ResolveEndpoint(Endpoint* addr) const {
-  vector<HostPort> hostports;
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    for (const HostPortPB& addr : registration_->common().rpc_addresses()) {
-      hostports.emplace_back(addr.host(), addr.port());
-    }
-  }
-
-  // Resolve DNS outside the lock.
-  HostPort last_hostport;
-  std::vector<Endpoint> addrs;
-  for (const HostPort& hostport : hostports) {
-    RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
-    if (!addrs.empty()) {
-      last_hostport = hostport;
-      break;
-    }
-  }
-
+Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+  const auto& addrs = registration_->common().rpc_addresses();
   if (addrs.size() == 0) {
     return STATUS(NetworkError, "Unable to find the TS address: ", registration_->DebugString());
   }
 
   if (addrs.size() > 1) {
-    LOG(WARNING) << "TS address " << last_hostport.ToString()
-                  << " resolves to " << addrs.size() << " different addresses. Using "
-                  << addrs[0];
+    LOG(WARNING) << "Multiple TS addresses " << yb::ToString(addrs) << ". Using "
+                 << addrs[0].ShortDebugString();
   }
-  *addr = addrs[0];
-  return Status::OK();
+
+  return HostPortFromPB(addrs[0]);
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

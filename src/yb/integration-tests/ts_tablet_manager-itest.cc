@@ -141,12 +141,13 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
+  rpc::ProxyCache proxy_cache(client_messenger_);
+
   // Build a TServerDetails map so we can check for convergence.
-  gscoped_ptr<MasterServiceProxy> master_proxy(
-      new MasterServiceProxy(client_messenger_, cluster_->mini_master()->bound_rpc_addr()));
+  MasterServiceProxy master_proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
 
   itest::TabletServerMap ts_map;
-  ASSERT_OK(CreateTabletServerMap(master_proxy.get(), client_messenger_, &ts_map));
+  ASSERT_OK(CreateTabletServerMap(&master_proxy, &proxy_cache, &ts_map));
 
   // Collect the tablet peers so we get direct access to consensus.
   vector<scoped_refptr<TabletPeer> > tablet_peers;

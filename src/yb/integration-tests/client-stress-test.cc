@@ -182,7 +182,7 @@ void LeaderMasterCallback(Synchronizer* sync,
 }
 
 void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
-  std::vector<Endpoint> master_addrs;
+  std::vector<HostPort> master_addrs;
   for (auto i = 0; i != cluster->num_masters(); ++i) {
     master_addrs.push_back(cluster->master(i)->bound_rpc_addr());
   }
@@ -199,6 +199,7 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
             master_addrs,
             deadline,
             cluster->messenger(),
+            &cluster->proxy_cache(),
             &rpcs);
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;

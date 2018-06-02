@@ -105,9 +105,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
-    client_messenger_ = ASSERT_RESULT(
-        rpc::MessengerBuilder("Client").Build());
-    proxy_.reset(new master::MasterServiceProxy(client_messenger_,
+    client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
+    rpc::ProxyCache proxy_cache(client_messenger_);
+    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
 
     // Create the namespace.
@@ -521,16 +521,16 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
     }
     ASSERT_GE(kNumFilesPerTablet, num_files);
 
-    Endpoint leader_tserver;
+    HostPort leader_tserver;
     for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_location.replicas()) {
       if (replica.role() == consensus::RaftPeerPB_Role::RaftPeerPB_Role_LEADER) {
-        HostPort host_port;
-        ASSERT_OK(EndpointFromHostPortPB(replica.ts_info().rpc_addresses(0), &leader_tserver));
+        leader_tserver = HostPortFromPB(replica.ts_info().rpc_addresses(0));
         break;
       }
     }
 
-    auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(client_messenger_,
+    rpc::ProxyCache proxy_cache(client_messenger_);
+    auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(&proxy_cache,
                                                                              leader_tserver);
 
     // Start the load generator to ensure we can import files with running load.

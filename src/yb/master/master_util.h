@@ -11,13 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_MASTER_UTIL_H
-#define YB_COMMON_MASTER_UTIL_H
+#ifndef YB_MASTER_MASTER_UTIL_H
+#define YB_MASTER_MASTER_UTIL_H
 
 #include <memory>
 
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/master/master.pb.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
@@ -26,21 +25,14 @@
 
 namespace yb {
 
-class MasterUtil {
- public:
-  // Given a hostport, return the master server information protobuf.
-  // Does not apply to tablet server.
-  static CHECKED_STATUS GetMasterEntryForHost(const std::shared_ptr<rpc::Messenger>& messenger,
-                                      const HostPort& hostport,
-                                      int timeout,
-                                      ServerEntryPB* e);
-
- private:
-  MasterUtil();
-
-  DISALLOW_COPY_AND_ASSIGN(MasterUtil);
-};
+// Given a hostport, return the master server information protobuf.
+// Does not apply to tablet server.
+CHECKED_STATUS GetMasterEntryForHost(
+    rpc::ProxyCache* proxy_cache,
+    const HostPort& hostport,
+    int timeout,
+    ServerEntryPB* e);
 
 } // namespace yb
 
-#endif
+#endif // YB_MASTER_MASTER_UTIL_H

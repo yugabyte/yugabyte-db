@@ -440,7 +440,7 @@ Status MiniCluster::DoCreateClient(YBClientBuilder* builder,
   return builder->Build(client);
 }
 
-Endpoint MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+HostPort MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return leader_mini_master()->bound_rpc_addr();
 }
 

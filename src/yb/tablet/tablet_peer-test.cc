@@ -115,7 +115,8 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
-    ASSERT_OK(builder.Build().MoveTo(&messenger_));
+    messenger_ = ASSERT_RESULT(builder.Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
 
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 
@@ -165,6 +166,7 @@ class TabletPeerTest : public YBTabletTest,
                                            std::shared_future<client::YBClientPtr>(),
                                            clock(),
                                            messenger_,
+                                           proxy_cache_.get(),
                                            log,
                                            metric_entity_,
                                            raft_pool_.get(),
@@ -277,6 +279,7 @@ class TabletPeerTest : public YBTabletTest,
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   shared_ptr<Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<ThreadPool> apply_pool_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
