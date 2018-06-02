@@ -70,6 +70,12 @@ class Slice {
     CHECK_LE(begin, end);
   }
 
+  template<size_t N>
+  explicit Slice(const std::array<char, N>& arr) : Slice(arr.data(), N) {}
+
+  template<size_t N>
+  explicit Slice(const std::array<unsigned char, N>& arr) : Slice(arr.data(), N) {}
+
   Slice(const char* begin, const char* end)
       : Slice(util::to_uchar_ptr(begin), util::to_uchar_ptr(end)) {}
 

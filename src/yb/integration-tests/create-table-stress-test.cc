@@ -120,9 +120,10 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("stress-test-msgr").set_num_reactors(1).Build());
-    master_proxy_.reset(new MasterServiceProxy(messenger_,
+    rpc::ProxyCache proxy_cache(messenger_);
+    master_proxy_.reset(new MasterServiceProxy(&proxy_cache,
                                                cluster_->mini_master()->bound_rpc_addr()));
-    ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), messenger_, &ts_map_));
+    ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), &proxy_cache, &ts_map_));
   }
 
   void DoTearDown() override {

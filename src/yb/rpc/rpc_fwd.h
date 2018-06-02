@@ -44,6 +44,8 @@ class AcceptorPool;
 class ConnectionContext;
 class GrowableBufferAllocator;
 class Messenger;
+class Proxy;
+class ProxyCache;
 class ReactorTask;
 class RpcContext;
 class RpcController;

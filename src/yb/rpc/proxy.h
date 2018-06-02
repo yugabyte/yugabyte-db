@@ -37,13 +37,18 @@
 #include <memory>
 #include <string>
 
+#include <boost/lockfree/queue.hpp>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
+
+#include "yb/util/concurrent_pod.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -56,7 +61,26 @@ class Message;
 namespace yb {
 namespace rpc {
 
-class Messenger;
+YB_DEFINE_ENUM(ResolveState, (kIdle)(kResolving)(kNotifying)(kFinished));
+
+class ProxyContext {
+ public:
+  virtual scoped_refptr<MetricEntity> metric_entity() const = 0;
+
+  // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
+  // that reactor to assign and send the call.
+  virtual void QueueOutboundCall(OutboundCallPtr call) = 0;
+
+  // Enqueue a call for processing on the server.
+  virtual void QueueInboundCall(InboundCallPtr call) = 0;
+
+  // Invoke the RpcService to handle a call directly.
+  virtual void Handle(InboundCallPtr call) = 0;
+
+  virtual IoService& io_service() = 0;
+
+  virtual ~ProxyContext() {}
+};
 
 // Interface to send calls to a remote or local service.
 //
@@ -76,10 +100,12 @@ class Messenger;
 // After initialization, multiple threads may make calls using the same proxy object.
 class Proxy {
  public:
-  Proxy(const std::shared_ptr<Messenger>& messenger,
-        const Endpoint& remote,
-        std::string service_name);
+  Proxy(std::shared_ptr<ProxyContext> context,
+        const HostPort& remote);
   ~Proxy();
+
+  Proxy(const Proxy&) = delete;
+  void operator=(const Proxy&) = delete;
 
   // Call a remote method asynchronously.
   //
@@ -111,30 +137,53 @@ class Proxy {
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
                     RpcController* controller,
-                    ResponseCallback callback) const;
+                    ResponseCallback callback);
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
   CHECKED_STATUS SyncRequest(const RemoteMethod* method,
-                     const google::protobuf::Message& req,
-                     google::protobuf::Message* resp,
-                     RpcController* controller) const;
+                             const google::protobuf::Message& req,
+                             google::protobuf::Message* resp,
+                             RpcController* controller);
 
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
 
  private:
-  GrowableBuffer& Buffer() const;
+  typedef boost::asio::ip::tcp::resolver Resolver;
+  void Resolve();
+  void HandleResolve(const boost::system::error_code& ec, const Resolver::results_type& entries);
+  void ResolveDone(const boost::system::error_code& ec, const Resolver::results_type& entries);
+  void NotifyAllFailed(const Status& status);
+  void QueueCall(RpcController* controller, const Endpoint& endpoint);
 
-  const std::string service_name_;
-  std::shared_ptr<Messenger> messenger_;
-  std::vector<ConnectionId> conn_ids_;
+  static void NotifyFailed(RpcController* controller, const Status& status);
+
+  std::shared_ptr<ProxyContext> context_;
+  HostPort remote_;
   mutable std::atomic<bool> is_started_{false};
   mutable std::atomic<size_t> num_calls_{0};
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
   const bool call_local_service_;
 
-  DISALLOW_COPY_AND_ASSIGN(Proxy);
+  std::atomic<ResolveState> resolve_state_{ResolveState::kIdle};
+  boost::lockfree::queue<RpcController*> resolve_waiters_;
+  ConcurrentPod<Endpoint> resolved_ep_;
+
+  scoped_refptr<Histogram> latency_hist_;
+};
+
+class ProxyCache {
+ public:
+  explicit ProxyCache(const std::shared_ptr<ProxyContext>& context)
+      : context_(context) {}
+
+  std::shared_ptr<Proxy> Get(const HostPort& remote);
+
+ private:
+  std::shared_ptr<ProxyContext> context_;
+  std::mutex mutex_;
+  std::unordered_map<HostPort, std::shared_ptr<Proxy>, HostPortHash> proxies_;
 };
 
 }  // namespace rpc

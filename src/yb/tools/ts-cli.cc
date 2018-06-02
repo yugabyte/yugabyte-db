@@ -161,7 +161,6 @@ class TsAdminClient {
   Status GetStatus(ServerStatusPB* pb);
  private:
   std::string addr_;
-  std::vector<yb::Endpoint> addrs_;
   MonoDelta timeout_;
   bool initted_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
@@ -184,11 +183,11 @@ Status TsAdminClient::Init() {
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   messenger_ = VERIFY_RESULT(MessengerBuilder("ts-cli").Build());
 
-  RETURN_NOT_OK(host_port.ResolveAddresses(&addrs_));
+  rpc::ProxyCache proxy_cache(messenger_);
 
-  generic_proxy_.reset(new server::GenericServiceProxy(messenger_, addrs_[0]));
-  ts_proxy_.reset(new TabletServerServiceProxy(messenger_, addrs_[0]));
-  ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(messenger_, addrs_[0]));
+  generic_proxy_.reset(new server::GenericServiceProxy(&proxy_cache, host_port));
+  ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
+  ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
 
   initted_ = true;
 

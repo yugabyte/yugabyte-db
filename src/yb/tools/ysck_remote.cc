@@ -36,6 +36,9 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 
@@ -192,7 +195,7 @@ Status RemoteYsckMaster::Connect() const {
   return generic_proxy_->Ping(req, &resp, &rpc);
 }
 
-Status RemoteYsckMaster::Build(const Endpoint& address, shared_ptr<YsckMaster>* master) {
+Status RemoteYsckMaster::Build(const HostPort& address, shared_ptr<YsckMaster>* master) {
   MessengerBuilder builder(kMessengerName);
   auto messenger = builder.Build();
   RETURN_NOT_OK(messenger);
@@ -209,12 +212,9 @@ Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   RETURN_NOT_OK(proxy_->ListTabletServers(req, &resp, &rpc));
   tablet_servers->clear();
   for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
-    HostPortPB addr = e.registration().common().rpc_addresses(0);
-    std::vector<Endpoint> addresses;
-    RETURN_NOT_OK(ParseAddressList(HostPort(addr.host(), addr.port()).ToString(),
-                                   tserver::TabletServer::kDefaultPort, &addresses));
-    shared_ptr<YsckTabletServer> ts(
-        new RemoteYsckTabletServer(e.instance_id().permanent_uuid(), addresses[0], messenger_));
+    const HostPortPB& addr = e.registration().common().rpc_addresses(0);
+    shared_ptr<YsckTabletServer> ts(new RemoteYsckTabletServer(
+        e.instance_id().permanent_uuid(), HostPortFromPB(addr), proxy_cache_.get()));
     InsertOrDie(tablet_servers, ts->uuid(), ts);
   }
   return Status::OK();
@@ -313,6 +313,12 @@ Status RemoteYsckMaster::GetTableInfo(const YBTableName& table_name,
   *num_replicas = resp.replication_info().live_replicas().num_replicas();
   return Status::OK();
 }
+
+RemoteYsckMaster::RemoteYsckMaster(
+    const HostPort& address, const std::shared_ptr<rpc::Messenger>& messenger)
+    : proxy_cache_(new rpc::ProxyCache(messenger)),
+      generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
+      proxy_(new master::MasterServiceProxy(proxy_cache_.get(), address)) {}
 
 } // namespace tools
 } // namespace yb

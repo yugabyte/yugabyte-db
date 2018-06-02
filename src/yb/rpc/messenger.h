@@ -47,7 +47,9 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/scheduler.h"
@@ -138,7 +140,7 @@ class MessengerBuilder {
 // and then make calls using Proxy objects.
 //
 // See rpc-test.cc and rpc-bench.cc for example usages.
-class Messenger {
+class Messenger : public ProxyContext {
  public:
   friend class MessengerBuilder;
   friend class Proxy;

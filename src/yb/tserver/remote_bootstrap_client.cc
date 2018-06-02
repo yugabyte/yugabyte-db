@@ -127,11 +127,9 @@ constexpr int kBytesReservedForMessageHeaders = 16384;
 
 RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
                                              FsManager* fs_manager,
-                                             shared_ptr<Messenger> messenger,
                                              string client_permanent_uuid)
     : tablet_id_(std::move(tablet_id)),
       fs_manager_(fs_manager),
-      messenger_(std::move(messenger)),
       permanent_uuid_(std::move(client_permanent_uuid)),
       started_(false),
       downloaded_wal_(false),
@@ -191,26 +189,18 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
 }
 
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
+                                    rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
                                     scoped_refptr<TabletMetadata>* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
 
-  Endpoint addr;
-  RETURN_NOT_OK(EndpointFromHostPort(bootstrap_peer_addr, &addr));
-  if (addr.address().is_unspecified()) {
-    return STATUS_SUBSTITUTE(
-        InvalidArgument,
-        "Invalid wildcard address to remote bootstrap from: $0 (resolved to $1)",
-        bootstrap_peer_addr.host(),
-        addr.address().to_string());
-  }
   LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session"
                         << " from remote peer at address " << bootstrap_peer_addr.ToString();
 
   // Set up an RPC proxy for the RemoteBootstrapService.
-  proxy_.reset(new RemoteBootstrapServiceProxy(messenger_, addr));
+  proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
 
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid_);

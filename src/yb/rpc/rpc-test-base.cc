@@ -230,6 +230,7 @@ class CalculatorService: public CalculatorServiceIf {
   }
 
   void WhoAmI(const WhoAmIRequestPB* req, WhoAmIResponsePB* resp, RpcContext context) override {
+    LOG(INFO) << "Remote address: " << context.remote_address();
     resp->set_address(yb::ToString(context.remote_address()));
     context.RespondSuccess();
   }
@@ -265,12 +266,9 @@ class CalculatorService: public CalculatorServiceIf {
     auto messenger = messenger_.lock();
     YB_ASSERT_TRUE(messenger);
     boost::system::error_code ec;
-    Endpoint endpoint(IpAddress::from_string(req->host(), ec), req->port());
-    if (ec) {
-      context.RespondFailure(STATUS_SUBSTITUTE(NetworkError, "Invalid host: $0", ec.message()));
-      return;
-    }
-    rpc_test::CalculatorServiceProxy proxy(messenger, endpoint);
+    HostPort hostport(req->host(), req->port());
+    ProxyCache cache(messenger);
+    rpc_test::CalculatorServiceProxy proxy(&cache, hostport);
 
     ForwardRequestPB forwarded_req;
     ForwardResponsePB forwarded_resp;
@@ -357,21 +355,21 @@ void RpcTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-CHECKED_STATUS RpcTestBase::DoTestSyncCall(const Proxy& p, const RemoteMethod* method) {
+CHECKED_STATUS RpcTestBase::DoTestSyncCall(Proxy* proxy, const RemoteMethod* method) {
   AddRequestPB req;
   req.set_x(RandomUniformInt<uint32_t>());
   req.set_y(RandomUniformInt<uint32_t>());
   AddResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
-  RETURN_NOT_OK(p.SyncRequest(method, req, &resp, &controller));
+  RETURN_NOT_OK(proxy->SyncRequest(method, req, &resp, &controller));
 
   VLOG(1) << "Result: " << resp.ShortDebugString();
   CHECK_EQ(req.x() + req.y(), resp.result());
   return Status::OK();
 }
 
-void RpcTestBase::DoTestSidecar(const Proxy& p,
+void RpcTestBase::DoTestSidecar(Proxy* proxy,
                                 std::vector<size_t> sizes,
                                 Status::Code expected_code) {
   const uint32_t kSeed = 12345;
@@ -385,7 +383,7 @@ void RpcTestBase::DoTestSidecar(const Proxy& p,
   SendStringsResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
-  auto status = p.SyncRequest(
+  auto status = proxy->SyncRequest(
       GenericCalculatorService::SendStringsMethod(), req, &resp, &controller);
 
   ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
@@ -405,7 +403,7 @@ void RpcTestBase::DoTestSidecar(const Proxy& p,
   }
 }
 
-void RpcTestBase::DoTestExpectTimeout(const Proxy& p, const MonoDelta& timeout) {
+void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
   SleepRequestPB req;
   SleepResponsePB resp;
   req.set_sleep_micros(500000); // 0.5sec
@@ -414,7 +412,7 @@ void RpcTestBase::DoTestExpectTimeout(const Proxy& p, const MonoDelta& timeout) 
   c.set_timeout(timeout);
   Stopwatch sw;
   sw.start();
-  Status s = p.SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &c);
+  Status s = proxy->SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &c);
   ASSERT_FALSE(s.ok());
   sw.stop();
 
@@ -435,17 +433,25 @@ void RpcTestBase::StartTestServer(Endpoint* server_endpoint, const TestServerOpt
   *server_endpoint = server_->bound_endpoint();
 }
 
-void RpcTestBase::StartTestServerWithGeneratedCode(Endpoint* server_endpoint,
-                                                   const TestServerOptions& options) {
-  server_.reset(new TestServer(CreateCalculatorService(metric_entity_), metric_entity_, options));
-  *server_endpoint = server_->bound_endpoint();
+void RpcTestBase::StartTestServer(HostPort* server_hostport, const TestServerOptions& options) {
+  Endpoint endpoint;
+  StartTestServer(&endpoint, options);
+  *server_hostport = HostPort::FromBoundEndpoint(endpoint);
 }
 
-CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, Endpoint* listen_endpoint) {
+void RpcTestBase::StartTestServerWithGeneratedCode(HostPort* server_hostport,
+                                                   const TestServerOptions& options) {
+  server_.reset(new TestServer(CreateCalculatorService(metric_entity_), metric_entity_, options));
+  *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
+}
+
+CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* listen_hostport) {
   RETURN_NOT_OK(listen_sock->Init(0));
   RETURN_NOT_OK(listen_sock->BindAndListen(Endpoint(), 1));
-  RETURN_NOT_OK(listen_sock->GetSocketAddress(listen_endpoint));
-  LOG(INFO) << "Bound to: " << *listen_endpoint;
+  Endpoint endpoint;
+  RETURN_NOT_OK(listen_sock->GetSocketAddress(&endpoint));
+  LOG(INFO) << "Bound to: " << endpoint;
+  *listen_hostport = HostPort::FromBoundEndpoint(endpoint);
   return Status::OK();
 }
 

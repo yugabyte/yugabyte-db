@@ -254,7 +254,7 @@ Status TabletServer::Start() {
 
   // If enabled, creates a proxy to call this tablet server locally.
   if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_.reset(new TabletServerServiceProxy(messenger_, Endpoint()));
+    proxy_.reset(new TabletServerServiceProxy(proxy_cache_.get(), HostPort()));
   }
 
   RETURN_NOT_OK(heartbeater_->Start());

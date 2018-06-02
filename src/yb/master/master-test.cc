@@ -1,4 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -139,7 +138,8 @@ class MasterTest : public YBTest {
 
     // Create a client proxy to it.
     client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
-    proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
+    rpc::ProxyCache proxy_cache(client_messenger_);
+    proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
 
     // Create the default test namespace.
     CreateNamespaceResponsePB resp;
@@ -236,10 +236,10 @@ TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
   server::PingRequestPB req;
   server::PingResponsePB resp;
-  gscoped_ptr<server::GenericServiceProxy> generic_proxy;
-  generic_proxy.reset(
-      new server::GenericServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
-  ASSERT_OK(generic_proxy->Ping(req, &resp, ResetAndGetController()));
+
+  rpc::ProxyCache proxy_cache(client_messenger_);
+  server::GenericServiceProxy generic_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
 }
 
 static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* pb) {

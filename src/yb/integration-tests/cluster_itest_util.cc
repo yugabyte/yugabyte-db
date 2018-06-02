@@ -349,7 +349,7 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
 }
 
 Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
-                             const shared_ptr<Messenger>& messenger,
+                             rpc::ProxyCache* proxy_cache,
                              TabletServerMap* ts_map) {
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
@@ -364,15 +364,13 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
   ts_map->clear();
   for (const ListTabletServersResponsePB::Entry& entry : resp.servers()) {
     HostPort host_port = HostPortFromPB(entry.registration().common().rpc_addresses(0));
-    std::vector<Endpoint> addresses;
-    RETURN_NOT_OK(host_port.ResolveAddresses(&addresses));
 
     std::unique_ptr<TServerDetails> peer(new TServerDetails());
     peer->instance_id.CopyFrom(entry.instance_id());
     peer->registration.CopyFrom(entry.registration());
 
-    CreateTsClientProxies(addresses[0],
-                          messenger,
+    CreateTsClientProxies(host_port,
+                          proxy_cache,
                           &peer->tserver_proxy,
                           &peer->tserver_admin_proxy,
                           &peer->consensus_proxy,

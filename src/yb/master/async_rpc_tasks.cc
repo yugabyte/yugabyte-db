@@ -326,9 +326,9 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_admin_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &consensus_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &ts_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &ts_admin_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &consensus_proxy));
 
   ts_proxy_.swap(ts_proxy);
   ts_admin_proxy_.swap(ts_admin_proxy);

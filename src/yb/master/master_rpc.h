@@ -79,9 +79,10 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // Calls 'user_cb' when the leader is found, or if no leader can be
   // found until 'deadline' passes.
   GetLeaderMasterRpc(LeaderCallback user_cb,
-                     std::vector<Endpoint> addrs,
+                     std::vector<HostPort> addrs,
                      MonoTime deadline,
                      const std::shared_ptr<rpc::Messenger>& messenger,
+                     rpc::ProxyCache* proxy_cache,
                      rpc::Rpcs* rpcs);
 
   ~GetLeaderMasterRpc();
@@ -104,7 +105,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
       rpc::Rpcs::Handle handle);
 
   LeaderCallback user_cb_;
-  std::vector<Endpoint> addrs_;
+  std::vector<HostPort> addrs_;
 
   HostPort leader_master_;
 

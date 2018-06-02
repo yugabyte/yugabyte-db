@@ -4071,14 +4071,14 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   gscoped_ptr<RemoteBootstrapClient> rb_client(
       new RemoteBootstrapClient(tablet_id,
                                 master_->fs_manager(),
-                                master_->messenger(),
                                 master_->fs_manager()->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
   }
-  RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid, bootstrap_peer_addr, &meta));
+  RETURN_NOT_OK(rb_client->Start(
+      bootstrap_peer_uuid, &master_->proxy_cache(), bootstrap_peer_addr, &meta));
   // This SetupTabletPeer is needed by rb_client to perform the remote bootstrap/fetch.
   // And the SetupTablet below to perform "local bootstrap" cannot be done until the remote fetch
   // has succeeded. So keeping them seperate for now.
@@ -5173,8 +5173,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_di
 
   for (RaftPeerPB peer : peers) {
     HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
-    RETURN_NOT_OK(EndpointFromHostPort(hostport, &sockaddr));
-    peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
+    peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
 
     DumpMasterStateResponsePB resp;
     rpc.Reset();

@@ -101,9 +101,6 @@ class PeerManager {
   Consensus* consensus_ = nullptr;
   mutable simple_spinlock lock_;
 
-  // Serial number of config update, used to filter out async results.
-  size_t config_serial_ = 0;
-
   DISALLOW_COPY_AND_ASSIGN(PeerManager);
 };
 

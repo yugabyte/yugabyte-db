@@ -489,6 +489,10 @@ const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
   return client_->messenger();
 }
 
+rpc::ProxyCache& Batcher::proxy_cache() const {
+  return client_->proxy_cache();
+}
+
 YBTransactionPtr Batcher::transaction() const {
   return transaction_;
 }

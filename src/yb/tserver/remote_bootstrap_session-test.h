@@ -149,15 +149,16 @@ class RemoteBootstrapTest : public YBTabletTest {
                                        config, consensus::kMinimumTerm, &cmeta));
 
     MessengerBuilder mbuilder(CURRENT_TEST_NAME());
-    auto messenger = mbuilder.Build();
-    ASSERT_OK(messenger);
+    auto messenger = ASSERT_RESULT(mbuilder.Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger);
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                           std::shared_future<client::YBClientPtr>(),
                                           clock(),
-                                          *messenger,
+                                          messenger,
+                                          proxy_cache_.get(),
                                           log,
                                           metric_entity,
                                           raft_pool_.get(),
@@ -236,6 +237,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<TabletPeer> tablet_peer_;
   scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
 }  // namespace tserver

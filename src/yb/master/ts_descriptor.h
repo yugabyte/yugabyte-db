@@ -125,9 +125,9 @@ class TSDescriptor {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  CHECKED_STATUS GetProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+  CHECKED_STATUS GetProxy(rpc::ProxyCache* proxy_cache,
                           std::shared_ptr<TProxy>* proxy) {
-    return GetOrCreateProxy(messenger, proxy, &proxies_.get<TProxy>());
+    return GetOrCreateProxy(proxy_cache, proxy, &proxies_.get<TProxy>());
   }
 
   // Increment the accounting of the number of replicas recently created on this
@@ -235,7 +235,7 @@ class TSDescriptor {
   mutable simple_spinlock lock_;
  private:
   template <class TProxy>
-  CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+  CHECKED_STATUS GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
                                   std::shared_ptr<TProxy>* result,
                                   std::shared_ptr<TProxy>* result_cache);
 
@@ -243,7 +243,7 @@ class TSDescriptor {
   template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
 
   // Uses DNS to resolve registered hosts to a single endpoint.
-  CHECKED_STATUS ResolveEndpoint(Endpoint* addr) const;
+  Result<HostPort> GetHostPortUnlocked() const;
 
   void DecayRecentReplicaCreationsUnlocked();
 
@@ -310,7 +310,7 @@ class TSDescriptor {
 };
 
 template <class TProxy>
-Status TSDescriptor::GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+Status TSDescriptor::GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
                                       std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
@@ -319,16 +319,12 @@ Status TSDescriptor::GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& mes
       *result = *result_cache;
       return Status::OK();
     }
+    auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
+    if (!(*result_cache)) {
+      result_cache->reset(new TProxy(proxy_cache, hostport));
+    }
+    *result = *result_cache;
   }
-
-  Endpoint addr;
-  RETURN_NOT_OK(ResolveEndpoint(&addr));
-
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (!(*result_cache)) {
-    result_cache->reset(new TProxy(messenger, addr));
-  }
-  *result = *result_cache;
   return Status::OK();
 }
 

@@ -129,6 +129,7 @@ class TabletServerTestBase : public YBTest {
   TableType table_type_;
 
   std::shared_ptr<rpc::Messenger> client_messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::unique_ptr<MiniTabletServer> mini_server_;
   scoped_refptr<tablet::TabletPeer> tablet_peer_;

@@ -479,10 +479,11 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   rpc::MessengerBuilder builder("test builder");
   builder.set_num_reactors(1);
   auto messenger = ASSERT_RESULT(builder.Build());
+  rpc::ProxyCache proxy_cache(messenger);
 
   // Set a decent timeout for allowing the masters to find eachother.
   const auto kTimeout = 30s;
-  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(messenger, kTimeout, &peer));
+  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(&proxy_cache, kTimeout, &peer));
   ASSERT_EQ(expected_uuid, peer.permanent_uuid());
 }
 

@@ -627,7 +627,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   HostPort bootstrap_peer_addr = HostPortFromPB(req.bootstrap_peer_addr());
   int64_t leader_term = req.caller_term();
 
-  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
 
   TabletPeerPtr old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
@@ -659,13 +659,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   gscoped_ptr<YB_EDITION_NS_PREFIX RemoteBootstrapClient> rb_client(
       new YB_EDITION_NS_PREFIX RemoteBootstrapClient(
-          tablet_id, fs_manager_, server_->messenger(), fs_manager_->uuid()));
+          tablet_id, fs_manager_, fs_manager_->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
   }
   RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid,
+                                 &server_->proxy_cache(),
                                  bootstrap_peer_addr,
                                  &meta,
                                  this));
@@ -901,7 +902,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
-  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
 
   LOG(INFO) << kLogPrefix << "Bootstrapping tablet";
   TRACE("Bootstrapping tablet");
@@ -939,6 +940,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     async_client_init_.get_client_future(),
                                     scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
+                                    &server_->proxy_cache(),
                                     log,
                                     tablet->GetMetricEntity(),
                                     raft_pool(),
@@ -993,7 +995,7 @@ void TSTabletManager::Shutdown() {
       }
       case MANAGER_INITIALIZING:
       case MANAGER_RUNNING: {
-        LOG(INFO) << "Shutting down tablet manager...";
+        LOG_WITH_PREFIX(INFO) << "Shutting down tablet manager...";
         state_ = MANAGER_QUIESCING;
         break;
       }
@@ -1041,6 +1043,10 @@ void TSTabletManager::Shutdown() {
 
     state_ = MANAGER_SHUTDOWN;
   }
+}
+
+std::string TSTabletManager::LogPrefix() const {
+  return "P " + fs_manager_->uuid() + ": ";
 }
 
 void TSTabletManager::RegisterTablet(const std::string& tablet_id,
@@ -1163,7 +1169,7 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
     state.change_seq = next_report_seq_;
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
-  VLOG(2) << LogPrefix(tablet_id, fs_manager_->uuid())
+  VLOG(2) << tserver::LogPrefix(tablet_id, fs_manager_->uuid())
           << "Marking dirty. Reason: " << context->ToString()
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
@@ -1286,7 +1292,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
     data_state = TABLET_DATA_TOMBSTONED;
   }
 
-  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
+  const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
 
   // Roll forward deletions, as needed.
   LOG(INFO) << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "

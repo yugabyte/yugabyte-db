@@ -56,7 +56,7 @@ class RpcBench : public RpcTestBase {
  protected:
   friend class ClientThread;
 
-  Endpoint server_endpoint_;
+  HostPort server_hostport_;
   shared_ptr<Messenger> client_messenger_;
   std::atomic<bool> should_run_{true};
 };
@@ -78,8 +78,9 @@ class ClientThread {
 
   void Run() {
     shared_ptr<Messenger> client_messenger = bench_->CreateMessenger("Client");
+    ProxyCache proxy_cache(client_messenger);
 
-    rpc_test::CalculatorServiceProxy p(client_messenger, bench_->server_endpoint_);
+    rpc_test::CalculatorServiceProxy p(&proxy_cache, HostPort(bench_->server_hostport_));
 
     rpc_test::AddRequestPB req;
     rpc_test::AddResponsePB resp;
@@ -106,10 +107,10 @@ TEST_F(RpcBench, BenchmarkCalls) {
   options.n_worker_threads = 1;
 
   // Set up server.
-  StartTestServerWithGeneratedCode(&server_endpoint_);
+  StartTestServerWithGeneratedCode(&server_hostport_);
 
   // Set up client.
-  LOG(INFO) << "Connecting to " << server_endpoint_;
+  LOG(INFO) << "Connecting to " << server_hostport_;
   MessengerOptions client_options = kDefaultClientMessengerOptions;
   client_options.n_reactors = 2;
   client_messenger_ = CreateMessenger("Client", client_options);

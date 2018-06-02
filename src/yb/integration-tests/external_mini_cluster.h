@@ -275,6 +275,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return the client messenger used by the ExternalMiniCluster.
   std::shared_ptr<rpc::Messenger> messenger();
 
+  rpc::ProxyCache& proxy_cache() {
+    return *proxy_cache_;
+  }
+
   // Get the master leader consensus proxy.
   std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
 
@@ -345,7 +349,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client);
 
-  virtual Endpoint DoGetLeaderMasterBoundRpcAddr();
+  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
 
   CHECKED_STATUS StartMasters();
 
@@ -399,6 +403,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
 
   std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
 
@@ -417,7 +422,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
       std::vector<std::string> extra_flags);
 
   HostPort bound_rpc_hostport() const;
-  Endpoint bound_rpc_addr() const;
+  HostPort bound_rpc_addr() const;
   HostPort bound_http_hostport() const;
   const NodeInstancePB& instance_id() const;
   const std::string& uuid() const;

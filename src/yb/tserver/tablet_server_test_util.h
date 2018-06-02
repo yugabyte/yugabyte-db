@@ -53,8 +53,8 @@ class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
 
 // Create tablet server client proxies for tests.
-void CreateTsClientProxies(const Endpoint& addr,
-                           const std::shared_ptr<rpc::Messenger>& messenger,
+void CreateTsClientProxies(const HostPort& addr,
+                           rpc::ProxyCache* proxy_cache,
                            gscoped_ptr<TabletServerServiceProxy>* proxy,
                            gscoped_ptr<TabletServerAdminServiceProxy>* admin_proxy,
                            gscoped_ptr<consensus::ConsensusServiceProxy>* consensus_proxy,

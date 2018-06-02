@@ -86,25 +86,6 @@ using strings::Substitute;
 namespace yb {
 namespace tserver {
 
-namespace {
-
-// Creates a proxy to 'hostport'.
-Status MasterServiceProxyForHostPort(const HostPort& hostport,
-                                     const shared_ptr<rpc::Messenger>& messenger,
-                                     gscoped_ptr<MasterServiceProxy>* proxy) {
-  std::vector<Endpoint> addrs;
-  RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
-  if (addrs.size() > 1) {
-    LOG(WARNING) << "Master address '" << hostport.ToString() << "' "
-                 << "resolves to " << addrs.size() << " different addresses. Using "
-                 << yb::ToString(addrs[0]);
-  }
-  proxy->reset(new MasterServiceProxy(messenger, addrs[0]));
-  return Status::OK();
-}
-
-} // anonymous namespace
-
 // Most of the actual logic of the heartbeater is inside this inner class,
 // to avoid having too many dependencies from the header itself.
 //
@@ -264,22 +245,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
     *leader_hostport = (*master_addresses)[0];
     return Status::OK();
   }
-  std::vector<Endpoint> master_sock_addrs;
-  for (const HostPort& master_addr : *master_addresses) {
-    std::vector<Endpoint> addrs;
-    Status s = master_addr.ResolveAddresses(&addrs);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to resolve address '" << master_addr.ToString()
-                   << "': " << s.ToString();
-      continue;
-    }
-    if (addrs.size() > 1) {
-      LOG(WARNING) << "Master address '" << master_addr.ToString() << "' "
-                   << "resolves to " << addrs.size() << " different addresses. Using "
-                   << addrs[0];
-    }
-    master_sock_addrs.push_back(addrs[0]);
-  }
+  std::vector<HostPort> master_sock_addrs = *master_addresses;
   if (master_sock_addrs.empty()) {
     return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
@@ -290,12 +256,12 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
       master_sock_addrs,
       deadline,
       server_->messenger(),
+      &server_->proxy_cache(),
       &rpcs);
   return sync.Wait();
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
-  std::vector<Endpoint> addrs;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   // TODO send heartbeats without tablet reports to non-leader masters.
@@ -306,10 +272,9 @@ Status Heartbeater::Thread::ConnectToMaster() {
     return s;
   }
 
-  RETURN_NOT_OK(leader_master_hostport_.ResolveAddresses(&addrs));
   // Pings are common for both Master and Tserver.
-  gscoped_ptr<server::GenericServiceProxy> new_proxy;
-  new_proxy.reset(new server::GenericServiceProxy(server_->messenger(), addrs[0]));
+  auto new_proxy = std::make_unique<server::GenericServiceProxy>(
+      &server_->proxy_cache(), leader_master_hostport_);
 
   // Ping the master to verify that it's alive.
   server::PingRequestPB req;
@@ -317,11 +282,11 @@ Status Heartbeater::Thread::ConnectToMaster() {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   RETURN_NOT_OK_PREPEND(new_proxy->Ping(req, &resp, &rpc),
-                        Substitute("Failed to ping master at $0", yb::ToString(addrs[0])));
+                        Format("Failed to ping master at $0", leader_master_hostport_));
   LOG(INFO) << "Connected to a leader master server at " << leader_master_hostport_.ToString();
 
   // Save state in the instance.
-  MasterServiceProxyForHostPort(leader_master_hostport_, server_->messenger(), &proxy_);
+  proxy_.reset(new MasterServiceProxy(&server_->proxy_cache(), leader_master_hostport_));
   return Status::OK();
 }
 

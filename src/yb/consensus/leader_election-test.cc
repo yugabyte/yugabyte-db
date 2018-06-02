@@ -85,14 +85,13 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
     DeleteUnusedPeerProxies();
   }
 
-  void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override {
+  PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override {
     PeerProxy* proxy_ptr = FindPtrOrNull(*proxy_map_, peer_pb.permanent_uuid());
-    if (!proxy_ptr) {
-      waiter(STATUS(NotFound, "No proxy for peer."));
-      return;
+    if (proxy_ptr == nullptr) {
+      return nullptr;
     }
     used_peer_proxy_.insert(peer_pb.permanent_uuid());
-    waiter(PeerProxyPtr(proxy_ptr));
+    return PeerProxyPtr(proxy_ptr);
   }
 
   void DeleteUnusedPeerProxies() {
@@ -495,38 +494,6 @@ TEST_F(LeaderElectionTest, TestWithErrorVotes) {
   LOG(INFO) << "Election denied.";
 
   pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
-}
-
-// Count errors as denied votes.
-TEST_F(LeaderElectionTest, TestFailToCreateProxy) {
-  const ConsensusTerm kElectionTerm = 2;
-  const int kNumVoters = 3;
-  const int kMajoritySize = 2;
-
-  // Initialize the UUIDs and the proxies (which also sets up the config PB).
-  InitUUIDs(kNumVoters, 0);
-  InitNoOpPeerProxies(kNumVoters, 0, 0, 0);
-
-  // Remove all the proxies. This will make our peer factory return a bad Status.
-  STLDeleteValues(&proxies_);
-
-  // Our election should now fail as if the votes were denied.
-  VoteRequestPB request;
-  request.set_candidate_uuid(candidate_uuid_);
-  request.set_candidate_term(kElectionTerm);
-  request.set_tablet_id(tablet_id_);
-
-  auto counter = InitVoteCounter(kNumVoters, kMajoritySize);
-  auto election = make_scoped_refptr<LeaderElection>(
-      config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
-      TEST_SuppressVoteRequest::kFalse,
-      std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
-  election->Run();
-  latch_.Wait();
-  ASSERT_EQ(kElectionTerm, result_->election_term);
-  ASSERT_EQ(VOTE_DENIED, result_->decision);
-  ASSERT_FALSE(result_->has_higher_term);
-  ASSERT_TRUE(result_->message.empty());
 }
 
 ////////////////////////////////////////

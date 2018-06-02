@@ -73,15 +73,16 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   virtual void SetUpRemoteBootstrapClient() {
     messenger_ = ASSERT_RESULT(
         rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+
     client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
                                                  fs_manager_.get(),
-                                                 messenger_,
                                                  fs_manager_->uuid()));
     ASSERT_OK(GetRaftConfigLeader(tablet_peer_->consensus()
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
     HostPort host_port = HostPortFromPB(leader_.last_known_addr());
-    ASSERT_OK(client_->Start(leader_.permanent_uuid(), host_port, &meta_));
+    ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(), host_port, &meta_));
   }
 
  protected:
@@ -89,6 +90,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
   gscoped_ptr<FsManager> fs_manager_;
   shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<RemoteBootstrapClientClass> client_;
   scoped_refptr<TabletMetadata> meta_;
   RaftPeerPB leader_;
