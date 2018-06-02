@@ -5,6 +5,9 @@
 #include <iostream>
 
 #include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
@@ -53,7 +56,8 @@ Status ClusterAdminClient::Init() {
   RETURN_NOT_OK(super::Init());
   DCHECK(initted_);
 
-  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(messenger_, leader_sock_));
+  rpc::ProxyCache proxy_cache(messenger_);
+  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
   return Status::OK();
 }
 
