@@ -18,7 +18,7 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   RETURN_NOT_OK(super::ResetTSProxy());
 
   shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy;
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_backup_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &ts_backup_proxy));
   ts_backup_proxy_.swap(ts_backup_proxy);
 
   return Status::OK();
