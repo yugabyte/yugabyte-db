@@ -98,9 +98,11 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-    proxy_.reset(new MasterServiceProxy(messenger_, cluster_->mini_master()->bound_rpc_addr()));
+    rpc::ProxyCache proxy_cache(messenger_);
+    proxy_.reset(new MasterServiceProxy(
+        &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
     proxy_backup_.reset(new MasterBackupServiceProxy(
-        messenger_, cluster_->mini_master()->bound_rpc_addr()));
+        &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
 
     // Connect to the cluster.
     ASSERT_OK(cluster_->CreateClient(&client_));

@@ -17,7 +17,7 @@ std::shared_ptr<MasterBackupServiceProxy> ExternalMiniCluster::master_backup_pro
 std::shared_ptr<MasterBackupServiceProxy> ExternalMiniCluster::master_backup_proxy(int idx) {
   CHECK_LT(idx, masters_.size());
   return std::make_shared<MasterBackupServiceProxy>(
-      messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr());
+      proxy_cache_.get(), CHECK_NOTNULL(master(idx))->bound_rpc_addr());
 }
 
 } // namespace enterprise
