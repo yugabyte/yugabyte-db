@@ -154,18 +154,14 @@ class ClusterAdminClient {
       const TabletId& tablet_id,
       PeerMode mode,
       PeerId* peer_uuid,
-      Endpoint* peer_socket);
+      HostPort* peer_addr);
 
   // Fetch the latest list of tablet servers from the Master.
   CHECKED_STATUS ListTabletServers(
       google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>* servers);
 
   // Look up the RPC address of the server with the specified UUID from the Master.
-  CHECKED_STATUS GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
-
-  CHECKED_STATUS GetEndpointForHostPort(const HostPort& hp, Endpoint* addr);
-
-  CHECKED_STATUS GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
+  Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);
 
   CHECKED_STATUS LeaderStepDown(
       const PeerId& leader_uuid,
@@ -180,9 +176,10 @@ class ClusterAdminClient {
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
-  Endpoint leader_sock_;
+  HostPort leader_addr_;
   bool initted_ = false;
   std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
   std::shared_ptr<client::YBClient> yb_client_;
 

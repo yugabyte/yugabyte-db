@@ -142,7 +142,7 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
 Status MiniMaster::Restart() {
   CHECK(running_);
 
-  Endpoint prev_rpc = bound_rpc_addr();
+  auto prev_rpc = bound_rpc_addr();
   Endpoint prev_http = bound_http_addr();
   Shutdown();
 
@@ -161,9 +161,9 @@ Status MiniMaster::WaitUntilCatalogManagerIsLeaderAndReadyForTests() {
   return master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
-Endpoint MiniMaster::bound_rpc_addr() const {
+HostPort MiniMaster::bound_rpc_addr() const {
   CHECK(running_);
-  return master_->first_rpc_address();
+  return HostPort::FromBoundEndpoint(master_->first_rpc_address());
 }
 
 Endpoint MiniMaster::bound_http_addr() const {

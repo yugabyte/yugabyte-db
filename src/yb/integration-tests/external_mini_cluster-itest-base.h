@@ -97,7 +97,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                         cluster_->messenger(),
+                                         &cluster_->proxy_cache(),
                                          &ts_map_));
   client::YBClientBuilder builder;
   ASSERT_OK(cluster_->CreateClient(&builder, &client_));

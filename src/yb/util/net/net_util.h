@@ -51,6 +51,8 @@ class HostPort {
   HostPort(std::string host, uint16_t port);
   explicit HostPort(const Endpoint& endpoint);
 
+  static HostPort FromBoundEndpoint(const Endpoint& endpoint);
+
   // Parse a "host:port" pair into this object.
   // If there is no port specified in the string, then 'default_port' is used.
   CHECKED_STATUS ParseString(const std::string& str, uint16_t default_port);

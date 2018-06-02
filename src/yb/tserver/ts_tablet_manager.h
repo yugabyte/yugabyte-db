@@ -386,6 +386,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // running state.
   void InitLocalRaftPeerPB();
 
+  std::string LogPrefix() const;
+
   FsManager* const fs_manager_;
 
   TabletServer* server_;

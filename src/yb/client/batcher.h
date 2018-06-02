@@ -130,6 +130,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   const std::shared_ptr<rpc::Messenger>& messenger() const;
 
+  rpc::ProxyCache& proxy_cache() const;
+
   const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics() const {
     return async_rpc_metrics_;
   }

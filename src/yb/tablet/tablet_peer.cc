@@ -155,6 +155,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const std::shared_future<client::YBClientPtr> &client_future,
                                   const scoped_refptr<server::Clock> &clock,
                                   const shared_ptr<Messenger> &messenger,
+                                  rpc::ProxyCache* proxy_cache,
                                   const scoped_refptr<Log> &log,
                                   const scoped_refptr<MetricEntity> &metric_entity,
                                   ThreadPool* raft_pool,
@@ -169,7 +170,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     tablet_ = tablet;
     client_future_ = client_future;
     clock_ = clock;
-    messenger_ = messenger;
+    proxy_cache_ = proxy_cache;
     log_ = log;
 
     tablet->SetMemTableFlushFilterFactory([log] {
@@ -208,7 +209,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         metric_entity,
         clock_,
         this,
-        messenger_,
+        messenger,
+        proxy_cache_,
         log_.get(),
         tablet_->mem_tracker(),
         mark_dirty_clbk_,

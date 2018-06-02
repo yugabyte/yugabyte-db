@@ -105,7 +105,7 @@ class RemoteTabletServer {
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
-  void InitProxy(YBClient* client, const StatusCallback& cb);
+  CHECKED_STATUS InitProxy(YBClient* client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -128,13 +128,6 @@ class RemoteTabletServer {
   const CloudInfoPB& cloud_info() const;
 
  private:
-  // Internal callback for DNS resolution.
-  void DnsResolutionFinished(const HostPort& hp,
-                             const std::shared_ptr<std::vector<Endpoint>>& addrs,
-                             YBClient* client,
-                             const StatusCallback& user_callback,
-                             const Status &result_status);
-
   mutable simple_spinlock lock_;
   const std::string uuid_;
 

@@ -82,7 +82,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
 
   auto* const emc = external_mini_cluster();
   TabletServerMap ts_map;
-  ASSERT_OK(itest::CreateTabletServerMap(emc->master_proxy().get(), emc->messenger(), &ts_map));
+  ASSERT_OK(itest::CreateTabletServerMap(emc->master_proxy().get(), &emc->proxy_cache(), &ts_map));
 
   vector<TabletId> tablet_ids;
   {

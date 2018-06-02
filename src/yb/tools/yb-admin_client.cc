@@ -129,18 +129,18 @@ Status ClusterAdminClient::Init() {
     .Build(&yb_client_));
 
   messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
 
   // Find the leader master's socket info to set up the proxy
-  RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock_));
-  master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
+  leader_addr_ = yb_client_->GetMasterLeaderAddress();
+  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
 
   initted_ = true;
   return Status::OK();
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
-  std::unique_ptr<ConsensusServiceProxy>
-    master_proxy(new ConsensusServiceProxy(messenger_, leader_sock_));
+  auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
   return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, &master_proxy);
 }
@@ -166,11 +166,10 @@ Status ClusterAdminClient::LeaderStepDown(
 
 // Force start an election on a randomly chosen non-leader peer of this tablet's raft quorum.
 Status ClusterAdminClient::StartElection(const TabletId& tablet_id) {
-  Endpoint non_leader_addr;
+  HostPort non_leader_addr;
   string non_leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, FOLLOWER, &non_leader_uuid, &non_leader_addr));
-  std::unique_ptr<ConsensusServiceProxy>
-    non_leader_proxy(new ConsensusServiceProxy(messenger_, non_leader_addr));
+  ConsensusServiceProxy non_leader_proxy(proxy_cache_.get(), non_leader_addr);
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(non_leader_uuid);
   req.set_tablet_id(tablet_id);
@@ -178,7 +177,7 @@ Status ClusterAdminClient::StartElection(const TabletId& tablet_id) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
 
-  RETURN_NOT_OK(non_leader_proxy->RunLeaderElection(req, &resp, &rpc));
+  RETURN_NOT_OK(non_leader_proxy.RunLeaderElection(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -190,21 +189,14 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     const TabletId& tablet_id,
     PeerMode mode,
     PeerId* peer_uuid,
-    Endpoint* peer_socket) {
+    HostPort* peer_addr) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
   auto rpc_addresses = peer_ts_info.rpc_addresses();
   CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
         .ShortDebugString();
 
-  HostPort peer_hostport = HostPortFromPB(rpc_addresses.Get(0));
-  std::vector<Endpoint> peer_addrs;
-  RETURN_NOT_OK(peer_hostport.ResolveAddresses(&peer_addrs));
-  CHECK(!peer_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
-    << peer_hostport.ToString();
-  CHECK(peer_addrs.size() == 1) << "Expected only one tablet leader, but got : "
-    << peer_hostport.ToString();
-  *peer_socket = peer_addrs[0];
+  *peer_addr = HostPortFromPB(rpc_addresses.Get(0));
   *peer_uuid = peer_ts_info.permanent_uuid();
   return Status::OK();
 }
@@ -260,18 +252,16 @@ Status ClusterAdminClient::ChangeConfig(
 
   // Look up RPC address of peer if adding as a new server.
   if (cc_type == consensus::ADD_SERVER) {
-    HostPort host_port;
-    RETURN_NOT_OK(GetFirstRpcAddressForTS(peer_uuid, &host_port));
+    HostPort host_port = VERIFY_RESULT(GetFirstRpcAddressForTS(peer_uuid));
     RETURN_NOT_OK(HostPortToPB(host_port, peer_pb.mutable_last_known_addr()));
   }
 
   // Look up the location of the tablet leader from the Master.
-  Endpoint leader_addr;
+  HostPort leader_addr;
   string leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
 
-  std::unique_ptr<ConsensusServiceProxy>
-    consensus_proxy(new ConsensusServiceProxy(messenger_, leader_addr));
+  auto consensus_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
   // If removing the leader ts, then first make it step down and that
   // starts an election and gets a new leader ts.
   if (cc_type == consensus::REMOVE_SERVER &&
@@ -284,7 +274,7 @@ Status ClusterAdminClient::ChangeConfig(
       return STATUS(ConfigurationError,
                     "Old tablet server leader same as new even after re-election!");
     }
-    consensus_proxy.reset(new ConsensusServiceProxy(messenger_, leader_addr));
+    consensus_proxy.reset(new ConsensusServiceProxy(proxy_cache_.get(), leader_addr));
   }
 
   consensus::ChangeConfigRequestPB req;
@@ -485,15 +475,14 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
-  auto changed_leader_sock = leader_sock_;
-  if (cc_type == consensus::REMOVE_SERVER &&
-      leader_uuid == peer_uuid) {
+  auto changed_leader_addr = leader_addr_;
+  if (cc_type == consensus::REMOVE_SERVER && leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
-    RETURN_NOT_OK(yb_client_->RefreshMasterLeaderSocket(&leader_sock_));
-    master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
+    leader_addr_ = VERIFY_RESULT(yb_client_->RefreshMasterLeaderAddress());
+    master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
     leader_uuid = "";  // reset so it can be set to new leader in the GetMasterLeaderInfo call below
     RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate new master leader");
     if (leader_uuid.empty()) {
@@ -507,7 +496,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   }
 
   consensus::ConsensusServiceProxy *leader_proxy =
-    new consensus::ConsensusServiceProxy(messenger_, leader_sock_);
+    new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_);
   consensus::ChangeConfigRequestPB req;
   consensus::ChangeConfigResponsePB resp;
   RpcController rpc;
@@ -532,9 +521,9 @@ Status ClusterAdminClient::ChangeMasterConfig(
   }
 
   if (cc_type == consensus::ADD_SERVER) {
-    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_sock));
+    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
   } else {
-    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_sock));
+    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_addr));
   }
 
   if (resp.has_error()) {
@@ -614,9 +603,7 @@ Status ClusterAdminClient::ListTabletServers(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetFirstRpcAddressForTS(
-    const PeerId& uuid,
-    HostPort* hp) {
+Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
   for (const ListTabletServersResponsePB::Entry& server : servers) {
@@ -624,13 +611,12 @@ Status ClusterAdminClient::GetFirstRpcAddressForTS(
       if (!server.has_registration() || server.registration().common().rpc_addresses_size() == 0) {
         break;
       }
-      *hp = HostPortFromPB(server.registration().common().rpc_addresses(0));
-      return Status::OK();
+      return HostPortFromPB(server.registration().common().rpc_addresses(0));
     }
   }
 
-  return STATUS(NotFound, Substitute("Server with UUID $0 has no RPC address "
-                                     "registered with the Master", uuid));
+  return STATUS_FORMAT(
+      NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
 }
 
 Status ClusterAdminClient::ListAllTabletServers() {
@@ -724,17 +710,15 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     auto ts_uuid = server.instance_id().permanent_uuid();
 
-    Endpoint ts_addr;
-    RETURN_NOT_OK(GetEndpointForTS(ts_uuid, &ts_addr));
+    HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
 
-    std::unique_ptr<TabletServerServiceProxy> ts_proxy(
-        new TabletServerServiceProxy(messenger_, ts_addr));
+    TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
     rpc::RpcController rpc;
     rpc.set_timeout(timeout_);
     tserver::GetLogLocationRequestPB req;
     tserver::GetLogLocationResponsePB resp;
-    ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
+    ts_proxy.GetLogLocation(req, &resp, &rpc);
 
     cout << ts_uuid << kColumnSep
          << ts_addr << kColumnSep
@@ -832,44 +816,17 @@ Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetEndpointForHostPort(const HostPort& hp, Endpoint* addr) {
-  std::vector<Endpoint> sock_addrs;
-  RETURN_NOT_OK(hp.ResolveAddresses(&sock_addrs));
-  if (sock_addrs.empty()) {
-    return STATUS(IllegalState,
-        Substitute("Unable to resolve IP address for host: $0", hp.ToString()));
-  }
-  if (sock_addrs.size() != 1) {
-    return STATUS(IllegalState,
-        Substitute("Expected only one IP for host, but got : $0", hp.ToString()));
-  }
-
-  *addr = sock_addrs[0];
-
-  return Status::OK();
-}
-
-Status ClusterAdminClient::GetEndpointForTS(const PeerId& ts_uuid, Endpoint* ts_addr) {
-  HostPort hp;
-  RETURN_NOT_OK(GetFirstRpcAddressForTS(ts_uuid, &hp));
-  RETURN_NOT_OK(GetEndpointForHostPort(hp, ts_addr));
-
-  return Status::OK();
-}
-
 Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
-  Endpoint ts_addr;
-  RETURN_NOT_OK(GetEndpointForTS(ts_uuid, &ts_addr));
+  auto ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
 
-  std::unique_ptr<TabletServerServiceProxy> ts_proxy(
-      new TabletServerServiceProxy(messenger_, ts_addr));
+  TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
   rpc::RpcController rpc;
   rpc.set_timeout(timeout_);
 
   tserver::ListTabletsForTabletServerRequestPB req;
   tserver::ListTabletsForTabletServerResponsePB resp;
-  RETURN_NOT_OK(ts_proxy.get()->ListTabletsForTabletServer(req, &resp, &rpc));
+  RETURN_NOT_OK(ts_proxy.ListTabletsForTabletServer(req, &resp, &rpc));
 
   cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
        << RightPadToUuidWidth("Tablet ID") << kColumnSep
@@ -906,13 +863,9 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
       master_proxy_->ChangeLoadBalancerState(req, &resp, &rpc);
     } else {
       HostPortPB hp_pb = list_resp.masters(i).registration().rpc_addresses(0);
-      HostPort hp(hp_pb.host(), hp_pb.port());
-      Endpoint master_addr;
-      RETURN_NOT_OK(GetEndpointForHostPort(hp, &master_addr));
 
-      auto proxy =
-          std::unique_ptr<MasterServiceProxy>(new MasterServiceProxy(messenger_, master_addr));
-      proxy->ChangeLoadBalancerState(req, &resp, &rpc);
+      MasterServiceProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
+      proxy.ChangeLoadBalancerState(req, &resp, &rpc);
     }
 
     if (resp.has_error()) {

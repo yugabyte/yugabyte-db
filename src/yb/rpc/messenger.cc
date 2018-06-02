@@ -56,6 +56,7 @@
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/yb_rpc.h"

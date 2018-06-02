@@ -87,8 +87,7 @@ struct AddrinfoDeleter {
 }
 
 HostPort::HostPort()
-  : host_(""),
-    port_(0) {
+    : port_(0) {
 }
 
 HostPort::HostPort(std::string host, uint16_t port)
@@ -497,6 +496,14 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
 
 bool HostPort::equals(const Endpoint& endpoint) const {
   return endpoint.address().to_string() == host() && endpoint.port() == port();
+}
+
+HostPort HostPort::FromBoundEndpoint(const Endpoint& endpoint) {
+  if (endpoint.address().is_unspecified()) {
+    return HostPort(endpoint.address().is_v4() ? "127.0.0.1" : "::1", endpoint.port());
+  } else {
+    return HostPort(endpoint);
+  }
 }
 
 std::string HostPortToString(const std::string& host, int port) {

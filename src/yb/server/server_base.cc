@@ -188,7 +188,8 @@ Status RpcServerBase::Init() {
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
   builder.set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
-  RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
+  messenger_ = VERIFY_RESULT(builder.Build());
+  proxy_cache_.reset(new rpc::ProxyCache(messenger_));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_));
   RETURN_NOT_OK(rpc_server_->Bind());

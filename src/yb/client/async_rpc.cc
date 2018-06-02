@@ -80,7 +80,7 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
 AsyncRpc::AsyncRpc(
     const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
     bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel yb_consistency_level)
-    : Rpc(batcher->deadline(), batcher->messenger()),
+    : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
       batcher_(batcher),
       trace_(new Trace),
       tablet_invoker_(yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,

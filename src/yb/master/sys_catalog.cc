@@ -313,7 +313,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
       // See KUDU-526.
       RETURN_NOT_OK_PREPEND(
         consensus::SetPermanentUuidForRemotePeer(
-          master_->messenger(),
+          &master_->proxy_cache(),
           std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
           &new_peer),
         Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
@@ -499,6 +499,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      std::shared_future<client::YBClientPtr>(),
                                                      scoped_refptr<server::Clock>(master_->clock()),
                                                      master_->messenger(),
+                                                     &master_->proxy_cache(),
                                                      log,
                                                      tablet->GetMetricEntity(),
                                                      raft_pool(),

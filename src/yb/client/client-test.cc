@@ -1484,7 +1484,6 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
   auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-  gscoped_ptr<consensus::ConsensusServiceProxy> new_leader_proxy;
 
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
@@ -1503,9 +1502,9 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   MiniTabletServer* new_leader = cluster_->mini_tablet_server(new_leader_idx);
   ASSERT_TRUE(new_leader != nullptr);
-  new_leader_proxy.reset(
-      new consensus::ConsensusServiceProxy(client_messenger,
-                                           new_leader->bound_rpc_addr()));
+  rpc::ProxyCache proxy_cache(client_messenger);
+  consensus::ConsensusServiceProxy new_leader_proxy(
+      &proxy_cache, HostPort::FromBoundEndpoint(new_leader->bound_rpc_addr()));
 
   consensus::RunLeaderElectionRequestPB req;
   consensus::RunLeaderElectionResponsePB resp;
@@ -1515,7 +1514,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
             << new_leader->bound_rpc_addr() << " ...";
   req.set_dest_uuid(new_leader->server()->fs_manager()->uuid());
   req.set_tablet_id(rt->tablet_id());
-  ASSERT_OK(new_leader_proxy->RunLeaderElection(req, &resp, &controller));
+  ASSERT_OK(new_leader_proxy.RunLeaderElection(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << "Got error. Response: " << resp.ShortDebugString();
 
   LOG(INFO) << "Inserting additional rows...";
@@ -1928,15 +1927,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
   auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
+  rpc::ProxyCache proxy_cache(client_messenger);
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
-    auto endpoint = ParseEndpoint(ts_info.rpc_addresses(0).host(),
-                                  ts_info.rpc_addresses(0).port());
-    ASSERT_TRUE(endpoint.ok());
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
-        client_messenger, *endpoint);
+        &proxy_cache, HostPortFromPB(ts_info.rpc_addresses(0)));
 
-    std::unique_ptr<QLRowBlock> rowBlock;
+    std::unique_ptr<QLRowBlock> row_block;
     ASSERT_OK(WaitFor([&]() -> bool {
       // Setup read request.
       tserver::ReadRequestPB req;
@@ -1970,13 +1967,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_TRUE(controller.finished());
       EXPECT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
       yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
-      rowBlock = rowsResult.GetRowBlock();
-      return FLAGS_test_scan_num_rows == rowBlock->row_count();
+      row_block = rowsResult.GetRowBlock();
+      return FLAGS_test_scan_num_rows == row_block->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
 
-    std::vector<bool> seen_key(rowBlock->row_count());
-    for (int i = 0; i < rowBlock->row_count(); i++) {
-      const QLRow& row = rowBlock->row(i);
+    std::vector<bool> seen_key(row_block->row_count());
+    for (int i = 0; i < row_block->row_count(); i++) {
+      const QLRow& row = row_block->row(i);
       auto key = row.column(0).int32_value();
       ASSERT_LT(key, seen_key.size());
       ASSERT_FALSE(seen_key[key]);

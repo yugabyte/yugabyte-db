@@ -192,7 +192,7 @@ typedef ThreadSafeObjectPool<RemoteMethodPB> RemoteMethodPool;
 // of different threads, making it tricky to enforce single ownership.
 class OutboundCall : public RpcCall {
  public:
-  OutboundCall(const ConnectionId& conn_id, const RemoteMethod* remote_method,
+  OutboundCall(const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
                RpcController* controller, ResponseCallback callback);
@@ -241,6 +241,10 @@ class OutboundCall : public RpcCall {
 
   std::string LogPrefix() const override;
 
+  void SetConnectionId(const ConnectionId& value) {
+    conn_id_ = value;
+  }
+
   ////////////////////////////////////////////////////////////
   // Getters
   ////////////////////////////////////////////////////////////
@@ -265,7 +269,7 @@ class OutboundCall : public RpcCall {
 
   virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
 
-  const ConnectionId conn_id_;
+  ConnectionId conn_id_;
   MonoTime start_;
   RpcController* const controller_;
   // Pointer for the protobuf where the response should be written.

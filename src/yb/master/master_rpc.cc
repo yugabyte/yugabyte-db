@@ -72,11 +72,12 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   //
   // Invokes 'user_cb' upon failure or success of the RPC call.
   GetMasterRegistrationRpc(std::function<void(const Status&)> user_cb,
-                           const Endpoint& addr,
+                           const HostPort& addr,
                            const MonoTime& deadline,
                            const std::shared_ptr<rpc::Messenger>& messenger,
+                           rpc::ProxyCache* proxy_cache,
                            ServerEntryPB* out)
-      : Rpc(deadline, messenger),
+      : Rpc(deadline, messenger, proxy_cache),
         user_cb_(std::move(user_cb)),
         addr_(addr),
         out_(DCHECK_NOTNULL(out)) {}
@@ -89,7 +90,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   void Finished(const Status& status) override;
 
   std::function<void(const Status&)> user_cb_;
-  Endpoint addr_;
+  HostPort addr_;
 
   ServerEntryPB* out_;
 
@@ -97,7 +98,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
 };
 
 void GetMasterRegistrationRpc::SendRpc() {
-  MasterServiceProxy proxy(retrier().messenger(), addr_);
+  MasterServiceProxy proxy(&retrier().proxy_cache(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
       req, &resp_, PrepareController(),
@@ -142,11 +143,12 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
 ////////////////////////////////////////////////////////////
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
-                                       vector<Endpoint> addrs,
+                                       std::vector<HostPort> addrs,
                                        MonoTime deadline,
                                        const shared_ptr<Messenger>& messenger,
+                                       rpc::ProxyCache* proxy_cache,
                                        rpc::Rpcs* rpcs)
-    : Rpc(deadline, messenger),
+    : Rpc(deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
       addrs_(std::move(addrs)),
       rpcs_(*rpcs) {
@@ -161,13 +163,7 @@ GetLeaderMasterRpc::~GetLeaderMasterRpc() {
 }
 
 string GetLeaderMasterRpc::ToString() const {
-  std::vector<std::string> sockaddr_str;
-  for (const auto& addr : addrs_) {
-    sockaddr_str.push_back(yb::ToString(addr));
-  }
-  return strings::Substitute("GetLeaderMasterRpc(addrs: $0, num_attempts: $1)",
-                             JoinStrings(sockaddr_str, ","),
-                             num_attempts());
+  return Format("GetLeaderMasterRpc(addrs: $0, num_attempts: $1)", addrs_, num_attempts());
 }
 
 void GetLeaderMasterRpc::SendRpc() {
@@ -182,6 +178,7 @@ void GetLeaderMasterRpc::SendRpc() {
         addrs_[i],
         retrier().deadline(),
         retrier().messenger(),
+        &retrier().proxy_cache(),
         &responses_[i]);
     (**handle).SendRpc();
     ++pending_responses_;
@@ -243,7 +240,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
         new_status = STATUS(NotFound, "no leader found: " + ToString());
       } else {
         // We've found a leader.
-        leader_master_ = HostPort(addrs_[idx]);
+        leader_master_ = addrs_[idx];
       }
     }
     if (!new_status.ok()) {

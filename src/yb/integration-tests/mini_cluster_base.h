@@ -15,6 +15,7 @@
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
 
 #include "yb/util/status.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 
 namespace yb {
@@ -38,7 +39,7 @@ class MiniClusterBase {
     return DoCreateClient(nullptr /* builder */, client);
   }
 
-  Endpoint GetLeaderMasterBoundRpcAddr() {
+  HostPort GetLeaderMasterBoundRpcAddr() {
     return DoGetLeaderMasterBoundRpcAddr();
   }
 
@@ -48,7 +49,7 @@ class MiniClusterBase {
  private:
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client) = 0;
-  virtual Endpoint DoGetLeaderMasterBoundRpcAddr() = 0;
+  virtual HostPort DoGetLeaderMasterBoundRpcAddr() = 0;
 };
 
 }  // namespace yb

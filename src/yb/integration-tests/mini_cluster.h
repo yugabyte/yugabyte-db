@@ -193,7 +193,7 @@ class MiniCluster : public MiniClusterBase {
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client);
 
-  virtual Endpoint DoGetLeaderMasterBoundRpcAddr();
+  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
 
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.

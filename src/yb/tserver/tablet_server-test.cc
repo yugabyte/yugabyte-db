@@ -119,7 +119,7 @@ TEST_F(TabletServerTest, TestServerClock) {
 
 TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   server::GenericServiceProxy proxy(
-      client_messenger_, mini_server_->bound_rpc_addr());
+      proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr()));
 
   server::SetFlagRequestPB req;
   server::SetFlagResponsePB resp;
@@ -525,8 +525,8 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_FALSE(ShutdownAndRebuildTablet().ok());
 
   // Connect to it.
-  CreateTsClientProxies(mini_server_->bound_rpc_addr(),
-                        client_messenger_,
+  CreateTsClientProxies(HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr()),
+                        proxy_cache_.get(),
                         &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_);
 
   WriteRequestPB req;

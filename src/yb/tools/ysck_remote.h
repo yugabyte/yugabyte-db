@@ -39,7 +39,7 @@
 
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/server/server_base.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/tools/ysck.h"
@@ -57,33 +57,31 @@ namespace tools {
 class RemoteYsckTabletServer : public YsckTabletServer {
  public:
   explicit RemoteYsckTabletServer(const std::string& id,
-                                  const Endpoint& address,
-                                  const std::shared_ptr<rpc::Messenger>& messenger)
+                                  const HostPort& address,
+                                  rpc::ProxyCache* proxy_cache)
       : YsckTabletServer(id),
         address_(yb::ToString(address)),
-        messenger_(messenger),
-        generic_proxy_(new server::GenericServiceProxy(messenger, address)),
-        ts_proxy_(new tserver::TabletServerServiceProxy(messenger, address)) {
+        generic_proxy_(new server::GenericServiceProxy(proxy_cache, address)),
+        ts_proxy_(new tserver::TabletServerServiceProxy(proxy_cache, address)) {
   }
 
-  virtual CHECKED_STATUS Connect() const override;
+  CHECKED_STATUS Connect() const override;
 
-  virtual CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const override;
+  CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const override;
 
-  virtual void RunTabletChecksumScanAsync(
+  void RunTabletChecksumScanAsync(
       const std::string& tablet_id,
       const Schema& schema,
       const ChecksumOptions& options,
       const ReportResultCallback& callback) override;
 
 
-  virtual const std::string& address() const override {
+  const std::string& address() const override {
     return address_;
   }
 
  private:
   const std::string address_;
-  const std::shared_ptr<rpc::Messenger> messenger_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
   const std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
 };
@@ -91,8 +89,7 @@ class RemoteYsckTabletServer : public YsckTabletServer {
 // This implementation connects to a Master via RPC.
 class RemoteYsckMaster : public YsckMaster {
  public:
-
-  static CHECKED_STATUS Build(const Endpoint& address, std::shared_ptr<YsckMaster>* master);
+  static CHECKED_STATUS Build(const HostPort& address, std::shared_ptr<YsckMaster>* master);
 
   virtual ~RemoteYsckMaster() { }
 
@@ -107,10 +104,7 @@ class RemoteYsckMaster : public YsckMaster {
 
  private:
   explicit RemoteYsckMaster(
-      const Endpoint& address, const std::shared_ptr<rpc::Messenger>& messenger)
-      : messenger_(messenger),
-        generic_proxy_(new server::GenericServiceProxy(messenger, address)),
-        proxy_(new master::MasterServiceProxy(messenger, address)) {}
+      const HostPort& address, const std::shared_ptr<rpc::Messenger>& messenger);
 
   CHECKED_STATUS GetTableInfo(
       const client::YBTableName& table_name, Schema* schema, int* num_replicas);
@@ -123,7 +117,7 @@ class RemoteYsckMaster : public YsckMaster {
       std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,
       bool* more_tablets);
 
-  std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
   std::shared_ptr<master::MasterServiceProxy> proxy_;
 };
