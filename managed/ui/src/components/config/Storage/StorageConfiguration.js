@@ -9,6 +9,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
+import { isDefinedNotNull } from "utils/ObjectUtils";
 
 const storageConfigTypes = {
   S3: {
@@ -26,14 +27,23 @@ const storageConfigTypes = {
       label: "S3 Bucket",
       placeHolder: "S3 Bucket"
     }]
+  },
+  NFS: {
+    title: "NFS Storage",
+    fields: [{
+      id: "NFS_PATH",
+      label: "NFS Storage Path",
+      placeHolder: "NFS Storage Path"
+    }]
   }
 };
 
 class StorageConfiguration extends Component {
   addStorageConfig = values => {
+    // TODO: need to split config into AWS vs NFS type in UI.
     this.props.addCustomerConfig({
       "type": "STORAGE",
-      "name": "S3",
+      "name": "AWS_ACCESS_KEY_ID" in values ? "S3" : "NFS",
       "data": values
     });
   }
@@ -72,9 +82,11 @@ class StorageConfiguration extends Component {
         const fieldAttrs = storageConfigTypes[config.name]['fields'];
         for (const configItem in config.data) {
           const configAttr = fieldAttrs.find((item) => item.id === configItem);
-          configData.push(
-            {name: configAttr.label, data: config.data[configItem]}
-          );
+          if (isDefinedNotNull(configAttr)) {
+            configData.push(
+              {name: configAttr.label, data: config.data[configItem]}
+            );
+          }
         }
 
         configs.push(
@@ -84,7 +96,7 @@ class StorageConfiguration extends Component {
                         btnClass={"btn btn-default delete-btn"}
                         onClick={this.showDeleteConfirmModal.bind(this, config.name)}/>
               <YBConfirmModal name="delete-storage-config" title={"Confirm Delete"}
-                              onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.config_uuid))}
+                              onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
                               currentModal={"delete" + config.name + "StorageConfig"}
                               visibleModal={this.props.visibleModal}
                               hideConfirmModal={this.props.hideDeleteStorageConfig}>
