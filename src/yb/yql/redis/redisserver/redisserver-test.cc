@@ -30,6 +30,8 @@
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
+#include "yb/rpc/io_thread_pool.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/protobuf.h"
