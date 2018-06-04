@@ -85,9 +85,8 @@ class ExitWithError(Exception):
     pass
 
 
-def get_local_ip(daemon_type, index):
-    # return "127.0.0.{}".format(index)
-    return "yb-{}-n{}".format(daemon_type, index)
+def get_local_ip(index):
+    return "127.0.0.{}".format(index)
 
 
 class DaemonId:
@@ -108,7 +107,7 @@ class DaemonId:
         return self.daemon_type == DAEMON_TYPE_TSERVER
 
     def get_ip_address(self):
-        return get_local_ip(self.daemon_type, self.index)
+        return get_local_ip(self.index)
 
 
 class ClusterOptions:
@@ -451,9 +450,7 @@ class ClusterControl:
             "--redis_proxy_bind_address {}".format(daemon_id.get_ip_address()),
             "--cql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
             "--pgsql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
-            # "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address()),
-            "--local_ip_for_outbound_sockets 127.0.0.{}".format(daemon_id.index),
-            "--follower_unavailable_considered_failed_sec=15",
+            "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address()),
             # TODO ENG-2876: Enable this in master as well.
             "--use_cassandra_authentication={}".format(
                 str(self.options.use_cassandra_authentication).lower())
@@ -714,8 +711,6 @@ class ClusterControl:
             cmd_setup_redis_table = [yb_admin_binary_path,
                                      "--master_addresses",
                                      self.options.master_addresses,
-                                     "--yb_num_shards_per_tserver",
-                                     str(self.options.num_shards_per_tserver),
                                      "setup_redis_table"]
             result = ""
             try:
