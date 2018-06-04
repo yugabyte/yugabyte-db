@@ -143,7 +143,8 @@ import static org.mockito.Mockito.when;
     return cmd;
   }
 
-  private List<String> getExpectedBackupTableCommand(BackupTableParams backupTableParams) {
+  private List<String> getExpectedBackupTableCommand(
+      BackupTableParams backupTableParams, String storageType) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
 
     List<String> cmd = new LinkedList<>();
@@ -163,6 +164,8 @@ import static org.mockito.Mockito.when;
     cmd.add(pkPath);
     cmd.add("--s3bucket");
     cmd.add(backupTableParams.storageLocation);
+    cmd.add("--storage_type");
+    cmd.add(storageType);
     if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)) {
       cmd.add("--table_uuid");
       cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
@@ -210,24 +213,48 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testCreateBackup() {
+  public void testCreateS3Backup() {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
-    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
   @Test
-  public void testRestoreBackup() {
+  public void testCreateNfsBackup() {
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testRestoreS3Backup() {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
-    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testRestoreNfsBackup() {
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
@@ -246,7 +273,7 @@ import static org.mockito.Mockito.when;
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
 
     Backup.create(testCustomer.uuid, backupTableParams);
-    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);

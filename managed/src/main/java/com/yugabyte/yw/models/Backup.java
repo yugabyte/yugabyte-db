@@ -92,11 +92,20 @@ public class Backup extends Model {
           params.tableUUID.toString().replace("-", "")
       );
     }
-    if (customerConfig != null && customerConfig.name.equals("S3")) {
-      params.storageLocation = String.format("%s/%s",
-          customerConfig.getData().get("S3_BUCKET").asText(),
-          params.storageLocation
-      );
+    if (customerConfig != null) {
+      JsonNode storageNode = null;
+      // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
+      if (customerConfig.name.equals("S3")) {
+        storageNode = customerConfig.getData().get("S3_BUCKET");
+      } else if (customerConfig.name.equals("NFS")) {
+        storageNode = customerConfig.getData().get("NFS_PATH");
+      }
+      if (storageNode != null) {
+        String storagePath = storageNode.asText();
+        if (storagePath != null && !storagePath.isEmpty()) {
+          params.storageLocation = String.format("%s/%s", storagePath, params.storageLocation);
+        }
+      }
     }
   }
 
