@@ -95,4 +95,10 @@ public class ModelFactory {
         "{\"S3_BUCKET\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
+
+  public static CustomerConfig createNfsStorageConfig(Customer customer) {
+    JsonNode formData = Json.parse("{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": " +
+        "{\"NFS_PATH\": \"/foo/bar\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
 }
