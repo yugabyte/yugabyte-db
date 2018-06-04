@@ -1,10 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/master/master.h"
-#include "yb/util/flag_tags.h"
 
 #include "yb/master/master_backup.service.h"
 #include "yb/master/master_backup_service.h"
+
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/util/flag_tags.h"
+#include "yb/util/ntp_clock.h"
 
 DEFINE_int32(master_backup_svc_queue_length, 50,
              "RPC queue length for master backup service");
@@ -25,6 +29,10 @@ namespace enterprise {
 using yb::rpc::ServiceIf;
 
 Status Master::RegisterServices() {
+  server::HybridClock::RegisterProvider(NtpClock::Name(), [] {
+    return std::make_shared<NtpClock>();
+  });
+
   std::unique_ptr<ServiceIf> master_backup_service(new MasterBackupServiceImpl(this));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_backup_svc_queue_length,
                                                      std::move(master_backup_service)));
