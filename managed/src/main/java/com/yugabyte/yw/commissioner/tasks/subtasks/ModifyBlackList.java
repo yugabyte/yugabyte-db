@@ -69,10 +69,12 @@ public class ModifyBlackList extends AbstractTaskBase {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> modifyHosts = new ArrayList<HostPortPB>();
       for (NodeDetails node : taskParams().nodes) {
-        HostPortPB.Builder hpb =
-            HostPortPB.newBuilder()
-                      .setPort(node.tserverRpcPort)
-                      .setHost(node.cloudInfo.private_ip);
+        String ip = node.cloudInfo.private_ip;
+        if (ip == null) {
+          NodeDetails onDiskNode = universe.getNode(node.nodeName);
+          ip = onDiskNode.cloudInfo.private_ip;
+        }
+        HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         modifyHosts.add(hpb.build());
       }
       client = ybService.getClient(masterHostPorts);

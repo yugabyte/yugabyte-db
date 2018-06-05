@@ -115,6 +115,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // Wait for all tablet servers to be responsive.
         createWaitForServersTasks(newTservers, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        // Remove them from blacklist, in case master is still tracking these.
+        createModifyBlackListTask(new ArrayList(newTservers), false /* isAdd */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       if (!nodesToProvision.isEmpty()) {
@@ -156,7 +160,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             taskParams().getPrimaryCluster().placementInfo)) {
         createWaitForLeadersOnPreferredOnlyTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
-
 
       if (!newMasters.isEmpty()) {
         // Now finalize the master quorum change tasks.
