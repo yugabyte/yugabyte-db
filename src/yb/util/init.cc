@@ -90,7 +90,7 @@ Status SetupLogDir(const std::string& server_type) {
 
     bool created = false;
     std::string out_dir;
-    SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created);
+    RETURN_NOT_OK(SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created));
     // Create the actual log dir.
     out_dir = JoinPathSegments(out_dir, "logs");
     RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(Env::Default(), out_dir, &created),
