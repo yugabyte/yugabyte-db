@@ -271,7 +271,7 @@ public class NodeManager extends DevopsBase {
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
         UserIntent userIntent = getUserIntentFromParams(taskParam);
         Common.CloudType cloudType = userIntent.providerType;
-        if (!userIntent.providerType.equals(Common.CloudType.onprem)) {
+        if (!cloudType.equals(Common.CloudType.onprem)) {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--cloud_subnet");
@@ -295,6 +295,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.assignPublicIP) {
             commandArgs.add("--assign_public_ip");
           }
+        }
+        if (cloudType.equals(Common.CloudType.aws) && taskParam.useTimeSync) {
+          commandArgs.add("--use_chrony");
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {

@@ -836,8 +836,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.instanceType = cloudInfo.instance_type;
       // Set the spot price.
       params.spotPrice = cloudInfo.spotPrice;
-      // set the assign public ip param
+      // Set the assign public ip param.
       params.assignPublicIP = cloudInfo.assignPublicIP;
+      params.useTimeSync = cloudInfo.useTimeSync;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);
