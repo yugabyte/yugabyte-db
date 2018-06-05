@@ -184,6 +184,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean assignPublicIP = true;
 
+    public boolean useTimeSync = false;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -214,6 +216,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.spotPrice = spotPrice;
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
+      newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.useTimeSync = useTimeSync;
       return newUserIntent;
     }
 
@@ -228,7 +232,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           numNodes == other.numNodes &&
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
-          spotPrice == other.spotPrice) {
+          spotPrice == other.spotPrice &&
+          assignPublicIP == other.assignPublicIP &&
+          useTimeSync == other.useTimeSync) {
          return true;
       }
       return false;

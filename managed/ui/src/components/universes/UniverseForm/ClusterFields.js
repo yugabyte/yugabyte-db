@@ -41,6 +41,8 @@ const initialState = {
   maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
   useSpotPrice: IN_DEVELOPMENT_MODE,
   spotPrice: normalizeToPositiveFloat('0.00'),
+  assignPublicIP: true,
+  useTimeSync: false,
   gettingSuggestedSpotPrice: false
 };
 
@@ -64,6 +66,7 @@ export default class ClusterFields extends Component {
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
+    this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -115,8 +118,7 @@ export default class ClusterFields extends Component {
       }
       // If Edit Case Set Initial Configuration
       this.props.getExistingUniverseConfiguration(universeDetails);
-    }
-    else {
+    } else {
       // Repopulate the form fields when switching back to the view
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
         this.setState({providerSelected: formValues[clusterType].provider});
@@ -137,6 +139,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].assignPublicIP) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({assignPublicIP: formValues['primary'].assignPublicIP});
+          }
+          if (formValues[clusterType].useTimeSync) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({useTimeSync: formValues['primary'].useTimeSync});
           }
         }
       } else {
@@ -385,7 +391,8 @@ export default class ClusterFields extends Component {
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
-        spotPrice: formValues[clusterType].spotPrice
+        spotPrice: formValues[clusterType].spotPrice,
+        useTimeSync: formValues[clusterType].useTimeSync
       };
     }
   };
@@ -443,6 +450,13 @@ export default class ClusterFields extends Component {
     this.setState(nextState);
     updateFormField(`${clusterType}.useSpotPrice`, event.target.checked);
   }
+
+  toggleUseTimeSync(event) {
+    const {updateFormField, clusterType} = this.props;
+    updateFormField(`${clusterType}.useTimeSync`, event.target.checked);
+    this.setState({useTimeSync: event.target.checked});
+  }
+
 
   toggleAssignPublicIP(event) {
     const {updateFormField, clusterType} = this.props;
@@ -537,6 +551,7 @@ export default class ClusterFields extends Component {
         return item.value;
       }),
       assignPublicIP: formValues[clusterType].assignPublicIP,
+      useTimeSync: formValues[clusterType].useTimeSync,
       numNodes: formValues[clusterType].numNodes,
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
@@ -785,6 +800,7 @@ export default class ClusterFields extends Component {
     let spotPriceToggle = <span />;
     let spotPriceField = <span />;
     let assignPublicIP = <span />;
+    let useTimeSync = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -835,6 +851,17 @@ export default class ClusterFields extends Component {
                onToggle={this.toggleSpotPrice}
                checkedVal={this.state.useSpotPrice}
                isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
+      );
+    }
+    // Only enable Time Sync Service toggle for AWS.
+    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
+      useTimeSync = (
+        <Field name={`${clusterType}.useTimeSync`}
+               component={YBToggle} isReadOnly={isFieldReadOnly}
+               checkedVal={this.state.useTimeSync}
+               onToggle={this.toggleUseTimeSync}
+               label="Use AWS Time Sync"
+               subLabel="Whether or not to use the Amazon Time Sync Service."/>
       );
     }
 
@@ -984,6 +1011,7 @@ export default class ClusterFields extends Component {
                 {spotPriceToggle}
                 {spotPriceField}
                 {assignPublicIP}
+                {useTimeSync}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>

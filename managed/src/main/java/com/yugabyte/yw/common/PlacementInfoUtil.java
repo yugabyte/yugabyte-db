@@ -1168,6 +1168,7 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.instance_type = cluster.userIntent.instanceType;
     nodeDetails.cloudInfo.spotPrice = cluster.userIntent.spotPrice;
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
+    nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
     // Set the tablet server role to true.
     nodeDetails.isTserver = true;
     // Set the node id.

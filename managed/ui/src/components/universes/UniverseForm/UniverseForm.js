@@ -117,6 +117,7 @@ class UniverseForm extends Component {
         }),
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
+        useTimeSync: formValues[clusterType].useTimeSync,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -278,7 +279,7 @@ class PrimaryClusterFields extends Component {
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice', 'primary.useSpotPrice',
-        'primary.assignPublicIP']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.assignPublicIP', 'primary.useTimeSync']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -289,7 +290,7 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize', 'async.spotPrice', 'async.useSpotPrice',
-        'async.ebsType', 'async.assignPublicIP']}
+        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync']}
               component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }

@@ -123,9 +123,9 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP',
+    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync',
     'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
-    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP',
+    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
     'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
 
 function mapStateToProps(state, ownProps) {
@@ -141,13 +141,15 @@ function mapStateToProps(state, ownProps) {
       "accessKeyCode": "yugabyte-default",
       "spotPrice": "0.00",
       "useSpotPrice": IN_DEVELOPMENT_MODE,
-      "assignPublicIP":  true
+      "assignPublicIP":  true,
+      "useTimeSync": false
     },
     "async": {
       "numNodes": 3,
       "spotPrice": "0.00",
       "useSpotPrice": IN_DEVELOPMENT_MODE,
-      "assignPublicIP":  true
+      "assignPublicIP":  true,
+      "useTimeSync": false
     }
   };
 
@@ -197,10 +199,10 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints',
+      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints', 'async.useTimeSync',
       'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }

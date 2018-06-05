@@ -33,6 +33,7 @@ public class CloudSpecificInfo {
   
   public double spotPrice = 0.0;
   public boolean assignPublicIP = true;
+  public boolean useTimeSync = false;
 
   public CloudSpecificInfo() {
   }

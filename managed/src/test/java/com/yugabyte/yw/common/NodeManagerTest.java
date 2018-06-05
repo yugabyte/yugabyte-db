@@ -41,11 +41,15 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Matchers.any;
 
 
 @RunWith(MockitoJUnitRunner.class)
@@ -222,6 +226,9 @@ public class NodeManagerTest extends FakeDBApplication {
           if (setupParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
           }
+        }
+        if (cloud.equals(Common.CloudType.aws) && setupParams.useTimeSync) {
+          expectedCommand.add("--use_chrony");
         }
         break;
       case Configure:
@@ -402,6 +409,32 @@ public class NodeManagerTest extends FakeDBApplication {
 
     File file = new File(packagePath);
     file.delete();
+  }
+
+  @Test
+  public void testProvisionUseTimeSync() {
+    int iteration = 0;
+    for (TestData t : testData) {
+      for (boolean useTimeSync : ImmutableList.of(true, false)) {
+        // Bump up the iteration, for use in the verify call and getting the correct capture.
+        ++iteration;
+        AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+            ApiUtils.mockUniverseUpdater(t.cloudType)));
+        addValidDeviceInfo(t, params);
+        params.useTimeSync = useTimeSync;
+
+        ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+        verify(shellProcessHandler, times(iteration)).run(arg.capture(), any());
+        // For AWS and useTimeSync knob set to true, we want to find the flag.
+        List<String> cmdArgs = arg.getAllValues().get(iteration - 1);
+        assertNotNull(cmdArgs);
+        assertTrue(
+            cmdArgs.contains("--use_chrony") ==
+            (t.cloudType.equals(Common.CloudType.aws) && useTimeSync));
+      }
+    }
   }
 
   @Test
