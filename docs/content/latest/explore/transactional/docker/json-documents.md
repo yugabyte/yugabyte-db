@@ -13,7 +13,7 @@ $ ./yb-docker-ctl create
 ```
 
 
-## 2. Create a table for transactions
+## 2. Create a table with a JSON column
 
 Connect to cqlsh on node 1.
 
@@ -51,7 +51,6 @@ CREATE TABLE store.books (
 ) WITH default_time_to_live = 0;
 ```
 
-
 ## 3. Insert sample data
 
 Let us seed the `books` table with some sample data. Note the following about the sample data:
@@ -63,18 +62,16 @@ Paste the following into the `cqlsh` shell.
 
 ```{.sql .copy}
 INSERT INTO store.books (id, details) VALUES
-  (1, '{ "name": "Macbeth", "author": "William Shakespeare", "year": 1623 }');
+  (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
 INSERT INTO store.books (id, details) VALUES 
-  (2, '{ "name": "Hamlet", "author": "William Shakespeare", "year": 1603 }');
+  (2, '{ "name": "Hamlet", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1603, "editors": ["Lysa", "Mark", "Robert"] }');
 INSERT INTO store.books (id, details) VALUES 
-  (3, '{ "name": "Oliver Twist", "author": "Charles Dickens", "year": 1838, "genre": "novel" }');
+  (3, '{ "name": "Oliver Twist", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1838, "genre": "novel", "editors": ["Mark", "Tony", "Britney"] }');
 INSERT INTO store.books (id, details) VALUES 
-  (4, '{ "name": "Great Expectations", "author": "Charles Dickens", "year": 1950, "genre": "novel" }');
+  (4, '{ "name": "Great Expectations", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1950, "genre": "novel", "editors": ["Robert", "John", "Melisa"] }');
 INSERT INTO store.books (id, details) VALUES 
-  (5, '{ "name": "A Brief History of Time", "author": "Stephen Hawking", "year": 1988, "genre": "science" }');
+  (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
 ```
-
-
 
 ## 4. Execute queries against the documents
 
@@ -91,12 +88,12 @@ cqlsh> SELECT * FROM store.books;
 ```
 ```sql
  id | details
-----+---------------------------------------------------------------------------------------------
-  5 | {"author":"Stephen Hawking","genre":"science","name":"A Brief History of Time","year":1988}
-  1 |                                {"author":"William Shakespear","name":"Macbeth","year":1623}
-  4 |        {"author":"Charles Dickens","genre":"novel","name":"Great Expectations","year":1950}
-  2 |                                 {"author":"William Shakespear","name":"Hamlet","year":1603}
-  3 |              {"author":"Charles Dickens","genre":"novel","name":"Oliver Twist","year":1838}
+----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+  5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
+  1 |                            {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+  4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+  2 |                                {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
+  3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 
 (5 rows)
 ```
@@ -111,13 +108,105 @@ cqlsh> SELECT * FROM store.books WHERE id=5;
 ```
 ```sql
  id | details
-----+---------------------------------------------------------------------------------------------
-  5 | {"author":"Stephen Hawking","genre":"science","name":"A Brief History of Time","year":1988}
+----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+  5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
 
 (1 rows)
 ```
 
+### Query based on json attributes
 
+We currently support two operators for json. The `->` operator returns a result which is a json
+document and further json operations can be applied to the result. The `->>` operator returns a
+string result and as a result no further json operations can be performed after this.
+
+If we want to query all the books whose author is `William Shakespeare`
+
+```sql
+cqlsh> SELECT * FROM store.books where details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
+
+ id | details
+----+----------------------------------------------------------------------------------------------------------------------------------
+  1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+  2 |     {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
+
+(2 rows)
+```
+
+If we want to retrieve the author for all entries:
+
+```sql
+cqlsh> SELECT id, details->>'author' as author from store.books;
+
+ id | author
+----+----------------------------------------------------
+  5 |     {"first_name":"Stephen","last_name":"Hawking"}
+  1 | {"first_name":"William","last_name":"Shakespeare"}
+  4 |     {"first_name":"Charles","last_name":"Dickens"}
+  2 | {"first_name":"William","last_name":"Shakespeare"}
+  3 |     {"first_name":"Charles","last_name":"Dickens"}
+
+(5 rows)
+```
+
+### Query based on array elements
+
+```sql
+cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
+
+ id | details
+----+-------------------------------------------------------------------------------------------------------------------------------------------------
+  3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
+
+(1 rows)
+
+cqlsh> SELECT * FROM store.books WHERE details->'editors'->>2 = 'Jeff';
+
+ id | details
+----+----------------------------------------------------------------------------------------------------------------------------------
+  1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+
+(1 rows)
+```
+
+### Working with integers within json documents
+
+The operators `->` and `->>` introduced in the previous sections return a jsonb and string type
+respectively, but sometimes its useful to consider json attributes as numeric types so that we can
+apply the appropriate logical/arithmetic operators.
+
+For this purpose, we can use the `CAST` function to handle integers within the json document:
+
+```sql
+cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1700;
+
+ id | details
+----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+  5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
+  4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+  3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
+
+(3 rows)
+
+cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
+
+ id | details
+----+--------------------------------------------------------------------------------------------------------------------------------------------------------
+  4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+
+(1 rows)
+
+
+cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1600 AND CAST(details->>'year' AS integer) <= 1900;
+
+ id | details
+----+-------------------------------------------------------------------------------------------------------------------------------------------------
+  1 |                {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+  2 |                    {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
+  3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
+
+(3 rows)
+```
 
 ## 5. Clean up (optional)
 
