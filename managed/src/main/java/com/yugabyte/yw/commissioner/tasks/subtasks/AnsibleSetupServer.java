@@ -27,6 +27,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public double spotPrice = 0.0;
 
     public boolean assignPublicIP = true;
+
+    // For AWS, this will dictate if we use the Time Sync Service.
+    public boolean useTimeSync = false;
   }
 
   @Override
