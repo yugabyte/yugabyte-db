@@ -15,6 +15,22 @@
  * IDENTIFICATION
  *	  src/backend/commands/dbcommands.c
  *
+ * The following only applies to changes made to this file as part of
+ * YugaByte development.
+ *
+ * Portions Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.  See the License for the specific language governing
+ * permissions and limitations under the License.
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -63,6 +79,9 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/*  YB includes. */
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 
 typedef struct
 {
@@ -690,6 +709,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 */
 		ForceSyncCommit();
 	}
+
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateDatabase(dboid, dbname, src_dboid);
+	}
+
 	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
 								PointerGetDatum(&fparms));
 
@@ -960,6 +985,11 @@ dropdb(const char *dbname, bool missing_ok)
 	 */
 	heap_close(pgdbrel, NoLock);
 
+	if (IsYugaByteEnabled())
+	{
+		YBCDropDatabase(db_id, dbname);
+	}
+
 	/*
 	 * Force synchronous commit, thus minimizing the window between removal of
 	 * the database files and committal of the transaction. If we crash before
@@ -1054,6 +1084,11 @@ RenameDatabase(const char *oldname, const char *newname)
 	 * Close pg_database, but keep lock till commit.
 	 */
 	heap_close(rel, NoLock);
+
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter database is not yet supported");
+	}
 
 	return address;
 }
@@ -1564,6 +1599,11 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
 
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter database is not yet supported");
+	}
+
 	return dboid;
 }
 
@@ -1587,6 +1627,11 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 					   stmt->dbname);
 
 	AlterSetting(datid, InvalidOid, stmt->setstmt);
+
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter database is not yet supported");
+	}
 
 	UnlockSharedObject(DatabaseRelationId, datid, 0, AccessShareLock);
 
@@ -1706,6 +1751,11 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
+
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter database is not yet supported");
+	}
 
 	return address;
 }

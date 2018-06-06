@@ -10,6 +10,22 @@
  * IDENTIFICATION
  *	  src/backend/commands/tablecmds.c
  *
+ * The following only applies to changes made to this file as part of
+ * YugaByte development.
+ *
+ * Portions Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.  See the License for the specific language governing
+ * permissions and limitations under the License.
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -57,7 +73,6 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
-#include "commands/typecmds.h"
 #include "commands/user.h"
 #include "executor/executor.h"
 #include "foreign/foreign.h"
@@ -101,6 +116,11 @@
 #include "utils/tqual.h"
 #include "utils/typcache.h"
 
+/*  YB includes. */
+#include "catalog/pg_database.h"
+
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 
 /*
  * ON COMMIT action list
@@ -745,6 +765,12 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  false,
 										  typaddress);
 
+  // TODO We don't have template1 in YB yet.
+  if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+	{
+		YBCCreateTable(stmt, relkind, relationId);
+	}
+
 	/* Store inheritance information for new rel. */
 	StoreCatalogInheritance(relationId, inheritOids, stmt->partbound != NULL);
 
@@ -1059,6 +1085,12 @@ RemoveRelations(DropStmt *drop)
 		obj.classId = RelationRelationId;
 		obj.objectId = relOid;
 		obj.objectSubId = 0;
+
+		// TODO We don't have template1 in YB yet.
+		if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+		{
+			YBCDropTable(relOid, rel->relname, rel->schemaname);
+		}
 
 		add_exact_object_address(&obj, objects);
 	}
@@ -3096,6 +3128,12 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	CheckTableNotInUse(rel, "ALTER TABLE");
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
+
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter table is not yet supported");
+	}
+
 }
 
 /*
@@ -3120,6 +3158,12 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 	EventTriggerAlterTableRelid(relid);
 
 	ATController(NULL, rel, cmds, recurse, lockmode);
+
+	if (IsYugaByteEnabled())
+	{
+		YBReportFeatureUnsupported("Alter table is not yet supported");
+	}
+
 }
 
 /*

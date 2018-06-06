@@ -185,7 +185,7 @@ Status PgSelect::Fetch(int64_t *row_count) {
     if (result_set_.size() <= 1) {
       result_set_.clear();
       *row_count = 0;
-      return STATUS(NotFound, "Data not found");
+      return Status::OK();
     } else {
       result_set_.pop_front();
       RETURN_NOT_OK(PgNetReader::ReadNewTuples(result_set_.front(), &total_row_count_, &cursor_));

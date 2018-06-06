@@ -36,7 +36,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-// TODO(neil) Hanlde to Env. Each Postgres process might need just one ENV, maybe more.
+// TODO(neil) Handle to Env. Each Postgres process might need just one ENV, maybe more.
 YB_DEFINE_HANDLE_TYPE(PgEnv)
 
 // Handle to a session. Postgres should create one YBCPgSession per client connection.

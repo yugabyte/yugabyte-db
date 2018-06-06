@@ -78,6 +78,8 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
+// YB includes.
+#include "pg_yb_utils.h"
 
 /* In this module, access gettext() via err_gettext() */
 #undef _
@@ -1351,6 +1353,12 @@ elog_finish(int elevel, const char *fmt,...)
 	MemoryContext oldcontext;
 
 	CHECK_STACK_DEPTH();
+
+	/* TODO Make this a YB-debug-mode feature */
+	if (IsYugaByteEnabled() && elevel >= FATAL)
+	{
+		YBCLogInfoStackTrace("StackTrace:");
+	}
 
 	/*
 	 * Do errstart() to see if we actually want to report the message.

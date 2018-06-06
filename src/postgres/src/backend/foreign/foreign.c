@@ -8,6 +8,22 @@
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
  *
+ * The following only applies to changes made to this file as part of
+ * YugaByte development.
+ *
+ * Portions Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.  See the License for the specific language governing
+ * permissions and limitations under the License.
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -27,6 +43,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
+#include "executor/ybc_fdw.h"
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
@@ -396,6 +415,19 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 {
 	FdwRoutine *fdwroutine;
 	FdwRoutine *cfdwroutine;
+
+	/* We currently ignore the makecopy argument because we are not
+	 * getting the fdwroutine from the relcache anyway.
+	 * TODO Check if this is the right way/place to handle this.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relkind == RELKIND_RELATION)
+		{
+			relation->rd_fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+			return relation->rd_fdwroutine;
+		}
+	}
 
 	if (relation->rd_fdwroutine == NULL)
 	{
