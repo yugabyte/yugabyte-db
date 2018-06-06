@@ -353,9 +353,7 @@ stack_push()
      */
     contextAudit = AllocSetContextCreate(CurrentMemoryContext,
                                          "pgaudit stack context",
-                                         ALLOCSET_DEFAULT_MINSIZE,
-                                         ALLOCSET_DEFAULT_INITSIZE,
-                                         ALLOCSET_DEFAULT_MAXSIZE);
+                                         ALLOCSET_DEFAULT_SIZES);
 
     /* Save the old context to switch back to at the end */
     contextOld = MemoryContextSwitchTo(contextAudit);
@@ -1480,9 +1478,7 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
     contextQuery = AllocSetContextCreate(
                             CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
-                            ALLOCSET_DEFAULT_MINSIZE,
-                            ALLOCSET_DEFAULT_INITSIZE,
-                            ALLOCSET_DEFAULT_MAXSIZE);
+                            ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);
 
     /* Get information about triggered events */
@@ -1591,9 +1587,7 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
     contextQuery = AllocSetContextCreate(
                             CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
-                            ALLOCSET_DEFAULT_MINSIZE,
-                            ALLOCSET_DEFAULT_INITSIZE,
-                            ALLOCSET_DEFAULT_MAXSIZE);
+                            ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);
 
     /* Return objects affected by the drop statement */

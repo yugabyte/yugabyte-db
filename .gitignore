@@ -3,6 +3,7 @@ results/
 tmp_check/
 regression.diffs
 regression.out
+*.bc
 *.o
 *.so
 .vagrant
