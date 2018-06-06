@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * ybccmds.h
- *	  prototypes for ybccmds.c.
+ *	  prototypes for ybccmds.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -30,6 +30,20 @@
 #include "storage/lock.h"
 #include "utils/relcache.h"
 
-extern void YBCCreateTable(CreateStmt *stmt);
+/*  Database Functions -------------------------------------------------------------------------- */
+
+extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid);
+
+extern void YBCDropDatabase(Oid dboid, const char *dbname);
+
+extern void YBCAlterDatabase(Oid dboid, const char *dbname);
+
+/*  Table Functions ----------------------------------------------------------------------------- */
+
+extern void YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId);
+
+extern void YBCDropTable(Oid relationId, const char *relname, const char *schemaname);
+
+extern void YBCAlterTable(Oid relationId);
 
 #endif

@@ -152,7 +152,11 @@ PgStatement::SharedPtr PgApiImpl::GetStatement(PgStatement *handle) {
 }
 
 CHECKED_STATUS PgApiImpl::DeleteStatement(PgStatement *handle) {
-  std::unordered_map<PgStatement*, PgStatement::SharedPtr>::iterator iter;
+  if (!handle) {
+    // If handle is null nothing to do.
+    return Status::OK();
+  }
+  std::unordered_map<PgStatement *, PgStatement::SharedPtr>::iterator iter;
   iter = statements_.find(handle);
   if (iter == statements_.end()) {
     // Invalid handle.
@@ -230,7 +234,7 @@ CHECKED_STATUS PgApiImpl::ExecDropDatabase(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgDropTable*>(handle)->Exec();
+  return static_cast<PgDropDatabase*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------

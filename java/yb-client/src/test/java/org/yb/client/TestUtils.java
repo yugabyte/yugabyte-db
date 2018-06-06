@@ -295,6 +295,14 @@ public class TestUtils {
     return (Integer) pidField.get(proc);
   }
 
+  public static String pidStrOfProcess(Process proc) {
+    try {
+      return String.valueOf(pidOfProcess(proc));
+    } catch (NoSuchFieldException | IllegalAccessException ex) {
+      return "<error_getting_pid>";
+    }
+  }
+
   /**
    * Send a code specified by its string representation to the specified process.
    * TODO: Use a JNR/JNR-Posix instead of forking the JVM to exec "kill".
@@ -581,7 +589,6 @@ public class TestUtils {
       } catch (InterruptedException ex) {
         throw new IOException("Interrupted while trying to run command: " + cmd, ex);
       }
-      CommandResult result;
       return new CommandResult(
           cmd,
           exitCode,
