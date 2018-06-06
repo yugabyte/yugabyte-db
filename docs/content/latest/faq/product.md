@@ -13,9 +13,9 @@ menu:
 
 ## When is YugaByte DB a good fit?
 
-YugaByte DB is a good fit for cloud-native applications needing to serve mission-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
+YugaByte DB is a good fit for cloud native applications that need to serve mission-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
-1. Online Transaction Processing (OLTP) applications needing multi-region availability without compromising strong consistency and . E.g. User identity, retail product catalog, financial data service.
+1. Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. E.g. User identity, Retail product catalog, Financial data service.
 
 2. Hybrid Transactional/Analytical Processing (HTAP), also known as Translytical, applications needing real-time analytics on transactional data. E.g User personalization, fraud detection, machine learning.
 
@@ -29,7 +29,7 @@ YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP
 
 ## Can I deploy YugaByte DB to production?
 
-Yes, YugaByte DB is production-ready starting with the 1.0 release in May 2018.
+Yes, YugaByte DB is [production-ready](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-f6e543d3a92b) starting with the 1.0 release in May 2018.
 
 ## What is the definition of the "Beta" feature tag?
 
@@ -45,7 +45,7 @@ Please do try our beta features and give feedback on them.
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked YugaByte Cassandra API against the standard Apache Cassandra using YCSB. YugaByte outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked YugaByte Cassandra API against the standard Apache Cassandra using YCSB. YugaByte DB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
 [Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugaByte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
 
@@ -61,22 +61,22 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 ## How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools. 
+[Community Edition](/quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools. 
 
-[Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
 A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/product/compare/).
 
 ## How does YugaByte DB compare to other SQL and NoSQL databases?
 
-See [YugaByte DB in Comparison](../../comparisons/)
+See [YugaByte DB in Comparison](/comparisons/)
 
-- [Apache Cassandra](../../comparisons/cassandra/)
-- [MongoDB](../../comparisons/mongodb/)
-- [Redis](../../comparisons/redis/)
-- [Apache HBase](../../comparisons/hbase/)
-- [Google Cloud Spanner](../../comparisons/google-spanner/)
-- [Azure Cosmos DB](../../comparisons/azure-cosmos/)
+- [Apache Cassandra](/comparisons/cassandra/)
+- [MongoDB](/comparisons/mongodb/)
+- [Redis](/comparisons/redis/)
+- [Apache HBase](/comparisons/hbase/)
+- [Google Cloud Spanner](/comparisons/google-spanner/)
+- [Azure Cosmos DB](/comparisons/azure-cosmos/)
 
 ## Why not use a Redis cluster alongside a sharded SQL cluster?
 

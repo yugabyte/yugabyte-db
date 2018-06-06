@@ -4,6 +4,7 @@ linkTitle: 2. Auto Sharding
 description: Auto Sharding
 aliases:
   - /explore/auto-sharding/
+  - /latest/explore/auto-sharding/
 menu:
   latest:
     identifier: auto-sharding

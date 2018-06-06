@@ -2,9 +2,10 @@
 title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
-beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /explore/json-documents/
+  - /latest/explore/json-documents/
 menu:
   latest:
     identifier: json-documents

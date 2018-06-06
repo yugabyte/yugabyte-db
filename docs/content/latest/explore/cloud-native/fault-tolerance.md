@@ -4,6 +4,7 @@ linkTitle: 2. Fault Tolerance
 description: Fault Tolerance
 aliases:
   - /explore/fault-tolerance/
+  - /latest/explore/fault-tolerance/
 menu:
   latest:
     identifier: fault-tolerance

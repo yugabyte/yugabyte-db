@@ -2,9 +2,10 @@
 title: 1. ACID Transactions
 linkTitle: 1. ACID Transactions
 description: Distributed ACID Transactions
-beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /explore/transactions/
+  - /latest/explore/transactions/
 menu:
   latest:
     identifier: transactions

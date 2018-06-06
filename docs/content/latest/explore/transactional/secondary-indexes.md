@@ -2,9 +2,10 @@
 title: 2. Secondary Indexes
 linkTitle: 2. Secondary Indexes
 description: Secondary Indexes
-beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /explore/secondary-indexes/
+  - /latest/explore/secondary-indexes/
 menu:
   latest:
     identifier: secondary-indexes

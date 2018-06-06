@@ -4,6 +4,7 @@ linkTitle: 1. Global Distribution
 description: Global Distribution
 aliases:
   - /explore/global-distribution/
+  - /latest/explore/global-distribution/
 menu:
   latest:
     identifier: global-distribution

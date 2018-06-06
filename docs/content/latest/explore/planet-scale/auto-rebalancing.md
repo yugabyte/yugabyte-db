@@ -4,6 +4,7 @@ linkTitle: 3. Auto Rebalancing
 description: Auto Rebalancing
 aliases:
   - /explore/auto-rebalancing/
+  - /latest/explore/auto-rebalancing/
 menu:
   latest:
     identifier: auto-rebalancing

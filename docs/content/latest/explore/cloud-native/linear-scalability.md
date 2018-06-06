@@ -4,6 +4,7 @@ linkTitle: 1. Linear Scalability
 description: Linear Scalability
 aliases:
   - /explore/linear-scalability/
+  - /latest/explore/linear-scalability/
 menu:
   latest:
     identifier: linear-scalability

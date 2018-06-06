@@ -4,6 +4,7 @@ linkTitle: Tunable Reads
 description: Tunable Read Latency
 aliases:
   - /explore/tunable-reads/
+  - /latest/explore/tunable-reads/
 menu:
   latest:
     identifier: tunable-reads
