@@ -154,19 +154,25 @@ Status TabletServer::ValidateMasterAddressResolution() const {
 }
 
 Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config) {
-  shared_ptr<vector<HostPort>> new_master_addresses = make_shared<vector<HostPort>>();
+  shared_ptr<vector<HostPort>> new_master_addresses =
+      make_shared<vector<HostPort>>(*(opts_.GetMasterAddresses().get()));
 
   SetCurrentMasterIndex(new_config.opid_index());
 
   for (const auto& peer : new_config.peers()) {
     HostPort hp = HostPortFromPB(peer.last_known_addr());
-    new_master_addresses->push_back(std::move(hp));
+    if (std::find(new_master_addresses->begin(), new_master_addresses->end(), hp) ==
+       new_master_addresses->end()) {
+      new_master_addresses->push_back(std::move(hp));
+    }
   }
-  opts_.SetMasterAddresses(new_master_addresses);
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " new masters="
-            << HostPort::ToCommaSeparatedString(*new_master_addresses.get());
+            << new_config.opid_index() << " old masters="
+            << HostPort::ToCommaSeparatedString(*(opts_.GetMasterAddresses().get()))
+            << " new masters=" << HostPort::ToCommaSeparatedString(*new_master_addresses.get());
+
+  opts_.SetMasterAddresses(new_master_addresses);
 
   heartbeater_->set_master_addresses(new_master_addresses);
 

@@ -33,9 +33,8 @@ package org.yb.client;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executor;
 import java.util.Map;
-import java.util.Collections;
+import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -643,6 +642,32 @@ public class YBClient implements AutoCloseable {
     Deferred<PingResponse> d = asyncClient.ping(HostAndPort.fromParts(host, port));
     d.join(getDefaultAdminOperationTimeoutMs());
     return true;
+  }
+
+  /**
+   * Set a gflag of a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to be set.
+   * @param value the value to set the flag to
+   * @return true if the server successfully set the flag
+   */
+  public boolean setFlag(HostAndPort hp, String flag, String value) throws Exception {
+    if (flag == null || flag.isEmpty() || value == null || value.isEmpty() || hp == null) {
+      LOG.warn("Invalid arguments for hp: {}, flag {}, or value: {}", hp.toString(), flag, value);
+      return false;
+    }
+    Deferred<SetFlagResponse> d = asyncClient.setFlag(hp, flag, value);
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   *  Get the list of master addresses from a given tserver.
+   * @param hp the host and port of the server
+   * @return a comma separated string containing the list of master addresses
+   */
+  public String getMasterAddresses(HostAndPort hp) throws Exception {
+    Deferred<GetMasterAddressesResponse> d = asyncClient.getMasterAddresses(hp);
+    return d.join(getDefaultAdminOperationTimeoutMs()).getMasterAddresses();
   }
 
   public interface Condition {

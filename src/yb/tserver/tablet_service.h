@@ -73,6 +73,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                    ListTabletsResponsePB* resp,
                    rpc::RpcContext context) override;
 
+  void GetMasterAddresses(const GetMasterAddressesRequestPB* req,
+                          GetMasterAddressesResponsePB* resp,
+                          rpc::RpcContext context) override;
+
   void ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
                                   ListTabletsForTabletServerResponsePB* resp,
                                   rpc::RpcContext context) override;

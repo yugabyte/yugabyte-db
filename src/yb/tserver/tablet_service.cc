@@ -1361,6 +1361,21 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetMasterAddresses(const GetMasterAddressesRequestPB* req,
+                                           GetMasterAddressesResponsePB* resp,
+                                           rpc::RpcContext context) {
+  string addrs_response = "";
+  for (const auto& addr : *server_->tablet_manager()->server()->options().GetMasterAddresses()) {
+    addrs_response += (addr.ToString() + ",");
+  }
+  // Remove the last ','.
+  if (!addrs_response.empty()) {
+    addrs_response.pop_back();
+  }
+  resp->set_master_addresses(addrs_response);
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLogLocation(
     const GetLogLocationRequestPB* req,
     GetLogLocationResponsePB* resp,
