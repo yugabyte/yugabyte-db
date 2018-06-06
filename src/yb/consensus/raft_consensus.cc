@@ -101,6 +101,7 @@ DEFINE_bool(do_not_start_election_test_only, false,
             "testing purposes.");
 TAG_FLAG(do_not_start_election_test_only, unsafe);
 TAG_FLAG(do_not_start_election_test_only, hidden);
+TAG_FLAG(do_not_start_election_test_only, runtime);
 
 DEFINE_bool(evict_failed_followers, true,
             "Whether to evict followers from the Raft config that have fallen "

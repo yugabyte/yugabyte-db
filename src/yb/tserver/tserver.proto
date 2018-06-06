@@ -323,3 +323,11 @@ message GetTabletStatusResponsePB {
   optional TabletServerErrorPB error = 1;
   optional tablet.TabletStatusPB tablet_status = 2;
 }
+
+message GetMasterAddressesRequestPB {
+}
+
+message GetMasterAddressesResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional string master_addresses = 2;
+}
