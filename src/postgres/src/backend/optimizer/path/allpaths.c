@@ -10,6 +10,22 @@
  * IDENTIFICATION
  *	  src/backend/optimizer/path/allpaths.c
  *
+ * The following only applies to changes made to this file as part of
+ * YugaByte development.
+ *
+ * Portions Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.  See the License for the specific language governing
+ * permissions and limitations under the License.
  *-------------------------------------------------------------------------
  */
 
@@ -18,11 +34,13 @@
 #include <limits.h>
 #include <math.h>
 
+#include "miscadmin.h"
 #include "access/sysattr.h"
 #include "access/tsmapi.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_database.h"
 #include "foreign/fdwapi.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -45,6 +63,9 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
+/*  YB includes. */
+#include "executor/ybc_fdw.h"
+#include "pg_yb_utils.h"
 
 /* results of subquery_is_pushdown_safe */
 typedef struct pushdown_safety_info
@@ -166,6 +187,23 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 			continue;
 
 		root->all_baserels = bms_add_member(root->all_baserels, brel->relid);
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		for (rti = 1; rti < root->simple_rel_array_size; rti++)
+		{
+			RelOptInfo *rel = root->simple_rel_array[rti];
+
+			if (rel != NULL && rel->rtekind == RTE_RELATION)
+			{
+				/*
+				 * set the yugabyte fdw routing because we will use a foreign
+				 * scan below.
+				 */
+				rel->fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+			}
+		}
 	}
 
 	/* Mark base rels as to whether we care about fast-start plans */
@@ -359,13 +397,27 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
+
+					/* TODO we don't support tablesample queries yet. */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+
 					/* Sampled relation */
 					set_tablesample_rel_size(root, rel, rte);
 				}
 				else
 				{
 					/* Plain relation */
-					set_plain_rel_size(root, rel, rte);
+					if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+					{
+						set_foreign_size(root, rel, rte);
+					}
+					else
+					{
+						/* Use regular scan for initdb tables. */
+						set_plain_rel_size(root, rel, rte);
+					}
 				}
 				break;
 			case RTE_SUBQUERY:
@@ -442,13 +494,30 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
+					/* TODO we don't support tablesample queries yet. */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+
 					/* Sampled relation */
 					set_tablesample_rel_pathlist(root, rel, rte);
 				}
 				else
 				{
 					/* Plain relation */
-					set_plain_rel_pathlist(root, rel, rte);
+					if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+					{
+						/*
+						 * Using a foreign scan which will use the YB FDW by
+						 * default.
+						 */
+						set_foreign_pathlist(root, rel, rte);
+					}
+					else
+					{
+						/* Use regular scan for initdb tables. */
+						set_plain_rel_pathlist(root, rel, rte);
+					}
 				}
 				break;
 			case RTE_SUBQUERY:
@@ -588,6 +657,12 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 					return;
 				if (!rel->fdwroutine->IsForeignScanParallelSafe(root, rel, rte))
 					return;
+			}
+
+			if (IsYugaByteEnabled())
+			{
+				/* If YB scan, disable parallelization for now. */
+				return;
 			}
 
 			/*

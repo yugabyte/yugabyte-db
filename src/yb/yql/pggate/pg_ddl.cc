@@ -169,7 +169,7 @@ PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
                          const char *schema_name,
                          const char *table_name,
                          bool if_exist)
-    : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
+    : PgDdl(pg_session, StmtOp::STMT_DROP_TABLE),
       table_name_(database_name, table_name),
       if_exist_(if_exist) {
 }

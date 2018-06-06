@@ -23,13 +23,56 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_type.h"
 #include "commands/ybctype.h"
+#include "parser/parse_type.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
-YBCPgDataType YBCDataTypeFromName(TypeName *typeName) {
-  // TODO(mihnea or neil) Pluggin correct type conversion.
-  //
-  // Prototype: Always return INT64 type (4).
-  return 4;
+/*
+ * TODO For now we use the CQL/YQL types here, eventually we should use the
+ * internal (protobuf) types.
+ */
+YBCPgDataType
+YBCDataTypeFromName(TypeName *typeName)
+{
+	Oid			typeId;
+	int32		typmod;
+
+	typenameTypeIdAndMod(NULL /* parseState */ , typeName, &typeId, &typmod);
+
+	if (typmod != -1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Type modifiers are not supported yet: %d", typmod)));
+	}
+
+	switch (typeId)
+	{
+		case INT2OID:
+			/* INT16 */
+			return 2;
+		case INT4OID:
+			/* INT32 */
+			return 3;
+		case INT8OID:
+			/* INT64 */
+			return 4;
+		case FLOAT4OID:
+			/* FLOAT */
+			return 7;
+		case FLOAT8OID:
+			/* DOUBLE */
+			return 8;
+		case TEXTOID:
+			/* STRING */
+			return 5;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Type not yet supported: %d", typeName->typeOid)));
+	}
+	return -1;
 }

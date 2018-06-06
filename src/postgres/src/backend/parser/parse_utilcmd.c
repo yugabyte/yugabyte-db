@@ -69,6 +69,8 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+// YB includes
+#include "pg_yb_utils.h"
 
 /* State shared by transformCreateStmt and its subroutines */
 typedef struct
@@ -353,6 +355,15 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	stmt->tableElts = cxt.columns;
 	stmt->constraints = cxt.ckconstraints;
+
+	/*
+	 * If YB is enabled, add the index constraints to the statement as they
+	 * might be passed down to YugaByte (e.g. as primary key).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
+	}
 
 	result = lappend(cxt.blist, stmt);
 	result = list_concat(result, cxt.alist);
