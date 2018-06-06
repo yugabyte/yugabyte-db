@@ -71,6 +71,11 @@ DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
+DEFINE_bool(tserver_disable_heartbeat_test_only, false, "Should heartbeat be disabled");
+TAG_FLAG(tserver_disable_heartbeat_test_only, unsafe);
+TAG_FLAG(tserver_disable_heartbeat_test_only, hidden);
+TAG_FLAG(tserver_disable_heartbeat_test_only, runtime);
+
 using google::protobuf::RepeatedPtrField;
 using yb::HostPortPB;
 using yb::consensus::RaftPeerPB;
@@ -464,6 +469,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
 Status Heartbeater::Thread::DoHeartbeat() {
   if (PREDICT_FALSE(server_->fail_heartbeats_for_tests())) {
     return STATUS(IOError, "failing all heartbeats for tests");
+  }
+
+  if (PREDICT_FALSE(FLAGS_tserver_disable_heartbeat_test_only)) {
+    LOG(INFO) << "Heartbeat disabled for testing.";
+    return Status::OK();
   }
 
   CHECK(IsCurrentThread());

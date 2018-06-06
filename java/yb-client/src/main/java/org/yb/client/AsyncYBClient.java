@@ -293,6 +293,34 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<SetFlagResponse> setFlag(final HostAndPort hp, String flag, String value) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    SetFlagRequest rpc = new SetFlagRequest(flag, value);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<SetFlagResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  public Deferred<GetMasterAddressesResponse> getMasterAddresses(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetMasterAddressesRequest rpc = new GetMasterAddressesRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetMasterAddressesResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
   /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.

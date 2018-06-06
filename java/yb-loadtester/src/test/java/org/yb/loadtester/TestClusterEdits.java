@@ -12,7 +12,12 @@
 //
 package org.yb.loadtester;
 
+import com.google.common.net.HostAndPort;
+
 import org.junit.Test;
+import org.yb.minicluster.MiniYBCluster;
+
+import java.util.*;
 
 /**
  * This is an integration test that ensures we can expand, shrink and fully move a YB cluster
@@ -45,6 +50,63 @@ public class TestClusterEdits extends TestClusterBase {
 
     // Now perform a tserver expand and shrink.
     performTServerExpandShrink(false);
+
+    verifyClusterHealth();
+  }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
+  public void testRF3toRF5() throws Exception {
+    performRFChange(3, 5);
+  }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
+  public void testClusterFullMoveWithHeartbeatDelay() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
+
+    Set<HostAndPort> oldMasters = new HashSet<>(miniCluster.getMasters().keySet());
+    Iterator<HostAndPort> oldMasterIter = oldMasters.iterator();
+    Iterator<HostAndPort> newMasterIter = startNewMasters(3).iterator();
+
+    // Now perform a full tserver move.
+    performTServerExpandShrink(true);
+
+    HostAndPort oldMaster = oldMasterIter.next();
+    HostAndPort newMaster = newMasterIter.next();
+
+    addMaster(newMaster);
+
+    // Prevent this master from becoming leader.
+    boolean status = client.setFlag(newMaster, "do_not_start_election_test_only", "true");
+    assert(status);
+
+    // Disable heartbeats for all tservers.
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "true");
+      assert(status);
+    }
+    removeMaster(oldMaster);
+
+    performFullMasterMove(oldMasterIter, newMasterIter);
+
+    // Enable heartbeats for old masters again.
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "false");
+      assert(status);
+    }
+
+    // Wait for tservers to get heartbeat from new master.
+    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS * 2);
+
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      String masters = client.getMasterAddresses(hp);
+      // Assert each tserver knows about the full list of all 6 masters.
+      assert(masters.split(",").length == 6);
+    }
+
+    // Wait for some ops and verify no failures in load tester.
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
+    loadTesterRunnable.verifyNumExceptions();
 
     verifyClusterHealth();
   }

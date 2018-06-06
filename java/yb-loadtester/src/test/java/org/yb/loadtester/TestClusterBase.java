@@ -334,6 +334,62 @@ public class TestClusterBase extends BaseCQLTest {
     }
   }
 
+  public Set<HostAndPort> startNewMasters(int numMasters) throws Exception {
+    Set<HostAndPort> newMasters = new HashSet<>();
+    for (int i = 0; i < numMasters; i++) {
+      // Add new master.
+      HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+
+      newMasters.add(masterRpcHostPort);
+      // Wait for new master to be online.
+      assertTrue(client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS));
+
+      LOG.info("New master online: " + masterRpcHostPort.toString());
+    }
+    return newMasters;
+  }
+
+  protected void addMaster(HostAndPort newMaster) throws Exception {
+    ChangeConfigResponse response = client.changeMasterConfig(newMaster.getHostText(),
+        newMaster.getPort(), true);
+    assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
+
+    LOG.info("Added new master to config: " + newMaster.toString());
+
+    // Wait for hearbeat interval to ensure tservers pick up the new masters.
+    Thread.sleep(4 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+  }
+
+  protected void removeMaster(HostAndPort oldMaster) throws Exception {
+    // Remove old master.
+    ChangeConfigResponse response =
+        client.changeMasterConfig(oldMaster.getHostText(), oldMaster.getPort(), false);
+    assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
+
+    LOG.info("Removed old master from config: " + oldMaster.toString());
+
+    // Wait for the new leader to be online.
+    client.waitForMasterLeader(NEW_MASTER_TIMEOUT_MS);
+    LOG.info("Done waiting for new leader");
+
+    // Kill the old master.
+    miniCluster.killMasterOnHostPort(oldMaster);
+
+    LOG.info("Killed old master: " + oldMaster.toString());
+
+    // Verify no load tester errors.
+    loadTesterRunnable.verifyNumExceptions();
+  }
+
+  public void performFullMasterMove(
+      Iterator<HostAndPort> oldMastersIter, Iterator<HostAndPort> newMastersIter) throws Exception {
+    while (newMastersIter.hasNext() && oldMastersIter.hasNext()) {
+      addMaster(newMastersIter.next());
+      removeMaster(oldMastersIter.next());
+    }
+    assert(!newMastersIter.hasNext() && !oldMastersIter.hasNext());
+  }
+
   protected void addNewTServers(int numTservers) throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + numTservers;
     // Now double the number of tservers to expand the cluster and verify load spreads.
