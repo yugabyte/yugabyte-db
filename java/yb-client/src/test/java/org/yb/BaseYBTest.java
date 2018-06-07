@@ -131,7 +131,13 @@ public class BaseYBTest {
           },
           () -> {
             // Use a separate output file for each test method.
-            String outputPrefix = TestUtils.getTestReportFilePrefix();
+            String outputPrefix;
+            try {
+              outputPrefix = TestUtils.getTestReportFilePrefix();
+            } catch (Exception ex) {
+              LOG.info("Error when looking up report file prefix for test " + descStr, ex);
+              throw ex;
+            }
             String stdoutPath = outputPrefix + "stdout.txt";
             String stderrPath = outputPrefix + "stderr.txt";
             LOG.info("Writing stdout for test " + descStr + " to " + stdoutPath);
