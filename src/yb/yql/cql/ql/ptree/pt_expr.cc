@@ -642,8 +642,8 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       } else if (strcmp(bcall->name()->c_str(), "ttl") == 0 ||
                  strcmp(bcall->name()->c_str(), "writetime") == 0 ||
                  strcmp(bcall->name()->c_str(), "cql_cast") == 0) {
-        PTBcall::SharedPtr ttl_shared = std::make_shared<PTBcall>(*bcall);
-        return where_state->AnalyzeColumnFunction(sem_context, this, op2, ttl_shared);
+        PTBcall::SharedPtr bcall_shared = std::make_shared<PTBcall>(*bcall);
+        return where_state->AnalyzeColumnFunction(sem_context, this, op2, bcall_shared);
       } else {
         return sem_context->Error(loc(), "Builtin call not allowed in where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
