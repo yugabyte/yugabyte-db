@@ -298,7 +298,7 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
   ColumnOpCounter& counter = op_counters_->at(col_desc->index());
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
-      counter.increase_eq();
+      counter.increase_eq(col_args != nullptr);
       if (!counter.isValid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
             ErrorCode::CQL_STATEMENT_INVALID);
@@ -352,9 +352,9 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       // Check for illogical conditions.
       if (col_args == nullptr) { // subcolumn conditions don't affect the condition counter.
         if (expr->ql_op() == QL_OP_LESS_THAN || expr->ql_op() == QL_OP_LESS_THAN_EQUAL) {
-          counter.increase_lt();
+          counter.increase_lt(col_args != nullptr);
         } else {
-          counter.increase_gt();
+          counter.increase_gt(col_args != nullptr);
         }
 
         if (!counter.isValid()) {
@@ -420,7 +420,7 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
             ErrorCode::CQL_STATEMENT_INVALID);
       }
 
-      counter.increase_in();
+      counter.increase_in(col_args != nullptr);
       if (!counter.isValid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -451,6 +451,8 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
     case QL_OP_LESS_THAN_EQUAL:
     case QL_OP_EQUAL:
     case QL_OP_GREATER_THAN_EQUAL:
+    case QL_OP_IN:
+    case QL_OP_NOT_IN:
     case QL_OP_GREATER_THAN: {
       func_ops_->emplace_back(value, call, expr->ql_op());
       break;

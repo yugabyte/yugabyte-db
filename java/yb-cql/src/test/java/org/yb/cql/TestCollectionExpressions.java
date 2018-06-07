@@ -704,6 +704,16 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("x", list.get(0));
       assertEquals("y1", list.get(1));
 
+      // Test update list with true equality condition
+      session.execute(String.format(update_template,
+          "vl[1] = 'y2'", 1, "vl[1] = 'y1' AND vl[0] = 'x'"));
+      // Checking row -- should apply.
+      row = runSelect(String.format(select_template, 2, 1)).next();
+      list = row.getList("vl", String.class);
+      assertEquals(2, list.size());
+      assertEquals("x", list.get(0));
+      assertEquals("y2", list.get(1));
+
       // Test update list with false equality condition
       session.execute(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] = 'y'"));
       // Checking row -- should do nothing.
@@ -711,29 +721,33 @@ public class TestCollectionExpressions extends BaseCQLTest {
       list = row.getList("vl", String.class);
       assertEquals(2, list.size());
       assertEquals("x", list.get(0));
-      assertEquals("y1", list.get(1));
+      assertEquals("y2", list.get(1));
 
       // Test update list with true inequality condition
-      session.execute(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] >= 'y1'"));
+      session.execute(String.format(update_template, "vl[1] = 'y3'", 1, "vl[1] >= 'y1'"));
+      // Checking row -- should apply.
+      row = runSelect(String.format(select_template, 2, 1)).next();
+      list = row.getList("vl", String.class);
+      assertEquals(2, list.size());
+      assertEquals("x", list.get(0));
+      assertEquals("y3", list.get(1));
+
+      // Test update list with true inequality condition
+      session.execute(String.format(update_template, "vl[1] = 'y4'", 1, "vl[1] < 'y2'"));
       // Checking row -- should do nothing.
       row = runSelect(String.format(select_template, 2, 1)).next();
       list = row.getList("vl", String.class);
       assertEquals(2, list.size());
       assertEquals("x", list.get(0));
-      assertEquals("y2", list.get(1));
-
-      // Test update list with true inequality condition
-      session.execute(String.format(update_template, "vl[1] = 'y3'", 1, "vl[1] < 'y2'"));
-      // Checking row -- should do nothing.
-      row = runSelect(String.format(select_template, 2, 1)).next();
-      list = row.getList("vl", String.class);
-      assertEquals(2, list.size());
-      assertEquals("x", list.get(0));
-      assertEquals("y2", list.get(1));
+      assertEquals("y3", list.get(1));
 
       // Invalid Stmt: compare with null
       runInvalidStmt(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] > null"));
       runInvalidStmt(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] <= null"));
+
+      // Invalid Stmt: subscript column and regular column used together.
+      runInvalidStmt(String.format(update_template,
+          "vl[1] = 'y4'", 1, "vl[1] < 'y2' AND vl = ['x', 'y']"));
     }
 
     //----------------------------------------------------------------------------------------------
@@ -778,6 +792,26 @@ public class TestCollectionExpressions extends BaseCQLTest {
       // expecting no rows
       assertFalse(it.hasNext());
 
+      // Test select with multiple where conditions
+      it = runSelect(String.format(select_template, 1, "vm[2] = 'b' AND vm[3] = 'c'"));
+      // expecting one row
+      row = it.next();
+      // Checking row
+      list = row.getList("vl", String.class);
+      assertEquals(2, list.size());
+      assertEquals("x", list.get(0));
+      assertEquals("y", list.get(1));
+      assertFalse(it.hasNext());
+
+      it = runSelect(String.format(select_template, 1, "vm[2] = 'b' AND vl[0] <= 'y'"));
+      // expecting one row
+      row = it.next();
+      list = row.getList("vl", String.class);
+      assertEquals(2, list.size());
+      assertEquals("x", list.get(0));
+      assertEquals("y", list.get(1));
+      assertFalse(it.hasNext());
+
       // Invalid Stmt: wrong type.
       runInvalidStmt(String.format(select_template, 1, "vm[2] = 3"));
       runInvalidStmt(String.format(select_template, 1, "vm[2] = {3 : 'a'}"));
@@ -786,6 +820,9 @@ public class TestCollectionExpressions extends BaseCQLTest {
 
       // Invalid Stmt: set indexing not allowed.
       runInvalidStmt(String.format(select_template, 1, "vs[2] = ''"));
+
+      // Invalid where statements, can't mix regular column and column with index.
+      runInvalidStmt(String.format(select_template, 1, "vl[0] <= 'y' AND vl = ['x', 'y']"));
     }
   }
 
