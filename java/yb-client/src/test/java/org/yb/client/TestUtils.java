@@ -611,9 +611,14 @@ public class TestUtils {
               "in a 'test-classes' directory");
     }
     File surefireDir = new File(new File(testClassesDir).getParent(), "surefire-reports");
-    if (!surefireDir.exists()) {
-      throw new RuntimeException(
-          "Surefire report directory '" + surefireDir + "' does not exist");
+    if (!surefireDir.isDirectory()) {
+      LOG.warn("Directory " + surefireDir + " does not exist, attempting to create");
+      if (!surefireDir.mkdirs() && !surefireDir.isDirectory()) {
+        LOG.warn("Still could not create directory " + surefireDir);
+        throw new RuntimeException(
+            "Surefire report directory '" + surefireDir +
+                "' does not exist and could not be created");
+      }
     }
     return new File(
         surefireDir,
