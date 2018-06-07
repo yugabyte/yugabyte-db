@@ -33,6 +33,7 @@
 #include "yb/util/semaphore.h"
 
 #include <semaphore.h>
+#include <condition_variable>
 #include <glog/logging.h>
 #include "yb/gutil/walltime.h"
 
@@ -41,47 +42,51 @@ namespace yb {
 Semaphore::Semaphore(int capacity)
   : count_(capacity) {
   DCHECK_GE(capacity, 0);
-  sem_ = dispatch_semaphore_create(capacity);
-  CHECK_NOTNULL(sem_);
+
 }
 
 Semaphore::~Semaphore() {
-  dispatch_release(sem_);
 }
 
 void Semaphore::Acquire() {
-  // If the timeout is DISPATCH_TIME_FOREVER, then dispatch_semaphore_wait()
-  // waits forever and always returns zero.
-  CHECK(dispatch_semaphore_wait(sem_, DISPATCH_TIME_FOREVER) == 0);
-  count_.IncrementBy(-1);
+  std::unique_lock<std::mutex> lock(mutex_);
+  cv_.wait(lock, [this] { return count_.load() > 0; });
+  CHECK_GT(count_.load(), 0);
+  count_.fetch_sub(1);
 }
 
 bool Semaphore::TryAcquire() {
-  // The dispatch_semaphore_wait() function returns zero upon success and
-  // non-zero after the timeout expires.
-  if (dispatch_semaphore_wait(sem_, DISPATCH_TIME_NOW) == 0) {
-    count_.IncrementBy(-1);
-    return true;
+  if (count_.load() > 0) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (count_.load() > 0) {
+      count_.fetch_sub(1);
+      return true;
+    }
   }
   return false;
 }
 
 bool Semaphore::TimedAcquire(const MonoDelta& timeout) {
-  dispatch_time_t t = dispatch_time(DISPATCH_TIME_NOW, timeout.ToNanoseconds());
-  if (dispatch_semaphore_wait(sem_, t) == 0) {
-    count_.IncrementBy(-1);
-    return true;
+  auto time_stop = MonoTime::Now();
+  time_stop.AddDelta(timeout);
+  std::unique_lock<std::mutex> lock(mutex_);
+  if (!cv_.wait_until(lock, time_stop.ToSteadyTimePoint(), [this] { return count_.load() > 0; })) {
+    return false;
   }
-  return false;
+  CHECK_GT(count_.load(), 0);
+  count_.fetch_sub(1);
+  return true;
 }
 
 void Semaphore::Release() {
-  dispatch_semaphore_signal(sem_);
-  count_.IncrementBy(1);
+  std::unique_lock<std::mutex> lock(mutex_);
+  CHECK_GE(count_.load(), 0);
+  count_.fetch_add(1);
+  cv_.notify_all();
 }
 
 int Semaphore::GetValue() {
-  return count_.Load();
+  return count_.load();
 }
 
 } // namespace yb

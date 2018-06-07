@@ -79,8 +79,10 @@ class Semaphore {
 #endif  // !define(__APPLE__)
 
 #if defined(__APPLE__)
-  dispatch_semaphore_t sem_;
-  AtomicInt<int32_t> count_;
+  std::atomic<int32_t> count_;
+  std::condition_variable cv_;
+  // Mutex to use with the condition variable cv_.
+  std::mutex mutex_;
 #else
   sem_t sem_;
 #endif  // define(__APPLE__)
