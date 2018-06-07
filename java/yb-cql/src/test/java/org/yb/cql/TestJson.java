@@ -33,8 +33,9 @@ public class TestJson extends BaseCQLTest {
   }
 
   private void verifyResultSet(ResultSet rs) {
-    assertEquals(1, rs.getAvailableWithoutFetching());
-    Row row = rs.one();
+    List<Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    Row row = rows.get(0);
     JSONObject jsonObject = new JSONObject(row.getJson("c2"));
     assertEquals(1, jsonObject.getInt("b"));
     assertEquals(false, jsonObject.getJSONArray("a1").getBoolean(3));
@@ -105,6 +106,10 @@ public class TestJson extends BaseCQLTest {
         "'4294967295'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->>'p' = " +
         "'4294967295'"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->>'p' = " +
+        "'4294967295' AND c1 = 1"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c1 = 1 AND c2->'a'->'q'->>'p' " +
+        "= '4294967295'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->5->'k2'->1 = '200'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->5->'k3' = 'true'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a1'->0 = '1'"));
@@ -127,28 +132,61 @@ public class TestJson extends BaseCQLTest {
     testScalar("null", 6);
     testScalar("2.0", 7);
     assertEquals(2, session.execute("SELECT * FROM test_json WHERE c2->'b' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
+
+    // Test multiple where expressions.
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'g' = '-100' " +
+        "AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) = 2.0"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST (c2->'a'->>'g' as " +
+        "integer) < 0 AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) > 1.0"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST (c2->'a'->>'g' as " +
+        "integer) <= -100 AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) >= 2.0"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'g' as integer)" +
+        " IN (-100, -200) AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) IN (1.0, 2.0)"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'g' as integer)" +
+        " NOT IN (-10, -200) AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) IN (1.0, 2.0)"));
+
+    // Test negative where expressions.
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->'g' = '-90' " +
+        "AND c1 = 1").all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->'g' = '-90' " +
+        "AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) = 2.0").all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST (c2->'a'->>'g' as " +
+        "integer) < 0 AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) < 1.0").all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST (c2->'a'->>'g' as " +
+        "integer) <= -110 AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) >= 2.0").
+        all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'g' as integer)" +
+        " IN (-100, -200) AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) IN (1.0, 2.3)")
+        .all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'g' as integer)" +
+        " IN (-100, -200) AND c2->'b' = '1' AND CAST(c2->'a'->>'x' as double) NOT IN (1.0, 2.0)")
+        .all().size());
+
+    // Test invalid where expressions.
+    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->'g' = '-100' AND c2 = '{}'");
+    runInvalidStmt("SELECT * FROM test_json WHERE c2 = '{} AND c2->'a'->'g' = '-100'");
 
     // Test invalid operators. We should never return errors, just return an empty result (this
     // is what postgres does).
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'b'->'c' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'z' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->2 = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->2 = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a1'->'b' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a1'->6 = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a2'->'a' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->'a' = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a3'->2 = '1'")
-        .getAvailableWithoutFetching());
+        .all().size());
 
     // Test invalid rhs for where clause.
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a1'->5->'k2'->1 = 200");
@@ -229,9 +267,9 @@ public class TestJson extends BaseCQLTest {
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a1'->5->'k2'->>1 as " +
         "integer) = 200"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'x' as float) =" +
-        " 2.000000"));
+        " 2.0"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->>'x' as double) " +
-        "= 2.000000"));
+        "= 2.0"));
 
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
         "bigint) >= 4294967295"));
@@ -243,13 +281,13 @@ public class TestJson extends BaseCQLTest {
         "bigint) < 4294967297"));
 
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
-        "bigint) >= 4294967297").getAvailableWithoutFetching());
+        "bigint) >= 4294967297").all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
-        "bigint) > 4294967298").getAvailableWithoutFetching());
+        "bigint) > 4294967298").all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
-        "bigint) = 100").getAvailableWithoutFetching());
+        "bigint) = 100").all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
-        "bigint) < 99").getAvailableWithoutFetching());
+        "bigint) < 99").all().size());
 
     // Invalid cast types.
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as boolean) = 123");
@@ -268,7 +306,8 @@ public class TestJson extends BaseCQLTest {
     session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '100' WHERE c1 = 1");
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
         "'100'"));
-    session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '\"100\"' WHERE c1 = 1");
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '\"100\"' WHERE c1 = 1 IF " +
+        "c2->'a'->'q'->'s' = '2147483647' AND c2->'a'->'q'->'r' = '-2147483648'");
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
         "'\"100\"'"));
     session.execute("UPDATE test_json SET c2->'a1'->5->'k2'->2 = '2000' WHERE c1 = 1");
@@ -282,6 +321,12 @@ public class TestJson extends BaseCQLTest {
         "WHERE c1 = 1");
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = " +
         "'{\"y1\": 1, \"y2\": {\"z1\" : 1}}'"));
+
+    // Test updates that don't apply.
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'p' = '\"200\"' WHERE c1 = 1 IF " +
+        "c2->'a'->'q'->'s' = '2' AND c2->'a'->'q'->'r' = '-2147483648'");
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'\"200\"'").all().size());
 
     // Invalid updates.
     // Invalid rhs (needs to be valid json)
@@ -316,5 +361,18 @@ public class TestJson extends BaseCQLTest {
         " = 1");
     // Subscript args with json not allowed.
     runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'r' = '200', c2[0] = '1' WHERE c1 = 1");
+
+    // Test delete with conditions.
+    // Test deletes that don't apply.
+    session.execute("DELETE FROM test_json WHERE c1 = 1 IF " +
+        "c2->'a'->'q'->'s' = '200' AND c2->'a'->'q'->'r' = '-2147483648'");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'\"100\"'"));
+
+    // Test delete that applies.
+    session.execute("DELETE FROM test_json WHERE c1 = 1 IF " +
+        "c2->'a'->'q'->'s' = '2147483647' AND c2->'a'->'q'->'r' = '200'");
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
+        "'\"100\"'").all().size());
   }
 }
