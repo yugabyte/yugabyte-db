@@ -196,7 +196,6 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
         jedis_client = new YBJedis(contactPoints, JEDIS_SOCKET_TIMEOUT_MS);
         break;
     }
-
   }
 
   public BaseJedisTest(JedisClientType jedisClientType) {
