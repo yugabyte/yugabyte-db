@@ -101,6 +101,10 @@ DEFINE_int32(redis_callbacks_threadpool_size, 64,
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
+
 using yb::client::YBRedisOp;
 using yb::client::YBRedisReadOp;
 using yb::client::YBRedisWriteOp;
@@ -869,6 +873,16 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     client_builder.set_metric_entity(server_->metric_entity());
     client_builder.set_parent_mem_tracker(server_->mem_tracker());
     client_builder.set_callback_threadpool_size(FLAGS_redis_callbacks_threadpool_size);
+    if (server_->tserver() != nullptr && !server_->tserver()->permanent_uuid().empty()) {
+      client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
+    }
+
+    CloudInfoPB cloud_info_pb;
+    cloud_info_pb.set_placement_cloud(FLAGS_placement_cloud);
+    cloud_info_pb.set_placement_region(FLAGS_placement_region);
+    cloud_info_pb.set_placement_zone(FLAGS_placement_zone);
+    client_builder.set_cloud_info_pb(cloud_info_pb);
+
     RETURN_NOT_OK(client_builder.Build(&client_));
 
     // Add proxy to call local tserver if available.

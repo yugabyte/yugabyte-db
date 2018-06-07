@@ -66,8 +66,16 @@
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
+
+DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that SelectTServer "
+                 "selected the local tablet server. Also verify that ReplicaSelection is equal "
+                 "to CLOSEST_REPLICA");
+
+DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "", "Verify that SelectTServer "
+                 "selected a talet server in the AZ specified by this flag.");
 
 DECLARE_string(flagfile);
 
@@ -282,6 +290,12 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
                                                   vector<RemoteTabletServer*>* candidates) {
   RemoteTabletServer* ret = nullptr;
   candidates->clear();
+  if (PREDICT_FALSE(FLAGS_assert_local_tablet_server_selected ||
+                    !FLAGS_assert_tablet_server_select_is_in_zone.empty()) &&
+      selection != CLOSEST_REPLICA) {
+    LOG(FATAL) << "Invalid ReplicaSelection " << selection;
+  }
+
   switch (selection) {
     case LEADER_ONLY: {
       ret = rt->LeaderTServer();
@@ -343,6 +357,24 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     default:
       FATAL_INVALID_ENUM_VALUE(ReplicaSelection, selection);
+  }
+  if (PREDICT_FALSE(FLAGS_assert_local_tablet_server_selected) && !IsTabletServerLocal(*ret)) {
+    LOG(FATAL) << "Selected replica is not the local tablet server";
+  }
+  if (PREDICT_FALSE(!FLAGS_assert_tablet_server_select_is_in_zone.empty())) {
+    if (ret->cloud_info().placement_zone() != FLAGS_assert_tablet_server_select_is_in_zone) {
+      string msg = Substitute("\nZone placement:\nNumber of candidates: $0\n", candidates->size());
+      for (RemoteTabletServer* rts : *candidates) {
+        msg += Substitute("Replica: $0 in zone $1\n",
+                          rts->ToString(), rts->cloud_info().placement_zone());
+      }
+      LOG(FATAL) << "Selected replica " << ret->ToString()
+                 << " is in zone " << ret->cloud_info().placement_zone()
+                 << " instead of the expected zone "
+                 << FLAGS_assert_tablet_server_select_is_in_zone
+                 << " Cloud info: " << cloud_info_pb_.ShortDebugString()
+                 << msg;
+    }
   }
 
   return ret;
