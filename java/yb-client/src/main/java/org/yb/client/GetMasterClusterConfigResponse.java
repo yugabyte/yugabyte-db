@@ -21,7 +21,7 @@ public class GetMasterClusterConfigResponse extends YRpcResponse {
   private Master.SysClusterConfigEntryPB clusterConfig;
   private Master.MasterErrorPB serverError;
 
-  GetMasterClusterConfigResponse(
+  public GetMasterClusterConfigResponse(
       long ellapsedMillis, String masterUUID, Master.SysClusterConfigEntryPB config,
       Master.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
