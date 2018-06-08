@@ -2836,6 +2836,7 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
 			query_len = strlen(query_str) + 1;
 			normalized_query =
 				generate_normalized_query(&jstate, query_str,
+										  query->stmt_location,
 										  &query_len,
 										  GetDatabaseEncoding());
 

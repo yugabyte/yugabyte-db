@@ -2,9 +2,9 @@
  *
  * pg_stat_statements.c
  * 
- * Part of pg_stat_statements.c in PostgreSQL 9.5.
+ * Part of pg_stat_statements.c in PostgreSQL 10.
  *
- * Copyright (c) 2008-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2017, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,10 @@ static void JumbleQuery(pgssJumbleState *jstate, Query *query);
 static void JumbleRangeTable(pgssJumbleState *jstate, List *rtable);
 static void JumbleExpr(pgssJumbleState *jstate, Node *node);
 static void RecordConstLocation(pgssJumbleState *jstate, int location);
-static void fill_in_constant_lengths(pgssJumbleState *jstate, const char *query);
+static char *generate_normalized_query(pgssJumbleState *jstate, const char *query,
+						  int query_loc, int *query_len_p, int encoding);
+static void fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
+						 int query_loc);
 static int	comp_location(const void *a, const void *b);
 
 /*
@@ -113,9 +116,8 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 
 	foreach(lc, rtable)
 	{
-		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
 
-		Assert(IsA(rte, RangeTblEntry));
 		APP_JUMB(rte->rtekind);
 		switch (rte->rtekind)
 		{
@@ -132,6 +134,9 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 			case RTE_FUNCTION:
 				JumbleExpr(jstate, (Node *) rte->functions);
 				break;
+			case RTE_TABLEFUNC:
+				JumbleExpr(jstate, (Node *) rte->tablefunc);
+				break;
 			case RTE_VALUES:
 				JumbleExpr(jstate, (Node *) rte->values_lists);
 				break;
@@ -143,6 +148,9 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 				 */
 				APP_JUMB_STRING(rte->ctename);
 				APP_JUMB(rte->ctelevelsup);
+				break;
+			case RTE_NAMEDTUPLESTORE:
+				APP_JUMB_STRING(rte->enrname);
 				break;
 			default:
 				elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind);
@@ -210,6 +218,10 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(p->paramkind);
 				APP_JUMB(p->paramid);
 				APP_JUMB(p->paramtype);
+				/* Also, track the highest external Param id */
+				if (p->paramkind == PARAM_EXTERN &&
+					p->paramid > jstate->highest_extern_param_id)
+					jstate->highest_extern_param_id = p->paramid;
 			}
 			break;
 		case T_Aggref:
@@ -301,7 +313,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(sublink->subLinkType);
 				APP_JUMB(sublink->subLinkId);
 				JumbleExpr(jstate, (Node *) sublink->testexpr);
-				JumbleQuery(jstate, (Query *) sublink->subselect);
+				JumbleQuery(jstate, castNode(Query, sublink->subselect));
 			}
 			break;
 		case T_FieldSelect:
@@ -367,9 +379,8 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) caseexpr->arg);
 				foreach(temp, caseexpr->args)
 				{
-					CaseWhen   *when = (CaseWhen *) lfirst(temp);
+					CaseWhen   *when = lfirst_node(CaseWhen, temp);
 
-					Assert(IsA(when, CaseWhen));
 					JumbleExpr(jstate, (Node *) when->expr);
 					JumbleExpr(jstate, (Node *) when->result);
 				}
@@ -407,6 +418,15 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 
 				APP_JUMB(mmexpr->op);
 				JumbleExpr(jstate, (Node *) mmexpr->args);
+			}
+			break;
+		case T_SQLValueFunction:
+			{
+				SQLValueFunction *svf = (SQLValueFunction *) node;
+
+				APP_JUMB(svf->op);
+				/* type is fully determined by op */
+				APP_JUMB(svf->typmod);
 			}
 			break;
 		case T_XmlExpr:
@@ -464,6 +484,14 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				if (ce->cursor_name)
 					APP_JUMB_STRING(ce->cursor_name);
 				APP_JUMB(ce->cursor_param);
+			}
+			break;
+		case T_NextValueExpr:
+			{
+				NextValueExpr *nve = (NextValueExpr *) node;
+
+				APP_JUMB(nve->seqid);
+				APP_JUMB(nve->typeId);
 			}
 			break;
 		case T_InferenceElem:
@@ -572,7 +600,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 
 				/* we store the string name because RTE_CTE RTEs need it */
 				APP_JUMB_STRING(cte->ctename);
-				JumbleQuery(jstate, (Query *) cte->ctequery);
+				JumbleQuery(jstate, castNode(Query, cte->ctequery));
 			}
 			break;
 		case T_SetOperationStmt:
@@ -590,6 +618,15 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				RangeTblFunction *rtfunc = (RangeTblFunction *) node;
 
 				JumbleExpr(jstate, rtfunc->funcexpr);
+			}
+			break;
+		case T_TableFunc:
+			{
+				TableFunc  *tablefunc = (TableFunc *) node;
+
+				JumbleExpr(jstate, tablefunc->docexpr);
+				JumbleExpr(jstate, tablefunc->rowexpr);
+				JumbleExpr(jstate, (Node *) tablefunc->colexprs);
 			}
 			break;
 		case T_TableSampleClause:
@@ -643,32 +680,48 @@ RecordConstLocation(pgssJumbleState *jstate, int location)
  * just which "equivalent" query is used to create the hashtable entry.
  * We assume this is OK.
  *
+ * If query_loc > 0, then "query" has been advanced by that much compared to
+ * the original string start, so we need to translate the provided locations
+ * to compensate.  (This lets us avoid re-scanning statements before the one
+ * of interest, so it's worth doing.)
+ *
  * *query_len_p contains the input string length, and is updated with
- * the result string length (which cannot be longer) on exit.
+ * the result string length on exit.  The resulting string might be longer
+ * or shorter depending on what happens with replacement of constants.
  *
  * Returns a palloc'd string.
  */
 static char *
 generate_normalized_query(pgssJumbleState *jstate, const char *query,
-						  int *query_len_p, int encoding)
+						  int query_loc, int *query_len_p, int encoding)
 {
 	char	   *norm_query;
 	int			query_len = *query_len_p;
 	int			i,
+				norm_query_buflen,	/* Space allowed for norm_query */
 				len_to_wrt,		/* Length (in bytes) to write */
 				quer_loc = 0,	/* Source query byte location */
 				n_quer_loc = 0, /* Normalized query byte location */
 				last_off = 0,	/* Offset from start for previous tok */
-				last_tok_len = 0;		/* Length (in bytes) of that tok */
+				last_tok_len = 0;	/* Length (in bytes) of that tok */
 
 	/*
 	 * Get constants' lengths (core system only gives us locations).  Note
 	 * this also ensures the items are sorted by location.
 	 */
-	fill_in_constant_lengths(jstate, query);
+	fill_in_constant_lengths(jstate, query, query_loc);
+
+	/*
+	 * Allow for $n symbols to be longer than the constants they replace.
+	 * Constants must take at least one byte in text form, while a $n symbol
+	 * certainly isn't more than 11 bytes, even if n reaches INT_MAX.  We
+	 * could refine that limit based on the max value of n for the current
+	 * query, but it hardly seems worth any extra effort to do so.
+	 */
+	norm_query_buflen = query_len + jstate->clocations_count * 10;
 
 	/* Allocate result buffer */
-	norm_query = palloc(query_len + 1);
+	norm_query = palloc(norm_query_buflen + 1);
 
 	for (i = 0; i < jstate->clocations_count; i++)
 	{
@@ -676,6 +729,9 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
 					tok_len;	/* Length (in bytes) of that tok */
 
 		off = jstate->clocations[i].location;
+		/* Adjust recorded location if we're dealing with partial string */
+		off -= query_loc;
+
 		tok_len = jstate->clocations[i].length;
 
 		if (tok_len < 0)
@@ -689,6 +745,10 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
 		memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
 		n_quer_loc += len_to_wrt;
 
+		/*
+		 * PG_HINT_PLAN: DON'T TAKE IN a6f22e8356 so that the designed behavior
+		 * is kept stable.
+		 */
 		/* And insert a '?' in place of the constant token */
 		norm_query[n_quer_loc++] = '?';
 
@@ -707,7 +767,7 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
 	memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
 	n_quer_loc += len_to_wrt;
 
-	Assert(n_quer_loc <= query_len);
+	Assert(n_quer_loc <= norm_query_buflen);
 	norm_query[n_quer_loc] = '\0';
 
 	*query_len_p = n_quer_loc;
@@ -732,12 +792,18 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
  * marked as '-1', so that they are later ignored.  (Actually, we assume the
  * lengths were initialized as -1 to start with, and don't change them here.)
  *
+ * If query_loc > 0, then "query" has been advanced by that much compared to
+ * the original string start, so we need to translate the provided locations
+ * to compensate.  (This lets us avoid re-scanning statements before the one
+ * of interest, so it's worth doing.)
+ *
  * N.B. There is an assumption that a '-' character at a Const location begins
  * a negative numeric constant.  This precludes there ever being another
  * reason for a constant to start with a '-'.
  */
 static void
-fill_in_constant_lengths(pgssJumbleState *jstate, const char *query)
+fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
+						 int query_loc)
 {
 	pgssLocationLen *locs;
 	core_yyscan_t yyscanner;
@@ -770,6 +836,9 @@ fill_in_constant_lengths(pgssJumbleState *jstate, const char *query)
 	{
 		int			loc = locs[i].location;
 		int			tok;
+
+		/* Adjust recorded location if we're dealing with partial string */
+		loc -= query_loc;
 
 		Assert(loc >= 0);
 
