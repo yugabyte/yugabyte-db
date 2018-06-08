@@ -42,6 +42,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.proxy.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/flag_tags.h"
 
 using std::shared_ptr;
 using std::string;
@@ -52,6 +53,12 @@ using yb::rpc::Messenger;
 using yb::rpc::Rpc;
 
 using namespace std::placeholders;
+
+DEFINE_int32(master_leader_rpc_timeout_ms, 500,
+             "Number of milliseconds that the tserver will keep querying for master leader before"
+             "selecting a follower.");
+TAG_FLAG(master_leader_rpc_timeout_ms, advanced);
+TAG_FLAG(master_leader_rpc_timeout_ms, hidden);
 
 namespace yb {
 namespace master {
@@ -189,6 +196,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   // If we've received replies from all of the nodes without finding
   // the leader, or if there were network errors talking to all of the
   // nodes the error is retriable and we can perform a delayed retry.
+  num_iters_++;
   if (status.IsNetworkError() || status.IsNotFound()) {
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
@@ -237,7 +245,19 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
         // network or other errors encountered), but haven't found a
         // leader (which means that Finished() above can perform a
         // delayed retry).
-        new_status = STATUS(NotFound, "no leader found: " + ToString());
+
+        // If we have exceeded FLAGS_master_leader_rpc_timeout_ms, set this follower to be master
+        // leader. This prevents an infinite retry loop when none of the master addresses passed in
+        // are leaders.
+        if (MonoTime::Now() - start_time_ >
+            MonoDelta::FromMilliseconds(FLAGS_master_leader_rpc_timeout_ms)) {
+          LOG(WARNING) << "More than " << FLAGS_master_leader_rpc_timeout_ms << " ms has passed, "
+              "choosing to heartbeat to follower master " << resp.instance_id().permanent_uuid()
+              << " after " << num_iters_ << " iterations of all masters.";
+          leader_master_ = addrs_[idx];
+        } else {
+          new_status = STATUS(NotFound, "no leader found: " + ToString());
+        }
       } else {
         // We've found a leader.
         leader_master_ = addrs_[idx];

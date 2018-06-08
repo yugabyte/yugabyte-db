@@ -125,6 +125,12 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   mutable simple_spinlock lock_;
 
   rpc::Rpcs& rpcs_;
+
+  // The time of creation of the rpc, used for deadline tracking.
+  MonoTime start_time_ = MonoTime::Now();
+
+  // The number of master iterations the rpc has completed.
+  int num_iters_ = 0;
 };
 
 } // namespace master
