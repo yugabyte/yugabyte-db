@@ -264,7 +264,7 @@ public class TestClusterBase extends BaseCQLTest {
     }, EXPECTED_TSERVERS_TIMEOUT_MS);
   }
 
-  private void createAndAddNewMasters(int numMasters) throws Exception {
+  protected void createAndAddNewMasters(int numMasters) throws Exception {
     for (int i = 0; i < numMasters; i++) {
       // Add new master.
       HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
