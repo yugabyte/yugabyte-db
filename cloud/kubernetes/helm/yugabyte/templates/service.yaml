@@ -49,7 +49,7 @@ spec:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: "{{ $root.Release.Name }}-{{ .name }}"
+  name: "{{ $root.Release.Name }}-{{ .label }}"
   labels:
     app: "{{ $root.Release.Name }}-{{ .label }}"
     heritage: {{ $root.Release.Service | quote }}
@@ -125,12 +125,12 @@ spec:
         {{ if eq .name "yb-masters" }}
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs={{range $index := until (int ($root.Values.persistentVolume.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
-          - "--master_addresses={{ $root.Release.Name }}-{{ .name }}:7100"
+          - "--master_addresses={{ $root.Release.Name }}-yb-masters:7100"
           - "--master_replication_factor={{ .replicas }}"
         {{ else }}
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs={{range $index := until (int ($root.Values.persistentVolume.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
-          - "--tserver_master_addrs={{ $root.Release.Name }}-{{ .name }}:7100"
+          - "--tserver_master_addrs={{ $root.Release.Name }}-yb-masters:7100"
           - "--tserver_master_replication_factor={{ .replicas }}"
         {{ end }}
         ports:
