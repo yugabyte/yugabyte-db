@@ -15,16 +15,16 @@ persistentVolume:
 PodManagementPolicy: Parallel
 
 Services:
-  - name: "yb-masters"
-    label: "yb-master"
+  - name: "masters"
+    label: "master"
     replicas: 3
     ports:
       ui: "7000"
       rpc-port: "7100"
     hasLoadBalancer: true
 
-  - name: "yb-tservers"
-    label: "yb-tserver"
+  - name: "tservers"
+    label: "tserver"
     replicas: 3
     ports:
       ui: "9000"
