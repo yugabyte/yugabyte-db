@@ -437,6 +437,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   VLOG(2) << "Received heartbeat response:\n" << resp.DebugString();
+  if (resp.has_master_config()) {
+    LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
+
+    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config()));
+  }
+
   if (!resp.leader_master()) {
     // If the master is no longer a leader, reset proxy so that we can
     // determine the master and attempt to heartbeat during in the
@@ -451,12 +457,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   if (resp.has_cluster_uuid() && !resp.cluster_uuid().empty()) {
     server_->set_cluster_uuid(resp.cluster_uuid());
-  }
-
-  if (resp.has_master_config()) {
-    LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
-
-    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config()));
   }
 
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)

@@ -46,7 +46,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
-#include "yb/util/flag_tags.h"
+  #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
@@ -89,13 +89,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-    resp->set_leader_master(false);
-    return;
-  }
-
-  resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
-  resp->set_leader_master(true);
 
   consensus::ConsensusStatePB cpb;
   Status s = server_->catalog_manager()->GetCurrentConfig(&cpb);
@@ -110,6 +103,14 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                 << req->common().ts_instance().permanent_uuid();
     }
   } // Do nothing if config not ready.
+
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+    resp->set_leader_master(false);
+    return;
+  }
+
+  resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
+  resp->set_leader_master(true);
 
   shared_ptr<TSDescriptor> ts_desc;
   // If the TS is registering, register in the TS manager.
