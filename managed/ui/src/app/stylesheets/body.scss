@@ -2,11 +2,22 @@
 
 body {
   color: #333;
-  background: #545454;
+  background: #fff;
   font-family: "Open Sans", "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.471;
+}
+html {
+  &:before {
+    position: fixed;
+    width: 90px;
+    height: 10000%;
+    margin-top: -100%;
+    background-color: $YB_VIOLET;
+    content: "";
+    z-index: -1;
+  }
 }
 
 .modal-open {
