@@ -69,7 +69,6 @@ import signal
 import subprocess
 import sys
 import time
-
 import os
 import shutil
 
@@ -79,7 +78,7 @@ DAEMON_TYPE_TSERVER = 'tserver'
 DAEMON_TYPES = [DAEMON_TYPE_MASTER, DAEMON_TYPE_TSERVER]
 MAX_WAIT_ITERS = 20
 SLEEP_TIME_IN_SEC = 1
-
+MAX_WAIT_SECONDS = 45
 
 class ExitWithError(Exception):
     pass
@@ -576,7 +575,8 @@ class ClusterControl:
         max_num_tservers = self.get_number_of_servers(DAEMON_TYPE_TSERVER)
         num_alive_ts = None
         num_yb_admin_ts = None
-        while wait_count < MAX_WAIT_ITERS:
+        start_time = time.time()
+        while wait_count < MAX_WAIT_ITERS and (time.time() - start_time <= MAX_WAIT_SECONDS):
             try:
                 num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) > 0
                                     for i in xrange(1, max_num_tservers + 1)])
@@ -588,7 +588,13 @@ class ClusterControl:
                 # 8a46cace5d904423bf80bf1a6fc10d30        127.0.0.3:9100
                 # 2dac590eefb3429bb4d315c51e20f774        127.0.0.2:9100
                 # cb703e947033465a80c85577501cc93c        127.0.0.4:9100
-                output = subprocess.check_output(cmd_list_tservers)
+
+                proc = subprocess.Popen(
+                    cmd_list_tservers, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                output, _ = proc.communicate()
+                if proc.returncode:
+                    raise subprocess.CalledProcessError(proc.returncode,
+                                                        cmd_list_tservers, output=output)
                 num_yb_admin_ts = len(output.splitlines()) - 1
                 # This will not work if you have stopped/removed a node and the master is still
                 # aware of it because we do not have a yb-admin API to return only live tablet
@@ -733,13 +739,13 @@ class ClusterControl:
                                      "--yb_num_shards_per_tserver",
                                      str(self.options.num_shards_per_tserver),
                                      "setup_redis_table"]
-            result = ""
-            try:
-                result = subprocess.check_output(cmd_setup_redis_table)
-                return
-            except subprocess.CalledProcessError:
+            proc = subprocess.Popen(
+                cmd_setup_redis_table, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result, _ = proc.communicate()
+            if proc.returncode:
                 print (result)
-                RuntimeError("Failed to Setup Redis")
+                raise RuntimeError("Failed to Setup Redis.")
+            print ("Setup Redis successful.")
         else:
             raise RuntimeError("Timed out waiting for Yugabyte cluster!")
 
