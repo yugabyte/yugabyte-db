@@ -44,6 +44,7 @@ class TransactionManager {
   rpc::Rpcs& rpcs();
   const YBClientPtr& client() const;
 
+  const scoped_refptr<ClockBase>& clock() const;
   HybridTime Now() const;
   HybridTimeRange NowRange() const;
 

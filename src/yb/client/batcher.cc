@@ -102,7 +102,8 @@ namespace internal {
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
                  const std::shared_ptr<YBSessionData>& session_data,
-                 YBTransactionPtr transaction)
+                 YBTransactionPtr transaction,
+                 ConsistentReadPoint* read_point)
   : state_(kGatheringOps),
     client_(client),
     weak_session_data_(session_data),
@@ -112,7 +113,8 @@ Batcher::Batcher(YBClient* client,
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0),
     async_rpc_metrics_(session_data->async_rpc_metrics()),
-    transaction_(std::move(transaction)) {
+    transaction_(std::move(transaction)),
+    read_point_(read_point) {
 }
 
 void Batcher::Abort(const Status& status) {
@@ -443,7 +445,7 @@ void Batcher::FlushBuffersIfReady() {
                                           this,
                                           _1,
                                           BatcherPtr(this)),
-                                &transaction_prepare_data_)) {
+                                &transaction_metadata_)) {
         return;
       }
     }
@@ -557,7 +559,10 @@ void Batcher::RemoveInFlightOpsAfterFlushing(
   }
   auto transaction = this->transaction();
   if (transaction) {
-    transaction->Flushed(ops, status, propagated_hybrid_time);
+    transaction->Flushed(ops, status);
+  }
+  if (status.ok() && read_point_) {
+    read_point_->UpdateClock(propagated_hybrid_time);
   }
 }
 

@@ -103,6 +103,7 @@ set(COMMON_SRCS
   jsonb.cc
   hybrid_time.cc
   doc_hybrid_time.cc
+  consistent_read_point.cc
   transaction.cc
   types.cc
   wire_protocol.cc

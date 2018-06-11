@@ -69,6 +69,7 @@ void Executor::ExecuteAsync(const string &ql_stmt, const ParseTree &parse_tree,
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   ql_env_->Reset();
+  ql_env_->SetReadPoint();
   // Execute the statement and invoke statement-executed callback either when there is an error or
   // no async operation is pending.
   RETURN_STMT_NOT_OK(Execute(ql_stmt, parse_tree, params));
@@ -81,6 +82,7 @@ void Executor::BeginBatch(StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   ql_env_->Reset();
+  ql_env_->SetReadPoint();
 }
 
 void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_tree,
@@ -134,6 +136,7 @@ Status Executor::Execute(const string &ql_stmt, const ParseTree &parse_tree,
 }
 
 void Executor::ReExecute() {
+  ql_env_->SetReadPoint(ReExecute::kTrue);
   for (ExecContext& exec_context : exec_contexts_) {
     const ParseTree* parse_tree = exec_context.parse_tree();
     const Status s = ProcessStatementStatus(*parse_tree, ExecTreeNode(parse_tree->root().get()));
