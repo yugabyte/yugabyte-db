@@ -525,8 +525,8 @@ void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) 
       request_.key_value().hash_code(), request_.key_value().key()));
 
   auto iter = yb::docdb::CreateIntentAwareIterator(
-      data.doc_write_batch->rocksdb(), BloomFilterMode::USE_BLOOM_FILTER,
-      subdoc_key.Encode().AsSlice(),
+      data.doc_write_batch->doc_db(),
+      BloomFilterMode::USE_BLOOM_FILTER, subdoc_key.Encode().AsSlice(),
       redis_query_id(), /* txn_op_context */ boost::none, data.deadline, data.read_time);
 
   iterator_ = std::move(iter);
@@ -654,8 +654,9 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           GetSubDocumentData get_data = { encoded_key_reverse, &subdoc_reverse,
                                           &subdoc_reverse_found };
           RETURN_NOT_OK(GetSubDocument(
-              data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
-              boost::none /* txn_op_context */, data.deadline, data.read_time));
+              data.doc_write_batch->doc_db(),
+              get_data, redis_query_id(), boost::none /* txn_op_context */, data.deadline,
+              data.read_time));
 
           // Flag indicating whether we should add the given entry to the sorted set.
           bool should_add_entry = true;
@@ -904,8 +905,9 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         GetSubDocumentData get_data = { encoded_subdoc_key_reverse, &doc_reverse,
                                         &doc_reverse_found };
         RETURN_NOT_OK(GetSubDocument(
-            data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
-            boost::none /* txn_op_context */, data.deadline, data.read_time));
+            data.doc_write_batch->doc_db(),
+            get_data, redis_query_id(), boost::none /* txn_op_context */, data.deadline,
+            data.read_time));
         if (doc_reverse_found && doc_reverse.value_type() != ValueType::kTombstone) {
           // The value is already in the doc, needs to be removed.
           values_reverse.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
@@ -1133,7 +1135,7 @@ Status RedisReadOperation::Execute() {
   SubDocKey doc_key(
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
   auto iter = yb::docdb::CreateIntentAwareIterator(
-      db_, BloomFilterMode::USE_BLOOM_FILTER,
+      doc_db_, BloomFilterMode::USE_BLOOM_FILTER,
       doc_key.Encode().AsSlice(),
       redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
   iterator_ = std::move(iter);
@@ -1464,7 +1466,7 @@ Status RedisReadOperation::ExecuteGet() {
       bool subdoc_reverse_found = false;
       auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
       GetSubDocumentData get_data = { encoded_key_reverse, &subdoc_reverse, &subdoc_reverse_found };
-      RETURN_NOT_OK(GetSubDocument(db_, get_data, redis_query_id(),
+      RETURN_NOT_OK(GetSubDocument(doc_db_, get_data, redis_query_id(),
                                    boost::none /* txn_op_context */, deadline_, read_time_));
       if (subdoc_reverse_found) {
         double score = subdoc_reverse.GetDouble();
@@ -1859,7 +1861,8 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   if (hashed_doc_key_ != nullptr) {
     DocQLScanSpec spec(*static_projection, *hashed_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*static_projection, schema_, txn_op_context_,
-                                data.doc_write_batch->rocksdb(), data.deadline, data.read_time);
+                                data.doc_write_batch->doc_db(),
+                                data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
@@ -1869,7 +1872,8 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   if (pk_doc_key_ != nullptr) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*non_static_projection, schema_, txn_op_context_,
-                                data.doc_write_batch->rocksdb(), data.deadline, data.read_time);
+                                data.doc_write_batch->doc_db(),
+                                data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
@@ -2228,8 +2232,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
           // Create iterator.
           DocRowwiseIterator iterator(
-              projection, schema_, txn_op_context_, data.doc_write_batch->rocksdb(), data.deadline,
-              data.read_time);
+              projection, schema_, txn_op_context_,
+              data.doc_write_batch->doc_db(),
+              data.deadline, data.read_time);
           RETURN_NOT_OK(iterator.Init(spec));
 
           // Iterate through rows and delete those that match the condition.
@@ -2772,7 +2777,7 @@ CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& dat
     DocRowwiseIterator iterator(column_projection,
                                 schema_,
                                 txn_op_context_,
-                                data.doc_write_batch->rocksdb(),
+                                data.doc_write_batch->doc_db(),
                                 data.deadline,
                                 data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));

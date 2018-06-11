@@ -153,7 +153,33 @@ class TabletFlushStats : public rocksdb::EventListener {
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 
+enum class FlushFlags {
+  kNone = 0,
+
+  kRegular = 1,
+  kIntents = 2,
+
+  kAll = kRegular | kIntents
+};
+
+inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
+  return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
+}
+
+inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
+  return static_cast<FlushFlags>(to_underlying(lhs) & to_underlying(rhs));
+}
+
+inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
+  return (lhs & rhs) != FlushFlags::kNone;
+}
+
 struct WriteOperationData;
+
+struct DocDbOpIds {
+  OpId regular;
+  OpId intents;
+};
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -240,8 +266,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void ApplyKeyValueRowOperations(
       const docdb::KeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
-      HybridTime hybrid_time,
-      rocksdb::WriteBatch* rocksdb_write_batch = nullptr);
+      HybridTime hybrid_time);
+
+  void WriteBatch(const rocksdb::UserFrontiers* frontiers,
+                  HybridTime hybrid_time,
+                  rocksdb::WriteBatch* write_batch,
+                  rocksdb::DB* dest_db);
 
   //------------------------------------------------------------------------------------------------
   // Redis Request Processing.
@@ -295,8 +325,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
-  CHECKED_STATUS CreateCheckpoint(const std::string& dir,
-      google::protobuf::RepeatedPtrField<FilePB>* rocksdb_files = nullptr);
+  CHECKED_STATUS CreateCheckpoint(const std::string& dir);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
@@ -307,7 +336,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
-  CHECKED_STATUS Flush(FlushMode mode);
+  CHECKED_STATUS Flush(FlushMode mode,
+                       FlushFlags flags = FlushFlags::kAll);
 
   CHECKED_STATUS WaitForFlush();
 
@@ -367,7 +397,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> HasSSTables() const;
 
   // Returns the maximum persistent op id from all SSTables in RocksDB.
-  Result<yb::OpId> MaxPersistentOpId() const;
+  // First for regular records and second for intents.
+  Result<DocDbOpIds> MaxPersistentOpId() const;
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
@@ -436,7 +467,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   }
 
   rocksdb::DB* TEST_db() const {
-    return rocksdb_.get();
+    return regular_db_.get();
   }
 
   CHECKED_STATUS TEST_SwitchMemtable();
@@ -568,7 +599,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<rocksdb::Statistics> rocksdb_statistics_;
 
   // RocksDB database for key-value tables.
-  std::unique_ptr<rocksdb::DB> rocksdb_;
+  std::unique_ptr<rocksdb::DB> regular_db_;
+
+  std::unique_ptr<rocksdb::DB> intents_db_;
 
   std::unique_ptr<common::YQLStorageIf> ql_storage_;
 
@@ -619,6 +652,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
 
   CHECKED_STATUS UpdateQLIndexes(docdb::DocOperations* doc_ops);
+
+  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

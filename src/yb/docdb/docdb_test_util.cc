@@ -379,7 +379,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, value));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr);
+      DocDBDebugDump(rocksdb(), std::cerr, StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -406,8 +406,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     bool doc_found_in_rocksdb = false;
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
     GetSubDocumentData data = { encoded_sub_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb };
-    ASSERT_OK(GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, txn_op_context,
-                             MonoTime::Max() /* deadline */));
+    ASSERT_OK(GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
+                             txn_op_context, MonoTime::Max() /* deadline */));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.
@@ -449,7 +449,7 @@ void DocDBLoadGenerator::FlushRocksDB() {
 void DocDBLoadGenerator::CaptureDocDbSnapshot() {
   // Capture snapshots from time to time.
   docdb_snapshots_.emplace_back();
-  docdb_snapshots_.back().CaptureAt(rocksdb(), HybridTime::kMax);
+  docdb_snapshots_.back().CaptureAt(doc_db(), HybridTime::kMax);
   docdb_snapshots_.back().SetCaptureHybridTime(last_operation_ht_);
 }
 
@@ -534,7 +534,7 @@ void DocDBLoadGenerator::VerifySnapshot(const InMemDocDbState& snapshot) {
   }
   LOG(INFO) << details_msg;
 
-  flashback_state.CaptureAt(rocksdb(), snap_ht);
+  flashback_state.CaptureAt(doc_db(), snap_ht);
   const bool is_match = flashback_state.EqualsAndLogDiff(snapshot);
   if (!is_match) {
     LOG(ERROR) << details_msg << "\nDOCDB SNAPSHOT VERIFICATION FAILED, DOCDB STATE:";
@@ -547,7 +547,7 @@ void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapsho
                                                   const HybridTime cleanup_ht) {
   InMemDocDbState flashback_state;
   const auto snap_ht = snapshot.captured_at();
-  flashback_state.CaptureAt(rocksdb(), snap_ht);
+  flashback_state.CaptureAt(doc_db(), snap_ht);
   if (!flashback_state.EqualsAndLogDiff(snapshot, /* log_diff = */ false)) {
     // Implicitly converting hybrid_times to ints. That's OK, because we're using small enough
     // integer values for hybrid_times.
@@ -702,6 +702,7 @@ Status DocDBRocksDBFixture::InitRocksDBDir() {
   CHECK(!rocksdb_dir_.empty());  // Check twice before we recursively delete anything.
   CHECK_NE(rocksdb_dir_, "/");
   RETURN_NOT_OK(Env::Default()->DeleteRecursively(rocksdb_dir_));
+  RETURN_NOT_OK(Env::Default()->DeleteRecursively(IntentsDBDir()));
   return Status::OK();
 }
 

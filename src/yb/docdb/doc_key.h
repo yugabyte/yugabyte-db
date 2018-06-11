@@ -531,6 +531,16 @@ class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
   std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
 };
 
+// Combined DB to store regular records and intents.
+struct DocDB {
+  rocksdb::DB* regular;
+  rocksdb::DB* intents;
+
+  static DocDB FromRegular(rocksdb::DB* regular) {
+    return {regular, nullptr /* intents */};
+  }
+};
+
 }  // namespace docdb
 }  // namespace yb
 

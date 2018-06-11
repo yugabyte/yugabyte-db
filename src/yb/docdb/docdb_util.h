@@ -63,6 +63,8 @@ class DocDBRocksDBUtil {
   virtual size_t block_cache_size() const { return 16 * 1024 * 1024; }
 
   rocksdb::DB* rocksdb();
+  rocksdb::DB* intents_db();
+  DocDB doc_db() { return {rocksdb(), intents_db()}; }
 
   CHECKED_STATUS InitCommonRocksDBOptions();
 
@@ -179,9 +181,13 @@ class DocDBRocksDBUtil {
   void SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior);
 
  protected:
+  std::string IntentsDBDir();
+
   std::unique_ptr<rocksdb::DB> rocksdb_;
+  std::unique_ptr<rocksdb::DB> intents_db_;
   rocksdb::Options rocksdb_options_;
-  string rocksdb_dir_;
+  std::string rocksdb_dir_;
+
 
   // This is used for auto-assigning op ids to RocksDB write batches to emulate what a tablet would
   // do in production.

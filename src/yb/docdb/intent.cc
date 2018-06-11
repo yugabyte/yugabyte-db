@@ -26,13 +26,6 @@ namespace docdb {
 Status DecodeIntentKey(const Slice& encoded_intent_key, Slice* intent_prefix,
                        IntentType* intent_type, DocHybridTime* doc_ht) {
   *intent_prefix = encoded_intent_key;
-  if (intent_prefix->empty()) {
-    return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, but it is "
-        "empty", ValueType::kIntentPrefix);
-  } else if (*intent_prefix->data() != ValueTypeAsChar::kIntentPrefix) {
-    return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, found $1",
-        ValueType::kIntentPrefix, static_cast<ValueType>(*intent_prefix->data()));
-  }
 
   int doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(*intent_prefix, &doc_ht_size));

@@ -293,6 +293,14 @@ class MemTable {
   // operations on the same MemTable.
   void SetNextLogNumber(uint64_t num) { mem_next_logfile_number_ = num; }
 
+  void SetFlushStartTime(std::chrono::steady_clock::time_point value) {
+    flush_start_time_ = value;
+  }
+
+  std::chrono::steady_clock::time_point FlushStartTime() const {
+    return flush_start_time_;
+  }
+
   // Notify the underlying storage that no more items will be added.
   // REQUIRES: external synchronization to prevent simultaneous
   // operations on the same MemTable.
@@ -373,6 +381,8 @@ class MemTable {
 
   // The log files earlier than this number can be deleted.
   uint64_t mem_next_logfile_number_;
+
+  std::chrono::steady_clock::time_point flush_start_time_;
 
   // rw locks for inplace updates
   std::vector<port::RWMutex> locks_;

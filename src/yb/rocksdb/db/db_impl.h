@@ -217,6 +217,8 @@ class DBImpl : public DB {
 
   CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr frontier) override;
 
+  bool HasSomethingToFlush() override;
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.

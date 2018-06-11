@@ -232,9 +232,6 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
   if (slice->empty()) {
     return STATUS(Corruption, "Document key is empty");
   }
-  if ((*slice)[0] == ValueTypeAsChar::kIntentPrefix) {
-    slice->consume_byte();
-  }
 
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
@@ -676,9 +673,8 @@ class HashedComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
   }
 
   Slice Transform(Slice key) const override {
-    auto size = DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY);
-    CHECK_OK(size);
-    return Slice(key.data(), *size);
+    auto size = CHECK_RESULT(DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY));
+    return Slice(key.data(), size);
   }
 };
 

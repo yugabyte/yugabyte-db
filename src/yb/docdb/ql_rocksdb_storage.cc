@@ -20,9 +20,8 @@
 namespace yb {
 namespace docdb {
 
-QLRocksDBStorage::QLRocksDBStorage(rocksdb::DB *rocksdb)
-    : rocksdb_(rocksdb) {
-
+QLRocksDBStorage::QLRocksDBStorage(const DocDB& doc_db)
+    : doc_db_(doc_db) {
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -38,7 +37,7 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
     std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, rocksdb_, deadline, read_time);
+      projection, schema, txn_op_context, doc_db_, deadline, read_time);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -110,7 +109,7 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, rocksdb_, deadline, read_time);
+      projection, schema, txn_op_context, doc_db_, deadline, read_time);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   *iter = std::move(doc_iter);

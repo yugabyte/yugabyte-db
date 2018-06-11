@@ -127,7 +127,7 @@ class TabletBootstrap {
   CHECKED_STATUS HandleEntry(ReplayState* state, std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
       ReplayState* state, std::unique_ptr<log::LogEntryPB>* replicate_entry);
-  CHECKED_STATUS HandleEntryPair(log::LogEntryPB* replicate_entry);
+  CHECKED_STATUS HandleEntryPair(ReplayState* state, log::LogEntryPB* replicate_entry);
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
 

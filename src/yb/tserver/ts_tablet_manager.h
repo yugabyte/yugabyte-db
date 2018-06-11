@@ -96,7 +96,7 @@ class TransitionInProgressDeleter;
   do { \
     Status _s = (expr); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
+      tserver::LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
       return _s; \
     } \
   } while (0)
@@ -109,7 +109,7 @@ class TransitionInProgressDeleter;
       if (tablet_peer) { \
         tablet_peer->Shutdown(); \
       } \
-      LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
+      tserver::LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
       return _s; \
     } \
   } while (0)

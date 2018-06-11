@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_DOCDB_INTERNAL_H_
 #define YB_DOCDB_DOCDB_INTERNAL_H_
 
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/slice.h"
@@ -57,7 +58,7 @@ namespace docdb {
 // Type of keys written by DocDB into RocksDB.
 YB_DEFINE_ENUM(KeyType, (kEmpty)(kIntentKey)(kReverseTxnKey)(kValueKey)(kTransactionMetadata));
 
-KeyType GetKeyType(const Slice& slice);
+KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
 
 } // namespace docdb
 } // namespace yb

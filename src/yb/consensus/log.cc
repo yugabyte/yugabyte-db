@@ -783,8 +783,8 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  VLOG(1) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx;
-  LOG(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx;
+  LOG(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx
+            << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 

@@ -19,10 +19,20 @@
 
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
+#include "yb/util/path_util.h"
 
 namespace yb {
 
 Env::~Env() {
+}
+
+CHECKED_STATUS Env::CreateDirs(const std::string& dirname) {
+  if (!FileExists(dirname)) {
+    RETURN_NOT_OK(CreateDirs(DirName(dirname)));
+    RETURN_NOT_OK(CreateDir(dirname));
+  }
+  return VERIFY_RESULT(IsDirectory(dirname)) ?
+      Status::OK() : STATUS_FORMAT(IOError, "Not a directory: $0", dirname);
 }
 
 SequentialFile::~SequentialFile() {

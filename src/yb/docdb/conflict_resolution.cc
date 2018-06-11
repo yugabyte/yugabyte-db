@@ -86,17 +86,17 @@ class ConflictResolverContext {
 
 class ConflictResolver {
  public:
-  ConflictResolver(rocksdb::DB* db,
+  ConflictResolver(const DocDB& doc_db,
                    TransactionStatusManager* status_manager,
                    ConflictResolverContext* context)
-      : db_(db), status_manager_(*status_manager), context_(*context) {}
+      : doc_db_(doc_db), status_manager_(*status_manager), context_(*context) {}
 
   TransactionStatusManager& status_manager() {
     return status_manager_;
   }
 
-  rocksdb::DB* db() {
-    return db_;
+  const DocDB& doc_db() {
+    return doc_db_;
   }
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
@@ -172,7 +172,7 @@ class ConflictResolver {
   void EnsureIntentIteratorCreated() {
     if (!intent_iter_) {
       intent_iter_ = CreateRocksDBIterator(
-          db_,
+          doc_db_.intents,
           BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none /* user_key_for_filter */,
           rocksdb::kDefaultQueryId,
@@ -290,7 +290,7 @@ class ConflictResolver {
     latch.Wait();
   }
 
-  rocksdb::DB* db_;
+  DocDB doc_db_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   Slice intent_key_upperbound_;
   TransactionStatusManager& status_manager_;
@@ -349,11 +349,9 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     if (kind == IntentKind::kStrong &&
         metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       Slice key_slice(intent_key_prefix->data());
-      DCHECK_EQ(ValueType::kIntentPrefix, static_cast<ValueType>(key_slice[0]));
-      key_slice.consume_byte();
 
       auto value_iter = CreateRocksDBIterator(
-          resolver->db(),
+          resolver->doc_db().regular,
           BloomFilterMode::USE_BLOOM_FILTER,
           key_slice,
           rocksdb::kDefaultQueryId);
@@ -448,7 +446,6 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
       for (const auto& doc_path : doc_paths) {
         current_intent_prefix.Clear();
-        current_intent_prefix.AppendValueType(ValueType::kIntentPrefix);
         current_intent_prefix.AppendRawBytes(doc_path.encoded_doc_key().data());
         for (int i = 0; i < doc_path.num_subkeys(); i++) {
           RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_types.weak, &current_intent_prefix));
@@ -488,21 +485,21 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
 Status ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
-                                   rocksdb::DB* db,
+                                   const DocDB& doc_db,
                                    TransactionStatusManager* status_manager,
                                    Counter* conflicts_metric) {
   DCHECK(hybrid_time.is_valid());
   TransactionConflictResolverContext context(write_batch, hybrid_time, conflicts_metric);
-  ConflictResolver resolver(db, status_manager, &context);
+  ConflictResolver resolver(doc_db, status_manager, &context);
   return resolver.Resolve();
 }
 
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
                                              HybridTime hybrid_time,
-                                             rocksdb::DB* db,
+                                             const DocDB& doc_db,
                                              TransactionStatusManager* status_manager) {
   OperationConflictResolverContext context(&doc_ops, hybrid_time);
-  ConflictResolver resolver(db, status_manager, &context);
+  ConflictResolver resolver(doc_db, status_manager, &context);
   RETURN_NOT_OK(resolver.Resolve());
   return context.GetHybridTime();
 }
@@ -521,8 +518,7 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   ParsedIntent result;
   int doc_ht_size = 0;
   result.doc_path = intent_key;
-  // Intent is encoded as "Prefix + DocPath + IntentType + DocHybridTime".
-  result.doc_path.consume_byte();
+  // Intent is encoded as "DocPath + IntentType + DocHybridTime".
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));
   // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");

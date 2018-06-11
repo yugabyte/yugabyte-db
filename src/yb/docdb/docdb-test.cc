@@ -219,8 +219,9 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
     GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     EXPECT_OK(GetSubDocument(
-        rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-        MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(ht)));
+        doc_db(), data, rocksdb::kDefaultQueryId,
+        kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+        ReadHybridTime::SingleTime(ht)));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -421,8 +422,8 @@ void DocDBTest::CheckExpectedLatestDBState() {
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
   ASSERT_OK(GetSubDocument(
-      rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      MonoTime::Max() /* deadline */));
+      doc_db(), data, rocksdb::kDefaultQueryId,
+      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */));
   ASSERT_TRUE(doc_found);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
@@ -1672,8 +1673,8 @@ TEST_F(DocDBTest, BloomFilterTest) {
     auto encoded_subdoc_key = SubDocKey(key).EncodeWithoutHt();
     GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     ASSERT_OK(GetSubDocument(
-        rocksdb(), data, rocksdb::kDefaultQueryId, boost::none /* txn_op_context */,
-        MonoTime::Max() /* deadline */));
+        doc_db(), data, rocksdb::kDefaultQueryId,
+        boost::none /* txn_op_context */, MonoTime::Max() /* deadline */));
   };
 
   ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful, 0, &total_table_iterators));
@@ -1796,8 +1797,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   // TODO(dtxn) - check both transaction and non-transaction path?
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
-  GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-                 MonoTime::Max() /* deadline */);
+  GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
+                 kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
   ASSERT_FALSE(doc_found);
 
   CaptureLogicalSnapshot();
@@ -1807,8 +1808,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     // The row should still be absent after a compaction.
     // TODO(dtxn) - check both transaction and non-transaction path?
     FullyCompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
-    GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-                   MonoTime::Max() /* deadline */);
+    GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
+                   kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
     ASSERT_FALSE(doc_found);
     AssertDocDbDebugDumpStrEq("");
   }
@@ -1824,8 +1825,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   SubDocKey subdoc_key2(kDocKey2);
   auto encoded_subdoc_key2 = subdoc_key2.EncodeWithoutHt();
   data.subdocument_key = encoded_subdoc_key2;
-  GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-                 MonoTime::Max() /* deadline */);
+  GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
+                 kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
   ASSERT_TRUE(doc_found);
 
   // The row should still exist after a compaction. The deletion marker should be compacted away.
@@ -1834,8 +1835,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     RestoreToLastLogicalRocksDBSnapshot();
     FullyCompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
     // TODO(dtxn) - check both transaction and non-transaction path?
-    GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-                   MonoTime::Max() /* deadline */);
+    GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
+                   kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
     ASSERT_TRUE(doc_found);
     AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 w: 1 }]) -> "value2"
@@ -2083,7 +2084,7 @@ TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
       )#");
 }
 
-void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb::DB* rocksdb,
+void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, const DocDB& doc_db,
                  SubDocument* doc_from_rocksdb, bool* subdoc_found,
                  const SubDocKey& subdoc_to_search) {
   HybridTime ht = 1000000_usec_ht;
@@ -2098,8 +2099,9 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb:
   data.low_subkey = &lower_bound;
   data.high_subkey = &upper_bound;
   EXPECT_OK(GetSubDocument(
-      rocksdb, data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(ht)));
+      doc_db, data, rocksdb::kDefaultQueryId,
+      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+      ReadHybridTime::SingleTime(ht)));
 }
 
 void VerifyBounds(SubDocument* doc_from_rocksdb, int lower, int upper, int base) {
@@ -2114,10 +2116,10 @@ void VerifyBounds(SubDocument* doc_from_rocksdb, int lower, int upper, int base)
 }
 
 void QueryBoundsAndVerify(const DocKey& doc_key, int lower, int upper, int base,
-                          rocksdb::DB* rocksdb, const SubDocKey& subdoc_to_search) {
+                          const DocDB& doc_db, const SubDocKey& subdoc_to_search) {
   SubDocument doc_from_rocksdb;
   bool subdoc_found = false;
-  QueryBounds(doc_key, lower, upper, base, rocksdb, &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, lower, upper, base, doc_db, &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_TRUE(subdoc_found);
   VerifyBounds(&doc_from_rocksdb, lower, upper, base);
@@ -2135,49 +2137,49 @@ TEST_F(DocDBTest, TestBuildSubDocumentBounds) {
 
   const SubDocKey subdoc_to_search(doc_key);
 
-  QueryBoundsAndVerify(doc_key, 25, 75, base, rocksdb(), subdoc_to_search);
-  QueryBoundsAndVerify(doc_key, 50, 60, base, rocksdb(), subdoc_to_search);
-  QueryBoundsAndVerify(doc_key, 0, nsubkeys - 1, base, rocksdb(), subdoc_to_search);
+  QueryBoundsAndVerify(doc_key, 25, 75, base, doc_db(), subdoc_to_search);
+  QueryBoundsAndVerify(doc_key, 50, 60, base, doc_db(), subdoc_to_search);
+  QueryBoundsAndVerify(doc_key, 0, nsubkeys - 1, base, doc_db(), subdoc_to_search);
 
   SubDocument doc_from_rocksdb;
   bool subdoc_found = false;
-  QueryBounds(doc_key, -100, 200, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, -100, 200, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_TRUE(subdoc_found);
   VerifyBounds(&doc_from_rocksdb, 0, nsubkeys - 1, base);
 
-  QueryBounds(doc_key, -100, 50, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, -100, 50, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_TRUE(subdoc_found);
   VerifyBounds(&doc_from_rocksdb, 0, 50, base);
 
-  QueryBounds(doc_key, 50, 150, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, 50, 150, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_TRUE(subdoc_found);
   VerifyBounds(&doc_from_rocksdb, 50, nsubkeys - 1, base);
 
-  QueryBounds(doc_key, -100, -50, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, -100, -50, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_FALSE(subdoc_found);
 
-  QueryBounds(doc_key, 101, 150, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, 101, 150, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               subdoc_to_search);
   EXPECT_FALSE(subdoc_found);
 
   // Try bounds without appropriate doc key.
-  QueryBounds(DocKey(PrimitiveValues("abc")), 0, nsubkeys - 1, base, rocksdb(), &doc_from_rocksdb,
+  QueryBounds(DocKey(PrimitiveValues("abc")), 0, nsubkeys - 1, base, doc_db(), &doc_from_rocksdb,
               &subdoc_found, subdoc_to_search);
   EXPECT_FALSE(subdoc_found);
 
   // Try bounds different from doc key.
-  QueryBounds(doc_key, 0, 99, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+  QueryBounds(doc_key, 0, 99, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
               SubDocKey(DocKey(PrimitiveValues("abc"))));
   EXPECT_FALSE(subdoc_found);
 
   // Try with bounds pointing to wrong doc key.
   DocKey doc_key_xyz(PrimitiveValues("xyz"));
   AddSubKeys(doc_key_xyz.Encode(), nsubkeys, base, &expected_docdb_str);
-  QueryBounds(doc_key_xyz, 0, nsubkeys - 1, base, rocksdb(), &doc_from_rocksdb,
+  QueryBounds(doc_key_xyz, 0, nsubkeys - 1, base, doc_db(), &doc_from_rocksdb,
               &subdoc_found, subdoc_to_search);
   EXPECT_FALSE(subdoc_found);
 }
@@ -2198,8 +2200,9 @@ TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
   bool subdoc_found_in_rocksdb = false;
   GetSubDocumentData data = { subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
   EXPECT_OK(GetSubDocument(
-      rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(1200)));
+      doc_db(), data, rocksdb::kDefaultQueryId,
+      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+      ReadHybridTime::FromMicros(1200)));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
 
   for (int i = 0; i < kNumSubKeysForCollectionsWithTTL * 2; i++) {
@@ -2288,33 +2291,11 @@ TEST_F(DocDBTest, CompactionWithTransactions) {
       DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), 5000_usec_ht));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["mydockey", 123456]), []) kStrongSnapshotWrite HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
-SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) kStrongSnapshotWrite HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
-SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) kStrongSnapshotWrite HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
-TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
-    kStrongSnapshotWrite HT{ physical: 5000 }
-TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
-    kStrongSnapshotWrite HT{ physical: 5000 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
-      )#");
-  FullyCompactHistoryBefore(3500_usec_ht);
-  AssertDocDbDebugDumpStrEq(
-      R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], ["mydockey", 123456]), []) kStrongSnapshotWrite HT{ physical: 5000 } \
@@ -2333,9 +2314,31 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
     kStrongSnapshotWrite HT{ physical: 5000 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
     SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+      )#");
+  FullyCompactHistoryBefore(3500_usec_ht);
+  AssertDocDbDebugDumpStrEq(
+      R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) kStrongSnapshotWrite HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
+    kStrongSnapshotWrite HT{ physical: 5000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) kWeakSnapshotWrite HT{ physical: 5000 w: 1 }
       )#");
 }
 
