@@ -59,7 +59,7 @@ public class TestIndex extends BaseCQLTest {
     // Create test table.
     session.execute("create table test_create_index " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
-                    "c1 int, c2 text, c3 decimal, c4 timestamp, " +
+                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
 
@@ -119,6 +119,20 @@ public class TestIndex extends BaseCQLTest {
     try {
       session.execute("create index i1 on test_create_index_2 (r1, r2) covering (c1, c4);");
       fail("Index by the same name created on another table");
+    } catch (InvalidQueryException e) {
+      LOG.info("Expected exception " + e.getMessage());
+    }
+
+    try {
+      session.execute("create index i_invalid on test_create_index (c5);");
+      fail("Index with unsupported index column datatype created");
+    } catch (InvalidQueryException e) {
+      LOG.info("Expected exception " + e.getMessage());
+    }
+
+    try {
+      session.execute("create index i_invalid on test_create_index (c1, c5);");
+      fail("Index with unsupported index column datatype created");
     } catch (InvalidQueryException e) {
       LOG.info("Expected exception " + e.getMessage());
     }

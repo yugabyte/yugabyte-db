@@ -51,6 +51,7 @@ CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
                                 ErrorCode::SQL_STATEMENT_INVALID);
     }
     column->set_loc(*this);
+    column->datatype()->set_loc(*this);
   }
   RETURN_NOT_OK(table->AppendPrimaryColumn(sem_context, column));
 
@@ -75,6 +76,7 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
                                 ErrorCode::SQL_STATEMENT_INVALID);
     }
     column->set_loc(*this);
+    column->datatype()->set_loc(*this);
   }
   RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
 
@@ -102,6 +104,7 @@ CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) {
     return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
   }
   column->set_loc(*this);
+  column->datatype()->set_loc(*this);
   return table->AppendColumn(sem_context, column, true /* check_duplicate */);
 }
 
