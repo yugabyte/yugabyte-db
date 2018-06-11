@@ -154,11 +154,13 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        MonoTime deadline,
                                        const shared_ptr<Messenger>& messenger,
                                        rpc::ProxyCache* proxy_cache,
-                                       rpc::Rpcs* rpcs)
+                                       rpc::Rpcs* rpcs,
+                                       bool should_timeout_to_follower)
     : Rpc(deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
       addrs_(std::move(addrs)),
-      rpcs_(*rpcs) {
+      rpcs_(*rpcs),
+      should_timeout_to_follower_(should_timeout_to_follower) {
   DCHECK(deadline.Initialized());
 
   // Using resize instead of reserve to explicitly initialized the
@@ -249,7 +251,8 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
         // If we have exceeded FLAGS_master_leader_rpc_timeout_ms, set this follower to be master
         // leader. This prevents an infinite retry loop when none of the master addresses passed in
         // are leaders.
-        if (MonoTime::Now() - start_time_ >
+        if (should_timeout_to_follower_ &&
+            MonoTime::Now() - start_time_ >
             MonoDelta::FromMilliseconds(FLAGS_master_leader_rpc_timeout_ms)) {
           LOG(WARNING) << "More than " << FLAGS_master_leader_rpc_timeout_ms << " ms has passed, "
               "choosing to heartbeat to follower master " << resp.instance_id().permanent_uuid()

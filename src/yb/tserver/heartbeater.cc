@@ -262,7 +262,8 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
       deadline,
       server_->messenger(),
       &server_->proxy_cache(),
-      &rpcs);
+      &rpcs,
+      true /* should_timeout_to_follower_ */);
   return sync.Wait();
 }
 
