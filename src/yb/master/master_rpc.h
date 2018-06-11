@@ -83,7 +83,8 @@ class GetLeaderMasterRpc : public rpc::Rpc {
                      MonoTime deadline,
                      const std::shared_ptr<rpc::Messenger>& messenger,
                      rpc::ProxyCache* proxy_cache,
-                     rpc::Rpcs* rpcs);
+                     rpc::Rpcs* rpcs,
+                     bool should_timeout_to_follower_ = false);
 
   ~GetLeaderMasterRpc();
 
@@ -131,6 +132,9 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
   // The number of master iterations the rpc has completed.
   int num_iters_ = 0;
+
+  // Should the rpc timeout and pick a random follower instead of waiting for leader.
+  bool should_timeout_to_follower_;
 };
 
 } // namespace master
