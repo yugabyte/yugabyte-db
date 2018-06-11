@@ -36,7 +36,7 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  Status s = rocksdb_->Flush(rocksdb::FlushOptions());
+  Status s = regular_db_->Flush(rocksdb::FlushOptions());
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Rocksdb flush status: " << s;
     return s.CloneAndPrepend("Unable to flush rocksdb");
@@ -156,12 +156,14 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
-  const rocksdb::SequenceNumber sequence_number = rocksdb_->GetLatestSequenceNumber();
-  const string db_dir = rocksdb_->GetName();
+  const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
+  const string db_dir = regular_db_->GetName();
+  const std::string intents_db_dir = intents_db_ ? intents_db_->GetName() : std::string();
 
   // Destroy DB object.
   // TODO: snapshot current DB and try to restore it in case of failure.
-  rocksdb_.reset(nullptr);
+  intents_db_.reset();
+  regular_db_.reset();
 
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
@@ -172,10 +174,23 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
     return STATUS(IllegalState, "Cannot cleanup db files", s.ToString());
   }
 
+  if (!intents_db_dir.empty()) {
+    s = rocksdb::DestroyDB(intents_db_dir, rocksdb_options);
+    if (PREDICT_FALSE(!s.ok())) {
+      LOG(WARNING) << "Cannot cleanup db files in directory " << intents_db_dir << ": " << s;
+      return STATUS(IllegalState, "Cannot cleanup intents db files", s.ToString());
+    }
+  }
+
   s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
+  }
+
+  if (!intents_db_dir.empty()) {
+    auto intents_tmp_dir = JoinPathSegments(dir, tablet::kIntentsSubdir);
+    rocksdb_options.env->RenameFile(intents_db_dir, intents_db_dir);
   }
 
   // Reopen database from copied checkpoint.
@@ -194,7 +209,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   LOG(INFO) << "Checkpoint restored from " << dir;
   LOG(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", restored=" << rocksdb_->GetLatestSequenceNumber();
+            << ", restored=" << regular_db_->GetLatestSequenceNumber();
 
   return Status::OK();
 }
