@@ -17,6 +17,38 @@ using tablet::enterprise::Tablet;
 using tablet::TabletMetadata;
 using tablet::TabletPeer;
 
+CHECKED_STATUS AddDirToSnapshotFiles(
+    const std::string& dir, const std::string& prefix, const std::string& snapshot_id,
+    google::protobuf::RepeatedPtrField<tablet::SnapshotFilePB>* out) {
+  auto files = VERIFY_RESULT_PREPEND(
+      Env::Default()->GetChildren(dir, ExcludeDots::kTrue),
+      Format("Unable to list directory $0", dir));
+
+  for (const string& file : files) {
+    LOG(INFO) << "File: " << file;
+    const auto path = JoinPathSegments(dir, file);
+    const auto fname = prefix.empty() ? file : JoinPathSegments(prefix, file);
+
+    if (VERIFY_RESULT(Env::Default()->IsDirectory(path))) {
+      RETURN_NOT_OK(AddDirToSnapshotFiles(path, fname, snapshot_id, out));
+      continue;
+    }
+
+    const uint64_t file_size = VERIFY_RESULT_PREPEND(
+        Env::Default()->GetFileSize(path),
+        Format("Unable to get file size for file $0", path));
+
+    auto snapshot_file_pb = out->Add();
+    auto& file_pb = *snapshot_file_pb->mutable_file();
+    snapshot_file_pb->set_snapshot_id(snapshot_id);
+    file_pb.set_name(fname);
+    file_pb.set_size_bytes(file_size);
+    file_pb.set_inode(VERIFY_RESULT(Env::Default()->GetFileINode(path)));
+  }
+
+  return Status::OK();
+}
+
 Status RemoteBootstrapSession::InitSnapshotFiles() {
   const scoped_refptr<TabletMetadata>& metadata = tablet_peer_->tablet_metadata();
   tablet_superblock_.clear_snapshot_files();
@@ -37,23 +69,8 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
       continue;
     }
 
-    vector<string> files = VERIFY_RESULT_PREPEND(
-        metadata->fs_manager()->ListDir(snapshot_dir),
-        Substitute("Unable to list directory $0", snapshot_dir));
-
-    for (const string& file : files) {
-      const string path = JoinPathSegments(snapshot_dir, file);
-      const uint64_t file_size = VERIFY_RESULT_PREPEND(
-          metadata->fs_manager()->env()->GetFileSize(path),
-          Substitute("Unable to get file size for file $0", path));
-
-      auto snapshot_file_pb = tablet_superblock_.mutable_snapshot_files()->Add();
-      auto& file_pb = *snapshot_file_pb->mutable_file();
-      snapshot_file_pb->set_snapshot_id(dir_name);
-      file_pb.set_name(file);
-      file_pb.set_size_bytes(file_size);
-      file_pb.set_inode(VERIFY_RESULT(metadata->fs_manager()->env()->GetFileINode(path)));
-    }
+    RETURN_NOT_OK(AddDirToSnapshotFiles(
+        snapshot_dir, "", dir_name, tablet_superblock_.mutable_snapshot_files()));
   }
 
   return Status::OK();

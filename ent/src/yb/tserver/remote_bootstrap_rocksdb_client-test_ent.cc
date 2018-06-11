@@ -90,6 +90,10 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFiles) {
     const string src_snapshot_file_file_path = JoinPathSegments(src_snapshot_dir,
                                                                 src_snapshot_file);
 
+    if (ASSERT_RESULT(Env::Default()->IsDirectory(snapshot_file_path))) {
+      ASSERT_TRUE(ASSERT_RESULT(Env::Default()->IsDirectory(src_snapshot_file_file_path)));
+      continue;
+    }
     LOG(INFO) << "Comparing file " << snapshot_file_path
               << " and file " << src_snapshot_file_file_path;
     ASSERT_OK(CompareFileContents(snapshot_file_path, src_snapshot_file_file_path));
