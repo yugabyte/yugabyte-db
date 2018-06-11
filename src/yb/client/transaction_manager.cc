@@ -134,6 +134,10 @@ class TransactionManager::Impl {
     }
   }
 
+  const scoped_refptr<ClockBase>& clock() const {
+    return clock_;
+  }
+
   const YBClientPtr& client() const {
     return client_;
   }
@@ -186,6 +190,10 @@ const YBClientPtr& TransactionManager::client() const {
 
 rpc::Rpcs& TransactionManager::rpcs() {
   return impl_->rpcs();
+}
+
+const scoped_refptr<ClockBase>& TransactionManager::clock() const {
+  return impl_->clock();
 }
 
 HybridTime TransactionManager::Now() const {

@@ -392,6 +392,70 @@ public class TestTransaction extends BaseCQLTest {
   }
 
   @Test
+  public void testReadRestarts() throws Exception {
+
+    // Test read restart by repeatedly inserting 2 rows into a table with an invariant while
+    // reading them back in parallel. Verify that the invariant is maintained and writetimes are
+    // consistent while there are read restarts and retries.
+    session.execute("create table test_restart (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true};");
+
+    final int TOTAL = 100;
+    final PreparedStatement insertStmt = session.prepare(
+        "begin transaction" +
+        "  insert into test_restart (k, v) values (1, ?);" +
+        "  insert into test_restart (k, v) values (2, ?);" +
+        "end transaction;");
+    session.execute(insertStmt.bind(Integer.valueOf(0), Integer.valueOf(TOTAL)));
+
+    // Thread to insert rows in parallel.
+    Thread thread = new Thread() {
+
+      public void run() {
+        Random rand = new Random();
+        do {
+          int v1 = rand.nextInt();
+          int v2 = TOTAL - v1;
+          session.execute(insertStmt.bind(Integer.valueOf(v1), Integer.valueOf(v2)));
+        } while (!Thread.interrupted());
+      }
+    };
+    thread.start();
+
+    try {
+      PreparedStatement selectStmt = session.prepare(
+          "select v, writetime(v) from test_restart where k in (1, 2);");
+
+      int initialRestarts = getRestartsCount("test_restart");
+      int initialRetries = getRetriesCount();
+      LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
+
+      // Keep reading until we have the desired number of restart requests and retries.
+      final int TOTAL_RESTARTS = 10;
+      final int TOTAL_RETRIES = 10;
+      int i = 0;
+      while (true) {
+        i++;
+        List<Row> rows = session.execute(selectStmt.bind()).all();
+        assertEquals(2, rows.size());
+        assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
+        assertEquals(rows.get(0).getLong("writetime(v)"), rows.get(1).getLong("writetime(v)"));
+
+        int currentRestarts = getRestartsCount("test_restart");
+        int currentRetries = getRetriesCount();
+        if (currentRestarts - initialRestarts >= TOTAL_RESTARTS &&
+            currentRetries - initialRetries >= TOTAL_RETRIES) {
+          LOG.info("Current restarts = {}, retries = {} after {} tries",
+                   currentRestarts, currentRetries, i);
+          break;
+        }
+      }
+    } finally {
+      thread.interrupt();
+    }
+  }
+
+  @Test
   public void testSystemTransactionsTable() throws Exception {
     createTables();
     // Insert into multiple tables and ensure all rows are written with same writetime.

@@ -39,6 +39,7 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/transaction.h"
 
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -87,7 +88,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
           const std::shared_ptr<YBSessionData>& session,
-          YBTransactionPtr transaction);
+          YBTransactionPtr transaction,
+          ConsistentReadPoint* read_point);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -136,10 +138,14 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return async_rpc_metrics_;
   }
 
+  ConsistentReadPoint* read_point() {
+    return read_point_;
+  }
+
   YBTransactionPtr transaction() const;
 
-  const TransactionPrepareData& transaction_prepare_data() const {
-    return transaction_prepare_data_;
+  const TransactionMetadata& transaction_metadata() const {
+    return transaction_metadata_;
   }
 
   void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
@@ -266,7 +272,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   YBTransactionPtr transaction_;
 
-  TransactionPrepareData transaction_prepare_data_;
+  TransactionMetadata transaction_metadata_;
+
+  // The consistent read point for this batch if it is specified.
+  ConsistentReadPoint* read_point_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

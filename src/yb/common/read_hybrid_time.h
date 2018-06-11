@@ -14,6 +14,7 @@
 #ifndef YB_COMMON_READ_HYBRID_TIME_H
 #define YB_COMMON_READ_HYBRID_TIME_H
 
+#include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/util/format.h"
 
@@ -50,6 +51,10 @@ struct ReadHybridTime {
 
   static ReadHybridTime FromUint64(uint64_t value) {
     return SingleTime(HybridTime(value));
+  }
+
+  static ReadHybridTime FromHybridTimeRange(const HybridTimeRange& range) {
+    return {range.first, range.second, range.second, 0};
   }
 
   template <class PB>

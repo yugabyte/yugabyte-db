@@ -72,8 +72,8 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request
 
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    DCHECK_EQ(req_read_time->read, req_read_time->local_limit);
-    DCHECK_EQ(req_read_time->read, req_read_time->global_limit);
+    DCHECK_LE(req_read_time->read, req_read_time->local_limit);
+    DCHECK_LE(req_read_time->read, req_read_time->global_limit);
     *req_read_time = ReadHybridTime::SingleTime(start_sub_doc_key.hybrid_time());
     // TODO(dtxn) What should we do with read_limit_ht here?
 

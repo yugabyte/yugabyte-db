@@ -49,6 +49,7 @@
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
+#include "yb/common/clock.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/gutil/macros.h"
@@ -850,6 +851,7 @@ typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
 class YBSessionData;
 
 YB_STRONGLY_TYPED_BOOL(VerifyResponse);
+YB_STRONGLY_TYPED_BOOL(Retry);
 
 // A YBSession belongs to a specific YBClient, and represents a context in
 // which all read/write data access should take place. Within a session,
@@ -910,7 +912,7 @@ YB_STRONGLY_TYPED_BOOL(VerifyResponse);
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   explicit YBSession(const std::shared_ptr<YBClient>& client,
-                     const YBTransactionPtr& transaction = nullptr);
+                     const scoped_refptr<ClockBase>& clock = nullptr);
 
   ~YBSession();
 
@@ -945,6 +947,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     MANUAL_FLUSH
   };
 
+  // Set the consistent read point used by the non-transactional operations in this session. If
+  // the operations are retries and last read point indicates the operations are to be restarted,
+  // the read point will be updated to restart read-time. Otherwise, the read point will be set to
+  // the current time.
+  void SetReadPoint(Retry retry);
+
+  // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
   // Set the flush mode.

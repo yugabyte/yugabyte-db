@@ -35,6 +35,7 @@
 #include <unordered_set>
 
 #include "yb/client/async_rpc.h"
+#include "yb/common/consistent_read_point.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -53,7 +54,7 @@ class ErrorCollector;
 class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
  public:
   explicit YBSessionData(std::shared_ptr<YBClient> client,
-                         const YBTransactionPtr& transaction);
+                         const scoped_refptr<ClockBase>& clock = nullptr);
   ~YBSessionData();
 
   YBSessionData(const YBSessionData&) = delete;
@@ -71,6 +72,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   // Abort the unflushed or in-flight operations.
   void Abort();
+
+  void SetReadPoint(Retry retry);
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
@@ -105,6 +108,7 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
 
+  std::unique_ptr<ConsistentReadPoint> read_point_;
   YBTransactionPtr transaction_;
   bool allow_local_calls_in_curr_thread_ = true;
 

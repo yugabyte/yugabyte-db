@@ -23,7 +23,6 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/messenger.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -63,11 +62,13 @@ QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
              shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
       metadata_cache_(cache),
-      session_(client->NewSession()),
+      clock_(new server::HybridClock()),
+      session_(std::make_shared<YBSession>(client_, clock_)),
       messenger_(messenger),
       resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))),
       cql_rpcserver_env_(cql_rpcserver_env) {
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+  CHECK_OK(clock_->Init());
 }
 
 QLEnv::~QLEnv() {}
@@ -116,9 +117,7 @@ void QLEnv::RescheduleCurrentCall(Callback<void(void)>* callback) {
 
 void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
   if (transaction_manager_ == nullptr) {
-    server::ClockPtr clock(new server::HybridClock());
-    CHECK_OK(clock->Init());
-    transaction_manager_ = std::make_unique<TransactionManager>(client_, clock);
+    transaction_manager_ = std::make_unique<TransactionManager>(client_, clock_);
   }
   if (transaction_ == nullptr) {
     transaction_ =  std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
@@ -152,6 +151,10 @@ void QLEnv::CommitTransaction(CommitCallback callback) {
   session_->SetTransaction(nullptr);
   shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
   transaction->Commit(std::move(callback));
+}
+
+void QLEnv::SetReadPoint(const ReExecute reexecute) {
+  session_->SetReadPoint(static_cast<client::Retry>(reexecute));
 }
 
 CHECKED_STATUS QLEnv::Apply(std::shared_ptr<client::YBqlOp> op) {
