@@ -35,6 +35,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/common/common.pb.h"
+#include "yb/server/hybrid_clock.h"
 
 namespace yb {
 namespace ql {
@@ -67,6 +68,9 @@ class QLEnv {
                                           client::YBTableName* indexed_table_name);
 
   // Read/write related methods.
+
+  // Set the consistent read point for the read/write operations.
+  virtual void SetReadPoint(ReExecute reexecute = ReExecute::kFalse);
 
   // Apply a read/write operation. The operation is buffered and needs to be flushed with
   // FlushAsync. Mix of read/write operations in a batch is not supported currently.
@@ -191,6 +195,9 @@ class QLEnv {
 
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
+
+  // Hybrid clock for transaction manager and read consistency.
+  server::ClockPtr clock_;
 
   // YBSession to apply operations.
   std::shared_ptr<client::YBSession> session_;

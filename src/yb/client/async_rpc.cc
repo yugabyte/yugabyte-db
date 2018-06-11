@@ -212,20 +212,20 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     : AsyncRpc(batcher, tablet, allow_local_calls_in_curr_thread, ops, consistency_level) {
   req_.set_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
-  auto& transaction_data = batcher_->transaction_prepare_data();
-  if (transaction_data.propagated_ht.is_valid()) {
-    req_.set_propagated_hybrid_time(transaction_data.propagated_ht.ToUint64());
-  }
-  auto read_time = transaction_data.read_time;
-  if (read_time) {
-    auto it = transaction_data.local_limits->find(tablet_invoker_.tablet()->tablet_id());
-    if (it != transaction_data.local_limits->end()) {
-      read_time.local_limit = it->second;
+  const ConsistentReadPoint* read_point = batcher_->read_point();
+  if (read_point) {
+    req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
+    // Set read time for consistent read only if the table is transaction-enabled.
+    if (table()->InternalSchema().table_properties().is_transactional()) {
+      auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
+      if (read_time) {
+        read_time.AddToPB(&req_);
+      }
     }
-    read_time.AddToPB(&req_);
   }
-  if (!transaction_data.metadata.transaction_id.is_nil()) {
-    SetTransactionMetadata(transaction_data.metadata, &req_);
+  auto& transaction_metadata = batcher_->transaction_metadata();
+  if (!transaction_metadata.transaction_id.is_nil()) {
+    SetTransactionMetadata(transaction_metadata, &req_);
   }
 }
 
@@ -244,9 +244,9 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   }
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
-    auto transaction = batcher_->transaction();
-    if (transaction) {
-      batcher_->transaction()->RestartRequired(req_.tablet_id(), restart_read_time);
+    auto read_point = batcher_->read_point();
+    if (read_point) {
+      read_point->RestartRequired(req_.tablet_id(), restart_read_time);
     }
     Failed(STATUS_FORMAT(TryAgain, "Restart read required at: $0", restart_read_time));
     return false;

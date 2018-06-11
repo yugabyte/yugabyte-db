@@ -58,10 +58,9 @@ using internal::ErrorCollector;
 
 using std::shared_ptr;
 
-YBSessionData::YBSessionData(shared_ptr<YBClient> client,
-                             const YBTransactionPtr& transaction)
+YBSessionData::YBSessionData(shared_ptr<YBClient> client, const scoped_refptr<ClockBase>& clock)
     : client_(std::move(client)),
-      transaction_(transaction),
+      read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
       timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
   const auto metric_entity = client_->messenger()->metric_entity();
@@ -90,6 +89,15 @@ void YBSessionData::Abort() {
   if (batcher_ && batcher_->HasPendingOperations()) {
     batcher_->Abort(STATUS(Aborted, "Batch aborted"));
     batcher_.reset();
+  }
+}
+
+void YBSessionData::SetReadPoint(const Retry retry) {
+  DCHECK_NOTNULL(read_point_.get());
+  if (retry && read_point_->IsRestartRequired()) {
+    read_point_->Restart();
+  } else {
+    read_point_->SetCurrentReadTime();
   }
 }
 
@@ -139,7 +147,8 @@ void YBSessionData::set_allow_local_calls_in_curr_thread(bool flag) {
 internal::Batcher& YBSessionData::Batcher() {
   if (!batcher_) {
     batcher_.reset(new internal::Batcher(
-        client_.get(), error_collector_.get(), shared_from_this(), transaction_));
+        client_.get(), error_collector_.get(), shared_from_this(), transaction_,
+        transaction_ ? &transaction_->read_point() : read_point_.get()));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }

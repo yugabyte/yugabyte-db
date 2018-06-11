@@ -1345,9 +1345,12 @@ YBError::~YBError() {}
 // YBSession
 ////////////////////////////////////////////////////////////
 
-YBSession::YBSession(const shared_ptr<YBClient>& client,
-                     const YBTransactionPtr& transaction)
-    : data_(std::make_shared<YBSessionData>(client, transaction)) {
+YBSession::YBSession(const shared_ptr<YBClient>& client, const scoped_refptr<ClockBase>& clock)
+    : data_(std::make_shared<YBSessionData>(client, clock)) {
+}
+
+void YBSession::SetReadPoint(const Retry retry) {
+  data_->SetReadPoint(retry);
 }
 
 void YBSession::SetTransaction(YBTransactionPtr transaction) {

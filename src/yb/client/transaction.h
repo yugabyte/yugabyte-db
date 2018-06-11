@@ -22,6 +22,7 @@
 #include <unordered_set>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -40,26 +41,10 @@ typedef std::function<void(const Status&)> Waiter;
 typedef std::function<void(const Status&)> CommitCallback;
 typedef std::function<void(const Result<ChildTransactionDataPB>&)> PrepareChildCallback;
 
-// When Batch plans to execute some operations in context of a transaction, it asks
-// that transaction to make some preparations. This struct contains results of those preparations.
-struct TransactionPrepareData {
-  // Transaction metadata that should be sent to tserver with those operations.
-  TransactionMetadata metadata;
-
-  // Propagated hybrid time.
-  HybridTime propagated_ht;
-
-  // Read time.
-  ReadHybridTime read_time;
-
-  // Local limits for separate tablets, pointed object alive while transaction is alive.
-  const std::unordered_map<TabletId, HybridTime>* local_limits;
-};
-
 struct ChildTransactionData {
   TransactionMetadata metadata;
   ReadHybridTime read_time;
-  std::unordered_map<TabletId, HybridTime> local_limits;
+  ConsistentReadPoint::HybridTimeMap local_limits;
 
   static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
 };
@@ -86,11 +71,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // the waiter, which will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionPrepareData* prepare_data);
+               TransactionMetadata* metadata);
 
   // Notifies transaction that specified ops were flushed with some status.
-  void Flushed(
-      const internal::InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time);
+  void Flushed(const internal::InFlightOps& ops, const Status& status);
 
   // Commits this transaction.
   void Commit(CommitCallback callback);
@@ -104,7 +88,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Returns transaction ID.
   const TransactionId& id() const;
 
-  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time);
+  const ConsistentReadPoint& read_point() const;
+  ConsistentReadPoint& read_point();
 
   bool IsRestartRequired() const;
 

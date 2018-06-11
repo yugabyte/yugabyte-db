@@ -169,7 +169,10 @@ class QLTransactionTest : public QLDmlTestBase {
   }
 
   shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
-    auto session = std::make_shared<YBSession>(client_, transaction);
+    auto session = std::make_shared<YBSession>(client_);
+    if (transaction) {
+      session->SetTransaction(transaction);
+    }
     session->SetTimeout(NonTsanVsTsan(15s, 60s));
     return session;
   }

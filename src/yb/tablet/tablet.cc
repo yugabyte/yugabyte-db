@@ -883,7 +883,8 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
         &transaction_manager_.get(),
         VERIFY_RESULT(ChildTransactionData::FromPB(write_op->request().child_transaction_data())));
     const YBClientPtr client = transaction_participant_->context()->client_future().get();
-    auto session = std::make_shared<YBSession>(client, txn);
+    auto session = std::make_shared<YBSession>(client);
+    session->SetTransaction(txn);
     RETURN_NOT_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
     for (auto& pair : *write_op->index_requests()) {
       client::YBTablePtr index_table;
