@@ -105,6 +105,14 @@ rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(rocksdb_.get());
 }
 
+rocksdb::DB* DocDBRocksDBUtil::intents_db() {
+  return DCHECK_NOTNULL(intents_db_.get());
+}
+
+std::string DocDBRocksDBUtil::IntentsDBDir() {
+  return rocksdb_dir_ + ".intents";
+}
+
 Status DocDBRocksDBUtil::OpenRocksDB() {
   // Init the directory if needed.
   if (rocksdb_dir_.empty()) {
@@ -115,18 +123,27 @@ Status DocDBRocksDBUtil::OpenRocksDB() {
   RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options_, rocksdb_dir_, &rocksdb));
   LOG(INFO) << "Opened RocksDB at " << rocksdb_dir_;
   rocksdb_.reset(rocksdb);
+
+  rocksdb = nullptr;
+  RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options_, IntentsDBDir(), &rocksdb));
+  intents_db_.reset(rocksdb);
+
   return Status::OK();
 }
 
 Status DocDBRocksDBUtil::ReopenRocksDB() {
+  intents_db_.reset();
   rocksdb_.reset();
   return OpenRocksDB();
 }
 
 Status DocDBRocksDBUtil::DestroyRocksDB() {
+  intents_db_.reset();
   rocksdb_.reset();
   LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;
-  return rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_);
+  RETURN_NOT_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
+  RETURN_NOT_OK(rocksdb::DestroyDB(IntentsDBDir(), rocksdb_options_));
+  return Status::OK();
 }
 
 void DocDBRocksDBUtil::ResetMonotonicCounter() {
@@ -209,7 +226,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(
       doc_write_batch, &rocksdb_write_batch, hybrid_time, decode_dockey, increment_write_id));
 
-  rocksdb::Status rocksdb_write_status = rocksdb_->Write(write_options(), &rocksdb_write_batch);
+  rocksdb::DB* db = current_txn_id_ ? intents_db_.get() : rocksdb_.get();
+  rocksdb::Status rocksdb_write_status = db->Write(write_options(), &rocksdb_write_batch);
 
   if (!rocksdb_write_status.ok()) {
     LOG(ERROR) << "Failed writing to RocksDB: " << rocksdb_write_status.ToString();
@@ -255,7 +273,8 @@ void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return yb::docdb::DocDBDebugDumpToStr(rocksdb());
+  return yb::docdb::DocDBDebugDumpToStr(rocksdb()) +
+         yb::docdb::DocDBDebugDumpToStr(intents_db(), StorageDbType::kIntents);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -329,7 +348,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 }
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
-  DocDBDebugDump(rocksdb_.get(), std::cerr);
+  DocDBDebugDump(rocksdb_.get(), std::cerr, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -346,11 +365,13 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
-  return DocWriteBatch(rocksdb_.get(), init_marker_behavior_, &monotonic_counter_);
+  return DocWriteBatch(
+      {rocksdb_.get(), nullptr /* intents_db */}, init_marker_behavior_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
-  return DocWriteBatch(rocksdb_.get(), init_marker_behavior, &monotonic_counter_);
+  return DocWriteBatch(
+      {rocksdb_.get(), nullptr /* intents_db */}, init_marker_behavior, &monotonic_counter_);
 }
 
 void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior) {

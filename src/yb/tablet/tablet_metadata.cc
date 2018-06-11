@@ -80,6 +80,8 @@ namespace yb {
 namespace tablet {
 
 const int64 kNoDurableMemStore = -1;
+const std::string kIntentsSubdir = "intents";
+const std::string kIntentsDBSuffix = ".intents";
 
 // ============================================================================
 //  Tablet Metadata
@@ -119,12 +121,14 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
     wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
 
-  auto wal_table_top_dir = JoinPathSegments(wal_top_dir, Substitute("table-$0", table_id));
-  auto wal_dir = JoinPathSegments(wal_table_top_dir, Substitute("tablet-$0", tablet_id));
+  auto table_dir = Substitute("table-$0", table_id);
+  auto tablet_dir = Substitute("tablet-$0", tablet_id);
 
-  auto rocksdb_top_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName);
-  auto rocksdb_table_top_dir = JoinPathSegments(rocksdb_top_dir, Substitute("table-$0", table_id));
-  auto rocksdb_dir = JoinPathSegments(rocksdb_table_top_dir, Substitute("tablet-$0", tablet_id));
+  auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
+  auto wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
+
+  auto rocksdb_dir = JoinPathSegments(
+      data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
 
   scoped_refptr<TabletMetadata> ret(new TabletMetadata(fs_manager,
                                                        table_id,
@@ -204,14 +208,25 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
   docdb::InitRocksDBOptions(
       &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
 
-  LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
+  LOG(INFO) << "Destroying regular db at: " << rocksdb_dir_;
   rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
 
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to destroy RocksDB at: " << rocksdb_dir_ << ": "
-               << status.ToString();
+    LOG(ERROR) << "Failed to destroy regular DB at: " << rocksdb_dir_ << ": " << status;
   } else {
-    LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
+    LOG(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir_;
+  }
+
+  auto intents_dir = rocksdb_dir_ + kIntentsDBSuffix;
+  if (fs_manager_->env()->FileExists(intents_dir)) {
+    auto status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
+
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to destroy provisional records DB at: " << intents_dir << ": "
+                 << status;
+    } else {
+      LOG(INFO) << "Successfully destroyed provisional records DB at: " << intents_dir;
+    }
   }
 
   // Flushing will sync the new tablet_data_state_ to disk and will now also

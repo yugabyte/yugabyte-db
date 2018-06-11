@@ -518,17 +518,15 @@ TEST_F(QLTabletTest, WaitFlush) {
   auto deadline = std::chrono::steady_clock::now() + 20s;
   while (std::chrono::steady_clock::now() <= deadline) {
     for (const auto& peer : peers) {
-      auto flushed_op_id = peer->tablet()->MaxPersistentOpId();
-      ASSERT_OK(flushed_op_id);
+      auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
-      ASSERT_LE(flushed_op_id->index, latest_entry_op_id.index);
+      ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
   }
 
   for (const auto& peer : peers) {
-    auto flushed_op_id = peer->tablet()->MaxPersistentOpId();
-    ASSERT_OK(flushed_op_id);
-    ASSERT_GE(flushed_op_id->index, 100);
+    auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
+    ASSERT_GE(flushed_op_id.index, 100);
   }
 
   workload.StopAndJoin();

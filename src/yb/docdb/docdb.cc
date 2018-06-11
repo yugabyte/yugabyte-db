@@ -83,7 +83,7 @@ void AddIntent(
     const SliceParts& key,
     const SliceParts& value,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  char reverse_key_prefix[2] = { ValueTypeAsChar::kIntentPrefix, ValueTypeAsChar::kTransactionId };
+  char reverse_key_prefix[1] = { ValueTypeAsChar::kTransactionId };
   size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
   auto doc_ht_slice = key.parts[key.num_parts - 1];
   memcpy(doc_ht_buffer, doc_ht_slice.data(), doc_ht_slice.size());
@@ -93,7 +93,7 @@ void AddIntent(
   doc_ht_slice = Slice(pointer_cast<char*>(doc_ht_buffer), doc_ht_slice.size());
 
   std::array<Slice, 3> reverse_key = {{
-      Slice(reverse_key_prefix, 2),
+      Slice(reverse_key_prefix, sizeof(reverse_key_prefix)),
       Slice(transaction_id.data, transaction_id.size()),
       doc_ht_slice,
   }};
@@ -164,13 +164,13 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
 Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 MonoTime deadline,
                                 const ReadHybridTime& read_time,
-                                rocksdb::DB *rocksdb,
+                                const DocDB& doc_db,
                                 KeyValueWriteBatchPB* write_batch,
                                 InitMarkerBehavior init_marker_behavior,
                                 std::atomic<int64_t>* monotonic_counter,
                                 HybridTime* restart_read_ht) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
-  DocWriteBatch doc_write_batch(rocksdb, init_marker_behavior, monotonic_counter);
+  DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
@@ -243,7 +243,6 @@ CHECKED_STATUS EnumerateIntents(
     CHECK_OK(key_size);
 
     encoded_key.Clear();
-    encoded_key.AppendValueType(ValueType::kIntentPrefix);
     encoded_key.AppendRawBytes(key.cdata(), *key_size);
     key.remove_prefix(*key_size);
 
@@ -605,15 +604,15 @@ CHECKED_STATUS BuildSubDocument(
 }  // namespace
 
 yb::Status GetSubDocument(
-    rocksdb::DB *db,
+    const DocDB& doc_db,
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     MonoTime deadline,
     const ReadHybridTime& read_time) {
   auto iter = CreateIntentAwareIterator(
-      db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
-      deadline, read_time);
+      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id,
+      txn_op_context, deadline, read_time);
   return GetSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 
@@ -757,8 +756,8 @@ yb::Status GetSubDocument(
 
 namespace {
 
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
-  *key_type = GetKeyType(key_slice);
+Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type, KeyType* key_type) {
+  *key_type = GetKeyType(key_slice, db_type);
   SubDocKey subdoc_key;
   switch (*key_type) {
     case KeyType::kIntentKey:
@@ -769,13 +768,12 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
       RETURN_NOT_OK_PREPEND(
           DecodeIntentKey(key_slice, &intent_prefix, &intent_type, &doc_ht),
           "Error: failed decoding RocksDB intent key " + FormatRocksDBSliceAsStr(key_slice));
-      intent_prefix.consume_byte();
       RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(intent_prefix));
       return subdoc_key.ToString() + " " + ToString(intent_type) + " " + doc_ht.ToString();
     }
     case KeyType::kReverseTxnKey:
     {
-      key_slice.remove_prefix(2); // kIntentPrefix + kTransactionId
+      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       if (key_slice.empty() || key_slice.size() > kMaxBytesPerEncodedHybridTime + 1) {
         return STATUS_FORMAT(
@@ -804,7 +802,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
     }
     case KeyType::kTransactionMetadata:
     {
-      key_slice.remove_prefix(2); // kIntentPrefix + kTransactionId
+      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
       auto transaction_id = DecodeTransactionId(&key_slice);
       RETURN_NOT_OK(transaction_id);
       return Format("TXN META $0", *transaction_id);
@@ -861,7 +859,7 @@ Result<std::string> DocDBValueToDebugStr(
     }
     case KeyType::kReverseTxnKey: {
       KeyType ignore_key_type;
-      return DocDBKeyToDebugStr(value, &ignore_key_type);
+      return DocDBKeyToDebugStr(value, StorageDbType::kIntents, &ignore_key_type);
     }
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
@@ -871,9 +869,10 @@ Result<std::string> DocDBValueToDebugStr(
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
 }
 
-void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, std::ostream* out) {
+void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
+                      std::ostream* out) {
   KeyType key_type;
-  Result<std::string> key_str = DocDBKeyToDebugStr(key, &key_type);
+  Result<std::string> key_str = DocDBKeyToDebugStr(key, db_type, &key_type);
   if (!key_str.ok()) {
     *out << key_str.status() << endl;
     return;
@@ -890,34 +889,35 @@ void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, std:
   }
 }
 
-std::string EntryToString(const rocksdb::Iterator& iterator) {
+std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
   std::ostringstream out;
-  ProcessDumpEntry(iterator.key(), iterator.value(), IncludeBinary::kFalse, &out);
+  ProcessDumpEntry(iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type, &out);
   return out.str();
 }
 
 }  // namespace
 
-void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, IncludeBinary include_binary) {
+void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
+                    IncludeBinary include_binary) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
 
   while (iter->Valid()) {
-    ProcessDumpEntry(iter->key(), iter->value(), include_binary, &out);
+    ProcessDumpEntry(iter->key(), iter->value(), include_binary, db_type, &out);
     iter->Next();
   }
 }
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, IncludeBinary include_binary) {
+std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, StorageDbType db_type,
+                                IncludeBinary include_binary) {
   stringstream ss;
-  DocDBDebugDump(rocksdb, ss, include_binary);
+  DocDBDebugDump(rocksdb, ss, db_type, include_binary);
   return ss.str();
 }
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
-  out->AppendValueType(ValueType::kIntentPrefix);
   out->AppendValueType(ValueType::kTransactionId);
   out->AppendRawBytes(Slice(transaction_id.data, transaction_id.size()));
 }
@@ -933,14 +933,15 @@ Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
 
 Status PrepareApplyIntentsBatch(
     const TransactionId& transaction_id, HybridTime commit_ht,
-    rocksdb::DB* db, rocksdb::WriteBatch* write_batch) {
+    rocksdb::WriteBatch* regular_batch,
+    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
   Slice reverse_index_upperbound;
   auto reverse_index_iter = CreateRocksDBIterator(
-      db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId, nullptr,
-      &reverse_index_upperbound);
+      intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId,
+      nullptr /* read_filter */, &reverse_index_upperbound);
 
   auto intent_iter = CreateRocksDBIterator(
-      db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+      intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
 
   KeyBytes txn_reverse_index_prefix;
   Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
@@ -962,7 +963,8 @@ Status PrepareApplyIntentsBatch(
       break;
     }
 
-    VLOG(4) << "Apply reverse index record: " << EntryToString(*reverse_index_iter);
+    VLOG(4) << "Apply reverse index record: "
+            << EntryToString(*reverse_index_iter, StorageDbType::kIntents);
 
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).
@@ -997,14 +999,14 @@ Status PrepareApplyIntentsBatch(
             intent.doc_ht,
             intent_value,
         }};
-        write_batch->Put(key_parts, value_parts);
+        regular_batch->Put(key_parts, value_parts);
         ++write_id;
       }
 
-      write_batch->Delete(intent_iter->key());
+      intents_batch->Delete(intent_iter->key());
     }
 
-    write_batch->Delete(reverse_index_iter->key());
+    intents_batch->Delete(reverse_index_iter->key());
 
     reverse_index_iter->Next();
   }

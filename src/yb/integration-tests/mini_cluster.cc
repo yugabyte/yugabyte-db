@@ -308,9 +308,9 @@ void MiniCluster::Shutdown() {
   running_ = false;
 }
 
-Status MiniCluster::FlushTablets() {
+Status MiniCluster::FlushTablets(tablet::FlushFlags flags) {
   for (const auto& tablet_server : mini_tablet_servers_) {
-    RETURN_NOT_OK(tablet_server->FlushTablets());
+    RETURN_NOT_OK(tablet_server->FlushTablets(flags));
   }
   return Status::OK();
 }

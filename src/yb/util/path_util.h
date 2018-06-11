@@ -42,10 +42,21 @@ namespace yb {
 
 class Env;
 
-// Join two path segments with the appropriate path separator,
-// if necessary.
-std::string JoinPathSegments(const std::string &a,
-                             const std::string &b);
+// Appends path segments with the appropriate path separator, if necessary.
+void AppendPathSegments(std::string* out, const std::string &b);
+
+template <class... Args>
+void AppendPathSegments(std::string* out, const std::string& a, Args&&... args) {
+  AppendPathSegments(out, a);
+  AppendPathSegments(out, std::forward<Args>(args)...);
+}
+
+template <class... Args>
+std::string JoinPathSegments(const std::string& a, Args&&... args) {
+  std::string result = a;
+  AppendPathSegments(&result, std::forward<Args>(args)...);
+  return result;
+}
 
 // Return the enclosing directory of path.
 // This is like dirname(3) but for C++ strings.

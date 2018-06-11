@@ -110,12 +110,12 @@ const SubDocument* InMemDocDbState::GetSubDocument(const SubDocKey& subdoc_key) 
   return current;
 }
 
-void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
+void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
                                 rocksdb::QueryId query_id) {
   // Clear the internal state.
   root_ = SubDocument();
 
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::DONT_USE_BLOOM_FILTER,
+  auto rocksdb_iter = CreateRocksDBIterator(doc_db.regular, BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none /* user_key_for_filter */, query_id);
   rocksdb_iter->SeekToFirst();
   KeyBytes prev_key;
@@ -143,11 +143,13 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
     GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
     const Status get_doc_status = yb::docdb::GetSubDocument(
-        rocksdb, data, query_id, kNonTransactionalOperationContext,
+        doc_db, data, query_id, kNonTransactionalOperationContext,
         MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time));
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
-      LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, IncludeBinary::kTrue);
+      LOG(WARNING)
+          << "DocDB state:\n"
+          << DocDBDebugDumpToStr(doc_db.regular, StorageDbType::kRegular, IncludeBinary::kTrue);
     }
     CHECK_OK(get_doc_status);
     // doc_found can be false for deleted documents, and that is perfectly valid.

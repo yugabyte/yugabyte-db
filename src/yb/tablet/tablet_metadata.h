@@ -378,6 +378,9 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   DISALLOW_COPY_AND_ASSIGN(TabletMetadata);
 };
 
+extern const std::string kIntentsSubdir;
+extern const std::string kIntentsDBSuffix;
+
 } // namespace tablet
 } // namespace yb
 

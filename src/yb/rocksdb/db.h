@@ -801,6 +801,8 @@ class DB {
     return Status::OK();
   }
 
+  virtual bool HasSomethingToFlush() { return true; }
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.

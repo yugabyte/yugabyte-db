@@ -56,17 +56,15 @@ namespace yb {
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
-std::string JoinPathSegments(const std::string &a,
-                             const std::string &b) {
-  CHECK(!a.empty()) << "empty first component: " << a;
+void AppendPathSegments(std::string* out, const std::string &b) {
+  CHECK(!out->empty()) << "empty first component: " << *out;
   CHECK(!b.empty() && b[0] != '/')
     << "second path component must be non-empty and relative: "
     << b;
-  if (a[a.size() - 1] == '/') {
-    return a + b;
-  } else {
-    return a + "/" + b;
+  if ((*out)[out->size() - 1] != '/') {
+    *out += '/';
   }
+  *out += b;
 }
 
 Status FileCreationError(const std::string& path_dir, int err_number) {

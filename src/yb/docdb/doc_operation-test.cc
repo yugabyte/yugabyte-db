@@ -208,7 +208,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
-    QLRocksDBStorage ql_storage(rocksdb());
+    QLRocksDBStorage ql_storage(doc_db());
     QLResultSet resultset;
     HybridTime read_restart_ht;
     EXPECT_OK(read_op.Execute(
@@ -374,8 +374,9 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   Schema schema = CreateSchema();
-  DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext, rocksdb(),
-                          MonoTime::Max() /* deadline */, ReadHybridTime::FromUint64(3000));
+  DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext,
+                          doc_db(), MonoTime::Max() /* deadline */,
+                          ReadHybridTime::FromUint64(3000));
   ASSERT_OK(iter.Init());
   ASSERT_FALSE(iter.HasNext());
 
@@ -404,7 +405,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
                              rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter(
-      schema, schema, kNonTransactionalOperationContext, rocksdb(),
+      schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   ASSERT_TRUE(ql_iter.HasNext());
@@ -451,7 +452,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocQLScanSpec ql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
                                     rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter_system(
-      schema, schema, kNonTransactionalOperationContext, rocksdb(),
+      schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   ASSERT_TRUE(ql_iter_system.HasNext());
@@ -589,7 +590,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, &condition,
                                  rocksdb::kDefaultQueryId, is_forward_scan);
       DocRowwiseIterator ql_iter(
-          schema, schema, boost::none, rocksdb(),
+          schema, schema, boost::none, doc_db(),
           MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
       ASSERT_OK(ql_iter.Init(ql_scan_spec));
       LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);

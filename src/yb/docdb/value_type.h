@@ -30,9 +30,8 @@ namespace docdb {
 #define DOCDB_VALUE_TYPES \
     /* This ValueType is used as -infinity for scanning purposes only. */\
     ((kLowest, 0)) \
-    /* All intents are stored in the beginning of the keyspace to be able to read them without */ \
-    /* polluting cache with other values. Later we'll put intents in a separate rocksdb. */ \
-    ((kIntentPrefix, 10)) \
+    /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
+    ((kObsoleteIntentPrefix, 10)) \
     /* We use ASCII code 20 in order to have it before all other value types which can occur in */ \
     /* key, so intents will be written in the same order as original keys for which intents are */ \
     /* written. */ \

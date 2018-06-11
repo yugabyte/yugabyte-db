@@ -47,6 +47,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -529,6 +530,8 @@ Status RemoteBootstrapClient::DownloadWALs() {
 Status RemoteBootstrapClient::DownloadFile(
     const tablet::FilePB& file_pb, const std::string& dir, DataIdPB *data_id) {
   auto file_path = JoinPathSegments(dir, file_pb.name());
+  RETURN_NOT_OK(fs_manager_->env()->CreateDirs(DirName(file_path)));
+
   if (file_pb.inode() != 0) {
     auto it = inode2file_.find(file_pb.inode());
     if (it != inode2file_.end()) {
@@ -587,6 +590,14 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_sb->rocksdb_files()) {
     RETURN_NOT_OK(DownloadFile(file_pb, rocksdb_dir, &data_id));
+  }
+
+  // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
+  auto intents_tmp_dir = JoinPathSegments(rocksdb_dir, tablet::kIntentsSubdir);
+  if (fs_manager_->env()->FileExists(intents_tmp_dir)) {
+    auto intents_dir = rocksdb_dir + tablet::kIntentsDBSuffix;
+    LOG(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
+    RETURN_NOT_OK(fs_manager_->env()->RenameFile(intents_tmp_dir, intents_dir));
   }
   new_superblock_.swap(new_sb);
   downloaded_rocksdb_files_ = true;

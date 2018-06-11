@@ -17,21 +17,23 @@
 namespace yb {
 namespace docdb {
 
-KeyType GetKeyType(const Slice& slice) {
+KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   if (slice.empty()) {
     return KeyType::kEmpty;
-  } else if (*slice.data() == ValueTypeAsChar::kIntentPrefix) {
-    if (slice.size() > 1 && slice[1] == ValueTypeAsChar::kTransactionId) {
-      if (slice.size() == TransactionId::static_size() + 2) {
-        return KeyType::kTransactionMetadata;
-      } else {
-        return KeyType::kReverseTxnKey;
-      }
+  }
+
+  if (db_type == StorageDbType::kRegular) {
+    return KeyType::kValueKey;
+  }
+
+  if (slice.size() > 0 && slice[0] == ValueTypeAsChar::kTransactionId) {
+    if (slice.size() == TransactionId::static_size() + 1) {
+      return KeyType::kTransactionMetadata;
     } else {
-      return KeyType::kIntentKey;
+      return KeyType::kReverseTxnKey;
     }
   } else {
-    return KeyType::kValueKey;
+    return KeyType::kIntentKey;
   }
 }
 

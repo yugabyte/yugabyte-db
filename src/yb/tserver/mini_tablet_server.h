@@ -36,6 +36,7 @@
 
 #include "yb/common/schema.h"
 #include "yb/gutil/macros.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -79,7 +80,7 @@ class MiniTabletServer {
   CHECKED_STATUS WaitStarted();
 
   void Shutdown();
-  CHECKED_STATUS FlushTablets();
+  CHECKED_STATUS FlushTablets(tablet::FlushFlags flags = tablet::FlushFlags::kAll);
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

@@ -132,10 +132,16 @@ Status CopyDirectory(Env* env, const string& src_dir, const string& dest_dir,
         }
       }
 
-      // Last argument size == 0 means coping whole file.
-      RETURN_NOT_OK_PREPEND(
-          CopyFile(env, file_path, target_path, 0),
-          Substitute("Cannot copy file: $0", file_path));
+      if (env->DirExists(file_path)) {
+        RETURN_NOT_OK_PREPEND(
+            CopyDirectory(env, file_path, target_path, CreateIfMissing::kTrue, use_hard_links),
+            yb::Format("Cannot copy directory: $0", file_path));
+      } else {
+        // Last argument size == 0 means coping whole file.
+        RETURN_NOT_OK_PREPEND(
+            CopyFile(env, file_path, target_path, 0),
+            yb::Format("Cannot copy file: $0", file_path));
+      }
     }
   }
 

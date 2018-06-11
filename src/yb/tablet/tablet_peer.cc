@@ -607,9 +607,11 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   int64_t last_committed_write_index = tablet_->last_committed_write_index();
-  Result<yb::OpId> max_persistent_op_id = tablet_->MaxPersistentOpId();
-  RETURN_NOT_OK(max_persistent_op_id);
-  int64_t max_persistent_index = max_persistent_op_id->index;
+  auto max_persistent_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  int64_t max_persistent_index = max_persistent_op_id.regular.index;
+  if (max_persistent_op_id.intents && max_persistent_op_id.intents < max_persistent_op_id.regular) {
+    max_persistent_index = max_persistent_op_id.intents.index;
+  }
   // Check whether we had writes after last persistent entry.
   // Note that last_committed_write_index could be zero if logs were cleaned before restart.
   // So correct check is 'less', and NOT 'not equals to'.

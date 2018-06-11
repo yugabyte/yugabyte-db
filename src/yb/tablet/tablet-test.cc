@@ -187,30 +187,31 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
 }
 
 TYPED_TEST(TestTablet, TestFlushedOpId) {
-  LocalTabletWriter writer(this->tablet().get());
-  const int64_t N = 1000;
+  auto tablet = this->tablet().get();
+  LocalTabletWriter writer(tablet);
+  const int64_t kCount = 1000;
 
   // Insert & flush one row to start index counting.
   ASSERT_OK(this->InsertTestRow(&writer, 0, 333));
-  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
-  OpId id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  OpId id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   const int64_t start_index = id.index;
 
-  this->InsertTestRows(1, N, 555);
-  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  this->InsertTestRows(1, kCount, 555);
+  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index);
 
-  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
-  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
-  ASSERT_EQ(id.index, start_index + N);
+  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  ASSERT_EQ(id.index, start_index + kCount);
 
-  this->InsertTestRows(1, N, 777);
-  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
-  ASSERT_EQ(id.index, start_index + N);
+  this->InsertTestRows(1, kCount, 777);
+  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  ASSERT_EQ(id.index, start_index + kCount);
 
-  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
-  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
-  ASSERT_EQ(id.index, start_index + 2*N);
+  ASSERT_OK(tablet->Flush(FlushMode::kSync));
+  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  ASSERT_EQ(id.index, start_index + 2*kCount);
 }
 
 } // namespace tablet

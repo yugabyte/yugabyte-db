@@ -176,6 +176,36 @@ Status RemoteBootstrapSession::SetInitialCommittedState() {
   return Status::OK();
 }
 
+Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::string& dir) {
+  std::vector<std::string> files;
+  auto env = Env::Default();
+  auto status = env->GetChildren(dir, ExcludeDots::kTrue, &files);
+  if (!status.ok()) {
+    return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
+                                           status.ToString()));
+  }
+
+  google::protobuf::RepeatedPtrField<tablet::FilePB> result;
+  result.Reserve(files.size());
+  for (const auto& file : files) {
+    auto full_path = JoinPathSegments(dir, file);
+    if (VERIFY_RESULT(env->IsDirectory(full_path))) {
+      auto sub_files = VERIFY_RESULT(ListFiles(full_path));
+      for (auto& subfile : sub_files) {
+        subfile.set_name(JoinPathSegments(file, subfile.name()));
+        *result.Add() = std::move(subfile);
+      }
+      continue;
+    }
+    auto file_pb = result.Add();
+    file_pb->set_name(file);
+    file_pb->set_size_bytes(VERIFY_RESULT(env->GetFileSize(full_path)));
+    file_pb->set_inode(VERIFY_RESULT(env->GetFileINode(full_path)));
+  }
+
+  return result;
+}
+
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
   boost::lock_guard<simple_spinlock> l(session_lock_);
@@ -218,8 +248,8 @@ Status RemoteBootstrapSession::Init() {
   // Clear any previous rocksdb files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   tablet_superblock_.clear_rocksdb_files();
-  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
-                                         tablet_superblock_.mutable_rocksdb_files()));
+  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_));
+  *tablet_superblock_.mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
 
   RETURN_NOT_OK(InitSnapshotFiles());
 

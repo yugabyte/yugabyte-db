@@ -121,7 +121,7 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     MonoTime deadline,
     const ReadHybridTime& read_time,
-    rocksdb::DB *rocksdb,
+    const DocDB& doc_db,
     KeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
@@ -137,7 +137,7 @@ void PrepareNonTransactionWriteBatch(
 // functor should accept 3 arguments:
 // intent_kind - kind of intent weak or strong
 // value_slice - value of intent
-// key - pointer to key in format kIntentPrefix + SubDocKey (no ht)
+// key - pointer to key in format of SubDocKey (no ht)
 // TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
 // inside DocDB.
 // Note: From https://stackoverflow.com/a/17278470/461529:
@@ -160,7 +160,8 @@ void PrepareTransactionWriteBatch(
 
 CHECKED_STATUS PrepareApplyIntentsBatch(
     const TransactionId& transaction_id, HybridTime commit_ht,
-    rocksdb::DB* db, rocksdb::WriteBatch* write_batch);
+    rocksdb::WriteBatch* regular_batch,
+    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch);
 
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
@@ -401,7 +402,7 @@ yb::Status GetSubDocument(
 // that we include only a particular set of subkeys for the first level of the subdocument that
 // we're looking for.
 yb::Status GetSubDocument(
-    rocksdb::DB* db,
+    const DocDB& doc_db,
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
@@ -409,6 +410,7 @@ yb::Status GetSubDocument(
     const ReadHybridTime& read_time = ReadHybridTime::Max());
 
 YB_STRONGLY_TYPED_BOOL(IncludeBinary);
+YB_DEFINE_ENUM(StorageDbType, (kRegular)(kIntents));
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
@@ -416,10 +418,12 @@ YB_STRONGLY_TYPED_BOOL(IncludeBinary);
 void DocDBDebugDump(
     rocksdb::DB* rocksdb,
     std::ostream& out,
+    StorageDbType db_type,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(
-    rocksdb::DB* rocksdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+    rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
+    IncludeBinary include_binary = IncludeBinary::kFalse);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 

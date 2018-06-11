@@ -266,9 +266,9 @@ class TabletPeerTest : public YBTabletTest,
   }
 
   int32_t EarliestNeededIndex() const {
-    Result<yb::OpId> max_persistent_op_id = tablet_peer_->tablet()->MaxPersistentOpId();
+    auto max_persistent_op_id = tablet_peer_->tablet()->MaxPersistentOpId();
     EXPECT_OK(max_persistent_op_id);
-    return static_cast<int32_t>(max_persistent_op_id->index);
+    return static_cast<int32_t>(max_persistent_op_id->regular.index);
   }
 
   // We disable automatic log GC. Don't leak those changes.

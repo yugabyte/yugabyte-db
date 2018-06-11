@@ -63,9 +63,10 @@ bool DocDBCompactionFilter::Filter(int level,
     filter_usage_logged_ = true;
   }
 
-  // Skip transaction metadata.
-  if (DecodeValueType(key) == ValueType::kIntentPrefix) {
-    return false;
+  // Just remove intent records from regular DB, because it was beta feature.
+  // Currently intents are stored in separate DB.
+  if (DecodeValueType(key) == ValueType::kObsoleteIntentPrefix) {
+    return true;
   }
 
   SubDocKey subdoc_key;

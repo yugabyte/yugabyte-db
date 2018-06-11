@@ -184,14 +184,16 @@ class ScopedFdCloser {
   int fd_;
 };
 
-static Status IOError(const std::string& context, int err_number) {
+static Status IOError(const std::string& context, int err_number, const char* file, int line) {
   switch (err_number) {
     case ENOENT:
-      return STATUS(NotFound, context, ErrnoToString(err_number), err_number);
+      return Status(Status::kNotFound, file, line, context, ErrnoToString(err_number), err_number);
     case EEXIST:
-      return STATUS(AlreadyPresent, context, ErrnoToString(err_number), err_number);
+      return Status(Status::kAlreadyPresent, file, line, context, ErrnoToString(err_number),
+                    err_number);
     case EOPNOTSUPP:
-      return STATUS(NotSupported, context, ErrnoToString(err_number), err_number);
+      return Status(Status::kNotSupported, file, line, context, ErrnoToString(err_number),
+                    err_number);
     case EIO:
       if (FLAGS_suicide_on_eio) {
         // TODO: This is very, very coarse-grained. A more comprehensive
@@ -199,19 +201,21 @@ static Status IOError(const std::string& context, int err_number) {
         LOG(FATAL) << "Fatal I/O error, context: " << context;
       }
   }
-  return STATUS(IOError, context, ErrnoToString(err_number), err_number);
+  return Status(Status::kIOError, file, line, context, ErrnoToString(err_number), err_number);
 }
+
+#define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();
   if (FLAGS_never_fsync) return Status::OK();
   if (FLAGS_writable_file_use_fsync) {
     if (fsync(fd) < 0) {
-      return IOError(filename, errno);
+      return STATUS_IO_ERROR(filename, errno);
     }
   } else {
     if (fdatasync(fd) < 0) {
-      return IOError(filename, errno);
+      return STATUS_IO_ERROR(filename, errno);
     }
   }
   return Status::OK();
@@ -235,7 +239,7 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
 
   const int f = open(filename.c_str(), flags | extra_flags, 0644);
   if (f < 0) {
-    return IOError(filename, errno);
+    return STATUS_IO_ERROR(filename, errno);
   }
   *fd = f;
   return Status::OK();
@@ -261,7 +265,7 @@ class PosixSequentialFile: public SequentialFile {
         // We leave status as ok if we hit the end of the file
       } else {
         // A partial read with an error: return a non-ok status.
-        s = IOError(filename_, errno);
+        s = STATUS_IO_ERROR(filename_, errno);
       }
     }
     return s;
@@ -271,7 +275,7 @@ class PosixSequentialFile: public SequentialFile {
     TRACE_EVENT1("io", "PosixSequentialFile::Skip", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     if (fseek(file_, n, SEEK_CUR)) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     return Status::OK();
   }
@@ -298,7 +302,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     *result = Slice(scratch, (r < 0) ? 0 : r);
     if (r < 0) {
       // An error: return a non-ok status.
-      s = IOError(filename_, errno);
+      s = STATUS_IO_ERROR(filename_, errno);
     }
     return s;
   }
@@ -308,7 +312,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
     if (fstat(fd_, &st) == -1) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     return st.st_size;
   }
@@ -318,7 +322,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
     if (fstat(fd_, &st) == -1) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     return st.st_ino;
   }
@@ -381,7 +385,7 @@ class PosixWritableFile : public WritableFile {
       } else if (errno == ENOSYS) {
         YB_LOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
       } else {
-        return IOError(filename_, errno);
+        return STATUS_IO_ERROR(filename_, errno);
       }
     }
     pre_allocated_size_ = offset + size;
@@ -397,7 +401,7 @@ class PosixWritableFile : public WritableFile {
     // actual size of the file and perform Sync().
     if (filesize_ < pre_allocated_size_) {
       if (ftruncate(fd_, filesize_) < 0) {
-        s = IOError(filename_, errno);
+        s = STATUS_IO_ERROR(filename_, errno);
         pending_sync_ = true;
       }
     }
@@ -414,7 +418,7 @@ class PosixWritableFile : public WritableFile {
 
     if (close(fd_) < 0) {
       if (s.ok()) {
-        s = IOError(filename_, errno);
+        s = STATUS_IO_ERROR(filename_, errno);
       }
     }
 
@@ -431,11 +435,11 @@ class PosixWritableFile : public WritableFile {
       flags |= SYNC_FILE_RANGE_WAIT_AFTER;
     }
     if (sync_file_range(fd_, 0, 0, flags) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
 #else
     if (fsync(fd_) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
 #endif
     return Status::OK();
@@ -491,7 +495,7 @@ class PosixWritableFile : public WritableFile {
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
-      return IOError(filename_, err);
+      return STATUS_IO_ERROR(filename_, err);
     }
 
     filesize_ += written;
@@ -507,7 +511,7 @@ class PosixWritableFile : public WritableFile {
       ssize_t written = pwrite(fd_, data.data(), data.size(), filesize_);
       if (PREDICT_FALSE(written == -1)) {
         int err = errno;
-        return IOError("pwrite error", err);
+        return STATUS_IO_ERROR("pwrite error", err);
       }
 
       filesize_ += written;
@@ -600,12 +604,12 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
                 << " to size: " << real_size_
                 << ". Preallocated size: " << pre_allocated_size_;
       if (ftruncate(fd_, real_size_) != 0) {
-        return IOError(filename_, errno);
+        return STATUS_IO_ERROR(filename_, errno);
       }
     }
 
     if (close(fd_) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
 
     fd_ = -1;
@@ -692,7 +696,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
-      return IOError(filename_, err);
+      return STATUS_IO_ERROR(filename_, err);
     }
 
     if (PREDICT_FALSE(written != bytes_to_write)) {
@@ -782,14 +786,13 @@ class PosixRWFile : public RWFile {
       ssize_t r = pread(fd_, dst, rem, offset);
       if (r < 0) {
         // An error: return a non-ok status.
-        return IOError(filename_, errno);
+        return STATUS_IO_ERROR(filename_, errno);
       }
       Slice this_result(dst, r);
       DCHECK_LE(this_result.size(), rem);
       if (this_result.size() == 0) {
         // EOF
-        return STATUS(IOError, Substitute("EOF trying to read $0 bytes at offset $1",
-                                          length, offset));
+        return STATUS_FORMAT(IOError, "EOF trying to read $0 bytes at offset $1", length, offset);
       }
       dst += this_result.size();
       rem -= this_result.size();
@@ -806,7 +809,7 @@ class PosixRWFile : public RWFile {
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
-      return IOError(filename_, err);
+      return STATUS_IO_ERROR(filename_, err);
     }
 
     if (PREDICT_FALSE(written != data.size())) {
@@ -828,7 +831,7 @@ class PosixRWFile : public RWFile {
       } else if (errno == ENOSYS) {
         YB_LOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
       } else {
-        return IOError(filename_, errno);
+        return STATUS_IO_ERROR(filename_, errno);
       }
     }
     return Status::OK();
@@ -839,7 +842,7 @@ class PosixRWFile : public RWFile {
     TRACE_EVENT1("io", "PosixRWFile::PunchHole", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     if (fallocate(fd_, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, offset, length) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     return Status::OK();
 #else
@@ -856,11 +859,11 @@ class PosixRWFile : public RWFile {
       flags |= SYNC_FILE_RANGE_WAIT_AFTER;
     }
     if (sync_file_range(fd_, offset, length, flags) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
 #else
     if (fsync(fd_) < 0) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
 #endif
     return Status::OK();
@@ -892,7 +895,7 @@ class PosixRWFile : public RWFile {
 
     if (close(fd_) < 0) {
       if (s.ok()) {
-        s = IOError(filename_, errno);
+        s = STATUS_IO_ERROR(filename_, errno);
       }
     }
 
@@ -905,7 +908,7 @@ class PosixRWFile : public RWFile {
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
     if (fstat(fd_, &st) == -1) {
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     *size = st.st_size;
     return Status::OK();
@@ -986,7 +989,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     FILE* f = fopen(fname.c_str(), "r");
     if (f == nullptr) {
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     } else {
       result->reset(new PosixSequentialFile(fname, f));
       return Status::OK();
@@ -1005,7 +1008,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     int fd = open(fname.c_str(), O_RDONLY);
     if (fd < 0) {
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     }
 
     result->reset(new PosixRandomAccessFile(fname, fd));
@@ -1049,8 +1052,8 @@ class PosixEnv : public Env {
       fd = ::mkstemp(fname.get());
 
     if (fd < 0) {
-      return IOError(Substitute("Call to mkstemp() failed on name template $0", name_template),
-                     errno);
+      return STATUS_IO_ERROR(Format("Call to mkstemp() failed on name template $0", name_template),
+                             errno);
     }
     *created_filename = fname.get();
     return InstantiateNewWritableFile(*created_filename, fd, opts, result);
@@ -1085,7 +1088,7 @@ class PosixEnv : public Env {
     result->clear();
     DIR* d = opendir(dir.c_str());
     if (d == nullptr) {
-      return IOError(dir, errno);
+      return STATUS_IO_ERROR(dir, errno);
     }
     struct dirent* entry;
     // TODO: lint: Consider using readdir_r(...) instead of readdir(...) for improved thread safety.
@@ -1104,7 +1107,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     Status result;
     if (unlink(fname.c_str()) != 0) {
-      result = IOError(fname, errno);
+      result = STATUS_IO_ERROR(fname, errno);
     }
     return result;
   };
@@ -1114,7 +1117,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
-      result = IOError(name, errno);
+      result = STATUS_IO_ERROR(name, errno);
     }
     return result;
   };
@@ -1124,7 +1127,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     Status result;
     if (rmdir(name.c_str()) != 0) {
-      result = IOError(name, errno);
+      result = STATUS_IO_ERROR(name, errno);
     }
     return result;
   };
@@ -1135,11 +1138,11 @@ class PosixEnv : public Env {
     if (FLAGS_never_fsync) return Status::OK();
     int dir_fd;
     if ((dir_fd = open(dirname.c_str(), O_DIRECTORY|O_RDONLY)) == -1) {
-      return IOError(dirname, errno);
+      return STATUS_IO_ERROR(dirname, errno);
     }
     ScopedFdCloser fd_closer(dir_fd);
     if (fsync(dir_fd) != 0) {
-      return IOError(dirname, errno);
+      return STATUS_IO_ERROR(dirname, errno);
     }
     return Status::OK();
   }
@@ -1155,7 +1158,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     }
     return extractor(sbuf);
   }
@@ -1193,7 +1196,7 @@ class PosixEnv : public Env {
       if (errno == EXDEV) {
         return STATUS(NotSupported, "No cross FS links allowed");
       }
-      return IOError(src, errno);
+      return STATUS_IO_ERROR(src, errno);
     }
     return Status::OK();
   }
@@ -1203,7 +1206,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     Status result;
     if (rename(src.c_str(), target.c_str()) != 0) {
-      result = IOError(src, errno);
+      result = STATUS_IO_ERROR(Format("Rename $0 => $1", src, target), errno);
     }
     return result;
   }
@@ -1217,9 +1220,9 @@ class PosixEnv : public Env {
     Status result;
     int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) {
-      result = IOError(fname, errno);
+      result = STATUS_IO_ERROR(fname, errno);
     } else if (LockOrUnlock(fname, fd, true /* lock */, recursive_lock_ok) == -1) {
-      result = IOError("lock " + fname, errno);
+      result = STATUS_IO_ERROR("lock " + fname, errno);
       close(fd);
     } else {
       auto my_lock = new PosixFileLock;
@@ -1239,7 +1242,7 @@ class PosixEnv : public Env {
                      my_lock->fd_,
                      false /* lock */,
                      false /* recursive_lock_ok (unused when lock = false) */) == -1) {
-      result = IOError("unlock", errno);
+      result = STATUS_IO_ERROR("unlock", errno);
     }
     close(my_lock->fd_);
     delete my_lock;
@@ -1320,7 +1323,7 @@ class PosixEnv : public Env {
     Status s;
     struct stat sbuf;
     if (stat(path.c_str(), &sbuf) != 0) {
-      s = IOError(path, errno);
+      s = STATUS_IO_ERROR(path, errno);
     } else {
       *is_dir = S_ISDIR(sbuf.st_mode);
     }
@@ -1345,7 +1348,7 @@ class PosixEnv : public Env {
     gscoped_ptr<FTS, FtsCloser> tree(
         fts_open(paths, FTS_PHYSICAL | FTS_XDEV | FTS_NOCHDIR, nullptr));
     if (!tree.get()) {
-      return IOError(root, errno);
+      return STATUS_IO_ERROR(root, errno);
     }
 
     FTSENT *ent = nullptr;
@@ -1401,7 +1404,7 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     gscoped_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
     if (!r) {
-      return IOError(path, errno);
+      return STATUS_IO_ERROR(path, errno);
     }
     *result = string(r.get());
     return Status::OK();
@@ -1419,7 +1422,7 @@ class PosixEnv : public Env {
 #else
     struct sysinfo info;
     if (sysinfo(&info) < 0) {
-      return IOError("sysinfo() failed", errno);
+      return STATUS_IO_ERROR("sysinfo() failed", errno);
     }
     *ram = info.totalram;
 #endif
