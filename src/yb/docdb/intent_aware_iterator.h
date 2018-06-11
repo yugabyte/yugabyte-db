@@ -69,7 +69,7 @@ class TransactionStatusCache {
 // For intents from the same transaction, intent with maximum HT would be picked, ignoring high_ht.
 // And returned as key with time equals to high_ht.
 // Intent data format:
-//   kIntentPrefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
+//   SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
 // TxnId, IntentType, HybridTime are all prefixed with their respective value types.
 //
 // KeyBytes passed to Seek* methods should not contain hybrid time.
@@ -77,7 +77,7 @@ class TransactionStatusCache {
 class IntentAwareIterator {
  public:
   IntentAwareIterator(
-      rocksdb::DB* rocksdb,
+      const DocDB& doc_db,
       const rocksdb::ReadOptions& read_opts,
       MonoTime deadline,
       const ReadHybridTime& read_time,
@@ -217,10 +217,8 @@ class IntentAwareIterator {
 
   // Following fields contain information related to resolved suitable intent.
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
-  // kIntentPrefix + SubDocKey (no HT).
+  // SubDocKey (no HT).
   KeyBytes resolved_intent_key_prefix_;
-  // SubDocKey (no kIntentPrefix nor HT).
-  Slice resolved_intent_sub_doc_key_;
 
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).

@@ -20,13 +20,15 @@
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_storage_interface.h"
 
+#include "yb/docdb/doc_key.h"
+
 namespace yb {
 namespace docdb {
 
 // Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
 class QLRocksDBStorage : public common::YQLStorageIf {
  public:
-  explicit QLRocksDBStorage(rocksdb::DB *rocksdb);
+  explicit QLRocksDBStorage(const DocDB& doc_db);
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
@@ -66,7 +68,7 @@ class QLRocksDBStorage : public common::YQLStorageIf {
                                   ReadHybridTime* req_read_time) const override;
 
  private:
-  rocksdb::DB *const rocksdb_;
+  const DocDB doc_db_;
 };
 
 }  // namespace docdb

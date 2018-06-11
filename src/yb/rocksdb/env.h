@@ -28,8 +28,8 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_ENV_H
-#define ROCKSDB_INCLUDE_ROCKSDB_ENV_H
+#ifndef YB_ROCKSDB_ENV_H
+#define YB_ROCKSDB_ENV_H
 
 #include <stdint.h>
 #include <cstdarg>
@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "yb/rocksdb/file.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/thread_status.h"
@@ -214,6 +215,8 @@ class Env {
   //                  whether this file exists, or if the path is invalid.
   //         IOError if an IO Error was encountered
   virtual Status FileExists(const std::string& fname) = 0;
+
+  virtual bool DirExists(const std::string& fname) { return false; }
 
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
@@ -1053,4 +1056,4 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_ENV_H
+#endif // YB_ROCKSDB_ENV_H

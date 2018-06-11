@@ -350,7 +350,7 @@ unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
 }
 
 unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
-    rocksdb::DB* rocksdb,
+    const DocDB& doc_db,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
@@ -359,10 +359,11 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound) {
-  rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
+  // TODO(dtxn) do we need separate options for intents db?
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
   return std::make_unique<IntentAwareIterator>(
-      rocksdb, read_opts, deadline, read_time, txn_op_context);
+      doc_db, read_opts, deadline, read_time, txn_op_context);
 }
 
 void InitRocksDBOptions(

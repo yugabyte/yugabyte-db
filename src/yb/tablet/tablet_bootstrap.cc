@@ -107,7 +107,7 @@ typedef std::map<int64_t, std::unique_ptr<log::LogEntryPB>> OpIndexToEntryMap;
 
 // State kept during replay.
 struct ReplayState {
-  explicit ReplayState(const consensus::OpId& last_op_id);
+  explicit ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id);
 
   // Return true if 'b' is allowed to immediately follow 'a' in the log.
   static bool IsValidSequence(const consensus::OpId& a, const consensus::OpId& b);
@@ -152,7 +152,8 @@ struct ReplayState {
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables
 
-  const consensus::OpId last_stored_op_id;
+  const consensus::OpId regular_stored_op_id;
+  const consensus::OpId intents_stored_op_id;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -164,11 +165,15 @@ struct ReplayState {
   HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
 };
 
-ReplayState::ReplayState(const OpId& last_op_id)
-    : last_stored_op_id(last_op_id) {
+ReplayState::ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id)
+    : regular_stored_op_id(regular_op_id), intents_stored_op_id(intents_op_id) {
   // If we know last flushed op id, then initialize committed_op_id with it.
-  if (last_op_id.term() > yb::OpId::kUnknownTerm) {
-    committed_op_id = last_op_id;
+  if (regular_op_id.term() > yb::OpId::kUnknownTerm) {
+    committed_op_id = regular_op_id;
+  }
+
+  if (consensus::OpIdBiggerThan(intents_op_id, committed_op_id)) {
+    committed_op_id = intents_op_id;
   }
 }
 
@@ -226,11 +231,13 @@ void ReplayState::DumpReplayStateToStrings(std::vector<std::string>* strings)  c
       "Previous OpId: $0, "
       "Committed OpId: $1, "
       "Pending Replicates: $2, "
-      "Flushed: $3",
+      "Flushed Regular: $3, "
+      "Flushed Intents: $4",
       OpIdToString(prev_op_id),
       OpIdToString(committed_op_id),
       pending_replicates.size(),
-      OpIdToString(last_stored_op_id)));
+      OpIdToString(regular_stored_op_id),
+      OpIdToString(intents_stored_op_id)));
   if (num_entries_applied_to_rocksdb > 0) {
     strings->push_back(Substitute("Log entries applied to RocksDB: $0",
                                   num_entries_applied_to_rocksdb));
@@ -522,7 +529,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   tablet_->UpdateMonotonicCounter(replicate.monotonic_counter());
 
   const OpId op_id = replicate_entry.replicate().id();
-  if (op_id.index() == state->last_stored_op_id.index()) {
+  if (op_id.index() == state->regular_stored_op_id.index()) {
     // We need to set the committed OpId to be at least what's been applied to RocksDB. The reason
     // we could not do it before starting log replay is that we don't know the term number of the
     // last write operation flushed into a RocksDB SSTable, even though we know its Raft index
@@ -557,10 +564,12 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   // Append the replicate message to the log as is
   RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get()));
 
-  if (op_id.index() <= state->last_stored_op_id.index()) {
+  auto min_index = std::min(
+      state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
+  if (op_id.index() <= min_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied to
     // RocksDB, or were overwritten by a later entry with a higher term that has already been
-    // applied to RocksDB.
+    // applied to both regular and provisional record RocksDB.
     replicate_entry_ptr->reset();
     return Status::OK();
   }
@@ -592,7 +601,8 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   // that entry. This allows us to decide when we can replay a REPLICATE entry during bootstrap.
   state->UpdateCommittedOpId(replicate.committed_op_id());
 
-  state->ApplyCommittedPendingReplicates(std::bind(&TabletBootstrap::HandleEntryPair, this, _1));
+  state->ApplyCommittedPendingReplicates(
+      std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1));
 
   return Status::OK();
 }
@@ -632,11 +642,19 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
-Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry) {
+Status TabletBootstrap::HandleEntryPair(ReplayState* state, LogEntryPB* replicate_entry) {
   ReplicateMsg* replicate = replicate_entry->mutable_replicate();
   const auto op_type = replicate_entry->replicate().op_type();
 
-  {
+  int64_t flushed_index;
+  if (op_type == consensus::WRITE_OP &&
+      replicate_entry->replicate().write_request().write_batch().has_transaction()) {
+    flushed_index = state->intents_stored_op_id.index();
+  } else {
+    flushed_index = state->regular_stored_op_id.index();
+  }
+
+  if (replicate->id().index() > flushed_index) {
     const auto status = HandleOperation(op_type, replicate);
     if (!status.ok()) {
       return status.CloneAndAppend(Format(
@@ -673,16 +691,19 @@ void TabletBootstrap::DumpReplayStateToLog(const ReplayState& state) {
 }
 
 Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
-  auto persistent_op_id = MinimumOpId();
-  Result<yb::OpId> flushed_op_id = tablet_->MaxPersistentOpId();
-  RETURN_NOT_OK(flushed_op_id);
+  auto flushed_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
 
-  persistent_op_id.set_term(flushed_op_id.get_ptr()->term);
-  persistent_op_id.set_index(flushed_op_id.get_ptr()->index);
-  ReplayState state(persistent_op_id);
+  consensus::OpId regular_op_id;
+  regular_op_id.set_term(flushed_op_id.regular.term);
+  regular_op_id.set_index(flushed_op_id.regular.index);
+  consensus::OpId intents_op_id;
+  intents_op_id.set_term(flushed_op_id.intents.term);
+  intents_op_id.set_index(flushed_op_id.intents.index);
+  ReplayState state(regular_op_id, intents_op_id);
 
   LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
-                        << state.last_stored_op_id.ShortDebugString();
+                        << state.regular_stored_op_id.ShortDebugString() << "/"
+                        << state.intents_stored_op_id.ShortDebugString();
 
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));

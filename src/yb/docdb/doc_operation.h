@@ -133,10 +133,10 @@ class RedisWriteOperation : public DocOperation {
 class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
-                              rocksdb::DB* db,
+                              const DocDB& doc_db,
                               MonoTime deadline,
                               const ReadHybridTime& read_time)
-      : request_(request), db_(db), deadline_(deadline), read_time_(read_time) {}
+      : request_(request), doc_db_(doc_db), deadline_(deadline), read_time_(read_time) {}
 
   CHECKED_STATUS Execute();
 
@@ -163,7 +163,7 @@ class RedisReadOperation {
 
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
-  rocksdb::DB* db_;
+  const DocDB doc_db_;
   MonoTime deadline_;
   ReadHybridTime read_time_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation

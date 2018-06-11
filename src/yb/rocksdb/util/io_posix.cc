@@ -87,7 +87,7 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
       clearerr(file_);
     } else {
       // A partial read with an error: return a non-ok status
-      s = IOError(filename_, errno);
+      s = STATUS_IO_ERROR(filename_, errno);
     }
   }
   if (!use_os_buffer_) {
@@ -100,7 +100,7 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
 
 Status PosixSequentialFile::Skip(uint64_t n) {
   if (fseek(file_, static_cast<long>(n), SEEK_CUR)) { // NOLINT
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
   return Status::OK();
 }
@@ -114,7 +114,7 @@ Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
   if (ret == 0) {
     return Status::OK();
   }
-  return IOError(filename_, errno);
+  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -184,7 +184,7 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   *result = Slice(scratch, (r < 0) ? 0 : n - left);
   if (r < 0) {
     // An error: return a non-ok status
-    s = IOError(filename_, errno);
+    s = STATUS_IO_ERROR(filename_, errno);
   }
   if (!use_os_buffer_) {
     // we need to fadvise away the entire range of pages because
@@ -232,7 +232,7 @@ Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
   if (ret == 0) {
     return Status::OK();
   }
-  return IOError(filename_, errno);
+  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -265,7 +265,7 @@ Status PosixMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
   Status s;
   if (offset > length_) {
     *result = Slice();
-    return IOError(filename_, EINVAL);
+    return STATUS_IO_ERROR(filename_, EINVAL);
   } else if (offset + n > length_) {
     n = static_cast<size_t>(length_ - offset);
   }
@@ -282,7 +282,7 @@ Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
   if (ret == 0) {
     return Status::OK();
   }
-  return IOError(filename_, errno);
+  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -299,7 +299,7 @@ Status PosixMmapFile::UnmapCurrentRegion() {
   if (base_ != nullptr) {
     int munmap_status = munmap(base_, limit_ - base_);
     if (munmap_status != 0) {
-      return IOError(filename_, munmap_status);
+      return STATUS_IO_ERROR(filename_, munmap_status);
     }
     file_offset_ += limit_ - base_;
     base_ = nullptr;
@@ -363,7 +363,7 @@ Status PosixMmapFile::Msync() {
   last_sync_ = dst_;
   TEST_KILL_RANDOM("PosixMmapFile::Msync:0", rocksdb_kill_odds);
   if (msync(base_ + p1, p2 - p1 + page_size_, MS_SYNC) < 0) {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
   return Status::OK();
 }
@@ -427,17 +427,17 @@ Status PosixMmapFile::Close() {
 
   s = UnmapCurrentRegion();
   if (!s.ok()) {
-    s = IOError(filename_, errno);
+    s = STATUS_IO_ERROR(filename_, errno);
   } else if (unused > 0) {
     // Trim the extra space at the end of the file
     if (ftruncate(fd_, file_offset_ - unused) < 0) {
-      s = IOError(filename_, errno);
+      s = STATUS_IO_ERROR(filename_, errno);
     }
   }
 
   if (close(fd_) < 0) {
     if (s.ok()) {
-      s = IOError(filename_, errno);
+      s = STATUS_IO_ERROR(filename_, errno);
     }
   }
 
@@ -451,7 +451,7 @@ Status PosixMmapFile::Flush() { return Status::OK(); }
 
 Status PosixMmapFile::Sync() {
   if (fdatasync(fd_) < 0) {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
 
   return Msync();
@@ -462,7 +462,7 @@ Status PosixMmapFile::Sync() {
  */
 Status PosixMmapFile::Fsync() {
   if (fsync(fd_) < 0) {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
 
   return Msync();
@@ -487,7 +487,7 @@ Status PosixMmapFile::InvalidateCache(size_t offset, size_t length) {
   if (ret == 0) {
     return Status::OK();
   }
-  return IOError(filename_, errno);
+  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -505,7 +505,7 @@ Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
   if (alloc_status == 0) {
     return Status::OK();
   } else {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
 }
 #endif
@@ -540,7 +540,7 @@ Status PosixWritableFile::Append(const Slice& data) {
       if (errno == EINTR) {
         continue;
       }
-      return IOError(filename_, errno);
+      return STATUS_IO_ERROR(filename_, errno);
     }
     left -= done;
     src += done;
@@ -582,7 +582,7 @@ Status PosixWritableFile::Close() {
   }
 
   if (close(fd_) < 0) {
-    s = IOError(filename_, errno);
+    s = STATUS_IO_ERROR(filename_, errno);
   }
   fd_ = -1;
   return s;
@@ -593,14 +593,14 @@ Status PosixWritableFile::Flush() { return Status::OK(); }
 
 Status PosixWritableFile::Sync() {
   if (fdatasync(fd_) < 0) {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
   return Status::OK();
 }
 
 Status PosixWritableFile::Fsync() {
   if (fsync(fd_) < 0) {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
   return Status::OK();
 }
@@ -618,7 +618,7 @@ Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
   if (ret == 0) {
     return Status::OK();
   }
-  return IOError(filename_, errno);
+  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -637,7 +637,7 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
   if (alloc_status == 0) {
     return Status::OK();
   } else {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
 }
 
@@ -648,7 +648,7 @@ Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
       static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE) == 0) {
     return Status::OK();
   } else {
-    return IOError(filename_, errno);
+    return STATUS_IO_ERROR(filename_, errno);
   }
 }
 
@@ -661,7 +661,7 @@ PosixDirectory::~PosixDirectory() { close(fd_); }
 
 Status PosixDirectory::Fsync() {
   if (fsync(fd_) == -1) {
-    return IOError("directory", errno);
+    return STATUS_IO_ERROR("directory", errno);
   }
   return Status::OK();
 }

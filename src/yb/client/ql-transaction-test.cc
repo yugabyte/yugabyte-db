@@ -56,6 +56,7 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
 DECLARE_string(time_source);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 namespace client {
@@ -140,14 +141,7 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_time_source = server::SkewedClock::kName;
     QLDmlTestBase::SetUp();
 
-    YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(INT32);
-    TableProperties table_properties;
-    table_properties.SetTransactional(true);
-    builder.SetTableProperties(table_properties);
-
-    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
+    CreateTable();
 
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
@@ -161,6 +155,17 @@ class QLTransactionTest : public QLDmlTestBase {
     server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
     ASSERT_OK(clock2->Init());
     transaction_manager2_.emplace(client_, clock2);
+  }
+
+  void CreateTable() {
+    YBSchemaBuilder builder;
+    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(INT32);
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    builder.SetTableProperties(table_properties);
+
+    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
   }
 
   shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
@@ -1392,6 +1397,80 @@ TEST_F(QLTransactionTest, ChangeLeader) {
   for (auto& thread : threads) {
     thread.join();
   }
+}
+
+class RemoteBootstrapTest : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    FLAGS_log_segment_size_bytes = 128;
+    QLTransactionTest::SetUp();
+  }
+};
+
+// Check that we do correct remote bootstrap for intents db.
+TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
+  constexpr size_t kNumWrites = 10;
+  constexpr size_t kTransactionalWrites = 8;
+  constexpr size_t kNumRows = 30;
+
+  DisableTransactionTimeout();
+  DisableApplyingIntents();
+  FLAGS_log_min_seconds_to_retain = 1;
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  for (size_t i = 0; i != kNumWrites; ++i) {
+    auto transaction = i < kTransactionalWrites ? CreateTransaction() : nullptr;
+    auto session = CreateSession(transaction);
+    for (size_t r = 0; r != kNumRows; ++r) {
+      ASSERT_OK(WriteRow(
+          session,
+          KeyForTransactionAndIndex(i, r),
+          ValueForTransactionAndIndex(i, r, WriteOpType::INSERT)));
+    }
+    if (transaction) {
+      ASSERT_OK(transaction->CommitFuture().get());
+    }
+  }
+
+  VerifyData(kNumWrites);
+
+  // Wait until all tablets done writing to db.
+  std::this_thread::sleep_for(5s);
+
+  LOG(INFO) << "Flushing";
+  ASSERT_OK(cluster_->FlushTablets());
+
+  LOG(INFO) << "Clean logs";
+  ASSERT_OK(cluster_->CleanTabletLogs());
+
+  // Wait logs cleanup.
+  std::this_thread::sleep_for(5s);
+
+  // Shutdown to reset cached logs.
+  for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+
+  // Start all servers. Cluster verifier should check that all tablets are synchronized.
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+  }
+}
+
+TEST_F(QLTransactionTest, FlushIntents) {
+  FLAGS_flush_rocksdb_on_shutdown = false;
+
+  WriteData();
+  WriteRows(CreateSession(), 1);
+
+  VerifyData(2);
+
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushFlags::kIntents));
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->StartSync());
+
+  VerifyData(2);
 }
 
 } // namespace client

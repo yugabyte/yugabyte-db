@@ -48,7 +48,7 @@ class KeyValueWriteBatchPB;
 // conflicts_metric - transaction_conflicts metric to update.
 CHECKED_STATUS ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
                                            HybridTime hybrid_time,
-                                           rocksdb::DB* db,
+                                           const DocDB& doc_db,
                                            TransactionStatusManager* status_manager,
                                            Counter* conflicts_metric);
 
@@ -66,7 +66,7 @@ CHECKED_STATUS ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_bat
 // status_manager - status manager that should be used during this conflict resolution.
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
                                              HybridTime hybrid_time,
-                                             rocksdb::DB* db,
+                                             const DocDB& doc_db,
                                              TransactionStatusManager* status_manager);
 
 struct ParsedIntent {

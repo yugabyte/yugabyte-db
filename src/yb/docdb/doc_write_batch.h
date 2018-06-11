@@ -51,7 +51,7 @@ YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND))
 // Take ownership of it using std::move if it needs to live longer than this DocWriteBatch.
 class DocWriteBatch {
  public:
-  explicit DocWriteBatch(rocksdb::DB* rocksdb,
+  explicit DocWriteBatch(const DocDB& doc_db,
                          InitMarkerBehavior init_marker_behavior,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
@@ -129,7 +129,7 @@ class DocWriteBatch {
   // performs. The internal seek count is reset.
   int GetAndResetNumRocksDBSeeks();
 
-  rocksdb::DB* rocksdb() { return rocksdb_; }
+  const DocDB& doc_db() { return doc_db_; }
 
   boost::optional<DocWriteBatchCache::Entry> LookupCache(const KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
@@ -161,7 +161,7 @@ class DocWriteBatch {
 
   DocWriteBatchCache cache_;
 
-  rocksdb::DB* rocksdb_;
+  DocDB doc_db_;
 
   const InitMarkerBehavior init_marker_behavior_;
   std::atomic<int64_t>* monotonic_counter_;

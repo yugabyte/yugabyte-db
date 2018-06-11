@@ -45,6 +45,7 @@
 #include <boost/scope_exit.hpp>
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -131,6 +132,10 @@ DEFINE_int32(tablet_rocksdb_ops_quiet_down_timeout_ms, 60000,
              "so that we can perform exclusive-ownership operations on RocksDB, such as removing "
              "all data in the tablet by replacing the RocksDB instance with an empty one.");
 
+DEFINE_int32(intents_flush_max_delay_ms, 2000,
+             "Max time to wait for regular db to flush during flush of intents. "
+             "After this time flush of regular db will be forced.");
+
 using namespace std::placeholders;
 
 using std::shared_ptr;
@@ -189,6 +194,9 @@ using docdb::PrimitiveValue;
 ////////////////////////////////////////////////////////////
 // Tablet
 ////////////////////////////////////////////////////////////
+
+namespace {
+
 void EmitRocksDbMetricsAsJson(
     std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
     JsonWriter* writer,
@@ -274,6 +282,8 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
   return Status::OK();
 }
 
+} // namespace
+
 // Struct to pass data to WriteOperation related functions.
 struct WriteOperationData {
   WriteOperationState* operation_state;
@@ -339,7 +349,7 @@ Tablet::Tablet(
     metrics_.reset(new TabletMetrics(metric_entity_));
   }
 
-  if (transaction_participant_context) {
+  if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
         transaction_participant_context);
     // Create transaction manager for secondary index update.
@@ -349,8 +359,8 @@ Tablet::Tablet(
     }
   }
 
-  if (transaction_coordinator_context) { // TODO(dtxn) Create coordinator only for status tablets
-    CHECK_NOTNULL(transaction_participant_context);
+  // TODO(dtxn) Create coordinator only for status tablets
+  if (transaction_coordinator_context) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata->fs_manager()->uuid(),
         transaction_coordinator_context,
@@ -394,13 +404,60 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
 
   // Create the directory table-uuid first.
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(DirName(db_dir)),
-                        Substitute("Failed to create RocksDB table directory $0",
-                                   DirName(db_dir)));
+                        Format("Failed to create RocksDB table directory $0", DirName(db_dir)));
 
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir),
-                        Substitute("Failed to create RocksDB tablet directory $0",
-                                   db_dir));
+                        Format("Failed to create RocksDB tablet directory $0", db_dir));
+
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir + kIntentsDBSuffix),
+                        Format("Failed to create RocksDB tablet intents directory $0", db_dir));
+
   return Status::OK();
+}
+
+template <class F>
+auto MakeMemTableFlushFilterFactory(const F& f) {
+  // Trick to get type of mem_table_flush_filter_factory field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->mem_table_flush_filter_factory)::element_type
+      MemTableFlushFilterFactoryType;
+  return std::make_shared<MemTableFlushFilterFactoryType>(f);
+}
+
+Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
+  auto frontiers = memtable.Frontiers();
+  if (frontiers) {
+    const auto& intents_largest =
+        down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+
+    // We allow to flush intents db only after regular DB.
+    // Otherwise we could lose applied intents when corresponding regular records were not
+    // flushed.
+    auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+    if (regular_flushed_frontier) {
+      const auto& regular_flushed_largest =
+          static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
+      if (regular_flushed_largest.op_id().index >= intents_largest.op_id().index) {
+        return true;
+      }
+    }
+  }
+
+  // If regular db does not have anything to flush, it means that we have just added intents,
+  // without apply, so it is ok to flush.
+  if (!regular_db_->HasSomethingToFlush()) {
+    return true;
+  }
+
+  // Force flush of regular DB if we were not able to flush for too long.
+  auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
+  if (std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout) {
+    rocksdb::FlushOptions options;
+    options.wait = false;
+    regular_db_->Flush(options);
+  }
+
+  return false;
 }
 
 Status Tablet::OpenKeyValueTablet() {
@@ -412,17 +469,12 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
       make_shared<TabletRetentionPolicy>(this));
 
-  auto mem_table_flush_filter_factory = [this] {
+  rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     if (mem_table_flush_filter_factory_) {
       return mem_table_flush_filter_factory_();
     }
     return rocksdb::MemTableFilter();
-  };
-  // Extracting type of shared_ptr value.
-  typedef decltype(rocksdb_options.mem_table_flush_filter_factory)::element_type
-      MemTableFlushFilterFactoryType;
-  rocksdb_options.mem_table_flush_filter_factory =
-      std::make_shared<MemTableFlushFilterFactoryType>(mem_table_flush_filter_factory);
+  });
 
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
@@ -438,10 +490,20 @@ Status Tablet::OpenKeyValueTablet() {
     }
     return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
-  rocksdb_.reset(db);
-  ql_storage_.reset(new docdb::QLRocksDBStorage(rocksdb_.get()));
+  regular_db_.reset(db);
+
   if (transaction_participant_) {
-    transaction_participant_->SetDB(db);
+    rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
+      return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
+    });
+    rocksdb::DB* intents_db = nullptr;
+    RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
+    intents_db_.reset(intents_db);
+  }
+
+  ql_storage_.reset(new docdb::QLRocksDBStorage({regular_db_.get(), intents_db_.get()}));
+  if (transaction_participant_) {
+    transaction_participant_->SetDB(intents_db_.get());
   }
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir << ", obj: " << db;
   return Status::OK();
@@ -471,7 +533,10 @@ void Tablet::Shutdown() {
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
   // Shutdown the RocksDB instance for this table, if present.
-  rocksdb_.reset();
+  // Destroy intents and regular DBs in reverse order to their creation.
+  // Also it makes sure that regular DB is alive during flush filter of intents db.
+  intents_db_.reset();
+  regular_db_.reset();
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -502,7 +567,8 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
   auto read_time = ReadHybridTime::SingleTime(HybridTime::kMax);
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), *schema(), txn_op_ctx, rocksdb_.get(),
+      std::move(mapped_projection), *schema(), txn_op_ctx,
+      docdb::DocDB{regular_db_.get(), intents_db_.get()},
       MonoTime::Max() /* deadline */, read_time, &pending_op_counter_);
   RETURN_NOT_OK(result->Init());
   return std::move(result);
@@ -534,40 +600,32 @@ void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
 }
 
-Status Tablet::CreateCheckpoint(const std::string& dir,
-                                google::protobuf::RepeatedPtrField<FilePB>* rocksdb_files) {
+Status Tablet::CreateCheckpoint(const std::string& dir) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
+  auto temp_intents_dir = dir + kIntentsDBSuffix;
+  auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
+
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
-  rocksdb::Status status = rocksdb::checkpoint::CreateCheckpoint(rocksdb_.get(), dir);
+  Status status;
+  // Order does not matter because we flush both DBs and does not have parallel writes.
+  if (intents_db_) {
+    status = rocksdb::checkpoint::CreateCheckpoint(intents_db_.get(), temp_intents_dir);
+  }
+  if (status.ok()) {
+    status = rocksdb::checkpoint::CreateCheckpoint(regular_db_.get(), dir);
+  }
+  if (status.ok() && intents_db_) {
+    status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
+  }
 
   if (!status.ok()) {
-    LOG(WARNING) << "Create checkpoint status: " << status.ToString();
-    return STATUS(IllegalState, Substitute("Unable to create checkpoint: $0", status.ToString()));
+    LOG(WARNING) << "Create checkpoint status: " << status;
+    return STATUS_FORMAT(IllegalState, "Unable to create checkpoint: $0", status);
   }
   LOG(INFO) << "Checkpoint created in " << dir;
-
-  if (rocksdb_files != nullptr) {
-    vector<rocksdb::Env::FileAttributes> files_attrs;
-    status = rocksdb_->GetEnv()->GetChildrenFileAttributes(dir, &files_attrs);
-    if (!status.ok()) {
-      return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
-                                             status.ToString()));
-    }
-
-    for (const auto& file_attrs : files_attrs) {
-      if (file_attrs.name == "." || file_attrs.name == "..") {
-        continue;
-      }
-      auto rocksdb_file_pb = rocksdb_files->Add();
-      rocksdb_file_pb->set_name(file_attrs.name);
-      rocksdb_file_pb->set_size_bytes(file_attrs.size_bytes);
-      rocksdb_file_pb->set_inode(VERIFY_RESULT(
-          metadata_->fs_manager()->env()->GetFileINode(JoinPathSegments(dir, file_attrs.name))));
-    }
-  }
 
   last_rocksdb_checkpoint_dir_ = dir;
 
@@ -577,7 +635,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    WriteBatch* rocksdb_write_batch) {
+    rocksdb::WriteBatch* rocksdb_write_batch) {
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
@@ -596,26 +654,30 @@ void Tablet::PrepareTransactionWriteBatch(
 
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
                                         const rocksdb::UserFrontiers* frontiers,
-                                        const HybridTime hybrid_time,
-                                        rocksdb::WriteBatch* rocksdb_write_batch) {
-  // Write batch could be preallocated, here we handle opposite case.
-  if (rocksdb_write_batch == nullptr) {
-    WriteBatch write_batch;
-    ApplyKeyValueRowOperations(put_batch, frontiers, hybrid_time, &write_batch);
+                                        const HybridTime hybrid_time) {
+  if (put_batch.kv_pairs_size() == 0) {
     return;
   }
 
-  if (put_batch.kv_pairs_size() == 0 && rocksdb_write_batch->Count() == 0) {
-    return;
-  }
-
-  rocksdb_write_batch->SetFrontiers(frontiers);
-
+  rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
-    PrepareTransactionWriteBatch(put_batch, hybrid_time, rocksdb_write_batch);
+    PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
+    WriteBatch(frontiers, hybrid_time, &write_batch, intents_db_.get());
   } else {
-    PrepareNonTransactionWriteBatch(put_batch, hybrid_time, rocksdb_write_batch);
+    PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
+    WriteBatch(frontiers, hybrid_time, &write_batch, regular_db_.get());
   }
+}
+
+void Tablet::WriteBatch(const rocksdb::UserFrontiers* frontiers,
+                        HybridTime hybrid_time,
+                        rocksdb::WriteBatch* write_batch,
+                        rocksdb::DB* dest_db) {
+  if (write_batch->Count() == 0) {
+    return;
+  }
+
+  write_batch->SetFrontiers(frontiers);
 
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
@@ -623,10 +685,10 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   InitRocksDBWriteOptions(&write_options);
 
   flush_stats_->AboutToWriteToDb(hybrid_time);
-  auto rocksdb_write_status = rocksdb_->Write(write_options, rocksdb_write_batch);
+  auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
-    LOG(FATAL) << "Failed to write a batch with " << rocksdb_write_batch->Count() << " operations"
-               << " into RocksDB: " << rocksdb_write_status.ToString();
+    LOG(FATAL) << "Failed to write a batch with " << write_batch->Count() << " operations"
+               << " into RocksDB: " << rocksdb_write_status;
   }
 }
 
@@ -687,7 +749,8 @@ Status Tablet::HandleRedisReadRequest(MonoTime deadline,
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
-  docdb::RedisReadOperation doc_op(redis_read_request, rocksdb_.get(), deadline, read_time);
+  docdb::RedisReadOperation doc_op(
+      redis_read_request, {regular_db_.get(), intents_db_.get()}, deadline, read_time);
   RETURN_NOT_OK(doc_op.Execute());
   *response = std::move(doc_op.response());
   return Status::OK();
@@ -985,22 +1048,42 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
   return Status::OK();
 }
 
-Status Tablet::Flush(FlushMode mode) {
+Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
   rocksdb::FlushOptions options;
-  options.wait = mode == FlushMode::kSync;
-  rocksdb_->Flush(options);
+  bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
+  if (flush_intents) {
+    options.wait = false;
+    intents_db_->Flush(options);
+  }
+
+  if (HasFlags(flags, FlushFlags::kRegular)) {
+    options.wait = mode == FlushMode::kSync;
+    regular_db_->Flush(options);
+  }
+
+  if (flush_intents && mode == FlushMode::kSync) {
+    intents_db_->WaitForFlush();
+  }
+
   return Status::OK();
 }
 
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
-  return rocksdb_->WaitForFlush();
+
+  RETURN_NOT_OK(regular_db_->WaitForFlush());
+  if (intents_db_) {
+    RETURN_NOT_OK(intents_db_->WaitForFlush());
+  }
+
+  return Status::OK();
 }
 
 Status Tablet::ImportData(const std::string& source_dir) {
-  return rocksdb_->Import(source_dir);
+  // We import only regular records, so don't have to deal with intents here.
+  return regular_db_->Import(source_dir);
 }
 
 // We apply intents using by iterating over whole transaction reverse index.
@@ -1009,17 +1092,19 @@ Status Tablet::ImportData(const std::string& source_dir) {
 // TODO(dtxn) use separate thread for applying intents.
 // TODO(dtxn) use multiple batches when applying really big transaction.
 Status Tablet::ApplyIntents(const TransactionApplyData& data) {
-  WriteBatch rocksdb_write_batch;
+  rocksdb::WriteBatch regular_write_batch;
+  rocksdb::WriteBatch intents_write_batch;
   RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht, rocksdb_.get(), &rocksdb_write_batch));
+      data.transaction_id, data.commit_ht,
+      &regular_write_batch, intents_db_.get(), &intents_write_batch));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   set_op_id({data.op_id.term(), data.op_id.index()}, &frontiers);
   set_hybrid_time(data.log_ht, &frontiers);
-  ApplyKeyValueRowOperations(
-      KeyValueWriteBatchPB(), &frontiers, data.commit_ht, &rocksdb_write_batch);
+  WriteBatch(&frontiers, data.commit_ht, &regular_write_batch, regular_db_.get());
+  WriteBatch(&frontiers, data.commit_ht, &intents_write_batch, intents_db_.get());
   return Status::OK();
 }
 
@@ -1111,13 +1196,21 @@ ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
 }
 
 Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
-  const Status s = rocksdb_->SetFlushedFrontier(frontier.Clone());
+  const Status s = regular_db_->SetFlushedFrontier(frontier.Clone());
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG(WARNING) << status;
     return status;
   }
-  DCHECK_EQ(frontier, *rocksdb_->GetFlushedFrontier());
+  DCHECK_EQ(frontier, *regular_db_->GetFlushedFrontier());
+
+  if (intents_db_) {
+    // It is ok to flush intents even regular DB is not yet flushed,
+    // because it would wait for flush of regular DB if we have unflushed intents.
+    // Otherwise it does not matter which flushed op id is stored.
+    RETURN_NOT_OK(intents_db_->SetFlushedFrontier(frontier.Clone()));
+  }
+
   return Flush(FlushMode::kAsync);
 }
 
@@ -1130,13 +1223,23 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return STATUS(IllegalState, "Tablet was shut down");
   }
 
-  const rocksdb::SequenceNumber sequence_number = rocksdb_->GetLatestSequenceNumber();
-  const string db_dir = rocksdb_->GetName();
+  const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
+  const string db_dir = regular_db_->GetName();
 
-  rocksdb_ = nullptr;
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
-  Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
+
+  Status intents_status;
+  if (intents_db_) {
+    auto intents_dir = intents_db_->GetName();
+    intents_db_.reset();
+    intents_status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
+  }
+  regular_db_.reset();
+  auto s = rocksdb::DestroyDB(db_dir, rocksdb_options);
+  if (s.ok() && !intents_status.ok()) {
+    s = intents_status;
+  }
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
@@ -1157,7 +1260,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
 
   LOG(INFO) << "Created new db for truncated tablet " << tablet_id();
   LOG(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", new=" << rocksdb_->GetLatestSequenceNumber();
+            << ", new=" << regular_db_->GetLatestSequenceNumber();
   return Status::OK();
 }
 
@@ -1182,19 +1285,26 @@ Result<bool> Tablet::HasSSTables() const {
   RETURN_NOT_OK(scoped_read_operation);
 
   std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
-  rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
+  regular_db_->GetLiveFilesMetaData(&live_files_metadata);
   return !live_files_metadata.empty();
 }
 
-Result<yb::OpId> Tablet::MaxPersistentOpId() const {
+Result<DocDbOpIds> Tablet::MaxPersistentOpId() const {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  auto temp = rocksdb_->GetFlushedFrontier();
-  if (!temp) {
-    return yb::OpId();
+  DocDbOpIds result;
+  auto temp = regular_db_->GetFlushedFrontier();
+  if (temp) {
+    result.regular = down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
   }
-  return down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
+  if (intents_db_) {
+    temp = intents_db_->GetFlushedFrontier();
+    if (temp) {
+      result.intents = down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
+    }
+  }
+  return result;
 }
 
 Status Tablet::DebugDump(vector<string> *lines) {
@@ -1211,7 +1321,7 @@ Status Tablet::DebugDump(vector<string> *lines) {
 void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
-  yb::docdb::DocDBDebugDump(rocksdb_.get(), LOG_STRING(INFO, lines));
+  docdb::DocDBDebugDump(regular_db_.get(), LOG_STRING(INFO, lines), docdb::StorageDbType::kRegular);
 }
 
 namespace {
@@ -1239,7 +1349,7 @@ Status Tablet::TEST_SwitchMemtable() {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
 
-  rocksdb_->TEST_SwitchMemtable();
+  regular_db_->TEST_SwitchMemtable();
   return Status::OK();
 }
 
@@ -1263,7 +1373,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       metadata_->schema().table_properties().is_transactional()) {
     auto now = clock_->Now();
     auto result = docdb::ResolveOperationConflicts(
-        doc_ops, now, rocksdb_.get(), transaction_participant_.get());
+        doc_ops, now, {regular_db_.get(), intents_db_.get()}, transaction_participant_.get());
     RETURN_NOT_OK(result);
     if (now != *result) {
       clock_->Update(*result);
@@ -1273,7 +1383,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
-      doc_ops, data.deadline, real_read_time, rocksdb_.get(), write_batch,
+      doc_ops, data.deadline, real_read_time, {regular_db_.get(), intents_db_.get()}, write_batch,
       table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
                                                  : InitMarkerBehavior::kOptional,
       &monotonic_counter_,
@@ -1286,7 +1396,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     auto result = docdb::ResolveTransactionConflicts(*write_batch,
                                                      clock_->Now(),
-                                                     rocksdb_.get(),
+                                                     {regular_db_.get(), intents_db_.get()},
                                                      transaction_participant_.get(),
                                                      metrics_->transaction_conflicts.get());
     if (!result.ok()) {
@@ -1350,14 +1460,14 @@ void Tablet::UnregisterReader(HybridTime timestamp) {
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
-  rocksdb_->CompactRange(rocksdb::CompactRangeOptions(),
+  regular_db_->CompactRange(rocksdb::CompactRangeOptions(),
       /* begin = */ nullptr,
       /* end = */ nullptr);
   uint64_t compaction_pending, running_compactions;
 
   while (true) {
-    rocksdb_->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-    rocksdb_->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+    regular_db_->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+    regular_db_->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
     if (!compaction_pending && !running_compactions) {
       return;
     }
@@ -1367,7 +1477,7 @@ void Tablet::ForceRocksDBCompactInTest() {
 }
 
 std::string Tablet::DocDBDumpStrInTest() {
-  return docdb::DocDBDebugDumpToStr(rocksdb_.get());
+  return docdb::DocDBDebugDumpToStr(regular_db_.get());
 }
 
 void Tablet::LostLeadership() {
@@ -1383,10 +1493,10 @@ uint64_t Tablet::GetTotalSSTFileSizes() const {
 
   // In order to get actual stats we would have to wait.
   // This would give us correct stats but would make this request slower.
-  if (!pending_op_counter_.IsReady() || !rocksdb_) {
+  if (!pending_op_counter_.IsReady() || !regular_db_) {
     return 0;
   }
-  return rocksdb_->GetTotalSSTFileSize();
+  return regular_db_->GetTotalSSTFileSize();
 }
 
 // ------------------------------------------------------------------------------------------------

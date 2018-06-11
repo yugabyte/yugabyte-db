@@ -21,7 +21,7 @@ namespace yb {
 namespace docdb {
 
 // Decodes intent RocksDB key. intent_prefix should point to slice to hold intent prefix
-// (kIntentPrefix + SubDocKey (no HT).
+// (SubDocKey (no HT)).
 // intent_type and doc_ht are optional parameters (could be nullptr) to store decoded
 // intent type and intent doc hybrid time.
 CHECKED_STATUS DecodeIntentKey(const Slice &encoded_intent_key, Slice* intent_prefix,

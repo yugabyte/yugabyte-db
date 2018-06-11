@@ -129,7 +129,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
@@ -169,7 +169,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
 
@@ -242,7 +242,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2500));
     ASSERT_OK(iter.Init());
 
@@ -299,7 +299,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
@@ -357,7 +357,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
@@ -407,7 +407,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
@@ -491,7 +491,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, read_time);
     ASSERT_OK(iter.Init());
 
@@ -552,7 +552,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
@@ -606,7 +606,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
 
   {
     DocRowwiseIterator iter(
-        projection, schema, kNonTransactionalOperationContext, rocksdb(),
+        projection, schema, kNonTransactionalOperationContext, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
@@ -736,6 +736,14 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 3000 }]) -> 30000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
 SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT{ physical: 4000 } -> \
@@ -764,14 +772,6 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 }
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 3000 }]) -> 30000
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> DEL
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -781,7 +781,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(),
+        projection, schema, txn_context, doc_db(),
         MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
@@ -825,8 +825,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
   LOG(INFO) << "===============================================";
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(), MonoTime::Max() /* deadline */,
-        ReadHybridTime::FromMicros(5000));
+        projection, schema, txn_context, doc_db(),
+        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
     QLTableRow row;
     QLValue value;
@@ -867,8 +867,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(), MonoTime::Max() /* deadline */,
-        ReadHybridTime::FromMicros(6000));
+        projection, schema, txn_context, doc_db(),
+        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(6000));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -925,6 +925,10 @@ TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
 SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
@@ -933,16 +937,12 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
       )#");
 
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
   IntentAwareIterator iter(
-      rocksdb(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
       ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());

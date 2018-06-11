@@ -540,7 +540,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
        TransactionCoordinatorContext* context,
        TransactionParticipant* transaction_participant,
        Counter* expired_metric)
-      : context_(*context), transaction_participant_(*transaction_participant),
+      : context_(*context), transaction_participant_(transaction_participant),
         expired_metric_(*expired_metric),
         log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
   }
@@ -630,8 +630,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (data.state.status() == TransactionStatus::APPLYING) {
       // data.state.tablets contains only status tablet.
       DCHECK_EQ(data.state.tablets_size(), 1);
+      DCHECK(transaction_participant_);
       HybridTime commit_time(data.state.commit_hybrid_time());
-      return transaction_participant_.ProcessApply(
+      return transaction_participant_->ProcessApply(
           { data.mode, data.applier, *id, data.op_id, commit_time, data.hybrid_time,
             data.state.tablets(0) });
     }
@@ -920,7 +921,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   TransactionCoordinatorContext& context_;
-  TransactionParticipant& transaction_participant_;
+  TransactionParticipant* transaction_participant_;
   Counter& expired_metric_;
   const std::string log_prefix_;
 

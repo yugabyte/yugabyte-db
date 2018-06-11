@@ -42,7 +42,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
                      const TransactionOperationContextOpt& txn_op_context,
-                     rocksdb::DB *db,
+                     const DocDB& doc_db,
                      MonoTime deadline,
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
@@ -50,12 +50,13 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      const Schema &schema,
                      const TransactionOperationContextOpt& txn_op_context,
-                     rocksdb::DB *db,
+                     const DocDB& doc_db,
                      MonoTime deadline,
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr)
       : DocRowwiseIterator(
-          *projection, schema, txn_op_context, db, deadline, read_time, pending_op_counter) {
+          *projection, schema, txn_op_context, doc_db, deadline, read_time,
+          pending_op_counter) {
     projection_owner_ = std::move(projection);
   }
 
@@ -156,7 +157,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   const ReadHybridTime read_time_;
 
-  rocksdb::DB* const db_;
+  const DocDB doc_db_;
 
   // A copy of the bound key of the end of the scan range (if any). We stop scan if iterator
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for

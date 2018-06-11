@@ -25,10 +25,10 @@ using yb::server::HybridClock;
 namespace yb {
 namespace docdb {
 
-DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb,
+DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
                              InitMarkerBehavior init_marker_behavior,
                              std::atomic<int64_t>* monotonic_counter)
-    : rocksdb_(rocksdb),
+    : doc_db_(doc_db),
       init_marker_behavior_(init_marker_behavior),
       monotonic_counter_(monotonic_counter),
       num_rocksdb_seeks_(0) {
@@ -197,7 +197,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
   InternalDocIterator doc_iter(
-      rocksdb_, &cache_, BloomFilterMode::USE_BLOOM_FILTER, encoded_doc_key,
+      doc_db_.regular, &cache_, BloomFilterMode::USE_BLOOM_FILTER, encoded_doc_key,
       query_id, &num_rocksdb_seeks_);
 
   if (num_subkeys > 0 || is_deletion) {
@@ -328,7 +328,7 @@ Status DocWriteBatch::ReplaceInList(
   // Ensure we seek directly to indexes and skip init marker if it exists
   key_bytes.AppendValueType(ValueType::kArrayIndex);
   rocksdb::Slice seek_key = key_bytes.AsSlice();
-  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER, seek_key,
+  auto iter = CreateRocksDBIterator(doc_db_.regular, BloomFilterMode::USE_BLOOM_FILTER, seek_key,
                                     query_id);
   SubDocKey found_key;
   Value found_value;

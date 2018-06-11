@@ -41,10 +41,8 @@ namespace {
 
 void GetIntentPrefixForKeyWithoutHt(const Slice& key, KeyBytes* out) {
   out->Clear();
-  // Since caller guarantees that key_bytes doesn't have hybrid time, we can simply prepend
-  // kIntentPrefix in order to get prefix for all related intents.
-  out->Reserve(key.size() + 1);
-  out->AppendValueType(ValueType::kIntentPrefix);
+  // Since caller guarantees that key_bytes doesn't have hybrid time, we can simply use it
+  // to get prefix for all related intents.
   out->AppendRawBytes(key);
 }
 
@@ -221,7 +219,7 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
 } // namespace
 
 IntentAwareIterator::IntentAwareIterator(
-    rocksdb::DB* rocksdb,
+    const DocDB& doc_db,
     const rocksdb::ReadOptions& read_opts,
     MonoTime deadline,
     const ReadHybridTime& read_time,
@@ -237,14 +235,14 @@ IntentAwareIterator::IntentAwareIterator(
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
           << ", txp_op_context: " << txn_op_context_;
   if (txn_op_context.is_initialized()) {
-    intent_iter_ = docdb::CreateRocksDBIterator(rocksdb,
+    intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                 docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                                 boost::none,
                                                 rocksdb::kDefaultQueryId,
                                                 nullptr /* file_filter */,
                                                 &intent_upperbound_);
   }
-  iter_.reset(rocksdb->NewIterator(read_opts));
+  iter_.reset(doc_db.regular->NewIterator(read_opts));
 }
 
 void IntentAwareIterator::Seek(const DocKey &doc_key) {
@@ -429,7 +427,7 @@ Result<Slice> IntentAwareIterator::FetchKey(DocHybridTime* doc_ht) {
     result.remove_suffix(1);
   } else {
     DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);
-    result = resolved_intent_sub_doc_key_;
+    result = resolved_intent_key_prefix_.AsSlice();
     doc_ht_seen = resolved_intent_txn_dht_;
   }
   if (doc_ht != nullptr) {
@@ -479,11 +477,6 @@ void IntentAwareIterator::ProcessIntent() {
     if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
       resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
       auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
-      status_ = decode_result->intent_prefix.consume_byte(ValueTypeAsChar::kIntentPrefix);
-      if (!status_.ok()) {
-        status_ = status_.CloneAndPrepend("Bad intent prefix");
-        return;
-      }
       resolved_intent_state_ =
           decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
           : ResolvedIntentState::kInvalidPrefix;
@@ -499,12 +492,7 @@ void IntentAwareIterator::ProcessIntent() {
 }
 
 void IntentAwareIterator::UpdateResolvedIntentSubDocKeyEncoded() {
-  resolved_intent_sub_doc_key_ = resolved_intent_key_prefix_;
-  status_ = resolved_intent_sub_doc_key_.consume_byte(ValueTypeAsChar::kIntentPrefix);
-  if (!status_.ok()) {
-    return;
-  }
-  resolved_intent_sub_doc_key_encoded_.Reset(resolved_intent_sub_doc_key_);
+  resolved_intent_sub_doc_key_encoded_.Reset(resolved_intent_key_prefix_.AsSlice());
   resolved_intent_sub_doc_key_encoded_.AppendValueType(ValueType::kHybridTime);
   resolved_intent_sub_doc_key_encoded_.AppendHybridTime(resolved_intent_txn_dht_);
   VLOG(4) << "Resolved intent SubDocKey: "
@@ -539,11 +527,6 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
         // Only scan intents for the first SubDocKey having suitable intents.
         !IsIntentForTheSameKey(intent_key, resolved_intent_key_prefix_)) {
       break;
-    }
-    status_ = intent_key.consume_byte(ValueTypeAsChar::kIntentPrefix);
-    if (!status_.ok()) {
-      status_ = status_.CloneAndPrepend("Bad intent key");
-      return;
     }
     if (!intent_key.starts_with(prefix)) {
       break;
@@ -730,9 +713,9 @@ void IntentAwareIterator::SkipFutureIntents() {
   auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     VLOG(4) << "Checking resolved intent subdockey: "
-            << resolved_intent_sub_doc_key_.ToDebugHexString()
+            << resolved_intent_key_prefix_.AsSlice().ToDebugHexString()
             << ", against new prefix: " << prefix.ToDebugHexString();
-    auto compare_result = resolved_intent_sub_doc_key_.compare_prefix(prefix);
+    auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
     if (compare_result == 0) {
       resolved_intent_state_ = ResolvedIntentState::kValid;
       return;
@@ -746,7 +729,6 @@ void IntentAwareIterator::SkipFutureIntents() {
 
 Status IntentAwareIterator::SetIntentUpperbound() {
   intent_upperbound_keybytes_.Clear();
-  intent_upperbound_keybytes_.AppendValueType(ValueType::kIntentPrefix);
   if (iter_->Valid()) {
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
     // to upperbound with 0xff.

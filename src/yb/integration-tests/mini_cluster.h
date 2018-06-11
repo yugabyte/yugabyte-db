@@ -39,6 +39,7 @@
 
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
@@ -108,7 +109,8 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS RestartSync();
 
   void Shutdown();
-  CHECKED_STATUS FlushTablets();
+  CHECKED_STATUS FlushTablets(
+      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

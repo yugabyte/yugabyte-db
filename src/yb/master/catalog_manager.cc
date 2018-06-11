@@ -236,7 +236,6 @@ using tablet::TabletStatePB;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
-using tserver::LogAndTombstone;
 using tserver::YB_EDITION_NS_PREFIX RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;

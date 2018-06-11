@@ -155,6 +155,13 @@ class Env {
     return GetChildren(dir, ExcludeDots::kFalse, result);
   }
 
+  Result<std::vector<std::string>> GetChildren(
+      const std::string& dir, ExcludeDots exclude_dots = ExcludeDots::kFalse) {
+    std::vector<std::string> result;
+    RETURN_NOT_OK(GetChildren(dir, exclude_dots, &result));
+    return result;
+  }
+
   virtual CHECKED_STATUS GetChildren(const std::string& dir, ExcludeDots exclude_dots,
                                      std::vector<std::string>* result) = 0;
 
@@ -163,6 +170,8 @@ class Env {
 
   // Create the specified directory.
   virtual CHECKED_STATUS CreateDir(const std::string& dirname) = 0;
+
+  CHECKED_STATUS CreateDirs(const std::string& dirname);
 
   // Delete the specified directory.
   virtual CHECKED_STATUS DeleteDir(const std::string& dirname) = 0;
@@ -246,6 +255,12 @@ class Env {
   // Checks if the file is a directory. Returns an error if it doesn't
   // exist, otherwise writes true or false into 'is_dir' appropriately.
   virtual CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) = 0;
+
+  Result<bool> IsDirectory(const std::string& path) {
+    bool result = false;
+    RETURN_NOT_OK(IsDirectory(path, &result));
+    return result;
+  }
 
   // The kind of file found during a walk. Note that symbolic links are
   // reported as FILE_TYPE.

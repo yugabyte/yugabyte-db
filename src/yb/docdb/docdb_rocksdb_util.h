@@ -119,7 +119,7 @@ std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
 std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
-    rocksdb::DB* rocksdb,
+    const DocDB& doc_db,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,

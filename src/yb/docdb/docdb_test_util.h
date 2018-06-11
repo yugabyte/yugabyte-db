@@ -190,6 +190,7 @@ class DocDBLoadGenerator {
 
  private:
   rocksdb::DB* rocksdb() { return fixture_->rocksdb(); }
+  DocDB doc_db() { return fixture_->doc_db(); }
 
   DocDBRocksDBFixture* fixture_;
   RandomNumberGenerator random_;  // Using default seed.

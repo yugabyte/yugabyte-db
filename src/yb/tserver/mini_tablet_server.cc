@@ -145,9 +145,12 @@ CHECKED_STATUS ForAllTablets(
 
 }  // namespace
 
-Status MiniTabletServer::FlushTablets() {
-  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
-    return tablet_peer->tablet()->Flush(tablet::FlushMode::kSync);
+Status MiniTabletServer::FlushTablets(tablet::FlushFlags flags) {
+  if (!server_) {
+    return Status::OK();
+  }
+  return ForAllTablets(this, [flags](TabletPeer* tablet_peer) {
+    return tablet_peer->tablet()->Flush(tablet::FlushMode::kSync, flags);
   });
 }
 

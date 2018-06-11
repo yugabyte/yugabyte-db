@@ -38,7 +38,7 @@ DocRowwiseIterator::DocRowwiseIterator(
     const Schema &projection,
     const Schema &schema,
     const TransactionOperationContextOpt& txn_op_context,
-    rocksdb::DB *db,
+    const DocDB& doc_db,
     MonoTime deadline,
     const ReadHybridTime& read_time,
     yb::util::PendingOperationCounter* pending_op_counter)
@@ -47,7 +47,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
-      db_(db),
+      doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false) {
@@ -66,8 +66,8 @@ Status DocRowwiseIterator::Init() {
   auto query_id = rocksdb::kDefaultQueryId;
 
   db_iter_ = CreateIntentAwareIterator(
-      db_, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none /* user_key_for_filter */,
-      query_id, txn_op_context_, deadline_, read_time_);
+      doc_db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */, query_id, txn_op_context_, deadline_, read_time_);
 
   row_key_ = DocKey();
   db_iter_->Seek(row_key_);
@@ -99,8 +99,8 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
 
   db_iter_ = CreateIntentAwareIterator(
-      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, deadline_,
-      read_time_, doc_spec.CreateFileFilter());
+      doc_db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_,
+      deadline_, read_time_, doc_spec.CreateFileFilter());
 
   db_iter_->Seek(row_key_encoded);
   row_ready_ = false;
@@ -154,8 +154,8 @@ Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
   const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
 
   db_iter_ = CreateIntentAwareIterator(
-      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, deadline_,
-      read_time_, doc_spec.CreateFileFilter());
+      doc_db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_,
+      deadline_, read_time_, doc_spec.CreateFileFilter());
 
   db_iter_->Seek(row_key_encoded);
   row_ready_ = false;

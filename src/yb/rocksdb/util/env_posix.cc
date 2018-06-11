@@ -76,6 +76,8 @@
 #define EXT4_SUPER_MAGIC 0xEF53
 #endif
 
+#define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
+
 namespace rocksdb {
 
 namespace {
@@ -165,7 +167,7 @@ class PosixEnv : public Env {
     } while (f == nullptr && errno == EINTR);
     if (f == nullptr) {
       *result = nullptr;
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     } else {
       int fd = fileno(f);
       SetFD_CLOEXEC(fd, &options);
@@ -186,7 +188,7 @@ class PosixEnv : public Env {
     }
     SetFD_CLOEXEC(fd, &options);
     if (fd < 0) {
-      s = IOError(fname, errno);
+      s = STATUS_IO_ERROR(fname, errno);
     } else if (options.use_mmap_reads && sizeof(void*) >= 8) {
       // Use of mmap for random reads has been removed because it
       // kills performance when storage is fast.
@@ -199,7 +201,7 @@ class PosixEnv : public Env {
           result->reset(new PosixMmapReadableFile(fd, fname, base,
                                                   size, options));
         } else {
-          s = IOError(fname, errno);
+          s = STATUS_IO_ERROR(fname, errno);
         }
       }
       close(fd);
@@ -220,7 +222,7 @@ class PosixEnv : public Env {
       fd = open(fname.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0644);
     } while (fd < 0 && errno == EINTR);
     if (fd < 0) {
-      s = IOError(fname, errno);
+      s = STATUS_IO_ERROR(fname, errno);
     } else {
       SetFD_CLOEXEC(fd, &options);
       if (options.use_mmap_writes) {
@@ -258,12 +260,12 @@ class PosixEnv : public Env {
       fd = open(old_fname.c_str(), O_RDWR, 0644);
     } while (fd < 0 && errno == EINTR);
     if (fd < 0) {
-      s = IOError(fname, errno);
+      s = STATUS_IO_ERROR(fname, errno);
     } else {
       SetFD_CLOEXEC(fd, &options);
       // rename into place
       if (rename(old_fname.c_str(), fname.c_str()) != 0) {
-        Status r = IOError(old_fname, errno);
+        Status r = STATUS_IO_ERROR(old_fname, errno);
         close(fd);
         return r;
       }
@@ -299,7 +301,7 @@ class PosixEnv : public Env {
       fd = open(name.c_str(), 0);
     }
     if (fd < 0) {
-      return IOError(name, errno);
+      return STATUS_IO_ERROR(name, errno);
     } else {
       result->reset(new PosixDirectory(fd));
     }
@@ -332,7 +334,7 @@ class PosixEnv : public Env {
     result->clear();
     DIR* d = opendir(dir.c_str());
     if (d == nullptr) {
-      return IOError(dir, errno);
+      return STATUS_IO_ERROR(dir, errno);
     }
     struct dirent* entry;
     while ((entry = readdir(d)) != nullptr) {
@@ -345,7 +347,7 @@ class PosixEnv : public Env {
   Status DeleteFile(const std::string& fname) override {
     Status result;
     if (unlink(fname.c_str()) != 0) {
-      result = IOError(fname, errno);
+      result = STATUS_IO_ERROR(fname, errno);
     }
     return result;
   };
@@ -353,7 +355,7 @@ class PosixEnv : public Env {
   Status CreateDir(const std::string& name) override {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
-      result = IOError(name, errno);
+      result = STATUS_IO_ERROR(name, errno);
     }
     return result;
   };
@@ -362,7 +364,8 @@ class PosixEnv : public Env {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
-        result = IOError(name, errno);
+        LOG(DFATAL) << "Not exists: " << name;
+        result = STATUS_IO_ERROR(name, errno);
       } else if (!DirExists(name)) { // Check that name is actually a
                                      // directory.
         // Message is taken from mkdir
@@ -375,7 +378,7 @@ class PosixEnv : public Env {
   Status DeleteDir(const std::string& name) override {
     Status result;
     if (rmdir(name.c_str()) != 0) {
-      result = IOError(name, errno);
+      result = STATUS_IO_ERROR(name, errno);
     }
     return result;
   };
@@ -385,7 +388,7 @@ class PosixEnv : public Env {
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {
       *size = 0;
-      s = IOError(fname, errno);
+      s = STATUS_IO_ERROR(fname, errno);
     } else {
       *size = sbuf.st_size;
     }
@@ -396,7 +399,7 @@ class PosixEnv : public Env {
                                          uint64_t* file_mtime) override {
     struct stat s;
     if (stat(fname.c_str(), &s) !=0) {
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     }
     *file_mtime = static_cast<uint64_t>(s.st_mtime);
     return Status::OK();
@@ -405,7 +408,7 @@ class PosixEnv : public Env {
                             const std::string& target) override {
     Status result;
     if (rename(src.c_str(), target.c_str()) != 0) {
-      result = IOError(src, errno);
+      result = STATUS_IO_ERROR(src, errno);
     }
     return result;
   }
@@ -417,7 +420,7 @@ class PosixEnv : public Env {
       if (errno == EXDEV) {
         return STATUS(NotSupported, "No cross FS links allowed");
       }
-      result = IOError(src, errno);
+      result = STATUS_IO_ERROR(src, errno);
     }
     return result;
   }
@@ -431,9 +434,9 @@ class PosixEnv : public Env {
       fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
     }
     if (fd < 0) {
-      result = IOError(fname, errno);
+      result = STATUS_IO_ERROR(fname, errno);
     } else if (LockOrUnlock(fname, fd, true) == -1) {
-      result = IOError("lock " + fname, errno);
+      result = STATUS_IO_ERROR("lock " + fname, errno);
       close(fd);
     } else {
       SetFD_CLOEXEC(fd, nullptr);
@@ -449,7 +452,7 @@ class PosixEnv : public Env {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
     if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
-      result = IOError("unlock", errno);
+      result = STATUS_IO_ERROR("unlock", errno);
     }
     close(my_lock->fd_);
     delete my_lock;
@@ -512,7 +515,7 @@ class PosixEnv : public Env {
     }
     if (f == nullptr) {
       result->reset();
-      return IOError(fname, errno);
+      return STATUS_IO_ERROR(fname, errno);
     } else {
       int fd = fileno(f);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
@@ -556,7 +559,7 @@ class PosixEnv : public Env {
       if (errno == EFAULT || errno == EINVAL)
         return STATUS(InvalidArgument, strerror(errno));
       else
-        return IOError("GetHostName", errno);
+        return STATUS_IO_ERROR("GetHostName", errno);
     }
     return Status::OK();
   }
@@ -564,7 +567,7 @@ class PosixEnv : public Env {
   Status GetCurrentTime(int64_t* unix_time) override {
     time_t ret = time(nullptr);
     if (ret == (time_t) -1) {
-      return IOError("GetCurrentTime", errno);
+      return STATUS_IO_ERROR("GetCurrentTime", errno);
     }
     *unix_time = (int64_t) ret;
     return Status::OK();
@@ -652,7 +655,7 @@ class PosixEnv : public Env {
 
 
   // Returns true iff the named directory exists and is a directory.
-  virtual bool DirExists(const std::string& dname) {
+  bool DirExists(const std::string& dname) override {
     struct stat statbuf;
     if (stat(dname.c_str(), &statbuf) == 0) {
       return S_ISDIR(statbuf.st_mode);
