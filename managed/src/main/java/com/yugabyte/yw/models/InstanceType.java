@@ -39,7 +39,10 @@ public class InstanceType extends Model {
     SSD,
 
     @EnumValue("HDD")
-    HDD
+    HDD,
+
+    @EnumValue("HDD")
+    NVME
   }
 
   @EmbeddedId
