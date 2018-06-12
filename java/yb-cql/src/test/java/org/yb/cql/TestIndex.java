@@ -346,6 +346,45 @@ public class TestIndex extends BaseCQLTest {
     // test_update: empty
     assertIndexUpdate("delete c1, c2 from test_update " +
                       "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
+
+    // test_update: Row[1, a, 2, b]
+    assertIndexUpdate("insert into test_update (h1, h2, r1, r2) values (1, 'a', 2, 'b');");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "Row[1, a, 2, b, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, NULL, NULL]");
+
+    // test_update: Row[1, a, 2, b, 4]
+    assertIndexUpdate("update test_update set c1 = 4 " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "Row[1, a, 2, b, 4]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, 4, NULL]");
+
+    // test_update: Row[1, a, 2, b, 4, c]
+    assertIndexUpdate("update test_update set c2 = 'c' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "Row[1, a, 2, b, 4]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
+                "Row[1, a, 2, b, 4, c]");
+
+    // test_update: Row[1, a, 2, b]
+    assertIndexUpdate("delete c1, c2 from test_update " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "Row[1, a, 2, b, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, NULL, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
+                "");
   }
 
   private Set<String> queryTable(String table, String columns) {
