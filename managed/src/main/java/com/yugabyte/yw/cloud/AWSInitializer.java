@@ -449,11 +449,11 @@ public class AWSInitializer extends AbstractInitializer {
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     Common.CloudType provider = Common.CloudType.aws;
     InstanceType.resetInstanceTypeDetailsForProvider(provider);
+    String instanceTypeCode = null;
 
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
-
       // Get the instance type.
-      String instanceTypeCode = productAttrs.get("instanceType");
+      instanceTypeCode = productAttrs.get("instanceType");
 
       // The number of cores is the number of vcpu's.
       if (productAttrs.get("vcpu") == null) {
@@ -464,7 +464,9 @@ public class AWSInitializer extends AbstractInitializer {
       Integer numCores = Integer.parseInt(productAttrs.get("vcpu"));
 
       // Parse the memory size.
-      String memSizeStrGB = productAttrs.get("memory").replaceAll("(?i) gib", "");
+      String memSizeStrGB = productAttrs.get("memory")
+          .replaceAll("(?i) gib", "")
+          .replaceAll(",", "");
       Double memSizeGB = Double.parseDouble(memSizeStrGB);
 
       Integer volumeCount;
@@ -472,7 +474,7 @@ public class AWSInitializer extends AbstractInitializer {
       VolumeType volumeType;
       // Parse the local instance store details. Format of the raw data is either "1 x 800 SSD" or
       // "12 x 2000 HDD".
-      String[] parts = productAttrs.get("storage").split(" ");
+      String[] parts = productAttrs.get("storage").replaceAll(",", "").split(" ");
       if (parts.length < 4) {
         if (!productAttrs.get("storage").equals("EBS only")) {
           String msg = "Volume type not specified in product sku=" + productAttrs.get("sku") +
@@ -520,7 +522,7 @@ public class AWSInitializer extends AbstractInitializer {
       } else {
         volumeCount = Integer.parseInt(parts[0]);
         volumeSizeGB = Integer.parseInt(parts[2]);
-        volumeType = VolumeType.valueOf(parts[3]);
+        volumeType = VolumeType.valueOf(parts[3].toUpperCase());
       }
 
       if (enableVerboseLogging) {
