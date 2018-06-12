@@ -2145,10 +2145,6 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
               sub_path, value, request_.query_id()));
         }
 
-        if (request_.column_values_size() <= 0) {
-          break;
-        }
-
         for (const auto& column_value : request_.column_values()) {
           if (!column_value.has_column_id()) {
             return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
