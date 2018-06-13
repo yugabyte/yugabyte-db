@@ -226,6 +226,9 @@ readonly VALID_BUILD_TYPES=(
   asan
   debug
   fastdebug
+  idebug
+  irelease
+  ifastdebug
   profile_build
   profile_gen
   release
@@ -390,6 +393,7 @@ set_build_root() {
   fi
 
   export BUILD_ROOT
+  export YB_BUILD_ROOT=$BUILD_ROOT
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -637,6 +641,10 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       enable_tsan
       cmake_build_type=debug
+    ;;
+    idebug|irelease|ifastdebug)
+      cmake_build_type=${build_type:1}
+      cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
     ;;
     *)
       cmake_build_type=$build_type
@@ -1338,7 +1346,7 @@ detect_edition() {
 }
 
 set_yb_src_root() {
-  YB_SRC_ROOT=$1
+  export YB_SRC_ROOT=$1
   YB_BUILD_SUPPORT_DIR=$YB_SRC_ROOT/build-support
   if [[ ! -d $YB_SRC_ROOT ]]; then
     fatal "YB_SRC_ROOT directory '$YB_SRC_ROOT' does not exist"

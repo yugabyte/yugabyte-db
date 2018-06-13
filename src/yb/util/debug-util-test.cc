@@ -34,6 +34,8 @@
 
 #include <string>
 #include <vector>
+#include <regex>
+#include <sstream>
 
 #include <glog/stl_logging.h>
 
@@ -68,8 +70,56 @@ TEST_F(DebugUtilTest, TestStackTrace) {
   ASSERT_STR_CONTAINS(trace, "yb::DebugUtilTest_TestStackTrace_Test::TestBody");
 }
 
+TEST_F(DebugUtilTest, TestGetStackTrace) {
+  string stack_trace = GetStackTrace();
+
+  const std::string kExpectedLineFormatNoFileLineReStr = R"#(^\s*@\s+0x[0-9a-f]+\s+.*)#";
+  SCOPED_TRACE(Format("Regex with no file/line: $0", kExpectedLineFormatNoFileLineReStr));
+  const std::string kFileLineReStr = R"#( \(\S+:\d+\))#";
+
+  const std::regex kExpectedLineFormatNoFileLineRe(kExpectedLineFormatNoFileLineReStr + "$");
+  const std::regex kExpectedLineFormatWithFileLineRe(
+      kExpectedLineFormatNoFileLineReStr + kFileLineReStr + "$");
+
+  // Expected line format:
+  // @ 0x41255d yb::DebugUtilTest_TestGetStackTrace_Test::TestBody() (yb/util/debug-util-test.cc:73)
+  SCOPED_TRACE(Format("Stack trace to be checked:\n:$0", stack_trace));
+  std::stringstream ss(stack_trace);
+  string line;
+  std::smatch match;
+
+  int with_file_line = 0;
+  int without_file_line = 0;
+  int unmatched = 0;
+  int num_lines = 0;
+  std::ostringstream debug_info;
+  while (std::getline(ss, line)) {
+    if (std::regex_match(line, match, kExpectedLineFormatWithFileLineRe)) {
+      ++with_file_line;
+      debug_info << "Line matched regex with file/line number: " << line << std::endl;
+    } else if (std::regex_match(line, match, kExpectedLineFormatNoFileLineRe)) {
+      ++without_file_line;
+      debug_info << "Line matched regex without file/line number: " << line << std::endl;
+    } else {
+      ++unmatched;
+      debug_info << "Line did not match either regex: " << line << std::endl;
+    }
+    ++num_lines;
+  }
+  SCOPED_TRACE(debug_info.str());
+  ASSERT_EQ(unmatched, 0);
+  ASSERT_GE(num_lines, 0);
+#ifdef __linux__
+  ASSERT_GE(with_file_line, 0);
+#else
+  ASSERT_GE(without_file_line, 0);
+#endif
+}
+
 // DumpThreadStack is only supported on Linux, since the implementation relies
 // on the tgkill syscall which is not portable.
+//
+// TODO: it might be possible to enable other tests in this section to work on macOS.
 #if defined(__linux__)
 
 namespace {
@@ -126,7 +176,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   // SIGUSR2 should be relinquished.
   ASSERT_FALSE(IsSignalHandlerRegistered(SIGUSR2));
 
-  // Stack traces should work using the new handler. We've had a test failure here when we just had
+  // Stack traces should work using the new handler. We've had a test failure here when we ust had
   // a one-time check, so we do the same waiting loop as in the beginning of the test.
   WaitForSleeperThreadNameInStackTrace(t->tid());
 

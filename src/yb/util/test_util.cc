@@ -112,8 +112,9 @@ void YBTest::SetUp() {
       "TSAN_OPTIONS"
   }) {
     const char* value = getenv(env_var_name);
-    LOG(INFO) << "Environment variable " << env_var_name << ": "
-              << (value ? value : "undefined");
+    if (value && value[0]) {
+      LOG(INFO) << "Environment variable " << env_var_name << ": " << value;
+    }
   }
 }
 

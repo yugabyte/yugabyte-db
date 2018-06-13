@@ -33,12 +33,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <glog/logging.h>
+#include <stdlib.h>
+
 #include <memory>
 #include <mutex>
-#include <stdlib.h>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/atomic_refcount.h"
 #include "yb/gutil/hash/city.h"
@@ -229,7 +231,7 @@ class LRUCache {
 };
 
 LRUCache::LRUCache(MemTracker* tracker)
- : usage_(0),
+    : usage_(0),
    mem_tracker_(tracker),
    metrics_(nullptr) {
   // Make empty circular linked list
@@ -498,6 +500,7 @@ Cache* NewLRUCache(CacheType type, size_t capacity, const string& id) {
     default:
       LOG(FATAL) << "Unsupported LRU cache type: " << type;
   }
+  abort();  // Never reached.
 }
 
 }  // namespace yb
