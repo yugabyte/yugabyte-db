@@ -340,6 +340,9 @@ compiling_pch=false
 # Determine if we're building the precompiled header (not whether we're using one).
 is_precompiled_header=false
 
+instrument_functions=false
+instrument_functions_rel_path_re=""
+is_pb_cc=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
@@ -348,11 +351,23 @@ while [[ $# -gt 0 ]]; do
         shift
       fi
     ;;
-    *.cc|*.h|*.o|*.a|*.so|*.dylib)
-      # Do not include arguments that look like compiler options into the list of input files,
-      # even if they have plausible extensions.
+    -DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=*)
+      instrument_functions_rel_path_re=${1#*=}
+    ;;
+    *.c|*.cc|*.h|*.o|*.a|*.so|*.dylib)
+      # Do not include arguments that look like compiler options into the list of input files, even
+      # if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
+        if [[ $1 == *.pb.cc ]]; then
+          is_pb_cc=true
+        fi
+        if [[ $1 =~ ^.*[.](c|cc|h)$ && -n $instrument_functions_rel_path_re ]]; then
+          rel_path=$( "$YB_BUILD_SUPPORT_DIR/get_source_rel_path.py" "$1" )
+          if [[ $rel_path =~ $instrument_functions_rel_path_re ]]; then
+            instrument_functions=true
+          fi
+        fi
       fi
     ;;
     c++-header)
@@ -426,6 +441,21 @@ fi
 
 if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
+fi
+
+if "$instrument_functions"; then
+  cmd+=( -finstrument-functions )
+  if [[ -n ${YB_INSTRUMENT_FUNCTIONS_EXCLUDE_FUNCTION_LIST:-} ]]; then
+    cmd+=(
+      -finstrument-functions-exclude-function-list=$YB_INSTRUMENT_FUNCTIONS_EXCLUDE_FUNCTION_LIST
+    )
+  fi
+
+  if "$is_pb_cc"; then
+    # We get additional "may be uninitialized" warnings in protobuf-generated files when running in
+    # the function enter/leave instrumentation mode.
+    cmd+=( -Wno-maybe-uninitialized )
+  fi
 fi
 
 set_build_env_vars

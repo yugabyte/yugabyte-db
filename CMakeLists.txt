@@ -354,7 +354,7 @@ endfunction()
 macro(YB_SETUP_SANITIZER SANITIZER)
   if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
           ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
-    message(SEND_ERROR "Cannot use ${SANITIZER} without clang or gcc >= 4.8")
+    message(FATAL_ERROR "Cannot use ${SANITIZER} without clang or gcc >= 4.8")
   endif()
 
   string(TOLOWER "${SANITIZER}" LOWER_SANITIZER)
@@ -385,7 +385,7 @@ macro(YB_SETUP_SANITIZER SANITIZER)
     message("Using dynamic linking for ${SANITIZER}")
     set(YB_LINK "d")
   elseif("${YB_LINK}" STREQUAL "s")
-    message(SEND_ERROR "Cannot use ${SANITIZER} with static linking")
+    message(FATAL_ERROR "Cannot use ${SANITIZER} with static linking")
   endif()
 endmacro()
 
@@ -671,7 +671,6 @@ if(IS_CLANG AND NOT APPLE AND USING_LINUXBREW)
   set(CLANG_GCC_TOOLCHAIN "${LINUXBREW_DIR}")
 endif()
 
-
 # Set compile flags based on the build type.
 message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
@@ -746,7 +745,7 @@ elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
   # These flags are not understood by some versions of clang we are using.
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
-  message(SEND_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
+  message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
@@ -801,27 +800,6 @@ endif()
 if (USING_LINUXBREW AND IS_CLANG)
   include_directories(SYSTEM ${LINUXBREW_DIR}/include)
   ADD_LINKER_FLAGS("-latomic")
-endif()
-
-# Sanity check -- to be removed.
-set(MYVAR FALSE)
-if(MYVAR)
-  message(FATAL_ERROR "MYVAR should be FALSE")
-endif()
-if(NOT MYVAR)
-  message("OK")
-else()
-  message(FATAL_ERROR "NOT MYVAR should be TRUE")
-endif()
-
-set(MYVAR TRUE)
-if(NOT MYVAR)
-  message(FATAL_ERROR "NOT MYVAR should be FALSE")
-endif()
-if(MYVAR)
-  message("OK")
-else()
-  message(FATAL_ERROR "MYVAR should be TRUE")
 endif()
 
 if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
@@ -910,6 +888,18 @@ if ("${YB_GENERATE_COVERAGE}")
   elseif("${YB_LINK}" STREQUAL "d")
     message(SEND_ERROR "Cannot use coverage with static linking")
   endif()
+endif()
+
+if (YB_INSTRUMENT_FUNCTIONS)
+  # We parse this special-case preprocessor definition flag in compiler-wrapper and add
+  # -finstrument-functions if input files match this pattern. Another consequence of passing this
+  # to the compiler wrapper through the command line is that changing this causes all files to be
+  # recompiled, which is necessary in the common case to ensure proper instrumentation or lack
+  # thereof.
+  #
+  # Need to escape parentheses and pipe in the regex.
+  # add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=src/\\(yb\\|postgres\\)/")
+  add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=^postgres_build/")
 endif()
 
 # If we still don't know what kind of linking to perform, choose based on
