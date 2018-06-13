@@ -45,8 +45,12 @@
 
 #include <string>
 #include <iostream>
-
 #include <regex>
+#include <unordered_map>
+#include <unordered_set>
+#include <fstream>
+#include <queue>
+#include <sstream>
 
 #include <glog/logging.h>
 
@@ -55,11 +59,15 @@
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strtoint.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
+#include "yb/util/string_trim.h"
+
+using namespace std::literals;
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -222,6 +230,11 @@ const char* NormalizeSourceFilePath(const char* file_path) {
     return file_path;
   }
 
+  // Remove the leading "../../../" stuff.
+  while (strncmp(file_path, "../", 3) == 0) {
+    file_path += 3;
+  }
+
   // This could be called arbitrarily early or late in program execution as part of backtrace,
   // so we're not using any static constants here.
 
@@ -338,28 +351,28 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
     }
   }
 
-  string pretty_fn_name;
+  string pretty_function_name;
   if (function_name_to_use == nullptr) {
-    pretty_fn_name = kUnknownSymbol;
+    pretty_function_name = kUnknownSymbol;
   } else {
     // Allocating regexes on the heap so that they would never get deallocated. This is because
     // the kernel watchdog thread could still be symbolizing stack traces as global destructors
     // are being called.
     static const std::regex* kStdColonColonOneRE = new std::regex("\\bstd::__1::\\b");
-    pretty_fn_name = std::regex_replace(function_name_to_use, *kStdColonColonOneRE, "std::");
+    pretty_function_name = std::regex_replace(function_name_to_use, *kStdColonColonOneRE, "std::");
 
     static const std::regex* kStringRE = new std::regex(
         "\\bstd::basic_string<char, std::char_traits<char>, std::allocator<char> >");
-    pretty_fn_name = std::regex_replace(pretty_fn_name, *kStringRE, "string");
+    pretty_function_name = std::regex_replace(pretty_function_name, *kStringRE, "string");
 
     static const std::regex* kRemoveStdPrefixRE =
         new std::regex("\\bstd::(string|tuple|shared_ptr|unique_ptr)\\b");
-    pretty_fn_name = std::regex_replace(pretty_fn_name, *kRemoveStdPrefixRE, "$1");
+    pretty_function_name = std::regex_replace(pretty_function_name, *kRemoveStdPrefixRE, "$1");
   }
 
-  const string frame_without_file_line =
-      StringPrintf(kStackTraceEntryFormat, kPrintfPointerFieldWidth,
-          reinterpret_cast<void*>(pc), pretty_fn_name.c_str());
+  const bool is_symbol_only_fmt =
+      context.stack_trace_line_format == StackTraceLineFormat::SYMBOL_ONLY;
+
   // We have not appended an end-of-line character yet. Let's see if we have file name / line number
   // information first. BTW kStackTraceEntryFormat is used both here and in glog-based
   // symbolization.
@@ -368,21 +381,43 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
     // "    @     0x7f2d98f9bd87  "
     char hex_pc_buf[32];
     snprintf(hex_pc_buf, sizeof(hex_pc_buf), "0x%" PRIxPTR, pc);
-    StringAppendF(buf, "    @ %18s ", hex_pc_buf);
+    if (is_symbol_only_fmt) {
+      // At least print out the hex address, otherwise we'd end up with an empty string.
+      *buf += hex_pc_buf;
+    } else {
+      StringAppendF(buf, "    @ %18s ", hex_pc_buf);
+    }
   } else {
+    const string frame_without_file_line =
+        is_symbol_only_fmt ? pretty_function_name
+                           : StringPrintf(
+                               kStackTraceEntryFormat, kPrintfPointerFieldWidth,
+                               reinterpret_cast<void*>(pc), pretty_function_name.c_str());
+
     // Got filename and line number from libbacktrace! No need to filter the output through
     // addr2line, etc.
-    if (context.stack_trace_line_format == StackTraceLineFormat::CLION_CLICKABLE) {
-      const string file_line_prefix = StringPrintf("%s:%d: ", filename, lineno);
-      StringAppendF(buf, "%-100s", file_line_prefix.c_str());
-      *buf += frame_without_file_line;
-    } else {
-      // Must be StackTraceLineFormat::SHORT.
-      *buf += frame_without_file_line;
-      StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+    switch (context.stack_trace_line_format) {
+      case StackTraceLineFormat::CLION_CLICKABLE: {
+        const string file_line_prefix = StringPrintf("%s:%d: ", filename, lineno);
+        StringAppendF(buf, "%-100s", file_line_prefix.c_str());
+        *buf += frame_without_file_line;
+        break;
+      }
+      case StackTraceLineFormat::SHORT: {
+        *buf += frame_without_file_line;
+        StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+        break;
+      }
+      case StackTraceLineFormat::SYMBOL_ONLY: {
+        *buf += frame_without_file_line;
+        StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+        break;
+      }
     }
   }
+
   buf->push_back('\n');
+
   // No need to check for nullptr, free is a no-op in that case.
   free(demangled_function_name);
   return 0;
@@ -557,6 +592,66 @@ string StackTrace::ToHexString(int flags) const {
   return string(buf);
 }
 
+void* AdjustProgramCounter(void* pc) {
+  // The return address 'pc' on the stack is the address of the instruction
+  // following the 'call' instruction. In the case of calling a function annotated
+  // 'noreturn', this address may actually be the first instruction of the next
+  // function, because the function we care about ends with the 'call'.
+  // So, we subtract 1 from 'pc' so that we're pointing at the 'call' instead
+  // of the return address.
+  //
+  // For example, compiling a C program with -O2 that simply calls 'abort()' yields
+  // the following disassembly:
+  //     Disassembly of section .text:
+  //
+  //     0000000000400440 <main>:
+  //       400440:   48 83 ec 08             sub    $0x8,%rsp
+  //       400444:   e8 c7 ff ff ff          callq  400410 <abort@plt>
+  //
+  //     0000000000400449 <_start>:
+  //       400449:   31 ed                   xor    %ebp,%ebp
+  //       ...
+  //
+  // If we were to take a stack trace while inside 'abort', the return pointer
+  // on the stack would be 0x400449 (the first instruction of '_start'). By subtracting
+  // 1, we end up with 0x400448, which is still within 'main'.
+  //
+  // This also ensures that we point at the correct line number when using addr2line
+  // on logged stacks.
+  return reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
+}
+
+void SymbolizeAddress(
+    const StackTraceLineFormat stack_trace_line_format,
+    void* pc,
+    string* buf
+#ifdef __linux__
+    , struct backtrace_state* backtrace_state = nullptr
+#endif
+    ) {
+#ifdef __linux__
+  if (!backtrace_state) {
+    backtrace_state = Singleton<GlobalBacktraceState>::get()->GetState();
+  }
+  SymbolizationContext context;
+  context.stack_trace_line_format = stack_trace_line_format;
+  context.buf = buf;
+  backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(pc),
+                   BacktraceFullCallback, BacktraceErrorCallback, &context);
+#else
+  char tmp[1024];
+  const char* symbol = kUnknownSymbol;
+
+  if (google::Symbolize(pc, tmp, sizeof(tmp))) {
+    symbol = tmp;
+  }
+  StringAppendF(buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth, pc, symbol);
+  // We are appending the end-of-line character separately because we want to reuse the same
+  // format string for libbacktrace callback and glog-based symbolization, and we have an extra
+  // file name / line number component before the end-of-line in the libbacktrace case.
+#endif  // Non-linux implementation
+}
+
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
 string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format) const {
   string buf;
@@ -569,55 +664,13 @@ string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format)
   for (int i = 0; i < num_frames_; i++) {
     void* const pc = frames_[i];
 
-    // The return address 'pc' on the stack is the address of the instruction
-    // following the 'call' instruction. In the case of calling a function annotated
-    // 'noreturn', this address may actually be the first instruction of the next
-    // function, because the function we care about ends with the 'call'.
-    // So, we subtract 1 from 'pc' so that we're pointing at the 'call' instead
-    // of the return address.
-    //
-    // For example, compiling a C program with -O2 that simply calls 'abort()' yields
-    // the following disassembly:
-    //     Disassembly of section .text:
-    //
-    //     0000000000400440 <main>:
-    //       400440:   48 83 ec 08             sub    $0x8,%rsp
-    //       400444:   e8 c7 ff ff ff          callq  400410 <abort@plt>
-    //
-    //     0000000000400449 <_start>:
-    //       400449:   31 ed                   xor    %ebp,%ebp
-    //       ...
-    //
-    // If we were to take a stack trace while inside 'abort', the return pointer
-    // on the stack would be 0x400449 (the first instruction of '_start'). By subtracting
-    // 1, we end up with 0x400448, which is still within 'main'.
-    //
-    // This also ensures that we point at the correct line number when using addr2line
-    // on logged stacks.
-    void* const adjusted_pc = reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
-
+    SymbolizeAddress(stack_trace_line_format, AdjustProgramCounter(pc), &buf
 #ifdef __linux__
-    SymbolizationContext context;
-    context.stack_trace_line_format = stack_trace_line_format;
-    context.buf = &buf;
-    backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(adjusted_pc),
-        BacktraceFullCallback, BacktraceErrorCallback, &context);
-#else
-    char tmp[1024];
-    const char* symbol = kUnknownSymbol;
-
-    if (google::Symbolize(adjusted_pc, tmp, sizeof(tmp))) {
-      symbol = tmp;
-    }
-    StringAppendF(&buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth, adjusted_pc, symbol);
-    // We are appending the end-of-line character separately because we want to reuse the same
-    // format string for libbacktrace callback and glog-based symbolization, and we have an extra
-    // file name / line number component before the end-of-line in the libbacktrace case.
-    buf.push_back('\n');
-#endif  // Non-linux implementation
+        , backtrace_state
+#endif
+        );
   }
 
-  // TODO: what do we need to do to free the backtrace state?
   return buf;
 }
 
@@ -663,10 +716,206 @@ bool PrintLoadedDynamicLibrariesOnceHelper() {
   }
   return true;
 }
-}  // anonymous namespace
+
+} // anonymous namespace
+
+// ------------------------------------------------------------------------------------------------
+// Tracing function calls
+// ------------------------------------------------------------------------------------------------
+
+namespace {
+
+const char* GetEnvVar(const char* name) {
+  const char* value = getenv(name);
+  if (value && strlen(value) == 0) {
+    // Treat empty values as undefined.
+    return nullptr;
+  }
+  return value;
+}
+
+struct FunctionTraceConf {
+
+  bool enabled = false;
+
+  // Auto-blacklist functions that have done more than this number of calls per second.
+  int32_t blacklist_calls_per_sec = 1000;
+
+  std::unordered_set<std::string> fn_name_blacklist;
+
+  FunctionTraceConf() {
+    enabled = GetEnvVar("YB_FN_TRACE");
+    if (!enabled) {
+      return;
+    }
+    auto blacklist_calls_per_sec_str = GetEnvVar("YB_FN_TRACE_BLACKLIST_CALLS_PER_SEC");
+    if (blacklist_calls_per_sec_str) {
+      blacklist_calls_per_sec = atoi32(blacklist_calls_per_sec_str);
+    }
+
+    static const char* kBlacklistFileEnvVarName = "YB_FN_TRACE_BLACKLIST_FILE";
+    auto blacklist_file_path = GetEnvVar(kBlacklistFileEnvVarName);
+    if (blacklist_file_path) {
+      LOG(INFO) << "Reading blacklist from " << blacklist_file_path;
+      std::ifstream blacklist_file(blacklist_file_path);
+      if (!blacklist_file) {
+        LOG(FATAL) << "Could not read function trace blacklist file from '"
+                   << blacklist_file_path << "' as specified by " << kBlacklistFileEnvVarName;
+      }
+      string fn_name;
+      while (std::getline(blacklist_file, fn_name)) {
+        fn_name = util::TrimStr(fn_name);
+        if (fn_name.size()) {
+          fn_name_blacklist.insert(fn_name);
+        }
+      }
+
+      if (blacklist_file.bad()) {
+        LOG(FATAL) << "Error reading blacklist file '" << blacklist_file_path << "': "
+                   << strerror(errno);
+      }
+    }
+  }
+};
+
+const FunctionTraceConf& GetFunctionTraceConf() {
+  static const FunctionTraceConf conf;
+  return conf;
+}
+
+enum class EventType : uint8_t {
+  kEnter,
+  kLeave
+};
+
+struct FunctionTraceEvent {
+  EventType event_type;
+  void* this_fn;
+  void* call_site;
+  int64_t thread_id;
+  CoarseMonoClock::time_point time;
+
+  FunctionTraceEvent(
+      EventType type_,
+      void* this_fn_,
+      void* call_site_)
+      : event_type(type_),
+        this_fn(this_fn_),
+        call_site(call_site_),
+        thread_id(Thread::CurrentThreadId()),
+        time(CoarseMonoClock::Now()) {
+  }
+};
+
+class FunctionTracer {
+ public:
+  FunctionTracer() {
+  }
+
+  void RecordEvent(EventType event_type, void* this_fn, void* call_site) {
+    if (blacklisted_fns_.count(this_fn)) {
+      return;
+    }
+    const auto& conf = GetFunctionTraceConf();
+
+    FunctionTraceEvent event(event_type, this_fn, call_site);
+    auto& time_queue = func_event_times_[this_fn];
+    while (!time_queue.empty() && time_queue.back() - time_queue.front() > 1000ms) {
+      time_queue.pop();
+    }
+    time_queue.push(event.time);
+    if (conf.blacklist_calls_per_sec > 0 &&
+        time_queue.size() >= conf.blacklist_calls_per_sec) {
+      std::cerr << "Auto-blacklisting " << Symbolize(this_fn) << ": repeated "
+                << time_queue.size() << " times per sec" << std::endl;
+      blacklisted_fns_.insert(this_fn);
+      func_event_times_.erase(this_fn);
+      return;
+    }
+    const string& symbol = Symbolize(event.this_fn);
+    if (!conf.fn_name_blacklist.empty()) {
+      // User specified a file listing functions that should not be traced. Match the symbolized
+      // function name to that file.
+      const char* symbol_str = symbol.c_str();
+      const char* space_ptr = strchr(symbol_str, ' ');
+      if (conf.fn_name_blacklist.count(space_ptr ? std::string(symbol_str, space_ptr)
+                                                 : symbol)) {
+        // Remember to avoid tracing this function pointer from now on.
+        blacklisted_fns_.insert(event.this_fn);
+        return;
+      }
+    }
+    const char* event_type_str = event.event_type == EventType::kEnter ? "->" : "<-";
+    if (!first_event_) {
+      auto delay_ms = ToMilliseconds(event.time - last_event_time_);
+      if (delay_ms > 1000) {
+        std::ostringstream ss;
+        ss << "\n" << std::string(80, '-') << "\n";
+        ss << "No events for " << delay_ms << " ms (thread id: " << event.thread_id << ")";
+        ss << "\n" << std::string(80, '-') << "\n";
+        std::cout << ss.str() << std::endl;
+      }
+      last_event_time_ = event.time;
+    }
+    first_event_ = false;
+    std::ostringstream ss;
+    ss << ToMicroseconds(event.time.time_since_epoch())
+       << " " << event.thread_id << " " << event_type_str << " " << symbol
+       << ", called from: " << Symbolize(AdjustProgramCounter(event.call_site));
+    std::cerr << ss.str() << std::endl;
+  }
+
+ private:
+  const std::string& Symbolize(void* pc) {
+    {
+      auto iter = symbol_cache_.find(pc);
+      if (iter != symbol_cache_.end()) {
+        return iter->second;
+      }
+    }
+    string buf;
+    SymbolizeAddress(StackTraceLineFormat::SYMBOL_ONLY, pc, &buf);
+    if (!buf.empty() && buf.back() == '\n') {
+      buf.pop_back();
+    }
+    return symbol_cache_.emplace(pc, buf).first->second;
+  }
+
+  std::unordered_map<void*, std::queue<CoarseMonoClock::time_point>> func_event_times_;
+  std::unordered_set<void*> blacklisted_fns_;
+  CoarseMonoClock::time_point last_event_time_;
+  bool first_event_ = true;
+
+  std::unordered_map<void*, std::string> symbol_cache_;
+};
+
+FunctionTracer& GetFunctionTracer() {
+  static FunctionTracer function_tracer;
+  return function_tracer;
+}
+
+} // anonymous namespace
 
 // List the load addresses of dynamic libraries once on process startup if required.
 const bool  __attribute__((unused)) kPrintedLoadedDynamicLibraries =
     PrintLoadedDynamicLibrariesOnceHelper();
+
+extern "C" {
+
+void __cyg_profile_func_enter(void*, void*) __attribute__((no_instrument_function));
+void __cyg_profile_func_enter(void *this_fn, void *call_site) {
+  if (GetFunctionTraceConf().enabled) {
+    GetFunctionTracer().RecordEvent(EventType::kEnter, this_fn, call_site);
+  }
+}
+
+void __cyg_profile_func_exit(void*, void*) __attribute__((no_instrument_function));
+void __cyg_profile_func_exit (void *this_fn, void *call_site) {
+  if (GetFunctionTraceConf().enabled) {
+    GetFunctionTracer().RecordEvent(EventType::kLeave, this_fn, call_site);
+  }
+}
+
+}
 
 }  // namespace yb

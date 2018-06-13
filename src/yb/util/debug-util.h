@@ -45,6 +45,7 @@ namespace yb {
 enum class StackTraceLineFormat {
   SHORT,
   CLION_CLICKABLE,
+  SYMBOL_ONLY,
   DEFAULT = SHORT
 };
 
