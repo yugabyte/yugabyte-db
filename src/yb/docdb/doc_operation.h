@@ -229,6 +229,8 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
 
+  CHECKED_STATUS SetRowBlock(const Schema& schema, const std::string& rows_data);
+
   Type OpType() override { return Type::QL_WRITE_OPERATION; }
 
  private:
@@ -252,7 +254,9 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
-  QLWriteRequestPB* NewIndexRequest(const IndexInfo* index, QLWriteRequestPB::QLStmtType type);
+  QLWriteRequestPB* NewIndexRequest(const IndexInfo* index,
+                                    QLWriteRequestPB::QLStmtType type,
+                                    const QLTableRow& new_row);
 
   const Schema& schema_;
   const IndexMap& index_map_;

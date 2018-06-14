@@ -378,6 +378,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
     table_creator->indexed_table_id(index_node->indexed_table_id());
     table_creator->is_local_index(index_node->is_local());
+    table_creator->is_unique_index(index_node->is_unique());
   }
   s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {

@@ -886,6 +886,9 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     auto session = std::make_shared<YBSession>(client);
     session->SetTransaction(txn);
     RETURN_NOT_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
+
+    // Apply the write ops to update the index
+    vector<std::pair<const IndexInfo*, shared_ptr<client::YBqlWriteOp>>> index_ops;
     for (auto& pair : *write_op->index_requests()) {
       client::YBTablePtr index_table;
       RETURN_NOT_OK(client->OpenTable(pair.first->table_id(), &index_table));
@@ -893,9 +896,52 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
       index_op->mutable_request()->Swap(&pair.second);
       index_op->mutable_request()->MergeFrom(pair.second);
       RETURN_NOT_OK(session->Apply(index_op));
+      index_ops.emplace_back(pair.first, index_op);
     }
-    RETURN_NOT_OK(session->Flush());
-    *write_op->response()->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
+    const Status s = session->Flush();
+    if (PREDICT_FALSE(!s.ok())) {
+      // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+      // returns IOError. When it happens, retrieves the errors and discard the IOError.
+      if (s.IsIOError()) {
+        for (const auto& error : session->GetPendingErrors()) {
+          return error->status(); // return just the first error seen.
+        }
+      }
+      return s;
+    }
+
+    // Check the responses of the index write ops.
+    const auto& request = write_op->request();
+    auto* response = write_op->response();
+    for (const auto& pair : index_ops) {
+      const IndexInfo* index_info = pair.first;
+      shared_ptr<client::YBqlWriteOp> index_op = pair.second;
+      auto* index_response = index_op->mutable_response();
+
+      if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
+        response->set_status(index_response->status());
+        response->set_error_message(std::move(index_response->error_message()));
+        break;
+      }
+
+      // For unique index, return error if the update failed due to duplicate values.
+      if (index_info->is_unique() && index_response->has_applied() && !index_response->applied()) {
+        if (request.has_if_expr()) {
+          *response->mutable_column_schemas() =
+              std::move(*index_response->mutable_column_schemas());
+          Schema schema;
+          RETURN_NOT_OK(ColumnPBsToSchema(*response->mutable_column_schemas(), &schema));
+          RETURN_NOT_OK(write_op->SetRowBlock(schema, index_op->rows_data()));
+        } else {
+          response->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+          response->set_error_message(Format("Duplicate value disallowed by unique index $0",
+                                             index_op->table()->name().ToString()));
+        }
+        break;
+      }
+    }
+
+    *response->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
   }
   return Status::OK();
 }

@@ -27,6 +27,7 @@ class PTCreateIndex : public PTCreateTable {
   // Constructor and destructor.
   PTCreateIndex(MemoryContext *memctx,
                 YBLocation::SharedPtr loc,
+                bool is_unique,
                 const MCSharedPtr<MCString>& name,
                 const PTQualifiedName::SharedPtr& table_name,
                 const PTListNode::SharedPtr& columns,
@@ -50,6 +51,9 @@ class PTCreateIndex : public PTCreateTable {
   const MCSharedPtr<MCString>& name() const {
     return name_;
   }
+  bool is_unique() const {
+    return is_unique_;
+  }
   const PTListNode::SharedPtr& covering() const {
     return covering_;
   }
@@ -67,7 +71,7 @@ class PTCreateIndex : public PTCreateTable {
     return table_->id();
   }
 
-  const bool& is_local() const {
+  bool is_local() const {
     return is_local_;
   }
 
@@ -76,6 +80,8 @@ class PTCreateIndex : public PTCreateTable {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
  private:
+  // Is it a unique index?
+  const bool is_unique_ = false;
   // Index name.
   const MCSharedPtr<MCString> name_;
   // Additional covering columns.
