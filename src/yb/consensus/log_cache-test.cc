@@ -214,7 +214,7 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
 
 // Tests that the cache returns STATUS(NotFound, "") if queried for messages after an
 // index that is higher than it's latest, returns an empty set of messages when queried for
-// the the last index and returns all messages when queried for MinimumOpId().
+// the last index and returns all messages when queried for MinimumOpId().
 TEST_F(LogCacheTest, TestCacheEdgeCases) {
   // Append 1 message to the cache
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1));

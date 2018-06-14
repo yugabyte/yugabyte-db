@@ -368,6 +368,9 @@ class Consensus {
   virtual MicrosTime MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, MonoTime deadline) const = 0;
 
+  // This includes heartbeats too.
+  virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
+
  protected:
   friend class RefCountedThreadSafe<Consensus>;
   friend class tablet::TabletPeer;

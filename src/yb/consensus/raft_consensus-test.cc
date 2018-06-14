@@ -482,7 +482,7 @@ MATCHER(IsOk, "") { return arg.ok(); }
 MATCHER(IsAborted, "") { return arg.IsAborted(); }
 
 // Tests that consensus is able to handle pending operations. It tests this in two ways:
-// - It tests that consensus does the right thing with pending transactions from the the WAL.
+// - It tests that consensus does the right thing with pending transactions from the WAL.
 // - It tests that when a follower gets promoted to leader it does the right thing
 //   with the pending operations.
 TEST_F(RaftConsensusTest, TestPendingOperations) {
@@ -560,7 +560,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   OpId committed_index;
   consensus_->UpdateMajorityReplicatedInTests(info.orphaned_replicates.back()->id(),
                                               &committed_index);
-  // Should still be the last committed in the the wal.
+  // Should still be the last committed in the wal.
   ASSERT_OPID_EQ(committed_index, info.last_committed_id);
 
   // Now mark the last operation (the no-op round) as committed.
@@ -580,7 +580,7 @@ MATCHER_P2(RoundHasOpId, term, index, "") {
   return arg->id().term() == term && arg->id().index() == index;
 }
 
-// Tests the case where a a leader is elected and pushed a sequence of
+// Tests the case where a leader is elected and pushed a sequence of
 // operations of which some never get committed. Eventually a new leader in a higher
 // term pushes operations that overwrite some of the original indexes.
 TEST_F(RaftConsensusTest, TestAbortOperations) {

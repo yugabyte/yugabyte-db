@@ -21,6 +21,7 @@
 #include "yb/client/meta_cache.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/flag_tags.h"
 
 namespace yb {
 namespace client {
@@ -106,7 +107,7 @@ void TabletInvoker::SelectTabletServer()  {
   }
 }
 
-void TabletInvoker::Execute(const std::string& tablet_id) {
+void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (tablet_id_.empty()) {
     if (!tablet_id.empty()) {
       tablet_id_ = tablet_id;
@@ -122,7 +123,7 @@ void TabletInvoker::Execute(const std::string& tablet_id) {
   }
 
   // Sets current_ts_.
-  if (!consistent_prefix_) {
+  if (!consistent_prefix_ || leader_only) {
     SelectTabletServer();
   } else {
     SelectTabletServerWithConsistentPrefix();
@@ -162,10 +163,12 @@ void TabletInvoker::Execute(const std::string& tablet_id) {
   rpc_->SendRpcToTserver();
 }
 
-void TabletInvoker::FailToNewReplica(const Status& reason) {
+void TabletInvoker::FailToNewReplica(const Status& reason,
+                                     const tserver::TabletServerErrorPB* error_code) {
   VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
 
-  bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
+  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER  &&
+               (!tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason));
   if (!found) {
     // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
     // which updates the set of replicas.
@@ -231,7 +234,7 @@ bool TabletInvoker::Done(Status* status) {
     }
 
     if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
-      FailToNewReplica(*status);
+      FailToNewReplica(*status, rpc_->response_error());
     } else {
       auto retry_status = retrier_->DelayedRetry(command_, *status);
       LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
