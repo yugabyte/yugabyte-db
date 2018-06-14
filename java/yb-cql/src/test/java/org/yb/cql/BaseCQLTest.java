@@ -443,13 +443,31 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertFalse(iter.hasNext());
   }
 
-  protected void assertQuery(String stmt, String expectedResult) {
+  protected void assertQuery(Statement stmt, String expectedResult) {
     ResultSet rs = session.execute(stmt);
     String actualResult = "";
     for (Row row : rs) {
       actualResult += row.toString();
     }
     assertEquals(expectedResult, actualResult);
+  }
+
+  protected void assertQuery(String stmt, String expectedResult) {
+    assertQuery(new SimpleStatement(stmt), expectedResult);
+  }
+
+  protected void assertQuery(Statement stmt, String expectedColumns, String expectedResult) {
+    ResultSet rs = session.execute(stmt);
+    assertEquals(expectedColumns, rs.getColumnDefinitions().toString());
+    String actualResult = "";
+    for (Row row : rs) {
+      actualResult += row.toString();
+    }
+    assertEquals(expectedResult, actualResult);
+  }
+
+  protected void assertQuery(String stmt, String expectedColumns, String expectedResult) {
+    assertQuery(new SimpleStatement(stmt), expectedColumns, expectedResult);
   }
 
   protected void assertQuery(String stmt, Set<String> expectedRows) {

@@ -1185,7 +1185,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS AddIndexInfoToTable(const TableId& indexed_table_id,
                                      const TableId& index_table_id,
                                      const Schema& index_schema,
-                                     bool is_local);
+                                     bool is_local,
+                                     bool is_unique);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,

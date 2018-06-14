@@ -29,6 +29,7 @@ import org.yb.minicluster.MiniYBCluster;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TestIndex extends BaseCQLTest {
@@ -523,5 +524,91 @@ public class TestIndex extends BaseCQLTest {
 
     // Also verify that the rows are inserted indeed.
     assertQuery("select k, v from test_restart", "Row[1, 1000]");
+  }
+
+  private void assertInvalidUniqueIndexDML(String query, String indexName) {
+    try {
+      session.execute(query);
+      fail("InvalidQueryException not thrown for " + query);
+    } catch (InvalidQueryException e) {
+      assertTrue(e.getMessage().startsWith(
+          String.format("SQL error: Execution Error. Duplicate value disallowed by unique index " +
+                        "%s.%s", DEFAULT_TEST_KEYSPACE, indexName)));
+    }
+  }
+
+  @Test
+  public void testUniqueIndex() throws Exception {
+    // Create test table with 2 unique indexes (single and multiple columns).
+    session.execute("create table test_unique (k int primary key, v1 int, v2 text, v3 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create unique index test_unique_by_v1 on test_unique (v1);");
+    session.execute("create unique index test_unique_by_v2_v3 on test_unique (v2, v3);");
+
+    // Test unique constraint on NULL values in v2 and v3.
+    session.execute(
+        "insert into test_unique (k, v1) values (1, 1);");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique (k, v1) values (2, 2);", "test_unique_by_v2_v3");
+    session.execute(
+        "insert into test_unique (k, v1, v2, v3) values (2, 2, 'b', 2);");
+
+    // Test unique constraint on NULL value in v1.
+    session.execute(
+        "insert into test_unique (k, v2, v3) values (3, 'c', 3);");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique (k, v2, v3) values (4, 'd', 4);", "test_unique_by_v1");
+
+    // Test unique constraint on non-NULL values.
+    session.execute(
+        "insert into test_unique (k, v1, v2, v3) values (5, 5, 'e', 5);");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique (k, v1, v2, v3) values (6, 5, 'f', 6);", "test_unique_by_v1");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique (k, v1, v2, v3) values (6, 6, 'e', 5);", "test_unique_by_v2_v3");
+
+    // Test unique constraint with value (v1 = 2) removed and reinserted in another row.
+    session.execute("delete from test_unique where k = 2;");
+    session.execute("insert into test_unique (k, v1, v2, v3) values (3, 2, 'a', 1);");
+
+    // Test unique constraint with value (v3 = 5) changed and the original value reinserted in
+    // another row.
+    session.execute("update test_unique set v3 = 6 where k = 5;");
+    session.execute("insert into test_unique (k, v1, v2, v3) values (7, 7, 'e', 5);");
+
+    // Test unique constraint with updating values with the same original values.
+    session.execute("update test_unique set v1 = 7, v2 = 'e', v3 = 5 where k = 7;");
+  }
+
+  @Test
+  public void testConditionalDML() throws Exception {
+    // Create test 2 test tables. One with normal secondary index and one with an additional unique
+    // index.
+    session.execute("create table test_cond (k int primary key, v1 int, v2 text) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_cond_by_v1 on test_cond (v1) covering (v2);");
+
+    session.execute("create table test_cond_unique (k int primary key, v1 int, v2 text) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_cond_unique_by_v1 on test_cond_unique (v1);");
+    session.execute("create unique index test_cond_unique_by_v2 on test_cond_unique (v2) "+
+                    "covering (v1);");
+
+    // Insert into first table with conditional DML.
+    session.execute("insert into test_cond (k, v1, v2) values (1, 1, 'a');");
+    assertQuery("insert into test_cond (k, v1, v2) values (1, 1, 'a') if not exists;",
+                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
+                "Row[false, 1, a, 1]");
+    assertQuery("insert into test_cond (k, v1, v2) values (2, 1, 'a') if not exists;",
+                "Row[true]");
+
+    // Insert into second table with conditional DML.
+    session.execute("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a');");
+    assertQuery("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a') if not exists;",
+                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
+                "Row[false, 1, a, 1]");
+    assertQuery("insert into test_cond_unique (k, v1, v2) values (2, 2, 'a') if not exists;",
+                "Columns[[applied](boolean), v2(varchar), k(int)]",
+                "Row[false, a, 1]");
   }
 }

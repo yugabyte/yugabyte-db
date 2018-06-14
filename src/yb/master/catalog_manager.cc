@@ -1355,7 +1355,8 @@ CHECKED_STATUS AddIndexColumn(
 Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
                                            const TableId& index_table_id,
                                            const Schema& index_schema,
-                                           const bool is_local) {
+                                           const bool is_local,
+                                           const bool is_unique) {
   // Lookup the indexed table and verify if it exists.
   TRACE("Looking up indexed table");
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
@@ -1371,6 +1372,7 @@ Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
   index_info.set_table_id(index_table_id);
   index_info.set_version(0);
   index_info.set_is_local(is_local);
+  index_info.set_is_unique(is_unique);
   for (size_t i = 0; i < index_schema.num_columns(); i++) {
     RETURN_NOT_OK(AddIndexColumn(indexed_schema, index_schema, i, index_info.mutable_columns()));
   }
@@ -1673,7 +1675,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, insert index info in the indexed table.
   if (req.has_indexed_table_id()) {
-    s = AddIndexInfoToTable(req.indexed_table_id(), table->id(), schema, req.is_local_index());
+    s = AddIndexInfoToTable(req.indexed_table_id(), table->id(), schema, req.is_local_index(),
+                            req.is_unique_index());
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
                                 s.CloneAndPrepend(
@@ -1884,6 +1887,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   if (req.has_indexed_table_id()) {
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
+    metadata->set_is_unique_index(req.is_unique_index());
   }
   return table;
 }

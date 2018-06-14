@@ -7987,18 +7987,18 @@ IndexStmt:
   CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
   opt_where_clause {
-    $$ = MAKE_NODE(@1, PTCreateIndex, $5, $7, $10, false, $12, $13);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $12, $13);
   }
   | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
   opt_where_clause {
-    $$ = MAKE_NODE(@1, PTCreateIndex, $8, $10, $13, true, $15, $16);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $15, $16);
   }
 ;
 
 opt_unique:
-  UNIQUE                            { PARSER_UNSUPPORTED(@1); }
-  | /*EMPTY*/                       { }
+  UNIQUE                            { $$ = true; }
+  | /*EMPTY*/                       { $$ = false; }
 ;
 
 opt_concurrently:

@@ -70,6 +70,7 @@ class YBTableCreator::Data {
   std::string indexed_table_id_;
 
   bool is_local_index_ = false;
+  bool is_unique_index_ = false;
 
   MonoDelta timeout_;
 

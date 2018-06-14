@@ -23,6 +23,7 @@ using client::YBTableName;
 
 PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
+                             const bool is_unique,
                              const MCSharedPtr<MCString>& name,
                              const PTQualifiedName::SharedPtr& table_name,
                              const PTListNode::SharedPtr& columns,
@@ -30,6 +31,7 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
                              const PTTablePropertyListNode::SharedPtr& ordering_list,
                              const PTListNode::SharedPtr& covering)
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
+      is_unique_(is_unique),
       name_(name),
       covering_(covering),
       is_local_(false),
@@ -56,13 +58,19 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Analyze index table like a regular table for the primary key definitions.
   RETURN_NOT_OK(PTCreateTable::Analyze(sem_context));
 
-  // Add remaining primary key columns from the indexed table.
+  // Add remaining primary key columns from the indexed table. For non-unique index, add the columns
+  // to the primary key of the index table to make the non-unique values unique. For unique index,
+  // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
   for (int idx = 0; idx < num_key_columns_; idx++) {
     const MCString col_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
     PTColumnDefinition* col = sem_context->GetColumnDefinition(col_name);
     if (!col->is_primary_key()) {
-      RETURN_NOT_OK(AppendPrimaryColumn(sem_context, col));
+      if (!is_unique_) {
+        RETURN_NOT_OK(AppendPrimaryColumn(sem_context, col));
+      } else {
+        RETURN_NOT_OK(AppendColumn(sem_context, col));
+      }
     }
   }
 

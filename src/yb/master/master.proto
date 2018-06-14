@@ -325,11 +325,10 @@ message SysTablesEntryPB {
   // Secondary indexes of the table.
   repeated IndexInfoPB indexes = 12;
 
-  // For index table: indexed table id of this index.
-  optional bytes indexed_table_id = 13;
-
-  // For index table: whether the index is local.
-  optional bool is_local_index = 14;
+  // For index table:
+  optional bytes indexed_table_id = 13; // Indexed table id of this index.
+  optional bool is_local_index = 14 [ default = false ]; // Whether this is a local index.
+  optional bool is_unique_index = 15 [ default = false ]; // Whether this is a unique index.
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -591,10 +590,11 @@ message CreateTableRequestPB {
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
   optional NamespaceIdentifierPB namespace = 8;
-  // For index table: indexed table id of this index.
-  optional bytes indexed_table_id = 9;
-  // For index table: whether the index is local.
-  optional bool is_local_index = 10;
+
+  // For index table
+  optional bytes indexed_table_id = 9; // Indexed table id of this index.
+  optional bool is_local_index = 10 [ default = false ];  // Is a local index?
+  optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
 }
 
 message CreateTableResponsePB {

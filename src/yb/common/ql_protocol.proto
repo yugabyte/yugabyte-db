@@ -127,7 +127,7 @@ enum QLOperator {
   QL_OP_IS_TRUE = 2;
   QL_OP_IS_FALSE = 3;
 
-  // Logic operators that take two operands.
+  // Logic operators that take two or more operands.
   QL_OP_AND = 4;
   QL_OP_OR = 5;
 
@@ -396,4 +396,7 @@ message QLResponsePB {
 
   // Result of child transaction.
   optional ChildTransactionResultPB child_transaction_result = 6;
+
+  // For conditional DML: indicate if the DML is applied or not according to the conditions.
+  optional bool applied = 7;
 }

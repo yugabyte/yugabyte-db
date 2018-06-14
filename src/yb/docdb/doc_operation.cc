@@ -1677,12 +1677,18 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateRow(const QLTableRow& table_row,
-                           const Schema& projection, size_t col_idx, QLRow* row) {
-  for (size_t i = 0; i < projection.num_columns(); i++, col_idx++) {
-    RETURN_NOT_OK(table_row.GetValue(projection.column_id(i), row->mutable_column(col_idx)));
+CHECKED_STATUS PopulateRow(const QLTableRow& table_row, const Schema& schema,
+                           const size_t begin_idx, const size_t col_count,
+                           QLRow* row, size_t *col_idx) {
+  for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
+    RETURN_NOT_OK(table_row.GetValue(schema.column_id(i), row->mutable_column((*col_idx)++)));
   }
   return Status::OK();
+}
+
+CHECKED_STATUS PopulateRow(const QLTableRow& table_row, const Schema& projection,
+                           QLRow* row, size_t* col_idx) {
+  return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
 
 // Outer join a static row with a non-static row.
@@ -1907,23 +1913,30 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
   // See if the if-condition is satisfied.
   RETURN_NOT_OK(EvalCondition(condition, *table_row, should_apply));
 
-  // Populate the result set to return the "applied" status, and optionally the present column
-  // values if the condition is not satisfied and the row does exist (value_map is not empty).
+  // Populate the result set to return the "applied" status, and optionally the hash / primary key
+  // and the present column values if the condition is not satisfied and the row does exist
+  // (value_map is not empty).
+  const bool return_present_values = !*should_apply && !table_row->IsEmpty();
+  const size_t num_key_columns = pk_doc_key_ ? schema_.num_key_columns()
+                                             : schema_.num_hash_key_columns();
   std::vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
-  if (!*should_apply && !table_row->IsEmpty()) {
-    columns.insert(columns.end(),
-                   static_projection.columns().begin(), static_projection.columns().end());
-    columns.insert(columns.end(),
-                   non_static_projection.columns().begin(), non_static_projection.columns().end());
+  if (return_present_values) {
+    columns.insert(columns.end(), schema_.columns().begin(),
+                   schema_.columns().begin() + num_key_columns);
+    columns.insert(columns.end(), static_projection.columns().begin(),
+                   static_projection.columns().end());
+    columns.insert(columns.end(), non_static_projection.columns().begin(),
+                   non_static_projection.columns().end());
   }
   rowblock->reset(new QLRowBlock(Schema(columns, 0)));
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
-  if (!*should_apply && !table_row->IsEmpty()) {
-    RETURN_NOT_OK(PopulateRow(*table_row, static_projection, 1 /* begin col_idx */, &row));
-    RETURN_NOT_OK(PopulateRow(*table_row, non_static_projection,
-                              1 + static_projection.num_columns(), &row));
+  size_t col_idx = 1;
+  if (return_present_values) {
+    RETURN_NOT_OK(PopulateRow(*table_row, schema_, 0, num_key_columns, &row, &col_idx));
+    RETURN_NOT_OK(PopulateRow(*table_row, static_projection, &row, &col_idx));
+    RETURN_NOT_OK(PopulateRow(*table_row, non_static_projection, &row, &col_idx));
   }
 
   return Status::OK();
@@ -2101,6 +2114,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                                        &should_apply,
                                        &rowblock_,
                                        &current_row));
+    response_->set_applied(should_apply);
   } else if (RequireReadForExpressions(request_)) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &current_row));
   }
@@ -2351,13 +2365,46 @@ QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, 
           : request->add_range_column_values());
 }
 
+// Set primary-key condition, i.e. "h1 = xx AND h2 = xx AND r1 = xx AND r2 = xx ...", and add the
+// referenced columns.
+void SetPrimaryKeyCondition(const IndexInfo* index,
+                            const Schema& indexed_schema,
+                            const QLTableRow& new_row,
+                            QLWriteRequestPB* index_request,
+                            QLConditionPB* condition) {
+  condition->set_op(QL_OP_AND);
+  for (size_t i = 0; i < index->columns().size(); i++) {
+    const IndexInfo::IndexColumn& index_column = index->column(i);
+    if (indexed_schema.is_key_column(index_column.indexed_column_id)) {
+      auto result = new_row.GetValue(index_column.indexed_column_id);
+      if (result) {
+        QLConditionPB* column_condition = condition->add_operands()->mutable_condition();
+        column_condition->set_op(QL_OP_EQUAL);
+        column_condition->add_operands()->set_column_id(index_column.column_id);
+        *column_condition->add_operands()->mutable_value() = *result;
+        index_request->mutable_column_refs()->add_ids(index_column.column_id);
+      }
+    }
+  }
+}
+
 } // namespace
 
 QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
-                                                    const QLWriteRequestPB::QLStmtType type) {
+                                                    const QLWriteRequestPB::QLStmtType type,
+                                                    const QLTableRow& new_row) {
   index_requests_.emplace_back(index, QLWriteRequestPB());
   QLWriteRequestPB* request = &index_requests_.back().second;
   request->set_type(type);
+  // For insert statement with unique index, add an "IF NOT EXISTS OR (primary key of the indexed
+  // table is the same)" condition to detect duplicate values.
+  if (type == QLWriteRequestPB::QL_STMT_INSERT && index->is_unique()) {
+    auto* condition = request->mutable_if_expr()->mutable_condition();
+    condition->set_op(QL_OP_OR);
+    condition->add_operands()->mutable_condition()->set_op(QL_OP_NOT_EXISTS);
+    SetPrimaryKeyCondition(index, schema_, new_row, request,
+                           condition->add_operands()->mutable_condition());
+  }
   return request;
 }
 
@@ -2372,7 +2419,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
     if (IsRowDeleted(current_row, new_row)) {
       index_key_changed = true;
     } else {
-      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT);
+      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT,
+                                                        new_row);
       // Prepare the new index key.
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
@@ -2411,7 +2459,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
     }
     // If the index key is changed, delete the current key.
     if (index_key_changed) {
-      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE);
+      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE,
+                                                        new_row);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
@@ -2423,6 +2472,12 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
     }
   }
   return Status::OK();
+}
+
+Status QLWriteOperation::SetRowBlock(const Schema& schema, const string& rows_data) {
+  rowblock_.reset(new QLRowBlock(schema));
+  Slice data(rows_data);
+  return rowblock_->Deserialize(YQL_CLIENT_CQL, &data);
 }
 
 Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
