@@ -198,9 +198,10 @@ message SchemaPB {
 // This message contains the metadata of a secondary index of a table. It maps the indexed table
 // columns to the index table columns.
 message IndexInfoPB {
-  optional bytes table_id = 1;  // Index table id.
-  optional uint32 version = 2;  // Index table's schema version.
-  optional bool is_local = 3;   // Whether the index is a local index
+  optional bytes table_id = 1; // Index table id.
+  optional uint32 version = 2; // Index table's schema version.
+  optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
+  optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
 
   // Index column mapping.
   message IndexColumnPB {

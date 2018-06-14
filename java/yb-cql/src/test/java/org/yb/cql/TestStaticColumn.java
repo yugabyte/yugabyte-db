@@ -282,32 +282,36 @@ public class TestStaticColumn extends BaseCQLTest {
     {
       PreparedStatement stmt = session.prepare("insert into t (h1, h2, s1, s2) "+
                                                "values (?, ?, ?, ?) if not exists;");
-      ResultSet rs1 = session.execute(stmt.bind(new Integer(1), "h1", new Integer(15), "s15"));
-      // Expect applied = false because the hash key already exists.
-      assertEquals("Row[false]", rs1.one().toString());
 
-      ResultSet rs2 = session.execute(stmt.bind(new Integer(7), "h7", new Integer(75), "s75"));
+      // Expect applied = false because the hash key already exists.
+      assertQuery(stmt.bind(new Integer(1), "h1", new Integer(15), "s15"),
+                  "Columns[[applied](boolean), h1(int), h2(varchar)]",
+                  "Row[false, 1, h1]");
+
       // Expect applied = true because the hash key does not exist.
-      assertEquals("Row[true]", rs2.one().toString());
+      assertQuery(stmt.bind(new Integer(7), "h7", new Integer(75), "s75"),
+                  "Row[true]");
     }
 
     // Insert if not exists of non-static column.
     {
       PreparedStatement stmt = session.prepare("insert into t (h1, h2, r1, r2, s1, s2, c1, c2) "+
                                                "values (?, ?, ?, ?, ?, ?, ?, ?) if not exists;");
-      ResultSet rs1 = session.execute(stmt.bind(new Integer(1), "h1",
-                                                new Integer(1), "r1",
-                                                new Integer(15), "s15",
-                                                new Integer(1), "c15"));
-      // Expect applied = false because the primary key already exists.
-      assertEquals("Row[false]", rs1.one().toString());
 
-      ResultSet rs2 = session.execute(stmt.bind(new Integer(7), "h7",
-                                                new Integer(1), "r1",
-                                                new Integer(76), "s76",
-                                                new Integer(1), "c15"));
+      // Expect applied = false because the primary key already exists.
+      assertQuery(stmt.bind(new Integer(1), "h1",
+                            new Integer(1), "r1",
+                            new Integer(15), "s15",
+                            new Integer(1), "c15"),
+                  "Columns[[applied](boolean), h1(int), h2(varchar), r1(int), r2(varchar)]",
+                  "Row[false, 1, h1, 1, r1]");
+
       // Expect applied = true because the primary key does not exist.
-      assertEquals("Row[true]", rs2.one().toString());
+      assertQuery(stmt.bind(new Integer(7), "h7",
+                            new Integer(1), "r1",
+                            new Integer(76), "s76",
+                            new Integer(1), "c15"),
+                  "Row[true]");
     }
 
     // Update with static column if-condition.
@@ -315,17 +319,18 @@ public class TestStaticColumn extends BaseCQLTest {
       PreparedStatement stmt = session.prepare("update t set s1 = ?, s2 = ? " +
                                                "where h1 = ? and h2 = ? " +
                                                "if s1 = ?;");
-      ResultSet rs1 = session.execute(stmt.bind(new Integer(16), "s16",
-                                                new Integer(1), "h1",
-                                                new Integer(15)));
       // Expect applied = false because s1 = 13.
-      assertEquals("Row[false, 13]", rs1.one().toString());
+      assertQuery(stmt.bind(new Integer(16), "s16",
+                            new Integer(1), "h1",
+                            new Integer(15)),
+                  "Columns[[applied](boolean), h1(int), h2(varchar), s1(int)]",
+                  "Row[false, 1, h1, 13]");
 
-      ResultSet rs2 = session.execute(stmt.bind(new Integer(16), "s16",
-                                                new Integer(1), "h1",
-                                                new Integer(13)));
       // Expect applied = true.
-      assertEquals("Row[true]", rs2.one().toString());
+      assertQuery(stmt.bind(new Integer(16), "s16",
+                            new Integer(1), "h1",
+                            new Integer(13)),
+                  "Row[true]");
     }
 
     // Update with static and non-static column if-conditions.
@@ -333,19 +338,21 @@ public class TestStaticColumn extends BaseCQLTest {
       PreparedStatement stmt = session.prepare("update t set s1 = ?, s2 = ? " +
                                                "where h1 = ? and h2 = ? and r1 = ? and r2 = ? " +
                                                "if s1 = ? and c1 = ?;");
-      ResultSet rs1 = session.execute(stmt.bind(new Integer(17), "s17",
-                                                new Integer(1), "h1",
-                                                new Integer(1), "r1",
-                                                new Integer(15), new Integer(1)));
       // Expect applied = false because s1 = 16.
-      assertEquals("Row[false, 16, 1]", rs1.one().toString());
+      assertQuery(stmt.bind(new Integer(17), "s17",
+                            new Integer(1), "h1",
+                            new Integer(1), "r1",
+                            new Integer(15), new Integer(1)),
+                  "Columns[[applied](boolean), h1(int), h2(varchar), r1(int), r2(varchar), "+
+                  "s1(int), c1(int)]",
+                  "Row[false, 1, h1, 1, r1, 16, 1]");
 
-      ResultSet rs2 = session.execute(stmt.bind(new Integer(17), "s17",
-                                                new Integer(1), "h1",
-                                                new Integer(1), "r1",
-                                                new Integer(16), new Integer(1)));
       // Expect applied = true.
-      assertEquals("Row[true]", rs2.one().toString());
+      assertQuery(stmt.bind(new Integer(17), "s17",
+                            new Integer(1), "h1",
+                            new Integer(1), "r1",
+                            new Integer(16), new Integer(1)),
+                  "Row[true]");
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.

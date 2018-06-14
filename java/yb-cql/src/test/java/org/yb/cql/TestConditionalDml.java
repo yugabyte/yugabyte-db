@@ -74,11 +74,20 @@ public class TestConditionalDml extends BaseCQLTest {
       // Expected not applied. Verify "[applied]" column is returned.
       ResultSet rs = session.execute(delete_stmt);
       ColumnDefinitions cols = rs.getColumnDefinitions();
-      assertEquals(2, cols.size());
+      assertEquals(6, cols.size());
       assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("h1"));
+      assertEquals(DataType.varchar(), cols.getType("h2"));
+      assertEquals(DataType.cint(), cols.getType("r1"));
+      assertEquals(DataType.varchar(), cols.getType("r2"));
       assertEquals(DataType.varchar(), cols.getType("v2"));
       assertFalse(rs.wasApplied());
-      assertEquals("c", rs.one().getString("v2"));
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals("a", row.getString("h2"));
+      assertEquals(2, row.getInt("r1"));
+      assertEquals("b", row.getString("r2"));
+      assertEquals("c", row.getString("v2"));
 
       // Expect the row unchanged.
       assertRow(1, "a", 2, "b", 3, "c");
@@ -150,11 +159,20 @@ public class TestConditionalDml extends BaseCQLTest {
       // Expected not applied. Verify "[applied]" and "v1" (current value 3) are returned.
       ResultSet rs = session.execute(insert_stmt);
       ColumnDefinitions cols = rs.getColumnDefinitions();
-      assertEquals(2, cols.size());
+      assertEquals(6, cols.size());
       assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("h1"));
+      assertEquals(DataType.varchar(), cols.getType("h2"));
+      assertEquals(DataType.cint(), cols.getType("r1"));
+      assertEquals(DataType.varchar(), cols.getType("r2"));
       assertEquals(DataType.cint(), cols.getType("v1"));
       assertFalse(rs.wasApplied());
-      assertEquals(3, rs.one().getInt("v1"));
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals("a", row.getString("h2"));
+      assertEquals(2, row.getInt("r1"));
+      assertEquals("b", row.getString("r2"));
+      assertEquals(3, row.getInt("v1"));
 
       // Expect the row to exist.
       assertRow(1, "a", 2, "b", 3, "c");
@@ -168,11 +186,20 @@ public class TestConditionalDml extends BaseCQLTest {
       // Expected not applied. Verify "[applied]" and "v1" (current value 3) are returned.
       ResultSet rs = session.execute(insert_stmt);
       ColumnDefinitions cols = rs.getColumnDefinitions();
-      assertEquals(2, cols.size());
+      assertEquals(6, cols.size());
       assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("h1"));
+      assertEquals(DataType.varchar(), cols.getType("h2"));
+      assertEquals(DataType.cint(), cols.getType("r1"));
+      assertEquals(DataType.varchar(), cols.getType("r2"));
       assertEquals(DataType.cint(), cols.getType("v1"));
       assertFalse(rs.wasApplied());
-      assertEquals(3, rs.one().getInt("v1"));
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals("a", row.getString("h2"));
+      assertEquals(2, row.getInt("r1"));
+      assertEquals("b", row.getString("r2"));
+      assertEquals(3, row.getInt("v1"));
 
       // Expect the row to exist.
       assertRow(1, "a", 2, "b", 3, "c");
@@ -237,9 +264,18 @@ public class TestConditionalDml extends BaseCQLTest {
       // Expected not applied. Verify "[applied]" column is returned.
       ResultSet rs = session.execute(update_stmt);
       ColumnDefinitions cols = rs.getColumnDefinitions();
-      assertEquals(1, cols.size());
+      assertEquals(5, cols.size());
       assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("h1"));
+      assertEquals(DataType.varchar(), cols.getType("h2"));
+      assertEquals(DataType.cint(), cols.getType("r1"));
+      assertEquals(DataType.varchar(), cols.getType("r2"));
       assertFalse(rs.wasApplied());
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals("a", row.getString("h2"));
+      assertEquals(2, row.getInt("r1"));
+      assertEquals("b", row.getString("r2"));
 
       // Expect the row to exist.
       assertRow(1, "a", 2, "b", 3, "c");
@@ -254,12 +290,20 @@ public class TestConditionalDml extends BaseCQLTest {
       // we don't g
       ResultSet rs = session.execute(update_stmt);
       ColumnDefinitions cols = rs.getColumnDefinitions();
-      assertEquals(3, cols.size());
+      assertEquals(7, cols.size());
       assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("h1"));
+      assertEquals(DataType.varchar(), cols.getType("h2"));
+      assertEquals(DataType.cint(), cols.getType("r1"));
+      assertEquals(DataType.varchar(), cols.getType("r2"));
       assertEquals(DataType.cint(), cols.getType("v1"));
       assertEquals(DataType.varchar(), cols.getType("v2"));
       assertFalse(rs.wasApplied());
       Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals("a", row.getString("h2"));
+      assertEquals(2, row.getInt("r1"));
+      assertEquals("b", row.getString("r2"));
       assertEquals(3, row.getInt("v1"));
       assertEquals("c", row.getString("v2"));
 
