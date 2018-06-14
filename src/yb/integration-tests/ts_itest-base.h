@@ -279,7 +279,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return NULL;
   }
 
-  // Gets the the locations of the consensus configuration and waits until all replicas
+  // Gets the locations of the consensus configuration and waits until all replicas
   // are available for all tablets.
   void WaitForTSAndReplicas() {
     int num_retries = 0;

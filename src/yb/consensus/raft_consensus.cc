@@ -96,11 +96,8 @@ DEFINE_bool(enable_leader_failure_detection, true,
             "made to elect a follower as a new leader when the leader is detected to have failed.");
 TAG_FLAG(enable_leader_failure_detection, unsafe);
 
-DEFINE_bool(do_not_start_election_test_only, false,
-            "Do not start election even if leader failure is detected. To be used only for unit "
-            "testing purposes.");
-TAG_FLAG(do_not_start_election_test_only, unsafe);
-TAG_FLAG(do_not_start_election_test_only, hidden);
+DEFINE_test_flag(bool, do_not_start_election_test_only, false,
+                 "Do not start election even if leader failure is detected. ");
 TAG_FLAG(do_not_start_election_test_only, runtime);
 
 DEFINE_bool(evict_failed_followers, true,
@@ -110,15 +107,16 @@ DEFINE_bool(evict_failed_followers, true,
             "follower_unavailable_considered_failed_sec");
 TAG_FLAG(evict_failed_followers, advanced);
 
-DEFINE_bool(follower_reject_update_consensus_requests, false,
-            "Whether a follower will return an error for all UpdateConsensus() requests. "
-            "Warning! This is only intended for testing.");
-TAG_FLAG(follower_reject_update_consensus_requests, unsafe);
+DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
+                 "Whether a follower will return an error for all UpdateConsensus() requests.");
 
-DEFINE_bool(follower_fail_all_prepare, false,
-            "Whether a follower will fail preparing all operations. "
-            "Warning! This is only intended for testing.");
-TAG_FLAG(follower_fail_all_prepare, unsafe);
+DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
+                 "Whether a follower will return an error for all UpdateConsensus() requests for "
+                 "the first follower_reject_update_consensus_requests_seconds seconds after the "
+                 "Consensus objet is created.");
+
+DEFINE_test_flag(bool, follower_fail_all_prepare, false,
+                 "Whether a follower will fail preparing all operations.");
 
 DEFINE_int32(after_stepdown_delay_election_multiplier, 5,
              "After a peer steps down as a leader, the factor with which to multiply "
@@ -129,17 +127,11 @@ TAG_FLAG(after_stepdown_delay_election_multiplier, hidden);
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
-DEFINE_int32(inject_delay_leader_change_role_append_secs, 0,
-              "Amount of time to delay leader from sending replicate of change role. To be used "
-              "for unit testing purposes only.");
-TAG_FLAG(inject_delay_leader_change_role_append_secs, unsafe);
-TAG_FLAG(inject_delay_leader_change_role_append_secs, hidden);
+DEFINE_test_flag(int32, inject_delay_leader_change_role_append_secs, 0,
+                 "Amount of time to delay leader from sending replicate of change role.");
 
-DEFINE_double(return_error_on_change_config, 0.0,
-              "Fraction of the time when ChangeConfig will return an error."
-              "Warning! This is only intended for testing.");
-TAG_FLAG(return_error_on_change_config, unsafe);
-TAG_FLAG(return_error_on_change_config, hidden);
+DEFINE_test_flag(double, return_error_on_change_config, 0.0,
+                 "Fraction of the time when ChangeConfig will return an error.");
 
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
@@ -287,6 +279,11 @@ RaftConsensus::RaftConsensus(
       update_raft_config_dns_latency_(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(metric_entity)) {
   DCHECK_NOTNULL(log_.get());
+
+  if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests_seconds > 0)) {
+    withold_replica_updates_until_ = MonoTime::Now() +
+        MonoDelta::FromSeconds(FLAGS_follower_reject_update_consensus_requests_seconds);
+  }
 
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
@@ -1088,6 +1085,16 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
                                 "is set to true.");
   }
 
+  if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests_seconds > 0)) {
+    if (MonoTime::Now() < withold_replica_updates_until_) {
+      LOG(INFO) << "Rejecting Update for tablet: " << tablet_id()
+                << " tserver uuid: " << peer_uuid();
+      return STATUS_SUBSTITUTE(IllegalState,
+          "Rejected: --follower_reject_update_consensus_requests_seconds is set to $0",
+          FLAGS_follower_reject_update_consensus_requests_seconds);
+    }
+  }
+
   RETURN_NOT_OK(ExecuteHook(PRE_UPDATE));
   response->set_responder_uuid(state_->GetPeerUuid());
 
@@ -1490,6 +1497,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     // sanity check.
     SnoozeFailureDetector(DO_NOT_LOG);
 
+    last_message_from_leader_time_ = MonoTime::Now();
+
     // Update the expiration time of the current leader's lease, so that when this follower becomes
     // a leader, it can wait out the time interval while the old leader might still be active.
     if (request->has_leader_lease_duration_ms()) {
@@ -1818,7 +1827,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   //
   // 2) An abandoned node
   // It's possible that a node has fallen behind the log GC mark of the leader. In that
-  // case, the leader will stop sending it requests. Eventually, the the configuration
+  // case, the leader will stop sending it requests. Eventually, the configuration
   // will change to eject the abandoned node, but until that point, we don't want the
   // abandoned follower to disturb the other nodes.
   //

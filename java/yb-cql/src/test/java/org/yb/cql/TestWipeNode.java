@@ -100,7 +100,7 @@ public class TestWipeNode  extends BaseCQLTest {
       for (LocatedTablet tablet : tablets) {
         // Verify the wiped node has no tablets.
         for (LocatedTablet.Replica replica : tablet.getReplicas()) {
-          if (replica.getRpcHost() == removedNodeHost &&
+          if (replica.getRpcHost().equals(removedNodeHost) &&
               replica.getRpcPort() == removedNodePort) {
             LOG.error(String.format("Removed node %s:%d, still has replica: %s", removedNodeHost,
                 removedNodePort, replica.toString()));

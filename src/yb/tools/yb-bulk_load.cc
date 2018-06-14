@@ -282,7 +282,7 @@ Status BulkLoadTask::InsertRow(const string &row,
                                                                      &partition_key));
   req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
-  // Finally apply the operation to the the doc_write_batch.
+  // Finally apply the operation to the doc_write_batch.
   // TODO(dtxn) pass correct TransactionContext.
   // Comment from PritamD: Don't need cross shard transaction support in bulk load, but I guess
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes

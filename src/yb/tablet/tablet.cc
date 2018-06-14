@@ -1293,7 +1293,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
   }
 
-  // Creata a new database.
+  // Create a new database.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
   s = OpenKeyValueTablet();
   if (PREDICT_FALSE(!s.ok())) {
