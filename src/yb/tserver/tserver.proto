@@ -130,6 +130,9 @@ message TabletServerErrorPB {
     // requests. (That means in fact that the elected leader has not yet commited NoOp request.
     // The client must wait a bit for the end of this replica-operation.)
     LEADER_NOT_READY_TO_SERVE = 24;
+
+    // This follower hasn't heard from the leader for a specified amount of time.
+    STALE_FOLLOWER = 25;
   }
 
   // The error code.

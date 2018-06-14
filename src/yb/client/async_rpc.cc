@@ -113,7 +113,12 @@ void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
 
   retained_self_ = shared_from_this();
-  tablet_invoker_.Execute(std::string());
+  // For now, if this is a retry, execute this rpc on the leader even if
+  // the consistency level is YBConsistencyLevel::CONSISTENT_PREFIX or
+  // FLAGS_redis_allow_reads_from_followers is set to true.
+  // TODO(hector): Temporarily blacklist the follower that couldn't serve the read so we can retry
+  // on another follower.
+  tablet_invoker_.Execute(std::string(), num_attempts() > 1);
 }
 
 std::string AsyncRpc::ToString() const {

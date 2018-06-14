@@ -101,17 +101,15 @@ TAG_FLAG(scanner_batch_size_rows, advanced);
 TAG_FLAG(scanner_batch_size_rows, runtime);
 
 DEFINE_bool(parallelize_read_ops, true,
-             "Controls weather multiple (Redis) read ops that are present in a operation "
-                 "should be executed in parallel.");
+            "Controls weather multiple (Redis) read ops that are present in a operation "
+            "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
 TAG_FLAG(parallelize_read_ops, runtime);
 
 // Fault injection flags.
-DEFINE_int32(scanner_inject_latency_on_each_batch_ms, 0,
-             "If set, the scanner will pause the specified number of milliesconds "
-             "before reading each batch of data on the tablet server. "
-             "Used for tests.");
-TAG_FLAG(scanner_inject_latency_on_each_batch_ms, unsafe);
+DEFINE_test_flag(int32, scanner_inject_latency_on_each_batch_ms, 0,
+                 "If set, the scanner will pause the specified number of milliesconds "
+                 "before reading each batch of data on the tablet server.");
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
@@ -119,9 +117,23 @@ DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
-DEFINE_bool(tserver_noop_read_write, false, "Respond NOOP to read/write.");
-TAG_FLAG(tserver_noop_read_write, unsafe);
-TAG_FLAG(tserver_noop_read_write, hidden);
+DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
+
+DEFINE_int32(max_stale_read_bound_time_ms, 0, "If we are allowed to read from followers, "
+             "specify the maximum time a follower can be behind by using the last message received "
+             "from the leader. If set to zero, a read can be served by a follower regardless of "
+             "when was the last time it received a message from the leader.");
+TAG_FLAG(max_stale_read_bound_time_ms, evolving);
+TAG_FLAG(max_stale_read_bound_time_ms, runtime);
+
+DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
+                 "If set, we verify that the consistency level is CONSISTENT_PREFIX, and that "
+                 "a follower receives the request, but that it gets rejected because it's a stale "
+                 "follower");
+
+DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verify that the "
+                 "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
+                 "for the tablet");
 
 DECLARE_uint64(max_clock_skew_usec);
 
@@ -825,10 +837,61 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
 
   // Check for leader only in strong consistency level.
   if (req->consistency_level() == YBConsistencyLevel::STRONG) {
+    if (PREDICT_FALSE(FLAGS_assert_reads_served_by_follower) &&
+        std::is_same<Req, ReadRequestPB>::value) {
+      LOG(FATAL) << "--assert_reads_served_by_follower is true but consistency level is invalid: "
+                 << "YBConsistencyLevel::STRONG";
+    }
+    if (PREDICT_FALSE(FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
+      LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true but "
+                    "consistency level is invalid: YBConsistencyLevel::STRONG";
+    }
+
     s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
       return false;
+    }
+  } else {
+    s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
+
+    // Peer is not the leader, so check that the time since it last heard from the leader is less
+    // than FLAGS_max_stale_read_bound_time_ms.
+    if (PREDICT_FALSE(!s.ok())) {
+      if (FLAGS_max_stale_read_bound_time_ms > 0) {
+        shared_ptr <consensus::Consensus> consensus = tablet_peer->shared_consensus();
+        if (consensus->TimeSinceLastMessageFromLeader() != MonoTime::kUninitialized) {
+          if (MonoTime::Now().GetDeltaSince(
+              consensus->TimeSinceLastMessageFromLeader()).ToMilliseconds() >
+              FLAGS_max_stale_read_bound_time_ms) {
+            return false;
+          } else if (PREDICT_FALSE(
+              FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
+            LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true, but "
+                       << "peer " << tablet_peer->permanent_uuid()
+                       << " for tablet: " << req->tablet_id()
+                       << " is not stale. Time since last update from leader: "
+                       << MonoTime::Now().GetDeltaSince(
+                           consensus->TimeSinceLastMessageFromLeader()).ToMilliseconds();
+          }
+        } else {
+          // If we haven't received a ping from the leader, we shouldn't serve read requests.
+          return false;
+        }
+      }
+    } else {
+      // We are here because we are the leader.
+      if (PREDICT_FALSE(FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
+        LOG(FATAL) << "--assert_reads_from_follower_rejected_because_of_staleness is true but "
+                   << " peer " << tablet_peer->permanent_uuid()
+                   << " is the leader for tablet " << req->tablet_id();
+      }
+      if (PREDICT_FALSE(FLAGS_assert_reads_served_by_follower) &&
+               std::is_same<Req, ReadRequestPB>::value) {
+        LOG(FATAL) << "--assert_reads_served_by_follower is true but read is being served by "
+                   << " peer " << tablet_peer->permanent_uuid()
+                   << " which is the leader for tablet " << req->tablet_id();
+      }
     }
   }
 
@@ -856,6 +919,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
   shared_ptr<tablet::AbstractTablet> tablet;
   if (!GetTabletOrRespond(req, resp, &context, &tablet)) {
+    if (req->consistency_level() == YBConsistencyLevel::STRONG) {
+      return;
+    }
+
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
+                         TabletServerErrorPB::STALE_FOLLOWER, &context);
     return;
   }
 

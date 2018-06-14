@@ -254,6 +254,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
 
+  MonoTime TimeSinceLastMessageFromLeader() override {
+    return last_message_from_leader_time_;
+  }
+
  private:
   CHECKED_STATUS DoStartElection(
       ElectionMode mode,
@@ -572,6 +576,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Random rng_;
 
+  MonoTime last_message_from_leader_time_ = MonoTime::kUninitialized;
+
   std::shared_ptr<rpc::PeriodicTimer> failure_detector_;
 
   // If any RequestVote() RPC arrives before this hybrid time,
@@ -625,6 +631,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::function<void()> majority_replicated_listener_;
 
   scoped_refptr<Histogram> update_raft_config_dns_latency_;
+
+  // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
+  // Any requests to update the replica will be rejected until this time. For testing only.
+  MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

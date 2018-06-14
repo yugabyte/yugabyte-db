@@ -179,7 +179,7 @@ class PgCompileContext : public PgProcessContext {
   // be read if necessary when executing the QL statement.
   const ColumnDesc *GetColumnDesc(const MCString& col_name);
 
-  // Check if the the lhs_type is convertible to rhs_type.
+  // Check if the lhs_type is convertible to rhs_type.
   bool IsConvertible(const std::shared_ptr<QLType>& lhs_type,
                      const std::shared_ptr<QLType>& rhs_type) const;
 

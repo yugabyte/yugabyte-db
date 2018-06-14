@@ -305,7 +305,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     while (inserters_.count() > 0) {
 
       // Adjust the value obtained from the normalized gauss. dist. so that we steal the lock
-      // longer than the the timeout a small (~5%) percentage of the times.
+      // longer than the timeout a small (~5%) percentage of the times.
       // (95% corresponds to 1.64485, in a normalized (0,1) gaussian distribution).
       double sleep_time_usec = 1000 *
           ((random_.Normal(0, 1) * timeout_msec) / 1.64485);

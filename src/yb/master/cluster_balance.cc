@@ -341,7 +341,7 @@ bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
         // We added a tablet to the set with missing replicas both if it is under-replicated, and we
         // added a placement to the tablet_meta under_replicated_placements if the num replicas in
         // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
-        // placement that is under-replicated and the the ts is not in that placement, then that ts
+        // placement that is under-replicated and the ts is not in that placement, then that ts
         // isn't valid.
         const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
         // We have specific placement blocks that are under-replicated, so confirm that this TS

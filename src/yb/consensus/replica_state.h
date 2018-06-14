@@ -249,7 +249,7 @@ class ReplicaState {
   // higher than 'index' those operations are aborted.
   CHECKED_STATUS AbortOpsAfterUnlocked(int64_t index);
 
-  // Returns the the ConsensusRound with the provided index, if there is any, or NULL
+  // Returns the ConsensusRound with the provided index, if there is any, or NULL
   // if there isn't.
   scoped_refptr<ConsensusRound> GetPendingOpByIndexOrNullUnlocked(int64_t index);
 
