@@ -31,6 +31,7 @@
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "parser/scansup.h"
+#include "partitioning/partbounds.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -459,8 +460,6 @@ void pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 								   Index rti, RangeTblEntry *rte);
 static void create_plain_partial_paths(PlannerInfo *root,
 													RelOptInfo *rel);
-static void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
-									List *live_childrels);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel,
 									  ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root,
@@ -471,14 +470,6 @@ static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
-static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
-									   List *live_childrels,
-									   List *all_child_pathkeys,
-									   List *partitioned_rels);
-static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
-									  RelOptInfo *rel,
-									  Relids required_outer);
-static List *accumulate_append_subpath(List *subpaths, Path *path);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
@@ -1724,7 +1715,7 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	char   *hints = NULL;
 	Oid		argtypes[2] = { TEXTOID, TEXTOID };
 	Datum	values[2];
-	bool	nulls[2] = { false, false };
+	char 	nulls[2] = {' ', ' '};
 	text   *qry;
 	text   *app;
 
@@ -2648,7 +2639,7 @@ setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 								state->init_nworkers, state->context);
 
 	/* force means that enforce parallel as far as possible */
-	if (hint && hint->force_parallel)
+	if (hint && hint->force_parallel && hint->nworkers > 0)
 	{
 		set_config_int32_option("parallel_tuple_cost", 0, state->context);
 		set_config_int32_option("parallel_setup_cost", 0, state->context);
@@ -3362,7 +3353,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 						break;
 
 					c_attname = get_attname(relationObjectId,
-												info->indexkeys[i]);
+											info->indexkeys[i], false);
 
 					/* deny if any of column attributes don't match */
 					if (strcmp(p_attname, c_attname) != 0 ||
@@ -3389,7 +3380,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 
 					/* check expressions if both expressions are available */
 					if (p_info->expression_str &&
-						!heap_attisnull(ht_idx, Anum_pg_index_indexprs))
+						!heap_attisnull(ht_idx, Anum_pg_index_indexprs, NULL))
 					{
 						Datum       exprsDatum;
 						bool        isnull;
@@ -3420,7 +3411,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 
 					/* compare index predicates  */
 					if (p_info->indpred_str &&
-						!heap_attisnull(ht_idx, Anum_pg_index_indpred))
+						!heap_attisnull(ht_idx, Anum_pg_index_indpred, NULL))
 					{
 						Datum       predDatum;
 						bool        isnull;
@@ -3525,9 +3516,14 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	p_info->opclass = (Oid *) palloc(sizeof(Oid) * index->indnatts);
 	p_info->indoption = (int16 *) palloc(sizeof(Oid) * index->indnatts);
 
+	/*
+	 * Collect relation attribute names of index columns for index
+	 * identification, not index attribute names. NULL means expression index
+	 * columns.
+	 */
 	for (i = 0; i < index->indnatts; i++)
 	{
-		attname = get_attname(relid, index->indkey.values[i]);
+		attname = get_attname(relid, index->indkey.values[i], true);
 		p_info->column_names = lappend(p_info->column_names, attname);
 
 		p_info->indcollation[i] = indexRelation->rd_indcollation[i];
@@ -3539,7 +3535,8 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	 * to check to match the expression's parameter of index with child indexes
  	 */
 	p_info->expression_str = NULL;
-	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indexprs))
+	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indexprs,
+					   NULL))
 	{
 		Datum       exprsDatum;
 		bool		isnull;
@@ -3559,7 +3556,8 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	 * to check to match the predicate's parameter of index with child indexes
  	 */
 	p_info->indpred_str = NULL;
-	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indpred))
+	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indpred,
+					   NULL))
 	{
 		Datum       predDatum;
 		bool		isnull;
@@ -3595,7 +3593,7 @@ reset_hint_enforcement()
  * bitmap of HintTypeBitmap. If shint or phint is not NULL, set used hint
  * there respectively.
  */
-static bool
+static int
 setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 					   ScanMethodHint **rshint, ParallelHint **rphint)
 {
@@ -3620,6 +3618,16 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (inhparent)
 	{
+		/* set up only parallel hints for parent relation */
+		phint = find_parallel_hint(root, rel->relid);
+		if (phint)
+		{
+			setup_parallel_plan_enforcement(phint, current_hint_state);
+			if (rphint) *rphint = phint;
+			ret |= HINT_BM_PARALLEL;
+			return ret;
+		}
+
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt(true),
@@ -3657,8 +3665,8 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 	{
 		/*
 		 * Here we found a new parent for the current relation. Scan continues
-		 * hint to other childrens of this parent so remember it * to avoid
-		 * hinthintredundant setup cost.
+		 * hint to other childrens of this parent so remember it to avoid
+		 * redundant setup cost.
 		 */
 		current_hint_state->parent_relid = new_parent_relid;
 				
@@ -4395,6 +4403,38 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 
 	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 
+	/*
+	 * Adjust number of parallel workers of the result rel to the largest
+	 * number of the component paths.
+	 */
+	if (current_hint_state->num_hints[HINT_TYPE_PARALLEL] > 0)
+	{
+		ListCell   *lc;
+		int 		nworkers = 0;
+	
+		foreach (lc, initial_rels)
+		{
+			ListCell *lcp;
+			RelOptInfo *rel = (RelOptInfo *) lfirst(lc);
+
+			foreach (lcp, rel->partial_pathlist)
+			{
+				Path *path = (Path *) lfirst(lcp);
+
+				if (nworkers < path-> parallel_workers)
+					nworkers = path-> parallel_workers;
+			}
+		}
+
+		foreach (lc, rel->partial_pathlist)
+		{
+			Path *path = (Path *) lfirst(lc);
+
+			if (path->parallel_safe && path->parallel_workers < nworkers)
+				path->parallel_workers = nworkers;
+		}
+	}
+
 	for (i = 2; i <= nbaserel; i++)
 	{
 		list_free(current_hint_state->join_hint_level[i]);
@@ -4441,10 +4481,64 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	 * We can accept only plain relations, foreign tables and table saples are
 	 * also unacceptable. See set_rel_pathlist.
 	 */
-	if (rel->rtekind != RTE_RELATION ||
+	if ((rel->rtekind != RTE_RELATION &&
+		 rel->rtekind != RTE_SUBQUERY)||
 		rte->relkind == RELKIND_FOREIGN_TABLE ||
 		rte->tablesample != NULL)
 		return;
+
+	/*
+	 * Even though UNION ALL node doesn't have particular name so usually it is
+	 * unhintable, turn on parallel when it contains parallel nodes.
+	 */
+	if (rel->rtekind == RTE_SUBQUERY)
+	{
+		ListCell *lc;
+		bool	inhibit_nonparallel = false;
+
+		if (rel->partial_pathlist == NIL)
+			return;
+
+		foreach(lc, rel->partial_pathlist)
+		{
+			ListCell *lcp;
+			AppendPath *apath = (AppendPath *) lfirst(lc);
+			int		parallel_workers = 0;
+
+			if (!IsA(apath, AppendPath))
+				continue;
+
+			foreach (lcp, apath->subpaths)
+			{
+				Path *spath = (Path *) lfirst(lcp);
+
+				if (spath->parallel_aware &&
+					parallel_workers < spath->parallel_workers)
+					parallel_workers = spath->parallel_workers;
+			}
+
+			apath->path.parallel_workers = parallel_workers;
+			inhibit_nonparallel = true;
+		}
+
+		if (inhibit_nonparallel)
+		{
+			ListCell *lc;
+
+			foreach(lc, rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+
+				if (path->startup_cost < disable_cost)
+				{
+					path->startup_cost += disable_cost;
+					path->total_cost += disable_cost;
+				}
+			}
+		}
+
+		return;
+	}
 
 	/* We cannot handle if this requires an outer */
 	if (rel->lateral_relids)
@@ -4457,49 +4551,95 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	/* Here, we regenerate paths with the current hint restriction */
 	if (found_hints & HINT_BM_SCAN_METHOD || found_hints & HINT_BM_PARALLEL)
 	{
-		/* Just discard all the paths considered so far */
-		list_free_deep(rel->pathlist);
-		rel->pathlist = NIL;
-
-		/* Remove all the partial paths if Parallel hint is specfied */
-		if ((found_hints & HINT_BM_PARALLEL) && rel->partial_pathlist)
+		/*
+		 * When hint is specified on non-parent relations, discard existing
+		 * paths and regenerate based on the hint considered. Otherwise we
+		 * already have hinted childx paths then just adjust the number of
+		 * planned number of workers.
+		 */
+		if (root->simple_rte_array[rel->relid]->inh)
 		{
+			/* enforce number of workers if requested */
+			if (phint && phint->force_parallel)
+			{
+				if (phint->nworkers == 0)
+				{
+					list_free_deep(rel->partial_pathlist);
+					rel->partial_pathlist = NIL;
+				}
+				else
+				{
+					/* prioritize partial paths */
+					foreach (l, rel->partial_pathlist)
+					{
+						Path *ppath = (Path *) lfirst(l);
+
+						if (ppath->parallel_safe)
+						{
+							ppath->parallel_workers	= phint->nworkers;
+							ppath->startup_cost = 0;
+							ppath->total_cost = 0;
+						}
+					}
+
+					/* disable non-partial paths */
+					foreach (l, rel->pathlist)
+					{
+						Path *ppath = (Path *) lfirst(l);
+
+						if (ppath->startup_cost < disable_cost)
+						{
+							ppath->startup_cost += disable_cost;
+							ppath->total_cost += disable_cost;
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			/* Just discard all the paths considered so far */
+			list_free_deep(rel->pathlist);
+			rel->pathlist = NIL;
 			list_free_deep(rel->partial_pathlist);
 			rel->partial_pathlist = NIL;
-		}
 
-		/* Regenerate paths with the current enforcement */
-		set_plain_rel_pathlist(root, rel, rte);
+			/* Regenerate paths with the current enforcement */
+			set_plain_rel_pathlist(root, rel, rte);
 
-		/* Additional work to enforce parallel query execution */
-		if (phint && phint->nworkers > 0)
-		{
-			/* Lower the priorities of non-parallel paths */
-			foreach (l, rel->pathlist)
+			/* Additional work to enforce parallel query execution */
+			if (phint && phint->nworkers > 0)
 			{
-				Path *path = (Path *) lfirst(l);
-
-				if (path->startup_cost < disable_cost)
-				{
-					path->startup_cost += disable_cost;
-					path->total_cost += disable_cost;
-				}
-			}
-
-			/* enforce number of workers if requested */
-			if (phint->force_parallel)
-			{
+				/*
+				 * For Parallel Append to be planned properly, we shouldn't set
+				 * the costs of non-partial paths to disable-value.  Lower the
+				 * priority of non-parallel paths by setting partial path costs
+				 * to 0 instead.
+				 */
 				foreach (l, rel->partial_pathlist)
 				{
-					Path *ppath = (Path *) lfirst(l);
+					Path *path = (Path *) lfirst(l);
 
-					ppath->parallel_workers	= phint->nworkers;
+					path->startup_cost = 0;
+					path->total_cost = 0;
 				}
-			}
 
-			/* Generate gather paths for base rels */
-			if (rel->reloptkind == RELOPT_BASEREL)
-				generate_gather_paths(root, rel);
+				/* enforce number of workers if requested */
+				if (phint->force_parallel)
+				{
+					foreach (l, rel->partial_pathlist)
+					{
+						Path *ppath = (Path *) lfirst(l);
+
+						if (ppath->parallel_safe)
+							ppath->parallel_workers	= phint->nworkers;
+					}
+				}
+
+				/* Generate gather paths */
+				if (rel->reloptkind == RELOPT_BASEREL)
+					generate_gather_paths(root, rel, false);
+			}
 		}
 	}
 

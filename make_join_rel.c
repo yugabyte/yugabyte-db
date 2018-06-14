@@ -15,9 +15,9 @@
  */
 
 static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
-										RelOptInfo *rel2, RelOptInfo *joinrel,
-										SpecialJoinInfo *sjinfo,
-										List *restrictlist);
+								RelOptInfo *rel2, RelOptInfo *joinrel,
+								SpecialJoinInfo *sjinfo, List *restrictlist);
+
 /*
  * adjust_rows: tweak estimated row numbers according to the hint.
  */
@@ -255,7 +255,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 	{
 		case JOIN_INNER:
 			if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
-				restriction_is_constant_false(restrictlist, false))
+				restriction_is_constant_false(restrictlist, joinrel, false))
 			{
 				mark_dummy_rel(joinrel);
 				break;
@@ -269,12 +269,12 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			break;
 		case JOIN_LEFT:
 			if (is_dummy_rel(rel1) ||
-				restriction_is_constant_false(restrictlist, true))
+				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);
 				break;
 			}
-			if (restriction_is_constant_false(restrictlist, false) &&
+			if (restriction_is_constant_false(restrictlist, joinrel, false) &&
 				bms_is_subset(rel2->relids, sjinfo->syn_righthand))
 				mark_dummy_rel(rel2);
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
@@ -286,7 +286,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			break;
 		case JOIN_FULL:
 			if ((is_dummy_rel(rel1) && is_dummy_rel(rel2)) ||
-				restriction_is_constant_false(restrictlist, true))
+				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);
 				break;
@@ -322,7 +322,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 				bms_is_subset(sjinfo->min_righthand, rel2->relids))
 			{
 				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
-					restriction_is_constant_false(restrictlist, false))
+					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
 					mark_dummy_rel(joinrel);
 					break;
@@ -345,7 +345,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 								   sjinfo) != NULL)
 			{
 				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
-					restriction_is_constant_false(restrictlist, false))
+					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
 					mark_dummy_rel(joinrel);
 					break;
@@ -360,12 +360,12 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			break;
 		case JOIN_ANTI:
 			if (is_dummy_rel(rel1) ||
-				restriction_is_constant_false(restrictlist, true))
+				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);
 				break;
 			}
-			if (restriction_is_constant_false(restrictlist, false) &&
+			if (restriction_is_constant_false(restrictlist, joinrel, false) &&
 				bms_is_subset(rel2->relids, sjinfo->syn_righthand))
 				mark_dummy_rel(rel2);
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
@@ -377,4 +377,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			elog(ERROR, "unrecognized join type: %d", (int) sjinfo->jointype);
 			break;
 	}
+
+	/* Apply partitionwise join technique, if possible. */
+	try_partitionwise_join(root, rel1, rel2, joinrel, sjinfo, restrictlist);
 }

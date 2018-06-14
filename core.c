@@ -14,11 +14,8 @@
  *
  *	static functions:
  *	   set_plain_rel_pathlist()
- *     set_append_rel_pathlist()
  *     add_paths_to_append_rel()
- *     generate_mergeappend_paths()
- *     get_cheapest_parameterized_child_path()
- *     accumulate_append_subpath()
+ *     try_partitionwise_join()
  *
  *  public functions:
  *     standard_join_search(): This funcion is not static. The reason for
@@ -48,6 +45,9 @@
  *-------------------------------------------------------------------------
  */
 
+static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
+								RelOptInfo *rel2, RelOptInfo *joinrel,
+								SpecialJoinInfo *sjinfo, List *restrictlist);
 
 /*
  * set_plain_rel_pathlist
@@ -132,481 +132,20 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		if (IS_DUMMY_REL(childrel))
 			continue;
 
+		/* Bubble up childrel's partitioned children. */
+		if (rel->part_scheme)
+			rel->partitioned_child_rels =
+				list_concat(rel->partitioned_child_rels,
+							list_copy(childrel->partitioned_child_rels));
+
 		/*
 		 * Child is live, so add it to the live_childrels list for use below.
 		 */
 		live_childrels = lappend(live_childrels, childrel);
 	}
 
-	/* Add paths to the "append" relation. */
+	/* Add paths to the append relation. */
 	add_paths_to_append_rel(root, rel, live_childrels);
-}
-
-/*
- * add_paths_to_append_rel
- *		Generate paths for given "append" relation given the set of non-dummy
- *		child rels.
- *
- * The function collects all parameterizations and orderings supported by the
- * non-dummy children. For every such parameterization or ordering, it creates
- * an append path collecting one path from each non-dummy child with given
- * parameterization or ordering. Similarly it collects partial paths from
- * non-dummy children to create partial append paths.
- */
-static void
-add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
-						List *live_childrels)
-{
-	List	   *subpaths = NIL;
-	bool		subpaths_valid = true;
-	List	   *partial_subpaths = NIL;
-	bool		partial_subpaths_valid = true;
-	List	   *all_child_pathkeys = NIL;
-	List	   *all_child_outers = NIL;
-	ListCell   *l;
-	List	   *partitioned_rels = NIL;
-	RangeTblEntry *rte;
-	bool		build_partitioned_rels = false;
-
-	/*
-	 * A plain relation will already have a PartitionedChildRelInfo if it is
-	 * partitioned.  For a subquery RTE, no PartitionedChildRelInfo exists; we
-	 * collect all partitioned_rels associated with any child.  (This assumes
-	 * that we don't need to look through multiple levels of subquery RTEs; if
-	 * we ever do, we could create a PartitionedChildRelInfo with the
-	 * accumulated list of partitioned_rels which would then be found when
-	 * populated our parent rel with paths.  For the present, that appears to
-	 * be unnecessary.)
-	 */
-	rte = planner_rt_fetch(rel->relid, root);
-	switch (rte->rtekind)
-	{
-		case RTE_RELATION:
-			if (rte->relkind == RELKIND_PARTITIONED_TABLE)
-			{
-				partitioned_rels =
-					get_partitioned_child_rels(root, rel->relid);
-				Assert(list_length(partitioned_rels) >= 1);
-			}
-			break;
-		case RTE_SUBQUERY:
-			build_partitioned_rels = true;
-			break;
-		default:
-			elog(ERROR, "unexpcted rtekind: %d", (int) rte->rtekind);
-	}
-
-	/*
-	 * For every non-dummy child, remember the cheapest path.  Also, identify
-	 * all pathkeys (orderings) and parameterizations (required_outer sets)
-	 * available for the non-dummy member relations.
-	 */
-	foreach(l, live_childrels)
-	{
-		RelOptInfo *childrel = lfirst(l);
-		ListCell   *lcp;
-
-		/*
-		 * If we need to build partitioned_rels, accumulate the partitioned
-		 * rels for this child.
-		 */
-		if (build_partitioned_rels)
-		{
-			List	   *cprels;
-
-			cprels = get_partitioned_child_rels(root, childrel->relid);
-			partitioned_rels = list_concat(partitioned_rels,
-										   list_copy(cprels));
-		}
-
-		/*
-		 * If child has an unparameterized cheapest-total path, add that to
-		 * the unparameterized Append path we are constructing for the parent.
-		 * If not, there's no workable unparameterized path.
-		 */
-		if (childrel->cheapest_total_path->param_info == NULL)
-			subpaths = accumulate_append_subpath(subpaths,
-												 childrel->cheapest_total_path);
-		else
-			subpaths_valid = false;
-
-		/* Same idea, but for a partial plan. */
-		if (childrel->partial_pathlist != NIL)
-			partial_subpaths = accumulate_append_subpath(partial_subpaths,
-														 linitial(childrel->partial_pathlist));
-		else
-			partial_subpaths_valid = false;
-
-		/*
-		 * Collect lists of all the available path orderings and
-		 * parameterizations for all the children.  We use these as a
-		 * heuristic to indicate which sort orderings and parameterizations we
-		 * should build Append and MergeAppend paths for.
-		 */
-		foreach(lcp, childrel->pathlist)
-		{
-			Path	   *childpath = (Path *) lfirst(lcp);
-			List	   *childkeys = childpath->pathkeys;
-			Relids		childouter = PATH_REQ_OUTER(childpath);
-
-			/* Unsorted paths don't contribute to pathkey list */
-			if (childkeys != NIL)
-			{
-				ListCell   *lpk;
-				bool		found = false;
-
-				/* Have we already seen this ordering? */
-				foreach(lpk, all_child_pathkeys)
-				{
-					List	   *existing_pathkeys = (List *) lfirst(lpk);
-
-					if (compare_pathkeys(existing_pathkeys,
-										 childkeys) == PATHKEYS_EQUAL)
-					{
-						found = true;
-						break;
-					}
-				}
-				if (!found)
-				{
-					/* No, so add it to all_child_pathkeys */
-					all_child_pathkeys = lappend(all_child_pathkeys,
-												 childkeys);
-				}
-			}
-
-			/* Unparameterized paths don't contribute to param-set list */
-			if (childouter)
-			{
-				ListCell   *lco;
-				bool		found = false;
-
-				/* Have we already seen this param set? */
-				foreach(lco, all_child_outers)
-				{
-					Relids		existing_outers = (Relids) lfirst(lco);
-
-					if (bms_equal(existing_outers, childouter))
-					{
-						found = true;
-						break;
-					}
-				}
-				if (!found)
-				{
-					/* No, so add it to all_child_outers */
-					all_child_outers = lappend(all_child_outers,
-											   childouter);
-				}
-			}
-		}
-	}
-
-	/*
-	 * If we found unparameterized paths for all children, build an unordered,
-	 * unparameterized Append path for the rel.  (Note: this is correct even
-	 * if we have zero or one live subpath due to constraint exclusion.)
-	 */
-	if (subpaths_valid)
-		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL, 0,
-												  partitioned_rels));
-
-	/*
-	 * Consider an append of partial unordered, unparameterized partial paths.
-	 */
-	if (partial_subpaths_valid)
-	{
-		AppendPath *appendpath;
-		ListCell   *lc;
-		int			parallel_workers = 0;
-
-		/*
-		 * Decide on the number of workers to request for this append path.
-		 * For now, we just use the maximum value from among the members.  It
-		 * might be useful to use a higher number if the Append node were
-		 * smart enough to spread out the workers, but it currently isn't.
-		 */
-		foreach(lc, partial_subpaths)
-		{
-			Path	   *path = lfirst(lc);
-
-			parallel_workers = Max(parallel_workers, path->parallel_workers);
-		}
-		Assert(parallel_workers > 0);
-
-		/* Generate a partial append path. */
-		appendpath = create_append_path(rel, partial_subpaths, NULL,
-										parallel_workers, partitioned_rels);
-		add_partial_path(rel, (Path *) appendpath);
-	}
-
-	/*
-	 * Also build unparameterized MergeAppend paths based on the collected
-	 * list of child pathkeys.
-	 */
-	if (subpaths_valid)
-		generate_mergeappend_paths(root, rel, live_childrels,
-								   all_child_pathkeys,
-								   partitioned_rels);
-
-	/*
-	 * Build Append paths for each parameterization seen among the child rels.
-	 * (This may look pretty expensive, but in most cases of practical
-	 * interest, the child rels will expose mostly the same parameterizations,
-	 * so that not that many cases actually get considered here.)
-	 *
-	 * The Append node itself cannot enforce quals, so all qual checking must
-	 * be done in the child paths.  This means that to have a parameterized
-	 * Append path, we must have the exact same parameterization for each
-	 * child path; otherwise some children might be failing to check the
-	 * moved-down quals.  To make them match up, we can try to increase the
-	 * parameterization of lesser-parameterized paths.
-	 */
-	foreach(l, all_child_outers)
-	{
-		Relids		required_outer = (Relids) lfirst(l);
-		ListCell   *lcr;
-
-		/* Select the child paths for an Append with this parameterization */
-		subpaths = NIL;
-		subpaths_valid = true;
-		foreach(lcr, live_childrels)
-		{
-			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
-			Path	   *subpath;
-
-			subpath = get_cheapest_parameterized_child_path(root,
-															childrel,
-															required_outer);
-			if (subpath == NULL)
-			{
-				/* failed to make a suitable path for this child */
-				subpaths_valid = false;
-				break;
-			}
-			subpaths = accumulate_append_subpath(subpaths, subpath);
-		}
-
-		if (subpaths_valid)
-			add_path(rel, (Path *)
-					 create_append_path(rel, subpaths, required_outer, 0,
-										partitioned_rels));
-	}
-}
-
-
-/*
- * generate_mergeappend_paths
- *		Generate MergeAppend paths for an append relation
- *
- * Generate a path for each ordering (pathkey list) appearing in
- * all_child_pathkeys.
- *
- * We consider both cheapest-startup and cheapest-total cases, ie, for each
- * interesting ordering, collect all the cheapest startup subpaths and all the
- * cheapest total paths, and build a MergeAppend path for each case.
- *
- * We don't currently generate any parameterized MergeAppend paths.  While
- * it would not take much more code here to do so, it's very unclear that it
- * is worth the planning cycles to investigate such paths: there's little
- * use for an ordered path on the inside of a nestloop.  In fact, it's likely
- * that the current coding of add_path would reject such paths out of hand,
- * because add_path gives no credit for sort ordering of parameterized paths,
- * and a parameterized MergeAppend is going to be more expensive than the
- * corresponding parameterized Append path.  If we ever try harder to support
- * parameterized mergejoin plans, it might be worth adding support for
- * parameterized MergeAppends to feed such joins.  (See notes in
- * optimizer/README for why that might not ever happen, though.)
- */
-static void
-generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
-						   List *live_childrels,
-						   List *all_child_pathkeys,
-						   List *partitioned_rels)
-{
-	ListCell   *lcp;
-
-	foreach(lcp, all_child_pathkeys)
-	{
-		List	   *pathkeys = (List *) lfirst(lcp);
-		List	   *startup_subpaths = NIL;
-		List	   *total_subpaths = NIL;
-		bool		startup_neq_total = false;
-		ListCell   *lcr;
-
-		/* Select the child paths for this ordering... */
-		foreach(lcr, live_childrels)
-		{
-			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
-			Path	   *cheapest_startup,
-					   *cheapest_total;
-
-			/* Locate the right paths, if they are available. */
-			cheapest_startup =
-				get_cheapest_path_for_pathkeys(childrel->pathlist,
-											   pathkeys,
-											   NULL,
-											   STARTUP_COST,
-											   false);
-			cheapest_total =
-				get_cheapest_path_for_pathkeys(childrel->pathlist,
-											   pathkeys,
-											   NULL,
-											   TOTAL_COST,
-											   false);
-
-			/*
-			 * If we can't find any paths with the right order just use the
-			 * cheapest-total path; we'll have to sort it later.
-			 */
-			if (cheapest_startup == NULL || cheapest_total == NULL)
-			{
-				cheapest_startup = cheapest_total =
-					childrel->cheapest_total_path;
-				/* Assert we do have an unparameterized path for this child */
-				Assert(cheapest_total->param_info == NULL);
-			}
-
-			/*
-			 * Notice whether we actually have different paths for the
-			 * "cheapest" and "total" cases; frequently there will be no point
-			 * in two create_merge_append_path() calls.
-			 */
-			if (cheapest_startup != cheapest_total)
-				startup_neq_total = true;
-
-			startup_subpaths =
-				accumulate_append_subpath(startup_subpaths, cheapest_startup);
-			total_subpaths =
-				accumulate_append_subpath(total_subpaths, cheapest_total);
-		}
-
-		/* ... and build the MergeAppend paths */
-		add_path(rel, (Path *) create_merge_append_path(root,
-														rel,
-														startup_subpaths,
-														pathkeys,
-														NULL,
-														partitioned_rels));
-		if (startup_neq_total)
-			add_path(rel, (Path *) create_merge_append_path(root,
-															rel,
-															total_subpaths,
-															pathkeys,
-															NULL,
-															partitioned_rels));
-	}
-}
-
-
-/*
- * get_cheapest_parameterized_child_path
- *		Get cheapest path for this relation that has exactly the requested
- *		parameterization.
- *
- * Returns NULL if unable to create such a path.
- */
-static Path *
-get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
-									  Relids required_outer)
-{
-	Path	   *cheapest;
-	ListCell   *lc;
-
-	/*
-	 * Look up the cheapest existing path with no more than the needed
-	 * parameterization.  If it has exactly the needed parameterization, we're
-	 * done.
-	 */
-	cheapest = get_cheapest_path_for_pathkeys(rel->pathlist,
-											  NIL,
-											  required_outer,
-											  TOTAL_COST,
-											  false);
-	Assert(cheapest != NULL);
-	if (bms_equal(PATH_REQ_OUTER(cheapest), required_outer))
-		return cheapest;
-
-	/*
-	 * Otherwise, we can "reparameterize" an existing path to match the given
-	 * parameterization, which effectively means pushing down additional
-	 * joinquals to be checked within the path's scan.  However, some existing
-	 * paths might check the available joinquals already while others don't;
-	 * therefore, it's not clear which existing path will be cheapest after
-	 * reparameterization.  We have to go through them all and find out.
-	 */
-	cheapest = NULL;
-	foreach(lc, rel->pathlist)
-	{
-		Path	   *path = (Path *) lfirst(lc);
-
-		/* Can't use it if it needs more than requested parameterization */
-		if (!bms_is_subset(PATH_REQ_OUTER(path), required_outer))
-			continue;
-
-		/*
-		 * Reparameterization can only increase the path's cost, so if it's
-		 * already more expensive than the current cheapest, forget it.
-		 */
-		if (cheapest != NULL &&
-			compare_path_costs(cheapest, path, TOTAL_COST) <= 0)
-			continue;
-
-		/* Reparameterize if needed, then recheck cost */
-		if (!bms_equal(PATH_REQ_OUTER(path), required_outer))
-		{
-			path = reparameterize_path(root, path, required_outer, 1.0);
-			if (path == NULL)
-				continue;		/* failed to reparameterize this one */
-			Assert(bms_equal(PATH_REQ_OUTER(path), required_outer));
-
-			if (cheapest != NULL &&
-				compare_path_costs(cheapest, path, TOTAL_COST) <= 0)
-				continue;
-		}
-
-		/* We have a new best path */
-		cheapest = path;
-	}
-
-	/* Return the best path, or NULL if we found no suitable candidate */
-	return cheapest;
-}
-
-
-/*
- * accumulate_append_subpath
- *		Add a subpath to the list being built for an Append or MergeAppend
- *
- * It's possible that the child is itself an Append or MergeAppend path, in
- * which case we can "cut out the middleman" and just add its child paths to
- * our own list.  (We don't try to do this earlier because we need to apply
- * both levels of transformation to the quals.)
- *
- * Note that if we omit a child MergeAppend in this way, we are effectively
- * omitting a sort step, which seems fine: if the parent is to be an Append,
- * its result would be unsorted anyway, while if the parent is to be a
- * MergeAppend, there's no point in a separate sort on a child.
- */
-static List *
-accumulate_append_subpath(List *subpaths, Path *path)
-{
-	if (IsA(path, AppendPath))
-	{
-		AppendPath *apath = (AppendPath *) path;
-
-		/* list_copy is important here to avoid sharing list substructure */
-		return list_concat(subpaths, list_copy(apath->subpaths));
-	}
-	else if (IsA(path, MergeAppendPath))
-	{
-		MergeAppendPath *mpath = (MergeAppendPath *) path;
-
-		/* list_copy is important here to avoid sharing list substructure */
-		return list_concat(subpaths, list_copy(mpath->subpaths));
-	}
-	else
-		return lappend(subpaths, path);
 }
 
 
@@ -678,18 +217,28 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 		join_search_one_level(root, lev);
 
 		/*
-		 * Run generate_gather_paths() for each just-processed joinrel.  We
-		 * could not do this earlier because both regular and partial paths
-		 * can get added to a particular joinrel at multiple times within
-		 * join_search_one_level.  After that, we're done creating paths for
-		 * the joinrel, so run set_cheapest().
+		 * Run generate_partitionwise_join_paths() and generate_gather_paths()
+		 * for each just-processed joinrel.  We could not do this earlier
+		 * because both regular and partial paths can get added to a
+		 * particular joinrel at multiple times within join_search_one_level.
+		 *
+		 * After that, we're done creating paths for the joinrel, so run
+		 * set_cheapest().
 		 */
 		foreach(lc, root->join_rel_level[lev])
 		{
 			rel = (RelOptInfo *) lfirst(lc);
 
-			/* Create GatherPaths for any useful partial paths for rel */
-			generate_gather_paths(root, rel);
+			/* Create paths for partitionwise joins. */
+			generate_partitionwise_join_paths(root, rel);
+
+			/*
+			 * Except for the topmost scan/join rel, consider gathering
+			 * partial paths.  We'll do the same for the topmost scan/join rel
+			 * once we know the final targetlist (see grouping_planner).
+			 */
+			if (lev < levels_needed)
+				generate_gather_paths(root, rel, false);
 
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(rel);
@@ -723,7 +272,8 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 {
 	int			parallel_workers;
 
-	parallel_workers = compute_parallel_worker(rel, rel->pages, -1);
+	parallel_workers = compute_parallel_worker(rel, rel->pages, -1,
+											   max_parallel_workers_per_gather);
 
 	/* If any limit was set to zero, the user doesn't want a parallel scan. */
 	if (parallel_workers <= 0)
@@ -1022,7 +572,7 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
  *
  * On success, *sjinfo_p is set to NULL if this is to be a plain inner join,
  * else it's set to point to the associated SpecialJoinInfo node.  Also,
- * *reversed_p is set TRUE if the given relations need to be swapped to
+ * *reversed_p is set true if the given relations need to be swapped to
  * match the SpecialJoinInfo node.
  */
 static bool
@@ -1400,6 +950,50 @@ is_dummy_rel(RelOptInfo *rel)
 	return IS_DUMMY_REL(rel);
 }
 
+/*
+ * Mark a relation as proven empty.
+ *
+ * During GEQO planning, this can get invoked more than once on the same
+ * baserel struct, so it's worth checking to see if the rel is already marked
+ * dummy.
+ *
+ * Also, when called during GEQO join planning, we are in a short-lived
+ * memory context.  We must make sure that the dummy path attached to a
+ * baserel survives the GEQO cycle, else the baserel is trashed for future
+ * GEQO cycles.  On the other hand, when we are marking a joinrel during GEQO,
+ * we don't want the dummy path to clutter the main planning context.  Upshot
+ * is that the best solution is to explicitly make the dummy path in the same
+ * context the given RelOptInfo is in.
+ */
+void
+mark_dummy_rel(RelOptInfo *rel)
+{
+	MemoryContext oldcontext;
+
+	/* Already marked? */
+	if (is_dummy_rel(rel))
+		return;
+
+	/* No, so choose correct context to make the dummy path in */
+	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
+
+	/* Set dummy size estimate */
+	rel->rows = 0;
+
+	/* Evict any previously chosen paths */
+	rel->pathlist = NIL;
+	rel->partial_pathlist = NIL;
+
+	/* Set up the dummy path */
+	add_path(rel, (Path *) create_append_path(NULL, rel, NIL, NIL, NULL,
+											  0, false, NIL, -1));
+
+	/* Set or update cheapest_total_path and related fields */
+	set_cheapest(rel);
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
 
 /*
  * restriction_is_constant_false --- is a restrictlist just FALSE?
@@ -1410,10 +1004,13 @@ is_dummy_rel(RelOptInfo *rel)
  * decide there's no match for an outer row, which is pretty stupid.  So,
  * we need to detect the case.
  *
- * If only_pushed_down is TRUE, then consider only pushed-down quals.
+ * If only_pushed_down is true, then consider only quals that are pushed-down
+ * from the point of view of the joinrel.
  */
 static bool
-restriction_is_constant_false(List *restrictlist, bool only_pushed_down)
+restriction_is_constant_false(List *restrictlist,
+							  RelOptInfo *joinrel,
+							  bool only_pushed_down)
 {
 	ListCell   *lc;
 
@@ -1427,7 +1024,7 @@ restriction_is_constant_false(List *restrictlist, bool only_pushed_down)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
-		if (only_pushed_down && !rinfo->is_pushed_down)
+		if (only_pushed_down && !RINFO_IS_PUSHED_DOWN(rinfo, joinrel->relids))
 			continue;
 
 		if (rinfo->clause && IsA(rinfo->clause, Const))
@@ -1443,3 +1040,127 @@ restriction_is_constant_false(List *restrictlist, bool only_pushed_down)
 	}
 	return false;
 }
+
+/*
+ * Assess whether join between given two partitioned relations can be broken
+ * down into joins between matching partitions; a technique called
+ * "partitionwise join"
+ *
+ * Partitionwise join is possible when a. Joining relations have same
+ * partitioning scheme b. There exists an equi-join between the partition keys
+ * of the two relations.
+ *
+ * Partitionwise join is planned as follows (details: optimizer/README.)
+ *
+ * 1. Create the RelOptInfos for joins between matching partitions i.e
+ * child-joins and add paths to them.
+ *
+ * 2. Construct Append or MergeAppend paths across the set of child joins.
+ * This second phase is implemented by generate_partitionwise_join_paths().
+ *
+ * The RelOptInfo, SpecialJoinInfo and restrictlist for each child join are
+ * obtained by translating the respective parent join structures.
+ */
+static void
+try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
+					   RelOptInfo *joinrel, SpecialJoinInfo *parent_sjinfo,
+					   List *parent_restrictlist)
+{
+	int			nparts;
+	int			cnt_parts;
+
+	/* Guard against stack overflow due to overly deep partition hierarchy. */
+	check_stack_depth();
+
+	/* Nothing to do, if the join relation is not partitioned. */
+	if (!IS_PARTITIONED_REL(joinrel))
+		return;
+
+	/*
+	 * Since this join relation is partitioned, all the base relations
+	 * participating in this join must be partitioned and so are all the
+	 * intermediate join relations.
+	 */
+	Assert(IS_PARTITIONED_REL(rel1) && IS_PARTITIONED_REL(rel2));
+	Assert(REL_HAS_ALL_PART_PROPS(rel1) && REL_HAS_ALL_PART_PROPS(rel2));
+
+	/*
+	 * The partition scheme of the join relation should match that of the
+	 * joining relations.
+	 */
+	Assert(joinrel->part_scheme == rel1->part_scheme &&
+		   joinrel->part_scheme == rel2->part_scheme);
+
+	/*
+	 * Since we allow partitionwise join only when the partition bounds of the
+	 * joining relations exactly match, the partition bounds of the join
+	 * should match those of the joining relations.
+	 */
+	Assert(partition_bounds_equal(joinrel->part_scheme->partnatts,
+								  joinrel->part_scheme->parttyplen,
+								  joinrel->part_scheme->parttypbyval,
+								  joinrel->boundinfo, rel1->boundinfo));
+	Assert(partition_bounds_equal(joinrel->part_scheme->partnatts,
+								  joinrel->part_scheme->parttyplen,
+								  joinrel->part_scheme->parttypbyval,
+								  joinrel->boundinfo, rel2->boundinfo));
+
+	nparts = joinrel->nparts;
+
+	/*
+	 * Create child-join relations for this partitioned join, if those don't
+	 * exist. Add paths to child-joins for a pair of child relations
+	 * corresponding to the given pair of parent relations.
+	 */
+	for (cnt_parts = 0; cnt_parts < nparts; cnt_parts++)
+	{
+		RelOptInfo *child_rel1 = rel1->part_rels[cnt_parts];
+		RelOptInfo *child_rel2 = rel2->part_rels[cnt_parts];
+		SpecialJoinInfo *child_sjinfo;
+		List	   *child_restrictlist;
+		RelOptInfo *child_joinrel;
+		Relids		child_joinrelids;
+		AppendRelInfo **appinfos;
+		int			nappinfos;
+
+		/* We should never try to join two overlapping sets of rels. */
+		Assert(!bms_overlap(child_rel1->relids, child_rel2->relids));
+		child_joinrelids = bms_union(child_rel1->relids, child_rel2->relids);
+		appinfos = find_appinfos_by_relids(root, child_joinrelids, &nappinfos);
+
+		/*
+		 * Construct SpecialJoinInfo from parent join relations's
+		 * SpecialJoinInfo.
+		 */
+		child_sjinfo = build_child_join_sjinfo(root, parent_sjinfo,
+											   child_rel1->relids,
+											   child_rel2->relids);
+
+		/*
+		 * Construct restrictions applicable to the child join from those
+		 * applicable to the parent join.
+		 */
+		child_restrictlist =
+			(List *) adjust_appendrel_attrs(root,
+											(Node *) parent_restrictlist,
+											nappinfos, appinfos);
+		pfree(appinfos);
+
+		child_joinrel = joinrel->part_rels[cnt_parts];
+		if (!child_joinrel)
+		{
+			child_joinrel = build_child_join_rel(root, child_rel1, child_rel2,
+												 joinrel, child_restrictlist,
+												 child_sjinfo,
+												 child_sjinfo->jointype);
+			joinrel->part_rels[cnt_parts] = child_joinrel;
+		}
+
+		Assert(bms_equal(child_joinrel->relids, child_joinrelids));
+
+		populate_joinrel_with_paths(root, child_rel1, child_rel2,
+									child_joinrel, child_sjinfo,
+									child_restrictlist);
+	}
+}
+

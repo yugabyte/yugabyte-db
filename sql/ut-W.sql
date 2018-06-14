@@ -34,17 +34,31 @@ SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_table_scan_size to 0;
 SET min_parallel_index_scan_size to 0;
+SET enable_parallel_append to false;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
+SET enable_parallel_append to true;
+/*+Parallel(p1 8)*/
+EXPLAIN (COSTS false) SELECT * FROM p1;
+
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_table_scan_size to DEFAULT;
 SET min_parallel_index_scan_size to DEFAULT;
 
+SET enable_parallel_append to false;
 /*+Parallel(p1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
--- hinting on children makes the whole inheritance parallel
+SET enable_parallel_append to true;
+/*+Parallel(p1 8 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1;
+
+-- hinting on children doesn't work (changed as of pg_hint_plan 10)
+SET enable_parallel_append to false;
+/*+Parallel(p1_c1 8 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1;
+SET enable_parallel_append to true;
 /*+Parallel(p1_c1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
@@ -75,9 +89,17 @@ SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_table_scan_size to 0;
 SET min_parallel_index_scan_size to 0;
+SET enable_parallel_append to false;
+/*+Parallel(p1 8)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
+SET enable_parallel_append to false;
+/*+Parallel(p1 8)Parallel(p2 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p1 8)Parallel(p2 0)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
@@ -92,20 +114,37 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p2 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
+-- Number of workers results to the largest number
+SET enable_parallel_append to false;
+/*+Parallel(p2 8 hard) Parallel(p1 5 hard) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p2 8 hard) Parallel(p1 5 hard) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 
--- Mixture with a scan hint
+-- Mixture with scan hints
 -- p1 can be parallel
+SET enable_parallel_append to false;
+/*+Parallel(p1 8 hard) IndexScan(p2) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p1 8 hard) IndexScan(p2) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 -- Parallel sequential scan
+SET enable_parallel_append to false;
+/*+Parallel(p1 8 hard) SeqScan(p1) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p1 8 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 -- Parallel index scan
+SET enable_parallel_append to false;
+/*+Parallel(p1 8 hard) IndexScan(p1) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+SET enable_parallel_append to true;
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
@@ -128,7 +167,7 @@ SET max_parallel_workers_per_gather to 0;
 /*+Parallel(p1 8) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
--- set hint does the same thing
+-- set hint has the same effect
 /*+Set(max_parallel_workers_per_gather 1)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
@@ -142,18 +181,7 @@ SET max_parallel_workers_per_gather to 8;
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
 
--- num of workers of non-hinted relations should be default value
-SET parallel_setup_cost to 0;
-SET parallel_tuple_cost to 0;
-SET min_parallel_table_scan_size to 0;
-SET min_parallel_index_scan_size to 0;
-SET max_parallel_workers_per_gather to 3;
-SET enable_indexscan to false;
-
-/*+Parallel(p1 8 hard) */
-EXPLAIN (COSTS false) SELECT * FROM p1 join t1 on p1.id = t1.id;
-
--- Negative hint
+-- Negative hints
 SET enable_indexscan to DEFAULT;
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
@@ -162,6 +190,10 @@ SET min_parallel_index_scan_size to 0;
 SET max_parallel_workers_per_gather to 5;
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
+SET enable_parallel_append to false;
+/*+Parallel(p1 0 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1;
+SET enable_parallel_append to true;
 /*+Parallel(p1 0 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 

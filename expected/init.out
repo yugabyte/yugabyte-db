@@ -159,44 +159,53 @@ SELECT name, setting, category
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
-             name             |  setting  |                  category                   
-------------------------------+-----------+---------------------------------------------
- geqo                         | on        | Query Tuning / Genetic Query Optimizer
- geqo_effort                  | 5         | Query Tuning / Genetic Query Optimizer
- geqo_generations             | 0         | Query Tuning / Genetic Query Optimizer
- geqo_pool_size               | 0         | Query Tuning / Genetic Query Optimizer
- geqo_seed                    | 0         | Query Tuning / Genetic Query Optimizer
- geqo_selection_bias          | 2         | Query Tuning / Genetic Query Optimizer
- geqo_threshold               | 12        | Query Tuning / Genetic Query Optimizer
- constraint_exclusion         | partition | Query Tuning / Other Planner Options
- cursor_tuple_fraction        | 0.1       | Query Tuning / Other Planner Options
- default_statistics_target    | 100       | Query Tuning / Other Planner Options
- force_parallel_mode          | off       | Query Tuning / Other Planner Options
- from_collapse_limit          | 8         | Query Tuning / Other Planner Options
- join_collapse_limit          | 8         | Query Tuning / Other Planner Options
- cpu_index_tuple_cost         | 0.005     | Query Tuning / Planner Cost Constants
- cpu_operator_cost            | 0.0025    | Query Tuning / Planner Cost Constants
- cpu_tuple_cost               | 0.01      | Query Tuning / Planner Cost Constants
- effective_cache_size         | 16384     | Query Tuning / Planner Cost Constants
- min_parallel_index_scan_size | 64        | Query Tuning / Planner Cost Constants
- min_parallel_table_scan_size | 1024      | Query Tuning / Planner Cost Constants
- parallel_setup_cost          | 1000      | Query Tuning / Planner Cost Constants
- parallel_tuple_cost          | 0.1       | Query Tuning / Planner Cost Constants
- random_page_cost             | 4         | Query Tuning / Planner Cost Constants
- seq_page_cost                | 1         | Query Tuning / Planner Cost Constants
- enable_bitmapscan            | on        | Query Tuning / Planner Method Configuration
- enable_gathermerge           | on        | Query Tuning / Planner Method Configuration
- enable_hashagg               | on        | Query Tuning / Planner Method Configuration
- enable_hashjoin              | on        | Query Tuning / Planner Method Configuration
- enable_indexonlyscan         | on        | Query Tuning / Planner Method Configuration
- enable_indexscan             | on        | Query Tuning / Planner Method Configuration
- enable_material              | on        | Query Tuning / Planner Method Configuration
- enable_mergejoin             | on        | Query Tuning / Planner Method Configuration
- enable_nestloop              | on        | Query Tuning / Planner Method Configuration
- enable_seqscan               | on        | Query Tuning / Planner Method Configuration
- enable_sort                  | on        | Query Tuning / Planner Method Configuration
- enable_tidscan               | on        | Query Tuning / Planner Method Configuration
- client_min_messages          | notice    | Reporting and Logging / When to Log
-(36 rows)
+              name              |  setting  |                  category                   
+--------------------------------+-----------+---------------------------------------------
+ geqo                           | on        | Query Tuning / Genetic Query Optimizer
+ geqo_effort                    | 5         | Query Tuning / Genetic Query Optimizer
+ geqo_generations               | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_pool_size                 | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_seed                      | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_selection_bias            | 2         | Query Tuning / Genetic Query Optimizer
+ geqo_threshold                 | 12        | Query Tuning / Genetic Query Optimizer
+ constraint_exclusion           | partition | Query Tuning / Other Planner Options
+ cursor_tuple_fraction          | 0.1       | Query Tuning / Other Planner Options
+ default_statistics_target      | 100       | Query Tuning / Other Planner Options
+ force_parallel_mode            | off       | Query Tuning / Other Planner Options
+ from_collapse_limit            | 8         | Query Tuning / Other Planner Options
+ jit                            | on        | Query Tuning / Other Planner Options
+ join_collapse_limit            | 8         | Query Tuning / Other Planner Options
+ cpu_index_tuple_cost           | 0.005     | Query Tuning / Planner Cost Constants
+ cpu_operator_cost              | 0.0025    | Query Tuning / Planner Cost Constants
+ cpu_tuple_cost                 | 0.01      | Query Tuning / Planner Cost Constants
+ effective_cache_size           | 16384     | Query Tuning / Planner Cost Constants
+ jit_above_cost                 | 100000    | Query Tuning / Planner Cost Constants
+ jit_inline_above_cost          | 500000    | Query Tuning / Planner Cost Constants
+ jit_optimize_above_cost        | 500000    | Query Tuning / Planner Cost Constants
+ min_parallel_index_scan_size   | 64        | Query Tuning / Planner Cost Constants
+ min_parallel_table_scan_size   | 1024      | Query Tuning / Planner Cost Constants
+ parallel_setup_cost            | 1000      | Query Tuning / Planner Cost Constants
+ parallel_tuple_cost            | 0.1       | Query Tuning / Planner Cost Constants
+ random_page_cost               | 4         | Query Tuning / Planner Cost Constants
+ seq_page_cost                  | 1         | Query Tuning / Planner Cost Constants
+ enable_bitmapscan              | on        | Query Tuning / Planner Method Configuration
+ enable_gathermerge             | on        | Query Tuning / Planner Method Configuration
+ enable_hashagg                 | on        | Query Tuning / Planner Method Configuration
+ enable_hashjoin                | on        | Query Tuning / Planner Method Configuration
+ enable_indexonlyscan           | on        | Query Tuning / Planner Method Configuration
+ enable_indexscan               | on        | Query Tuning / Planner Method Configuration
+ enable_material                | on        | Query Tuning / Planner Method Configuration
+ enable_mergejoin               | on        | Query Tuning / Planner Method Configuration
+ enable_nestloop                | on        | Query Tuning / Planner Method Configuration
+ enable_parallel_append         | on        | Query Tuning / Planner Method Configuration
+ enable_parallel_hash           | on        | Query Tuning / Planner Method Configuration
+ enable_partition_pruning       | on        | Query Tuning / Planner Method Configuration
+ enable_partitionwise_aggregate | off       | Query Tuning / Planner Method Configuration
+ enable_partitionwise_join      | off       | Query Tuning / Planner Method Configuration
+ enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
+ enable_sort                    | on        | Query Tuning / Planner Method Configuration
+ enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
+ client_min_messages            | notice    | Reporting and Logging / When to Log
+(45 rows)
 
 ANALYZE;
