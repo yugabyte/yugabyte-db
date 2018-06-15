@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
@@ -46,11 +47,14 @@ public class UpdateSoftwareVersion extends AbstractTaskBase {
           // If this universe is not being edited, fail the request.
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           if (!universeDetails.updateInProgress) {
-            LOG.error("UserUniverse " + taskParams().universeUUID + " is not being edited.");
-            throw new RuntimeException("UserUniverse " + taskParams().universeUUID +
-                " is not being edited");
+            String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+            LOG.error(errMsg);
+            throw new RuntimeException(errMsg);
           }
           universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = taskParams().softwareVersion;
+          for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
+            cluster.userIntent.ybSoftwareVersion = taskParams().softwareVersion;
+          }
           universe.setUniverseDetails(universeDetails);
         }
       };

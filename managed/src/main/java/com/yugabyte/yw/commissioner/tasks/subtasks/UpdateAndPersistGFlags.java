@@ -6,6 +6,7 @@ import java.util.Map;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -51,9 +52,12 @@ public class UpdateAndPersistGFlags extends AbstractTaskBase {
 
           // Update the gflags.
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-
           userIntent.masterGFlags.putAll(taskParams().masterGFlags);
           userIntent.tserverGFlags.putAll(taskParams().tserverGFlags);
+          for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
+            cluster.userIntent.masterGFlags.putAll(taskParams().masterGFlags);
+            cluster.userIntent.tserverGFlags.putAll(taskParams().tserverGFlags);
+          }
 
           universe.setUniverseDetails(universeDetails);
         }

@@ -59,7 +59,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      UserIntent userIntent = universe.getUniverseDetails()
+                                      .getClusterByUuid(currentNode.placementUuid)
+                                      .userIntent;
 
       // Update Node State to BeingDecommissioned.
       createSetNodeStateTask(currentNode, NodeState.BeingDecommissioned)
