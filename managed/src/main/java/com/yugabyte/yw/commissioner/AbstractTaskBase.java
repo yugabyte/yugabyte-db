@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -30,12 +30,8 @@ public abstract class AbstractTaskBase implements ITask {
 
   public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
 
-  // Minimum number of concurrent tasks to execute at a time.
-  private static final int MIN_TASK_THREADS = 1;
-
-  // Maximum number of concurrent tasks to execute at a time.
-  // Not a bigger number to reduce thread spawn causing overload or OOM's.
-  private static final int MAX_TASK_THREADS = 100;
+  // Number of concurrent tasks to execute at a time.
+  private static final int TASK_THREADS = 50;
 
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
@@ -80,16 +76,15 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
-  private static ExecutorService newCachedThreadPool(ThreadFactory namedThreadFactory) {
-    return new ThreadPoolExecutor(MIN_TASK_THREADS, MAX_TASK_THREADS, THREAD_ALIVE_TIME,
-                                  TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
-                                  namedThreadFactory);
-  }
-
+  // Create an task pool which can handle an unbounded number of tasks, while using an initial set
+  // of threads which get spawned upto TASK_THREADS limit.
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = newCachedThreadPool(namedThreadFactory);
+    executor =
+        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
+                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
+                               namedThreadFactory);
   }
 
   @Override
