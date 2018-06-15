@@ -9,7 +9,7 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -34,10 +34,7 @@ public class Commissioner {
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
   // Minimum number of concurrent tasks to execute at a time.
-  private static final int MIN_TASK_THREADS = 1;
-
-  // Maximum number of concurrent tasks to execute at a time.
-  private static final int MAX_TASK_THREADS = 500;
+  private static final int TASK_THREADS = 200;
 
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
@@ -63,17 +60,16 @@ public class Commissioner {
   // persisted before removing the task from this map.
   static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
 
-  public static ExecutorService newCachedThreadPool(ThreadFactory namedThreadFactory) {
-      return new ThreadPoolExecutor(MIN_TASK_THREADS, MAX_TASK_THREADS, THREAD_ALIVE_TIME,
-                                    TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
-                                    namedThreadFactory);
-  }
-
   public Commissioner() {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
-      new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-    executor = newCachedThreadPool(namedThreadFactory);
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+    // Create an task pool which can handle an unbounded number of tasks, while using an initial set
+    // of threads that get spawned upto TASK_THREADS limit.
+    executor =
+        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
+                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
+                               namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
 
     // Initialize the task manager.
