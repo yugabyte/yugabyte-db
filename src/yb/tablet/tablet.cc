@@ -927,6 +927,7 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
       // For unique index, return error if the update failed due to duplicate values.
       if (index_info->is_unique() && index_response->has_applied() && !index_response->applied()) {
         if (request.has_if_expr()) {
+          response->set_applied(false);
           *response->mutable_column_schemas() =
               std::move(*index_response->mutable_column_schemas());
           Schema schema;
