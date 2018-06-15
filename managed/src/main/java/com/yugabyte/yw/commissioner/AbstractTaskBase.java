@@ -33,7 +33,7 @@ public abstract class AbstractTaskBase implements ITask {
 
   // Maximum number of concurrent tasks to execute at a time.
   // Not a bigger number to reduce thread spawn causing overload or OOM's.
-  private static final int MAX_TASK_THREADS = 25;
+  private static final int MAX_TASK_THREADS = 100;
 
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).

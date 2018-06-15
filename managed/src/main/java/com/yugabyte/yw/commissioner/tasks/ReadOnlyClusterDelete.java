@@ -40,28 +40,13 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(params().expectedUniverseVersion);
 
-      List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-      if (existingReadOnlyClusters.size() > 1) {
-        String errMsg = "Expected only one read only cluster, but found "
-                        + existingReadOnlyClusters.size();
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-
-      Cluster cluster = existingReadOnlyClusters.get(0);
-      UUID uuid = cluster.uuid;
-      if (!cluster.uuid.equals(params().clusterUUID)) {
-        String errMsg = "Uuid " + cluster.uuid + " to delete cluster not found, only " +
-                        params().clusterUUID + " found." ;
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-
       // Delete all the read-only cluster nodes.
-      createDestroyServerTasks(universe.getNodesInCluster(uuid),
-                               params().isForceDelete,
-                               true /* deleteNodeFromDB */)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createDestroyServerTasks(
+          universe.getNodesInCluster(
+              universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid),
+          params().isForceDelete,
+          true /* deleteNodeFromDB */)
+        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
       createDeleteClusterFromUniverseTask(params().clusterUUID);
