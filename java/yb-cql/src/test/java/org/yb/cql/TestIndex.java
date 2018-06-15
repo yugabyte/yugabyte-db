@@ -610,5 +610,13 @@ public class TestIndex extends BaseCQLTest {
     assertQuery("insert into test_cond_unique (k, v1, v2) values (2, 2, 'a') if not exists;",
                 "Columns[[applied](boolean), v2(varchar), k(int)]",
                 "Row[false, a, 1]");
+    assertQuery("select * from test_cond_unique;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, a]")));
+
+    assertQuery("insert into test_cond_unique (k, v1, v2) values (2, 2, 'b') if not exists;",
+                "Row[true]");
+    assertQuery("select * from test_cond_unique;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, a]",
+                                                  "Row[2, 2, b]")));
   }
 }

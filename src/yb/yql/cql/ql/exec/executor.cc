@@ -1015,13 +1015,20 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
       const shared_ptr<client::YBqlOp>& op = tnode_context.op();
       const TreeNode *tnode = tnode_context.tnode();
       if (op != nullptr) {
-        // Apply any operation that has been deferred but can be applied now.
+        // If the operation has been deferred but can be applied now, apply it. If the operation is
+        // not deferred but has been applied, check the response. If the operation fails to apply,
+        // quit the execution and do not commit the transaction if there is one. Any transaction
+        // that is not committed will be aborted at the end.
         if (tnode_context.IsDeferred()) {
           if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
                               std::static_pointer_cast<YBqlWriteOp>(op))) {
             RETURN_STMT_NOT_OK(tnode_context.Apply(ql_env_));
           }
           continue;
+        } else {
+          if (op->response().has_applied() && !op->response().applied()) {
+            return StatementExecuted(Status::OK());
+          }
         }
 
         // For SELECT statement, check if there are more rows to fetch.
