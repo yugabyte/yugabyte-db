@@ -16,6 +16,9 @@ package com.yugabyte.sample.apps;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -98,6 +101,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // Keyspace name.
   public static String keyspace = "ybdemo_keyspace";
 
+  // Postgres database name.
+  public static String postgres_database = "ybdemo_database";
+
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
   /**
@@ -112,6 +118,19 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       createCassandraClient(configuration.getContactPoints());
     }
     return cassandra_session;
+  }
+
+  protected Connection getPostgresConnection() throws Exception {
+    Class.forName("org.postgresql.Driver");
+    ContactPoint contactPoint = getRandomContactPoint();
+    Connection connection = DriverManager.getConnection(
+        String.format("jdbc:postgresql://%s:%d/", contactPoint.getHost(),
+            contactPoint.getPort()));
+    connection.createStatement().executeUpdate(
+        String.format("CREATE DATABASE IF NOT EXISTS %s", postgres_database));
+    connection.createStatement().executeUpdate(
+        String.format("USE %s", postgres_database));
+    return connection;
   }
 
   protected static void createKeyspace(Session session, String ks) {
@@ -371,7 +390,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   /**
    * The apps extending this base should drop all the tables they create when this method is called.
    */
-  public void dropTable() {}
+  public void dropTable() throws Exception {}
 
   public void dropCassandraTable(String tableName) {
     String drop_stmt = String.format("DROP TABLE IF EXISTS %s;", tableName);
@@ -382,7 +401,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   /**
    * The apps extending this base should create all the necessary tables in this method.
    */
-  public void createTablesIfNeeded() {
+  public void createTablesIfNeeded() throws Exception {
     for (String create_stmt : getCreateTableStatements()) {
       Session session = getCassandraClient();
       // consistency level of one to allow cross DC requests.

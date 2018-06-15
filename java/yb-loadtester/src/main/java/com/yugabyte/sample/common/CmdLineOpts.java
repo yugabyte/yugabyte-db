@@ -56,6 +56,7 @@ public class CmdLineOpts {
     CassandraSparkWordCount,
     CassandraSparkKeyValueCopy,
     CassandraSecondaryIndex,
+    PostgresqlSecondaryIndex,
     RedisKeyValue,
     RedisPipelinedKeyValue,
     RedisHashPipelined,

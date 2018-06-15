@@ -141,7 +141,7 @@ public class Main {
     app.terminate();
   }
 
-  public void run() {
+  public void run() throws Exception {
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
