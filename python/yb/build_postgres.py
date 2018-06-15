@@ -13,10 +13,11 @@ import sys
 
 from subprocess import check_call
 
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext, mkdir_p, quote_for_bash
+from yugabyte_pycommon import init_logging, run_program, WorkDirContext, mkdir_p, quote_for_bash, \
+        is_verbose_mode
 
 from yb import common_util
-from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root
+from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root, get_bool_env_var
 
 
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
@@ -34,6 +35,14 @@ def filter_compiler_flags(compiler_flags, allow_error_on_warning):
         return compiler_flags
     return ' '.join([
         flag for flag in compiler_flags.split() if not is_error_on_warning_flag(flag)])
+
+
+def get_path_variants(path):
+    """
+    Returns a list of different variants (just an absolute path vs. all symlinks resolved) for the
+    given path.
+    """
+    return sorted(set([os.path.abspath(path), os.path.realpath(path)]))
 
 
 class PostgresBuilder:
@@ -99,18 +108,29 @@ class PostgresBuilder:
             else:
                 del os.environ[var_name]
 
-        additional_c_cxx_flags = (
-            ' -Wno-error=missing-prototypes' +
-            ' -Wno-error=unused-function' +
-            ' -DHAVE__BUILTIN_CONSTANT_P=1' +
-            ' -DUSE_SSE42_CRC32C=1'
-        )
+        additional_c_cxx_flags = [
+            '-Wno-error=missing-prototypes',
+            '-Wno-error=unused-function',
+            '-DHAVE__BUILTIN_CONSTANT_P=1',
+            '-DUSE_SSE42_CRC32C=1',
+        ]
+
+        # Tell gdb to pretend that we're compiling the code in the $YB_SRC_ROOT/src/postgres
+        # directory.
+        build_path_variants = get_path_variants(self.pg_build_root)
+        src_path_variants = get_path_variants(self.postgres_src_dir)
+        additional_c_cxx_flags += [
+            '-fdebug-prefix-map=%s=%s' % (build_path, source_path)
+            for build_path in build_path_variants
+            for source_path in src_path_variants
+        ]
+
         if self.compiler_type == 'gcc':
-            additional_c_cxx_flags += ' -Wno-error=maybe-uninitialized'
+            additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:
             os.environ[var_name] = filter_compiler_flags(
-                    os.environ.get(var_name, '') + additional_c_cxx_flags,
+                    os.environ.get(var_name, '') + ' ' + ' '.join(additional_c_cxx_flags),
                     allow_error_on_warning=(step == 'make'))
 
         for env_var_name in ['MAKEFLAGS']:
@@ -130,10 +150,11 @@ class PostgresBuilder:
         for ldflags_var_name in ['LDFLAGS', 'LDFLAGS_EX']:
             os.environ[ldflags_var_name] += ' -lm'
 
-        # CPPFLAGS are C preprocessor flags, CXXFLAGS are C++ flags.
-        for env_var_name in ['CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'LIBS']:
-            if env_var_name in os.environ:
-                logging.info("%s: %s", env_var_name, os.environ[env_var_name])
+        if is_verbose_mode():
+            # CPPFLAGS are C preprocessor flags, CXXFLAGS are C++ flags.
+            for env_var_name in ['CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'LIBS']:
+                if env_var_name in os.environ:
+                    logging.info("%s: %s", env_var_name, os.environ[env_var_name])
 
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
@@ -165,7 +186,8 @@ class PostgresBuilder:
             '--exclude', '*.rej',
             self.postgres_src_dir + '/', self.pg_build_root],
             capture_output=False)
-        logging.info("Successfully synced postgres source code")
+        if is_verbose_mode():
+            logging.info("Successfully synced postgres source code")
 
     def clean_postgres(self):
         logging.info("Removing the postgres build and installation directories")
@@ -175,7 +197,8 @@ class PostgresBuilder:
             run_program(['rm', '-rf', dir_to_delete], capture_output=False)
 
     def configure_postgres(self):
-        logging.info("Running configure in the postgres build directory")
+        if is_verbose_mode():
+            logging.info("Running configure in the postgres build directory")
         # Don't enable -Werror when running configure -- that can affect the resulting
         # configuration.
         self.set_env_vars('configure')
@@ -186,6 +209,11 @@ class PostgresBuilder:
                 '--enable-depend',
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
+
+        # We get readline-related errors in ASAN/TSAN, so let's disable readline there.
+        if self.build_type in ['asan', 'tsan']:
+            configure_cmd_line += ['--without-readline']
+
         if self.build_type != 'release':
             configure_cmd_line += ['--enable-cassert']
         configure_result = run_program(configure_cmd_line, error_ok=True)
@@ -194,7 +222,7 @@ class PostgresBuilder:
             for line in configure_result.stderr.splitlines():
                 if REMOVE_CONFIG_CACHE_MSG_RE.search(line.strip()):
                     logging.info("Configure failed because of stale config.cache, re-running.")
-                    run_program('rm -f config.cache', capture_output=True)
+                    run_program('rm -f config.cache')
                     rerun_configure = True
                     break
 
@@ -204,7 +232,15 @@ class PostgresBuilder:
 
             configure_result = run_program(configure_cmd_line)
 
-        configure_result.print_output_to_stdout()
+        if is_verbose_mode():
+            configure_result.print_output_to_stdout()
+        for output_type in ['out', 'err']:
+            output_path = os.path.join(self.pg_build_root, 'configure.' + output_type)
+            output_content = getattr(configure_result, 'std' + output_type)
+            with open(output_path, 'w') as out_f:
+                out_f.write(output_content)
+            if output_content.strip():
+                logging.info("Wrote std%s of configure to %s", output_type, output_path)
 
         logging.info("Successfully ran configure in the postgres build directory")
 
@@ -236,12 +272,17 @@ class PostgresBuilder:
                 run_program(['chmod', 'u+x', make_script_path])
 
                 # Actually run Make.
-                logging.info("Running make in the %s directory", work_dir)
-                run_program(make_cmd, capture_output=False)
-                run_program(['make', 'install'], capture_output=False)
+                if is_verbose_mode():
+                    logging.info("Running make in the %s directory", work_dir)
+                run_program(make_cmd)
+                run_program(['make', 'install'])
                 logging.info("Successfully ran make in the %s directory", work_dir)
 
     def run(self):
+        if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
+            logging.info("Skipping PostgreSQL build (YB_SKIP_POSTGRES_BUILD is set)")
+            return
+
         self.parse_args()
         self.build_postgres()
 
