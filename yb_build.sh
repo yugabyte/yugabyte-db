@@ -152,6 +152,8 @@ Options:
     generated. Only works in non-release mode.
   --clean-postgres
     Do a clean build of the PostgreSQL subtree.
+  --no-postgres, --skip-postgres, --np, --sp
+    Skip PostgreSQL build
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -829,6 +831,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --clean-postgres)
       clean_postgres=true
+    ;;
+    --no-postgres|--skip-postgres|--np|--sp)
+      export YB_SKIP_POSTGRES_BUILD=1
     ;;
     *)
       echo "Invalid option: '$1'" >&2
