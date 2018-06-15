@@ -115,8 +115,8 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of())
   );
 
-  private void assertStartNodeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                       boolean masterUnderReplicated) {
+  private void assertClusterCreateSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
+                                           boolean masterUnderReplicated) {
     int position = 0;
     for (TaskType taskType: CLUSTER_CREATE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
@@ -158,10 +158,21 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertStartNodeSequence(subTasksByPosition, false);
+    assertClusterCreateSequence(subTasksByPosition, false);
 
     UniverseDefinitionTaskParams univUTP =
         Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+  }
+
+  @Test
+  public void testClusterCreateFailure() {
+    UniverseDefinitionTaskParams univUTP =
+      Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+    assertEquals(1, univUTP.clusters.size());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 }

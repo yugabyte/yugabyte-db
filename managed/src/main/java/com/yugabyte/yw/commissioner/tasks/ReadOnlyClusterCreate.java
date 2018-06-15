@@ -43,39 +43,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the correct node names for all to-be-added nodes.
       updateNodeNames();
 
-      List<Cluster> newReadOnlyClusters = taskParams().getReadOnlyClusters();
-      List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-      LOG.info("newReadOnly={}, existingRO={}.",
-               newReadOnlyClusters.size(), existingReadOnlyClusters.size());
-
-      if (existingReadOnlyClusters.size() > 0 && newReadOnlyClusters.size() > 0) {
-        String errMsg = "Can only have one read-only cluster per universe for now.";
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-
-      if (newReadOnlyClusters.size() != 1) {
-        String errMsg = "Only one read-only cluster expected, but we got " +
-                        newReadOnlyClusters.size();
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-
-      Cluster cluster = newReadOnlyClusters.get(0);
-      UUID uuid = cluster.uuid;
-      if (uuid == null) {
-        String errMsg = "UUID of read-only cluster should be non-null.";
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-      if (cluster.clusterType != ClusterType.ASYNC) {
-        String errMsg = "Read-only cluster type should be " + ClusterType.ASYNC + " but is " +
-                        cluster.clusterType;
-        LOG.error(errMsg);
-        throw new IllegalArgumentException(errMsg);
-      }
-
-      Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(uuid);
+      // Sanity checks for clusters list validity are performed in the controller.
+      Cluster cluster = taskParams().getReadOnlyClusters().get(0);
+      Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
 
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {

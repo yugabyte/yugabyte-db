@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -384,7 +385,39 @@ public class UniverseController extends AuthenticatedController {
     try {
       if (taskParams.clusters == null || taskParams.clusters.size() != 1) {
         return ApiResponse.error(BAD_REQUEST, "Invalid 'clusters' field/size: " +
-                                 taskParams.clusters + " for " + universeUUID);
+                                              taskParams.clusters + " for " + universeUUID);
+      }
+
+      List<Cluster> newReadOnlyClusters = taskParams.clusters;
+      List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      LOG.info("newReadOnly={}, existingRO={}.",
+               newReadOnlyClusters.size(), existingReadOnlyClusters.size());
+
+      if (existingReadOnlyClusters.size() > 0 && newReadOnlyClusters.size() > 0) {
+        String errMsg = "Can only have one read-only cluster per universe for now.";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      if (newReadOnlyClusters.size() != 1) {
+        String errMsg = "Only one read-only cluster expected, but we got " +
+                        newReadOnlyClusters.size();
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      Cluster cluster = newReadOnlyClusters.get(0);
+      if (cluster.uuid == null) {
+        String errMsg = "UUID of read-only cluster should be non-null.";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      if (cluster.clusterType != ClusterType.ASYNC) {
+        String errMsg = "Read-only cluster type should be " + ClusterType.ASYNC + " but is " +
+                        cluster.clusterType;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
       // Set the provider code.
@@ -433,6 +466,23 @@ public class UniverseController extends AuthenticatedController {
       universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+    if (existingReadOnlyClusters.size() != 1) {
+      String errMsg = "Expected just one read only cluster, but found " +
+                      existingReadOnlyClusters.size();
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    Cluster cluster = existingReadOnlyClusters.get(0);
+    UUID uuid = cluster.uuid;
+    if (!uuid.equals(clusterUUID)) {
+      String errMsg = "Uuid " + clusterUUID + " to delete cluster not found, only " +
+                      uuid + " found.";
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
     Boolean isForceDelete = false;
