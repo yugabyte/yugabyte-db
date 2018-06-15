@@ -13,6 +13,7 @@
 
 package com.yugabyte.sample.common;
 
+import java.security.MessageDigest;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
@@ -45,6 +46,13 @@ public class SimpleLoadGenerator {
     }
 
     public String asString() { return keyPrefix + ":" + key.toString();
+    }
+
+    public String getKeyWithHashPrefix() throws Exception {
+      String k = asString();
+      MessageDigest md = MessageDigest.getInstance("MD5");
+      md.update(k.getBytes());
+      return new String(md.digest()) + ":" + k;
     }
 
     public String getValueStr() {
