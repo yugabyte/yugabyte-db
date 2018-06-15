@@ -87,7 +87,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         }
 
         // Mark the tserver as blacklisted on the master leader.
-        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        UserIntent userIntent = universe.getUniverseDetails()
+                                        .getClusterByUuid(currentNode.placementUuid)
+                                        .userIntent;
         createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)),
                                 userIntent.replicationFactor)
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);

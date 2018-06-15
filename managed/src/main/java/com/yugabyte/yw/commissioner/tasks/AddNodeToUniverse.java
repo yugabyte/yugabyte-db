@@ -69,7 +69,9 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Adding)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      UserIntent userIntent = universe.getUniverseDetails()
+                                      .getClusterByUuid(currentNode.placementUuid)
+                                      .userIntent;
       Collection<NodeDetails> node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
 
       // First spawn an instance for Decommissioned node.
