@@ -139,8 +139,8 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of())
   );
 
-  private void assertStartNodeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                       boolean masterUnderReplicated) {
+  private void assertClusterDeleteSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
+                                           boolean masterUnderReplicated) {
     int position = 0;
     for (TaskType taskType: CLUSTER_DELETE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
@@ -167,7 +167,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertStartNodeSequence(subTasksByPosition, false);
+    assertClusterDeleteSequence(subTasksByPosition, false);
     univUTP = Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
   }
