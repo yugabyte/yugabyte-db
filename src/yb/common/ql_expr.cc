@@ -505,6 +505,10 @@ boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const
   return col_iter->second.value;
 }
 
+void QLTableRow::ClearValue(ColumnIdRep col_id) {
+  col_map_[col_id].value.Clear();
+}
+
 bool QLTableRow::MatchColumn(ColumnIdRep col_id, const QLTableRow& source) const {
   auto this_iter = col_map_.find(col_id);
   auto source_iter = source.col_map_.find(col_id);

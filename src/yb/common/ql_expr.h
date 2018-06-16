@@ -104,6 +104,12 @@ class QLTableRow {
     return GetValue(col.rep());
   }
 
+  // Clear the column value.
+  void ClearValue(ColumnIdRep col_id);
+  void ClearValue(const ColumnId& col) {
+    return ClearValue(col.rep());
+  }
+
   // Get the column value in PB format.
   CHECKED_STATUS ReadColumn(ColumnIdRep col_id, QLValue *col_value) const;
   CHECKED_STATUS ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,

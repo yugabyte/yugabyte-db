@@ -1171,8 +1171,8 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     if (UpdateIndexesLocally(tnode, *req)) {
       RETURN_NOT_OK(ApplyIndexWriteOps(tnode, *req));
     } else {
-      for (const auto& index_id : tnode->pk_only_indexes()) {
-        req->add_update_index_ids(index_id.first);
+      for (const auto& index : tnode->pk_only_indexes()) {
+        req->add_update_index_ids(index->id());
       }
     }
   }
@@ -1240,9 +1240,9 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
 
   // Create the write operation for each index and populate it using the original operation.
   ExecContext& parent = exec_context();
-  for (const auto& pair : tnode->pk_only_indexes()) {
-    const IndexInfo* index = VERIFY_RESULT(FindIndex(tnode->table()->index_map(), pair.first));
-    const shared_ptr<YBTable>& index_table = pair.second;
+  for (const auto& index_table : tnode->pk_only_indexes()) {
+    const IndexInfo* index = VERIFY_RESULT(FindIndex(tnode->table()->index_map(),
+                                                     index_table->id()));
     shared_ptr<YBqlWriteOp> index_op(
         is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
     QLWriteRequestPB *index_req = index_op->mutable_request();
