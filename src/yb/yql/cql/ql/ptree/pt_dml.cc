@@ -198,7 +198,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
         return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
                                   ErrorCode::TABLE_NOT_FOUND);
       }
-      pk_only_indexes_[index_id] = index_table;
+      pk_only_indexes_.insert(index_table);
     } else {
       non_pk_only_indexes_.insert(index_id);
       for (const IndexInfo::IndexColumn& column : index.columns()) {

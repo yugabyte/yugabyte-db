@@ -1753,8 +1753,6 @@ bool JoinNonStaticRow(
   return join_successful;
 }
 
-
-
 } // namespace
 
 Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
@@ -1947,10 +1945,10 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
                                                const DocPath& sub_path, const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
-                                               QLTableRow* current_row) {
+                                               QLTableRow* existing_row) {
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
-  RETURN_NOT_OK(current_row->ReadColumn(column_value.column_id(), &ql_value));
+  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value));
   Jsonb jsonb(std::move(ql_value.jsonb_value()));
   rapidjson::Document document;
   RETURN_NOT_OK(jsonb.ToRapidJson(&document));
@@ -1994,19 +1992,19 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
 
   // Update the current row as well so that we can accumulate the result of multiple json
   // operations and write the final value.
-  current_row->AllocColumn(column_value.column_id()).value = result.value();
+  existing_row->AllocColumn(column_value.column_id()).value = result.value();
   return Status::OK();
 }
 
 Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
-                                               const QLTableRow& current_row,
+                                               const QLTableRow& existing_row,
                                                const DocOperationApplyData& data,
                                                const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
                                                DocPath* sub_path) {
   QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
   const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
       SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
@@ -2049,7 +2047,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
 }
 
 Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_value,
-                                                const QLTableRow& current_row,
+                                                const QLTableRow& existing_row,
                                                 const DocOperationApplyData& data,
                                                 const DocPath& sub_path, const MonoDelta& ttl,
                                                 const UserTimeMicros& user_timestamp,
@@ -2058,7 +2056,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
                                                 QLTableRow* new_row) {
   // Typical case, setting a columns value
   QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
   const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
       SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
@@ -2107,16 +2105,16 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   bool should_apply = true;
-  QLTableRow current_row;
+  QLTableRow existing_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        data,
                                        &should_apply,
                                        &rowblock_,
-                                       &current_row));
+                                       &existing_row));
     response_->set_applied(should_apply);
   } else if (RequireReadForExpressions(request_)) {
-    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &current_row));
+    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
   }
 
   if (should_apply) {
@@ -2125,8 +2123,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
         request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
 
+    // Initialize the new row being written to either the existing row if read, or just populate
+    // the primary key.
     QLTableRow new_row;
-    if (update_indexes_) {
+    if (!existing_row.IsEmpty()) {
+      new_row = existing_row;
+    } else {
       size_t idx = 0;
       for (const QLExpressionPB& expr : request_.hashed_column_values()) {
         new_row.AllocColumn(schema_.column_id(idx), expr.value());
@@ -2135,9 +2137,6 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       for (const QLExpressionPB& expr : request_.range_column_values()) {
         new_row.AllocColumn(schema_.column_id(idx), expr.value());
         idx++;
-      }
-      if (current_row.IsEmpty()) {
-        current_row = new_row;
       }
     }
 
@@ -2176,18 +2175,18 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           QLValue expr_result;
           if (!column_value.json_args().empty()) {
             RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
-                                                user_timestamp, column, &current_row));
+                                                user_timestamp, column, &new_row));
           } else if (!column_value.subscript_args().empty()) {
-            RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, current_row, data, ttl,
+            RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
                                                 user_timestamp, column, &sub_path));
           } else {
-            RETURN_NOT_OK(ApplyForRegularColumns(column_value, current_row, data, sub_path, ttl,
+            RETURN_NOT_OK(ApplyForRegularColumns(column_value, existing_row, data, sub_path, ttl,
                                                  user_timestamp, column, column_id, &new_row));
           }
         }
 
         if (update_indexes_) {
-          RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
+          RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
         }
         break;
       }
@@ -2213,11 +2212,11 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
                                                              request_.query_id(), user_timestamp));
             if (update_indexes_) {
-              new_row.AllocColumn(column_id);
+              new_row.ClearValue(column_id);
             }
           }
           if (update_indexes_) {
-            RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
+            RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
           }
         } else if (IsRangeOperation(request_, schema_)) {
           // If the range columns are not specified, we read everything and delete all rows for
@@ -2250,21 +2249,20 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           // Iterate through rows and delete those that match the condition.
           // TODO We do not lock here, so other write transactions coming in might appear partially
           // applied if they happen in the middle of a ranged delete.
-          QLTableRow row;
           while (iterator.HasNext()) {
-            row.Clear();
-            RETURN_NOT_OK(iterator.NextRow(&row));
+            existing_row.Clear();
+            RETURN_NOT_OK(iterator.NextRow(&existing_row));
 
             // Match the row with the where condition before deleting it.
             bool match = false;
-            RETURN_NOT_OK(spec.Match(row, &match));
+            RETURN_NOT_OK(spec.Match(existing_row, &match));
             if (match) {
               const DocKey& row_key = iterator.row_key();
               const DocPath row_path(row_key.Encode());
               RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch));
               if (update_indexes_) {
                 liveness_column_exists_ = iterator.LivenessColumnExists();
-                RETURN_NOT_OK(UpdateIndexes(row, new_row));
+                RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
               }
             }
           }
@@ -2273,7 +2271,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           // Otherwise, delete the referenced row (all columns).
           RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch));
           if (update_indexes_) {
-            RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
+            RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
           }
         }
         break;
@@ -2323,7 +2321,7 @@ ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
 
 } // namespace
 
-bool QLWriteOperation::IsRowDeleted(const QLTableRow& current_row,
+bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
                                     const QLTableRow& new_row) const {
   // Delete the whole row?
   if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
@@ -2345,7 +2343,7 @@ bool QLWriteOperation::IsRowDeleted(const QLTableRow& current_row,
         case ValueState::kNotNull: return false;
         case ValueState::kMissing: break;
       }
-      switch (GetValueState(current_row, column_id)) {
+      switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
         case ValueState::kMissing: break;
@@ -2408,7 +2406,7 @@ QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
   return request;
 }
 
-Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row) {
+Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLTableRow& new_row) {
   // Prepare the write requests to update the indexes. There should be at most 2 requests for each
   // index (one insert and one delete).
   const auto& index_ids = request_.update_index_ids();
@@ -2416,7 +2414,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(FindIndex(index_map_, index_id));
     bool index_key_changed = false;
-    if (IsRowDeleted(current_row, new_row)) {
+    if (IsRowDeleted(existing_row, new_row)) {
       index_key_changed = true;
     } else {
       QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT,
@@ -2426,15 +2424,15 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
         auto result = new_row.GetValue(index_column.indexed_column_id);
-        if (!current_row.IsEmpty()) {
+        if (!existing_row.IsEmpty()) {
           // For each column in the index key, if there is a new value, see if the value is changed
           // from the current value. Else, use the current value.
           if (result) {
-            if (!new_row.MatchColumn(index_column.indexed_column_id, current_row)) {
+            if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
               index_key_changed = true;
             }
           } else {
-            result = current_row.GetValue(index_column.indexed_column_id);
+            result = existing_row.GetValue(index_column.indexed_column_id);
           }
         }
         if (result) {
@@ -2448,7 +2446,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
         // If the index value is changed and there is no new covering column value set, use the
         // current value.
         if (index_key_changed && !result) {
-          result = current_row.GetValue(index_column.indexed_column_id);
+          result = existing_row.GetValue(index_column.indexed_column_id);
         }
         if (result) {
           QLColumnValuePB* covering_column = index_request->add_column_values();
@@ -2464,7 +2462,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTa
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
-        auto result = current_row.GetValue(index_column.indexed_column_id);
+        auto result = existing_row.GetValue(index_column.indexed_column_id);
         if (result) {
           key_column->mutable_value()->CopyFrom(*result);
         }

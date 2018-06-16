@@ -327,7 +327,7 @@ class PTDmlStmt : public PTCollection {
 
   bool RequireTransaction() const;
 
-  const MCUnorderedMap<TableId, std::shared_ptr<client::YBTable>>& pk_only_indexes() const {
+  const MCUnorderedSet<std::shared_ptr<client::YBTable>>& pk_only_indexes() const {
     return pk_only_indexes_;
   }
 
@@ -434,9 +434,9 @@ class PTDmlStmt : public PTCollection {
   //       We prepare this vector once at compile time and use it at execution times.
   std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
 
-  // The map of index ids that index primary key columns of the indexed table only and the
-  // corresponding tables, and the set of indexes that do not.
-  MCUnorderedMap<TableId, std::shared_ptr<client::YBTable>> pk_only_indexes_;
+  // The set of indexes that index primary key columns of the indexed table only and the set of
+  // indexes that do not.
+  MCUnorderedSet<std::shared_ptr<client::YBTable>> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
 
   // For inter-dependency analysis of DMLs in a batch/transaction: does this DML modify the hash
