@@ -914,7 +914,6 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     }
 
     // Check the responses of the index write ops.
-    const auto& request = write_op->request();
     auto* response = write_op->response();
     for (const auto& pair : index_ops) {
       const IndexInfo* index_info = pair.first;
@@ -929,18 +928,9 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
 
       // For unique index, return error if the update failed due to duplicate values.
       if (index_info->is_unique() && index_response->has_applied() && !index_response->applied()) {
-        if (request.has_if_expr()) {
-          response->set_applied(false);
-          *response->mutable_column_schemas() =
-              std::move(*index_response->mutable_column_schemas());
-          Schema schema;
-          RETURN_NOT_OK(ColumnPBsToSchema(*response->mutable_column_schemas(), &schema));
-          RETURN_NOT_OK(write_op->SetRowBlock(schema, index_op->rows_data()));
-        } else {
-          response->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
-          response->set_error_message(Format("Duplicate value disallowed by unique index $0",
-                                             index_op->table()->name().ToString()));
-        }
+        response->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+        response->set_error_message(Format("Duplicate value disallowed by unique index $0",
+                                           index_op->table()->name().ToString()));
         break;
       }
     }

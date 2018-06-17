@@ -2472,12 +2472,6 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   return Status::OK();
 }
 
-Status QLWriteOperation::SetRowBlock(const Schema& schema, const string& rows_data) {
-  rowblock_.reset(new QLRowBlock(schema));
-  Slice data(rows_data);
-  return rowblock_->Deserialize(YQL_CLIENT_CQL, &data);
-}
-
 Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                 MonoTime deadline,
                                 const ReadHybridTime& read_time,
