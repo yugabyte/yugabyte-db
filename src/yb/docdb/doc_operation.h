@@ -229,8 +229,6 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
 
-  CHECKED_STATUS SetRowBlock(const Schema& schema, const std::string& rows_data);
-
   Type OpType() override { return Type::QL_WRITE_OPERATION; }
 
  private:
