@@ -29,9 +29,11 @@ class Tablet : public yb::tablet::Tablet {
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
       const TabletOptions& tablet_options,
       TransactionParticipantContext* transaction_participant_context,
+      client::LocalTabletFilter local_tablet_filter,
       TransactionCoordinatorContext* transaction_coordinator_context)
       : super(metadata, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
-          tablet_options, transaction_participant_context, transaction_coordinator_context) {}
+          tablet_options, transaction_participant_context, std::move(local_tablet_filter),
+          transaction_coordinator_context) {}
 
   // Prepares the transaction context for a snapshot operation.
   CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
