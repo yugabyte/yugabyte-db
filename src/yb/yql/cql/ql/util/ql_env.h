@@ -42,6 +42,8 @@ namespace ql {
 
 YB_STRONGLY_TYPED_BOOL(ReExecute);
 
+typedef std::function<client::TransactionManager*()> TransactionManagerProvider;
+
 class QLEnv {
  public:
   //------------------------------------------------------------------------------------------------
@@ -53,6 +55,8 @@ class QLEnv {
   // Constructor & destructor.
   QLEnv(std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
         std::shared_ptr<client::YBMetaDataCache> cache,
+        const server::ClockPtr& clock,
+        TransactionManagerProvider transaction_manager_provider,
         cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~QLEnv();
 
@@ -196,14 +200,13 @@ class QLEnv {
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
-  // Hybrid clock for transaction manager and read consistency.
-  server::ClockPtr clock_;
-
   // YBSession to apply operations.
   std::shared_ptr<client::YBSession> session_;
 
+  TransactionManagerProvider transaction_manager_provider_;
+
   // Transaction manager to create distributed transactions.
-  std::unique_ptr<client::TransactionManager> transaction_manager_;
+  client::TransactionManager* transaction_manager_ = nullptr;
 
   // Current distributed transaction if present.
   std::shared_ptr<client::YBTransaction> transaction_;

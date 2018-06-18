@@ -29,6 +29,8 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/mem_tracker.h"
 
+using namespace std::placeholders;
+
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
@@ -51,7 +53,8 @@ using yb::client::YBSession;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 
-CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
+CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
+                               client::LocalTabletFilter local_tablet_filter)
     : CQLServerServiceIf(server->metric_entity()),
       server_(server),
       async_client_init_(
@@ -61,7 +64,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       next_available_processor_(processors_.end()),
       messenger_(server->messenger()),
       cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
-                                             opts.broadcast_rpc_address)) {
+                                             opts.broadcast_rpc_address)),
+      local_tablet_filter_(std::move(local_tablet_filter)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
@@ -259,6 +263,26 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
+
+client::TransactionManager* CQLServiceImpl::GetTransactionManager() {
+  auto result = transaction_manager_.load(std::memory_order_acquire);
+  if (result) {
+    return result;
+  }
+  std::lock_guard<decltype(transaction_manager_mutex_)> lock(transaction_manager_mutex_);
+  if (transaction_manager_holder_) {
+    return transaction_manager_holder_.get();
+  }
+  transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
+      client(), server_->clock(), local_tablet_filter_);
+  transaction_manager_.store(transaction_manager_holder_.get(), std::memory_order_release);
+  return transaction_manager_holder_.get();
+}
+
+server::Clock* CQLServiceImpl::clock() {
+  return server_->clock();
+}
+
 
 }  // namespace cqlserver
 }  // namespace yb

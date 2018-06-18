@@ -75,17 +75,27 @@ do {                                            \
   CHECK(!s.ok()) << "Expect failure";           \
 } while (false)
 
-class TestQLProcessor : public QLProcessor {
+class ClockHolder {
+ protected:
+  ClockHolder() : clock_(new server::HybridClock()) {
+    CHECK_OK(clock_->Init());
+  }
+
+  server::ClockPtr clock_;
+};
+
+class TestQLProcessor : public ClockHolder, public QLProcessor {
  public:
   // Public types.
   typedef std::unique_ptr<TestQLProcessor> UniPtr;
   typedef std::unique_ptr<const TestQLProcessor> UniPtrConst;
 
   // Constructors.
-  explicit TestQLProcessor(
+  TestQLProcessor(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
       std::shared_ptr<client::YBMetaDataCache> cache)
-      : QLProcessor(messenger, client, cache, nullptr /* ql_metrics */) { }
+      : QLProcessor(messenger, client, cache, nullptr /* ql_metrics */, clock_,
+                    TransactionManagerProvider()) { }
   virtual ~TestQLProcessor() { }
 
   void RunAsyncDone(

@@ -310,6 +310,7 @@ Tablet::Tablet(
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
     const TabletOptions& tablet_options,
     TransactionParticipantContext* transaction_participant_context,
+    client::LocalTabletFilter local_tablet_filter,
     TransactionCoordinatorContext* transaction_coordinator_context)
     : key_schema_(metadata->schema().CreateKeyProjection()),
       metadata_(metadata),
@@ -319,7 +320,8 @@ Tablet::Tablet(
       dms_mem_tracker_(MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
       mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
-      tablet_options_(tablet_options) {
+      tablet_options_(tablet_options),
+      local_tablet_filter_(std::move(local_tablet_filter)) {
   CHECK(schema()->has_column_ids());
 
   if (metric_registry) {
@@ -355,7 +357,8 @@ Tablet::Tablet(
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
       transaction_manager_.emplace(transaction_participant_context->client_future().get(),
-                                   transaction_participant_context->clock_ptr());
+                                   transaction_participant_context->clock_ptr(),
+                                   local_tablet_filter_);
     }
   }
 
@@ -1221,7 +1224,8 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
       const auto transaction_participant_context =
           DCHECK_NOTNULL(transaction_participant_.get())->context();
       transaction_manager_.emplace(transaction_participant_context->client_future().get(),
-                                   transaction_participant_context->clock_ptr());
+                                   transaction_participant_context->clock_ptr(),
+                                   local_tablet_filter_);
     }
 
     // If the current schema and the new one are equal, there is nothing to do.

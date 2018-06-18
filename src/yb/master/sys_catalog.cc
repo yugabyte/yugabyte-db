@@ -488,6 +488,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                        tablet_peer_->log_anchor_registry(),
                                        tablet_options,
                                        nullptr, // transaction_participant_context
+                                       client::LocalTabletFilter(),
                                        nullptr, // transaction_coordinator_context
                                        append_pool()};
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
