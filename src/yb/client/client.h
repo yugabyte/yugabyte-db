@@ -380,7 +380,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // 'tablets' is appended to only on success.
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            std::vector<std::string>* tablet_uuids,
+                            std::vector<TabletId>* tablet_uuids,
                             std::vector<std::string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations = nullptr);
 
@@ -388,7 +388,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                             const int32_t max_tablets,
                             google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
 
-  CHECKED_STATUS GetTabletLocation(const std::string& tablet_id,
+  CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.

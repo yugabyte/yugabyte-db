@@ -205,6 +205,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
       const TabletOptions& tablet_options,
       TransactionParticipantContext* transaction_participant_context,
+      client::LocalTabletFilter local_tablet_filter,
       TransactionCoordinatorContext* transaction_coordinator_context);
 
   ~Tablet();
@@ -656,6 +657,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
+
+  client::LocalTabletFilter local_tablet_filter_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -119,6 +119,7 @@ struct BootstrapTabletData {
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
   TabletOptions tablet_options;
   TransactionParticipantContext* transaction_participant_context;
+  client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context;
   ThreadPool* append_pool;
 };

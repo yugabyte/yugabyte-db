@@ -135,10 +135,11 @@ class YBTransaction::Impl final {
 
     bool has_tablets_without_parameters = false;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       if (!ready_) {
-        RequestStatusTablet();
         waiters_.push_back(std::move(waiter));
+        lock.unlock();
+        RequestStatusTablet();
         VLOG_WITH_PREFIX(1) << "Prepare, rejected";
         return false;
       }
@@ -207,8 +208,9 @@ class YBTransaction::Impl final {
       state_.store(TransactionState::kCommitted, std::memory_order_release);
       commit_callback_ = std::move(callback);
       if (!ready_) {
-        RequestStatusTablet();
         waiters_.emplace_back(std::bind(&Impl::DoCommit, this, _1, transaction));
+        lock.unlock();
+        RequestStatusTablet();
         return;
       }
     }
@@ -230,8 +232,9 @@ class YBTransaction::Impl final {
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
       if (!ready_) {
-        RequestStatusTablet();
         waiters_.emplace_back(std::bind(&Impl::DoAbort, this, _1, transaction));
+        lock.unlock();
+        RequestStatusTablet();
         return;
       }
     }
@@ -243,19 +246,20 @@ class YBTransaction::Impl final {
   }
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
     metadata_future_ = std::shared_future<TransactionMetadata>(metadata_promise_.get_future());
     if (!ready_) {
-      RequestStatusTablet();
       auto transaction = transaction_->shared_from_this();
       waiters_.push_back([this, transaction](const Status& status) {
         // OK to crash here, because we are in test
         CHECK_OK(status);
         metadata_promise_.set_value(metadata_);
       });
+      lock.unlock();
+      RequestStatusTablet();
     }
     metadata_promise_.set_value(metadata_);
     return metadata_future_;
@@ -275,9 +279,10 @@ class YBTransaction::Impl final {
       return;
     }
     if (!ready_) {
-      RequestStatusTablet();
       waiters_.emplace_back(std::bind(
           &Impl::DoPrepareChild, this, _1, transaction, std::move(callback), nullptr /* lock */));
+      lock.unlock();
+      RequestStatusTablet();
       return;
     }
 
@@ -436,10 +441,11 @@ class YBTransaction::Impl final {
   }
 
   void RequestStatusTablet() {
-    if (requested_status_tablet_) {
+    bool expected = false;
+    if (!requested_status_tablet_.compare_exchange_strong(
+        expected, true, std::memory_order_acq_rel)) {
       return;
     }
-    requested_status_tablet_ = true;
     manager_->PickStatusTablet(
         std::bind(&Impl::StatusTabletPicked, this, _1, transaction_->shared_from_this()));
   }
@@ -573,7 +579,7 @@ class YBTransaction::Impl final {
   ConsistentReadPoint read_point_;
 
   std::string log_prefix_;
-  bool requested_status_tablet_ = false;
+  std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_;
   internal::RemoteTabletPtr status_tablet_holder_;
   std::atomic<TransactionState> state_{TransactionState::kRunning};

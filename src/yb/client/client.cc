@@ -690,7 +690,7 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
 
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            vector<string>* tablet_uuids,
+                            vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations) {
   RepeatedPtrField<TabletLocationsPB> tablets;

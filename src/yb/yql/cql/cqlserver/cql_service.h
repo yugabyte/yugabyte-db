@@ -52,7 +52,8 @@ class CQLServiceImpl : public CQLServerServiceIf,
                        public std::enable_shared_from_this<CQLServiceImpl> {
  public:
   // Constructor.
-  CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts);
+  CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
+                 client::LocalTabletFilter local_tablet_filter);
 
   void CompleteInit();
 
@@ -95,6 +96,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Return the CQL RPC environment.
   CQLRpcServerEnv* cql_rpc_env() { return cql_rpcserver_env_.get(); }
+
+  client::TransactionManager* GetTransactionManager();
+
+  server::Clock* clock();
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -161,6 +166,12 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // RPC environment for CQL proxy.
   std::unique_ptr<CQLRpcServerEnv> cql_rpcserver_env_;
+
+  client::LocalTabletFilter local_tablet_filter_;
+
+  std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
+  std::mutex transaction_manager_mutex_;
+  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
 };
 
 }  // namespace cqlserver

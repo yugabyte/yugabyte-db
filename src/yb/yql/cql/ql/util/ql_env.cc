@@ -59,16 +59,19 @@ using client::YBqlWriteOp;
   } while (0)
 
 QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-             shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
-    : client_(client),
-      metadata_cache_(cache),
-      clock_(new server::HybridClock()),
-      session_(std::make_shared<YBSession>(client_, clock_)),
+             shared_ptr<YBMetaDataCache> cache,
+             const server::ClockPtr& clock,
+             TransactionManagerProvider transaction_manager_provider,
+             cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
+    : client_(std::move(client)),
+      metadata_cache_(std::move(cache)),
+      session_(std::make_shared<YBSession>(client_, clock)),
+      transaction_manager_provider_(std::move(transaction_manager_provider)),
       messenger_(messenger),
       resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))),
       cql_rpcserver_env_(cql_rpcserver_env) {
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
-  CHECK_OK(clock_->Init());
+  CHECK(clock);
 }
 
 QLEnv::~QLEnv() {}
@@ -117,10 +120,10 @@ void QLEnv::RescheduleCurrentCall(Callback<void(void)>* callback) {
 
 void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
   if (transaction_manager_ == nullptr) {
-    transaction_manager_ = std::make_unique<TransactionManager>(client_, clock_);
+    transaction_manager_ = transaction_manager_provider_();
   }
   if (transaction_ == nullptr) {
-    transaction_ =  std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
+    transaction_ =  std::make_shared<YBTransaction>(transaction_manager_, isolation_level);
   } else {
     DCHECK(transaction_->IsRestartRequired());
     transaction_ = transaction_->CreateRestartedTransaction();
