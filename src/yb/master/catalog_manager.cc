@@ -685,6 +685,12 @@ CatalogManager::CatalogManager(Master* master)
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
+
+  if (master_) {
+    sys_catalog_.reset(new SysCatalogTable(
+        master_, master_->metric_registry(),
+        Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
+  }
 }
 
 CatalogManager::~CatalogManager() {
@@ -1164,10 +1170,6 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
 
 Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
   std::lock_guard<LockType> l(lock_);
-  sys_catalog_.reset(new SysCatalogTable(master_,
-                                         master_->metric_registry(),
-                                         Bind(&CatalogManager::ElectedAsLeaderCb,
-                                              Unretained(this))));
   if (is_first_run) {
     if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
@@ -3976,7 +3978,7 @@ Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
     return STATUS(ServiceUnavailable, reason);
   }
 
-  CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
+  CHECK(sys_catalog_) << "sys_catalog_ must be initialized!";
 
   if (master_->opts().IsShellMode()) {
     return STATUS(NotFound,
@@ -5055,9 +5057,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
 }
 
 Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
-  if (!sys_catalog_ ||
-      !sys_catalog_->tablet_peer() ||
-      !sys_catalog_->tablet_peer()->consensus()) {
+  if (!sys_catalog_->tablet_peer() || !sys_catalog_->tablet_peer()->consensus()) {
     std::string uuid = master_->fs_manager()->uuid();
     return STATUS_FORMAT(IllegalState, "Node $0 peer not initialized.", uuid);
   }
