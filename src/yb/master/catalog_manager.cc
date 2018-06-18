@@ -5055,10 +5055,11 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
 }
 
 Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
-  string uuid = master_->fs_manager()->uuid();
-  if (!sys_catalog_->tablet_peer() ||
+  if (!sys_catalog_ ||
+      !sys_catalog_->tablet_peer() ||
       !sys_catalog_->tablet_peer()->consensus()) {
-    return STATUS(IllegalState, Substitute("Node $0 peer not initialized.", uuid));
+    std::string uuid = master_->fs_manager()->uuid();
+    return STATUS_FORMAT(IllegalState, "Node $0 peer not initialized.", uuid);
   }
 
   Consensus* consensus = sys_catalog_->tablet_peer()->consensus();

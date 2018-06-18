@@ -60,10 +60,13 @@ class QLProcessor {
   typedef std::unique_ptr<const QLProcessor> UniPtrConst;
 
   // Constructors.
-  explicit QLProcessor(std::weak_ptr<rpc::Messenger> messenger,
-                        std::shared_ptr<client::YBClient> client,
-                        std::shared_ptr<client::YBMetaDataCache> cache, QLMetrics* ql_metrics,
-                        cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+  QLProcessor(std::weak_ptr<rpc::Messenger> messenger,
+              std::shared_ptr<client::YBClient> client,
+              std::shared_ptr<client::YBMetaDataCache> cache,
+              QLMetrics* ql_metrics,
+              const server::ClockPtr& clock,
+              TransactionManagerProvider transaction_manager_provider,
+              cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~QLProcessor();
 
   // Prepare a SQL statement (parse and analyze).

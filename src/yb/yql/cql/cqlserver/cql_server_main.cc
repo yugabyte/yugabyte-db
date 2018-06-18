@@ -61,7 +61,7 @@ static int CQLServerMain(int argc, char** argv) {
   cql_server_options.master_addresses_flag = FLAGS_cqlserver_master_addrs;
   cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
   boost::asio::io_service io;
-  CQLServer server(cql_server_options, &io, nullptr);
+  CQLServer server(cql_server_options, &io, nullptr, client::LocalTabletFilter());
   LOG(INFO) << "Starting CQL server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
   LOG(INFO) << "CQL server successfully started.";

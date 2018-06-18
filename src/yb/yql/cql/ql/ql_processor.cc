@@ -120,9 +120,12 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 }
 
 QLProcessor::QLProcessor(std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-                           shared_ptr<YBMetaDataCache> cache, QLMetrics* ql_metrics,
-                           cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
-    : ql_env_(messenger, client, cache, cql_rpcserver_env),
+                         shared_ptr<YBMetaDataCache> cache, QLMetrics* ql_metrics,
+                         const server::ClockPtr& clock,
+                         TransactionManagerProvider transaction_manager_provider,
+                         cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
+    : ql_env_(messenger, client, cache, clock, std::move(transaction_manager_provider),
+              cql_rpcserver_env),
       analyzer_(&ql_env_),
       executor_(&ql_env_, ql_metrics),
       ql_metrics_(ql_metrics) {

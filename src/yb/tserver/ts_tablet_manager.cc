@@ -89,7 +89,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
+using namespace std::placeholders;
 
 DEFINE_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
@@ -922,6 +923,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         tablet_peer->log_anchor_registry(),
         tablet_options_,
         tablet_peer.get(),
+        std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
         tablet_peer.get(),
         append_pool()};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
@@ -1106,6 +1108,20 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
   AppendValuesFromMap(tablet_map_, tablet_peers);
+}
+
+void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const std::string*>* tablet_ids) const {
+  boost::shared_lock<RWMutex> shared_lock(lock_);
+  auto filter = [this](const std::string* id) {
+    auto it = tablet_map_.find(*id);
+    if (it == tablet_map_.end()) {
+      return true;
+    }
+    auto leader_status = it->second->LeaderStatus();
+    return leader_status == consensus::Consensus::LeaderStatus::NOT_LEADER;
+  };
+  tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
+                    tablet_ids->end());
 }
 
 TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers() const {

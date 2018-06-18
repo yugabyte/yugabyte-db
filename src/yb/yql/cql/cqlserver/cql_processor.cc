@@ -117,7 +117,10 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos)
     : QLProcessor(
           service_impl->messenger(), service_impl->client(), service_impl->metadata_cache(),
-          service_impl->cql_metrics().get(), service_impl->cql_rpc_env()),
+          service_impl->cql_metrics().get(),
+          service_impl->clock(),
+          std::bind(&CQLServiceImpl::GetTransactionManager, service_impl),
+          service_impl->cql_rpc_env()),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),

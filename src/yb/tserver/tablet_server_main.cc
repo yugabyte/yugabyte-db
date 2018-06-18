@@ -55,6 +55,8 @@
 #include "yb/util/main_util.h"
 #include "yb/util/size_literals.h"
 
+using namespace std::placeholders;
+
 using yb::redisserver::RedisServer;
 using yb::redisserver::RedisServerOptions;
 
@@ -198,7 +200,9 @@ static int TabletServerMain(int argc, char** argv) {
              ? ""
              : tablet_server_options->dump_info_path + "-cql");
     boost::asio::io_service io;
-    cql_server.reset(new CQLServer(cql_server_options, &io, &server));
+    cql_server.reset(new CQLServer(
+        cql_server_options, &io, &server,
+        std::bind(&TSTabletManager::PreserveLocalLeadersOnly, server.tablet_manager(), _1)));
     LOG(INFO) << "Starting CQL server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(cql_server->Start());
     LOG(INFO) << "CQL server successfully started.";

@@ -133,6 +133,7 @@ class TabletHarness {
                                   new log::LogAnchorRegistry(),
                                   tablet_options,
                                   nullptr /* transaction_participant_context */,
+                                  client::LocalTabletFilter(),
                                   nullptr /* transaction_coordinator_context */));
     return Status::OK();
   }

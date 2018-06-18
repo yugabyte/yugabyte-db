@@ -16,8 +16,11 @@
 #ifndef YB_CLIENT_CLIENT_FWD_H
 #define YB_CLIENT_CLIENT_FWD_H
 
+#include <functional>
 #include <memory>
 #include <vector>
+
+#include "yb/common/entity_ids.h"
 
 template <class T>
 class scoped_refptr;
@@ -64,6 +67,8 @@ class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
+
+typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 
 namespace internal {
 

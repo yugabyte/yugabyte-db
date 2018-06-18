@@ -47,14 +47,16 @@ boost::posix_time::time_duration refresh_interval() {
 
 CQLServer::CQLServer(const CQLServerOptions& opts,
                      boost::asio::io_service* io,
-                     const tserver::TabletServer* const tserver)
+                     const tserver::TabletServer* const tserver,
+                     client::LocalTabletFilter local_tablet_filter)
     : RpcAndWebServerBase(
           "CQLServer", opts, "yb.cqlserver",
           MemTracker::CreateTracker(
               "CQL", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
       opts_(opts),
       timer_(*io, refresh_interval()),
-      tserver_(tserver) {
+      tserver_(tserver),
+      local_tablet_filter_(std::move(local_tablet_filter)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<CQLConnectionContext>(
       FLAGS_cql_rpc_block_size, FLAGS_cql_rpc_memory_limit, mem_tracker()->parent()));
 }
@@ -62,7 +64,7 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
-  auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
+  auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_, local_tablet_filter_);
   cql_service->CompleteInit();
 
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
