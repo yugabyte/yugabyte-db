@@ -70,9 +70,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Writes the user intent to the universe.
-   * @param isReadOnly only readonly cluster info needs peristence.
+   * @param isReadOnlyCreate only readonly cluster being created info needs peristence.
    */
-  public Universe writeUserIntentToUniverse(boolean isReadOnly) {
+  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -86,12 +86,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        if (!isReadOnly) {
+        if (!isReadOnlyCreate) {
           universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
           universeDetails.nodePrefix = taskParams().nodePrefix;
           universeDetails.universeUUID = taskParams().universeUUID;
           Cluster cluster = taskParams().getPrimaryCluster();
-          universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+          if (cluster != null) {
+            universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+          } // else read only cluster edit mode.
         } else {
           // Combine the existing nodes with new read only cluster nodes.
           universeDetails.nodeDetailsSet.addAll(taskParams().nodeDetailsSet);
@@ -262,7 +264,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
     // Skip if no extra flags for MASTER in primary cluster.
     if (taskType.equals(ServerType.MASTER) &&
-        taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty()) {
+        (taskParams().getPrimaryCluster() == null ||
+         taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty())) {
       return;
     }
 

@@ -57,8 +57,8 @@ public class DestroyUniverse extends UniverseTaskBase {
       createRemoveUniverseEntryTask()
         .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-      // Update the swamper target file (implicitly calls setSubTaskGroupType)
-      createSwamperTargetUpdateTask(true /* removeFile */, SubTaskGroupType.ConfigureUniverse);
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(true /* removeFile */);
 
       // Run all the tasks.
       subTaskGroupQueue.run();
