@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -388,17 +389,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Create a task to update the swamper target file
    *
    * @param removeFile, flag to state if we want to remove the swamper or not
-   * @param subTaskGroupType, user subtask type to use for the SubTaskGroup
    */
-  public void createSwamperTargetUpdateTask(boolean removeFile,
-                                            UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+  public void createSwamperTargetUpdateTask(boolean removeFile) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("SwamperTargetFileUpdate", executor);
     SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
     SwamperTargetsFileUpdate task = new SwamperTargetsFileUpdate();
     params.universeUUID = taskParams().universeUUID;
     params.removeFile = removeFile;
     task.initialize(params);
-    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
   }

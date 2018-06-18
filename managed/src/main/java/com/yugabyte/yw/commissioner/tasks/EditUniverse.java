@@ -57,142 +57,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // changes the universe name before submitting.
       updateNodeNames();
 
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
-      UserIntent userIntent = primaryCluster.userIntent;
-      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
-      LOG.info("Configure numNodes={}, numMasters={}", userIntent.numNodes,
-               userIntent.replicationFactor);
-
-      Collection<NodeDetails> nodesToBeRemoved =
-          PlacementInfoUtil.getNodesToBeRemoved(primaryNodes);
-
-      Collection<NodeDetails> nodesToProvision =
-          PlacementInfoUtil.getNodesToProvision(primaryNodes);
-
-      // Set the old nodes' state to to-be-removed.
-      if (!nodesToBeRemoved.isEmpty()) {
-        createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeRemoved)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      for (Cluster cluster : taskParams().clusters) {
+        editCluster(universe, cluster);
       }
 
-      if (!nodesToProvision.isEmpty()) {
-        // Create the required number of nodes in the appropriate locations.
-        createSetupServerTasks(nodesToProvision, userIntent.deviceInfo)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-        // Get all information about the nodes of the cluster. This includes the public ip address,
-        // the private ip address (in the case of AWS), etc.
-        createServerInfoTasks(nodesToProvision, userIntent.deviceInfo)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-        // Configures and deploys software on all the nodes (masters and tservers).
-        createConfigureServerTasks(nodesToProvision, true /* isShell */,
-                                   userIntent.deviceInfo, userIntent.ybSoftwareVersion)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
-        // Override master and tserver flags as necessary.
-        createGFlagsOverrideTasks(nodesToProvision, ServerType.MASTER);
-        createGFlagsOverrideTasks(nodesToProvision, ServerType.TSERVER);
-      }
-
-      newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
-
-      // Creates the YB cluster by starting the masters.
-      if (!newMasters.isEmpty()) {
-        createStartMasterTasks(newMasters)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-        // Wait for masters to be responsive.
-        createWaitForServersTasks(newMasters, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(primaryNodes);
-
-      if (!newTservers.isEmpty()) {
-        // Start the tservers in the clusters.
-        createStartTServersTasks(newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-        // Wait for all tablet servers to be responsive.
-        createWaitForServersTasks(newTservers, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-        // Remove them from blacklist, in case master is still tracking these.
-        createModifyBlackListTask(new ArrayList(newTservers), false /* isAdd */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      if (!nodesToProvision.isEmpty()) {
-        // Set the new nodes' state to live.
-        createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Live)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      Collection<NodeDetails> tserversToBeRemoved =
-          PlacementInfoUtil.getTserversToBeRemoved(primaryNodes);
-
-      // Persist the placement info and blacklisted node info into the YB master.
-      // This is done after master config change jobs, so that the new master leader can perform
-      // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-      if (!nodesToBeRemoved.isEmpty()) {
-        // Add any nodes to be removed to tserver removal to be considered for blacklisting.
-        tserversToBeRemoved.addAll(nodesToBeRemoved);
-      }
-
-      // Update the blacklist servers on master leader.
-      createPlacementInfoTask(tserversToBeRemoved)
-        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-      
-      if (!nodesToBeRemoved.isEmpty()) {
-        // Wait for %age completion of the tablet move from master.
-        createWaitForDataMoveTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-      } else {
-        if (!tserversToBeRemoved.isEmpty()) {
-          String errMsg = "Universe shrink should have been handled using node decommision.";
-          LOG.error(errMsg);
-          throw new IllegalStateException(errMsg);
-        }
-        // If only tservers are added, wait for load to balance across all tservers.
-        createWaitForLoadBalanceTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-      }
-
-      if (PlacementInfoUtil.didAffinitizedLeadersChange(
-              universeDetails.getPrimaryCluster().placementInfo,
-              primaryCluster.placementInfo)) {
-        createWaitForLeadersOnPreferredOnlyTask();
-      }
-
-      if (!newMasters.isEmpty()) {
-        // Now finalize the master quorum change tasks.
-        createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
-
-        // Wait for a master leader to be elected.
-        createWaitForMasterLeaderTask()
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-        // Wait for the master leader to hear from all tservers.
-        createWaitForTServerHeartBeatsTask()
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Finally send destroy to the old set of nodes and remove them from this universe.
-      if (!nodesToBeRemoved.isEmpty()) {
-        createDestroyServerTasks(nodesToBeRemoved, false, true)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
-
-      // Update the swamper target file (implicitly calls setSubTaskGroupType)
-      createSwamperTargetUpdateTask(false /* removeFile */, SubTaskGroupType.ConfigureUniverse);
-
-      // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
-                                userIntent.provider, userIntent.universeName)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -209,6 +79,147 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
+  }
+
+  private void editCluster(Universe universe, Cluster cluster) {
+    UserIntent userIntent = cluster.userIntent;
+    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+    LOG.info("Configure numNodes={}, Replication factor={}", userIntent.numNodes,
+             userIntent.replicationFactor);
+
+    Collection<NodeDetails> nodesToBeRemoved =
+        PlacementInfoUtil.getNodesToBeRemoved(nodes);
+
+    Collection<NodeDetails> nodesToProvision =
+        PlacementInfoUtil.getNodesToProvision(nodes);
+
+    // Set the old nodes' state to to-be-removed.
+    if (!nodesToBeRemoved.isEmpty()) {
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeRemoved)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    }
+
+    if (!nodesToProvision.isEmpty()) {
+      // Create the required number of nodes in the appropriate locations.
+      createSetupServerTasks(nodesToProvision, userIntent.deviceInfo)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Get all information about the nodes of the cluster. This includes the public ip address,
+      // the private ip address (in the case of AWS), etc.
+      createServerInfoTasks(nodesToProvision, userIntent.deviceInfo)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Configures and deploys software on all the nodes (masters and tservers).
+      createConfigureServerTasks(nodesToProvision, true /* isShell */,
+                                 userIntent.deviceInfo, userIntent.ybSoftwareVersion)
+          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+      // Override master and tserver flags as necessary.
+      createGFlagsOverrideTasks(nodesToProvision, ServerType.MASTER);
+      createGFlagsOverrideTasks(nodesToProvision, ServerType.TSERVER);
+    }
+
+    newMasters = PlacementInfoUtil.getMastersToProvision(nodes);
+
+    // Creates the primary cluster by first starting the masters.
+    if (!newMasters.isEmpty()) {
+      if (cluster.clusterType == ClusterType.ASYNC) {
+        String errMsg = "Read-only cluster " + cluster.uuid + " should not have masters.";
+        LOG.error(errMsg);
+        throw new IllegalStateException(errMsg);
+      }
+
+      createStartMasterTasks(newMasters)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Wait for masters to be responsive.
+      createWaitForServersTasks(newMasters, ServerType.MASTER)
+         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
+
+    if (!newTservers.isEmpty()) {
+      // Start the tservers in the clusters.
+      createStartTServersTasks(newTservers)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Wait for all tablet servers to be responsive.
+      createWaitForServersTasks(newTservers, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Remove them from blacklist, in case master is still tracking these.
+      createModifyBlackListTask(new ArrayList(newTservers), false /* isAdd */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    if (!nodesToProvision.isEmpty()) {
+      // Set the new nodes' state to live.
+      createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
+
+    // Persist the placement info and blacklisted node info into the YB master.
+    // This is done after master config change jobs, so that the new master leader can perform
+    // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
+    if (!nodesToBeRemoved.isEmpty()) {
+      // Add any nodes to be removed to tserver removal to be considered for blacklisting.
+      tserversToBeRemoved.addAll(nodesToBeRemoved);
+    }
+
+    // Update the blacklist servers on master leader.
+    createPlacementInfoTask(tserversToBeRemoved)
+        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+    if (!nodesToBeRemoved.isEmpty()) {
+      // Wait for %age completion of the tablet move from master.
+      createWaitForDataMoveTask()
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+    } else {
+      if (!tserversToBeRemoved.isEmpty()) {
+        String errMsg = "Universe shrink should have been handled using node decommision.";
+        LOG.error(errMsg);
+        throw new IllegalStateException(errMsg);
+      }
+      // If only tservers are added, wait for load to balance across all tservers.
+      createWaitForLoadBalanceTask()
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+    }
+
+    if (cluster.clusterType == ClusterType.PRIMARY &&
+        PlacementInfoUtil.didAffinitizedLeadersChange(
+            universeDetails.getPrimaryCluster().placementInfo,
+            cluster.placementInfo)) {
+      createWaitForLeadersOnPreferredOnlyTask();
+    }
+
+    if (!newMasters.isEmpty()) {
+      // Now finalize the master quorum change tasks.
+      createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
+
+      // Wait for a master leader to be elected.
+      createWaitForMasterLeaderTask()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Wait for the master leader to hear from all tservers.
+      createWaitForTServerHeartBeatsTask()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Finally send destroy to the old set of nodes and remove them from this universe.
+    if (!nodesToBeRemoved.isEmpty()) {
+      createDestroyServerTasks(nodesToBeRemoved, false, true)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    }
+
+    // Update the DNS entry for this universe.
+    createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
+                              userIntent.provider, userIntent.universeName)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**

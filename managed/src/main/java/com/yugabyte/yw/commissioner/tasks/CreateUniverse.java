@@ -105,8 +105,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Update the swamper target file (implicitly calls SubTaskGroupType)
-      createSwamperTargetUpdateTask(false /* removeFile */, SubTaskGroupType.ConfigureUniverse);
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Create a simple redis table.
       createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)

@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -246,24 +247,41 @@ public class UniverseController extends AuthenticatedController {
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
       Cluster primaryCluster = taskParams.getPrimaryCluster();
-
-      updatePlacementInfo(taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
+      UUID uuid = null;
+      PlacementInfo placementInfo = null;
+      if (primaryCluster == null) {
+        // Update of a read only cluster.
+        List<Cluster> readReplicaClusters = taskParams.getReadOnlyClusters();
+        if (readReplicaClusters.size() != 1) {
+          String errMsg = "Can only have one read-only cluster per edit/update for now, found " +
+                          readReplicaClusters.size();
+          LOG.error(errMsg);
+          return ApiResponse.error(BAD_REQUEST, errMsg);
+        }
+        Cluster cluster = readReplicaClusters.get(0);
+        uuid = cluster.uuid;
+        placementInfo = cluster.placementInfo;
+      } else {
+        uuid = primaryCluster.uuid;
+        placementInfo = primaryCluster.placementInfo;
+      }
+      updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
 
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
       UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
-        universe.universeUUID, universe.name, taskUUID);
+               universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-        universe.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Update,
-        universe.name);
+                          universe.universeUUID,
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TaskType.Update,
+                          universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
-        universe.universeUUID, universe.name);
+               universe.universeUUID, universe.name);
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
       return Results.status(OK, resultNode);

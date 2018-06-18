@@ -47,8 +47,7 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 
-      createSwamperTargetUpdateTask(false,
-          UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      createSwamperTargetUpdateTask(false);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
