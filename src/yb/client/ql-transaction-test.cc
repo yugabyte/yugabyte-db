@@ -57,6 +57,7 @@ DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
 DECLARE_string(time_source);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(intents_flush_max_delay_ms);
 
 namespace yb {
 namespace client {
@@ -146,6 +147,7 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
     FLAGS_log_min_seconds_to_retain = 5;
+    FLAGS_intents_flush_max_delay_ms = 250;
 
     HybridTime::TEST_SetPrettyToString(true);
 
@@ -368,6 +370,17 @@ TEST_F(QLTransactionTest, Simple) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
+  WriteData();
+  server::SkewedClockDeltaChanger delta_changer(100ms, skewed_clock_);
+  for (size_t i = 0; i != 100; ++i) {
+    auto transaction = CreateTransaction2();
+    auto session = CreateSession(transaction);
+    VerifyRows(session);
+  }
+  ASSERT_OK(cluster_->RestartSync());
+}
+
 TEST_F(QLTransactionTest, WriteSameKey) {
   ASSERT_NO_FATALS(WriteDataWithRepetition());
   std::this_thread::sleep_for(1s); // Wait some time for intents to apply.
@@ -456,7 +469,7 @@ TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
   TestReadRestart(false /* commit */);
 }
 
-// Non transactional r estart happens in server, so we just checking that we read correct values.
+// Non transactional restart happens in server, so we just checking that we read correct values.
 // Skewed clocks are used because there could be case when applied intents or commit transaction
 // has time greater than max safetime to read, that causes restart.
 TEST_F(QLTransactionTest, ReadRestartNonTransactional) {

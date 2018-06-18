@@ -928,6 +928,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  if (server_ && server_->Clock()) {
+    server::UpdateClock(*req, server_->Clock());
+  }
+
   // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
   // with "restart required".
   HybridTime safe_ht_to_read;
