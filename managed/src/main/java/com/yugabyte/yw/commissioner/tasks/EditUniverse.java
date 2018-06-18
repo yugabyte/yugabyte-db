@@ -170,6 +170,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       if (!newMasters.isEmpty()) {
         // Now finalize the master quorum change tasks.
         createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
+
+        // Wait for a master leader to be elected.
+        createWaitForMasterLeaderTask()
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        // Wait for the master leader to hear from all tservers.
+        createWaitForTServerHeartBeatsTask()
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Finally send destroy to the old set of nodes and remove them from this universe.
