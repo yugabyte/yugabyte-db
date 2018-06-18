@@ -343,18 +343,21 @@ public class PlacementInfoUtil {
     int numExistingROs =
         universe == null ? 0 : universe.getUniverseDetails().getReadOnlyClusters().size();
     boolean readOnlyClusterCreate = numRO == 1 && numExistingROs == 0;
+    boolean readOnlyClusterEdit = numRO == 1 && numExistingROs >= 1;
+    LOG.info("newRO={}, existingRO={}, rocc={}, roce={}.", numRO, numExistingROs,
+             readOnlyClusterCreate, readOnlyClusterEdit);
+
     // Compose a unique name for the nodes in the universe.
     taskParams.nodePrefix = Util.getNodePrefix(customerId,
-         !readOnlyClusterCreate ? taskParams.getPrimaryCluster().userIntent.universeName :
+        !readOnlyClusterCreate && !readOnlyClusterEdit ?
+             taskParams.getPrimaryCluster().userIntent.universeName :
              universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName);
-    LOG.info("newReadOnly={}, existingRO={}, pi={}, ui={}, rocc={}.", numRO, numExistingROs,
-             cluster.placementInfo, cluster.userIntent, readOnlyClusterCreate);
 
     ConfigureNodesMode mode;
-    boolean isEditUniverse = universe != null;
+    boolean isPrimaryClusterEdit = (universe != null) && !readOnlyClusterEdit;
     // If no placement info, and if this is the first primary or readonly cluster create attempt,
     // choose a new placement.
-    if (cluster.placementInfo == null && (!isEditUniverse || readOnlyClusterCreate)) {
+    if (cluster.placementInfo == null && (!isPrimaryClusterEdit || readOnlyClusterCreate)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo = getPlacementInfo(cluster.userIntent);
       LOG.info("Placement created={}.", cluster.placementInfo);
@@ -364,10 +367,9 @@ public class PlacementInfoUtil {
 
     // Verify the provided edit parameters, if in edit universe case, and get the mode.
     // Otherwise it is a primary or readonly cluster creation phase changes.
-    LOG.info("Placement={}, nodes={}, AZ={}, RO={}.", cluster.placementInfo,
-             taskParams.nodeDetailsSet.size(), taskParams.userAZSelected,
-             readOnlyClusterCreate);
-    if (isEditUniverse && !readOnlyClusterCreate) {
+    LOG.info("Placement={}, numNodes={}, AZ={}.", cluster.placementInfo,
+             taskParams.nodeDetailsSet.size(), taskParams.userAZSelected);
+    if (isPrimaryClusterEdit && !readOnlyClusterCreate && !readOnlyClusterEdit) {
       // If user AZ Selection is made for Edit get a new configuration from placement info
       if (taskParams.userAZSelected) {
         mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
@@ -385,14 +387,16 @@ public class PlacementInfoUtil {
         taskParams.nodeDetailsSet.addAll(universe.getNodes());
       }
     } else {
-      mode = getPureExpandOrShrinkMode(null, taskParams, cluster);
+      mode = getPureExpandOrShrinkMode(readOnlyClusterEdit ? universe.getUniverseDetails(): null,
+                                       taskParams, cluster);
     }
 
     // If not a pure expand/shrink, we will pick a new set of nodes. If the provider or region list
     // changed, we will pick a new placement (i.e full move, create universe).
     if (!readOnlyClusterCreate && mode == ConfigureNodesMode.NEW_CONFIG) {
       if (isProviderOrRegionChange(cluster,
-              isEditUniverse ? universe.getNodes() : taskParams.nodeDetailsSet)) {
+              (isPrimaryClusterEdit || readOnlyClusterEdit) ?
+              universe.getNodes() : taskParams.nodeDetailsSet)) {
         LOG.info("Provider or region changed, getting new placement info for full move.");
         cluster.placementInfo = getPlacementInfo(cluster.userIntent);
       } else {
