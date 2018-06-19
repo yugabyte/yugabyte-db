@@ -23,6 +23,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
 namespace yb {

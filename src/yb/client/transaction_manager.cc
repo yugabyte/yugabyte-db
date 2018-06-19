@@ -20,6 +20,7 @@
 #include "yb/rpc/tasks_pool.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/thread_restrictions.h"
 
 #include "yb/client/client.h"
 
@@ -154,6 +155,29 @@ class PickStatusTabletTask {
   PickStatusTabletCallback callback_;
 };
 
+class InvokeCallbackTask {
+ public:
+  InvokeCallbackTask(TransactionTableState* table_state,
+                     PickStatusTabletCallback callback)
+      : table_state_(table_state), callback_(std::move(callback)) {
+  }
+
+  void Run() {
+    InvokeCallback(table_state_->local_tablet_filter, table_state_->tablets, callback_);
+  }
+
+  void Done(const Status& status) {
+    if (!status.ok()) {
+      callback_(status);
+    }
+    callback_ = PickStatusTabletCallback();
+  }
+
+ private:
+  TransactionTableState* table_state_;
+  PickStatusTabletCallback callback_;
+};
+
 constexpr size_t kQueueLimit = 150;
 constexpr size_t kMaxWorkers = 50;
 
@@ -167,13 +191,19 @@ class TransactionManager::Impl {
         clock_(clock),
         table_state_{std::move(local_tablet_filter)},
         thread_pool_("TransactionManager", kQueueLimit, kMaxWorkers),
-        tasks_pool_(kQueueLimit) {
+        tasks_pool_(kQueueLimit),
+        invoke_callback_tasks_(kQueueLimit) {
     CHECK(clock);
   }
 
   void PickStatusTablet(PickStatusTabletCallback callback) {
     if (table_state_.status.load(std::memory_order_acquire) == TransactionTableStatus::kResolved) {
-      InvokeCallback(table_state_.local_tablet_filter, table_state_.tablets, callback);
+      if (ThreadRestrictions::IsWaitAllowed()) {
+        InvokeCallback(table_state_.local_tablet_filter, table_state_.tablets, callback);
+      } else if (!invoke_callback_tasks_.Enqueue(&thread_pool_, &table_state_, callback)) {
+        callback(STATUS_FORMAT(ServiceUnavailable, "Invoke callback queue overflow, exists: $0",
+                               invoke_callback_tasks_.size()));
+      }
       return;
     }
     if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, std::move(callback))) {
@@ -216,6 +246,7 @@ class TransactionManager::Impl {
   std::atomic<bool> closed_{false};
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
   yb::rpc::TasksPool<PickStatusTabletTask> tasks_pool_;
+  yb::rpc::TasksPool<InvokeCallbackTask> invoke_callback_tasks_;
   yb::rpc::Rpcs rpcs_;
 };
 

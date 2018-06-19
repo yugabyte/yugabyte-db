@@ -45,8 +45,9 @@
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
 #include "yb/util/status.h"
-#include "yb/util/trace.h"
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/enums.h"
 
 DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
