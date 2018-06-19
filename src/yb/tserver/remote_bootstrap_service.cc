@@ -146,7 +146,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   MonoTime now = MonoTime::Now();
   const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
 
-  scoped_refptr<TabletPeer> tablet_peer;
+  std::shared_ptr<TabletPeer> tablet_peer;
   RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));

@@ -120,7 +120,7 @@ void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebReques
                                                       std::stringstream* output) {
   bool as_text = ContainsKey(req.parsed_args, "raw");
 
-  vector<scoped_refptr<TabletPeer> > peers;
+  vector<std::shared_ptr<TabletPeer> > peers;
   tserver_->tablet_manager()->GetTabletPeers(&peers);
 
   string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
@@ -135,7 +135,7 @@ void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebReques
       "Total time in-flight</th><th>Description</th></tr>\n";
   }
 
-  for (const scoped_refptr<TabletPeer>& peer : peers) {
+  for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
     if (peer->tablet() == nullptr) {
@@ -184,8 +184,8 @@ string TabletLink(const string& id) {
                     EscapeForHtmlToString(id));
 }
 
-bool CompareByTabletId(const scoped_refptr<TabletPeer>& a,
-                       const scoped_refptr<TabletPeer>& b) {
+bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
+                       const std::shared_ptr<TabletPeer>& b) {
   return a->tablet_id() < b->tablet_id();
 }
 
@@ -193,7 +193,7 @@ bool CompareByTabletId(const scoped_refptr<TabletPeer>& a,
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  std::stringstream *output) {
-  vector<scoped_refptr<TabletPeer> > peers;
+  vector<std::shared_ptr<TabletPeer> > peers;
   tserver_->tablet_manager()->GetTabletPeers(&peers);
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
 
@@ -202,7 +202,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
   *output << "  <tr><th>Table name</th><th>Tablet ID</th>"
       "<th>Partition</th>"
       "<th>State</th><th>On-disk size</th><th>RaftConfig</th><th>Last status</th></tr>\n";
-  for (const scoped_refptr<TabletPeer>& peer : peers) {
+  for (const std::shared_ptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
@@ -285,7 +285,7 @@ bool GetTabletID(const Webserver::WebRequest& req, string* id, std::stringstream
 }
 
 bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
-                   scoped_refptr<TabletPeer>* peer, const string& tablet_id,
+                   std::shared_ptr<TabletPeer>* peer, const string& tablet_id,
                    std::stringstream *out) {
   if (!tserver->tablet_manager()->LookupTablet(tablet_id, peer)) {
     (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " not found";
@@ -294,7 +294,7 @@ bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
   return true;
 }
 
-bool TabletBootstrapping(const scoped_refptr<TabletPeer>& peer, const string& tablet_id,
+bool TabletBootstrapping(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
                          std::stringstream* out) {
   if (peer->state() == tablet::BOOTSTRAPPING) {
     (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " is still bootstrapping";
@@ -307,7 +307,7 @@ bool TabletBootstrapping(const scoped_refptr<TabletPeer>& peer, const string& ta
 // tablet is found, and is in a non-bootstrapping state.
 bool LoadTablet(TabletServer* tserver,
                 const Webserver::WebRequest& req,
-                string* tablet_id, scoped_refptr<TabletPeer>* peer,
+                string* tablet_id, std::shared_ptr<TabletPeer>* peer,
                 std::stringstream* out) {
   if (!GetTabletID(req, tablet_id, out)) return false;
   if (!GetTabletPeer(tserver, req, peer, *tablet_id, out)) return false;
@@ -320,7 +320,7 @@ bool LoadTablet(TabletServer* tserver,
 void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req,
                                                 std::stringstream *output) {
   string tablet_id;
-  scoped_refptr<TabletPeer> peer;
+  std::shared_ptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &tablet_id, &peer, output)) return;
 
   string table_name = peer->tablet_metadata()->table_name();
@@ -356,7 +356,7 @@ void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req
 void TabletServerPathHandlers::HandleTabletSVGPage(const Webserver::WebRequest& req,
                                                    std::stringstream* output) {
   string id;
-  scoped_refptr<TabletPeer> peer;
+  std::shared_ptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
   shared_ptr<Tablet> tablet = peer->shared_tablet();
   if (!tablet) {
@@ -371,7 +371,7 @@ void TabletServerPathHandlers::HandleTabletSVGPage(const Webserver::WebRequest& 
 void TabletServerPathHandlers::HandleLogAnchorsPage(const Webserver::WebRequest& req,
                                                     std::stringstream* output) {
   string tablet_id;
-  scoped_refptr<TabletPeer> peer;
+  std::shared_ptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &tablet_id, &peer, output)) return;
 
   *output << "<h1>Log Anchors for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
@@ -384,7 +384,7 @@ void TabletServerPathHandlers::HandleLogAnchorsPage(const Webserver::WebRequest&
 void TabletServerPathHandlers::HandleConsensusStatusPage(const Webserver::WebRequest& req,
                                                          std::stringstream* output) {
   string id;
-  scoped_refptr<TabletPeer> peer;
+  std::shared_ptr<TabletPeer> peer;
   if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
   shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
   if (!consensus) {

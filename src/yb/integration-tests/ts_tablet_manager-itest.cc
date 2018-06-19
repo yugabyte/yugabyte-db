@@ -150,11 +150,11 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   ASSERT_OK(CreateTabletServerMap(&master_proxy, &proxy_cache, &ts_map));
 
   // Collect the tablet peers so we get direct access to consensus.
-  vector<scoped_refptr<TabletPeer> > tablet_peers;
+  vector<std::shared_ptr<TabletPeer> > tablet_peers;
   for (int replica = 0; replica < kNumReplicas; replica++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(replica);
     ts->FailHeartbeats(); // Stop heartbeating we don't race against the Master.
-    vector<scoped_refptr<TabletPeer> > cur_ts_tablet_peers;
+    vector<std::shared_ptr<TabletPeer> > cur_ts_tablet_peers;
     // The replicas may not have been created yet, so loop until we see them.
     while (true) {
       ts->server()->tablet_manager()->GetTabletPeers(&cur_ts_tablet_peers);

@@ -137,8 +137,8 @@ class SysCatalogTable {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
 
-  const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
-    return tablet_peer_;
+  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
+    return std::atomic_load(&tablet_peer_);
   }
 
   // Create a new tablet peer with information from the metadata
@@ -185,7 +185,7 @@ class SysCatalogTable {
                              consensus::RaftConfigPB* committed_config);
 
   std::string tablet_id() const {
-    return tablet_peer_->tablet_id();
+    return tablet_peer()->tablet_id();
   }
 
   // Conventional "T xxx P xxxx..." prefix for logging.
@@ -226,7 +226,7 @@ class SysCatalogTable {
   // Thread pool for appender tasks
   gscoped_ptr<ThreadPool> append_pool_;
 
-  scoped_refptr<tablet::TabletPeer> tablet_peer_;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
   Master* master_;
 

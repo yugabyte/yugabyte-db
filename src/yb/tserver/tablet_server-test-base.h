@@ -132,7 +132,7 @@ class TabletServerTestBase : public YBTest {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::unique_ptr<MiniTabletServer> mini_server_;
-  scoped_refptr<tablet::TabletPeer> tablet_peer_;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   gscoped_ptr<TabletServerServiceProxy> proxy_;
   gscoped_ptr<TabletServerAdminServiceProxy> admin_proxy_;
   gscoped_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;

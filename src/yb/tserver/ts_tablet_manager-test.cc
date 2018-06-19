@@ -101,11 +101,11 @@ class TsTabletManagerTest : public YBTest {
 
   Status CreateNewTablet(const std::string& tablet_id,
                          const Schema& schema,
-                         scoped_refptr<tablet::TabletPeer>* out_tablet_peer) {
+                         std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
     Schema full_schema = SchemaBuilder(schema).Build();
     std::pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(full_schema);
 
-    scoped_refptr<tablet::TabletPeer> tablet_peer;
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(
       tablet_manager_->CreateNewTablet(tablet_id, tablet_id, partition.second, tablet_id,
         TableType::DEFAULT_TABLE_TYPE, full_schema, partition.first, config_, &tablet_peer));
@@ -131,7 +131,7 @@ class TsTabletManagerTest : public YBTest {
 
 TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Create a new tablet.
-  scoped_refptr<TabletPeer> peer;
+  std::shared_ptr<TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTabletId, schema_, &peer));
   ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
   peer.reset();
@@ -161,7 +161,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   std::vector<ConsensusRoundPtr> consensus_rounds;
 
   for (int i = 0; i < kNumTablets; ++i) {
-    scoped_refptr<TabletPeer> peer;
+    std::shared_ptr<TabletPeer> peer;
     const auto tablet_id = Format("my-tablet-$0", i + 1);
     tablet_ids.emplace_back(tablet_id);
     ASSERT_OK(CreateNewTablet(tablet_id, schema_, &peer));
@@ -186,7 +186,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     tablet_manager->MaybeFlushTablet();
     ASSERT_OK(mini_server_->WaitStarted());
     for (auto& tablet_id : tablet_ids) {
-      scoped_refptr<TabletPeer> peer;
+      std::shared_ptr<TabletPeer> peer;
       ASSERT_TRUE(tablet_manager->LookupTablet(tablet_id, &peer));
       ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
     }

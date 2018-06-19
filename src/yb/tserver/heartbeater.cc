@@ -373,11 +373,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
 #endif
 
     // Get the Total SST file sizes and set it in the proto buf
-    std::vector<scoped_refptr<yb::tablet::TabletPeer> > tablet_peers;
+    std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
     uint64_t total_file_sizes = 0;
     server_->tablet_manager()->GetTabletPeers(&tablet_peers);
     for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
-      scoped_refptr<yb::tablet::TabletPeer> tablet_peer = *it;
+      shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
       if (tablet_peer) {
         shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
         total_file_sizes += (tablet_class) ? tablet_class->GetTotalSSTFileSizes() : 0;
