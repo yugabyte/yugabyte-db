@@ -949,8 +949,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // table specified by 'tablet_id'.
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
-  virtual CHECKED_STATUS GetTabletPeer(const TabletId& tablet_id,
-                               scoped_refptr<tablet::TabletPeer>* tablet_peer) const override;
+  virtual CHECKED_STATUS GetTabletPeer(
+      const TabletId& tablet_id,
+      std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
   virtual const NodeInstancePB& NodeInstance() const override;
 
@@ -1519,7 +1520,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
 
   // Tablet peer for the sys catalog tablet's peer.
-  const scoped_refptr<tablet::TabletPeer> tablet_peer() const;
+  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
 
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.

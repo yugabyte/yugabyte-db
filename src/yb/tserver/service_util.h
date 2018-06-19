@@ -101,7 +101,7 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
                                const string& tablet_id,
                                RespClass* resp,
                                rpc::RpcContext* context,
-                               scoped_refptr<tablet::TabletPeer>* peer) {
+                               std::shared_ptr<tablet::TabletPeer>* peer) {
   Status status = tablet_manager->GetTabletPeer(tablet_id, peer);
   if (PREDICT_FALSE(!status.ok())) {
     TabletServerErrorPB::Code code = status.IsServiceUnavailable() ?

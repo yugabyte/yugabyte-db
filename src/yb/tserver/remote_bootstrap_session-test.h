@@ -200,7 +200,7 @@ class RemoteBootstrapTest : public YBTabletTest {
 
   virtual void InitSession() {
     session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
-        tablet_peer_.get(), "TestSession", "FakeUUID", fs_manager()));
+        tablet_peer_, "TestSession", "FakeUUID", fs_manager()));
     ASSERT_OK(session_->Init());
   }
 
@@ -235,7 +235,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> tablet_prepare_pool_;
   unique_ptr<ThreadPool> append_pool_;
-  scoped_refptr<TabletPeer> tablet_peer_;
+  std::shared_ptr<TabletPeer> tablet_peer_;
   scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };

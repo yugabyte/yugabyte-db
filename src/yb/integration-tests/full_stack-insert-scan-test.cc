@@ -388,9 +388,9 @@ void FullStackInsertScanTest::FlushToDisk() {
     tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
     ts->maintenance_manager()->Shutdown();
     tserver::TSTabletManager* tm = ts->tablet_manager();
-    vector<scoped_refptr<TabletPeer> > peers;
+    vector<std::shared_ptr<TabletPeer> > peers;
     tm->GetTabletPeers(&peers);
-    for (const scoped_refptr<TabletPeer>& peer : peers) {
+    for (const std::shared_ptr<TabletPeer>& peer : peers) {
       Tablet* tablet = peer->tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     }

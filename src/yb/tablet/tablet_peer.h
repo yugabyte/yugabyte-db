@@ -88,8 +88,7 @@ namespace tablet {
 // state machine through a consensus algorithm, which makes sure that other
 // peers see the same updates in the same order. In addition to this, this
 // class also splits the work and coordinates multi-threaded execution.
-class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
-                   public consensus::ReplicaOperationFactory,
+class TabletPeer : public consensus::ReplicaOperationFactory,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext {
  public:
@@ -394,7 +393,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 
-typedef scoped_refptr<TabletPeer> TabletPeerPtr;
+typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 }  // namespace tablet
 }  // namespace yb

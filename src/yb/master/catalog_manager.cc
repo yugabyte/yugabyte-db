@@ -1220,7 +1220,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   return Status::OK();
 }
 
-const scoped_refptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
+const std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
   return sys_catalog_->tablet_peer();
 }
 
@@ -3965,7 +3965,7 @@ void CatalogManager::NewReplica(TSDescriptor* ts_desc,
 }
 
 Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
-                                     scoped_refptr<TabletPeer>* ret_tablet_peer) const {
+                                     std::shared_ptr<TabletPeer>* ret_tablet_peer) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
 
@@ -4048,7 +4048,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
 
-  scoped_refptr<TabletPeer> old_tablet_peer;
+  std::shared_ptr<TabletPeer> old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
   bool replacing_tablet = false;
 
@@ -5459,7 +5459,7 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
     return;
   }
   // Check if the catalog manager is the leader.
-  Consensus* consensus = catalog_->sys_catalog_->tablet_peer_->consensus();
+  Consensus* consensus = catalog_->sys_catalog_->tablet_peer()->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     leader_status_ = STATUS_FORMAT(IllegalState,
