@@ -114,6 +114,8 @@ class ThreadRestrictions {
   // value.
   static bool SetWaitAllowed(bool allowed);
 
+  static bool IsWaitAllowed();
+
   // Check whether the current thread is allowed to wait/block.
   // FATALs if not.
   static void AssertWaitAllowed();
@@ -124,6 +126,7 @@ class ThreadRestrictions {
   static void AssertIOAllowed() {}
   static bool SetWaitAllowed(bool allowed) { return true; }
   static void AssertWaitAllowed() {}
+  static bool IsWaitAllowed() { return true; }
 #endif
 
  private:
