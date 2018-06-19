@@ -46,7 +46,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
-  scoped_refptr<tablet::TabletPeer> tablet_peer;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
