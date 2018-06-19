@@ -138,6 +138,7 @@ set(UTIL_SRCS
   coding.cc
   concurrent_value.cc
   condition_variable.cc
+  countdown_latch.cc
   crc.cc
   cross_thread_mutex.cc
   crypt.cc

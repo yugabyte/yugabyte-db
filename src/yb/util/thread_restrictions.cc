@@ -83,6 +83,10 @@ bool ThreadRestrictions::SetWaitAllowed(bool allowed) {
   return previous_allowed;
 }
 
+bool ThreadRestrictions::IsWaitAllowed() {
+  return LoadTLS()->wait_allowed;
+}
+
 void ThreadRestrictions::AssertWaitAllowed() {
   CHECK(LoadTLS()->wait_allowed)
     << "Waiting is not allowed to be used on this thread to prevent "

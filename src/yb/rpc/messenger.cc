@@ -70,6 +70,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;

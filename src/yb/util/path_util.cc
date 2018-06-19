@@ -48,6 +48,7 @@
 
 #include "yb/util/env_util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/gutil/gscoped_ptr.h"
 
 using std::string;

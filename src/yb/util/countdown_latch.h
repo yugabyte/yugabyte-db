@@ -36,7 +36,6 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/thread_restrictions.h"
 
 namespace yb {
 
@@ -46,31 +45,12 @@ namespace yb {
 class CountDownLatch {
  public:
   // Initialize the latch with the given initial count.
-  explicit CountDownLatch(int count)
-    : cond_(&lock_),
-      count_(count) {
-  }
+  explicit CountDownLatch(int count);
 
   // Decrement the count of this latch by 'amount'
   // If the new count is less than or equal to zero, then all waiting threads are woken up.
   // If the count is already zero, this has no effect.
-  void CountDown(uint64_t amount) {
-    MutexLock lock(lock_);
-    if (count_ == 0) {
-      return;
-    }
-
-    if (amount >= count_) {
-      count_ = 0;
-    } else {
-      count_ -= amount;
-    }
-
-    if (count_ == 0) {
-      // Latch has triggered.
-      cond_.Broadcast();
-    }
-  }
+  void CountDown(uint64_t amount);
 
   // Decrement the count of this latch.
   // If the new count is zero, then all waiting threads are woken up.
@@ -81,51 +61,23 @@ class CountDownLatch {
 
   // Wait until the count on the latch reaches zero.
   // If the count is already zero, this returns immediately.
-  void Wait() const {
-    ThreadRestrictions::AssertWaitAllowed();
-    MutexLock lock(lock_);
-    while (count_ > 0) {
-      cond_.Wait();
-    }
-  }
+  void Wait() const;
 
   // Waits for the count on the latch to reach zero, or until 'until' time is reached.
   // Returns true if the count became zero, false otherwise.
   bool WaitUntil(const MonoTime& when) const {
-    ThreadRestrictions::AssertWaitAllowed();
-    MonoDelta relative = when.GetDeltaSince(MonoTime::Now());
-    return WaitFor(relative);
+    return WaitFor(when - MonoTime::Now());
   }
 
   // Waits for the count on the latch to reach zero, or until 'delta' time elapses.
   // Returns true if the count became zero, false otherwise.
-  bool WaitFor(const MonoDelta& delta) const {
-    ThreadRestrictions::AssertWaitAllowed();
-    MutexLock lock(lock_);
-    while (count_ > 0) {
-      if (!cond_.TimedWait(delta)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool WaitFor(const MonoDelta& delta) const;
 
   // Reset the latch with the given count. This is equivalent to reconstructing
   // the latch. If 'count' is 0, and there are currently waiters, those waiters
   // will be triggered as if you counted down to 0.
-  void Reset(uint64_t count) {
-    MutexLock lock(lock_);
-    count_ = count;
-    if (count_ == 0) {
-      // Awake any waiters if we reset to 0.
-      cond_.Broadcast();
-    }
-  }
-
-  uint64_t count() const {
-    MutexLock lock(lock_);
-    return count_;
-  }
+  void Reset(uint64_t count);
+  uint64_t count() const;
 
  private:
   mutable Mutex lock_;
