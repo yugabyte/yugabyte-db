@@ -66,7 +66,7 @@ public class HealthChecker extends Thread {
     for (Customer c : Customer.getAll()) {
       CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
       if (config == null) {
-        LOG.debug("Skipping customer " + c.uuid + " due to missing alerting config...");
+        // LOG.debug("Skipping customer " + c.uuid + " due to missing alerting config...");
         continue;
       }
       for (Universe u : c.getUniverses()) {
