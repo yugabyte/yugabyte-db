@@ -38,7 +38,7 @@ class BackupServiceTest : public TabletServerTestBase {
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   // Verify that the tablet exists.
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   FsManager* const fs = tablet->tablet_metadata()->fs_manager();
 
@@ -87,7 +87,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
 
 TEST_F(BackupServiceTest, TestSnapshotData) {
   // Verify that the tablet exists.
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   tablet.reset();
 
