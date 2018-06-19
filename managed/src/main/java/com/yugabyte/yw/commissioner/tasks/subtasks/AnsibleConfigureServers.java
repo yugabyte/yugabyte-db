@@ -1,13 +1,12 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +22,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public Map<String, String> gflags = new HashMap<>();
+    public boolean changeNodeState = true;
   }
 
   @Override
@@ -37,8 +37,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         NodeManager.NodeCommandType.Configure, taskParams());
     logShellResponse(response);
 
-    if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything) {
-      // We set the node state to SoftwareInstalled when configuration type is Everything
+    if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything &&
+        taskParams().changeNodeState) {
+      // We set the node state to SoftwareInstalled when configuration type is Everything.
+      // TODO: Why is upgrade task type used to map to node state update?
       setNodeState(NodeDetails.NodeState.SoftwareInstalled);
     }
   }

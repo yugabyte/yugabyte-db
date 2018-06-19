@@ -622,12 +622,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isMasterInShellMode : true if we are configuring a master node in shell mode
    * @param deviceInfo device info, if any, about disk volumes etc on the nodes
    * @param ybSoftwareVersion software version to install on the node
+   * @param changeNodeState true if should node state should be changed after configure.
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode,
                                                  DeviceInfo deviceInfo,
                                                  String ybSoftwareVersion) {
+    return createConfigureServerTasks(nodes, isMasterInShellMode, deviceInfo,
+                                      ybSoftwareVersion, true /* changeNodeState */);
+  }
+
+  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                                 boolean isMasterInShellMode,
+                                                 DeviceInfo deviceInfo,
+                                                 String ybSoftwareVersion,
+                                                 boolean changeNodeState) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -648,7 +658,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.ybSoftwareVersion = ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      params.type = UpgradeUniverse.UpgradeTaskType.Everything;
+      // Set the node change state.
+      params.changeNodeState = changeNodeState;
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
