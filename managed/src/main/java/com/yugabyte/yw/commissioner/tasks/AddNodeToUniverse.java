@@ -2,10 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -17,9 +21,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -89,6 +94,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       }
 
       // Bring up any masters, as needed.
+      boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
         // Configures the master to start in shell mode.
         // TODO: Remove the need for version for existing instance, NodeManger needs changes.
@@ -111,9 +117,11 @@ public class AddNodeToUniverse extends UniverseTaskBase {
 
         // Add it into the master quorum.
         createChangeConfigTask(currentNode, true, SubTaskGroupType.WaitForDataMigration);
+
+        masterAdded = true;
       }
 
-      // Configure again for now, so that this tserver picks all the master nodes.
+      // Configure so that this tserver picks all the master nodes.
       createConfigureServerTasks(node, false /* isShell */, userIntent.deviceInfo,
                                  userIntent.ybSoftwareVersion)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
@@ -133,6 +141,11 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       // Wait for load to balance.
       createWaitForLoadBalanceTask()
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+      // Update all tserver conf files with new master information.
+      if (masterAdded) {
+        createMasterInfoUpdateTask(universe, userIntent, currentNode);
+      }
 
       // Update node state to live.
       createSetNodeStateTask(currentNode, NodeState.Live)
@@ -165,6 +178,19 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
+  }
+
+  // Setup a configure task to update the new master list in the conf files of all tservers.
+  // Skip the newly added node as it would have gotten the new master list after provisioing.
+  private void createMasterInfoUpdateTask(Universe universe, UserIntent userIntent,
+                                          NodeDetails skipNode) {
+    List<NodeDetails> nodes = universe.getTServers();
+    nodes.removeIf((NodeDetails node) ->
+                    node.cloudInfo.private_ip.equals(skipNode.cloudInfo.private_ip));
+    // Configure all tservers to pick the new master node ip as well.
+    createConfigureServerTasks(nodes, false /* isShell */, userIntent.deviceInfo,
+                               userIntent.ybSoftwareVersion, false /* changeNodeState */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }
 
