@@ -12,7 +12,7 @@ namespace enterprise {
 class RemoteBootstrapSession : public yb::tserver::RemoteBootstrapSession {
   typedef yb::tserver::RemoteBootstrapSession super;
  public:
-  RemoteBootstrapSession(const scoped_refptr<tablet::TabletPeer>& tablet_peer,
+  RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id,
                          std::string requestor_uuid,
                          FsManager* fs_manager)
