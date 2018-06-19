@@ -67,7 +67,7 @@ using tablet::TabletPeer;
 using tablet::TabletSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
-    const scoped_refptr<TabletPeer>& tablet_peer, std::string session_id,
+    const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
     std::string requestor_uuid, FsManager* fs_manager)
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),

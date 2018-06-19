@@ -284,7 +284,7 @@ class TabletPeerTest : public YBTabletTest,
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> append_pool_;
-  scoped_refptr<TabletPeer> tablet_peer_;
+  std::shared_ptr<TabletPeer> tablet_peer_;
   TableType table_type_;
 };
 

@@ -70,7 +70,7 @@ class FlushITest : public YBTest {
 
   size_t TotalFlushes() {
     size_t total_flushes = 0;
-    std::vector<scoped_refptr<tablet::TabletPeer>> tablet_peers;
+    std::vector<std::shared_ptr<tablet::TabletPeer>> tablet_peers;
     cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&tablet_peers);
     for (auto& peer : tablet_peers) {
       total_flushes += peer->tablet()->flush_stats()->num_flushes();

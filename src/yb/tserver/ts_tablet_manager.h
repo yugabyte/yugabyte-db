@@ -121,7 +121,7 @@ class TransitionInProgressDeleter;
 // as re-opening all the tablets at startup, etc.
 class TSTabletManager : public tserver::TabletPeerLookupIf {
  public:
-  typedef std::vector<scoped_refptr<tablet::TabletPeer>> TabletPeers;
+    typedef std::vector<std::shared_ptr<tablet::TabletPeer>> TabletPeers;
 
   // Construct the tablet manager.
   // 'fs_manager' must remain valid until this object is destructed.
@@ -166,7 +166,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     const Schema &schema,
     const PartitionSchema &partition_schema,
     consensus::RaftConfigPB config,
-    scoped_refptr<tablet::TabletPeer> *tablet_peer);
+    std::shared_ptr<tablet::TabletPeer> *tablet_peer);
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -184,15 +184,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Lookup the given tablet peer by its ID.
   // Returns true if the tablet is found successfully.
   bool LookupTablet(const std::string& tablet_id,
-                    scoped_refptr<tablet::TabletPeer>* tablet_peer) const;
+                    std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
   // Same as LookupTablet but doesn't acquired the shared lock.
   bool LookupTabletUnlocked(const std::string& tablet_id,
-                            scoped_refptr<tablet::TabletPeer>* tablet_peer) const;
+                            std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
-  virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
-                               scoped_refptr<tablet::TabletPeer>* tablet_peer) const
-                               override;
+  virtual CHECKED_STATUS GetTabletPeer(
+      const std::string& tablet_id,
+      std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
   virtual const NodeInstancePB& NodeInstance() const override;
 
@@ -337,7 +337,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Open a tablet whose metadata has already been loaded.
   void BootstrapAndInitTablet(const scoped_refptr<tablet::TabletMetadata>& meta,
-                              scoped_refptr<tablet::TabletPeer>* peer);
+                              std::shared_ptr<tablet::TabletPeer>* peer);
 
   // Add the tablet to the tablet map.
   // 'mode' specifies whether to expect an existing tablet to exist in the map.
@@ -347,19 +347,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
   void RegisterTablet(const std::string& tablet_id,
-                      const scoped_refptr<tablet::TabletPeer>& tablet_peer,
+                      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                       RegisterTabletPeerMode mode);
 
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
   // the TablerPeer object. See RegisterTablet() for details about the
   // semantics of 'mode' and the locking requirements.
-  scoped_refptr<tablet::TabletPeer> CreateAndRegisterTabletPeer(
+  std::shared_ptr<tablet::TabletPeer> CreateAndRegisterTabletPeer(
       const scoped_refptr<tablet::TabletMetadata>& meta,
       RegisterTabletPeerMode mode);
 
   // Helper to generate the report for a single tablet.
-  void CreateReportedTabletPB(const scoped_refptr<tablet::TabletPeer>& tablet_peer,
+  void CreateReportedTabletPB(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                               master::ReportedTabletPB* reported_tablet);
 
   // Mark that the provided TabletPeer's state has changed. That should be taken into
@@ -374,7 +374,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
   // Return the tablet with oldest write still in its memstore
-  scoped_refptr<tablet::TabletPeer> TabletToFlush();
+  std::shared_ptr<tablet::TabletPeer> TabletToFlush();
 
   TSTabletManagerStatePB state() const {
     boost::shared_lock<RWMutex> lock(lock_);
@@ -395,7 +395,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   consensus::RaftPeerPB local_peer_pb_;
 
-  typedef std::unordered_map<std::string, scoped_refptr<tablet::TabletPeer>> TabletMap;
+  typedef std::unordered_map<std::string, std::shared_ptr<tablet::TabletPeer>> TabletMap;
   // This is a map that takes a table id and maps it to a map of directory and
   // set of tablets using that directory.
   typedef std::unordered_map<std::string,
@@ -502,7 +502,7 @@ Status CheckLeaderTermNotLower(const std::string& tablet_id,
 
 // Helper function to replace a stale tablet found from earlier failed tries.
 Status HandleReplacingStaleTablet(scoped_refptr<tablet::TabletMetadata> meta,
-                                  scoped_refptr<tablet::TabletPeer> old_tablet_peer,
+                                  std::shared_ptr<tablet::TabletPeer> old_tablet_peer,
                                   const std::string& tablet_id,
                                   const std::string& uuid,
                                   const int64_t& leader_term);

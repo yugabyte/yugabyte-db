@@ -269,7 +269,7 @@ TEST_F(TabletServerTest, TestInsert) {
   WriteResponsePB resp;
   RpcController controller;
 
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   scoped_refptr<Counter> rows_inserted =
     METRIC_rows_inserted.Instantiate(tablet->tablet()->GetMetricEntity());
@@ -330,7 +330,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   WriteResponsePB resp;
   RpcController controller;
 
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(
       mini_server_->server()->tablet_manager()->LookupTablet(kTabletId,
                                                              &tablet));
@@ -364,7 +364,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
 
 TEST_F(TabletServerTest, TestInsertAndMutate) {
 
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   tablet.reset();
 
@@ -566,7 +566,7 @@ TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet) {
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
 
   // Verify that the tablet exists
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
@@ -639,7 +639,7 @@ TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
 // the other fails, with no assertion failures. Regression test for KUDU-345.
 TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
   // Verify that the tablet exists
-  scoped_refptr<TabletPeer> tablet;
+  std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
 
   static const int kNumDeletes = 2;

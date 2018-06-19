@@ -156,8 +156,8 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_->Shutdown();
   }
 
-  scoped_refptr<TabletPeer> LookupTabletPeer() {
-    vector<scoped_refptr<TabletPeer> > peers;
+  std::shared_ptr<TabletPeer> LookupTabletPeer() {
+    vector<std::shared_ptr<TabletPeer> > peers;
     cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
     return peers[0];
   }
@@ -252,7 +252,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 
   YBSchema schema_;
 
-  scoped_refptr<TabletPeer> tablet_peer_;
+  std::shared_ptr<TabletPeer> tablet_peer_;
 
   AtomicBool stop_threads_;
 

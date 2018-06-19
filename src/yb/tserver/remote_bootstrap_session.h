@@ -101,7 +101,7 @@ struct ImmutableReadableBlockInfo {
 // on expiration while it is in use by another thread.
 class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSession> {
  public:
-  RemoteBootstrapSession(const scoped_refptr<tablet::TabletPeer>& tablet_peer,
+  RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
                          FsManager* fs_manager);
 
@@ -202,7 +202,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Helper API to set initial_committed_cstate_.
   CHECKED_STATUS SetInitialCommittedState();
 
-  scoped_refptr<tablet::TabletPeer> tablet_peer_;
+  std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;
   const std::string requestor_uuid_;
   FsManager* const fs_manager_;

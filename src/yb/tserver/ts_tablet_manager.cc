@@ -1228,7 +1228,7 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   // lock_ for too long, even in read mode, since it can cause other readers
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
-  vector<scoped_refptr<TabletPeer>> to_report;
+  vector<std::shared_ptr<TabletPeer>> to_report;
   {
     boost::shared_lock<RWMutex> shared_lock(lock_);
     to_report.reserve(dirty_tablets_.size());
@@ -1258,7 +1258,7 @@ void TSTabletManager::GenerateFullTabletReport(TabletReportPB* report) {
   // lock_ for too long, even in read mode, since it can cause other readers
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
-  vector<scoped_refptr<TabletPeer>> to_report;
+  vector<std::shared_ptr<TabletPeer>> to_report;
   {
     boost::shared_lock<RWMutex> shared_lock(lock_);
     report->set_sequence_number(next_report_seq_++);

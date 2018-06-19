@@ -138,8 +138,8 @@ SysCatalogTable::~SysCatalogTable() {
 }
 
 void SysCatalogTable::Shutdown() {
-  if (tablet_peer_) {
-    tablet_peer_->Shutdown();
+  if (tablet_peer()) {
+    std::atomic_load(&tablet_peer_)->Shutdown();
   }
   apply_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -332,8 +332,8 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
 void SysCatalogTable::SysCatalogStateChanged(
     const string& tablet_id,
     std::shared_ptr<StateChangeContext> context) {
-  CHECK_EQ(tablet_id, tablet_peer_->tablet_id());
-  shared_ptr<consensus::Consensus> consensus  = tablet_peer_->shared_consensus();
+  CHECK_EQ(tablet_id, tablet_peer()->tablet_id());
+  shared_ptr<consensus::Consensus> consensus = tablet_peer()->shared_consensus();
   if (!consensus) {
     LOG_WITH_PREFIX(WARNING) << "Received notification of tablet state change "
                              << "but tablet no longer running. Tablet ID: "
@@ -350,7 +350,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
                         << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
-  RaftPeerPB::Role role = GetConsensusRole(tablet_peer_->permanent_uuid(), cstate);
+  RaftPeerPB::Role role = GetConsensusRole(tablet_peer()->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
                         << RaftPeerPB::Role_Name(role);
 
@@ -432,17 +432,18 @@ void SysCatalogTable::SysCatalogStateChanged(
 }
 
 Status SysCatalogTable::GoIntoShellMode() {
-  CHECK(tablet_peer_);
+  CHECK(tablet_peer());
   Shutdown();
 
   // Remove on-disk log, cmeta and tablet superblocks.
-  RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer_->tablet_metadata(),
+  RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer()->tablet_metadata(),
                                           tablet::TABLET_DATA_DELETED,
                                           master_->fs_manager()->uuid(),
                                           yb::OpId()));
-  RETURN_NOT_OK(tablet_peer_->tablet_metadata()->DeleteSuperBlock());
+  RETURN_NOT_OK(tablet_peer()->tablet_metadata()->DeleteSuperBlock());
   RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout());
-  tablet_peer_.reset();
+  std::shared_ptr<tablet::TabletPeer> null_tablet_peer(nullptr);
+  std::atomic_store(&tablet_peer_, null_tablet_peer);
   apply_pool_.reset();
   raft_pool_.reset();
   tablet_prepare_pool_.reset();
@@ -455,13 +456,11 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
-  tablet_peer_.reset(
-    new TabletPeerClass(metadata,
-                        local_peer_pb_,
-                        apply_pool_.get(),
-                        Bind(&SysCatalogTable::SysCatalogStateChanged,
-                             Unretained(this),
-                             metadata->tablet_id())));
+  std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
+      metadata, local_peer_pb_, apply_pool_.get(),
+      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id()));
+
+  std::atomic_store(&tablet_peer_, tablet_peer);
 }
 
 Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
@@ -473,19 +472,19 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
 }
 
 Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
-  CHECK(tablet_peer_);
+  CHECK(tablet_peer());
 
   shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
-  tablet_peer_->SetBootstrapping();
+  tablet_peer()->SetBootstrapping();
   tablet::TabletOptions tablet_options;
   tablet::BootstrapTabletData data = { metadata,
                                        scoped_refptr<server::Clock>(master_->clock()),
                                        master_->mem_tracker(),
                                        metric_registry_,
-                                       tablet_peer_->status_listener(),
-                                       tablet_peer_->log_anchor_registry(),
+                                       tablet_peer()->status_listener(),
+                                       tablet_peer()->log_anchor_registry(),
                                        tablet_options,
                                        nullptr, // transaction_participant_context
                                        client::LocalTabletFilter(),
@@ -496,7 +495,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
-  RETURN_NOT_OK_PREPEND(tablet_peer_->InitTabletPeer(tablet,
+  RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(tablet,
                                                      std::shared_future<client::YBClientPtr>(),
                                                      scoped_refptr<server::Clock>(master_->clock()),
                                                      master_->messenger(),
@@ -507,10 +506,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      tablet_prepare_pool()),
                         "Failed to Init() TabletPeer");
 
-  RETURN_NOT_OK_PREPEND(tablet_peer_->Start(consensus_info),
+  RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
                         "Failed to Start() TabletPeer");
 
-  tablet_peer_->RegisterMaintenanceOps(master_->maintenance_manager());
+  tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
   const Schema* schema = tablet->schema();
   schema_ = SchemaBuilder(*schema).BuildWithoutIds();
@@ -520,8 +519,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
 
 std::string SysCatalogTable::LogPrefix() const {
   return Substitute("T $0 P $1 [$2]: ",
-                    tablet_peer_->tablet_id(),
-                    tablet_peer_->permanent_uuid(),
+                    tablet_peer()->tablet_id(),
+                    tablet_peer()->permanent_uuid(),
                     table_name());
 }
 
@@ -529,7 +528,7 @@ Status SysCatalogTable::WaitUntilRunning() {
   TRACE_EVENT0("master", "SysCatalogTable::WaitUntilRunning");
   int seconds_waited = 0;
   while (true) {
-    Status status = tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(1));
+    Status status = tablet_peer()->WaitUntilConsensusRunning(MonoDelta::FromSeconds(1));
     seconds_waited++;
     if (status.ok()) {
       LOG_WITH_PREFIX(INFO) << "configured and running, proceeding with master startup.";
@@ -553,10 +552,10 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
       &latch, &resp);
   auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer_->tablet(), &writer->req_, &resp);
+      tablet_peer()->tablet(), &writer->req_, &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
-  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state), MonoTime::Max()));
+  RETURN_NOT_OK(tablet_peer()->SubmitWrite(std::move(operation_state), MonoTime::Max()));
   while (!latch.WaitFor(15s)) {
     LOG(DFATAL) << "SyncWrite hang";
   }
@@ -615,7 +614,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   const int metadata_col_idx = schema_.find_column(kSysCatalogTableColMetadata);
   CHECK(type_col_idx != Schema::kColumnNotFound);
 
-  auto iter = tablet_peer_->tablet()->NewRowIterator(schema_, boost::none);
+  auto iter = tablet_peer()->tablet()->NewRowIterator(schema_, boost::none);
   RETURN_NOT_OK(iter);
 
   Arena arena(32_KB, 256_KB);
