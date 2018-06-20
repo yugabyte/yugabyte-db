@@ -176,7 +176,8 @@ class PTSelectStmt : public PTDmlStmt {
                PTListNode::SharedPtr group_by_clause,
                PTListNode::SharedPtr having_clause,
                PTOrderByListNode::SharedPtr order_by_clause,
-               PTExpr::SharedPtr limit_clause);
+               PTExpr::SharedPtr limit_clause,
+               PTExpr::SharedPtr offset_clause);
   virtual ~PTSelectStmt();
 
   template<typename... TypeArgs>
@@ -200,6 +201,10 @@ class PTSelectStmt : public PTDmlStmt {
 
   virtual void SetLimitClause(PTExpr::SharedPtr limit_clause) {
     limit_clause_ = limit_clause;
+  }
+
+  virtual void SetOffsetClause(PTExpr::SharedPtr offset_clause) {
+    offset_clause_ = offset_clause;
   }
 
   bool distinct() const {
@@ -258,6 +263,7 @@ class PTSelectStmt : public PTDmlStmt {
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
+  CHECKED_STATUS AnalyzeOffsetClause(SemContext *sem_context);
   CHECKED_STATUS ConstructSelectedSchema();
 
   // --- The parser will decorate this node with the following information --
@@ -278,6 +284,7 @@ class PTSelectStmt : public PTDmlStmt {
   const PTListNode::SharedPtr having_clause_;
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
+  PTExpr::SharedPtr offset_clause_;
 
   // -- The semantic analyzer will decorate this node with the following information --
 

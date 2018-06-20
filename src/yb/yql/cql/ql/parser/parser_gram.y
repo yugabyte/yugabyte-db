@@ -266,6 +266,7 @@ using namespace yb::ql;
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
                           opt_select_limit select_limit limit_clause select_limit_value
+                          offset_clause select_offset_value
 
 %type <PListNode>         // Clauses as list of tree nodes.
                           group_clause group_by_list having_clause into_clause
@@ -480,7 +481,7 @@ using namespace yb::ql;
                           join_outer join_qual
                           overlay_placing substr_from substr_for
                           opt_binary opt_oids copy_delimiter
-                          fetch_args select_offset_value
+                          fetch_args
                           opt_select_fetch_first_value
                           SeqOptElem
                           generic_set set_rest set_rest_more generic_reset reset_rest
@@ -2026,6 +2027,13 @@ select_no_parens:
     $1->SetLimitClause($3);
     $$ = $1;
   }
+  | simple_select opt_sort_clause opt_select_limit offset_clause opt_for_locking_clause
+    opt_allow_filtering {
+    $1->SetOrderByClause($2);
+    $1->SetLimitClause($3);
+    $1->SetOffsetClause($4);
+    $$ = $1;
+  }
   | simple_select opt_sort_clause for_locking_clause opt_select_limit opt_allow_filtering {
     PARSER_UNSUPPORTED(@3);
   }
@@ -2078,11 +2086,11 @@ select_clause:
 simple_select:
   SELECT opt_all_clause target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
-    $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, nullptr, nullptr);
+    $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, nullptr, nullptr, nullptr);
   }
   | SELECT distinct_clause target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
-    $$ = MAKE_NODE(@1, PTSelectStmt, true, $3, $5, $6, $7, $8, nullptr, nullptr);
+    $$ = MAKE_NODE(@1, PTSelectStmt, true, $3, $5, $6, $7, $8, nullptr, nullptr, nullptr);
   }
   | TABLE relation_expr {
     PARSER_UNSUPPORTED(@1);
@@ -2295,8 +2303,18 @@ limit_clause:
   }
 ;
 
+offset_clause:
+  OFFSET select_offset_value {
+    $$ = $2;
+  }
+;
+
 select_limit_value:
-  a_expr {
+  ICONST {
+    $$ = MAKE_NODE(@1, PTConstVarInt, $1);
+  }
+  | bindvar {
+    parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
     $$ = $1;
   }
   | ALL {
@@ -2306,8 +2324,12 @@ select_limit_value:
 ;
 
 select_offset_value:
-  a_expr {
-    $$ = nullptr;
+  ICONST {
+    $$ = MAKE_NODE(@1, PTConstVarInt, $1);
+  }
+  | bindvar {
+    parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
+    $$ = $1;
   }
 ;
 
@@ -5020,7 +5042,6 @@ unreserved_keyword:
   | OBJECT_P { $$ = $1; }
   | OF { $$ = $1; }
   | OFF { $$ = $1; }
-  | OFFSET { $$ = $1; }
   | OIDS { $$ = $1; }
   | OPERATOR { $$ = $1; }
   | OPTION { $$ = $1; }
@@ -5320,6 +5341,7 @@ reserved_keyword:
   | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
+  | OFFSET { $$ = $1; }
   | ON { $$ = $1; }
   | ONLY { $$ = $1; }
   | OR { $$ = $1; }

@@ -483,5 +483,22 @@ TEST_F(QLTestAnalyzer, TestMisc) {
   ANALYZE_INVALID_STMT("SELECT * FROM t; SELECT C FROM t;", &parse_tree);
 }
 
+TEST_F(QLTestAnalyzer, TestOffsetLimitClause) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h int PRIMARY KEY);"));
+
+  // Analyze the LIMIT/OFFSET clause.
+  ParseTree::UniPtr parse_tree;
+  ANALYZE_VALID_STMT("SELECT * FROM t LIMIT 10 OFFSET 10;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t OFFSET 10;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t LIMIT 10;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t OFFSET 0;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t LIMIT 0;", &parse_tree);
+
+  // Invalid LIMIT/OFFSET clauses.
+  ANALYZE_INVALID_STMT("SELECT * FROM t OFFSET 10 LIMIT 10;", &parse_tree);
+}
+
 }  // namespace ql
 }  // namespace yb

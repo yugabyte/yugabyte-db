@@ -261,7 +261,8 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTListNode::SharedPtr group_by_clause,
                            PTListNode::SharedPtr having_clause,
                            PTOrderByListNode::SharedPtr order_by_clause,
-                           PTExpr::SharedPtr limit_clause)
+                           PTExpr::SharedPtr limit_clause,
+                           PTExpr::SharedPtr offset_clause)
     : PTDmlStmt(memctx, loc, where_clause),
       distinct_(distinct),
       selected_exprs_(selected_exprs),
@@ -269,7 +270,8 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
       group_by_clause_(group_by_clause),
       having_clause_(having_clause),
       order_by_clause_(order_by_clause),
-      limit_clause_(limit_clause) {
+      limit_clause_(limit_clause),
+      offset_clause_(offset_clause) {
 }
 
 PTSelectStmt::~PTSelectStmt() {
@@ -518,6 +520,20 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::limit_bindvar_name());
   RETURN_NOT_OK(limit_clause_->Analyze(sem_context));
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
+  if (offset_clause_ == nullptr) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(offset_clause_->CheckRhsExpr(sem_context));
+
+  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
+  sem_state.set_bindvar_name(PTBindVar::offset_bindvar_name());
+  RETURN_NOT_OK(offset_clause_->Analyze(sem_context));
 
   return Status::OK();
 }
