@@ -19,6 +19,8 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
+#include "yb/util/string_util.h"
+
 namespace yb {
 namespace rpc {
 
@@ -33,12 +35,18 @@ void ConnectionContextWithCallId::DumpPB(const DumpRunningRpcsRequestPB& req,
   }
 }
 
-bool ConnectionContextWithCallId::Idle() {
-  return calls_being_handled_.empty();
-}
+bool ConnectionContextWithCallId::Idle(std::string* reason_not_idle) {
+  if (calls_being_handled_.empty()) {
+    return true;
+  }
 
-std::string ConnectionContextWithCallId::ReasonNotIdle() {
-  return Format("$0 calls being handled: $1", calls_being_handled_.size(), calls_being_handled_);
+  if (reason_not_idle) {
+    AppendWithSeparator(
+        Format("$0 calls being handled: $1", calls_being_handled_.size(), calls_being_handled_),
+        reason_not_idle);
+  }
+
+  return false;
 }
 
 Status ConnectionContextWithCallId::Store(InboundCall* call) {

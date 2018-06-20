@@ -1151,6 +1151,12 @@ function(ADD_YB_TEST REL_TEST_NAME)
   endif()
 endfunction()
 
+function(ADD_YB_TESTS TESTS)
+  foreach(TEST ${TESTS})
+    ADD_YB_TEST(${TEST})
+  endforeach(TEST)
+endfunction()
+
 # A wrapper for add_dependencies() that is compatible with NO_TESTS.
 function(ADD_YB_TEST_DEPENDENCIES REL_TEST_NAME)
   if(NO_TESTS)

@@ -29,7 +29,6 @@ class MemTracker;
 namespace rpc {
 
 typedef std::function<void()> IdleListener;
-YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
 class GrowableBufferAllocator;
 
@@ -49,10 +48,9 @@ class ConnectionContext {
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
 
   // Checks whether this connection context is idle.
-  virtual bool Idle() = 0;
-
-  // Returns a human-readable description of why the context is not idle.
-  virtual std::string ReasonNotIdle() = 0;
+  // If reason is supplied, then human-readable description of why the context is not idle is
+  // appended to it.
+  virtual bool Idle(std::string* reason_not_idle = nullptr) = 0;
 
   // Listen for when context becomes idle.
   virtual void ListenIdle(IdleListener listener) = 0;

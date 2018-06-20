@@ -20,6 +20,8 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
+#include "yb/util/string_util.h"
+
 namespace yb {
 namespace rpc {
 
@@ -41,12 +43,16 @@ void ConnectionContextWithQueue::DumpPB(const DumpRunningRpcsRequestPB& req,
   }
 }
 
-bool ConnectionContextWithQueue::Idle() {
-  return calls_queue_.empty();
-}
+bool ConnectionContextWithQueue::Idle(std::string* reason_not_idle) {
+  if (calls_queue_.empty()) {
+    return true;
+  }
 
-string ConnectionContextWithQueue::ReasonNotIdle() {
-  return Format("$0 calls", calls_queue_.size());
+  if (reason_not_idle) {
+    AppendWithSeparator(Format("$0 calls", calls_queue_.size()), reason_not_idle);
+  }
+
+  return false;
 }
 
 void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> call) {

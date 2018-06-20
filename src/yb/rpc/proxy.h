@@ -77,6 +77,8 @@ class ProxyContext {
   // Invoke the RpcService to handle a call directly.
   virtual void Handle(InboundCallPtr call) = 0;
 
+  virtual const Protocol* DefaultProtocol() = 0;
+
   virtual IoService& io_service() = 0;
 
   virtual ~ProxyContext() {}
@@ -101,7 +103,8 @@ class ProxyContext {
 class Proxy {
  public:
   Proxy(std::shared_ptr<ProxyContext> context,
-        const HostPort& remote);
+        const HostPort& remote,
+        const Protocol* protocol = nullptr);
   ~Proxy();
 
   Proxy(const Proxy&) = delete;
@@ -161,6 +164,7 @@ class Proxy {
 
   std::shared_ptr<ProxyContext> context_;
   HostPort remote_;
+  const Protocol* const protocol_;
   mutable std::atomic<bool> is_started_{false};
   mutable std::atomic<size_t> num_calls_{0};
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
@@ -178,12 +182,23 @@ class ProxyCache {
   explicit ProxyCache(const std::shared_ptr<ProxyContext>& context)
       : context_(context) {}
 
-  std::shared_ptr<Proxy> Get(const HostPort& remote);
+  std::shared_ptr<Proxy> Get(const HostPort& remote, const Protocol* protocol);
 
  private:
+  typedef std::pair<HostPort, const Protocol*> ProxyKey;
+
+  struct ProxyKeyHash {
+    size_t operator()(const ProxyKey& key) const {
+      size_t result = 0;
+      boost::hash_combine(result, HostPortHash()(key.first));
+      boost::hash_combine(result, key.second);
+      return result;
+    }
+  };
+
   std::shared_ptr<ProxyContext> context_;
   std::mutex mutex_;
-  std::unordered_map<HostPort, std::shared_ptr<Proxy>, HostPortHash> proxies_;
+  std::unordered_map<ProxyKey, std::shared_ptr<Proxy>, ProxyKeyHash> proxies_;
 };
 
 }  // namespace rpc

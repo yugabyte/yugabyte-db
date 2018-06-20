@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #### Global header protobufs
 PROTOBUF_GENERATE_CPP(
   RPC_HEADER_PROTO_SRCS RPC_HEADER_PROTO_HDRS RPC_HEADER_PROTO_TGTS
@@ -80,8 +82,10 @@ set(YRPC_SRCS
     serialization.cc
     service_if.cc
     service_pool.cc
+    tcp_stream.cc
     thread_pool.cc
-    yb_rpc.cc)
+    yb_rpc.cc
+    ${RPC_SRCS_EXTENSIONS})
 
 set(YRPC_LIBS
   redis_protocol_proto
@@ -89,7 +93,8 @@ set(YRPC_LIBS
   rpc_introspection_proto
   yb_util
   gutil
-  libev)
+  libev
+  ${RPC_LIBS_EXTENSIONS})
 
 ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
@@ -136,3 +141,4 @@ ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(scheduler-test)
 ADD_YB_TEST(thread_pool-test)
+ADD_YB_TESTS(${RPC_ADDITIONAL_TESTS})

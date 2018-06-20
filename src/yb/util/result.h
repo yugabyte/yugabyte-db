@@ -364,6 +364,10 @@ ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
   __extension__ ({ auto&& __result = (expr); ASSERT_OK(__result); std::move(*__result); })
 
 // Asserts that result is ok, extracts result value is case of success.
+#define EXPECT_RESULT(expr) \
+  __extension__ ({ auto&& __result = (expr); EXPECT_OK(__result); std::move(*__result); })
+
+// Asserts that result is ok, extracts result value is case of success.
 #define ASSERT_RESULT_FAST(expr) \
   __extension__ ({ auto&& __result = (expr); ASSERT_OK_FAST(__result); std::move(*__result); })
 

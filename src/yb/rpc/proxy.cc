@@ -70,9 +70,11 @@ using std::shared_ptr;
 namespace yb {
 namespace rpc {
 
-Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote)
+Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
+             const Protocol* protocol)
     : context_(std::move(context)),
       remote_(remote),
+      protocol_(protocol ? protocol : context_->DefaultProtocol()),
       outbound_call_metrics_(context_->metric_entity() ?
           std::make_shared<OutboundCallMetrics>(context_->metric_entity()) : nullptr),
       call_local_service_(remote == HostPort()),
@@ -244,7 +246,7 @@ void Proxy::ResolveDone(
 
 void Proxy::QueueCall(RpcController* controller, const Endpoint& endpoint) {
   uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
-  ConnectionId conn_id(endpoint, idx);
+  ConnectionId conn_id(endpoint, idx, protocol_);
   controller->call_->SetConnectionId(conn_id);
   context_->QueueOutboundCall(controller->call_);
 }
@@ -266,11 +268,12 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
   return controller->status();
 }
 
-std::shared_ptr<Proxy> ProxyCache::Get(const HostPort& remote) {
+std::shared_ptr<Proxy> ProxyCache::Get(const HostPort& remote, const Protocol* protocol) {
+  ProxyKey key(remote, protocol);
   std::lock_guard<std::mutex> lock(mutex_);
-  auto it = proxies_.find(remote);
+  auto it = proxies_.find(key);
   if (it == proxies_.end()) {
-    it = proxies_.emplace(remote, std::make_unique<Proxy>(context_, remote)).first;
+    it = proxies_.emplace(key, std::make_unique<Proxy>(context_, remote, protocol)).first;
   }
   return it->second;
 }

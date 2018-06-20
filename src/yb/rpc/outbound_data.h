@@ -37,8 +37,6 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
  public:
   virtual void Transferred(const Status& status, Connection* conn) = 0;
 
-  virtual ~OutboundData() {}
-
   // Serializes the data to be sent out via the RPC framework.
   virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
 
@@ -47,6 +45,8 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
   }
 
   virtual bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
+
+  virtual ~OutboundData() {}
 };
 
 typedef std::shared_ptr<OutboundData> OutboundDataPtr;

@@ -62,9 +62,9 @@ Slice GetSidecarPointer(const RpcController& controller, int idx, int expected_s
   return Slice(sidecar.data(), expected_size);
 }
 
-std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
-                                           const scoped_refptr<MetricEntity>& metric_entity,
-                                           const MessengerOptions& options) {
+MessengerBuilder CreateMessengerBuilder(const std::string& name,
+                                        const scoped_refptr<MetricEntity>& metric_entity,
+                                        const MessengerOptions& options) {
   MessengerBuilder bld(name);
   bld.set_num_reactors(options.n_reactors);
   static constexpr std::chrono::milliseconds kMinCoarseTimeGranularity(1);
@@ -81,9 +81,13 @@ std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
   bld.CreateConnectionContextFactory<YBOutboundConnectionContext>(
       FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker(name));
-  auto messenger = bld.Build();
-  CHECK_OK(messenger);
-  return *messenger;
+  return bld;
+}
+
+std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
+                                           const scoped_refptr<MetricEntity>& metric_entity,
+                                           const MessengerOptions& options) {
+  return EXPECT_RESULT(CreateMessengerBuilder(name, metric_entity, options).Build());
 }
 
 #ifdef THREAD_SANITIZER
@@ -300,12 +304,10 @@ std::unique_ptr<ServiceIf> CreateCalculatorService(
 }
 
 TestServer::TestServer(std::unique_ptr<ServiceIf> service,
-                       const scoped_refptr<MetricEntity>& metric_entity,
+                       const std::shared_ptr<Messenger>& messenger,
                        const TestServerOptions& options)
     : service_name_(service->service_name()),
-      messenger_(CreateMessenger("TestServer",
-                                 metric_entity,
-                                 options.messenger_options)),
+      messenger_(messenger),
       thread_pool_("rpc-test", kQueueLength, options.n_worker_threads) {
 
   // If it is CalculatorService then we should set messenger for it.
@@ -429,7 +431,8 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
 
 void RpcTestBase::StartTestServer(Endpoint* server_endpoint, const TestServerOptions& options) {
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService(metric_entity_));
-  server_.reset(new TestServer(std::move(service), metric_entity_, options));
+  server_.reset(new TestServer(
+      std::move(service), CreateMessenger("TestServer", options.messenger_options), options));
   *server_endpoint = server_->bound_endpoint();
 }
 
@@ -439,9 +442,18 @@ void RpcTestBase::StartTestServer(HostPort* server_hostport, const TestServerOpt
   *server_hostport = HostPort::FromBoundEndpoint(endpoint);
 }
 
+TestServer RpcTestBase::StartTestServer(const std::string& name, const IpAddress& address) {
+  std::unique_ptr<ServiceIf> service(CreateCalculatorService(metric_entity(), name));
+  TestServerOptions options;
+  options.endpoint = Endpoint(address, 0);
+  return TestServer(std::move(service), CreateMessenger("TestServer"), options);
+}
+
 void RpcTestBase::StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                                    const TestServerOptions& options) {
-  server_.reset(new TestServer(CreateCalculatorService(metric_entity_), metric_entity_, options));
+  auto messenger = options.messenger ? options.messenger
+                                     : CreateMessenger("TestServer", options.messenger_options);
+  server_.reset(new TestServer(CreateCalculatorService(metric_entity_), messenger, options));
   *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
 }
 
@@ -458,6 +470,11 @@ CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* liste
 std::shared_ptr<Messenger> RpcTestBase::CreateMessenger(const string &name,
                                                         const MessengerOptions& options) {
   return yb::rpc::CreateMessenger(name, metric_entity_, options);
+}
+
+MessengerBuilder RpcTestBase::CreateMessengerBuilder(const string &name,
+                                                     const MessengerOptions& options) {
+  return yb::rpc::CreateMessengerBuilder(name, metric_entity_, options);
 }
 
 } // namespace rpc
