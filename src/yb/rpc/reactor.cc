@@ -482,6 +482,16 @@ Result<Socket> CreateClientSocket(const Endpoint& remote) {
   return std::move(socket);
 }
 
+template <class... Args>
+Result<std::unique_ptr<Stream>> CreateStream(
+    const StreamFactories& factories, const Protocol* protocol, Args&&... args) {
+  auto it = factories.find(protocol);
+  if (it == factories.end()) {
+    return STATUS_FORMAT(NotFound, "Unknown protocol: $0", protocol);
+  }
+  return it->second->Create(std::forward<Args>(args)...);
+}
+
 } // namespace
 
 Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
@@ -516,17 +526,22 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     }
   }
 
+  auto context = messenger_->connection_context_factory_->Create();
+  auto stream = VERIFY_RESULT(CreateStream(
+      messenger_->stream_factories_, conn_id.protocol(), conn_id.remote(), std::move(*sock),
+      &context->Allocator(), context->BufferLimit()));
+
   // Register the new connection in our map.
-  auto connection = std::make_shared<Connection>(this,
-                                                 conn_id.remote(),
-                                                 sock->Release(),
-                                                 ConnectionDirection::CLIENT,
-                                                 messenger_->connection_context_factory_->Create());
+  auto connection = std::make_shared<Connection>(
+      this,
+      std::move(stream),
+      ConnectionDirection::CLIENT,
+      std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
 
   // Insert into the client connection map to avoid duplicate connection requests.
-  client_conns_.emplace(conn_id, connection);
+  CHECK(client_conns_.emplace(conn_id, connection).second);
 
   conn->swap(connection);
   return Status::OK();
@@ -535,23 +550,13 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
 namespace {
 
 void ShutdownIfRemoteAddressIs(const ConnectionPtr& conn, const IpAddress& address) {
-  auto socket = conn->socket();
-  Endpoint peer;
-  auto status = socket->GetPeerAddress(&peer);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to get peer address" << socket->GetFd() << ": " << status.ToString();
-    return;
-  }
+  Endpoint peer = conn->remote();
 
   if (peer.address() != address) {
     return;
   }
 
-  status = socket->Shutdown(/* shut_read */ true, /* shut_write */ true);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to shutdown " << socket->GetFd() << ": " << status.ToString();
-    return;
-  }
+  conn->Close();
   LOG(INFO) << "Dropped connection: " << conn->ToString();
 }
 
@@ -581,7 +586,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
   if (conn->direction() == ConnectionDirection::CLIENT) {
     bool erased = false;
     for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
-      auto it = client_conns_.find(ConnectionId(conn->remote(), idx));
+      auto it = client_conns_.find(ConnectionId(conn->remote(), idx, conn->protocol()));
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);
         erased = true;
@@ -790,9 +795,17 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
                                     std::unique_ptr<ConnectionContext> connection_context) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
+
+  auto stream = CreateStream(
+      messenger_->stream_factories_, messenger_->listen_protocol_,
+      remote, std::move(*socket), &connection_context->Allocator(),
+      connection_context->BufferLimit());
+  if (!stream.ok()) {
+    LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
+    return;
+  }
   auto conn = std::make_shared<Connection>(this,
-                                           remote,
-                                           socket->Release(),
+                                           std::move(*stream),
                                            ConnectionDirection::SERVER,
                                            std::move(connection_context));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {

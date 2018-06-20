@@ -23,6 +23,10 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_introspection.pb.h"
+
+#include "yb/util/strongly_typed_bool.h"
+
 namespace boost {
 namespace asio {
 
@@ -46,13 +50,16 @@ class GrowableBufferAllocator;
 class Messenger;
 class Proxy;
 class ProxyCache;
+class Reactor;
 class ReactorTask;
+class RpcConnectionPB;
 class RpcContext;
 class RpcController;
 class RpcService;
 class Rpcs;
-class Scheduler;
+class Protocol;
 class ServicePoolImpl;
+class Stream;
 class ThreadPool;
 
 struct RpcMethodMetrics;
@@ -68,6 +75,9 @@ typedef std::shared_ptr<InboundCall> InboundCallPtr;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
+
+class OutboundData;
+typedef std::shared_ptr<OutboundData> OutboundDataPtr;
 
 class ServerEventList;
 typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
@@ -85,6 +95,11 @@ typedef std::chrono::steady_clock::time_point SteadyTimePoint;
 
 class ConnectionContextFactory;
 typedef std::shared_ptr<ConnectionContextFactory> ConnectionContextFactoryPtr;
+
+class StreamFactory;
+typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
+
+YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
 } // namespace rpc
 } // namespace yb

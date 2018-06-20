@@ -110,13 +110,6 @@ class RpcStubTest : public RpcTestBase {
     ASSERT_EQ(30, resp.result());
   }
 
-  TestServer StartTestServer(const std::string& name, const IpAddress& address) {
-    std::unique_ptr<ServiceIf> service(CreateCalculatorService(metric_entity(), name));
-    TestServerOptions options;
-    options.endpoint = Endpoint(address, 0);
-    return TestServer(std::move(service), metric_entity(), options);
-  }
-
   std::unique_ptr<CalculatorServiceProxy> CreateCalculatorProxy(const Endpoint& remote) {
     auto messenger = CreateMessenger("Client");
     IpAddress local_address = remote.address().is_v6()
@@ -215,7 +208,7 @@ TEST_F(RpcStubTest, TestIncoherence) {
 // IO threads can deal with read/write calls that don't succeed
 // in sending the entire data in one go.
 TEST_F(RpcStubTest, TestBigCallData) {
-  constexpr int kNumSentAtOnce = 20;
+  constexpr int kNumSentAtOnce = 1;
   constexpr size_t kMessageSize = NonTsanVsTsan(32_MB, 4_MB);
 
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);

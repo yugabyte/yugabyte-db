@@ -77,6 +77,9 @@
       __FILE__, __LINE__, google::GLOG_ ## severity, num_suppressed, \
       &google::LogMessage::SendToLog).stream()
 
+#define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
+    YB_LOG_EVERY_N_SECS(severify, n, secs) << LogPrefix()
+
 namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 } // namespace yb
@@ -134,6 +137,8 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
                              google::NUM_SEVERITIES, \
                              INVALID_REQUESTED_LOG_SEVERITY); \
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
+
+#define YB_LOG_WITH_PREFIX_EVERY_N(severity, n) YB_LOG_EVERY_N(severity, n) << LogPrefix()
 
 #define YB_SYSLOG_EVERY_N(severity, n) \
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToSyslogAndLog)
@@ -252,7 +257,8 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 
 // Same as the above, but obtain the lock.
 #define LOG_WITH_PREFIX(severity) LOG(severity) << LogPrefix()
-#define VLOG_WITH_PREFIX(verboselevel) LOG_IF(INFO, VLOG_IS_ON(verboselevel)) << LogPrefix()
+#define VLOG_WITH_PREFIX(verboselevel) VLOG(verboselevel) << LogPrefix()
+#define DVLOG_WITH_PREFIX(verboselevel) DVLOG(verboselevel) << LogPrefix()
 #define LOG_IF_WITH_PREFIX(severity, condition) LOG_IF(severity, condition) << LogPrefix()
 
 // DCHECK_ONLY_NOTNULL is like DCHECK_NOTNULL, but does not result in an unused expression in

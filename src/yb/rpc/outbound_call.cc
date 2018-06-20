@@ -167,8 +167,7 @@ OutboundCall::OutboundCall(
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
-    : conn_id_(Endpoint(), 0),
-      start_(MonoTime::Now()),
+    : start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       call_id_(NextCallId()),
@@ -496,13 +495,14 @@ void OutboundCall::InitHeader(RequestHeader* header) {
 ///
 
 string ConnectionId::ToString() const {
-  return Format("{ remote: $0 idx: $1 }", remote_, idx_);
+  return Format("{ remote: $0 idx: $1 protocol: $2 }", remote_, idx_, protocol_);
 }
 
 size_t ConnectionId::HashCode() const {
   size_t seed = 0;
   boost::hash_combine(seed, hash_value(remote_));
   boost::hash_combine(seed, idx_);
+  boost::hash_combine(seed, protocol_);
   return seed;
 }
 

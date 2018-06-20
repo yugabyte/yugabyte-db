@@ -606,7 +606,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         " public:\n"
         "  $service_name$Proxy(\n"
         "      ::yb::rpc::ProxyCache* cache,\n"
-        "      const ::yb::HostPort &endpoint);\n"
+        "      const ::yb::HostPort &endpoint,\n"
+        "     const ::yb::rpc::Protocol* protocol = nullptr);\n"
         "  ~$service_name$Proxy();\n"
         "\n"
         );
@@ -665,8 +666,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       Print(printer, *subs,
         "$service_name$Proxy::$service_name$Proxy(\n"
         "   ::yb::rpc::ProxyCache* cache,\n"
-        "   const ::yb::HostPort &remote)\n"
-        "  : proxy_(cache->Get(remote)) {\n"
+        "   const ::yb::HostPort &remote,\n"
+        "   const ::yb::rpc::Protocol* protocol)\n"
+        "  : proxy_(cache->Get(remote, protocol)) {\n"
         "}\n"
         "\n"
         "$service_name$Proxy::~$service_name$Proxy() {\n"
