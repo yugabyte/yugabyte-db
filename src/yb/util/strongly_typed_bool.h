@@ -16,6 +16,8 @@
 
 #include <vector>
 
+#include <boost/preprocessor/cat.hpp>
+
 // A "strongly-typed boolean" tool. This is needed to prevent passing the wrong boolean as a
 // function parameter, and to make callsites more readable by enforcing that MyBooleanType::kTrue or
 // MyBooleanType::kFalse is specified instead of kTrue, kFalse. Conversion from strongly-typed bools
@@ -40,7 +42,8 @@ class StronglyTypedBool {
   // These operators return regular bools so that it is easy to use strongly-typed bools in logical
   // expressions.
   operator bool() const { return value_; }
-  bool operator!() const { return StronglyTypedBool<Tag>(!value_); }
+  StronglyTypedBool<Tag> operator!() const { return StronglyTypedBool<Tag>(!value_); }
+  bool get() const { return value_; }
 
  private:
   bool value_;

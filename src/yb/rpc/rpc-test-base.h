@@ -76,7 +76,7 @@ class GenericCalculatorService : public ServiceIf {
     // this test doesn't generate metrics, so we ignore the argument.
   }
 
-  virtual void Handle(InboundCallPtr incoming) override;
+  void Handle(InboundCallPtr incoming) override;
   std::string service_name() const override { return kFullServiceName; }
   static std::string static_service_name() { return kFullServiceName; }
 
@@ -122,6 +122,7 @@ extern const MessengerOptions kDefaultServerMessengerOptions;
 
 struct TestServerOptions {
   MessengerOptions messenger_options = kDefaultServerMessengerOptions;
+  std::shared_ptr<Messenger> messenger;
   size_t n_worker_threads = 3;
   Endpoint endpoint;
 };
@@ -129,7 +130,7 @@ struct TestServerOptions {
 class TestServer {
  public:
   TestServer(std::unique_ptr<ServiceIf> service,
-             const scoped_refptr<MetricEntity>& metric_entity,
+             const std::shared_ptr<Messenger>& messenger,
              const TestServerOptions& options = TestServerOptions());
 
   TestServer(TestServer&& rhs)
@@ -165,6 +166,10 @@ class RpcTestBase : public YBTest {
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
+  MessengerBuilder CreateMessengerBuilder(
+      const string &name,
+      const MessengerOptions& options = kDefaultClientMessengerOptions);
+
   CHECKED_STATUS DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);
 
   void DoTestSidecar(Proxy* proxy,
@@ -176,6 +181,7 @@ class RpcTestBase : public YBTest {
                        const TestServerOptions& options = TestServerOptions());
   void StartTestServer(Endpoint* server_endpoint,
                        const TestServerOptions& options = TestServerOptions());
+  TestServer StartTestServer(const std::string& name, const IpAddress& address);
   void StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                         const TestServerOptions& options = TestServerOptions());
 

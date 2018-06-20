@@ -78,12 +78,16 @@ class RpcController;
 // This class is copyable for STL compatibility, but not assignable (use CopyFrom() for that).
 class ConnectionId {
  public:
+  ConnectionId() {}
+
   // Convenience constructor.
-  ConnectionId(const Endpoint& remote, size_t idx) : remote_(remote), idx_(idx) {}
+  ConnectionId(const Endpoint& remote, size_t idx, const Protocol* protocol)
+      : remote_(remote), idx_(idx), protocol_(protocol) {}
 
   // The remote address.
   const Endpoint& remote() const { return remote_; }
   uint8_t idx() const { return idx_; }
+  const Protocol* protocol() const { return protocol_; }
 
   // Returns a string representation of the object, not including the password field.
   std::string ToString() const;
@@ -94,6 +98,7 @@ class ConnectionId {
   // Remember to update HashCode() and Equals() when new fields are added.
   Endpoint remote_;
   uint8_t idx_ = 0;  // Connection index, used to support multiple connections to the same server.
+  const Protocol* protocol_;
 };
 
 class ConnectionIdHash {
@@ -102,7 +107,7 @@ class ConnectionIdHash {
 };
 
 inline bool operator==(const ConnectionId& lhs, const ConnectionId& rhs) {
-  return lhs.remote() == rhs.remote() && lhs.idx() == rhs.idx();
+  return lhs.remote() == rhs.remote() && lhs.idx() == rhs.idx() && lhs.protocol() == rhs.protocol();
 }
 
 // Container for OutboundCall metrics
@@ -292,7 +297,7 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  virtual void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, Connection* conn) override;
 
   void set_state(State new_state);
   State state() const;

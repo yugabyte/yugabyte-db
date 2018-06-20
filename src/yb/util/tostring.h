@@ -64,7 +64,8 @@ namespace yb {
       typedef int Yes; \
       typedef struct { Yes array[2]; } No; \
       typedef typename std::remove_reference<T>::type StrippedT; \
-      template<class U> static Yes Test(decltype(static_cast<U*>(nullptr)->function())*); \
+      template<class U> static Yes Test(typename std::remove_reference< \
+          decltype(static_cast<U*>(nullptr)->function())>::type*); \
       template<class U> static No Test(...); \
       static const bool value = sizeof(Yes) == sizeof(Test<StrippedT>(nullptr)); \
     };
@@ -135,7 +136,7 @@ class PointerToString {
 };
 
 template <>
-class PointerToString<void*> {
+class PointerToString<const void*> {
  public:
   static std::string Apply(const void* ptr) {
     if (ptr) {
@@ -147,6 +148,14 @@ class PointerToString<void*> {
     } else {
       return "<NULL>";
     }
+  }
+};
+
+template <>
+class PointerToString<void*> {
+ public:
+  static std::string Apply(const void* ptr) {
+    return PointerToString<const void*>::Apply(ptr);
   }
 };
 

@@ -54,6 +54,7 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
+#include "yb/rpc/stream.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
@@ -66,12 +67,6 @@
 
 namespace yb {
 namespace rpc {
-
-class Connection;
-class DumpRunningRpcsRequestPB;
-class GrowableBuffer;
-class Reactor;
-class ReactorTask;
 
 YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
 
@@ -94,7 +89,7 @@ typedef boost::container::small_vector_base<OutboundDataPtr> OutboundDataBatch;
 // This class is not fully thread-safe. It is accessed only from the context of a
 // single Reactor except where otherwise specified.
 //
-class Connection final : public std::enable_shared_from_this<Connection> {
+class Connection final : public StreamContext, public std::enable_shared_from_this<Connection> {
  public:
   typedef ConnectionDirection Direction;
 
@@ -106,16 +101,11 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // context: context for this connection. Context is used by connection to handle
   // protocol specific actions, such as parsing of incoming data into calls.
   Connection(Reactor* reactor,
-             const Endpoint& remote,
-             int socket,
+             std::unique_ptr<Stream> stream,
              Direction direction,
              std::unique_ptr<ConnectionContext> context);
 
   ~Connection();
-
-  // Register our socket with an epoll loop.  We will only ever be registered in
-  // one epoll loop at a time.
-  void EpollRegister(ev::loop_ref& loop);  // NOLINT
 
   CoarseMonoClock::TimePoint last_activity_time() const {
     return last_activity_time_;
@@ -123,9 +113,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   // Returns true if we are not in the process of receiving or sending a
   // message, and we have no outstanding calls.
-  bool Idle() const;
+  // When reason_not_idle is specified it contains reason why this connection is not idle.
+  bool Idle(std::string* reason_not_idle = nullptr) const;
 
-  // A human-readable reason why the connection is not idle.
+  // A human-readable reason why the connection is not idle. Empty string if connection is idle.
   std::string ReasonNotIdle() const;
 
   // Fail any calls which are currently queued or awaiting response.
@@ -140,29 +131,19 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   void QueueOutboundCall(const OutboundCallPtr& call);
 
   // The address of the remote end of the connection.
-  const Endpoint& remote() const { return remote_; }
+  const Endpoint& remote() const;
+
+  const Protocol* protocol() const;
 
   // The address of the local end of the connection.
-  const Endpoint& local() const { return local_; }
-
-  // libev callback when there are some events in socket.
-  void Handler(ev::io& watcher, int revents); // NOLINT
+  const Endpoint& local() const;
 
   void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
-
-  // Invoked when we have something to read.
-  CHECKED_STATUS ReadHandler();
-
-  // Invoked when socket is ready for writing.
-  // `just_connected` is used to avoid flooding log on each connect.
-  CHECKED_STATUS WriteHandler(bool just_connected);
 
   // Safe to be called from other threads.
   std::string ToString() const;
 
   Direction direction() const { return direction_; }
-
-  Socket* socket() { return &socket_; }
 
   // Queue a call response back to the client on the server side.
   //
@@ -195,6 +176,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // Try to parse already received data.
   void ParseReceived();
 
+  void Close();
+
  private:
   CHECKED_STATUS DoWrite();
 
@@ -203,45 +186,24 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   void ProcessResponseQueue();
 
-  void ClearSending(const Status& status);
+  void UpdateLastActivity() override;
+  void Transferred(const OutboundDataPtr& data, const Status& status) override;
+  void Destroy(const Status& status) override;
+  Result<size_t> ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) override;
+  void Connected() override;
 
-  Result<bool> Receive();
-
-  // Try to parse received data into calls and process them.
-  Result<bool> TryProcessCalls();
-
-  // Updates listening events.
-  void UpdateEvents();
+  std::string LogPrefix() const;
 
   // The reactor thread that created this connection.
   Reactor* const reactor_;
 
-  // The socket we're communicating on.
-  Socket socket_;
-
-  // The remote address we're talking from.
-  Endpoint local_;
-
-  // The remote address we're talking to.
-  const Endpoint remote_;
+  std::unique_ptr<Stream> stream_;
 
   // whether we are client or server
   Direction direction_;
 
-  bool connected_ = false;
-
-  bool read_buffer_full_ = false;
-
   // The last time we read or wrote from the socket.
   CoarseMonoClock::TimePoint last_activity_time_;
-
-  // Notifies us when our socket is readable or writable.
-  ev::io io_;
-
-  // Set to true when the connection is registered on a loop.
-  // This is used for a sanity check in the destructor that we are properly
-  // un-registered before shutting down.
-  bool is_epoll_registered_ = false;
 
   // Calls which have been sent and are now waiting for a response.
   std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
@@ -271,15 +233,6 @@ class Connection final : public std::enable_shared_from_this<Connection> {
                       std::vector<ExpirationPair>,
                       CompareExpiration> expiration_queue_;
   ev::timer timer_;
-
-  // Data received on this connection that has not been processed yet.
-  GrowableBuffer read_buffer_;
-
-  // sending_* contain bytes and calls we are currently sending to socket
-  std::deque<RefCntBuffer> sending_;
-  std::deque<OutboundDataPtr> sending_outbound_datas_;
-  size_t send_position_ = 0;
-  bool waiting_write_ready_ = false;
 
   simple_spinlock outbound_data_queue_lock_;
 

@@ -73,6 +73,8 @@ namespace rpc {
 template <class ContextType>
 class ConnectionContextFactoryImpl;
 
+typedef std::unordered_map<const Protocol*, StreamFactoryPtr> StreamFactories;
+
 // Used to construct a Messenger.
 class MessengerBuilder {
  public:
@@ -95,6 +97,13 @@ class MessengerBuilder {
   // Uses the given connection type to handle the incoming connections.
   MessengerBuilder &UseConnectionContextFactory(const ConnectionContextFactoryPtr& factory) {
     connection_context_factory_ = factory;
+    return *this;
+  }
+
+  MessengerBuilder &AddStreamFactory(const Protocol* protocol, StreamFactoryPtr factory);
+
+  MessengerBuilder &SetListenProtocol(const Protocol* protocol) {
+    listen_protocol_ = protocol;
     return *this;
   }
 
@@ -129,6 +138,8 @@ class MessengerBuilder {
   CoarseMonoClock::Duration coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
   ConnectionContextFactoryPtr connection_context_factory_;
+  StreamFactories stream_factories_;
+  const Protocol* listen_protocol_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -175,13 +186,15 @@ class Messenger : public ProxyContext {
 
   // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
   // that reactor to assign and send the call.
-  void QueueOutboundCall(OutboundCallPtr call);
+  void QueueOutboundCall(OutboundCallPtr call) override;
 
   // Enqueue a call for processing on the server.
-  void QueueInboundCall(InboundCallPtr call);
+  void QueueInboundCall(InboundCallPtr call) override;
 
   // Invoke the RpcService to handle a call directly.
-  void Handle(InboundCallPtr call);
+  void Handle(InboundCallPtr call) override;
+
+  const Protocol* DefaultProtocol() override { return listen_protocol_; }
 
   CHECKED_STATUS QueueEventOnAllReactors(ServerEventListPtr server_event);
 
@@ -207,7 +220,7 @@ class Messenger : public ProxyContext {
     return name_;
   }
 
-  scoped_refptr<MetricEntity> metric_entity() const { return metric_entity_; }
+  scoped_refptr<MetricEntity> metric_entity() const override { return metric_entity_; }
 
   scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
 
@@ -223,7 +236,7 @@ class Messenger : public ProxyContext {
     return scheduler_;
   }
 
-  IoService& io_service() {
+  IoService& io_service() override {
     return io_thread_pool_.io_service();
   }
 
@@ -250,6 +263,10 @@ class Messenger : public ProxyContext {
   const std::string name_;
 
   ConnectionContextFactoryPtr connection_context_factory_;
+
+  const StreamFactories stream_factories_;
+
+  const Protocol* const listen_protocol_;
 
   // Protects closing_, acceptor_pools_, rpc_services_.
   mutable percpu_rwlock lock_;

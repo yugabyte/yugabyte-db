@@ -45,8 +45,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase {
   void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
   void Shutdown(const Status& status) override;
 
-  bool Idle() override;
-  std::string ReasonNotIdle() override;
+  bool Idle(std::string* reason_not_idle = nullptr) override;
 
   void CallProcessed(InboundCall* call);
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;

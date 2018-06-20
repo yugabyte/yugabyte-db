@@ -59,6 +59,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
+#include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/errno.h"
@@ -108,7 +109,9 @@ MessengerBuilder::MessengerBuilder(std::string name)
       coarse_timer_granularity_(100ms),
       connection_context_factory_(
           rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
-              FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit)) {
+              FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit)),
+      listen_protocol_(TcpStream::StaticProtocol()) {
+  AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
@@ -141,6 +144,13 @@ Result<std::shared_ptr<Messenger>> MessengerBuilder::Build() {
   // See docs on Messenger::retain_self_ for info about this odd hack.
   return shared_ptr<Messenger>(
     messenger.release(), std::mem_fun(&Messenger::AllExternalReferencesDropped));
+}
+
+MessengerBuilder &MessengerBuilder::AddStreamFactory(
+    const Protocol* protocol, StreamFactoryPtr factory) {
+  auto p = stream_factories_.emplace(protocol, std::move(factory));
+  LOG_IF(DFATAL, !p.second) << "Duplicate stream factory: " << protocol->ToString();
+  return *this;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -383,6 +393,8 @@ void Messenger::RegisterInboundSocket(
 Messenger::Messenger(const MessengerBuilder &bld)
     : name_(bld.name_),
       connection_context_factory_(bld.connection_context_factory_),
+      stream_factories_(bld.stream_factories_),
+      listen_protocol_(bld.listen_protocol_),
       metric_entity_(bld.metric_entity_),
       retain_self_(this),
       io_thread_pool_(FLAGS_io_thread_pool_size),
