@@ -16,6 +16,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include <gflags/gflags.h>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
@@ -29,6 +31,8 @@
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 using namespace std::literals;
+
+DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 
 namespace yb {
 namespace redisserver {
@@ -272,7 +276,11 @@ void HandleQuit(LocalCommandData data) {
 
 void HandleFlushDB(LocalCommandData data) {
   RedisResponsePB resp;
-  const Status s = data.client()->TruncateTable(data.table()->id());
+
+  const Status s = FLAGS_yedis_enable_flush ?
+    data.client()->TruncateTable(data.table()->id()) :
+    STATUS(InvalidArgument, "FLUSHDB and FLUSHALL are not enabled.");
+
   if (s.ok()) {
     resp.set_code(RedisResponsePB_RedisStatusCode_OK);
   } else {

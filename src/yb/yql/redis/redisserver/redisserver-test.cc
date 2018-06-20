@@ -53,6 +53,7 @@ DECLARE_int32(rpc_max_message_size);
 DECLARE_int32(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
+DECLARE_bool(yedis_enable_flush);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
@@ -316,7 +317,8 @@ class TestRedisService : public RedisTableTestBase {
         std::to_string(expire_val - ttl_sec)}); // ttl of 0 not allowed.
   }
 
-  void TestFlush(const string& flush_cmd) {
+  void TestFlush(const string& flush_cmd, const bool allow_flush) {
+    FLAGS_yedis_enable_flush = allow_flush;
     // Populate keys.
     const int kKeyCount = 100;
     for (int i = 0; i < kKeyCount; i++) {
@@ -329,6 +331,12 @@ class TestRedisService : public RedisTableTestBase {
       DoRedisTestBulkString(__LINE__, {"GET", Substitute("k$0", i)}, Substitute("v$0", i));
     }
     SyncClient();
+
+    if (!allow_flush) {
+      DoRedisTestExpectError(__LINE__, {flush_cmd});
+      SyncClient();
+      return;
+    }
 
     // Delete all keys in the database and verify keys are gone.
     DoRedisTestOk(__LINE__, {flush_cmd});
@@ -2703,11 +2711,13 @@ TEST_F(TestRedisService, TestQuit) {
 }
 
 TEST_F(TestRedisService, TestFlushAll) {
-  TestFlush("FLUSHALL");
+  TestFlush("FLUSHALL", false);
+  TestFlush("FLUSHALL", true);
 }
 
 TEST_F(TestRedisService, TestFlushDb) {
-  TestFlush("FLUSHDB");
+  TestFlush("FLUSHDB", false);
+  TestFlush("FLUSHDB", true);
 }
 
 }  // namespace redisserver
