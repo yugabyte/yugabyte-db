@@ -1275,6 +1275,12 @@ class PTBindVar : public PTExpr {
     return limit_bindvar_name;
   }
 
+  // The name Cassandra uses for the virtual column when binding OFFSET clause
+  static const string& offset_bindvar_name() {
+    static string offset_bindvar_name = "[offset]";
+    return offset_bindvar_name;
+  }
+
   // The name Cassandra uses for the virtual column when binding USING TTL clause
   static const string& ttl_bindvar_name() {
     static string ttl_bindvar_name = "[ttl]";

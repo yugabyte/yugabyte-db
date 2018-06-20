@@ -207,7 +207,7 @@ TEST_F(QLTestParser, TestQLParser) {
 
   // Valid statement: unreserved keywords used as names.
   PARSE_VALID_STMT("CREATE KEYSPACE clustering;");
-  PARSE_VALID_STMT("CREATE TABLE offset(filtering int PRIMARY KEY, login text, roles float)");
+  PARSE_VALID_STMT("CREATE TABLE off(filtering int PRIMARY KEY, login text, roles float)");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {
