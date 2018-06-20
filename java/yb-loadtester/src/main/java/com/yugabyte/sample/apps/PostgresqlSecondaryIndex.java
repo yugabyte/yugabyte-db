@@ -50,7 +50,7 @@ public class PostgresqlSecondaryIndex extends AppBase {
   }
 
   // The default table name to create and use for CRUD ops.
-  private static final String DEFAULT_TABLE_NAME = PostgresqlSecondaryIndex.class.getSimpleName();
+  private static final String DEFAULT_TABLE_NAME = "postgresqlsecondaryindex";
 
   // The shared prepared select statement for fetching the data.
   private volatile PreparedStatement preparedSelect = null;
@@ -62,20 +62,35 @@ public class PostgresqlSecondaryIndex extends AppBase {
   }
 
   @Override
-  public void dropTable() throws Exception {
+  public void createTablesIfNeeded() throws Exception {
     Connection connection = getPostgresConnection();
+
+    // Check if database already exists.
+    ResultSet rs = connection.createStatement().executeQuery(String.format("SELECT datname FROM " +
+        "pg_database WHERE datname='%s'", postgres_ybdemo_database));
+    if (!rs.next()) {
+      // Database doesnt't exist, creating...
+      connection.createStatement().executeUpdate(
+          String.format("CREATE DATABASE %s", postgres_ybdemo_database));
+      LOG.info("Created database: " + postgres_ybdemo_database);
+    }
+    connection.close();
+
+    // Connect to the new database.
+    connection = getPostgresConnection(postgres_ybdemo_database);
+
+    // Drop table if possible.
     connection.createStatement().executeUpdate(
         String.format("DROP TABLE IF EXISTS %s;", getTableName()));
     LOG.info(String.format("Dropped table: %s", getTableName()));
-  }
 
-  @Override
-  public void createTablesIfNeeded() throws Exception {
-    Connection connection = getPostgresConnection();
+    // Create the table.
     connection.createStatement().executeUpdate(
         String.format("CREATE TABLE IF NOT EXISTS %s (k varchar PRIMARY KEY, v varchar);",
             getTableName()));
     LOG.info(String.format("Created table: %s", getTableName()));
+
+    // Create an index on the table.
     connection.createStatement().executeUpdate(
         String.format("CREATE INDEX IF NOT EXISTS %s_index ON %s(v);",
             getTableName(), getTableName()));
@@ -83,12 +98,13 @@ public class PostgresqlSecondaryIndex extends AppBase {
   }
 
   public String getTableName() {
-    return appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+    String tableName = appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+    return tableName.toLowerCase();
   }
 
   private PreparedStatement getPreparedSelect() throws Exception {
     if (preparedSelect == null) {
-      preparedSelect = getPostgresConnection().prepareStatement(
+      preparedSelect = getPostgresConnection(postgres_ybdemo_database).prepareStatement(
           String.format("SELECT k, v FROM %s WHERE v = ?;", getTableName()));
     }
     return preparedSelect;
@@ -130,8 +146,7 @@ public class PostgresqlSecondaryIndex extends AppBase {
 
   private PreparedStatement getPreparedInsert() throws Exception {
     if (preparedInsert == null) {
-      Connection connection = getPostgresConnection();
-      preparedInsert = connection.prepareStatement(
+      preparedInsert = getPostgresConnection(postgres_ybdemo_database).prepareStatement(
           String.format("INSERT INTO %s (k, v) VALUES (?, ?);", getTableName()));
     }
     return preparedInsert;
