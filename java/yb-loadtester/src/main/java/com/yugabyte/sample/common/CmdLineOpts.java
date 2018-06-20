@@ -412,6 +412,10 @@ public class CmdLineOpts {
       AppBase.appConfig.tableName = cmd.getOptionValue("create_table_name");
       LOG.info("Create table name: " + AppBase.appConfig.tableName);
     }
+    if (cmd.hasOption("default_postgres_database")) {
+      AppBase.appConfig.defaultPostgresDatabase = cmd.getOptionValue("default_postgres_database");
+      LOG.info("Default postgres database: " + AppBase.appConfig.defaultPostgresDatabase);
+    }
     if (cmd.hasOption("drop_table_name")) {
       AppBase.appConfig.tableName = cmd.getOptionValue("drop_table_name");
       LOG.info("Drop table name: " + AppBase.appConfig.tableName);
@@ -467,6 +471,7 @@ public class CmdLineOpts {
                       "Do not use a UUID. Keys will be key:1, key:2, key:3, "
                           + "instead of <uuid>:1, <uuid>:2, <uuid>:3 etc.");
     options.addOption("create_table_name", true, "The name of the CQL table to create.");
+    options.addOption("default_postgres_database", true, "The name of the default postgres db.");
     options.addOption("drop_table_name", true, "The name of the CQL table to drop.");
     options.addOption("read_only", false, "Read-only workload. " +
         "Values must have been written previously and uuid must be provided. " +

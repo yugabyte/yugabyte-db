@@ -20,8 +20,8 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.commons.codec.binary.Hex;
 import org.apache.log4j.Logger;
-
 
 public class SimpleLoadGenerator {
   private static final Logger LOG = Logger.getLogger(SimpleLoadGenerator.class);
@@ -52,7 +52,7 @@ public class SimpleLoadGenerator {
       String k = asString();
       MessageDigest md = MessageDigest.getInstance("MD5");
       md.update(k.getBytes());
-      return new String(md.digest()) + ":" + k;
+      return Hex.encodeHexString(md.digest()) + ":" + k;
     }
 
     public String getValueStr() {
