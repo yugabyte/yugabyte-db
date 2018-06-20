@@ -18,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -101,8 +102,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // Keyspace name.
   public static String keyspace = "ybdemo_keyspace";
 
-  // Postgres database name.
-  public static String postgres_database = "ybdemo_database";
+  // Postgres database name for workload.
+  public static String postgres_ybdemo_database = "ybdemo_database";
 
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
@@ -121,16 +122,15 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   protected Connection getPostgresConnection() throws Exception {
+    return getPostgresConnection(appConfig.defaultPostgresDatabase);
+  }
+
+  protected Connection getPostgresConnection(String database) throws Exception {
     Class.forName("org.postgresql.Driver");
     ContactPoint contactPoint = getRandomContactPoint();
-    Connection connection = DriverManager.getConnection(
-        String.format("jdbc:postgresql://%s:%d/", contactPoint.getHost(),
-            contactPoint.getPort()));
-    connection.createStatement().executeUpdate(
-        String.format("CREATE DATABASE IF NOT EXISTS %s", postgres_database));
-    connection.createStatement().executeUpdate(
-        String.format("USE %s", postgres_database));
-    return connection;
+    return DriverManager.getConnection(
+        String.format("jdbc:postgresql://%s:%d/%s", contactPoint.getHost(), contactPoint.getPort(),
+            database));
   }
 
   protected static void createKeyspace(Session session, String ks) {

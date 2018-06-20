@@ -116,6 +116,9 @@ public class AppConfig {
   // default chosen table name.
   public String tableName = null;
 
+  // Name of the default database for postgres.
+  public String defaultPostgresDatabase = "postgres";
+
   // Does the table need to be dropped.
   public boolean shouldDropTable = false;
 
