@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: client-drivers-java
     parent: client-drivers
-    weight: 552
+    weight: 553
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

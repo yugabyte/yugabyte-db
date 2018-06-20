@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: client-drivers-go
     parent: client-drivers
-    weight: 551
+    weight: 552
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

@@ -60,7 +60,7 @@ func main() {
     
     // Insert into the table.
     var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" + 
-        " VALUES (1, 'John', 35, 'Java')";
+        " VALUES (1, 'John', 35, 'Go')";
     if err := session.Query(insertStmt).Exec(); err != nil {
         log.Fatal(err)
     }
@@ -94,6 +94,6 @@ You should see the following as the output.
 ```
 Created keyspace ybdemo
 Created table ybdemo.employee
-Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'Java')
-Query for id=1 returned: Row[John, 35, Java]
+Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
+Query for id=1 returned: Row[John, 35, Go]
 ```

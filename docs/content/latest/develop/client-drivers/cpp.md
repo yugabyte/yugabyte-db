@@ -1,8 +1,14 @@
 ---
-title: Develop C++ Apps
-linkTitle: Develop C++ Apps
+title: C/C++
+linkTitle: C/C++
+description: Develop C/C++ Apps
 aliases:
   - /develop/client-drivers/cpp/
+menu:
+  latest:
+    identifier: client-drivers-cpp
+    parent: client-drivers
+    weight: 551
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: client-drivers-nodejs
     parent: client-drivers
-    weight: 553
+    weight: 554
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
