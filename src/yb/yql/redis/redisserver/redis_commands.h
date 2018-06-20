@@ -63,7 +63,7 @@ typedef scoped_refptr<BatchContext> BatchContextPtr;
 struct RedisCommandInfo {
   std::string name;
   // The following arguments should be passed to this functor:
-  // Info about it's command.
+  // Info about its command.
   // Index of call in batch.
   // Batch context.
   std::function<void(const RedisCommandInfo&,
