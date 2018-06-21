@@ -18,10 +18,12 @@ import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.ListTabletServersResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
 import org.yb.client.YBTable;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.util.ServerInfo;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -75,33 +77,51 @@ public class TestWipeNode  extends BaseCQLTest {
     session.execute(String.format("CREATE TABLE %s (c1 int, c2 int, PRIMARY KEY (c1))", tableName));
     writeRows(tableName, 100);
 
-    // Wipe one node now.
     Map.Entry<HostAndPort, MiniYBDaemon> daemon =
         miniCluster.getTabletServers().entrySet().iterator().next();
-    LOG.info("Removing node: " + daemon.getKey().toString());
     String removedNodeHost = daemon.getKey().getHostText();
     int removedNodePort = daemon.getKey().getPort();
 
+    // Get the uuid of the node that we are going to remove.
+    YBTable ybTable = miniCluster.getClient().openTable(DEFAULT_TEST_KEYSPACE, tableName);
+
+    List<LocatedTablet> tablets = ybTable.getTabletsLocations(WAIT_FOR_OP_MS);
+    assertFalse(tablets.isEmpty());
+
+    String uuid = null;
+    for (ServerInfo serverInfo :
+         miniCluster.getClient().listTabletServers().getTabletServersList()) {
+      if (serverInfo.getHost().equals(removedNodeHost) &&
+          serverInfo.getPort() == removedNodePort) {
+        uuid = serverInfo.getUuid();
+      }
+    }
+
+    assertNotNull(uuid);
+    final String removedNodeUuid = uuid;
+
+    // Wipe one node now.
+    LOG.info("Removing node: " + daemon.getKey().toString());
     miniCluster.killTabletServerOnHostPort(daemon.getKey());
+
     String dataDirPath = daemon.getValue().getDataDirPath();
     FileUtils.deleteDirectory(new File(dataDirPath));
 
     // Now start up the node on the same host, port.
     miniCluster.startTServer(null, removedNodeHost, removedNodePort);
+    LOG.info("Started a new node. Host: {}, port: {}", removedNodeHost, removedNodePort);
 
     // Try writing rows.
     writeRows(tableName, 100);
 
     // Verify tablet metrics.
-    YBTable ybTable = miniCluster.getClient().openTable(DEFAULT_TEST_KEYSPACE, tableName);
     TestUtils.waitFor(() -> {
-      List<LocatedTablet> tablets = ybTable.getTabletsLocations(WAIT_FOR_OP_MS);
-      assertFalse(tablets.isEmpty());
-      for (LocatedTablet tablet : tablets) {
+      List<LocatedTablet> tabletsLocations = ybTable.getTabletsLocations(WAIT_FOR_OP_MS);
+      assertFalse(tabletsLocations.isEmpty());
+      for (LocatedTablet tablet : tabletsLocations) {
         // Verify the wiped node has no tablets.
         for (LocatedTablet.Replica replica : tablet.getReplicas()) {
-          if (replica.getRpcHost().equals(removedNodeHost) &&
-              replica.getRpcPort() == removedNodePort) {
+          if (replica.getTsUuid().equals(removedNodeUuid)) {
             LOG.error(String.format("Removed node %s:%d, still has replica: %s", removedNodeHost,
                 removedNodePort, replica.toString()));
             return false;
