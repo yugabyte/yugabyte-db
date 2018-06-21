@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -403,6 +405,67 @@ import static org.mockito.Mockito.when;
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
           equalTo("YBCloud command access (delete-key) failed to execute.")));
+    }
+  }
+
+  @Test
+  public void testCreateKubernetesConfig() {
+    try {
+      Map<String, String> config = new HashMap<>();
+      config.put("KUBECONFIG_NAME", "demo.conf");
+      config.put("KUBECONFIG_CONTENT", "hello world");
+      String configFile = accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+      assertEquals("/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/demo.conf", configFile);
+      List<String> lines = Files.readAllLines(Paths.get(configFile));
+      assertEquals("hello world", lines.get(0));
+      assertNull(config.get("KUBECONFIG_NAME"));
+      assertNull(config.get("KUBECONFIG_CONTENT"));
+    } catch (IOException e) {
+      e.printStackTrace();
+      assertNotNull(e.getMessage());
+    }
+  }
+
+  @Test
+  public void testCreateKubernetesConfigMissingConfig() {
+    try {
+      Map<String, String> config = new HashMap<>();
+      accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+    } catch (IOException | RuntimeException e) {
+      assertEquals("Missing KUBECONFIG_NAME data in the provider config.", e.getMessage());
+    }
+  }
+
+  @Test
+  public void testCreateKubernetesConfigFileExists() {
+    try {
+      Map<String, String> config = new HashMap<>();
+      String providerPath = "/tmp/yugaware_tests/keys/" + defaultProvider.uuid;
+      Files.createDirectory(Paths.get(providerPath));
+      Files.write(
+          Paths.get(providerPath + "/demo.conf"),
+          ImmutableList.of("hello world")
+      );
+      config.put("KUBECONFIG_NAME", "demo.conf");
+      config.put("KUBECONFIG_CONTENT", "hello world");
+      accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+    } catch (IOException | RuntimeException e) {
+      assertEquals("File demo.conf already exists.", e.getMessage());
+    }
+  }
+
+  @Test
+  public void testCreateCredentialsFile() {
+    try {
+      ObjectNode credentials = Json.newObject();
+      credentials.put("foo", "bar");
+      credentials.put("hello", "world");
+      String configFile = accessManager.createCredentialsFile(defaultProvider.uuid, credentials);
+      assertEquals("/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
+      List<String> lines = Files.readAllLines(Paths.get(configFile));
+      assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
+    } catch (IOException e) {
+      assertNull(e.getMessage());
     }
   }
 }

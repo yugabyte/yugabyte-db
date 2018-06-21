@@ -79,6 +79,13 @@ public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
                                                              final String nodePrefix,
                                                              final boolean setMasters) {
+    return mockUniverseUpdater(userIntent, nodePrefix, setMasters, false /* updateInProgress */);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
+                                                             final String nodePrefix,
+                                                             final boolean setMasters,
+                                                             final boolean updateInProgress) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -86,6 +93,7 @@ public class ApiUtils {
         PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(userIntent);
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
+        universeDetails.updateInProgress = updateInProgress;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               setMasters && idx <= userIntent.replicationFactor);

@@ -5,6 +5,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -39,5 +40,6 @@ public class Module extends AbstractModule {
     bind(ReleaseManager.class).asEagerSingleton();
     bind(TemplateManager.class).asEagerSingleton();
     bind(AWSInitializer.class).asEagerSingleton();
+    bind(KubernetesManager.class).asEagerSingleton();
   }
 }

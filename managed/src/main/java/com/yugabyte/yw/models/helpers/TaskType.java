@@ -18,8 +18,12 @@ public enum TaskType {
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
 
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
+  
+  CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
+
+  DestroyKubernetesUniverse("DestroyKubernetesUniverse"),
 
   DeleteTable("DeleteTable"),
 
@@ -115,7 +119,9 @@ public enum TaskType {
 
   BackupTable("subtasks.BackupTable"),
   
-  WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly");
+  WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
+
+  KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor");
 
   private String relativeClassPath;
 

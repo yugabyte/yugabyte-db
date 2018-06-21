@@ -189,8 +189,14 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Added universe {} : {} for customer [{}].",
         universe.universeUUID, universe.name, customer.getCustomerId());
 
+      TaskType taskType = TaskType.CreateUniverse;
+
+      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+        taskType = TaskType.CreateKubernetesUniverse;
+      }
+
       // Submit the task to create the universe.
-      UUID taskUUID = commissioner.submit(TaskType.CreateUniverse, taskParams);
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted create universe for {}:{}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
 
@@ -337,7 +343,12 @@ public class UniverseController extends AuthenticatedController {
     taskParams.customerUUID = customerUUID;
     taskParams.isForceDelete = isForceDelete;
     // Submit the task to destroy the universe.
-    UUID taskUUID = commissioner.submit(TaskType.DestroyUniverse, taskParams);
+    TaskType taskType = TaskType.DestroyUniverse;
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
+      taskType = TaskType.DestroyKubernetesUniverse;
+    }
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
 
     // Add this task uuid to the user universe.
