@@ -278,6 +278,10 @@ public class CloudProviderController extends AuthenticatedController {
       taskParams.regionList = new ArrayList<String>();
     }
     String hostVpcRegion = formData.get().hostVpcRegion;
+    if (provider.code.equals("gcp")) {
+      // Ignore hostVpcRegion for GCP.
+      hostVpcRegion = null;
+    }
     if (formData.get().destVpcId != null && !formData.get().destVpcId.isEmpty()) {
       if (provider.code.equals("gcp")) {
         // We need to save the destVpcId into the provider config, because we'll need it during
@@ -288,8 +292,6 @@ public class CloudProviderController extends AuthenticatedController {
         config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
         provider.setConfig(config);
         provider.save();
-        // Ignore hostVpcRegion for GCP.
-        hostVpcRegion = null;
       } else if (provider.code.equals("aws")) {
         if (hostVpcRegion == null || hostVpcRegion.isEmpty()) {
           return ApiResponse.error(
