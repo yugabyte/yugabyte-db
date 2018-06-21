@@ -6,7 +6,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](/architecture/concepts/sharding/)(aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) and the cluster will have to a total of 36 tablets.
+Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](/architecture/concepts/sharding/)(aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl --num_shards_per_tserver 4 create
