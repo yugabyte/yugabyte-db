@@ -4,8 +4,11 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +24,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -190,12 +194,31 @@ public class AccessManager extends DevopsBase {
     return response;
   }
   
-  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) 
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials)
   		throws IOException {
   	ObjectMapper mapper = new ObjectMapper();
-  	String credentialsFilePath = getOrCreateKeyFilePath(providerUUID)+"/credentials.json";
+  	String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
   	mapper.writeValue(new File(credentialsFilePath), credentials);
   	return credentialsFilePath;
+  }
+
+  public String createKubernetesConfig(UUID providerUUID, Map<String, String> config) throws IOException {
+    // Grab the kubernetes config file name and file content and create the physical file.
+    String configFileName = config.remove("KUBECONFIG_NAME");
+    String configFileContent = config.remove("KUBECONFIG_CONTENT");
+    if (configFileName == null) {
+      throw new RuntimeException("Missing KUBECONFIG_NAME data in the provider config.");
+    } else if (configFileContent == null) {
+      throw new RuntimeException("Missing KUBECONFIG_CONTENT data in the provider config.");
+    }
+    String configFilePath = getOrCreateKeyFilePath(providerUUID);
+    Path configFile = Paths.get(configFilePath, configFileName);
+    if (Files.exists(configFile)) {
+      throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
+    }
+    Files.write(configFile, configFileContent.getBytes());
+
+    return configFile.toAbsolutePath().toString();
   }
 }
 

@@ -348,13 +348,13 @@ public class Universe extends Model {
     for (NodeDetails nodeDetails : details.nodeDetailsSet) {
       switch(type) {
       case YQLSERVER:
-        if (nodeDetails.isYqlServer) servers.add(nodeDetails); break;
+        if (nodeDetails.isYqlServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
       case TSERVER:
         if (nodeDetails.isTserver) servers.add(nodeDetails); break;
       case MASTER:
         if (nodeDetails.isMaster) servers.add(nodeDetails); break;
       case REDISSERVER:
-        if (nodeDetails.isRedisServer) servers.add(nodeDetails); break;
+        if (nodeDetails.isRedisServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
       default:
         throw new IllegalArgumentException("Unexpected server type " + type);
       }

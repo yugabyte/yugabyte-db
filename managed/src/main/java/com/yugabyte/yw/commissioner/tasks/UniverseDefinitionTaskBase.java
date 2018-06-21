@@ -13,7 +13,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

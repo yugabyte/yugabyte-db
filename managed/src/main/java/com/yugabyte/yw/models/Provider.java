@@ -11,8 +11,6 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.UniqueConstraint;
 
 import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -27,12 +25,6 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
-
-
-@Table(
-  uniqueConstraints =
-  @UniqueConstraint(columnNames = {"customer_uuid", "code"})
-)
 
 @Entity
 public class Provider extends Model {
@@ -113,8 +105,14 @@ public class Provider extends Model {
    * @return instance of cloud provider
    */
   public static Provider create(UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
+    return create(customerUUID, null, code, name, config);
+  }
+
+  public static Provider create(UUID customerUUID, UUID providerUUID,
+                                Common.CloudType code, String name, Map<String, String> config) {
     Provider provider = new Provider();
     provider.customerUUID = customerUUID;
+    provider.uuid = providerUUID;
     provider.code = code.toString();
     provider.name = name;
     provider.setConfig(config);

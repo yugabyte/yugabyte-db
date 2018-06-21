@@ -39,6 +39,23 @@ public class CloudSpecificInfo {
   }
 
   @Override
+  public CloudSpecificInfo clone() {
+    CloudSpecificInfo cloudInfo = new CloudSpecificInfo();
+    cloudInfo.private_ip = private_ip;
+    cloudInfo.public_ip = public_ip;
+    cloudInfo.public_dns = public_dns;
+    cloudInfo.private_dns = private_dns;
+    cloudInfo.instance_type = instance_type;
+    cloudInfo.subnet_id = subnet_id;
+    cloudInfo.az = az;
+    cloudInfo.region = region;
+    cloudInfo.cloud = cloud;
+    cloudInfo.spotPrice = spotPrice;
+    cloudInfo.assignPublicIP = assignPublicIP;
+    return cloudInfo;
+  }
+
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("cloudInfo: ")

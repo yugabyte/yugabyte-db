@@ -11,6 +11,10 @@ export { default as DataCenterConfigurationContainer } from './ConfigProvider/Da
 export { default as AzureProviderConfigurationContainer } from './PublicCloud/Azure/AzureProviderConfigurationContainer';
 export { default as DockerProviderConfigurationContainer } from './PublicCloud/Docker/DockerProviderConfigurationContainer';
 export { default as KubernetesProviderConfiguration } from './PublicCloud/Kubernetes/KubernetesProviderConfiguration';
+export { default as KubernetesProviderConfigurationContainer } from './PublicCloud/Kubernetes/KubernetesProviderConfigurationContainer';
+export { default as ListKubernetesConfigurations } from './PublicCloud/Kubernetes/ListKubernetesConfigurations';
+export { default as CreateKubernetesConfiguration } from './PublicCloud/Kubernetes/CreateKubernetesConfiguration';
+export { default as CreateKubernetesConfigurationContainer } from './PublicCloud/Kubernetes/CreateKubernetesConfigurationContainer';
 
 export { default as OnPremConfigWizardContainer } from './OnPrem/wizard/OnPremConfigWizardContainer';
 export { default as OnPremConfigJSONContainer } from './OnPrem/json/OnPremConfigJSONContainer';

@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.*;
@@ -70,9 +69,6 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   DnsManager dnsManager;
-
-  @Inject
-  TemplateManager templateManager;
 
   /**
    * GET endpoint for listing providers
@@ -133,9 +129,11 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Common.CloudType providerCode = formData.get().code;
-    Provider provider = Provider.get(customerUUID, providerCode);
-    if (provider != null) {
-      return ApiResponse.error(BAD_REQUEST, "Duplicate provider code: " + providerCode);
+    if (!providerCode.equals(Common.CloudType.kubernetes)) {
+      Provider provider = Provider.get(customerUUID, providerCode);
+      if (provider != null) {
+        return ApiResponse.error(BAD_REQUEST, "Duplicate provider code: " + providerCode);
+      }
     }
 
     // Since the Map<String, String> doesn't get parsed, so for now we would just
@@ -151,29 +149,66 @@ public class CloudProviderController extends AuthenticatedController {
       }
     }
     try {
-      provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
-      if (provider.code.equals("gcp") && !config.isEmpty()) {
-        String gcpCredentialsFile = accessManager.createCredentialsFile(
-            provider.uuid, requestBody.get("config").get("config_file_contents"));
-
-        Map<String, String> newConfig = new HashMap<String, String>();
-        newConfig.put("GCE_EMAIL", config.get("client_email"));
-        newConfig.put("GCE_PROJECT", config.get("project_id"));
-        newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
-
-        provider.setConfig(newConfig);
-        provider.save();
-      } else if (provider.code.equals("aws") && !config.isEmpty()) {
-        String hostedZoneId = provider.getAwsHostedZoneId();
-        if (hostedZoneId != null) {
-          return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+      Provider provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
+      if (!config.isEmpty()) {
+        switch (provider.code) {
+          case "aws":
+            String hostedZoneId = provider.getAwsHostedZoneId();
+            if (hostedZoneId != null) {
+              return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+            }
+            break;
+          case "gcp":
+            updateGCPConfig(provider, config);
+            break;
+          case "kubernetes":
+            updateKubeConfig(provider, config);
+            break;
         }
       }
       return ApiResponse.success(provider);
-    } catch (PersistenceException e) {
+    } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create provider: " + providerCode);
     }
+  }
+
+  private void updateGCPConfig(Provider provider, Map<String,String> config) {
+    String gcpCredentialsFile = null;
+    try {
+      gcpCredentialsFile = accessManager.createCredentialsFile(
+          provider.uuid, Json.toJson(config));
+    } catch (IOException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Unable to create GCP Credentials file.");
+    }
+
+    Map<String, String> newConfig = new HashMap<String, String>();
+    newConfig.put("GCE_EMAIL", config.get("client_email"));
+    newConfig.put("GCE_PROJECT", config.get("project_id"));
+    newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
+
+    provider.setConfig(newConfig);
+    provider.save();
+  }
+
+  private void updateKubeConfig(Provider provider, Map<String, String> config) {
+    String kubeConfigFile = null;
+    try {
+      kubeConfigFile = accessManager.createKubernetesConfig(
+          provider.uuid, config
+      );
+    } catch (IOException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Unable to create Kube Config file.");
+    }
+    // Remove the kubeconfig file related configs from provider config.
+    config.remove("KUBECONFIG_NAME");
+    config.remove("KUBECONFIG_CONTENT");
+    // Update the KUBECONFIG variable with file path.
+    config.put("KUBECONFIG", kubeConfigFile);
+    provider.setConfig(config);
+    provider.save();
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this

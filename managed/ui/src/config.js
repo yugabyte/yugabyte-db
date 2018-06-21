@@ -14,5 +14,29 @@ export const PROVIDER_TYPES = [
   { code: "aws", name: "Amazon", label: "Amazon Web Services" },
   { code: "docker", name: "Docker Localhost", label: "Docker" },
   { code: "gcp", name: "Google", label: "Google Cloud" },
-  { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"}
+  { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"},
+  { code: "kubernetes", name: "Kubernetes", label: "Kubernetes"}
+];
+
+export const REGION_METADATA = [
+  { code: "us-west", name: "US West", latitude: 37, longitude: -121},
+  { code: "us-east", name: "US East", latitude: 36.8, longitude: -79},
+  { code: "us-south", name: "US South", latitude: 28, longitude: -99},
+  { code: "us-north", name: "US North", latitude: 48, longitude:-118},
+  { code: "south-asia", name: "South Asia", latitude: 18.4, longitude: 78.4},
+  { code: "south-east-asia", name: "SE Asia", latitude: 14, longitude: 101},
+  { code: "new-zealand", name: "New Zealand", latitude: -43, longitude: 171},
+  { code: "japan", name: "Japan", latitude: 36, longitude: 139},
+  { code: "eu-west", name: "EU West", latitude: 48, longitude: 3},
+  { code: "eu-east", name: "EU East", latitude: 46, longitude: 25},
+  { code: "china", name: "China", latitude: 31.2, longitude: 121.5},
+  { code: "brazil", name: "Brazil", latitude: -22, longitude: -43},
+  { code: "australia", name: "Australia", latitude: -29, longitude: 148}
+];
+
+export const KUBERNETES_PROVIDERS = [
+  { code: "pks", name: "Pivotal Container Service", enabled: true },
+  { code: "gke", name: "Google Compute Engine", enabled: true},
+  { code: "acs", name: "Azure Container Service", enabled: false },
+  { code: "eks", name: "Amazon Elastic Container Service", enabled: false}
 ];

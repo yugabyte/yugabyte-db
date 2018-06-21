@@ -96,8 +96,23 @@ public class UserTaskDetails {
     // Creating Table Backup
     CreatingTableBackup,
 
-    // Resotring Table Backup
-    RestoringTableBackup
+    // Restoring Table Backup
+    RestoringTableBackup,
+
+    // Initialize Kubernetes cluster
+    HelmInit,
+
+    // Install YugaByte helm chart.
+    HelmInstall,
+
+    // Delete YugaByte helm chart.
+    HelmDelete,
+
+    // Delete Kubernetes volumes created by helm chart.
+    KubernetesVolumeDelete,
+
+    // Fetch the Kubernetes pod information.
+    KubernetesPodInfo
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -215,6 +230,26 @@ public class UserTaskDetails {
       case RestoringTableBackup:
         title = "Restoring Table Backup";
         description = "Restoring from a backup.";
+        break;
+      case HelmInit:
+        title = "Kubernetes Helm Charts initialize";
+        description = "Initialize Kubernetes Helm Charts";
+        break;
+      case HelmInstall:
+        title = "Kubernetes Helm Charts Install";
+        description = "Install Kubernetes Helm Charts";
+        break;
+      case KubernetesPodInfo:
+        title = "Fetch Kubernetes Pods Information";
+        description = "Fetch Kubernetes Pods Information";
+        break;
+      case HelmDelete:
+        title = "Delete Kubernetes Helm Charts";
+        description = "Delete Kubernetes Helm Charts";
+        break;
+      case KubernetesVolumeDelete:
+        title = "Delete Kubernetes Volumes";
+        description = "Delete Kubernetes Volumes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
