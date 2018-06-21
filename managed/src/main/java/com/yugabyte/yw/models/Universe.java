@@ -219,8 +219,21 @@ public class Universe extends Model {
     void run(Universe universe);
   }
 
+  // Helper api to make an atomic read of universe version, and compare and swap the
+  // updated version to disk.
+  private static synchronized Universe readModifyWrite(UUID universeUUID,
+                                                       UniverseUpdater updater)
+      throws ConcurrentModificationException {
+    Universe universe = Universe.get(universeUUID);
+    // Update the universe object which is supplied as a lambda function.
+    updater.run(universe);
+    // Save the universe object by doing a compare and swap.
+    universe.compareAndSwap();
+    return universe;
+  }
+
   /**
-   * Updates the details of the universe if the possible using the update lambda function.
+   * Updates the details of the universe if possible using the update lambda function.
    *
    * @param universeUUID : the universe UUID that we want to update
    * @param updater      : lambda which updated the details of this universe when invoked.
@@ -232,13 +245,8 @@ public class Universe extends Model {
     // Try the read and update for a few times till it succeeds.
     Universe universe = null;
     while (numRetriesLeft > 0) {
-      // Get the universe info.
-      universe = Universe.get(universeUUID);
-      // Update the universe object which is supplied as a lambda function.
-      updater.run(universe);
-      // Save the universe object by doing a compare and swap.
       try {
-        universe.compareAndSwap();
+        universe = readModifyWrite(universeUUID, updater);
         break;
       } catch (ConcurrentModificationException e) {
         // Decrement retries.
