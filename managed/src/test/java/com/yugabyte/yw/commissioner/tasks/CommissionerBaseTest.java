@@ -9,9 +9,11 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -40,6 +42,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected DnsManager mockDnsManager;
   protected TableManager mockTableManager;
   protected CloudQueryHelper mockCloudQueryHelper;
+  protected KubernetesManager mockKubernetesManager;
+  protected SwamperHelper mockSwamperHelper;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -64,6 +68,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockDnsManager = mock(DnsManager.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     mockTableManager = mock(TableManager.class);
+    mockKubernetesManager = mock(KubernetesManager.class);
+    mockSwamperHelper = mock(SwamperHelper.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -77,6 +83,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
         .overrides(bind(TableManager.class).toInstance(mockTableManager))
+        .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+        .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
         .build();
   }
 

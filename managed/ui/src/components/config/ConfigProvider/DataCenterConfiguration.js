@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
-import { AzureProviderConfigurationContainer, KubernetesProviderConfiguration,
+import { AzureProviderConfigurationContainer, KubernetesProviderConfigurationContainer,
          OnPremConfigurationContainer, ProviderConfigurationContainer, StorageConfigurationContainer } from '../../config';
 import {Tab} from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
@@ -43,7 +43,7 @@ class DataCenterConfiguration extends Component {
                 <AzureProviderConfigurationContainer />
               </Tab>
               <Tab eventKey="kubernetes" title={<img src={kubernetesLogo} alt="Kubernetes" className="kubernetes-logo" />} key="kubernetes-tab" unmountOnExit={true}>
-                <KubernetesProviderConfiguration />
+                <KubernetesProviderConfigurationContainer />
               </Tab>
               <Tab eventKey="onprem" title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
                 <OnPremConfigurationContainer params={this.props.params} />

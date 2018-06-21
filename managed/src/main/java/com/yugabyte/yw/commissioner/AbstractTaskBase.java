@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -10,6 +11,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,6 +106,21 @@ public abstract class AbstractTaskBase implements ITask {
       LOG.info("[" + getName() + "] STDOUT: '" + response.message + "'");
     } else {
       throw new RuntimeException(response.message);
+    }
+  }
+
+  /**
+   * We would try to parse the shell response message as JSON and return JsonNode
+   *
+   * @param response: ShellResponse object
+   * @return JsonNode: Json formatted shell response message
+   */
+  public JsonNode parseShellResponseAsJson(ShellProcessHandler.ShellResponse response) {
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      return mapper.readTree(response.message);
+    } catch (IOException e) {
+      throw new RuntimeException("Shell Response message is not a valid Json.");
     }
   }
 

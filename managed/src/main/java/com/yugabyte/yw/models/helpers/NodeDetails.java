@@ -93,6 +93,23 @@ public class NodeDetails {
   public int yqlServerRpcPort = 9042;
 
   @Override
+  public NodeDetails clone() {
+    NodeDetails clone = new NodeDetails();
+    clone.isMaster = this.isMaster;
+    clone.isTserver = this.isTserver;
+    clone.isRedisServer = this.isRedisServer;
+    clone.isYqlServer = this.isYqlServer;
+    clone.state = this.state;
+    clone.azUuid = this.azUuid;
+    clone.cloudInfo = this.cloudInfo.clone();
+    clone.nodeName = this.nodeName;
+    clone.nodeIdx = this.nodeIdx;
+    clone.nodeUuid = this.nodeUuid;
+    clone.placementUuid = this.placementUuid;
+    return clone;
+  }
+
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("name: ").append(nodeName).append(", ")
