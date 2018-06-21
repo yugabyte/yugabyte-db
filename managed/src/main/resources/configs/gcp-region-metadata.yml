@@ -53,9 +53,13 @@ europe-west3:
   latitude: 50.111512
   longitude: 8.680506
 europe-west4:
-  name: Eemshaven
+  name: Netherlands
   latitude: 53.4356948
   longitude: 6.7980783
+europe-north1:
+  name: Finland
+  latitude: 60.5695912
+  longitude: 27.2097431
 australia-southeast1:
   name: Sydney
   latitude: -33.867139
