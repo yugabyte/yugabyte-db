@@ -81,7 +81,7 @@ public class TestClusterBase extends BaseCQLTest {
   protected static final int CLUSTER_MOVE_TIMEOUT_MS = 300000; // 5 mins
 
   // Timeout for test completion.
-  protected static final int TEST_TIMEOUT_SEC = 600; // 10 mins
+  protected static final int TEST_TIMEOUT_SEC = 1200; // 20 mins
 
   // Timeout to wait for a new master to come up.
   protected static final int NEW_MASTER_TIMEOUT_MS = 10000; // 10 seconds.

@@ -159,7 +159,7 @@
             <failIfNoTests>false</failIfNoTests>
             <reuseForks>false</reuseForks>
             <redirectTestOutputToFile>true</redirectTestOutputToFile>
-            <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+            <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
             <argLine>${testArgLine}</argLine>
             <systemPropertyVariables>
               <!--
