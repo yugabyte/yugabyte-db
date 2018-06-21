@@ -236,11 +236,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform a master add followed by a remove if possible. Need not remove the (current) master
     // leader last - even if we get current leader, it might change by the time we run the actual
-    // task. So we might do multiple leader stepdown's, which happens automatically on in the
-    // client code during the task's run. Removes are best-effort as those masters will be killed.
+    // task. So we might do multiple leader stepdown's, which happens automatically in the
+    // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
@@ -250,7 +250,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
   }
 }
