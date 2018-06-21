@@ -15,11 +15,14 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import play.libs.Json;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
@@ -85,9 +88,31 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testParallelSaveDetails() {
+    int numNodes = 100;
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+    ThreadPoolExecutor executor =
+        new ThreadPoolExecutor(numNodes, numNodes, 60L, TimeUnit.SECONDS,
+                               new LinkedBlockingQueue<Runnable>(), namedThreadFactory);
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    assertEquals(0, u.getNodes().size());
+    for (int i = 0; i < numNodes; i++) {
+      SaveNode sn = new SaveNode(u.universeUUID, i);
+      executor.execute(sn);
+    }
+    executor.shutdown();
+    try {
+      executor.awaitTermination(120, TimeUnit.SECONDS);
+    } catch (InterruptedException e1) { }
+    Universe updUniv = Universe.get(u.universeUUID);
+    assertEquals(numNodes, updUniv.getNodes().size());
+    assertEquals(numNodes + 1, updUniv.version);
+  }
+
+  @Test
   public void testSaveDetails() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
-
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
