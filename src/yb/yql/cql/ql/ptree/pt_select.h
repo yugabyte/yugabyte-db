@@ -223,6 +223,14 @@ class PTSelectStmt : public PTDmlStmt {
     return limit_clause_;
   }
 
+  bool has_offset() const {
+    return offset_clause_ != nullptr;
+  }
+
+  PTExpr::SharedPtr offset() const {
+    return offset_clause_;
+  }
+
   const MCList<PTExpr::SharedPtr>& selected_exprs() const {
     return selected_exprs_->node_list();
   }

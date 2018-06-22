@@ -315,8 +315,10 @@ class QLReadOperation : public DocExprExecutor {
   CHECKED_STATUS AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
                                 const QLTableRow& row,
                                 const size_t row_count_limit,
+                                const size_t offset,
                                 QLResultSet* resultset,
-                                int* match_count);
+                                int* match_count,
+                                size_t* num_rows_skipped);
 
   QLResponsePB& response() { return response_; }
 

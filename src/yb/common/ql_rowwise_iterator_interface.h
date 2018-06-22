@@ -66,6 +66,7 @@ class YQLRowwiseIteratorIf {
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                                   const size_t num_rows_skipped,
                                                    QLResponsePB* response) const {
     return Status::OK();
   }

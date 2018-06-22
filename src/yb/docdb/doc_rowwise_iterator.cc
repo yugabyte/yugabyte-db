@@ -393,6 +393,7 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
 }
 
 CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                                             const size_t num_rows_skipped,
                                                              QLResponsePB* response) const {
   // When the "limit" number of rows are returned and we are asked to return the paging state,
   // return the partition key and row key of the next row to read in the paging state if there are
@@ -406,6 +407,12 @@ CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequest
       paging_state->set_next_partition_key(
           PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
       paging_state->set_next_row_key(next_key.Encode().data());
+      paging_state->set_total_rows_skipped(request.paging_state().total_rows_skipped() +
+          num_rows_skipped);
+    } else if (request.has_offset()) {
+      QLPagingStatePB* paging_state = response->mutable_paging_state();
+      paging_state->set_total_rows_skipped(request.paging_state().total_rows_skipped() +
+          num_rows_skipped);
     }
   }
   return Status::OK();

@@ -218,6 +218,10 @@ message QLPagingStatePB {
   // queried, one for each combination of allowed values for the hash columns.
   // This holds the index of the next partition and is used to resume the read from the right place.
   optional uint64 next_partition_index = 5;
+
+  // The number of valid rows that we've skipped so far. This is needed to properly implement
+  // SELECT's OFFSET clause.
+  optional uint64 total_rows_skipped = 6;
 }
 
 //-------------------------------------- Column request --------------------------------------
@@ -341,6 +345,10 @@ message QLReadRequestPB {
   // Limit number of rows to return. For QL SELECT, this limit is the smaller of the page size (max
   // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
   optional uint64 limit = 8;
+
+  // The offset from which we should start returning rows. This is primarily used to support the
+  // QL OFFSET clause.
+  optional uint64 offset = 9;
 
   // Paging state retrieved from the last response.
   optional QLPagingStatePB paging_state = 10;

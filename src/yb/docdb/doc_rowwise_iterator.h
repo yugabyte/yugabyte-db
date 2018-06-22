@@ -85,6 +85,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   bool IsNextStaticColumn() const override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                           const size_t num_rows_skipped,
                                            QLResponsePB* response) const override;
 
   const DocKey& row_key() const {
