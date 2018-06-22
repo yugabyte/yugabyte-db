@@ -29,8 +29,9 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            PTTableRef::SharedPtr relation,
                            PTDmlUsingClause::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
-                           PTExpr::SharedPtr if_clause)
-    : PTDmlStmt(memctx, loc, where_clause, if_clause, using_clause),
+                           PTExpr::SharedPtr if_clause,
+                           const bool else_error)
+  : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause),
       target_(target),
       relation_(relation) {
 }

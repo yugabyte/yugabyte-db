@@ -273,6 +273,9 @@ message QLWriteRequestPB {
   // If clause condition
   optional QLExpressionPB if_expr = 9;
 
+  // Else error clause
+  optional bool else_error = 17 [default = false];
+
   // Time to live in milliseconds.
   optional uint64 ttl = 10;
 
@@ -386,6 +389,7 @@ message QLResponsePB {
     YQL_STATUS_RUNTIME_ERROR = 2;
     YQL_STATUS_USAGE_ERROR = 3;
     YQL_STATUS_RESTART_REQUIRED_ERROR = 4;
+    YQL_STATUS_SQL_ERROR = 5;
   }
 
   // Status and error message

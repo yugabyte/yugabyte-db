@@ -368,7 +368,7 @@ using namespace yb::ql;
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
 
-%type <PBool>             boolean
+%type <PBool>             boolean opt_else_clause
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -582,7 +582,7 @@ using namespace yb::ql;
                           DELIMITER DELIMITERS DESC DESCRIBE DICTIONARY DISABLE_P DISCARD
                           DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
 
-                          EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT
+                          EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERROR ESCAPE EVENT
                           EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTENSION
                           EXTERNAL EXTRACT
 
@@ -2549,16 +2549,12 @@ InsertStmt:
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   using_ttl_timestamp_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, nullptr, $9);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, nullptr, false, $9);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
+  opt_else_clause opt_using_ttl_timestamp_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9);
-  }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
-  using_ttl_timestamp_clause
-  {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9, $10);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9, $10, $11);
   }
   | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
   opt_on_conflict returning_clause {
@@ -2686,20 +2682,13 @@ returning_clause:
 
 DeleteStmt:
   opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6);
-  }
-  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  using_ttl_timestamp_clause opt_where_or_current_clause returning_clause {
+  opt_using_ttl_timestamp_clause opt_where_or_current_clause returning_clause {
     $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7);
   }
   | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6, $7);
-  }
-  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  using_ttl_timestamp_clause where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7, $8);
+  opt_using_ttl_timestamp_clause opt_where_or_current_clause returning_clause if_clause
+  opt_else_clause{
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7, $9, $10);
   }
 ;
 
@@ -2708,13 +2697,13 @@ DeleteStmt:
 //--------------------------------------------------------------------------------------------------
 
 UpdateStmt:
-  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET set_clause_list
-  opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, nullptr, $4);
+  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
+  set_clause_list opt_where_or_current_clause returning_clause {
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, nullptr, false, $4);
   }
   | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
-  set_clause_list opt_where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, $8, $4);
+  set_clause_list opt_where_or_current_clause returning_clause if_clause opt_else_clause{
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, $9, $10, $4);
   }
 ;
 
@@ -3039,6 +3028,11 @@ opt_col_def_list:
   }
   | /*EMPTY*/ {
   }
+;
+
+opt_else_clause:
+  ELSE ERROR                    { $$ = true; }
+  | /*EMPTY*/                   { $$ = false; }
 ;
 
 opt_ordinality:
@@ -4964,6 +4958,7 @@ unreserved_keyword:
   | ENCODING { $$ = $1; }
   | ENCRYPTED { $$ = $1; }
   | ENUM_P { $$ = $1; }
+  | ERROR { $$ = $1; }
   | ESCAPE { $$ = $1; }
   | EVENT { $$ = $1; }
   | EXCLUDE { $$ = $1; }

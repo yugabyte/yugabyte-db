@@ -1900,6 +1900,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
 }
 
 Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
+                                              const bool else_error,
                                               const DocOperationApplyData& data,
                                               bool* should_apply,
                                               std::unique_ptr<QLRowBlock>* rowblock,
@@ -1910,6 +1911,12 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 
   // See if the if-condition is satisfied.
   RETURN_NOT_OK(EvalCondition(condition, *table_row, should_apply));
+
+  // Check if an error needs to be returned and the condition is not satisfied.
+  if (!*should_apply && else_error) {
+    // Return OK here. The error will be returned in the response by the caller.
+    return Status::OK();
+  }
 
   // Populate the result set to return the "applied" status, and optionally the hash / primary key
   // and the present column values if the condition is not satisfied and the row does exist
@@ -2108,11 +2115,17 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   QLTableRow existing_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
+                                       request_.else_error(),
                                        data,
                                        &should_apply,
                                        &rowblock_,
                                        &existing_row));
     response_->set_applied(should_apply);
+    if (!should_apply && request_.else_error()) {
+      response_->set_status(QLResponsePB::YQL_STATUS_SQL_ERROR);
+      response_->set_error_message("Condition was not satisfied.");
+      return Status::OK();
+    }
   } else if (RequireReadForExpressions(request_)) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
   }

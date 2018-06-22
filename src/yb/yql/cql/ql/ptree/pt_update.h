@@ -125,6 +125,7 @@ class PTUpdateStmt : public PTDmlStmt {
                PTAssignListNode::SharedPtr set_clause,
                PTExpr::SharedPtr where_clause,
                PTExpr::SharedPtr if_clause = nullptr,
+               bool else_error = false,
                PTDmlUsingClause::SharedPtr using_clause = nullptr);
   virtual ~PTUpdateStmt();
 

@@ -241,6 +241,7 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
                              QLTableRow* table_row);
 
   CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
+                                      const bool else_error,
                                       const DocOperationApplyData& data,
                                       bool* should_apply,
                                       std::unique_ptr<QLRowBlock>* rowblock,

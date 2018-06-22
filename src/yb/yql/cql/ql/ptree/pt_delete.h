@@ -43,7 +43,8 @@ class PTDeleteStmt : public PTDmlStmt {
                PTTableRef::SharedPtr relation,
                PTDmlUsingClause::SharedPtr using_clause = nullptr,
                PTExpr::SharedPtr where_clause = nullptr,
-               PTExpr::SharedPtr if_clause = nullptr);
+               PTExpr::SharedPtr if_clause = nullptr,
+               bool else_error = false);
   virtual ~PTDeleteStmt();
 
   template<typename... TypeArgs>

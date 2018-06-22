@@ -146,6 +146,8 @@ ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status) {
       return ErrorCode::EXEC_ERROR;
     case QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR:
       return ErrorCode::RESTART_REQUIRED;
+    case QLResponsePB::YQL_STATUS_SQL_ERROR:
+      return ErrorCode::EXEC_ERROR;
   }
   FATAL_INVALID_ENUM_VALUE(QLResponsePB::QLStatus, status);
 }

@@ -881,6 +881,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
     if (PREDICT_FALSE(!s.ok())) {
       return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
+    req->set_else_error(tnode->else_error());
   }
 
   // Apply the operation.
@@ -925,6 +926,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
     if (PREDICT_FALSE(!s.ok())) {
       return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
+    req->set_else_error(tnode->else_error());
   }
 
   // Apply the operation.
@@ -977,6 +979,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
     if (PREDICT_FALSE(!s.ok())) {
       return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
+    req->set_else_error(tnode->else_error());
   }
 
   // Apply the operation.
