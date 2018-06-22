@@ -53,7 +53,7 @@ ifndef YB_BUILD_ROOT
 $(error YB_BUILD_ROOT is not set)
 endif
 
-LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util
+LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate
 
 CCLD = $(CXX)
 

@@ -11,15 +11,18 @@
 # under the License.
 #
 
-# CQL service
-add_subdirectory(cql/ql)
-add_subdirectory(cql/cqlserver)
+set(PGGATE_SRCS
+    ybc_pggate.cc
+    pggate.cc
+    pg_session.cc
+    pg_statement.cc
+    pg_ddl.cc)
 
-# REDIS service
-add_subdirectory(redis/redisserver)
+set(PGGATE_LIBS
+    yb_util
+    yb_common
+    yb_client)
 
-# POSTGRESQL service
-add_subdirectory(pgsql)
-
-# API for Postgres to call.
-add_subdirectory(pggate)
+ADD_YB_LIBRARY(yb_pggate
+               SRCS ${PGGATE_SRCS}
+               DEPS ${PGGATE_LIBS})
