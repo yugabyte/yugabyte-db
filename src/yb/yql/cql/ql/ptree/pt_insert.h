@@ -44,6 +44,7 @@ class PTInsertStmt : public PTDmlStmt {
                PTQualifiedNameListNode::SharedPtr columns,
                PTCollection::SharedPtr value_clause,
                PTExpr::SharedPtr if_clause = nullptr,
+               bool else_error = false,
                PTDmlUsingClause::SharedPtr using_clause = nullptr);
   virtual ~PTInsertStmt();
 

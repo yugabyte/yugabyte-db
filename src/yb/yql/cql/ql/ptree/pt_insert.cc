@@ -32,8 +32,10 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            PTQualifiedNameListNode::SharedPtr columns,
                            PTCollection::SharedPtr value_clause,
                            PTExpr::SharedPtr if_clause,
+                           const bool else_error,
                            PTDmlUsingClause::SharedPtr using_clause)
-    : PTDmlStmt(memctx, loc, nullptr /* where_clause */, if_clause, using_clause),
+
+  : PTDmlStmt(memctx, loc, nullptr /* where_clause */, if_clause, else_error, using_clause),
       relation_(relation),
       columns_(columns),
       value_clause_(value_clause) {
