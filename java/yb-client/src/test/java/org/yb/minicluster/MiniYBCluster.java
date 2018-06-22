@@ -129,6 +129,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
 
+  public static final int DEFAULT_NUM_TSERVERS = 3;
+
   private int numShardsPerTserver = DEFAULT_NUM_SHARDS_PER_TSERVER;
 
   /**

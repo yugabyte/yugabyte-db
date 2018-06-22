@@ -361,6 +361,9 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
+  // Run error checking on the OFFSET clause.
+  RETURN_NOT_OK(AnalyzeOffsetClause(sem_context));
+
   // Constructing the schema of the result set.
   RETURN_NOT_OK(ConstructSelectedSchema());
 

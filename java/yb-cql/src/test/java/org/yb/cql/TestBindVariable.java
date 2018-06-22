@@ -1239,7 +1239,7 @@ public class TestBindVariable extends BaseCQLTest {
       ResultSet rs = session.execute(selectStmt, new Integer(109), new Integer(7));
 
       // Checking result.
-      assertEquals(7, rs.getAvailableWithoutFetching());
+      assertEquals(7, rs.all().size());
     }
 
     {
@@ -1250,7 +1250,7 @@ public class TestBindVariable extends BaseCQLTest {
       ResultSet rs = session.execute(stmt.bind(new Integer(109), new Integer(7)));
 
       // Checking result.
-      assertEquals(7, rs.getAvailableWithoutFetching());
+      assertEquals(7, rs.all().size());
     }
 
     {
@@ -1260,7 +1260,7 @@ public class TestBindVariable extends BaseCQLTest {
       ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setInt("b2", 5));
 
       // Checking result.
-      assertEquals(5, rs.getAvailableWithoutFetching());
+      assertEquals(5, rs.all().size());
     }
 
     {
@@ -1270,7 +1270,7 @@ public class TestBindVariable extends BaseCQLTest {
       ResultSet rs = session.execute(stmt.bind(new Integer(106), new Integer(6)));
 
       // Checking result: only 3 rows (107, 108, 109) satisfy condition so limit is redundant.
-      assertEquals(3, rs.getAvailableWithoutFetching());
+      assertEquals(3, rs.all().size());
     }
 
     {
@@ -1281,7 +1281,7 @@ public class TestBindVariable extends BaseCQLTest {
                                          .setInt(limitVcolName, 8));
 
       // Checking result.
-      assertEquals(8, rs.getAvailableWithoutFetching());
+      assertEquals(8, rs.all().size());
     }
 
     // Negative test: limit values should be non-null
@@ -1290,11 +1290,80 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("End test");
   }
 
+  @Test
+  public void testBindingOffset() throws Exception {
+    LOG.info("Begin test");
+
+    // this is the (virtual column) name CQL uses for binding the OFFSET clause
+    String offsetVcolName = "[offset]";
+
+    // Setup test table.
+    setupTable("test_bind", 10 /* num_rows */);
+
+    {
+      // Simple bind (by position) for offset.
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? OFFSET ?;";
+      ResultSet rs = session.execute(selectStmt, new Integer(109), new Integer(7));
+
+      // Checking result.
+      assertEquals(3, rs.all().size());
+    }
+
+    {
+      // Simple bind (by position) for offset.
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? OFFSET ?;";
+      PreparedStatement stmt = session.prepare(selectStmt);
+
+      ResultSet rs = session.execute(stmt.bind(new Integer(109), new Integer(7)));
+
+      // Checking result.
+      assertEquals(3, rs.all().size());
+    }
+
+    {
+      // Prepare named bind (referenced by name).
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 OFFSET :b2;";
+      PreparedStatement stmt = session.prepare(selectStmt);
+      ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setInt("b2", 5));
+
+      // Checking result (only rows 108 and 109).
+      assertEquals(2, rs.all().size());
+    }
+
+    {
+      // Prepare named bind (referenced by position).
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 OFFSET :b2;";
+      PreparedStatement stmt = session.prepare(selectStmt);
+      ResultSet rs = session.execute(stmt.bind(new Integer(106), new Integer(1)));
+
+      // Checking result: only 3 rows (107, 108, 109) satisfy condition, so with offset of 1, we
+      // return two rows.
+      assertEquals(2, rs.all().size());
+    }
+
+    {
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? OFFSET ?;";
+      PreparedStatement stmt = session.prepare(selectStmt);
+      ResultSet rs = session.execute(stmt.bind()
+          .setInt("r1", 99)
+          .setInt(offsetVcolName, 6));
+
+      // Checking result.
+      assertEquals(4, rs.all().size());
+    }
+
+    // Negative test: offset values should be non-null
+    testInvalidBindStatement("SELECT * FROM test_bind WHERE h2 = ? OFFSET ?", "1", null);
+
+    LOG.info("End test");
+  }
+
   private void verifyBindUserTimestamp(String selectStmt, int v1, String v2, long writeTimeV1,
                                        long writeTimeV2) {
     ResultSet rs = session.execute(selectStmt);
-    assertEquals(1, rs.getAvailableWithoutFetching());
-    Row row = rs.one();
+    List <Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    Row row = rows.get(0);
     assertEquals(v1, row.getInt("v1"));
     assertEquals(v2, row.getString("v2"));
     assertEquals(writeTimeV1, row.getLong(2));
@@ -1425,15 +1494,16 @@ public class TestBindVariable extends BaseCQLTest {
 
       // checking result
       ResultSet rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(2, row.getInt("v1"));
       assertEquals("2", row.getString("v2"));
 
       // checking value expires
       TestUtils.waitForTTL(ttlSeconds.intValue() * 1000);
       rs = session.execute(selectStmt);
-      assertEquals(0, rs.getAvailableWithoutFetching());
+      assertEquals(0, rs.all().size());
     }
 
     // named bind -- using default names
@@ -1448,15 +1518,16 @@ public class TestBindVariable extends BaseCQLTest {
 
       // checking result
       ResultSet rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(3, row.getInt("v1"));
       assertEquals("3", row.getString("v2"));
 
       // checking value expires
       TestUtils.waitForTTL(1000L);
       rs = session.execute(selectStmt);
-      assertEquals(0, rs.getAvailableWithoutFetching());
+      assertEquals(0, rs.all().size());
     }
 
     //---------------------------------- Testing Update ------------------------------------------
@@ -1475,16 +1546,18 @@ public class TestBindVariable extends BaseCQLTest {
 
       // checking row is updated
       ResultSet rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(4, row.getInt("v1"));
       assertEquals("4", row.getString("v2"));
 
       // checking updated values expire (row should remain, values should be null)
       TestUtils.waitForTTL(2000L);
       rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      row = rs.one();
+      rows = rs.all();
+      assertEquals(1, rows.size());
+      row = rows.get(0);
       assertTrue(row.isNull("v1"));
       assertTrue(row.isNull("v2"));
     }
@@ -1507,16 +1580,18 @@ public class TestBindVariable extends BaseCQLTest {
 
       // checking row is update
       ResultSet rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(5, row.getInt("v1"));
       assertEquals("5", row.getString("v2"));
 
       // checking updated values expire (row should remain, values should be null)
       TestUtils.waitForTTL(1000L);
       rs = session.execute(selectStmt);
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      row = rs.one();
+      rows = rs.all();
+      assertEquals(1, rows.size());
+      row = rows.get(0);
       assertTrue(row.isNull("v1"));
       assertTrue(row.isNull("v2"));
     }
@@ -1559,8 +1634,9 @@ public class TestBindVariable extends BaseCQLTest {
       ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", Long.MIN_VALUE);
 
       // Checking result.
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(7, row.getInt(0));
       assertEquals("h7", row.getString(1));
       assertEquals(107, row.getInt(2));
@@ -1581,8 +1657,9 @@ public class TestBindVariable extends BaseCQLTest {
               }});
 
       // Checking result.
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(7, row.getInt(0));
       assertEquals("h7", row.getString(1));
       assertEquals(107, row.getInt(2));
@@ -1598,8 +1675,9 @@ public class TestBindVariable extends BaseCQLTest {
       PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", Long.MIN_VALUE));
       // Checking result.
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(7, row.getInt(0));
       assertEquals("h7", row.getString(1));
       assertEquals(107, row.getInt(2));
@@ -1619,8 +1697,9 @@ public class TestBindVariable extends BaseCQLTest {
               .setString("h2", "h7")
               .setLong(tokenVcolName, Long.MIN_VALUE));
       // Checking result.
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(7, row.getInt(0));
       assertEquals("h7", row.getString(1));
       assertEquals(107, row.getInt(2));
@@ -1640,8 +1719,9 @@ public class TestBindVariable extends BaseCQLTest {
               .setString("b2", "h7")
               .setLong("b3", Long.MIN_VALUE));
       // Checking result.
-      assertEquals(1, rs.getAvailableWithoutFetching());
-      Row row = rs.one();
+      List <Row> rows = rs.all();
+      assertEquals(1, rows.size());
+      Row row = rows.get(0);
       assertEquals(7, row.getInt(0));
       assertEquals("h7", row.getString(1));
       assertEquals(107, row.getInt(2));

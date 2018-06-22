@@ -19,7 +19,7 @@ import java.util.List;
 public class MiniYBClusterBuilder {
 
   private int numMasters = 1;
-  private int numTservers = 3;
+  private int numTservers = MiniYBCluster.DEFAULT_NUM_TSERVERS;
   private int numShardsPerTServer = MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER;
   private int defaultTimeoutMs = 50000;
   private List<String> masterArgs = null;
