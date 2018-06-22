@@ -168,7 +168,7 @@ public class CloudProviderController extends AuthenticatedController {
       }
       return ApiResponse.success(provider);
     } catch (RuntimeException e) {
-      LOG.error(e.getMessage());
+      e.printStackTrace();
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create provider: " + providerCode);
     }
   }
