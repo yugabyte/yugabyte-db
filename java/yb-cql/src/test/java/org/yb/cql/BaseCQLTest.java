@@ -31,6 +31,7 @@ import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -422,6 +423,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     Iterator<Row> iter = rs.iterator();
     assertTrue(iter.hasNext());
     return iter;
+  }
+
+  protected void runInvalidQuery(Statement stmt) {
+    try {
+      session.execute(stmt);
+      fail(String.format("Statement did not fail: %s", stmt));
+    } catch (InvalidQueryException qv) {
+      LOG.info("Expected exception", qv);
+    }
+  }
+
+  protected void runInvalidQuery(String stmt) {
+    runInvalidQuery(new SimpleStatement(stmt));
   }
 
   protected void runInvalidStmt(Statement stmt) {

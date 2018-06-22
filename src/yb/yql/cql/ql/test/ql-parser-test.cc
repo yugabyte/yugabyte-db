@@ -207,7 +207,34 @@ TEST_F(QLTestParser, TestQLParser) {
 
   // Valid statement: unreserved keywords used as names.
   PARSE_VALID_STMT("CREATE KEYSPACE clustering;");
+
   PARSE_VALID_STMT("CREATE TABLE off(filtering int PRIMARY KEY, login text, roles float)");
+
+  // Invalid statement: ELSE ERROR
+  PARSE_INVALID_STMT("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'c' ELSE "
+                     "ERROR;");
+  PARSE_INVALID_STMT("INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 3, 'c') "
+                   "ELSE ERROR;");
+  PARSE_INVALID_STMT("UPDATE t SET v1 = 4, v2 = 'd' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND "
+                   "r2 = 'b' ELSE ERROR;");
+
+  // Valid statement: ELSE ERROR
+  PARSE_VALID_STMT("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'c' IF EXISTS "
+                   "ELSE ERROR;");
+  PARSE_VALID_STMT("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' IF EXISTS AND "
+                   "v2 <> 'c' ELSE ERROR;");
+  PARSE_VALID_STMT("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' IF EXISTS AND "
+                   "(v1 = 3 OR v1 = 4) ELSE ERROR;");
+  PARSE_VALID_STMT("INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 3, 'c') "
+                   "IF NOT EXISTS ELSE ERROR;");
+  PARSE_VALID_STMT("INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 4, 'd') "
+                   "IF NOT EXISTS OR v1 <> 3 ELSE ERROR;");
+  PARSE_VALID_STMT("INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 4, 'd') "
+                   "IF NOT EXISTS OR v1 < 3 ELSE ERROR;");
+  PARSE_VALID_STMT("UPDATE t SET v1 = 4, v2 = 'd' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND "
+                   "r2 = 'b' IF NOT EXISTS ELSE ERROR;");
+  PARSE_VALID_STMT("UPDATE t SET v1 = 4, v2 = 'd' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND "
+                   "r2 = 'b' IF NOT EXISTS OR v1 = 3 AND v2 = 'c' ELSE ERROR;");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {

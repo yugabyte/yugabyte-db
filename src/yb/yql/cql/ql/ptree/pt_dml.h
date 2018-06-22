@@ -183,6 +183,7 @@ class PTDmlStmt : public PTCollection {
                      YBLocation::SharedPtr loc,
                      PTExpr::SharedPtr where_clause = nullptr,
                      PTExpr::SharedPtr if_clause = nullptr,
+                     bool else_error = false,
                      PTDmlUsingClause::SharedPtr using_clause = nullptr);
   virtual ~PTDmlStmt();
 
@@ -250,6 +251,10 @@ class PTDmlStmt : public PTCollection {
 
   const MCList <yb::ql::FuncOp>& func_ops() const {
     return func_ops_;
+  }
+
+  bool else_error() const {
+    return else_error_;
   }
 
   const PTExpr::SharedPtr& where_clause() const {
@@ -405,6 +410,7 @@ class PTDmlStmt : public PTCollection {
 
   const PTExpr::SharedPtr where_clause_;
   const PTExpr::SharedPtr if_clause_;
+  const bool else_error_ = false;
   const PTDmlUsingClause::SharedPtr using_clause_;
   MCVector<PTBindVar*> bind_variables_;
 

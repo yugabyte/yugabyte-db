@@ -29,16 +29,6 @@ public class TestHideRedis extends BaseCQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestHideRedis.class);
 
-  private void runInvalidQuery(String query) throws Exception {
-    try {
-      session.execute(query);
-      fail("Did not throw exception");
-    } catch (InvalidQueryException e) {
-      // Should receive table not found exception.
-      LOG.info("Expected exception", e);
-    }
-  }
-
   @Test
   public void testHideRedis() throws Exception {
     // system_redis keyspace is reserved.
