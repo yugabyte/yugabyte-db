@@ -263,6 +263,13 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     }
   }
 
+  private void waitForMetadataRefresh() throws Exception {
+    // Since partition metadata is refreshed asynchronously after a new table is created, let's
+    // wait for a little or else the initial statements will be executed without the partition
+    // metadata and will be dispatched to a random node.
+    Thread.sleep(10000);
+  }
+
   // Test load-balancing policy with DMLs.
   @Test
   public void testDML() throws Exception {
@@ -272,10 +279,7 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // Create test table.
     session.execute("create table test_lb (h1 int, h2 text, c int, primary key ((h1, h2)));");
 
-    // Since partition metadata is refreshed asynchronously after a new table is created, let's
-    // wait for a little or else the initial statements will be executed without the partition
-    // metadata and will be dispatched to a random node.
-    Thread.sleep(10000);
+    waitForMetadataRefresh();
 
     // Get the initial metrics.
     Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
@@ -313,9 +317,62 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // because as soon as the test table has been created and the partition metadata has been
     // loaded, the cluster's load-balancer may still be rebalancing the leaders.
     assertTrue("Local Read Count: " + totalMetrics.localReadCount,
-        totalMetrics.localReadCount >= NUM_KEYS * 0.7);
+               totalMetrics.localReadCount >= NUM_KEYS * 0.7);
     assertTrue("Local Write Count: " + totalMetrics.localWriteCount,
-        totalMetrics.localWriteCount >= NUM_KEYS * 3 * 0.7);
+               totalMetrics.localWriteCount >= NUM_KEYS * 3 * 0.7);
+  }
+
+  // Test load-balancing policy with secondary index.
+  @Test
+  public void testIndex() throws Exception {
+
+    final int NUM_KEYS = 100;
+
+    // Create test table.
+    session.execute("create table test_lb_idx (h1 int, h2 text, c int, primary key ((h1, h2))) " +
+                    "with transactions = { 'enabled' : true };");
+    session.execute("create index test_lb_idx_1 on test_lb_idx (h1) covering (c);");
+    session.execute("create index test_lb_idx_2 on test_lb_idx (c);");
+
+    waitForMetadataRefresh();
+
+    // Get the initial metrics.
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+
+    PreparedStatement stmt;
+
+    stmt = session.prepare("insert into test_lb_idx (h1, h2, c) values (?, ?, ?);");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      session.execute(stmt.bind(Integer.valueOf(i), "v" + i, Integer.valueOf(i)));
+    }
+
+    stmt = session.prepare("select c from test_lb_idx where h1 = ?;");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      Row row = session.execute(stmt.bind(Integer.valueOf(i))).one();
+      assertNotNull(row);
+      assertEquals(i, row.getInt("c"));
+    }
+
+    stmt = session.prepare("select h1, h2 from test_lb_idx where c = ?;");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      Row row = session.execute(stmt.bind(Integer.valueOf(i))).one();
+      assertNotNull(row);
+      assertEquals(i, row.getInt("h1"));
+      assertEquals("v" + i, row.getString("h2"));
+    }
+
+    // Check the metrics again.
+    IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+
+    // Verify that the majority of read and write calls are local.
+    //
+    // With PartitionAwarePolicy, all calls should be local ideally but there is no 100% guarantee
+    // because as soon as the test table has been created and the partition metadata has been
+    // loaded, the cluster's load-balancer may still be rebalancing the leaders.
+    assertTrue("Local Read Count: " + totalMetrics.localReadCount,
+               totalMetrics.localReadCount >= NUM_KEYS * 2 * 0.7);
+    assertTrue("Local Write Count: " + totalMetrics.localWriteCount,
+               totalMetrics.localWriteCount >= NUM_KEYS * 0.7);
   }
 
   // Test load-balancing policy with BatchStatement
@@ -327,10 +384,7 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // Create test table.
     session.execute("create table test_lb (h int, r text, c int, primary key ((h), r));");
 
-    // Since partition metadata is refreshed asynchronously after a new table is created, let's
-    // wait for a little or else the initial statements will be executed without the partition
-    // metadata and will be dispatched to a random node.
-    Thread.sleep(10000);
+    waitForMetadataRefresh();
 
     // Get the initial metrics.
     Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
