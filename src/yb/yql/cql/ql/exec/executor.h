@@ -88,6 +88,12 @@ class Executor : public QLExprExecutor {
   // Execute a list of statements.
   CHECKED_STATUS ExecPTNode(const PTListNode *tnode);
 
+  CHECKED_STATUS GetOffsetOrLimit(
+      const PTSelectStmt* tnode,
+      const std::function<PTExpr::SharedPtr(const PTSelectStmt* tnode)>& get_val,
+      const string& clause_type,
+      int32_t* value);
+
   // Create a table (including index table for CREATE INDEX).
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
 

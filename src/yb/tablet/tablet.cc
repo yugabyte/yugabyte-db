@@ -788,17 +788,17 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
                                                 const size_t row_count,
                                                 QLResponsePB* response) const {
 
-  // If the response does not have a paging state, it means we are done reading the current tablet.
-  // But, if the request does not have the hash columns set, this must be a table-scan, so we need
-  // to decide if we are done or if we need to move to the next tablet.
+  // If the response does not have a next partition key, it means we are done reading the current
+  // tablet. But, if the request does not have the hash columns set, this must be a table-scan,
+  // so we need to decide if we are done or if we need to move to the next tablet.
   // If we did not reach the:
   //   1. max number of results (LIMIT clause -- if set)
   //   2. end of the table (this was the last tablet)
   //   3. max partition key (upper bound condition using 'token' -- if set)
   // we set the paging state to point to the exclusive end partition key of this tablet, which is
   // the start key of the next tablet).
-  if (ql_read_request.hashed_column_values().empty() && !response->has_paging_state()) {
-
+  if (ql_read_request.hashed_column_values().empty() &&
+      !response->paging_state().has_next_partition_key()) {
     // Check we did not reach the results limit.
     // If return_paging_state is set, it means the request limit is actually just the page size.
     if (!ql_read_request.has_limit() ||

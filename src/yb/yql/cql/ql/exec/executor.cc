@@ -567,6 +567,36 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
   return Status::OK();
 }
 
+Status Executor::GetOffsetOrLimit(
+    const PTSelectStmt* tnode,
+    const std::function<PTExpr::SharedPtr(const PTSelectStmt* tnode)>& get_val,
+    const string& clause_type,
+    int32_t* value) {
+  QLExpressionPB expr_pb;
+  Status s = (PTExprToPB(get_val(tnode), &expr_pb));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context().Error(get_val(tnode), s, ErrorCode::INVALID_ARGUMENTS);
+  }
+
+  if (expr_pb.has_value() && IsNull(expr_pb.value())) {
+    return exec_context().Error(get_val(tnode),
+                                Substitute("$0 value cannot be null.", clause_type).c_str(),
+                                ErrorCode::INVALID_ARGUMENTS);
+  }
+
+  // this should be ensured by checks before getting here
+  DCHECK(expr_pb.has_value() && expr_pb.value().has_int32_value())
+      << "Integer constant expected for " + clause_type + " clause";
+
+  if (expr_pb.value().int32_value() < 0) {
+    return exec_context().Error(get_val(tnode),
+                                Substitute("$0 value cannot be negative.", clause_type).c_str(),
+                                ErrorCode::INVALID_ARGUMENTS);
+  }
+  *value = expr_pb.value().int32_value();
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
@@ -646,27 +676,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->has_limit()) {
-    QLExpressionPB limit_pb;
-    s = (PTExprToPB(tnode->limit(), &limit_pb));
-    if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(tnode->limit(), s, ErrorCode::INVALID_ARGUMENTS);
-    }
+    int32_t limit;
+    RETURN_NOT_OK(GetOffsetOrLimit(
+        tnode,
+        [](const PTSelectStmt* tnode) -> PTExpr::SharedPtr { return tnode->limit(); },
+        "LIMIT", &limit));
 
-    if (limit_pb.has_value() && IsNull(limit_pb.value())) {
-      return exec_context().Error(tnode->limit(), "LIMIT value cannot be null.",
-                                  ErrorCode::INVALID_ARGUMENTS);
-    }
-
-    // this should be ensured by checks before getting here
-    DCHECK(limit_pb.has_value() && limit_pb.value().has_int32_value())
-        << "Integer constant expected for LIMIT clause";
-
-    if (limit_pb.value().int32_value() < 0) {
-      return exec_context().Error(tnode->limit(), "LIMIT value cannot be negative.",
-                                  ErrorCode::INVALID_ARGUMENTS);
-    }
-
-    uint64_t limit = limit_pb.value().int32_value();
     if (limit == 0 || params.total_num_rows_read() >= limit) {
       return Status::OK();
     }
@@ -681,6 +696,19 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     }
   }
 
+  if (tnode->has_offset()) {
+    int32_t offset;
+    RETURN_NOT_OK(GetOffsetOrLimit(
+        tnode,
+        [](const PTSelectStmt *tnode) -> PTExpr::SharedPtr { return tnode->offset(); },
+        "OFFSET", &offset));
+    // Update the offset with values from previous pagination.
+    offset = std::max(static_cast<int64_t>(0), offset - params.total_rows_skipped());
+    req->set_offset(offset);
+    // We need the paging state to know how many rows were skipped by the offset clause.
+    req->set_return_paging_state(true);
+  }
+
   // If this is a continuation of a prior read, set the next partition key, row key and total number
   // of rows read in the request's paging state.
   if (continue_select) {
@@ -688,6 +716,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     paging_state->set_next_partition_key(params.next_partition_key());
     paging_state->set_next_row_key(params.next_row_key());
     paging_state->set_total_num_rows_read(params.total_num_rows_read());
+    paging_state->set_total_rows_skipped(params.total_rows_skipped());
   }
 
   // Set the correct consistency level for the operation.
@@ -733,6 +762,9 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   StatementParameters current_params;
   RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
 
+  size_t total_rows_skipped = exec_context->params()->total_rows_skipped() +
+      current_params.total_rows_skipped();
+
   // The limit for this select: min of page size and result limit (if set).
   uint64_t fetch_limit = exec_context->params()->page_size(); // default;
   if (tnode->has_limit()) {
@@ -747,12 +779,18 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   //------------------------------------------------------------------------------------------------
   // Check if we should fetch more rows (return with 'done=true' otherwise).
 
-  // If there is no paging state the current scan has exhausted its results.
-  bool finished_current_read_partition = current_result->paging_state().empty();
+  // If there is no paging state the current scan has exhausted its results. The paging state
+  // might be non-empty, but just contain num_rows_skipped, in this case the
+  // 'next_partition_key' and 'next_row_key' would be empty indicating that we've finished
+  // reading the current partition.
+  bool finished_current_read_partition = current_result->paging_state().empty() ||
+      (current_params.next_partition_key().empty() && current_params.next_row_key().empty());
   if (finished_current_read_partition) {
 
     // If there or no other partitions to query, we are done.
     if (tnode_context->UnreadPartitionsRemaining() <= 1) {
+      // Clear the paging state, since we don't have any more data left in the table.
+      current_result->clear_paging_state();
       return false;
     }
 
@@ -771,6 +809,7 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
     if (finished_current_read_partition && op->request().return_paging_state()) {
       QLPagingStatePB paging_state;
       paging_state.set_total_num_rows_read(total_row_count);
+      paging_state.set_total_rows_skipped(total_rows_skipped);
       paging_state.set_table_id(tnode->table()->id());
       paging_state.set_next_partition_index(tnode_context->current_partition_index());
       current_result->set_paging_state(paging_state);
@@ -782,12 +821,22 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   //------------------------------------------------------------------------------------------------
   // Fetch more results.
 
-  // Update limit and paging_state information for next scan request.
+  // Update limit, offset and paging_state information for next scan request.
   op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
+  if (tnode->has_offset()) {
+    QLExpressionPB offset_pb;
+    RETURN_NOT_OK(PTExprToPB(tnode->offset(), &offset_pb));
+    // The paging state keeps a running count of the number of rows skipped so far.
+    op->mutable_request()->set_offset(
+        std::max(static_cast<int64_t>(0),
+                 offset_pb.value().int32_value() - static_cast<int64_t>(total_rows_skipped)));
+  }
+
   QLPagingStatePB *paging_state = op->mutable_request()->mutable_paging_state();
   paging_state->set_next_partition_key(current_params.next_partition_key());
   paging_state->set_next_row_key(current_params.next_row_key());
   paging_state->set_total_num_rows_read(total_row_count);
+  paging_state->set_total_rows_skipped(total_rows_skipped);
 
   // Apply the request.
   RETURN_NOT_OK(tnode_context->Apply(op, ql_env_));

@@ -62,6 +62,8 @@ class StatementParameters {
 
   int64_t total_num_rows_read() const { return paging_state().total_num_rows_read(); }
 
+  int64_t total_rows_skipped() const { return paging_state().total_rows_skipped(); }
+
   int64_t next_partition_index() const { return paging_state().next_partition_index(); }
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses

@@ -2480,6 +2480,11 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
+  size_t num_rows_skipped = 0;
+  size_t offset = 0;
+  if (request_.has_offset()) {
+    offset = request_.offset();
+  }
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
       return Status::OK();
@@ -2565,7 +2570,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       // corresponding static row, so we have to add it to the result
       if (!join_successful) {
         RETURN_NOT_OK(AddRowToResult(
-            spec, static_row, row_count_limit, resultset, &match_count));
+            spec, static_row, row_count_limit, offset, resultset, &match_count, &num_rows_skipped));
       }
     } else {
       if (last_read_static) {
@@ -2580,7 +2585,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
         AddProjection(non_static_projection, &static_row);
         RETURN_NOT_OK(AddRowToResult(
-            spec, static_row, row_count_limit, resultset, &match_count));
+            spec, static_row, row_count_limit, offset, resultset, &match_count, &num_rows_skipped));
       } else {
         // We also have to do the join if we are not reading any static columns, as Cassandra
         // reports nulls for static rows with no corresponding non-static row
@@ -2594,12 +2599,14 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
           if (!join_successful && !static_dealt_with) {
             AddProjection(non_static_projection, &static_row);
             RETURN_NOT_OK(AddRowToResult(
-                spec, static_row, row_count_limit, resultset, &match_count));
+                spec, static_row, row_count_limit, offset, resultset, &match_count,
+                &num_rows_skipped));
           }
         }
         static_dealt_with = true;
         RETURN_NOT_OK(AddRowToResult(
-            spec, non_static_row, row_count_limit, resultset, &match_count));
+            spec, non_static_row, row_count_limit, offset, resultset, &match_count,
+            &num_rows_skipped));
       }
     }
   }
@@ -2613,8 +2620,9 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
-    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
+  if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
+      !request_.is_aggregate()) {
+    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, num_rows_skipped, &response_));
   }
 
   return Status::OK();
@@ -2661,17 +2669,23 @@ CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
 CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
                                                const QLTableRow& row,
                                                const size_t row_count_limit,
+                                               const size_t offset,
                                                QLResultSet* resultset,
-                                               int* match_count) {
+                                               int* match_count,
+                                               size_t *num_rows_skipped) {
   if (resultset->rsrow_count() < row_count_limit) {
     bool match = false;
     RETURN_NOT_OK(spec->Match(row, &match));
     if (match) {
-      (*match_count)++;
-      if (request_.is_aggregate()) {
-        RETURN_NOT_OK(EvalAggregate(row));
+      if (*num_rows_skipped >= offset) {
+        (*match_count)++;
+        if (request_.is_aggregate()) {
+          RETURN_NOT_OK(EvalAggregate(row));
+        } else {
+          RETURN_NOT_OK(PopulateResultSet(row, resultset));
+        }
       } else {
-        RETURN_NOT_OK(PopulateResultSet(row, resultset));
+        (*num_rows_skipped)++;
       }
     }
   }
