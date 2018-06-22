@@ -161,7 +161,7 @@ using our driver by adding the following Maven dependency to your application:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-14</version>
+  <version>3.2.0-yb-15</version>
 </dependency>
 ```
 
