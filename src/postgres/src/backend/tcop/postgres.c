@@ -98,7 +98,8 @@ int			max_stack_depth = 100;
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
-
+/* Global variables that are used to interact with YugaByte CAPI */
+YBCPgSession ybc_pg_session = NULL;
 
 /* ----------------
  *		private variables

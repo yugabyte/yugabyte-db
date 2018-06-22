@@ -25,7 +25,7 @@ add_custom_target(
   --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
 
   --compiler_type "$ENV{YB_COMPILER_TYPE}"
-  DEPENDS yb_util)
+  DEPENDS yb_util yb_pggate)
 
 # Make sure we rebuild postgres before the master/tserver libraries.
 add_dependencies(master postgres)
