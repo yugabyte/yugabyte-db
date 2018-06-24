@@ -19,13 +19,21 @@ class TSDescriptor;
 #include "yb/master/dns_manager.h"
 
 namespace yb {
+
+namespace rpc {
+
+class SecureContext;
+
+}
+
 namespace master {
 namespace enterprise {
 
 class Master : public yb::master::Master {
   typedef yb::master::Master super;
  public:
-  explicit Master(const MasterOptions& opts) : super(opts) {}
+  explicit Master(const MasterOptions& opts);
+  ~Master();
   Master(const Master&) = delete;
   void operator=(const Master&) = delete;
 
@@ -35,12 +43,14 @@ class Master : public yb::master::Master {
 
  protected:
   CHECKED_STATUS RegisterServices() override;
+  CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
   DnsManager dns_manager_;
   // The last time when DNS manager was called to update list of tserver hosts if needed.
   std::atomic<MonoTime> last_dns_sync_{MonoTime::Min()};
   std::atomic<bool> dns_sync_in_progress_{false};
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 };
 
 } // namespace enterprise
