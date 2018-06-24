@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
 
+import play.api.Play;
 import play.libs.Json;
 
 @Singleton
@@ -77,7 +78,8 @@ public class Commissioner {
     progressMonitor.start();
     LOG.info("Started TaskProgressMonitor thread.");
 
-    healthChecker = new HealthChecker(shuttingDown);
+    healthChecker = new HealthChecker();
+    healthChecker.setShutdownControl(shuttingDown);
     healthChecker.start();
     LOG.info("Started TaskProgressMonitor thread.");
   }
