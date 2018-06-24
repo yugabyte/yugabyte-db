@@ -6,22 +6,34 @@
 #include "../../../../src/yb/tserver/tablet_server.h"
 
 namespace yb {
+
+namespace rpc {
+
+class SecureContext;
+
+}
+
 namespace tserver {
 namespace enterprise {
 
 class TabletServer : public yb::tserver::TabletServer {
   typedef yb::tserver::TabletServer super;
  public:
-  explicit TabletServer(const TabletServerOptions& opts) : super(opts) {}
+  explicit TabletServer(const TabletServerOptions& opts);
+  TabletServer(const TabletServer&) = delete;
+  void operator=(const TabletServer&) = delete;
+  ~TabletServer();
 
  protected:
   CHECKED_STATUS RegisterServices() override;
+  CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(TabletServer);
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 };
 
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
+
 #endif // ENT_SRC_YB_TSERVER_TABLET_SERVER_H
