@@ -18,7 +18,7 @@ menu:
     <a class="section-link icon-offset" href="client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="articles">5 articles</div>
+        <div class="articles">6 articles</div>
         <div class="title">Client Drivers</div>
       </div>
       <div class="body">

@@ -1,14 +1,14 @@
 ---
-title: Java
-linkTitle: Java
-description: Develop Java Apps
+title: C#
+linkTitle: C#
+description: Develop C# Apps
 aliases:
-  - /develop/client-drivers/java/
+  - /develop/client-drivers/csharp/
 menu:
   latest:
-    identifier: client-drivers-java
+    identifier: client-drivers-csharp
     parent: client-drivers
-    weight: 554
+    weight: 552
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -28,9 +28,9 @@ menu:
 
 <div class="tab-content">
   <div id="cql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cql-tab">
-    {{% includeMarkdown "cassandra/java.md" /%}}
+    {{% includeMarkdown "cassandra/csharp.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade" role="tabpanel" aria-labelledby="redis-tab">
-    {{% includeMarkdown "redis/java.md" /%}}
+    {{% includeMarkdown "redis/csharp.md" /%}}
   </div>
 </div>
