@@ -577,12 +577,14 @@ int SecureStream::VerifyCallback(int preverified, X509_STORE_CTX* store_context)
 bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   // Don't bother looking at certificates that have failed pre-verification.
   if (!preverified) {
+    VLOG(4) << "Unverified certificate";
     return false;
   }
 
   // We're only interested in checking the certificate at the end of the chain.
   int depth = X509_STORE_CTX_get_error_depth(store_context);
   if (depth > 0) {
+    VLOG(4) << "Intermediate certificate";
     return true;
   }
 
@@ -643,6 +645,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
     }
   }
 
+  VLOG(4) << "Nothing suitable for " << Remote().address();
   return false;
 }
 

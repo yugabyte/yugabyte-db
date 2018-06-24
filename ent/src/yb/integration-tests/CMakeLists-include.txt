@@ -1,5 +1,7 @@
 # Copyright (c) YugaByte, Inc.
 
+file(COPY ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION ${CMAKE_BINARY_DIR}/ent)
+
 set(YB_SOURCE_DIR         ${CMAKE_SOURCE_DIR}/src)
 set(YB_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(YB_ENT_SOURCE_DIR     ${CMAKE_SOURCE_DIR}/ent/src)
@@ -18,4 +20,5 @@ set(YB_ENT_CURRENT_SOURCE_DIR
 
 set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   snapshot-test
+  secure_connection_test
   PARENT_SCOPE)
