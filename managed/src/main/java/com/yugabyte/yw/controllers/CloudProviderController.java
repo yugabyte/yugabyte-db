@@ -140,8 +140,9 @@ public class CloudProviderController extends AuthenticatedController {
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();
     Map<String, String> config = new HashMap<>();
-    if (requestBody.has("config")) {
-      JsonNode configNode = requestBody.get("config");
+    JsonNode configNode = requestBody.get("config");
+    // Confirm we had a "config" key and it was not null.
+    if (configNode != null && !configNode.isNull()) {
       if (providerCode.equals(Common.CloudType.gcp)) {
         config = Json.fromJson(configNode.get("config_file_contents"), Map.class);
       } else {
