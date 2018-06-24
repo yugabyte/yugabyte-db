@@ -1,9 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/secure.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/backup_service.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
 
@@ -21,6 +25,12 @@ namespace enterprise {
 
 using yb::rpc::ServiceIf;
 
+TabletServer::TabletServer(const TabletServerOptions& opts) : super(opts) {
+}
+
+TabletServer::~TabletServer() {
+}
+
 Status TabletServer::RegisterServices() {
   server::HybridClock::RegisterProvider(NtpClock::Name(), [] {
     return std::make_shared<NtpClock>();
@@ -32,6 +42,13 @@ Status TabletServer::RegisterServices() {
                                                      std::move(backup_service)));
 
   return super::RegisterServices();
+}
+
+Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
+  secure_context_ = VERIFY_RESULT(
+      server::SetupSecureContext(options_.rpc_opts.rpc_bind_addresses, fs_manager_.get(), builder));
+  return Status::OK();
 }
 
 } // namespace enterprise
