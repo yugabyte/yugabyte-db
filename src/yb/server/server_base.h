@@ -108,6 +108,7 @@ class RpcServerBase {
   CHECKED_STATUS StartRpcServer();
   void Shutdown();
   void SetConnectionContextFactory(rpc::ConnectionContextFactoryPtr connection_context_factory);
+  virtual CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder);
 
   const std::string name_;
 

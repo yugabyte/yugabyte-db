@@ -23,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -56,6 +57,39 @@ class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
   shared_ptr<YBClient> client_;
+};
+
+YB_STRONGLY_TYPED_BOOL(Transactional);
+YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
+
+class KeyValueTableTest : public QLDmlTestBase {
+ protected:
+  void CreateTable(Transactional transactional);
+
+  // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
+  // has been applied.
+  // op_type == WriteOpType::INSERT: insert into t values (key, value);
+  // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
+  // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
+  Result<shared_ptr<YBqlWriteOp>> WriteRow(
+      const YBSessionPtr& session, int32_t key, int32_t value,
+      const WriteOpType op_type = WriteOpType::INSERT);
+
+  Result<shared_ptr<YBqlWriteOp>> DeleteRow(
+      const YBSessionPtr& session, int32_t key);
+
+  Result<shared_ptr<YBqlWriteOp>> UpdateRow(
+      const YBSessionPtr& session, int32_t key, int32_t value);
+
+  // Select the specified columns of a row using a primary key, equivalent to the select statement
+  // below. Return a YB read op that has been applied.
+  //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
+  Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key,
+                            const std::string& column = kValueColumn);
+
+  static const std::string kKeyColumn;
+  static const std::string kValueColumn;
+  TableHandle table_;
 };
 
 }  // namespace client

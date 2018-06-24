@@ -48,6 +48,7 @@ class AcceptorPool;
 class ConnectionContext;
 class GrowableBufferAllocator;
 class Messenger;
+class MessengerBuilder;
 class Proxy;
 class ProxyCache;
 class Reactor;

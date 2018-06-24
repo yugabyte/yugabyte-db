@@ -65,7 +65,8 @@ add_dependencies(integration-tests
   yb-master)
 
 # Tests
-set(YB_TEST_LINK_LIBS integration-tests yb_client yb_tools_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS
+    integration-tests yb_client yb_tools_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
 ADD_YB_TEST(registration-test)
