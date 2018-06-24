@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #########################################
 # server_common
 #########################################
@@ -95,6 +97,7 @@ set(SERVER_PROCESS_SRCS
   webserver.cc
   webserver_options.cc
   webui_util.cc
+  ${RPC_SRCS_EXTENSIONS}
 )
 
 add_library(server_process ${SERVER_PROCESS_SRCS})

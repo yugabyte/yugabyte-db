@@ -66,10 +66,6 @@ namespace {
 
 constexpr size_t kNumRows = 5;
 const auto kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
-const std::string kKeyColumn = "k";
-const std::string kValueColumn = "v";
-
-YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type) {
@@ -80,18 +76,6 @@ int32_t GetMultiplier(const WriteOpType op_type) {
       return -1;
     case WriteOpType::DELETE:
       return 0; // Value is not used in delete path.
-  }
-  FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
-}
-
-QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
-  switch (op_type) {
-    case WriteOpType::INSERT:
-      return QLWriteRequestPB::QL_STMT_INSERT;
-    case WriteOpType::UPDATE:
-      return QLWriteRequestPB::QL_STMT_UPDATE;
-    case WriteOpType::DELETE:
-      return QLWriteRequestPB::QL_STMT_DELETE;
   }
   FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
 }
@@ -135,14 +119,14 @@ void DisableTransactionTimeout() {
 
 #define VERIFY_ROW(...) VerifyRow(__LINE__, __VA_ARGS__)
 
-class QLTransactionTest : public QLDmlTestBase {
+class QLTransactionTest : public KeyValueTableTest {
  protected:
   void SetUp() override {
     server::SkewedClock::Register();
     FLAGS_time_source = server::SkewedClock::kName;
-    QLDmlTestBase::SetUp();
+    KeyValueTableTest::SetUp();
 
-    CreateTable();
+    CreateTable(Transactional::kTrue);
 
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
@@ -159,17 +143,6 @@ class QLTransactionTest : public QLDmlTestBase {
     transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
   }
 
-  void CreateTable() {
-    YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(INT32);
-    TableProperties table_properties;
-    table_properties.SetTransactional(true);
-    builder.SetTableProperties(table_properties);
-
-    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
-  }
-
   shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
     auto session = std::make_shared<YBSession>(client_);
     if (transaction) {
@@ -177,40 +150,6 @@ class QLTransactionTest : public QLDmlTestBase {
     }
     session->SetTimeout(NonTsanVsTsan(15s, 60s));
     return session;
-  }
-
-  // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
-  // has been applied.
-  // op_type == WriteOpType::INSERT: insert into t values (key, value);
-  // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
-  // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
-  Result<shared_ptr<YBqlWriteOp>> WriteRow(
-      const YBSessionPtr& session, int32_t key, int32_t value,
-      const WriteOpType op_type = WriteOpType::INSERT) {
-    VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
-            << yb::ToString(op_type);
-    const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
-    const auto op = table_.NewWriteOp(stmt_type);
-    auto* const req = op->mutable_request();
-    QLAddInt32HashValue(req, key);
-    if (op_type != WriteOpType::DELETE) {
-      table_.AddInt32ColumnValue(req, kValueColumn, value);
-    }
-    RETURN_NOT_OK(session->Apply(op));
-    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
-    }
-    return op;
-  }
-
-  Result<shared_ptr<YBqlWriteOp>> DeleteRow(
-      const YBSessionPtr& session, int32_t key) {
-    return WriteRow(session, key, 0 /* value */, WriteOpType::DELETE);
-  }
-
-  Result<shared_ptr<YBqlWriteOp>> UpdateRow(
-      const YBSessionPtr& session, int32_t key, int32_t value) {
-    return WriteRow(session, key, value, WriteOpType::UPDATE);
   }
 
   void WriteRows(
@@ -223,35 +162,6 @@ class QLTransactionTest : public QLDmlTestBase {
           ValueForTransactionAndIndex(transaction, r, op_type),
           op_type));
     }
-  }
-
-  // Select the specified columns of a row using a primary key, equivalent to the select statement
-  // below. Return a YB read op that has been applied.
-  //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
-  Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key,
-                            const std::string& column = kValueColumn) {
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddInt32HashValue(req, key);
-    table_.AddColumns({column}, req);
-    auto status = session->Apply(op);
-    if (status.IsIOError()) {
-      for (const auto& error : session->GetPendingErrors()) {
-        LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
-      }
-    }
-    RETURN_NOT_OK(status);
-    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS(QLError,
-                    op->response().error_message(),
-                    Slice(),
-                    static_cast<int64_t>(ql::QLStatusToErrorCode(op->response().status())));
-    }
-    auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
-    if (rowblock->row_count() == 0) {
-      return STATUS_FORMAT(NotFound, "Row not found for key $0", key);
-    }
-    return rowblock->row(0).column(0).int32_value();
   }
 
   void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value,
@@ -356,7 +266,6 @@ class QLTransactionTest : public QLDmlTestBase {
   // Otherwise second transaction would see pending intents from first one and should not restart.
   void TestReadRestart(bool commit = true);
 
-  TableHandle table_;
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
   server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};

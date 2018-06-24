@@ -159,6 +159,21 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
   return *DCHECK_NOTNULL(instance_pb_.get());
 }
 
+Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  if (FLAGS_num_reactor_threads == -1) {
+    // Auto set the number of reactors based on the number of cores.
+    FLAGS_num_reactor_threads =
+        std::min(16, static_cast<int>(std::thread::hardware_concurrency()));
+    LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
+  }
+
+  builder->set_num_reactors(FLAGS_num_reactor_threads);
+  builder->set_metric_entity(metric_entity());
+  builder->set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
+
+  return Status::OK();
+}
+
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
 
@@ -177,17 +192,7 @@ Status RpcServerBase::Init() {
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
-
-  if (FLAGS_num_reactor_threads == -1) {
-    // Auto set the number of reactors based on the number of cores.
-    FLAGS_num_reactor_threads =
-        std::min(16, static_cast<int>(std::thread::hardware_concurrency()));
-    LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
-  }
-
-  builder.set_num_reactors(FLAGS_num_reactor_threads);
-  builder.set_metric_entity(metric_entity());
-  builder.set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
+  RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_.reset(new rpc::ProxyCache(messenger_));
 
@@ -326,7 +331,9 @@ void RpcServerBase::Shutdown() {
     metrics_logging_thread_->Join();
   }
   rpc_server_->Shutdown();
-  messenger_->Shutdown();
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 }
 
 RpcAndWebServerBase::RpcAndWebServerBase(
@@ -367,8 +374,6 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  RETURN_NOT_OK(RpcServerBase::Init());
-
   Status s = fs_manager_->Open();
   if (s.IsNotFound()) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
@@ -379,6 +384,8 @@ Status RpcAndWebServerBase::Init() {
     s = fs_manager_->Open();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
+
+  RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
 }
@@ -402,7 +409,7 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
-  if (addrs.size() > 1 || addrs.at(0).host() == kWildCardHostAddress || addrs.at(0).port() == 0) {
+  if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddress || addrs[0].port() == 0) {
     auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
     RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
                           "Failed to add RPC endpoints to registration");
