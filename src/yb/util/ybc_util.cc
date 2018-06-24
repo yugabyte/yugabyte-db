@@ -29,6 +29,7 @@ namespace {
 Status InitInternal(const char* argv0) {
   RETURN_NOT_OK(CheckCPUFlags());
   yb::InitGoogleLoggingSafeBasic(argv0);
+  google::InstallFailureSignalHandler();
   return Status::OK();
 }
 

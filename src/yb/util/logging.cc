@@ -49,6 +49,7 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <regex>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -169,9 +170,33 @@ void DumpStackTraceAndExit() {
   abort();
 }
 
+void CustomGlogFailureWriter(const char* data, int size) {
+  if (size == 0) {
+    return;
+  }
+  static const std::regex kStackTraceLineFormatRe(R"#(^\s*@\s+(0x[0-9a-f]+)\s+.*\n?$)#");
+
+  std::smatch match;
+  string line = string(data, size);
+  if (std::regex_match(line, match, kStackTraceLineFormatRe)) {
+    size_t pos;
+    uintptr_t addr = std::stoul(match[1], &pos, 16);
+    string symbolized_line = SymbolizeAddress(reinterpret_cast<void*>(addr));
+    if (symbolized_line.find(':') != string::npos) {
+      // Only replace the output line if we failed to find the line number.
+      line = symbolized_line;
+    }
+  }
+
+  if (write(STDERR_FILENO, line.data(), line.size()) < 0) {
+    // Ignore errors.
+  }
+}
+
 } // anonymous namespace
 
 void InitializeGoogleLogging(const char *arg) {
+  google::InstallFailureWriter(CustomGlogFailureWriter);
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
@@ -183,6 +208,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
 
+  google::InstallFailureWriter(CustomGlogFailureWriter);
   google::InstallFailureSignalHandler();
 
   // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.

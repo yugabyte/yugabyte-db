@@ -900,7 +900,7 @@ remove_path_entry() {
   local path_entry=$1
   local prev_path=""
   # Remove all occurrences of the given entry.
-  while  [[ $PATH != $prev_path ]]; do
+  while [[ $PATH != $prev_path ]]; do
     prev_path=$PATH
     PATH=:$PATH:
     PATH=${PATH//:$path_entry:/:}
@@ -1228,7 +1228,7 @@ is_jenkins_phabricator_build() {
 
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/(n|z)/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/(n|z|u)/ ]]; then
     return 0
   fi
   return 1

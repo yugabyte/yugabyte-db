@@ -592,7 +592,14 @@ string StackTrace::ToHexString(int flags) const {
   return string(buf);
 }
 
-void* AdjustProgramCounter(void* pc) {
+void SymbolizeAddress(
+    const StackTraceLineFormat stack_trace_line_format,
+    void* pc,
+    string* buf
+#ifdef __linux__
+    , struct backtrace_state* backtrace_state = nullptr
+#endif
+    ) {
   // The return address 'pc' on the stack is the address of the instruction
   // following the 'call' instruction. In the case of calling a function annotated
   // 'noreturn', this address may actually be the first instruction of the next
@@ -618,17 +625,7 @@ void* AdjustProgramCounter(void* pc) {
   //
   // This also ensures that we point at the correct line number when using addr2line
   // on logged stacks.
-  return reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
-}
-
-void SymbolizeAddress(
-    const StackTraceLineFormat stack_trace_line_format,
-    void* pc,
-    string* buf
-#ifdef __linux__
-    , struct backtrace_state* backtrace_state = nullptr
-#endif
-    ) {
+  pc = reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
 #ifdef __linux__
   if (!backtrace_state) {
     backtrace_state = Singleton<GlobalBacktraceState>::get()->GetState();
@@ -664,7 +661,7 @@ string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format)
   for (int i = 0; i < num_frames_; i++) {
     void* const pc = frames_[i];
 
-    SymbolizeAddress(stack_trace_line_format, AdjustProgramCounter(pc), &buf
+    SymbolizeAddress(stack_trace_line_format, pc, &buf
 #ifdef __linux__
         , backtrace_state
 #endif
@@ -718,6 +715,12 @@ bool PrintLoadedDynamicLibrariesOnceHelper() {
 }
 
 } // anonymous namespace
+
+string SymbolizeAddress(void *pc, const StackTraceLineFormat stack_trace_line_format) {
+  string s;
+  SymbolizeAddress(stack_trace_line_format, pc, &s);
+  return s;
+}
 
 // ------------------------------------------------------------------------------------------------
 // Tracing function calls
@@ -861,7 +864,7 @@ class FunctionTracer {
     std::ostringstream ss;
     ss << ToMicroseconds(event.time.time_since_epoch())
        << " " << event.thread_id << " " << event_type_str << " " << symbol
-       << ", called from: " << Symbolize(AdjustProgramCounter(event.call_site));
+       << ", called from: " << Symbolize(event.call_site);
     std::cerr << ss.str() << std::endl;
   }
 
