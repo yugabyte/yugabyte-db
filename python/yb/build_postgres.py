@@ -45,6 +45,16 @@ def get_path_variants(path):
     return sorted(set([os.path.abspath(path), os.path.realpath(path)]))
 
 
+def write_program_output_to_file(program_name, program_result, target_dir):
+    for output_type in ['out', 'err']:
+        output_path = os.path.join(target_dir, '%s.%s' % (program_name, output_type))
+        output_content = getattr(program_result, 'std' + output_type)
+        with open(output_path, 'w') as out_f:
+            out_f.write(output_content)
+        if output_content.strip():
+            logging.info("Wrote std%s of %s to %s", output_type, program_name, output_path)
+
+
 class PostgresBuilder:
     def __init__(self):
         self.args = None
@@ -234,13 +244,7 @@ class PostgresBuilder:
 
         if is_verbose_mode():
             configure_result.print_output_to_stdout()
-        for output_type in ['out', 'err']:
-            output_path = os.path.join(self.pg_build_root, 'configure.' + output_type)
-            output_content = getattr(configure_result, 'std' + output_type)
-            with open(output_path, 'w') as out_f:
-                out_f.write(output_content)
-            if output_content.strip():
-                logging.info("Wrote std%s of configure to %s", output_type, output_path)
+        write_program_output_to_file('configure', configure_result, self.pg_build_root)
 
         logging.info("Successfully ran configure in the postgres build directory")
 
@@ -274,8 +278,10 @@ class PostgresBuilder:
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
-                run_program(make_cmd)
-                run_program(['make', 'install'])
+                make_result = run_program(make_cmd)
+                write_program_output_to_file('make', make_result, work_dir)
+                make_install_result = run_program(['make', 'install'])
+                write_program_output_to_file('make_install', make_install_result, work_dir)
                 logging.info("Successfully ran make in the %s directory", work_dir)
 
     def run(self):
