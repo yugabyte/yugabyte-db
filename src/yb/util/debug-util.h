@@ -218,6 +218,10 @@ class ScopeLogger {
 
 std::string GetClassNameStr(void* p);
 
+std::string SymbolizeAddress(
+    void *pc,
+    const StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT);
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H
