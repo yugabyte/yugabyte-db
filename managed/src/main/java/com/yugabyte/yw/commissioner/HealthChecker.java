@@ -4,9 +4,12 @@ package com.yugabyte.yw.commissioner;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Date;
 import java.util.stream.Collectors;
 import java.util.List;
 import java.util.UUID;
+
+import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.HealthManager;
@@ -28,28 +31,44 @@ import play.libs.Json;
 public class HealthChecker extends Thread {
   public static final Logger LOG = LoggerFactory.getLogger(HealthChecker.class);
 
+  play.Configuration appConfig;
+
   // The interval after which progress monitor wakes up and does work.
-  private final long HEALTH_CHECK_SLEEP_INTERVAL_MS = 300000;
+  private long HEALTH_CHECK_SLEEP_INTERVAL_MS = 0;
 
-  // TODO: make this a global config.
-  public final String YB_ALERT_EMAIL = "nosuchemail@example.com";
+  // Email address from YugaByte to which to send emails, if configured.
+  private String YB_ALERT_EMAIL = null;
 
-  private AtomicBoolean shuttingDown;
+  // The interval at which to send a status update of all the current universes.
+  private long STATUS_UPDATE_INTERVAL_MS = 0;
+
+  // Last time we send a status update email, in ms.
+  private long lastStatusUpdateTime = 0;
+
   // What will run the health checking script.
   static HealthManager healthManager = null;
 
-  public HealthChecker(AtomicBoolean shuttingDown) {
-    this.shuttingDown = shuttingDown;
+  // Mark to stop execution of the checker thread.
+  private AtomicBoolean shuttingDown = null;
+
+  public HealthChecker() {
     setName("HealthChecker");
+  }
+
+  public void setShutdownControl(AtomicBoolean shuttingDown) {
+    this.shuttingDown = shuttingDown;
   }
 
   @Override
   public void run() {
     LOG.info("Starting health checking");
+    if (shuttingDown == null) {
+      throw new RuntimeException("Class not fully initialized, missing shuttingDown control.");
+    }
     while (!shuttingDown.get()) {
       try {
         if (healthManager == null) {
-          healthManager = Play.current().injector().instanceOf(HealthManager.class);
+          initHealthManager();
         }
       } catch (RuntimeException e) {
         LOG.error("Could not setup HealthManager yet...");
@@ -62,7 +81,33 @@ public class HealthChecker extends Thread {
     }
   }
 
+  /*
+   * This function will error out while the App is not yet initialized. Once it is, we should be
+   * safe to read the appConfig values.
+   */
+  private void initHealthManager() {
+    healthManager = Play.current().injector().instanceOf(HealthManager.class);
+    appConfig = Play.current().injector().instanceOf(play.Configuration.class);
+
+    HEALTH_CHECK_SLEEP_INTERVAL_MS = appConfig.getLong("yb.health.check_interval_ms");
+    STATUS_UPDATE_INTERVAL_MS = appConfig.getLong("yb.health.status_interval_ms");
+    YB_ALERT_EMAIL = appConfig.getString("yb.health.default_email");
+  }
+
+  /*
+   * Check if we need to send a status update email. Also update the internal tracking of last time
+   * we checked to now.
+   */
+  private boolean checkForStatusUpdate() {
+    long now = (new Date()).getTime();
+    boolean shouldSendStatusUpdate = (now - STATUS_UPDATE_INTERVAL_MS) > lastStatusUpdateTime;
+    lastStatusUpdateTime = now;
+    return shouldSendStatusUpdate;
+  }
+
   private void checkAllUniverses() {
+    boolean shouldSendStatusUpdate = checkForStatusUpdate();
+
     for (Customer c : Customer.getAll()) {
       CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
       if (config == null) {
@@ -81,7 +126,12 @@ public class HealthChecker extends Thread {
         }
         LOG.info("Doing health check for universe: " + u.name);
         // TODO: this should ignore Stopped nodes?
-        String nodes = details.nodeDetailsSet.stream()
+        String masterNodes = details.nodeDetailsSet.stream()
+            .filter(nd -> nd.isMaster)
+            .map(nd -> nd.cloudInfo.private_ip)
+            .collect(Collectors.joining(","));
+        String tserverNodes = details.nodeDetailsSet.stream()
+            .filter(nd -> nd.isTserver)
             .map(nd -> nd.cloudInfo.private_ip)
             .collect(Collectors.joining(","));
         UniverseDefinitionTaskParams.Cluster primaryCluster = details.getPrimaryCluster();
@@ -106,8 +156,9 @@ public class HealthChecker extends Thread {
           }
         }
         ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-            nodes, sshPort, u.name, accessKey.getKeyInfo().privateKey,
-            (destinations.size() == 0 ? null : String.join(",", destinations)));
+            masterNodes, tserverNodes, sshPort, u.name, accessKey.getKeyInfo().privateKey,
+            (destinations.size() == 0 ? null : String.join(",", destinations)),
+            shouldSendStatusUpdate);
         if (response.code == 0) {
           HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
         } else {
@@ -121,7 +172,8 @@ public class HealthChecker extends Thread {
   private void sleep() {
     // Sleep for the required interval.
     try {
-      Thread.sleep(HEALTH_CHECK_SLEEP_INTERVAL_MS);
+      // If the fields have not yet been initialized from the appConfig, then take a short sleep.
+      Thread.sleep(HEALTH_CHECK_SLEEP_INTERVAL_MS > 0 ? HEALTH_CHECK_SLEEP_INTERVAL_MS : 1000);
     } catch (InterruptedException e) {
     }
   }
