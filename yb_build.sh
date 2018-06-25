@@ -154,6 +154,9 @@ Options:
     Do a clean build of the PostgreSQL subtree.
   --no-postgres, --skip-postgres, --np, --sp
     Skip PostgreSQL build
+  --gen-compilation-db, --gcdb
+    Generate the "compilation database" file, compile_commands.json, that can be used by editors
+    to proive better code assistance.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -544,6 +547,7 @@ java_test_name=""
 show_report=true
 running_any_tests=false
 clean_postgres=false
+export_compile_commands=false
 
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -835,6 +839,9 @@ while [[ $# -gt 0 ]]; do
     --no-postgres|--skip-postgres|--np|--sp)
       export YB_SKIP_POSTGRES_BUILD=1
     ;;
+    --gen-compilation-db|--gcdb)
+      export_compile_commands=true
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -920,6 +927,16 @@ fi
 
 if "$use_shared_thirdparty" && "$no_shared_thirdparty"; then
   fatal "--use-shared-thirdparty and --no-shared-thirdparty cannot be specified at the same time"
+fi
+
+if "$export_compile_commands" && ! "$force_no_run_cmake"; then
+  force_run_cmake=true
+fi
+
+if "$export_compile_commands"; then
+  log "Will export compile commands (create a compilation database JSON file)"
+  export CMAKE_EXPORT_COMPILE_COMMANDS=1
+  export YB_EXPORT_COMPILE_COMMANDS=1
 fi
 
 configure_remote_build

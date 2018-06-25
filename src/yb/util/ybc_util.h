@@ -16,12 +16,25 @@
 #ifndef YB_UTIL_YBC_UTIL_H
 #define YB_UTIL_YBC_UTIL_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef struct YBCStatusStruct {
+  int code;
+  char msg[0];
+} YBCStatusStruct;
+
+typedef struct YBCStatusStruct* YBCStatus;
+
+typedef void* (*YBCPAllocFn)(size_t size);
+
 // Global initialization of the YugaByte subsystem.
-int YBCInit(const char* server_type, const char* argv0);
+int YBCInit(const char* server_type, const char* argv0, YBCPAllocFn palloc_fn);
+
+YBCStatus YBCTestStatus();
 
 // Logging functions with printf-like formatting capabilities.
 void YBCLogInfo(const char* format, ...);
