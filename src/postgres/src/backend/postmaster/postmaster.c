@@ -582,7 +582,7 @@ PostmasterMain(int argc, char *argv[])
 	int			i;
 	char	   *output_config_variable = NULL;
 
-	if (!YBCInit("postmaster", argv[0])) {
+	if (!YBCInit("postmaster", argv[0], palloc)) {
 		ExitPostmaster(1);
 	}
 

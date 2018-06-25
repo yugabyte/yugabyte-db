@@ -72,3 +72,5 @@ build/python_virtual_env
 # We can use this for marking the thirdparty directory inside a working directory as "unusable" so
 # that a shared thirdparty directory would be picked automatically instead.
 .yb_thirdparty_do_not_use
+
+.vscode
