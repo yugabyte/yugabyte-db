@@ -208,7 +208,7 @@ class Status {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
-  enum Code {
+  enum Code : int32_t {
     BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_DECLARE, YB_STATUS_CODES)
 
     // NOTE: Remember to duplicate these constants into wire_protocol.proto and
@@ -260,7 +260,7 @@ class Status {
   StatePtr state_;
   static constexpr size_t kHeaderSize = offsetof(State, message);
 
-  static_assert(sizeof(Code) == 4, "Code enum size is part of abi");
+  static_assert(sizeof(Code) == 4, "Code enum size is part of ABI");
 };
 
 inline Status&& MoveStatus(Status&& status) {

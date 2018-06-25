@@ -14,6 +14,7 @@
 
 #include <stdarg.h>
 
+#include "yb/util/ybc-internal.h"
 #include "yb/util/logging.h"
 #include "yb/util/init.h"
 #include "yb/util/version_info.h"
@@ -39,7 +40,8 @@ constexpr size_t kFormattingBufSize = 16384;
 
 extern "C" {
 
-int YBCInit(const char* server_type, const char* argv0) {
+int YBCInit(const char* server_type, const char* argv0, YBCPAllocFn palloc_fn) {
+  YBCSetPAllocFn(palloc_fn);
   yb::Status s = yb::InitInternal(argv0);
   if (s.ok()) {
     return true;
@@ -68,6 +70,11 @@ DEFINE_YBC_LOG_FUNCTION(WarningStackTrace, WARNING, GetStackTraceWithoutTopFrame
 DEFINE_YBC_LOG_FUNCTION(ErrorStackTrace,   ERROR,   GetStackTraceWithoutTopFrame())
 
 #undef DEFINE_YBC_LOG_FUNCTION
+
+YBCStatus YBCTestStatus() {
+  auto s = STATUS(IllegalState, "Something not quite right");
+  return ToYBCStatus(s);
+}
 
 } // extern "C"
 
