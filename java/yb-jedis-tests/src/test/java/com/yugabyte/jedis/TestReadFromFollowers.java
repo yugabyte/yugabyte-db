@@ -300,7 +300,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     setUpJedis();
 
     final List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
-    final String tserverHostName = redisContactPoints.get(0).getHostName();
+    final String tserverHostName = redisContactPoints.get(0).getAddress().getHostAddress();
     LocatedTablet tablet = FindFollowerTablet(tserverHostName);
     assertNotNull(tablet);
 
@@ -358,7 +358,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     setUpJedis();
 
     final List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
-    final String tserverHostName = redisContactPoints.get(0).getHostName();
+    final String tserverHostName = redisContactPoints.get(0).getAddress().getHostAddress();
     LocatedTablet tablet = FindFollowerTablet(tserverHostName);
     assertNotNull(tablet);
 
