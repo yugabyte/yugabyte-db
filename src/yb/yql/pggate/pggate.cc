@@ -18,15 +18,14 @@
 #include "yb/util/flag_tags.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
-             "Dummy variable at the moment as we don't use our RPC layer. "
              "If an RPC connection from a client is idle for this amount of time, the server "
              "will disconnect the client. Setting flag to 0 disables this clean up.");
 TAG_FLAG(pgsql_rpc_keepalive_time_ms, advanced);
 
-DEFINE_int32(pggate_rpc_timeout_secs, 5,
-             "Dummy variable at the moment as we don't use our RPC layer");
+DEFINE_int32(pggate_rpc_timeout_secs, 60,
+             "Timeout for RPCs from pggate to YB cluster");
 
-DEFINE_int32(pggate_ybclient_reactor_threads, 24,
+DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
@@ -53,31 +52,41 @@ PggateOptions::PggateOptions() {
   }
   rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
   master_addresses_flag = FLAGS_pggate_master_addresses;
+
+  const char* master_addresses_env_var_value = getenv("FLAGS_pggate_master_addresses");
+  if (master_addresses_env_var_value && strlen(master_addresses_env_var_value) > 0) {
+    if (!master_addresses_flag.empty()) {
+      CHECK_EQ(master_addresses_flag, master_addresses_env_var_value)
+          << "--pggate_master_addresses and the FLAGS_pggate_master_addresses env var are set to "
+          << "different values: on the command line we have " << FLAGS_pggate_master_addresses
+          << " but in the env var we have " << master_addresses_env_var_value;
+    }
+    master_addresses_flag = master_addresses_env_var_value;
+  }
+
+  std::vector<HostPort> master_addresses;
+  // TODO: we might have to allow setting master_replication_factor similarly to how it is done
+  // in tserver to support master auto-discovery on Kubernetes.
+  CHECK_OK(ServerBaseOptions::DetermineMasterAddresses(
+      "YB_MASTER_ADDRESSES_FOR_PG", master_addresses_flag, /* master_replication_factor */ 0,
+      &master_addresses, &master_addresses_flag));
+  SetMasterAddresses(make_shared<std::vector<HostPort>>(master_addresses));
 }
 
 //--------------------------------------------------------------------------------------------------
 
-// Because PgApiImpl global object might be initialized before GFLAGS, or the initialzation order
-// is unknown, PbApiImpl() constructor should not use GFLAGS or allocate any objects.
-// TODO(neil)
-// - Mikhail said he already fixed this bug.
-// - Create ONE async_client_init_ for postgres when creating tablet server options and pass it
-//   to this API.
-// - From PostgreSQL, post_master must call the API and setup valid tablet server addresses
-//   before it can use the API.
-// - Just for today (June 22, 2018) prototype, we skip this step for now.
-PgApiImpl::PgApiImpl() :
-  pggate_options_(),
-  metric_registry_(new MetricRegistry()),
-  metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
-  mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
-  async_client_init_("pggate_ybclient",
-                     FLAGS_pggate_ybclient_reactor_threads,
-                     FLAGS_pggate_rpc_timeout_secs,
-                     "" /* tserver_uuid */,
-                     &pggate_options_,
-                     metric_entity_,
-                     mem_tracker_) {
+PgApiImpl::PgApiImpl()
+    : pggate_options_(),
+      metric_registry_(new MetricRegistry()),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
+      mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
+      async_client_init_("pggate_ybclient",
+                        FLAGS_pggate_ybclient_reactor_threads,
+                        FLAGS_pggate_rpc_timeout_secs,
+                        "" /* tserver_uuid */,
+                        &pggate_options_,
+                        metric_entity_,
+                        mem_tracker_) {
 }
 
 //--------------------------------------------------------------------------------------------------

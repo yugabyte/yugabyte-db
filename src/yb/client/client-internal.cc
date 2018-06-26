@@ -1082,8 +1082,10 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
         return;
       }
       if (addrs.empty()) {
-        cb.Run(STATUS(InvalidArgument, Substitute("No master address specified by '$0'",
-                                                  master_server_addr)));
+        cb.Run(STATUS_FORMAT(
+            InvalidArgument,
+            "No master address specified by '$0' (all master server addresses: $1)",
+            master_server_addr, master_server_addrs_));
         return;
       }
 
