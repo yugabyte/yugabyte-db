@@ -71,6 +71,7 @@ typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
 class Connection;
 class ConnectionContext;
 typedef std::shared_ptr<Connection> ConnectionPtr;
+typedef std::weak_ptr<Connection> ConnectionWeakPtr;
 
 class InboundCall;
 typedef std::shared_ptr<InboundCall> InboundCallPtr;

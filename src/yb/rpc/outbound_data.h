@@ -51,6 +51,28 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
 
 typedef std::shared_ptr<OutboundData> OutboundDataPtr;
 
+class StringOutboundData : public OutboundData {
+ public:
+  StringOutboundData(const string& data, const string& name) : buffer_(data), name_(name) {}
+  StringOutboundData(const char* data, size_t len, const string& name)
+      : buffer_(data, len), name_(name) {}
+  void Transferred(const Status& status, Connection* conn) override {}
+  // Serializes the data to be sent out via the RPC framework.
+  void Serialize(std::deque<RefCntBuffer> *output) const override {
+    output->push_back(buffer_);
+  }
+
+  std::string ToString() const override { return name_; }
+
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override {
+    return false;
+  }
+
+ private:
+  RefCntBuffer buffer_;
+  string name_;
+};
+
 }  // namespace rpc
 }  // namespace yb
 
