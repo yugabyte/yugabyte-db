@@ -13,6 +13,7 @@
 
 #include "yb/yql/redis/redisserver/redis_service.h"
 
+#include <iostream>
 #include <thread>
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -42,11 +43,14 @@
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/size_literals.h"
@@ -77,6 +81,10 @@ DEFINE_REDIS_histogram_EX(set_internal,
 
 DEFINE_REDIS_SESSION_GAUGE(allocated);
 DEFINE_REDIS_SESSION_GAUGE(available);
+
+METRIC_DEFINE_gauge_uint64(
+    server, redis_monitoring_clients, "Number of clients running monitor", yb::MetricUnit::kUnits,
+    "Number of clients running monitor ");
 
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
@@ -114,6 +122,10 @@ using yb::client::YBSchema;
 using yb::client::YBSession;
 using yb::client::YBStatusCallback;
 using yb::client::YBTableName;
+using yb::rpc::ConnectionPtr;
+using yb::rpc::ConnectionWeakPtr;
+using yb::rpc::OutboundData;
+using yb::rpc::OutboundDataPtr;
 using yb::RedisResponsePB;
 
 namespace yb {
@@ -840,6 +852,8 @@ class RedisServiceImpl::Impl {
   constexpr static int kRpcTimeoutSec = 5;
 
   void PopulateHandlers();
+  void AppendToMonitors(ConnectionPtr conn);
+  void LogToMonitors(const string& end, int db, const RedisClientCommand& cmd);
   // Fetches the appropriate handler for the command, nullptr if none exists.
   const RedisCommandInfo* FetchHandler(const RedisClientCommand& cmd_args);
   CHECKED_STATUS SetUpYBClient();
@@ -856,8 +870,64 @@ class RedisServiceImpl::Impl {
   SessionPool session_pool_;
   std::shared_ptr<client::YBTable> table_;
 
+  std::vector<ConnectionWeakPtr> monitoring_clients_;
+  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
+  rw_spinlock monitoring_clients_mutex_;
+
   RedisServer* server_;
 };
+
+void RedisServiceImpl::Impl::AppendToMonitors(ConnectionPtr conn) {
+  boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
+  monitoring_clients_.emplace_back(conn);
+  num_clients_monitoring_->IncrementBy(1);
+}
+
+void RedisServiceImpl::Impl::LogToMonitors(
+    const string& end, int db, const RedisClientCommand& cmd) {
+  boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
+
+  if (monitoring_clients_.empty()) return;
+
+  // Prepare the string to be sent to all the monitoring clients.
+  int64_t now_ms = ToMicroseconds(CoarseMonoClock::Now().time_since_epoch());
+  std::stringstream ss;
+  ss << "+";
+  ss.setf(std::ios::fixed, std::ios::floatfield);
+  ss.precision(6);
+  ss << (now_ms / 1000000.0) << " [" << db << " " << end << "]";
+  for (auto& part : cmd) {
+    ss << " \"" << part << "\"";
+  }
+  ss << "\r\n";
+
+  // Send the message to all the monitoring clients.
+  OutboundDataPtr out =
+      std::make_shared<yb::rpc::StringOutboundData>(ss.str(), "Redis Monitor Data");
+  bool should_cleanup = false;
+  for (auto iter = monitoring_clients_.begin(); iter != monitoring_clients_.end(); iter++) {
+    ConnectionPtr connection = iter->lock();
+    if (connection) {
+      connection->QueueOutboundData(out);
+    } else {
+      should_cleanup = true;
+    }
+  }
+
+  // Clean up clients that may have disconnected.
+  if (should_cleanup) {
+    rlock.unlock();
+    boost::lock_guard<rw_spinlock> wlock(monitoring_clients_mutex_);
+
+    auto old_size = monitoring_clients_.size();
+    monitoring_clients_.erase(std::remove_if(monitoring_clients_.begin(), monitoring_clients_.end(),
+                                             [] (const ConnectionWeakPtr& e) -> bool {
+                                               return e.lock() == nullptr;
+                                             }),
+                              monitoring_clients_.end());
+    num_clients_monitoring_->DecrementBy(old_size - monitoring_clients_.size());
+  }
+}
 
 void RedisServiceImpl::Impl::PopulateHandlers() {
   auto metric_entity = server_->metric_entity();
@@ -871,6 +941,9 @@ void RedisServiceImpl::Impl::PopulateHandlers() {
       YB_REDIS_METRIC(get_internal).Instantiate(metric_entity);
   metrics_internal_[static_cast<size_t>(OperationType::kLocal)].handler_latency =
       metrics_internal_[static_cast<size_t>(OperationType::kRead)].handler_latency;
+
+  auto* proto = &METRIC_redis_monitoring_clients;
+  num_clients_monitoring_ = proto->Instantiate(metric_entity, 0);
 }
 
 const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCommand& cmd_args) {
@@ -971,6 +1044,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       client_, server_, table_, &session_pool_, call, metrics_internal_,
       server_->mem_tracker());
   const auto& batch = call->client_batch();
+  auto conn = call->connection();
+  const string remote = yb::ToString(conn->remote());
   RedisConnectionContext* conn_context = &(call->connection_context());
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
@@ -1005,6 +1080,13 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
     } else {
       // Handle the call.
       cmd_info->functor(*cmd_info, idx, context.get());
+    }
+
+    // Add to the appenders after the call has been handled (i.e. reponded with "OK").
+    if (cmd_info->name == "monitor") {
+      AppendToMonitors(conn);
+    } else if (cmd_info->name != "config") {
+      LogToMonitors(remote, 0, c);
     }
   }
   context->Commit();

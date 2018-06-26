@@ -111,6 +111,7 @@ namespace redisserver {
     ((role, Role, 1, LOCAL)) \
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
+    ((monitor, Monitor, 1, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
@@ -318,6 +319,10 @@ void ClusterCommand(
   VLOG(1) << "Done responding to CLUSTER.";
 }
 
+void AddElements(const RefCntBuffer& buffer, RedisArrayPB* array) {
+  array->add_elements(buffer.data(), buffer.size());
+}
+
 void HandleEcho(LocalCommandData data) {
   RedisResponsePB response;
   response.set_code(RedisResponsePB::OK);
@@ -325,8 +330,8 @@ void HandleEcho(LocalCommandData data) {
   data.Respond(&response);
 }
 
-void AddElements(const RefCntBuffer& buffer, RedisArrayPB* array) {
-  array->add_elements(buffer.data(), buffer.size());
+void HandleMonitor(LocalCommandData data) {
+  data.Respond();
 }
 
 void HandleRole(LocalCommandData data) {

@@ -17,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -63,6 +64,7 @@ DEFINE_uint64(test_redis_max_batch, 250,
 
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);
 METRIC_DECLARE_gauge_uint64(redis_allocated_sessions);
+METRIC_DECLARE_gauge_uint64(redis_monitoring_clients);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -151,6 +153,17 @@ class TestRedisService : public RedisTableTestBase {
           }
         }
     );
+  }
+
+  void DoRedisTestExpectSimpleStringEndingWith(
+      int line, const std::vector<std::string>& command, const std::string& suffix = "") {
+    DoRedisTest(line, command, RedisReplyType::kStatus, [line, suffix](const RedisReply& reply) {
+      if (!suffix.empty()) {
+        ASSERT_TRUE(boost::algorithm::ends_with(reply.as_string(), suffix))
+            << "Reply has the wrong suffix. Expected '" << reply.as_string() << "' to end in "
+            << suffix << " Originator: " << __FILE__ << ":" << line;
+      }
+    });
   }
 
   void DoRedisTestExpectErrorMsg(int line, const std::vector<std::string>& command,
@@ -1182,6 +1195,17 @@ TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestSingleCommand) {
+  DoRedisTestOk(__LINE__, {"SET", "k1", ""});
+  DoRedisTestInt(__LINE__, {"HSET", "k2", "s1", ""}, 1);
+
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "");
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestEmptyValue) {
   DoRedisTestOk(__LINE__, {"SET", "k1", ""});
   DoRedisTestInt(__LINE__, {"HSET", "k2", "s1", ""}, 1);
@@ -1217,6 +1241,105 @@ void ConnectWithPassword(
 
   test->SyncClient();
   test->UseClient(nullptr);
+}
+
+TEST_F(TestRedisService, TestMonitor) {
+  constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
+  expected_no_sessions_ = true;
+  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+
+  UseClient(rc1);
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd1"}, "cmd1");  // Excluded from both mc1 and mc2.
+  SyncClient();
+
+  // Check number of monitoring clients.
+  ASSERT_EQ(0, CountSessions(METRIC_redis_monitoring_clients));
+
+  UseClient(mc1);
+  DoRedisTestOk(__LINE__, {"MONITOR"});
+  SyncClient();
+
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+  // Check number of monitoring clients.
+  ASSERT_EQ(1, CountSessions(METRIC_redis_monitoring_clients));
+
+  UseClient(rc2);
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");  // Included in mc1.
+  SyncClient();
+
+  UseClient(mc2);
+  DoRedisTestOk(__LINE__, {"MONITOR"});
+  SyncClient();
+
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+  // Check number of monitoring clients.
+  ASSERT_EQ(2, CountSessions(METRIC_redis_monitoring_clients));
+
+  UseClient(rc1);
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd3"}, "cmd3");  // Included in mc1 and mc2.
+  SyncClient();
+
+  UseClient(mc1);
+  // Check the responses for monitor on mc1.
+  // Responses are of the format
+  // <TS> {<db-id> <client-ip>:<port>} "CMD" "ARG1" ....
+  // We will check for the responses to end in "CMD" "ARG1"
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck1"}, "\"PING\" \"cmd2\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck2"}, "\"PING\" \"cmd3\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck3"}, "\"PING\" \"mc1-ck1\"");
+  SyncClient();
+
+  UseClient(mc2);
+  // Check the responses for monitor on mc2.
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck1"}, "\"PING\" \"cmd3\"");
+
+  // Since the redis client here forced us to send "PING" above to check for responses for mc1, we
+  // should see those as well.
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck2"}, "\"PING\" \"mc1-ck1\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck3"}, "\"PING\" \"mc1-ck2\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck4"}, "\"PING\" \"mc1-ck3\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck5"}, "\"PING\" \"mc2-ck1\"");
+  SyncClient();
+
+  // Check number of monitoring clients.
+  ASSERT_EQ(2, CountSessions(METRIC_redis_monitoring_clients));
+
+  // Close one monitoring clients.
+  mc1->Disconnect();
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+
+  // Check number of monitoring clients.
+  UseClient(rc1);
+  DoRedisTestBulkString(__LINE__, {"PING", "test"}, "test");
+  SyncClient();
+
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+  // Check number of monitoring clients.
+  ASSERT_EQ(1, CountSessions(METRIC_redis_monitoring_clients));
+
+  mc2->Disconnect();
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+
+  // Check number of monitoring clients.
+  UseClient(rc1);
+  DoRedisTestBulkString(__LINE__, {"PING", "test"}, "test");
+  SyncClient();
+
+  // Wait for the server to realize that the connection is closed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
+
+  ASSERT_EQ(0, CountSessions(METRIC_redis_monitoring_clients));
+
+  UseClient(nullptr);
+  VerifyCallbacks();
 }
 
 TEST_F(TestRedisService, TestAuth) {
