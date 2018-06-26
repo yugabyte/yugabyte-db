@@ -28,11 +28,15 @@ std::unique_ptr<yb::pggate::PgApiImpl> pgapi;
 
 } // anonymous namespace
 
-
 //--------------------------------------------------------------------------------------------------
 // C API.
 //--------------------------------------------------------------------------------------------------
 extern "C" {
+
+void YBCInitPgGate() {
+  CHECK(pgapi.get() == nullptr) << __PRETTY_FUNCTION__ << " can only be called once";
+  pgapi = std::make_unique<PgApiImpl>();
+}
 
 YBCPgError YBCPgCreateEnv(YBCPgEnv *pg_env) {
   return pgapi->CreateEnv(pg_env);

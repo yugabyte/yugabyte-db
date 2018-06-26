@@ -32,7 +32,7 @@ typedef struct YBCStatusStruct* YBCStatus;
 typedef void* (*YBCPAllocFn)(size_t size);
 
 // Global initialization of the YugaByte subsystem.
-int YBCInit(const char* server_type, const char* argv0, YBCPAllocFn palloc_fn);
+int YBCInit(const char* argv0, YBCPAllocFn palloc_fn);
 
 YBCStatus YBCTestStatus();
 

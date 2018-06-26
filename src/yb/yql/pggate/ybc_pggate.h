@@ -21,6 +21,10 @@ extern "C" {
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+// This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
+// functions in this API are called.
+void YBCInitPgGate();
+
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
 

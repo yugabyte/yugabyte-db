@@ -77,6 +77,8 @@
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 
+#include "yb/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /* ----------------
  *		global variables
@@ -3582,6 +3584,22 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
+	// ------------------------------------------------------------------------
+	// YugaByte changes
+	//
+	// TODO: move this to some initialization hook.
+	if (!YBCInit(argv[0], palloc)) {
+		proc_exit(1);
+	}
+	// Currently, if we enable this, PostgreSQL's test suite ("make check")
+	// fails.
+	// TODO: create a YB client based on a "YB mode" switch.
+	if (false) {
+		YBCInitPgGate();
+	}
+	// (end of YugaByte changes)
+	// ------------------------------------------------------------------------
+
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
