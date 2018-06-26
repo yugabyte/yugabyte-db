@@ -98,7 +98,7 @@ class ConnectionId {
   // Remember to update HashCode() and Equals() when new fields are added.
   Endpoint remote_;
   uint8_t idx_ = 0;  // Connection index, used to support multiple connections to the same server.
-  const Protocol* protocol_;
+  const Protocol* protocol_ = nullptr;
 };
 
 class ConnectionIdHash {
