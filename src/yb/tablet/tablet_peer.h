@@ -98,6 +98,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
              const consensus::RaftPeerPB& local_peer_pb, ThreadPool* apply_pool,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
+  ~TabletPeer();
+
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
@@ -310,8 +312,6 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   friend class TabletPeerTest;
   FRIEND_TEST(TabletPeerTest, TestDMSAnchorPreventsLogGC);
   FRIEND_TEST(TabletPeerTest, TestActiveOperationPreventsLogGC);
-
-  ~TabletPeer();
 
   // Wait until the TabletPeer is fully in SHUTDOWN state.
   void WaitUntilShutdown();
