@@ -40,7 +40,7 @@ constexpr size_t kFormattingBufSize = 16384;
 
 extern "C" {
 
-int YBCInit(const char* server_type, const char* argv0, YBCPAllocFn palloc_fn) {
+int YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
   YBCSetPAllocFn(palloc_fn);
   yb::Status s = yb::InitInternal(argv0);
   if (s.ok()) {

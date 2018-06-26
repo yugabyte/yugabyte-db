@@ -28,7 +28,9 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   client_builder_.set_client_name(client_name);
   client_builder_.default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
   client_builder_.add_master_server_addr(opts->master_addresses_flag);
-  client_builder_.set_skip_master_leader_resolution(opts->GetMasterAddresses()->size() == 1);
+  auto master_addresses = opts->GetMasterAddresses();
+  CHECK_NOTNULL(master_addresses.get());
+  client_builder_.set_skip_master_leader_resolution(master_addresses->size() == 1);
   client_builder_.set_metric_entity(metric_entity);
   if (num_reactors > 0) {
     client_builder_.set_num_reactors(num_reactors);
