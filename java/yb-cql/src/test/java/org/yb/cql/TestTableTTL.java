@@ -313,10 +313,16 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
 
     LOG.info("Update Table TTL");
-    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=2;", tableName));
+    // We set a substantial amount of TTL because ALTER TABLE might be slow and we want the original
+    // row to survive.
+    final int newTableTtlSec = 10;
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=%d;", tableName,
+          newTableTtlSec));
+    final long timeAfterAlterTableMs = System.currentTimeMillis();
 
     LOG.info("Insert a row.");
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (4, 5, 6);", tableName));
+    final long timeAfterSecondRowInsertMs = System.currentTimeMillis();
 
     LOG.info("Verify first row is present.");
     Row row = getFirstRow(tableName, 1);
@@ -330,11 +336,15 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(5, row.getInt(1));
     assertEquals(6, row.getInt(2));
 
-    LOG.info("Wait for rows to expire.");
-    TestUtils.waitForTTL(2000L);
+    LOG.info("Wait for rows to expire");
+    TestUtils.waitForTTL(Math.max(
+        0, timeAfterAlterTableMs + newTableTtlSec * 1000 - System.currentTimeMillis()));
 
     LOG.info("Verify rows have expired.");
     assertNoRow(tableName, 1);
+
+    TestUtils.waitForTTL(Math.max(
+        0, timeAfterSecondRowInsertMs + newTableTtlSec * 1000 - System.currentTimeMillis()));
     assertNoRow(tableName, 4);
   }
 
