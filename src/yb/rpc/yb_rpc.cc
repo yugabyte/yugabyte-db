@@ -55,33 +55,11 @@ namespace {
 const char kConnectionHeaderBytes[] = "YB\1";
 const size_t kConnectionHeaderSize = sizeof(kConnectionHeaderBytes) - 1;
 
-class ConnectionHeader : public OutboundData {
- public:
-  static OutboundDataPtr Instance() {
-    static OutboundDataPtr result(new ConnectionHeader());
-    return result;
-  }
-
-  void Transferred(const Status&, Connection*) override {}
-
-  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override {
-    return false;
-  }
-
-  void Serialize(std::deque<RefCntBuffer> *output) const override {
-    output->push_back(buffer_);
-  }
-
-  std::string ToString() const override {
-    return "ConnectionHeader";
-  }
-
-  virtual ~ConnectionHeader() {}
- private:
-  ConnectionHeader() : buffer_(kConnectionHeaderBytes, kConnectionHeaderSize) {}
-
-  RefCntBuffer buffer_;
-};
+OutboundDataPtr ConnectionHeaderInstance() {
+  static OutboundDataPtr result(
+      new StringOutboundData(kConnectionHeaderBytes, kConnectionHeaderSize, "ConnectionHeader"));
+  return result;
+}
 
 } // namespace
 
@@ -405,7 +383,7 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
 }
 
 void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
-  connection->QueueOutboundData(ConnectionHeader::Instance());
+  connection->QueueOutboundData(ConnectionHeaderInstance());
 }
 
 Result<size_t> YBOutboundConnectionContext::ProcessCalls(const ConnectionPtr& connection,
