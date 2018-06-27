@@ -225,8 +225,8 @@ const vector<BFDecl> kBFDirectory = {
   { "ServerOperator", "sum", "", INT64, {INT64}, TSOpcode::kSum },
   { "ServerOperator", "sum", "", FLOAT, {FLOAT}, TSOpcode::kSum },
   { "ServerOperator", "sum", "", DOUBLE, {DOUBLE}, TSOpcode::kSum },
-  { "ServerOperator", "sum", "", VARINT, {VARINT}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", "", DECIMAL, {DECIMAL}, TSOpcode::kSum, false },
+  { "ServerOperator", "sum", "", VARINT, {VARINT}, TSOpcode::kSum},
+  { "ServerOperator", "sum", "", DECIMAL, {DECIMAL}, TSOpcode::kSum},
 
   // Cassandra behavior: AVG() returns SUM and COUNT as a list to be aggregated in Executor::EvalAVG
   { "ServerOperator", "avg", "", INT8, {INT8}, TSOpcode::kAvg },

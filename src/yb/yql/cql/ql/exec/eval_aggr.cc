@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/decimal.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 
 namespace yb {
@@ -20,6 +21,7 @@ namespace ql {
 
 using std::shared_ptr;
 using yb::bfql::TSOpcode;
+using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -145,6 +147,14 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
         ql_value->set_double_value(ql_value->double_value() +
                                    row.column(column_index).double_value());
         break;
+      case DataType::DECIMAL: {
+        Decimal sum, value;
+        RETURN_NOT_OK(sum.DecodeFromComparable(ql_value->decimal_value()));
+        RETURN_NOT_OK(value.DecodeFromComparable(row.column(column_index).decimal_value()));
+        sum = sum + value;
+        ql_value->set_decimal_value(sum.EncodeToComparable());
+        break;
+      }
       default:
         return STATUS(RuntimeError, "Unexpected datatype for argument of SUM()");
     }
@@ -163,13 +173,12 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
       case DataType::INT64:
         ql_value->set_int64_value(0);
         break;
-      case DataType::VARINT:
-        {
-          int64_t tsum;
-          tsum = 0;
-          util::VarInt varint(tsum);
-          ql_value->set_varint_value(varint);
-        }
+      case DataType::VARINT: {
+        int64_t tsum;
+        tsum = 0;
+        util::VarInt varint(tsum);
+        ql_value->set_varint_value(varint);
+      }
         break;
       case DataType::FLOAT:
         ql_value->set_float_value(0);
@@ -177,6 +186,12 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
       case DataType::DOUBLE:
         ql_value->set_double_value(0);
         break;
+      case DataType::DECIMAL: {
+        Decimal sum;
+        RETURN_NOT_OK(sum.FromDouble(0.0));
+        ql_value->set_decimal_value(sum.EncodeToComparable());
+        break;
+      }
       default:
         return STATUS(RuntimeError, "Unexpected datatype for argument of SUM()");
     }

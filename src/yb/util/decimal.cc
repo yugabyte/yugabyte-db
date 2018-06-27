@@ -401,6 +401,96 @@ Decimal DecimalFromComparable(const std::string& str) {
   return DecimalFromComparable(Slice(str));
 }
 
+// Normalize so that both Decimals have same exponent and same number of digits
+// Add digits considering sign
+// Canonicalize result
+
+Decimal Decimal::operator+(const Decimal& other) const {
+  Decimal decimal(digits_, exponent_, is_positive_);
+  Decimal other1(other.digits_, other.exponent_, other.is_positive_);
+
+  // Normalize the exponents
+  // eg. if we are adding 0.1E+3 and 0.5E+2, we first convert them to 0.1E+3 and 0.05E+3
+  VarInt max_exponent = std::max(other1.exponent_, decimal.exponent_);
+  VarInt var_int_one(1);
+  if (decimal.exponent_ < max_exponent) {
+    VarInt increase_varint = max_exponent - decimal.exponent_;
+    int64_t increase;
+    Status s = increase_varint.ToInt64(&increase);
+    decimal.digits_.insert(decimal.digits_.begin(), increase, 0);
+    decimal.exponent_ = max_exponent;
+  }
+  if (other1.exponent_ < max_exponent) {
+    VarInt increase_varint = max_exponent - other1.exponent_;
+    int64_t increase;
+    Status s = increase_varint.ToInt64(&increase);
+    other1.digits_.insert(other1.digits_.begin(), increase, 0);
+    other1.exponent_ = max_exponent;
+  }
+
+  // Make length of digits the same.
+  // If we need to add 0.1E+3 and 0.05E+3, we convert them to 0.10E+3 and 0.05E+3
+  size_t max_digits = std::max(decimal.digits_.size(), other1.digits_.size());
+  if (decimal.digits_.size() < max_digits) {
+    int increase = max_digits - decimal.digits_.size();
+    for (size_t i = 0; i < increase; i = i + 1) {
+      decimal.digits_.push_back(0);
+    }
+  }
+  if (other1.digits_.size() < max_digits) {
+    int increase = max_digits - other1.digits_.size();
+    for (size_t i = 0; i < increase; i++) {
+      other1.digits_.push_back(0);
+    }
+  }
+
+  // Add mantissa
+  // For the case when the both numbers are positive (eg. 0.1E+3 and 0.05E+3)
+  // or both negative (eg. -0.1E+3 and -0.05E+3), we just add the mantissas
+  if (decimal.is_positive_ == other1.is_positive_) {
+    for (int64_t i = max_digits - 1; i >= 0; i--) {
+      decimal.digits_[i] += other1.digits_[i];
+      if (decimal.digits_[i] > 9) {
+        decimal.digits_[i] -= 10;
+        if (i > 0) {
+          decimal.digits_[i - 1]++;
+        } else {
+          decimal.digits_.insert(decimal.digits_.begin(), 1);
+          decimal.exponent_ = decimal.exponent_ + var_int_one;
+        }
+      }
+    }
+  } else {
+  // For the case when the two numbers have opposite sign (eg. 0.1E+3 and -0.05E+3)
+  // or (-0.1E+3 and 0.05E+3), we subtract the smaller mantissa from the larger mantissa
+  // and use the sign of the larger mantissa
+    int comp = 0; // indicates whether mantissa of this is bigger
+    for (size_t i = 0; i < decimal.digits_.size() && i < other1.digits_.size(); i++) {
+      comp = static_cast<int>(decimal.digits_[i]) - static_cast<int>(other1.digits_[i]);
+      if (comp != 0) {
+        break;
+      }
+    }
+    if (comp < 0) {
+      decimal.digits_.swap(other1.digits_);
+      decimal.is_positive_ = !decimal.is_positive_;
+    }
+    for (int64_t i = max_digits - 1; i >= 0; i--) {
+      if (decimal.digits_[i] >= other1.digits_[i]) {
+        decimal.digits_[i] -= other1.digits_[i];
+      } else {
+        other1.digits_[i-1]++;
+        decimal.digits_[i] = decimal.digits_[i] + 10 - other1.digits_[i];
+      }
+    }
+  }
+
+  // Finally we normalize the number obtained to get rid of leading and trailing 0's
+  // in the mantissa.
+  decimal.make_canonical();
+  return decimal;
+}
+
 std::ostream& operator<<(ostream& os, const Decimal& d) {
   os << d.ToString();
   return os;
