@@ -17,7 +17,6 @@ target_link_libraries(pgsql_test
                       yb_client
                       yb_client_test_util
                       integration-tests)
-add_dependencies(pgsql_test yb-pgserver)
 
 set(YB_TEST_LINK_LIBS pgsql_test ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_run_test)
