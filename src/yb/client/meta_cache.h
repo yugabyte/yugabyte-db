@@ -277,6 +277,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
                         RemoteTabletPtr* remote_tablet,
                         const StatusCallback& callback);
 
+  // Return the local tablet server if available.
+  RemoteTabletServer* local_tserver() const {
+    return local_tserver_;
+  }
+
   // Mark any replicas of any tablets hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
   void MarkTSFailed(RemoteTabletServer* ts, const Status& status);
@@ -288,18 +293,18 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool AcquireMasterLookupPermit();
   void ReleaseMasterLookupPermit();
 
+  // Called on the slow LookupTablet path when the master responds. Populates
+  // the tablet caches and returns a reference to the first one.
+  RemoteTabletPtr ProcessTabletLocations(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+      const std::string* partition_group_start);
+
  private:
   friend class LookupRpc;
   friend class LookupByKeyRpc;
   friend class LookupByIdRpc;
 
   FRIEND_TEST(client::ClientTest, TestMasterLookupPermits);
-
-  // Called on the slow LookupTablet path when the master responds. Populates
-  // the tablet caches and returns a reference to the first one.
-  RemoteTabletPtr ProcessTabletLocations(
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      const std::string* partition_group_start);
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.

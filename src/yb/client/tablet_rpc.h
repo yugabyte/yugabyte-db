@@ -51,7 +51,8 @@ class TabletRpc {
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
 class TabletInvoker {
  public:
-  explicit TabletInvoker(bool consistent_prefix,
+  explicit TabletInvoker(const bool local_tserver_only,
+                         const bool consistent_prefix,
                          YBClient* client,
                          rpc::RpcCommand* command,
                          TabletRpc* rpc,
@@ -70,6 +71,7 @@ class TabletInvoker {
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
   YBClient& client() const { return *client_; }
   const RemoteTabletServer& current_ts() { return *current_ts_; }
+  bool local_tserver_only() const { return local_tserver_only_; }
 
  private:
   void SelectTabletServer();
@@ -77,6 +79,10 @@ class TabletInvoker {
   // This is an implementation of ReadRpc with consistency level as CONSISTENT_PREFIX. As a result,
   // there is no requirement that the read needs to hit the leader.
   void SelectTabletServerWithConsistentPrefix();
+
+  // This is for Redis ops which always prefer to invoke the local tablet server. In case when it
+  // is not the leader, a MOVED response will be returned.
+  void SelectLocalTabletServer();
 
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
@@ -120,7 +126,9 @@ class TabletInvoker {
   // Cleared when new consensus configuration information arrives from the master.
   std::unordered_set<RemoteTabletServer*> followers_;
 
-  bool consistent_prefix_;
+  const bool local_tserver_only_;
+
+  const bool consistent_prefix_;
 
   // The TS receiving the write. May change if the write is retried.
   // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are

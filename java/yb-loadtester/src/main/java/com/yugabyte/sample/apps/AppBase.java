@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -57,6 +58,7 @@ import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.YBJedis;
 import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.JedisCluster;
 
 /**
  * Abstract base class for all apps. This class does the following:
@@ -92,6 +94,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private volatile YBJedis ybJedisClient = null;
   private volatile Pipeline jedisPipeline = null;
   private List<ContactPoint> redisServerInUse = null;
+  private volatile JedisCluster jedisCluster = null;
   // Instances of the load generator.
   private static volatile SimpleLoadGenerator simpleLoadGenerator = null;
   private static volatile RedisHashLoadGenerator redisHashLoadGenerator = null;
@@ -234,9 +237,20 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return jedisPipeline;
   }
 
+  protected synchronized JedisCluster getRedisCluster() {
+    if (jedisCluster == null) {
+      LOG.info("Creating a new jedis cluster");
+      Set<HostAndPort> hosts = configuration.getContactPoints().stream()
+          .map(cp -> new HostAndPort(cp.getHost(), cp.getPort())).collect(Collectors.toSet());
+      jedisCluster = new JedisCluster(hosts);
+    }
+    return jedisCluster;
+  }
+
   public synchronized void resetClients() {
     jedisClient = null;
     jedisPipeline = null;
+    jedisCluster = null;
     redisServerInUse = null;
     cassandra_cluster = null;
     cassandra_session = null;
@@ -482,7 +496,6 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public List<String> getExampleUsageOptions() { return Collections.EMPTY_LIST; }
 
-
   ////////////// The following methods framework/helper methods for subclasses. ////////////////////
 
   /**
@@ -539,7 +552,6 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     }
     return inetSocketAddresses;
   }
-
 
   /**
    * Returns true if the workload has finished running, false otherwise.

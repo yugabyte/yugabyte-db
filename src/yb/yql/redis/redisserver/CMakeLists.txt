@@ -54,7 +54,8 @@ target_link_libraries(yb-redis
   yb_client
   redis_service_proto
   server_common
-  server_process)
+  server_process
+  master_proto)
 
 #########################################
 # yb-redisserver

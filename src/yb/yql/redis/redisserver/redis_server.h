@@ -41,6 +41,8 @@ class RedisServer : public server::RpcAndWebServerBase {
   const tserver::TabletServer* tserver() const { return tserver_; }
   const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
+  const RedisServerOptions& opts() const { return opts_; }
+
  private:
   RedisServerOptions opts_;
   const tserver::TabletServer* const tserver_;

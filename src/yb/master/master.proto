@@ -270,7 +270,7 @@ message SysTabletsEntryPB {
 
   // The table id for the tablet.
   required bytes table_id = 6;
-  // Table ids for all the tables on this tablet
+  // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
 }
 
@@ -336,10 +336,10 @@ message SysNamespaceEntryPB {
   // Note: The id of the namespace is not stored here as it is already part of
   // SysRowEntry's id component.
 
-  // Namespace name
+  // Namespace name.
   optional bytes name = 1;
 
-  // Namespace/Database type
+  // Namespace/Database type.
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
@@ -591,7 +591,7 @@ message CreateTableRequestPB {
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
   optional NamespaceIdentifierPB namespace = 8;
 
-  // For index table
+  // For index table.
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
@@ -637,7 +637,7 @@ message IsTruncateTableDoneResponsePB {
   optional bool done = 2;
 }
 
-// Delete table request (including index table)
+// Delete table request (including index table).
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
   optional bool is_index_table = 2 [ default = false ];
@@ -977,10 +977,10 @@ message AreLeadersOnPreferredOnlyResponsePB {
 // Database type is added to metadata entries such that PGSQL clients cannot delete or connect to
 // CQL database_type and vice versa.
 message CreateNamespaceRequestPB {
-  // Namespace name
+  // Namespace name.
   optional string name = 1;
 
-  // Database type
+  // Database type.
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 
@@ -996,7 +996,7 @@ message CreateNamespaceResponsePB {
 message DeleteNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
 
-  // Database type
+  // Database type.
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
 }
 // Fails if the namespace is NOT empty
@@ -1149,10 +1149,10 @@ message IsFlushTablesDoneRequestPB {
 message IsFlushTablesDoneResponsePB {
   optional MasterErrorPB error = 1;
 
-  // true if the flush tables operation is completed, false otherwise
+  // true if the flush tables operation is completed, false otherwise.
   optional bool done = 2;
 
-  // true if the flush tables operation is successfull
+  // true if the flush tables operation is successfull.
   optional bool success = 3;
 }
 

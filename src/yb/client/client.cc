@@ -692,7 +692,8 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
-                            std::vector<master::TabletLocationsPB>* locations) {
+                            std::vector<master::TabletLocationsPB>* locations,
+                            bool update_tablets_cache) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
   tablet_uuids->reserve(tablets.size());
@@ -708,6 +709,10 @@ Status YBClient::GetTablets(const YBTableName& table_name,
       const PartitionPB& partition = tablet.partition();
       ranges->push_back(partition.ShortDebugString());
     }
+  }
+
+  if (update_tablets_cache) {
+    data_->meta_cache_->ProcessTabletLocations(tablets, nullptr /* partition_group_start */);
   }
 
   return Status::OK();

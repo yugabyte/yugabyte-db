@@ -38,10 +38,11 @@ public class TestYBJedisTSRevRangeByTime extends BaseJedisTest {
     super(jedisClientType);
   }
 
-  // Run each test with both Jedis and YBJedis clients.
+  // Run each test with Jedis, JedisCluster, and YBJedis clients.
   @Parameterized.Parameters
   public static Collection jedisClients() {
-    return Arrays.asList(JedisClientType.JEDIS, JedisClientType.YBJEDIS);
+    return Arrays.asList(JedisClientType.JEDIS, JedisClientType.JEDISCLUSTER,
+        JedisClientType.YBJEDIS);
   }
 
   private String GenerateErrorString(TSValuePairs tsValuePairs, String key,

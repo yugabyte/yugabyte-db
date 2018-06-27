@@ -47,6 +47,12 @@ METRIC_DEFINE_histogram(
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(collect_end_to_end_traces);
 
+DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be served if it's not "
+            "a local request. The op response will be set to the redis error "
+            "'-MOVED partition_key 0.0.0.0:0'. This works with jedis which only looks at the MOVED "
+            "part of the reply and ignores the rest. For now, if this flag is true, we will only "
+            "attempt to read from leaders, so redis_allow_reads_from_followers will be ignored.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -69,6 +75,16 @@ bool IsTracingEnabled() {
   return FLAGS_collect_end_to_end_traces;
 }
 
+namespace {
+
+bool LocalTabletServerOnly(const InFlightOps& ops) {
+  const auto op_type = ops.front()->yb_op->type();
+  return ((op_type == YBOperation::Type::REDIS_READ || op_type == YBOperation::Type::REDIS_WRITE) &&
+          !FLAGS_forward_redis_requests);
+}
+
+}
+
 AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
     : remote_write_rpc_time(METRIC_handler_latency_yb_client_write_remote.Instantiate(entity)),
       remote_read_rpc_time(METRIC_handler_latency_yb_client_read_remote.Instantiate(entity)),
@@ -83,7 +99,8 @@ AsyncRpc::AsyncRpc(
     : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
       batcher_(batcher),
       trace_(new Trace),
-      tablet_invoker_(yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
+      tablet_invoker_(LocalTabletServerOnly(ops),
+                      yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
                       batcher->client_,
                       this,
                       this,
@@ -150,18 +167,26 @@ void AsyncRpc::Failed(const Status& status) {
   for (auto op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
-      case YBOperation::Type::REDIS_READ: {
-        RedisResponsePB* resp = down_cast<YBRedisReadOp*>(yb_op)->mutable_response();
-        resp->Clear();
-        resp->set_code(redis_error_code);
-        resp->set_error_message(error_message);
-        break;
-      }
+      case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: {
-        RedisResponsePB* resp = down_cast<YBRedisWriteOp *>(yb_op)->mutable_response();
+        RedisResponsePB* resp;
+        if (yb_op->type() == YBOperation::Type::REDIS_READ) {
+          resp = down_cast<YBRedisReadOp*>(yb_op)->mutable_response();
+        } else {
+          resp = down_cast<YBRedisWriteOp*>(yb_op)->mutable_response();
+        }
         resp->Clear();
-        resp->set_code(redis_error_code);
-        resp->set_error_message(error_message);
+        // If the tserver replied it is not the leader, respond that the key has moved. We do not
+        // need to return the address of the new leader because the Redis client will refresh the
+        // cluster map instead.
+        if (status.IsIllegalState()) {
+          resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+          resp->set_error_message(Substitute("MOVED $0 0.0.0.0:0",
+                                             down_cast<YBRedisOp*>(yb_op)->hash_code()));
+        } else {
+          resp->set_code(redis_error_code);
+          resp->set_error_message(error_message);
+        }
         break;
       }
       case YBOperation::Type::QL_READ: FALLTHROUGH_INTENDED;
@@ -388,8 +413,8 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
         // Restore Redis write request PB and extract response.
+        auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
         redis_op->mutable_request()->Swap(req_.mutable_redis_write_batch(redis_idx));
         redis_op->mutable_response()->Swap(resp_.mutable_redis_response_batch(redis_idx));
         redis_idx++;

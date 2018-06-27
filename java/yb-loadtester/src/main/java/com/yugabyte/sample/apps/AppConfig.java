@@ -144,4 +144,7 @@ public class AppConfig {
 
   // Maximum number of coupons per customer.
   public int maxCouponsPerCustomer = 3000;
+
+  // Use redis cluster client.
+  public boolean useRedisCluster = false;
 }
