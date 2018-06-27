@@ -29,7 +29,7 @@ namespace util {
 // -------
 // Typically Decimals should be used for parsing from String or Double, convert to String or Double,
 // Serialize or Deserialize. The default constructor (With digit arrays, exponent, sign need not
-// be used). It is not necessary to to keep a decimal object in memory for long time. The encoded
+// be used). It is not necessary to keep a decimal object in memory for long time. The encoded
 // string should serve the same purpose, and it is easy to get the decimal from serialized string.
 //
 // The Serialization format specifications
@@ -133,6 +133,7 @@ class Decimal {
   bool operator>=(const Decimal& other) const { return CompareTo(other) >= 0; }
   Decimal operator-() const { return Decimal(digits_, exponent_, !is_positive_); }
   Decimal operator+() const { return Decimal(digits_, exponent_, is_positive_); }
+  Decimal operator+(const Decimal& other) const;
 
   // Encodes the decimal by using comparable encoding, as described above.
   std::string EncodeToComparable() const;
