@@ -57,15 +57,6 @@ target_link_libraries(yb-redis
   server_process
   master_proto)
 
-#########################################
-# yb-redisserver
-#########################################
-
-add_executable(yb-redisserver redis_server_main.cc)
-target_link_libraries(yb-redisserver
-  yb-redis
-  ${YB_BASE_LIBS})
-
 add_library(yb-redisserver-test redis_client.cc)
 target_link_libraries(yb-redisserver-test gutil yb-redis hiredis ${YB_BASE_LIBS})
 
