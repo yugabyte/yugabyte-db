@@ -21,16 +21,20 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/master/master.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/stol_utils.h"
 
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 using namespace std::literals;
+using yb::client::YBTableName;
 
 DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 
@@ -93,6 +97,7 @@ namespace redisserver {
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
     ((debugsleep, DebugSleep, 2, LOCAL)) \
+    ((cluster, Cluster, -2, CLUSTER)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -104,6 +109,7 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 #define READ_OP yb::client::YBRedisReadOp
 #define WRITE_OP yb::client::YBRedisWriteOp
 #define LOCAL_OP RedisResponsePB
+#define CLUSTER_OP RedisResponsePB
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
     CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
@@ -141,7 +147,8 @@ void Command(
 #define WRITE_COMMAND(cname) \
     Command<yb::client::YBRedisWriteOp>(info, idx, &BOOST_PP_CAT(Parse, cname), context)
 #define LOCAL_COMMAND(cname) \
-    BOOST_PP_CAT(Handle, cname)({info, idx, context}); \
+    BOOST_PP_CAT(Handle, cname)({info, idx, context});
+#define CLUSTER_COMMAND(cname) ClusterCommand(info, idx, context)
 
 #define DO_POPULATE_HANDLER(name, cname, arity, type) \
   { \
@@ -184,6 +191,10 @@ class LocalCommandData {
     return context_->client();
   }
 
+  const RedisServer* server() {
+    return context_->server();
+  }
+
   client::YBTable* table() const {
     return context_->table().get();
   }
@@ -215,6 +226,79 @@ class LocalCommandData {
   size_t idx_;
   BatchContextPtr context_;
 };
+
+
+void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
+  vector<string> tablets, partitions;
+  vector<master::TabletLocationsPB> locations;
+  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  auto s = data.client()->GetTablets(table_name, 0, &tablets, &partitions, &locations,
+                                     true /* update tablets cache */);
+  if (!s.ok()) {
+    LOG(ERROR) << "Error getting tablets: " << s.message();
+    return;
+  }
+  vector<string> response, ts_info;
+  response.reserve(3);
+  ts_info.reserve(2);
+  for (master::TabletLocationsPB &location : locations) {
+    response.clear();
+    ts_info.clear();
+
+    uint16_t start_key = 0;
+    uint16_t end_key_exclusive = kRedisClusterSlots;
+    if (location.partition().has_partition_key_start()) {
+      if (location.partition().partition_key_start().size() == PartitionSchema::kPartitionKeySize) {
+        start_key = PartitionSchema::DecodeMultiColumnHashValue(
+            location.partition().partition_key_start());
+      }
+    }
+    if (location.partition().has_partition_key_end()) {
+      if (location.partition().partition_key_end().size() == PartitionSchema::kPartitionKeySize) {
+        end_key_exclusive = PartitionSchema::DecodeMultiColumnHashValue(
+            location.partition().partition_key_end());
+      }
+    }
+    response.push_back(redisserver::EncodeAsInteger(start_key).ToBuffer());
+    response.push_back(redisserver::EncodeAsInteger(end_key_exclusive - 1).ToBuffer());
+
+    for (const auto &replica : location.replicas()) {
+      if (replica.role() == consensus::RaftPeerPB::LEADER) {
+        ts_info.push_back(
+            redisserver::EncodeAsBulkString(replica.ts_info().rpc_addresses(0).host()).ToBuffer());
+
+        const auto redis_port = data.server()->opts().rpc_opts.default_port;
+
+        VLOG(1) << "Start key: " << start_key
+                << ", end key: " << end_key_exclusive - 1
+                << ", node " << replica.ts_info().rpc_addresses(0).host()
+                << ", port " << redis_port;
+
+        ts_info.push_back(redisserver::EncodeAsInteger(redis_port).ToBuffer());
+        ts_info.push_back(
+            redisserver::EncodeAsBulkString(replica.ts_info().permanent_uuid()).ToBuffer());
+        // TODO (hector): add all the replicas to the list of redis servers in charge of this
+        // partition range.
+        break;
+      }
+    }
+    response.push_back(redisserver::EncodeAsArrayOfEncodedElements(ts_info));
+    array_response->add_elements(redisserver::EncodeAsArrayOfEncodedElements(response));
+  }
+  array_response->set_encoded(true);
+}
+
+void ClusterCommand(
+    const RedisCommandInfo& info,
+    size_t idx,
+    BatchContext* context) {
+  RedisResponsePB cluster_response;
+  auto array_response = cluster_response.mutable_array_response();
+  LocalCommandData data(info, idx, context);
+  GetTabletLocations(data, array_response);
+  context->call()->RespondSuccess(idx, info.metrics, &cluster_response);
+  VLOG(1) << "Done responding to CLUSTER.";
+}
 
 void HandleEcho(LocalCommandData data) {
   RedisResponsePB response;

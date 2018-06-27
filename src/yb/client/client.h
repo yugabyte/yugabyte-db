@@ -264,7 +264,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Creates a YBTableCreator; it is the caller's responsibility to free it.
   YBTableCreator* NewTableCreator();
 
-  // set 'create_in_progress' to true if a CreateTable operation is in-progress
+  // set 'create_in_progress' to true if a CreateTable operation is in-progress.
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
@@ -285,7 +285,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
 
-  // set 'alter_in_progress' to true if an AlterTable operation is in-progress
+  // set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
                                         bool *alter_in_progress);
 
@@ -382,7 +382,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                             const int32_t max_tablets,
                             std::vector<TabletId>* tablet_uuids,
                             std::vector<std::string>* ranges,
-                            std::vector<master::TabletLocationsPB>* locations = nullptr);
+                            std::vector<master::TabletLocationsPB>* locations = nullptr,
+                            bool update_tablets_cache = false);
 
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
@@ -413,7 +414,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // This is a fully local operation (no RPCs or blocking).
   std::shared_ptr<YBSession> NewSession();
 
-  // Return the socket address of the master leader for this client
+  // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
 
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
@@ -787,7 +788,7 @@ class YBTableAlterer {
   // Drops an existing column from the table.
   YBTableAlterer* DropColumn(const std::string& name);
 
-  // Alter table properties
+  // Alter table properties.
   YBTableAlterer* SetTableProperties(const TableProperties& table_properties);
 
   // Set the timeout for the operation. This includes any waiting

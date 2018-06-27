@@ -53,10 +53,20 @@ public class RedisKeyValue extends AppBase {
       return 0;
     }
     if (appConfig.valueSize == 0) {
-      String value = getJedisClient().get(key.asString());
+      String value;
+      if (appConfig.useRedisCluster) {
+        value = getRedisCluster().get(key.asString());
+      } else {
+        value = getJedisClient().get(key.asString());
+      }
       key.verify(value);
     } else {
-      byte[] value = getJedisClient().get(key.asString().getBytes());
+      byte[] value;
+      if (appConfig.useRedisCluster) {
+        value = getRedisCluster().get(key.asString().getBytes());
+      } else {
+        value = getJedisClient().get(key.asString().getBytes());
+      }
       verifyRandomValue(key, value);
     }
     LOG.debug("Read key: " + key.toString());
@@ -70,9 +80,17 @@ public class RedisKeyValue extends AppBase {
       String retVal;
       if (appConfig.valueSize == 0) {
         String value = key.getValueStr();
-        retVal = getJedisClient().set(key.asString(), value);
+        if (appConfig.useRedisCluster) {
+          retVal = getRedisCluster().set(key.asString(), value);
+        } else {
+          retVal = getJedisClient().set(key.asString(), value);
+        }
       } else {
-        retVal = getJedisClient().set(key.asString().getBytes(), getRandomValue(key));
+        if (appConfig.useRedisCluster) {
+          retVal = getRedisCluster().set(key.asString().getBytes(), getRandomValue(key));
+        } else {
+          retVal = getJedisClient().set(key.asString().getBytes(), getRandomValue(key));
+        }
       }
       if (retVal == null) {
         getSimpleLoadGenerator().recordWriteFailure(key);

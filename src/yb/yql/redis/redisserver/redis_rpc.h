@@ -91,6 +91,9 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   const std::string& service_name() const override;
   const std::string& method_name() const override;
+
+  void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
+
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
 
   void RespondFailure(size_t idx, const Status& status);
@@ -100,7 +103,6 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   void MarkForClose() { quit_.store(true, std::memory_order_release); }
 
  private:
-  void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 
   // The connection on which this inbound call arrived.
   static constexpr size_t batch_capacity = RedisClientBatch::static_capacity;

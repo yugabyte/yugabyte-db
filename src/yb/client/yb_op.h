@@ -137,9 +137,12 @@ class YBRedisOp : public YBOperation {
 
   RedisResponsePB* mutable_response();
 
+  uint16_t hash_code() const { return hash_code_; }
+
   virtual const std::string& GetKey() const = 0;
 
- private:
+ protected:
+  uint16_t hash_code_ = 0;
   std::unique_ptr<RedisResponsePB> redis_response_;
 };
 

@@ -255,6 +255,9 @@ public class CmdLineOpts {
       }
       AppBase.appConfig.localDc = commandLine.getOptionValue("with_local_dc");
     }
+    if (commandLine.hasOption("use_redis_cluster")) {
+      AppBase.appConfig.useRedisCluster = true;
+    }
   }
 
   /**
@@ -504,6 +507,7 @@ public class CmdLineOpts {
     options.addOption("skip_workload", false, "Skip running workload.");
     options.addOption("run_time", true,
         "Run time for workload. Negative value means forever (default).");
+    options.addOption("use_redis_cluster", false, "Use redis cluster client.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");
