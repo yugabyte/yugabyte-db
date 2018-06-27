@@ -55,15 +55,6 @@ target_link_libraries(yb-pgsql
                       server_process)
 
 #########################################
-# yb-pgserver
-#########################################
-
-add_executable(yb-pgserver pg_server_main.cc)
-target_link_libraries(yb-pgserver
-                      yb-pgsql
-                      ${YB_BASE_LIBS})
-
-#########################################
 # Pgserver Tests
 #########################################
 

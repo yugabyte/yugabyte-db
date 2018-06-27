@@ -60,16 +60,6 @@ target_link_libraries(yb-cql
   lz4
   snappy)
 
-#########################################
-# yb-cqlserver
-#########################################
-
-add_executable(yb-cqlserver cql_server_main.cc)
-target_link_libraries(yb-cqlserver
-  yb-cql
-  dl
-  ${YB_BASE_LIBS})
-
 # Tests
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(cqlserver-test)
