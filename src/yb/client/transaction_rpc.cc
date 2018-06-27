@@ -38,7 +38,8 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                      YBClient* client)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
-        invoker_(false /* consistent_prefix */,
+        invoker_(false /* local_tserver_only */,
+                 false /* consistent_prefix */,
                  client,
                  this,
                  this,

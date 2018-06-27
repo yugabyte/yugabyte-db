@@ -22,6 +22,7 @@ import org.yb.Common.PartitionSchemaPB.HashSchema;
 import org.yb.minicluster.BaseMiniClusterTest;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.YBJedis;
 
@@ -40,7 +41,7 @@ import static junit.framework.TestCase.assertEquals;
 
 public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
-  protected enum JedisClientType { JEDIS, YBJEDIS };
+  protected enum JedisClientType { JEDIS, JEDISCLUSTER, YBJEDIS };
 
   protected static final int JEDIS_SOCKET_TIMEOUT_MS = 10000;
   protected JedisClientType jedisClientType;
@@ -187,6 +188,11 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
         LOG.info("Connecting to: " + redisContactPoints.get(0).toString());
         jedis_client = new Jedis(redisContactPoints.get(0).getHostName(),
             redisContactPoints.get(0).getPort(), JEDIS_SOCKET_TIMEOUT_MS);
+        break;
+      case JEDISCLUSTER:
+        LOG.info("Connecting to: " + redisContactPoints.get(0).toString() + " using JedisCluster");
+        jedis_client = new JedisCluster(new HostAndPort(redisContactPoints.get(0).getHostName(),
+            redisContactPoints.get(0).getPort()), JEDIS_SOCKET_TIMEOUT_MS, 100);
         break;
       case YBJEDIS:
         LOG.info("Connecting to: " + redisContactPoints.stream().map(InetSocketAddress::toString)

@@ -23,11 +23,15 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
 
+DEFINE_test_flag(bool, assert_local_op, false,
+                 "When set, we crash if we received an operation that cannot be served locally");
+
 namespace yb {
 namespace client {
 namespace internal {
 
-TabletInvoker::TabletInvoker(bool consistent_prefix,
+TabletInvoker::TabletInvoker(const bool local_tserver_only,
+                             const bool consistent_prefix,
                              YBClient* client,
                              rpc::RpcCommand* command,
                              TabletRpc* rpc,
@@ -41,6 +45,7 @@ TabletInvoker::TabletInvoker(bool consistent_prefix,
         tablet_id_(tablet != nullptr ? tablet->tablet_id() : std::string()),
         retrier_(retrier),
         trace_(trace),
+        local_tserver_only_(local_tserver_only),
         consistent_prefix_(consistent_prefix) {}
 
 TabletInvoker::~TabletInvoker() {}
@@ -51,6 +56,11 @@ void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
                                               YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
                                               &candidates);
   VLOG(1) << "Using tserver: " << yb::ToString(current_ts_);
+}
+
+void TabletInvoker::SelectLocalTabletServer() {
+  current_ts_ = client_->data_->meta_cache_->local_tserver();
+  VLOG(1) << "Using local tserver: " << current_ts_->ToString();
 }
 
 void TabletInvoker::SelectTabletServer()  {
@@ -123,10 +133,12 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   // Sets current_ts_.
-  if (!consistent_prefix_ || leader_only) {
-    SelectTabletServer();
-  } else {
+  if (local_tserver_only_) {
+    SelectLocalTabletServer();
+  } else if (consistent_prefix_ && !leader_only) {
     SelectTabletServerWithConsistentPrefix();
+  } else {
+    SelectTabletServer();
   }
 
   // If we've tried all replicas, force a lookup to the master to find the
@@ -231,6 +243,18 @@ bool TabletInvoker::Done(Status* status) {
     // Else the leader became a follower and must be reset on retry.
     if (!leader_is_not_ready) {
       followers_.insert(current_ts_);
+    }
+
+    if (PREDICT_FALSE(FLAGS_assert_local_op) && current_ts_->IsLocal() &&
+        status->IsIllegalState()) {
+      CHECK(false) << "Operation is not local";
+    }
+
+    // If only local tserver is requested and it is not the leader, respond error and done.
+    // Otherwise, continue below to retry.
+    if (local_tserver_only_ && current_ts_->IsLocal() && status->IsIllegalState()) {
+      rpc_->Failed(*status);
+      return true;
     }
 
     if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {

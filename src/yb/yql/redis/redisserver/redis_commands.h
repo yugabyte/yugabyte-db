@@ -24,6 +24,8 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
+
 
 namespace yb {
 namespace redisserver {
@@ -37,6 +39,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
   virtual const RedisClientCommand& command(size_t idx) const = 0;
   virtual const std::shared_ptr<RedisInboundCall>& call() const = 0;
   virtual const std::shared_ptr<client::YBClient>& client() const = 0;
+  virtual const RedisServer* server() = 0;
 
   virtual void Apply(
       size_t index,

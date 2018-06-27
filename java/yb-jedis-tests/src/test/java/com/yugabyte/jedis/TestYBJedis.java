@@ -32,6 +32,7 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+import static com.yugabyte.jedis.BaseJedisTest.JedisClientType.JEDISCLUSTER;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertNotNull;
@@ -47,10 +48,11 @@ public class TestYBJedis extends BaseJedisTest {
     super(jedisClientType);
   }
 
-  // Run each test with both Jedis and YBJedis clients.
+  // Run each test with Jedis, JedisCluster, and YBJedis clients.
   @Parameterized.Parameters
   public static Collection jedisClients() {
-    return Arrays.asList(JedisClientType.JEDIS, JedisClientType.YBJEDIS);
+    return Arrays.asList(JedisClientType.JEDIS, JEDISCLUSTER,
+        JedisClientType.YBJEDIS);
   }
 
   @Test
@@ -114,6 +116,11 @@ public class TestYBJedis extends BaseJedisTest {
     assertEquals("v", jedis_client.get("k_px"));
     Thread.sleep(2000);
     assertEquals(null, jedis_client.get("k_px"));
+
+    // For now skip the following tests for JedisCluster. The Jedis implementation is broken.
+    if (jedisClientType == JEDISCLUSTER) {
+      return;
+    }
 
     // Test with lowercase "nx" option.
     assertEquals("OK", jedis_client.set("k_nx", "v", "nx"));
@@ -400,5 +407,4 @@ public class TestYBJedis extends BaseJedisTest {
       LOG.info("Expected exception", e);
     }
   }
-
 }

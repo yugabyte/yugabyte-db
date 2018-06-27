@@ -30,6 +30,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op.h"
 
@@ -40,7 +41,6 @@
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
-#include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -261,6 +261,9 @@ class Operation {
         RedisResponsePB resp;
         call_->RespondSuccess(index_, metrics_, &resp);
       }
+    } else if ((type_ == OperationType::kRead || type_ == OperationType::kWrite) &&
+               response().code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
+      call_->Respond(index_, false, &response());
     } else {
       call_->RespondFailure(index_, status);
     }
@@ -637,12 +640,14 @@ class BatchContextImpl : public BatchContext {
  public:
   BatchContextImpl(
       const std::shared_ptr<client::YBClient>& client,
+      const RedisServer* server,
       const std::shared_ptr<client::YBTable>& table,
       SessionPool* session_pool,
       const std::shared_ptr<RedisInboundCall>& call,
       const InternalMetrics& metrics_internal,
       const MemTrackerPtr& mem_tracker)
       : client_(client),
+        server_(server),
         table_(table),
         session_pool_(session_pool),
         call_(call),
@@ -663,6 +668,10 @@ class BatchContextImpl : public BatchContext {
 
   const std::shared_ptr<client::YBClient>& client() const override {
     return client_;
+  }
+
+  const RedisServer* server() override {
+    return server_;
   }
 
   const std::shared_ptr<client::YBTable>& table() const override {
@@ -751,6 +760,7 @@ class BatchContextImpl : public BatchContext {
   }
 
   std::shared_ptr<client::YBClient> client_;
+  const RedisServer* server_ = nullptr;
   std::shared_ptr<client::YBTable> table_;
   SessionPool* session_pool_;
   std::shared_ptr<RedisInboundCall> call_;
@@ -931,7 +941,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
   auto context = make_scoped_refptr<BatchContextImpl>(
-      client_, table_, &session_pool_, call, metrics_internal_,
+      client_, server_, table_, &session_pool_, call, metrics_internal_,
       server_->mem_tracker());
   const auto& batch = call->client_batch();
   for (size_t idx = 0; idx != batch.size(); ++idx) {

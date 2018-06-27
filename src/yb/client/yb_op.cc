@@ -102,6 +102,7 @@ std::string YBRedisWriteOp::ToString() const {
 }
 
 void YBRedisWriteOp::SetHashCode(uint16_t hash_code) {
+  hash_code_ = hash_code;
   redis_write_request_->mutable_key_value()->set_hash_code(hash_code);
 }
 
@@ -131,6 +132,7 @@ std::string YBRedisReadOp::ToString() const {
 }
 
 void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
+  hash_code_ = hash_code;
   redis_read_request_->mutable_key_value()->set_hash_code(hash_code);
 }
 
