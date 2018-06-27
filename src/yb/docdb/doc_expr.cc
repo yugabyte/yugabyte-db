@@ -8,10 +8,13 @@
 
 #include "yb/docdb/subdocument.h"
 
+#include "yb/util/decimal.h"
+
 namespace yb {
 namespace docdb {
 
 using yb::bfql::TSOpcode;
+using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -167,6 +170,14 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
     case InternalType::kDoubleValue:
       aggr_sum->set_double_value(aggr_sum->double_value() + val.double_value());
       break;
+    case InternalType::kDecimalValue: {
+      Decimal sum, value;
+      RETURN_NOT_OK(sum.DecodeFromComparable(aggr_sum->decimal_value()));
+      RETURN_NOT_OK(value.DecodeFromComparable(val.decimal_value()));
+      sum = sum + value;
+      aggr_sum->set_decimal_value(sum.EncodeToComparable());
+      break;
+    }
     default:
       return STATUS(RuntimeError, "Cannot find SUM of this column");
   }

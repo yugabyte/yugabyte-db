@@ -127,6 +127,8 @@ public class TestVarIntDataType extends BaseCQLTest {
         ResultSet rs = session.execute(selectStmt);
         assertEquals(varints.size(), rs.getAvailableWithoutFetching());
 
+        BigInteger sumVarint = new BigInteger("0");
+
         for (Iterator<BigInteger> iter = varints.iterator(); iter.hasNext();) {
             Row row = rs.one();
             BigInteger varint = iter.next();
@@ -137,7 +139,19 @@ public class TestVarIntDataType extends BaseCQLTest {
             assertEquals(varint.intValue(), row.getInt("r2"));
             assertEquals(varint, row.getVarint("v1"));
             assertEquals(2, row.getInt("v2"));
+            sumVarint = sumVarint.add(varint);
         }
+
+        // Select sum of rows by the hash key. Should be 1 result row.
+        final String selectSumStmt = String.format("SELECT sum(v1) FROM %s " +
+                "WHERE h1 = %s AND h2 = 1;", tableName, hashVarInt.toString());
+        LOG.info("selectSumStmt: " + selectSumStmt);
+        ResultSet rsSum = session.execute(selectSumStmt);
+        assertEquals(1, rsSum.getAvailableWithoutFetching());
+
+        Row rowSum = rsSum.one();
+
+        assertEquals(sumVarint, rowSum.getVarint(0));
 
         // Test UPDATE with hash and range decimal keys.
         for (Iterator<BigInteger> iter = varints.iterator(); iter.hasNext();) {
