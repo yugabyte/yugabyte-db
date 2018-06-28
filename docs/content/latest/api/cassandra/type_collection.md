@@ -1,5 +1,5 @@
 ---
-title: MAP
+title: MAP, SET, LIST
 summary: MAP, SET and LIST types
 description: Collection Types
 menu:
