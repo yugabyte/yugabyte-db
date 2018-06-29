@@ -1673,6 +1673,26 @@ check_python_interpreter_versions() {
   fi
 }
 
+log_file_existence() {
+  expect_num_args 1 "$@"
+  local file_name=$1
+  if [[ -L $file_name && -f $file_name ]]; then
+    log "Symlink exists and points to a file: $file_name"
+  elif [[ -L $file_name && -d $file_name ]]; then
+    log "Symlink exists and points to a directory: $file_name"
+  elif [[ -L $file_name ]]; then
+    log "Symlink exists but it might be broken: $file_name"
+  elif [[ -f $file_name ]]; then
+    log "File exists: $file_name"
+  elif [[ -d $file_name ]]; then
+    log "Directory exists: $file_name"
+  elif [[ ! -e $file_name ]]; then
+    log "File does not exist: $file_name"
+  else
+    log "File exists but we could not determine its type: $file_name"
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

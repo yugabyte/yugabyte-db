@@ -35,7 +35,6 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 /**
@@ -53,7 +52,12 @@ public class TestMasterFailover extends BaseYBClientTest {
     createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
   }
 
-  @Test(timeout = 30000)
+  @Override
+  protected int overridableNumShardsPerTServer() {
+    return 1;
+  }
+
+  @Test(timeout = 60000)
   public void testKillLeader() throws Exception {
     int countMasters = masterHostPorts.size();
     if (countMasters < 3) {
