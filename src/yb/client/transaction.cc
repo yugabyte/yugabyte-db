@@ -459,7 +459,7 @@ class YBTransaction::Impl final {
           *tablet,
           TransactionRpcDeadline(),
           &status_tablet_holder_,
-          Bind(&Impl::LookupTabletDone, Unretained(this), transaction));
+          Bind(&Impl::LookupTabletDone, Unretained(this), transaction), true /* use fast path */);
     } else {
       SetError(tablet.status());
     }

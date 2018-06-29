@@ -162,6 +162,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
         stale_(false) {
   }
 
+  ~RemoteTablet();
+
   // Updates this tablet's replica locations.
   void Refresh(
       const TabletServerMap& tservers,
@@ -275,7 +277,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletById(const TabletId& tablet_id,
                         const MonoTime& deadline,
                         RemoteTabletPtr* remote_tablet,
-                        const StatusCallback& callback);
+                        const StatusCallback& callback,
+                        bool use_fast_path_first);
 
   // Return the local tablet server if available.
   RemoteTabletServer* local_tserver() const {

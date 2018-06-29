@@ -75,6 +75,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -134,6 +135,10 @@ DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness,
 DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verify that the "
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
+
+DEFINE_test_flag(bool, simulate_time_out_failures, false, "If true, we will randomly mark replicas "
+                 "as failed to simulate time out failures. The periodic refresh of the lookup "
+                 "cache will eventually mark them as available");
 
 DECLARE_uint64(max_clock_skew_usec);
 
@@ -927,6 +932,14 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
                          TabletServerErrorPB::STALE_FOLLOWER, &context);
     return;
   }
+
+  if (PREDICT_FALSE(FLAGS_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
+    LOG(INFO) << "Marking request as timed out for test";
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, "timed out for test"),
+                         TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    return;
+  }
+
 
   if (server_ && server_->Clock()) {
     server::UpdateClock(*req, server_->Clock());
