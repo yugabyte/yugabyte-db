@@ -17,11 +17,12 @@ The `DELETE` statement removes rows from a specified table that meet a given con
 
 ## Syntax
 ### Diagram
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="746" height="95" viewbox="0 0 746 95"><path class="connector" d="M0 22h5m67 0h10m54 0h10m91 0h10m65 0h10m128 0h30m32 0h50m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m64 0h20m-194 0q5 0 5 5v35q0 5 5 5h5m98 0h66q5 0 5-5v-35q0-5 5-5m5 0h20m-276 0q5 0 5 5v53q0 5 5 5h251q5 0 5-5v-53q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">DELETE</text><rect class="literal" x="82" y="5" width="54" height="25" rx="7"/><text class="text" x="92" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="146" y="5" width="91" height="25"/><text class="text" x="156" y="22">table_name</text></a><rect class="literal" x="247" y="5" width="65" height="25" rx="7"/><text class="text" x="257" y="22">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="322" y="5" width="128" height="25"/><text class="text" x="332" y="22">where_expression</text></a><rect class="literal" x="480" y="5" width="32" height="25" rx="7"/><text class="text" x="490" y="22">IF</text><rect class="literal" x="562" y="5" width="45" height="25" rx="7"/><text class="text" x="572" y="22">NOT</text><rect class="literal" x="637" y="5" width="64" height="25" rx="7"/><text class="text" x="647" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#if-expression"><rect class="rule" x="542" y="50" width="98" height="25"/><text class="text" x="552" y="67">if_expression</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="1121" height="95" viewbox="0 0 1121 95"><path class="connector" d="M0 22h5m67 0h10m54 0h10m91 0h30m60 0h10m90 0h10m155 0h20m-360 0q5 0 5 5v8q0 5 5 5h335q5 0 5-5v-8q0-5 5-5m5 0h10m65 0h10m128 0h30m32 0h50m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m64 0h20m-194 0q5 0 5 5v35q0 5 5 5h5m98 0h66q5 0 5-5v-35q0-5 5-5m5 0h20m-276 0q5 0 5 5v53q0 5 5 5h251q5 0 5-5v-53q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">DELETE</text><rect class="literal" x="82" y="5" width="54" height="25" rx="7"/><text class="text" x="92" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="146" y="5" width="91" height="25"/><text class="text" x="156" y="22">table_name</text></a><rect class="literal" x="267" y="5" width="60" height="25" rx="7"/><text class="text" x="277" y="22">USING</text><rect class="literal" x="337" y="5" width="90" height="25" rx="7"/><text class="text" x="347" y="22">TIMESTAMP</text><a xlink:href="../grammar_diagrams#timestamp-expression"><rect class="rule" x="437" y="5" width="155" height="25"/><text class="text" x="447" y="22">timestamp_expression</text></a><rect class="literal" x="622" y="5" width="65" height="25" rx="7"/><text class="text" x="632" y="22">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="697" y="5" width="128" height="25"/><text class="text" x="707" y="22">where_expression</text></a><rect class="literal" x="855" y="5" width="32" height="25" rx="7"/><text class="text" x="865" y="22">IF</text><rect class="literal" x="937" y="5" width="45" height="25" rx="7"/><text class="text" x="947" y="22">NOT</text><rect class="literal" x="1012" y="5" width="64" height="25" rx="7"/><text class="text" x="1022" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#if-expression"><rect class="rule" x="917" y="50" width="98" height="25"/><text class="text" x="927" y="67">if_expression</text></a></svg>
 
 ### Grammar
 ```
 delete ::= DELETE FROM table_name
+               [ USING TIMESTAMP timestamp_expression ]
                WHERE where_expression
                [ IF { [ NOT ] EXISTS | if_expression } ];
 ```
@@ -35,6 +36,11 @@ Where
 
  - An error is raised if the specified `table_name` does not exist.
  - The `where_expression` and `if_expression` must evaluate to [boolean](../type_bool) values.
+ - The `USING TIMESTAMP` clause indicates we would like to perform the DELETE as if it was done at the
+   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
+ - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
+   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
+   very confusing results.
 
 ### WHERE Clause
 
@@ -50,6 +56,9 @@ Where
  - `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](dml_update) statements
    - `IF EXISTS` works like a normal delete but additionally returns whether the delete was applied (a row was found with that primary key).
    - `IF NOT EXISTS` is effectively a no-op since rows that do not exist cannot be deleted (but returns whether no row was found with that primary key).
+
+### `USING` Clause
+ - `timestamp_expression` must be an integer value (or a bind variable marker for prepared statements).
 
 ## Examples
 
@@ -172,6 +181,36 @@ cqlsh:example> SELECT * FROM employees;
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
+```
+
+### Delete with the `USING TIMESTAMP` clause
+```{.sql .copy .separator-gt}
+cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             4 |           4 |  Ted
+             2 |           1 |  Joe
+
+(2 rows)
+cqlsh:foo> DELETE FROM employees USING TIMESTAMP 500 WHERE department_id = 4 AND employee_id = 4; -- not applied since timestamp is lower than 1000
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             4 |           4 |  Ted
+             2 |           1 |  Joe
+
+(2 rows)
+cqlsh:foo> DELETE FROM employees USING TIMESTAMP 1500 WHERE department_id = 4 AND employee_id = 4; -- applied since timestamp is higher than 1000.
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+
+(1 rows)
 ```
 
 ## See Also

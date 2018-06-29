@@ -19,12 +19,12 @@ The `UPDATE` statement updates one or more column values for a row in table. Cur
 ## Syntax
 
 ### Diagram
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="646" height="175" viewbox="0 0 646 175"><path class="connector" d="M0 52h5m68 0h10m91 0h30m60 0h10m41 0h10m104 0h20m-260 0q5 0 5 5v8q0 5 5 5h235q5 0 5-5v-8q0-5 5-5m5 0h10m43 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h37m24 0h38q5 0 5 5v20q0 5-5 5m-5 0h25m-646 50h5m65 0h10m128 0h30m32 0h50m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m64 0h20m-194 0q5 0 5 5v35q0 5 5 5h5m98 0h66q5 0 5-5v-35q0-5 5-5m5 0h20m-276 0q5 0 5 5v53q0 5 5 5h251q5 0 5-5v-53q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="35" width="68" height="25" rx="7"/><text class="text" x="15" y="52">UPDATE</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="83" y="35" width="91" height="25"/><text class="text" x="93" y="52">table_name</text></a><rect class="literal" x="204" y="35" width="60" height="25" rx="7"/><text class="text" x="214" y="52">USING</text><rect class="literal" x="274" y="35" width="41" height="25" rx="7"/><text class="text" x="284" y="52">TTL</text><a xlink:href="../grammar_diagrams#ttl-expression"><rect class="rule" x="325" y="35" width="104" height="25"/><text class="text" x="335" y="52">ttl_expression</text></a><rect class="literal" x="459" y="35" width="43" height="25" rx="7"/><text class="text" x="469" y="52">SET</text><rect class="literal" x="564" y="5" width="24" height="25" rx="7"/><text class="text" x="574" y="22">,</text><a xlink:href="../grammar_diagrams#assignment"><rect class="rule" x="532" y="35" width="89" height="25"/><text class="text" x="542" y="52">assignment</text></a><rect class="literal" x="5" y="85" width="65" height="25" rx="7"/><text class="text" x="15" y="102">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="80" y="85" width="128" height="25"/><text class="text" x="90" y="102">where_expression</text></a><rect class="literal" x="238" y="85" width="32" height="25" rx="7"/><text class="text" x="248" y="102">IF</text><rect class="literal" x="320" y="85" width="45" height="25" rx="7"/><text class="text" x="330" y="102">NOT</text><rect class="literal" x="395" y="85" width="64" height="25" rx="7"/><text class="text" x="405" y="102">EXISTS</text><a xlink:href="../grammar_diagrams#if-expression"><rect class="rule" x="300" y="130" width="98" height="25"/><text class="text" x="310" y="147">if_expression</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="786" height="205" viewbox="0 0 786 205"><path class="connector" d="M0 52h5m68 0h10m91 0h30m60 0h30m41 0h10m104 0h120m-290 0q5 0 5 5v20q0 5 5 5h5m90 0h10m155 0h5q5 0 5-5v-20q0-5 5-5m5 0h20m-400 0q5 0 5 5v38q0 5 5 5h375q5 0 5-5v-38q0-5 5-5m5 0h10m43 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h37m24 0h38q5 0 5 5v20q0 5-5 5m-5 0h25m-786 80h5m65 0h10m128 0h30m32 0h50m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m64 0h20m-194 0q5 0 5 5v35q0 5 5 5h5m98 0h66q5 0 5-5v-35q0-5 5-5m5 0h20m-276 0q5 0 5 5v53q0 5 5 5h251q5 0 5-5v-53q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="35" width="68" height="25" rx="7"/><text class="text" x="15" y="52">UPDATE</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="83" y="35" width="91" height="25"/><text class="text" x="93" y="52">table_name</text></a><rect class="literal" x="204" y="35" width="60" height="25" rx="7"/><text class="text" x="214" y="52">USING</text><rect class="literal" x="294" y="35" width="41" height="25" rx="7"/><text class="text" x="304" y="52">TTL</text><a xlink:href="../grammar_diagrams#ttl-expression"><rect class="rule" x="345" y="35" width="104" height="25"/><text class="text" x="355" y="52">ttl_expression</text></a><rect class="literal" x="294" y="65" width="90" height="25" rx="7"/><text class="text" x="304" y="82">TIMESTAMP</text><a xlink:href="../grammar_diagrams#timestamp-expression"><rect class="rule" x="394" y="65" width="155" height="25"/><text class="text" x="404" y="82">timestamp_expression</text></a><rect class="literal" x="599" y="35" width="43" height="25" rx="7"/><text class="text" x="609" y="52">SET</text><rect class="literal" x="704" y="5" width="24" height="25" rx="7"/><text class="text" x="714" y="22">,</text><a xlink:href="../grammar_diagrams#assignment"><rect class="rule" x="672" y="35" width="89" height="25"/><text class="text" x="682" y="52">assignment</text></a><rect class="literal" x="5" y="115" width="65" height="25" rx="7"/><text class="text" x="15" y="132">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="80" y="115" width="128" height="25"/><text class="text" x="90" y="132">where_expression</text></a><rect class="literal" x="238" y="115" width="32" height="25" rx="7"/><text class="text" x="248" y="132">IF</text><rect class="literal" x="320" y="115" width="45" height="25" rx="7"/><text class="text" x="330" y="132">NOT</text><rect class="literal" x="395" y="115" width="64" height="25" rx="7"/><text class="text" x="405" y="132">EXISTS</text><a xlink:href="../grammar_diagrams#if-expression"><rect class="rule" x="300" y="160" width="98" height="25"/><text class="text" x="310" y="177">if_expression</text></a></svg>
 
 ### Grammar
 ```
 update ::= UPDATE table_name
-              [ USING TTL ttl_expression ]
+              [ USING ( TTL ttl_expression | TIMESTAMP timestamp_expression ) ]
               SET assignment [, assignment ...]
               WHERE where_expression
               [ IF { [ NOT ] EXISTS | if_expression } ]
@@ -41,18 +41,27 @@ Where
 ## Semantics
  - An error is raised if the specified `table_name` does not exist.
  - Update statement uses _upsert semantics_, meaning it inserts the row being updated if it does not already exists.
+ - The `USING TIMESTAMP` clause indicates we would like to perform the UPDATE as if it was done at the
+   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
+ - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
+   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
+   very confusing results.
 
-`WHERE` Clause
+### `WHERE` Clause
 
  - The `where_expression` and `if_expression` must evaluate to boolean values.
  - The `where_expression` must specify conditions for all primary-key columns.
  - The `where_expression` must not specifiy conditions for any regular columns.
  - The `where_expression` can only apply `AND` and `=` operators. Other operators are not yet supported.
  
- `IF` Clause
+### `IF` Clause
 
  - The `if_expression` can only apply to non-key columns (regular columns).
  - The `if_expression` can contain any logical and boolean operators.
+
+### `USING` Clause
+ - `ttl_expression` must be an integer value (or a bind variable marker for prepared statements).
+ - `timestamp_expression` must be an integer value (or a bind variable marker for prepared statements).
 
 ## Examples
 
@@ -141,6 +150,46 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id =
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
+```
+
+### Update row with the `USING TIMESTAMP` clause.
+
+```{.sql .copy .separator-gt} 
+cqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name | age
+---------------+-------------+------+------
+             1 |           1 | Jack | null
+             1 |           2 | Jane |   40
+             1 |           4 | Jeff |   20
+             2 |           1 |  Joe | null
+
+(4 rows)
+cqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4; -- not applied since timestamp is lower than 1000.
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name | age
+---------------+-------------+------+------
+             1 |           1 | Jack | null
+             1 |           2 | Jane |   40
+             1 |           4 | Jeff |   20
+             2 |           1 |  Joe | null
+
+(4 rows)
+cqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;  -- applied since timestamp is higher than 1000.
+
+cqlsh:foo> SELECT * FROM employees;
+
+ department_id | employee_id | name | age
+---------------+-------------+------+------
+             1 |           1 | Jack | null
+             1 |           2 | Jane |   40
+             1 |           4 | Jeff |   30
+             2 |           1 |  Joe | null
+
+(4 rows)
+
 ```
 
 ## See Also
