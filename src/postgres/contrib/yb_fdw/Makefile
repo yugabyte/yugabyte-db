@@ -20,3 +20,5 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+LDFLAGS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate
