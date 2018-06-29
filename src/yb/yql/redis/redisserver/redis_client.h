@@ -19,6 +19,7 @@
 namespace yb {
 namespace redisserver {
 
+// With regards to the Redis Protocol, kString is Bulk String and kStatus is Simple String
 YB_DEFINE_ENUM(RedisReplyType, (kString)(kStatus)(kArray)(kError)(kInteger)(kNull));
 
 // Class stores redis reply.

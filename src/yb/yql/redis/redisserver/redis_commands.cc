@@ -344,7 +344,7 @@ void HandlePing(LocalCommandData data) {
   if (data.arg_size() > 1) {
     response.set_string_response(data.arg(1).cdata(), data.arg(1).size());
   } else {
-    response.set_string_response("PONG");
+    response.set_status_response("PONG");
   }
   data.Respond(&response);
 }
