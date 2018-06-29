@@ -123,6 +123,12 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestSimpleString(int line,
+      const std::vector<std::string>& command,
+      const std::string& expected) {
+    DoRedisTestString(line, command, expected, RedisReplyType::kStatus);
+  }
+
   void DoRedisTestBulkString(int line,
       const std::vector<std::string>& command,
       const std::string& expected) {
@@ -130,7 +136,7 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   void DoRedisTestOk(int line, const std::vector<std::string>& command) {
-    DoRedisTestString(line, command, "OK");
+    DoRedisTestSimpleString(line, command, "OK");
   }
 
   void DoRedisTestExpectError(int line, const std::vector<std::string>& command,
@@ -2554,7 +2560,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   );
 
   DoRedisTestBulkString(__LINE__, {"PING", "foo"}, "foo");
-  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
 
   DoRedisTestOk(__LINE__, {"QUIT"});
 
