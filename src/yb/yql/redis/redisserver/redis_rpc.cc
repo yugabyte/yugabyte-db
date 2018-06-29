@@ -267,6 +267,8 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
       out = SerializeError(error_message, out);
     } else if (redis_response.has_string_response()) {
       out = SerializeBulkString(redis_response.string_response(), out);
+    } else if (redis_response.has_status_response()) {
+      out = SerializeSimpleString(redis_response.status_response(), out);
     } else if (redis_response.has_int_response()) {
       out = SerializeInteger(redis_response.int_response(), out);
     } else if (redis_response.has_array_response()) {
