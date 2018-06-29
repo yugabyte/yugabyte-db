@@ -19,7 +19,7 @@ The `SELECT` statement retrieves (part of) rows of specified columns that meet a
 
 ### Diagram
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="747" height="145" viewbox="0 0 747 145"><path class="connector" d="M0 22h5m66 0h30m78 0h20m-113 0q5 0 5 5v8q0 5 5 5h88q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h138m-181 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m54 0h10m91 0h5m-565 95h25m65 0h10m128 0h20m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h30m81 0h10m122 0h20m-248 0q5 0 5 5v8q0 5 5 5h223q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h10m117 0h20m-216 0q5 0 5 5v8q0 5 5 5h191q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="66" height="25" rx="7"/><text class="text" x="15" y="22">SELECT</text><rect class="literal" x="101" y="5" width="78" height="25" rx="7"/><text class="text" x="111" y="22">DISTINCT</text><rect class="literal" x="229" y="5" width="28" height="25" rx="7"/><text class="text" x="239" y="22">*</text><rect class="literal" x="290" y="35" width="24" height="25" rx="7"/><text class="text" x="300" y="52">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="249" y="65" width="106" height="25"/><text class="text" x="259" y="82">column_name</text></a><rect class="literal" x="405" y="5" width="54" height="25" rx="7"/><text class="text" x="415" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="469" y="5" width="91" height="25"/><text class="text" x="479" y="22">table_name</text></a><rect class="literal" x="25" y="100" width="65" height="25" rx="7"/><text class="text" x="35" y="117">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="100" y="100" width="128" height="25"/><text class="text" x="110" y="117">where_expression</text></a><rect class="literal" x="278" y="100" width="81" height="25" rx="7"/><text class="text" x="288" y="117">ORDER BY</text><a xlink:href="../grammar_diagrams#order-expression"><rect class="rule" x="369" y="100" width="122" height="25"/><text class="text" x="379" y="117">order_expression</text></a><rect class="literal" x="541" y="100" width="54" height="25" rx="7"/><text class="text" x="551" y="117">LIMIT</text><a xlink:href="../grammar_diagrams#limit-expression"><rect class="rule" x="605" y="100" width="117" height="25"/><text class="text" x="615" y="117">limit_expression</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="997" height="145" viewbox="0 0 997 145"><path class="connector" d="M0 22h5m66 0h30m78 0h20m-113 0q5 0 5 5v8q0 5 5 5h88q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h138m-181 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m54 0h10m91 0h5m-565 95h25m65 0h10m128 0h20m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h30m81 0h10m122 0h20m-248 0q5 0 5 5v8q0 5 5 5h223q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h10m117 0h20m-216 0q5 0 5 5v8q0 5 5 5h191q5 0 5-5v-8q0-5 5-5m5 0h30m66 0h10m124 0h20m-235 0q5 0 5 5v8q0 5 5 5h210q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="66" height="25" rx="7"/><text class="text" x="15" y="22">SELECT</text><rect class="literal" x="101" y="5" width="78" height="25" rx="7"/><text class="text" x="111" y="22">DISTINCT</text><rect class="literal" x="229" y="5" width="28" height="25" rx="7"/><text class="text" x="239" y="22">*</text><rect class="literal" x="290" y="35" width="24" height="25" rx="7"/><text class="text" x="300" y="52">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="249" y="65" width="106" height="25"/><text class="text" x="259" y="82">column_name</text></a><rect class="literal" x="405" y="5" width="54" height="25" rx="7"/><text class="text" x="415" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="469" y="5" width="91" height="25"/><text class="text" x="479" y="22">table_name</text></a><rect class="literal" x="25" y="100" width="65" height="25" rx="7"/><text class="text" x="35" y="117">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="100" y="100" width="128" height="25"/><text class="text" x="110" y="117">where_expression</text></a><rect class="literal" x="278" y="100" width="81" height="25" rx="7"/><text class="text" x="288" y="117">ORDER BY</text><a xlink:href="../grammar_diagrams#order-expression"><rect class="rule" x="369" y="100" width="122" height="25"/><text class="text" x="379" y="117">order_expression</text></a><rect class="literal" x="541" y="100" width="54" height="25" rx="7"/><text class="text" x="551" y="117">LIMIT</text><a xlink:href="../grammar_diagrams#limit-expression"><rect class="rule" x="605" y="100" width="117" height="25"/><text class="text" x="615" y="117">limit_expression</text></a><rect class="literal" x="772" y="100" width="66" height="25" rx="7"/><text class="text" x="782" y="117">OFFSET</text><a xlink:href="../grammar_diagrams#offset-expression"><rect class="rule" x="848" y="100" width="124" height="25"/><text class="text" x="858" y="117">offset_expression</text></a></svg>
 
 ### Grammar
 ```
@@ -28,6 +28,7 @@ select ::= SELECT [ DISTINCT ] { '*' | column_name [ ',' column_name ... ] }
                [ WHERE where_expression ]
                [ ORDER BY order_expression ]
                [ LIMIT limit_expression ]
+               [ OFFSET offset_expression ]
 
 order_expression ::= '(' ( column_name [ ASC | DESC ] ) [ ',' ( column_name [ ASC | DESC ] )  ... ] ')'
 ```
@@ -43,6 +44,7 @@ Where
  - `SELECT DISTINCT` can only be used for partition columns or static columns.
  - `*` means all columns of the table will be retrieved.
  - `LIMIT` clause sets the maximum number of results (rows) to be returned.
+ - `OFFSET` clause sets the number of rows to be skipped before returning results.
 
 ### `ORDER BY` clause
  - The `ORDER BY` clause sets the order for the returned results.
@@ -116,6 +118,18 @@ cqlsh:example> SELECT * FROM employees LIMIT 2;
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
              1 |           2 | Accounting |          Jane
+```
+
+### Select with offset 
+
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM employees LIMIT 2 OFFSET 1;
+```
+```sh
+ department_id | employee_id | dept_name  | employee_name
+---------------+-------------+------------+---------------
+             1 |           2 | Accounting |          Jane
+             1 |           3 | Accounting |          John
 ```
 
 ### Select distinct values
