@@ -1150,6 +1150,11 @@ did_test_succeed() {
     return 1
   fi
 
+  if grep -P '^\[INFO\] BUILD FAILURE$' "$log_path"; then
+    log "Java build or tests failed"
+    return 1
+  fi
+
   return 0
 }
 
@@ -1282,6 +1287,8 @@ fix_cxx_test_name() {
   fi
 }
 
+# Arguments: <maven_module_name> <package_and_class>
+# Example: yb-client org.yb.client.TestYBClient
 run_java_test() {
   expect_num_args 2 "$@"
   local module_name=$1
@@ -1314,6 +1321,13 @@ run_java_test() {
     -DskipAssembly
     -Dmaven.javadoc.skip
   )
+  if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
+    mvn_options+=(
+      "-Dyb.surefire.reports.directory=$YB_SUREFIRE_REPORTS_DIR"
+    )
+  else
+    log "YB_SUREFIRE_REPORTS_DIR is not set, using default reports dir"
+  fi
 
   if is_jenkins || \
      [[ $YB_MVN_SETTINGS_PATH != "$HOME/.m2/settings.xml" ]] || \
@@ -1349,7 +1363,10 @@ run_java_test() {
         rm -f "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt
       )
     else
-      log "Not removing $test_log_path and related per-test-method logs: some tests failed."
+      log "Not removing $test_log_path and related per-test-method logs: some tests failed, " \
+          "or could not find test output or JUnit XML output."
+      log_file_existence "$test_log_path"
+      log_file_existence "$junit_xml_path"
     fi
   fi
 }

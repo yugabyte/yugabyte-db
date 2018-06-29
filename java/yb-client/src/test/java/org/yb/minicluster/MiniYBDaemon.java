@@ -31,7 +31,6 @@ public class MiniYBDaemon {
 
   private static final String PID_PREFIX = "pid";
   private static final String LOG_PREFIX_SEPARATOR = "|";
-  private static final long SYSLOG_TAIL_BYTES = 1024 * 1024;
   private static final String SYSLOG_PATH = "/var/log/messages";
   private static final int SYSLOG_CONTEXT_NUM_LINES = 15;
   private static final int NUM_LAST_SYSLOG_LINES_TO_USE = 10000;
@@ -293,6 +292,5 @@ public class MiniYBDaemon {
       Thread.currentThread().interrupt();
     }
   }
-
 
 }

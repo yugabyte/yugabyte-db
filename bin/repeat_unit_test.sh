@@ -15,7 +15,12 @@
 
 show_usage() {
   cat <<-EOT
-Usage: ${0##*/} <build_type> <test_binary_name> [<test_filter>] [<options>]
+Usage:
+  For C++ tests:
+    ${0##*/} <build_type> <test_binary_name> [<test_filter>] [<options>]
+  For Java tests:
+    ${0##*/} <maven_module_name> <java_package_class_and_method> --java [<options>]
+
 Runs the given test in a loop locally, collects statistics about successes/failures, and saves
 logs.
 
@@ -47,6 +52,8 @@ Options:
     Don't compress kept logs.
   --stop-at-failure, --stop-on-failure, --saf, --sof
     Stop running further iterations after the first failure happens.
+  --java
+    Specify this when running a Java test.
 EOT
 }
 
@@ -85,6 +92,7 @@ original_args=( "$@" )
 yb_compiler_type_arg=""
 verbose=false
 stop_at_failure=false
+is_java_test=false
 
 while [[ $# -gt 0 ]]; do
   if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
@@ -93,6 +101,11 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
   case ${1//_/-} in
+    --build-type)
+      build_type=$2
+      validate_build_type "$build_type"
+      shift
+    ;;
     -h|--help)
       show_usage >&2
       exit 1
@@ -148,6 +161,9 @@ while [[ $# -gt 0 ]]; do
       fi
       yb_compiler_type_arg="clang"
     ;;
+    --java)
+      is_java_test=true
+    ;;
     --stop-at-failure|--stop-on-failure|--saf|--sof)
       stop_at_failure=true
     ;;
@@ -171,10 +187,17 @@ set_build_root
 set_sanitizer_runtime_options
 
 declare -i -r num_pos_args=${#positional_args[@]}
-if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then
-  show_usage >&2
-  fatal "Expected two to three positional arguments:" \
-        "<build_type> <test_binary_name> [<test_filter>]"
+if "$is_java_test"; then
+  if [[ $num_pos_args -ne 2 ]]; then
+    fatal "Expected two positional arguments for Java tests, not including build type:" \
+          "<maven_module_name> <class_name_with_package>"
+  fi
+else
+  if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then
+    show_usage >&2
+      fatal "Expected one or two positional arguments for C++ tests, not including build type:" \
+            "<test_binary_name> [<test_filter>]"
+  fi
 fi
 
 test_binary_name=${positional_args[0]}
@@ -195,13 +218,15 @@ if [[ $test_filter != "all_tests" ]]; then
   gtest_filter_arg="--gtest_filter=$test_filter"
 fi
 
-abs_test_binary_path=$( find_test_binary "$test_binary_name" )
-rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}
-
-if [[ $rel_test_binary == $abs_test_binary_path ]]; then
-  fatal "Expected absolute test binary path ('$abs_test_binary_path') to start with" \
-        "BUILD_ROOT ('$BUILD_ROOT')"
+if ! "$is_java_test"; then
+  abs_test_binary_path=$( find_test_binary "$test_binary_name" )
+  rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}
+  if [[ $rel_test_binary == $abs_test_binary_path ]]; then
+    fatal "Expected absolute test binary path ('$abs_test_binary_path') to start with" \
+          "BUILD_ROOT ('$BUILD_ROOT')"
+  fi
 fi
+
 
 timestamp=$( get_timestamp_for_filenames )
 if [[ -z $log_dir ]]; then
@@ -218,8 +243,13 @@ if [[ $iteration -gt 0 ]]; then
   fi
   # One iteration with a specific "id" ($iteration).
   test_log_path_prefix=$log_dir/$iteration
-  raw_test_log_path=${test_log_path_prefix}__raw.log
   test_log_path=$test_log_path_prefix.log
+  if "$is_java_test"; then
+    export YB_SUREFIRE_REPORTS_DIR=$test_log_path_prefix.reports
+    raw_test_log_path=$test_log_path
+  else
+    raw_test_log_path=${test_log_path_prefix}__raw.log
+  fi
 
   set +e
   current_timestamp=$( get_timestamp_for_filenames )
@@ -227,14 +257,22 @@ if [[ $iteration -gt 0 ]]; then
 $RANDOM.$RANDOM.$RANDOM.$$
   mkdir -p "$TEST_TMPDIR"
   set_expected_core_dir "$TEST_TMPDIR"
-  determine_test_timeout
+  if ! "$is_java_test"; then
+    determine_test_timeout
+  fi
 
   # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
-  test_cmd_line=( "$abs_test_binary_path" "$gtest_filter_arg" $more_test_args
-                  ${YB_EXTRA_GTEST_FLAGS:-} )
-  test_wrapper_cmd_line=(
-    "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
-  )
+  if "$is_java_test"; then
+    test_wrapper_cmd_line=(
+      "$YB_BUILD_SUPPORT_DIR"/run-test.sh "${positional_args[@]}"
+    )
+  else
+    test_cmd_line=( "$abs_test_binary_path" "$gtest_filter_arg" $more_test_args
+                    ${YB_EXTRA_GTEST_FLAGS:-} )
+    test_wrapper_cmd_line=(
+      "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
+    )
+  fi
 
   declare -i start_time_sec=$( date +%s )
   (
@@ -253,8 +291,10 @@ $RANDOM.$RANDOM.$RANDOM.$$
   keep_log=$keep_all_logs
   pass_or_fail="PASSED"
   if ! did_test_succeed "$exit_code" "$raw_test_log_path"; then
-    postprocess_test_log
-    process_core_file
+    if ! "$is_java_test"; then
+      postprocess_test_log
+      process_core_file
+    fi
     if "$skip_address_already_in_use" && \
        ( egrep '\bAddress already in use\b' "$test_log_path" >/dev/null ||
          egrep '\bWebserver: Could not start on address\b' "$test_log_path" >/dev/null ); then
@@ -268,17 +308,31 @@ $RANDOM.$RANDOM.$RANDOM.$$
   fi
   if "$keep_log"; then
     if ! "$skip_log_compression"; then
-      if [[ -f $test_log_path ]]; then
-        gzip "$test_log_path"
+      if "$is_java_test"; then
+        # Compress Java test log.
+        mv "$test_log_path" "$YB_SUREFIRE_REPORTS_DIR"
+        pushd "$log_dir"
+        test_log_path="$YB_SUREFIRE_REPORTS_DIR.tar.gz"
+        tar czf "$test_log_path" "${YB_SUREFIRE_REPORTS_DIR##*/}"
+        rm -rf "$YB_SUREFIRE_REPORTS_DIR"
+        popd
       else
-        pass_or_fail="FAILED"
-        comment+=" [test log '$test_log_path' not found]"
+        # Compress C++ test log.
+        if [[ -f $test_log_path ]]; then
+          gzip "$test_log_path"
+        else
+          pass_or_fail="FAILED"
+          comment+=" [test log '$test_log_path' not found]"
+        fi
+        test_log_path+=".gz"
       fi
-      test_log_path+=".gz"
     fi
     comment+="; test log path: $test_log_path"
   else
     rm -f "$raw_test_log_path"
+    if "$is_java_test"; then
+      rm -rf "$YB_SUREFIRE_REPORTS_DIR"
+    fi
   fi
 
   echo "$pass_or_fail: iteration $iteration, $elapsed_time_sec sec$comment"
@@ -287,6 +341,8 @@ $RANDOM.$RANDOM.$RANDOM.$$
     touch "$failure_flag_file_path"
   fi
 else
+  # $iteration is 0
+  # This is the top-level invocation spawning parallel execution of many iterations.
   if [[ -n $yb_compiler_type_from_env ]]; then
     log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."
   fi
@@ -296,7 +352,6 @@ else
   elif "$verbose"; then
     log "YB_EXTRA_GTEST_FLAGS is not set"
   fi
-  # Parallel execution of many iterations.
   log "Saving repeated test execution logs to: $log_dir"
   seq 1 $num_iter | \
     xargs -P $parallelism -n 1 "$0" "${original_args[@]}" --log_dir "$log_dir" --iteration
