@@ -25,6 +25,10 @@
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally");
+DEFINE_int32(force_lookup_cache_refresh_secs, 0, "If greater than 0, the lookup cache will be "
+             "refreshed if a tablet server is selected in a different zone than the client's "
+             "placement zone and it hasn't been updated for at least the specified number of "
+             "seconds");
 
 namespace yb {
 namespace client {
@@ -128,7 +132,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 
   if (!tablet_) {
     client_->LookupTabletById(tablet_id_, retrier_->deadline(), &tablet_,
-                              Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)));
+                              Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)),
+                              true /* use fast path first */);
     return;
   }
 
@@ -156,8 +161,18 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     client_->LookupTabletById(tablet_id_,
                               retrier_->deadline(),
                               nullptr /* remote_tablet */,
-                              Bind(&TabletInvoker::LookupTabletCb, Unretained(this)));
+                              Bind(&TabletInvoker::LookupTabletCb, Unretained(this)),
+                              true /* use fast path first */);
     return;
+  } else if (FLAGS_force_lookup_cache_refresh_secs > 0 &&
+             last_tablet_refresh_time_ != MonoTime::kUninitialized &&
+             MonoTime::Now().GetDeltaSince(last_tablet_refresh_time_).ToSeconds() >
+                 FLAGS_force_lookup_cache_refresh_secs) {
+    client_->LookupTabletById(tablet_id_,
+                              retrier_->deadline(),
+                              nullptr /* remote_tablet */,
+                              Bind(&TabletInvoker::LookupTabletCb, Unretained(this)),
+                              false /* do not use fast path. Reload the cache from the master */ );
   }
 
   // Make sure we have a working proxy before sending out the RPC.
@@ -297,6 +312,7 @@ void TabletInvoker::InitialLookupTabletDone(const Status& status) {
   VLOG(1) << "InitialLookupTabletDone(" << status << ")";
 
   if (status.ok()) {
+    last_tablet_refresh_time_ = MonoTime::Now();
     Execute(std::string());
   } else {
     command_->Finished(status);
@@ -329,6 +345,7 @@ void TabletInvoker::LookupTabletCb(const Status& status) {
   // but unnecessary the first time through. Seeing as leader failures are
   // rare, perhaps this doesn't matter.
   followers_.clear();
+  last_tablet_refresh_time_ = MonoTime::Now();
   auto retry_status = retrier_->DelayedRetry(command_, status);
   if (!retry_status.ok()) {
     command_->Finished(status);
