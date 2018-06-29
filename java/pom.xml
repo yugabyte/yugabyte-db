@@ -87,7 +87,7 @@
     <commons-text.version>1.3</commons-text.version>
     <guava.version>16.0.1</guava.version>
     <hadoop.version>2.7.3</hadoop.version>
-    <jedis.version>2.9.0-yb-11</jedis.version>
+    <jedis.version>2.9.0-yb-12</jedis.version>
     <jsr305.version>3.0.1</jsr305.version>
     <junit.version>4.12</junit.version>
     <log4j.version>1.2.17</log4j.version>

@@ -117,11 +117,6 @@ public class TestYBJedis extends BaseJedisTest {
     Thread.sleep(2000);
     assertEquals(null, jedis_client.get("k_px"));
 
-    // For now skip the following tests for JedisCluster. The Jedis implementation is broken.
-    if (jedisClientType == JEDISCLUSTER) {
-      return;
-    }
-
     // Test with lowercase "nx" option.
     assertEquals("OK", jedis_client.set("k_nx", "v", "nx"));
     assertEquals("v", jedis_client.get("k_nx"));
