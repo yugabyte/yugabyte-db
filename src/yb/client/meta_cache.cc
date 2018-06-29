@@ -49,6 +49,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
 
@@ -59,6 +60,10 @@ using strings::Substitute;
 
 DEFINE_int32(max_concurrent_master_lookups, 500,
              "Maximum number of concurrent tablet location lookups from YB client to master");
+
+DEFINE_test_flag(bool, verify_all_replicas_alive, false,
+                 "If set, when a RemoteTablet object is destroyed, we will verify that all its "
+                 "replicas are not marked as failed");
 
 METRIC_DEFINE_histogram(
   server, dns_resolve_latency_during_init_proxy,
@@ -184,6 +189,19 @@ void RemoteTabletServer::GetHostPorts(vector<HostPort>* host_ports) const {
 
 ////////////////////////////////////////////////////////////
 
+RemoteTablet::~RemoteTablet() {
+  if (PREDICT_FALSE(FLAGS_verify_all_replicas_alive)) {
+    // Let's verify that none of the replicas are marked as failed. The test should always wait
+    // enough time so that the lookup cache can be refreshed after force_lookup_cache_refresh_secs.
+    for (const auto& replica : replicas_) {
+      if (replica.failed) {
+        LOG(FATAL) << "Remote tablet server " << replica.ts->ToString()
+                   << " with role " << consensus::RaftPeerPB::Role_Name(replica.role)
+                   << " is marked as failed";
+      }
+    }
+  }
+}
 
 void RemoteTablet::Refresh(const TabletServerMap& tservers,
                            const google::protobuf::RepeatedPtrField
@@ -957,16 +975,19 @@ RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const MonoTime& deadline,
                                  RemoteTabletPtr* remote_tablet,
-                                 const StatusCallback& callback) {
-  // Fast path: lookup in the cache.
-  scoped_refptr<RemoteTablet> result = LookupTabletByIdFastPath(tablet_id);
-  if (result && result->HasLeader()) {
-    VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
-    if (remote_tablet) {
-      *remote_tablet = result;
+                                 const StatusCallback& callback,
+                                 bool use_fast_path_first) {
+  if (use_fast_path_first) {
+    // Fast path: lookup in the cache.
+    scoped_refptr<RemoteTablet> result = LookupTabletByIdFastPath(tablet_id);
+    if (result && result->HasLeader()) {
+      VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
+      if (remote_tablet) {
+        *remote_tablet = result;
+      }
+      callback.Run(Status::OK());
+      return;
     }
-    callback.Run(Status::OK());
-    return;
   }
 
   rpc::StartRpc<LookupByIdRpc>(

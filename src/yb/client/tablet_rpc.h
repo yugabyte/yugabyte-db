@@ -134,6 +134,8 @@ class TabletInvoker {
   // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are
   // alive while YBClient is alive. Because we don't delete them, but only add and update.
   RemoteTabletServer* current_ts_ = nullptr;
+
+  MonoTime last_tablet_refresh_time_ = MonoTime::kUninitialized;
 };
 
 CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);

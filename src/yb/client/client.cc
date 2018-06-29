@@ -741,8 +741,10 @@ void YBClient::LookupTabletByKey(const YBTable* table,
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const MonoTime& deadline,
                                 internal::RemoteTabletPtr* remote_tablet,
-                                const StatusCallback& callback) {
-  data_->meta_cache_->LookupTabletById(tablet_id, deadline, remote_tablet, callback);
+                                const StatusCallback& callback,
+                                bool use_fast_path_first) {
+  data_->meta_cache_->LookupTabletById(tablet_id, deadline, remote_tablet, callback,
+                                       use_fast_path_first);
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {

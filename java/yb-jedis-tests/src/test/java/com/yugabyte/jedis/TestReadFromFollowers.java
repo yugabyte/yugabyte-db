@@ -51,6 +51,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
 
   protected static final int WAIT_FOR_FOLLOWER_TO_CATCH_UP_TIMEOUT_MS = 60000; // 60 seconds.
   protected static final int NUMBER_INSERTS_AND_READS = 1000;
+  protected static final int DEFAULT_NUM_READS = 500;
 
   protected final String tserverRedisFollowerFlag = "--redis_allow_reads_from_followers=true";
   protected final String tserverMaxStaleness = "--max_stale_read_bound_time_ms=10000";
@@ -108,11 +109,11 @@ public class TestReadFromFollowers extends BaseJedisTest {
     }
   }
 
-  public void testReadsSucceed() throws Exception {
+  public void testReadsSucceed(int nReads) throws Exception {
     RandomStringGenerator generator = new RandomStringGenerator.Builder()
         .withinRange('a', 'z').build();
 
-    for (int i = 0; i < 500; i++) {
+    for (int i = 0; i < nReads; i++) {
       String s = generator.generate(20);
       LOG.info("Iteration {}. Setting and getting {}", i, s);
       assertEquals("OK", jedis_client.set(s, "v"));
@@ -143,7 +144,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // Setup the Jedis client.
     setUpJedis();
 
-    testReadsSucceed();
+    testReadsSucceed(DEFAULT_NUM_READS);
   }
 
   @Test
@@ -223,7 +224,6 @@ public class TestReadFromFollowers extends BaseJedisTest {
     placementBlocksLive.add(placementBlock1);
     placementBlocksLive.add(placementBlock2);
 
-
     Master.PlacementInfoPB livePlacementInfo =
         Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
             setPlacementUuid(ByteString.copyFromUtf8(PLACEMENT_UUID)).build();
@@ -240,7 +240,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
     // Setup the Jedis client.
     setUpJedis();
 
-    testReadsSucceed();
+    testReadsSucceed(DEFAULT_NUM_READS);
   }
 
   private short DecodeHashValue(byte[] partitionKey) {
@@ -391,6 +391,52 @@ public class TestReadFromFollowers extends BaseJedisTest {
           fail(String.format("Invalid value %s returned for key %s", value, keyString));
         }
        ++count;
+      }
+    }
+  }
+
+  @Test
+  public void testLookupCacheGetsRefreshed() throws Exception {
+    assertNull(miniCluster);
+
+    // We don't want the tablets to move while we are testing.
+    List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
+
+    String simulateTimeOutFailures = "--simulate_time_out_failures=true";
+    String verifyAllReplicasAlive = "--verify_all_replicas_alive=true";
+    String forceLookupCacheRefreshSecs = "--force_lookup_cache_refresh_secs=10";
+
+    List<List<String>> tserverArgs = new ArrayList<List<String>>();
+
+    // Only the first tserver needs to periodically update its cache.
+    // If a requests times out (because of flag --simulate_time_out_failures), then
+    // TS0 will make sure that the cache is updated either because of the periodic refresh of the
+    // lookup cache (the new feature we are testing here), or because the selected TS leader relica
+    // was marked as failed after the timeout (we already have code that handles this case, the new
+    // code handles the case when a follower replica gets marked as failed).
+    tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, forceLookupCacheRefreshSecs,
+        verifyAllReplicasAlive, simulateTimeOutFailures));
+    tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, verifyAllReplicasAlive,
+        simulateTimeOutFailures));
+    tserverArgs.add(Arrays.asList(tserverRedisFollowerFlag, verifyAllReplicasAlive,
+        simulateTimeOutFailures));
+
+    createMiniCluster(3, masterArgs, tserverArgs);
+
+    // Setup the Jedis client.
+    setUpJedis();
+
+    RandomStringGenerator generator = new RandomStringGenerator.Builder()
+        .withinRange('a', 'z').build();
+
+    for (int i = 0; i < 200; i++) {
+      String s = generator.generate(20);
+      LOG.info("Inserting key {}", s);
+      assertEquals("OK", jedis_client.set(s, "v"));
+      LOG.info("Reading key {}", s);
+      String value = jedis_client.get(s);
+      if (value != null && !value.equals("v")) {
+        fail(String.format("Invalid value %s returned for key %s", value, s));
       }
     }
   }

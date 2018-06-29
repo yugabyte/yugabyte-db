@@ -478,7 +478,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   void LookupTabletById(const std::string& tablet_id,
                         const MonoTime& deadline,
                         internal::RemoteTabletPtr* remote_tablet,
-                        const StatusCallback& callback);
+                        const StatusCallback& callback,
+                        bool use_fast_path_first);
 
   const std::shared_ptr<rpc::Messenger>& messenger() const;
 
