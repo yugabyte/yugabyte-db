@@ -331,6 +331,13 @@ public class TestSelect extends BaseCQLTest {
         "Row[2, 2, 2]" +
         "Row[8, 8, 8]", pageSize);
 
+    assertQueryWithPageSize("SELECT * FROM test_offset OFFSET 3 LIMIT 5",
+        "Row[7, 7, 7]" +
+        "Row[4, 4, 4]" +
+        "Row[0, 0, 0]" +
+        "Row[2, 2, 2]" +
+        "Row[8, 8, 8]", pageSize);
+
     assertQueryWithPageSize("SELECT * FROM test_offset LIMIT 10 OFFSET 3",
         "Row[7, 7, 7]" +
         "Row[4, 4, 4]" +
@@ -386,6 +393,13 @@ public class TestSelect extends BaseCQLTest {
         "Row[0, 0, 0]" +
         "Row[2, 2, 2]" +
         "Row[3, 3, 3]", pageSize);
+
+    assertQueryWithPageSize("SELECT * FROM test_offset OFFSET 4",
+        "Row[4, 4, 4]" +
+        "Row[0, 0, 0]" +
+        "Row[2, 2, 2]" +
+        "Row[8, 8, 8]" +
+        "Row[3, 3, 3]", pageSize);
   }
 
   @Test
@@ -400,6 +414,9 @@ public class TestSelect extends BaseCQLTest {
     session.execute("INSERT INTO test_offset (h1, r1, c1) VALUES (1, 5, 5)");
 
     assertQueryWithPageSize("SELECT * FROM test_offset LIMIT 2 OFFSET 3",
+        "Row[1, 4, 4]" +
+        "Row[1, 5, 5]", Integer.MAX_VALUE);
+    assertQueryWithPageSize("SELECT * FROM test_offset OFFSET 3 LIMIT 2",
         "Row[1, 4, 4]" +
         "Row[1, 5, 5]", Integer.MAX_VALUE);
     assertQueryWithPageSize("SELECT * FROM test_offset LIMIT 2 OFFSET 4", "Row[1, 5, 5]",
@@ -462,6 +479,11 @@ public class TestSelect extends BaseCQLTest {
     for (int i = 0; i <= totalShards; i++) {
       testScansWithOffset(i);
     }
+
+    // Test Invalid offsets.
+    runInvalidStmt("SELECT * FROM test_offset OFFSET -1");
+    runInvalidStmt(String.format("SELECT * FROM test_offset OFFSET %d",
+        (long)Integer.MAX_VALUE + 1));
   }
 
   @Test

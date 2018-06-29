@@ -495,9 +495,7 @@ TEST_F(QLTestAnalyzer, TestOffsetLimitClause) {
   ANALYZE_VALID_STMT("SELECT * FROM t LIMIT 10;", &parse_tree);
   ANALYZE_VALID_STMT("SELECT * FROM t OFFSET 0;", &parse_tree);
   ANALYZE_VALID_STMT("SELECT * FROM t LIMIT 0;", &parse_tree);
-
-  // Invalid LIMIT/OFFSET clauses.
-  ANALYZE_INVALID_STMT("SELECT * FROM t OFFSET 10 LIMIT 10;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t OFFSET 10 LIMIT 10;", &parse_tree);
 }
 
 }  // namespace ql

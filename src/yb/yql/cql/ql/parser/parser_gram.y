@@ -140,6 +140,7 @@ typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
 typedef PTBaseType::SharedPtr          PType;
 typedef PTCharBaseType::SharedPtr      PCharBaseType;
+typedef MCSharedPtr<MCVector<PExpr>>   PExprVector;
 
 // Inactive parsing node types.
 typedef UndefTreeNode::SharedPtr       UndefType;
@@ -188,7 +189,6 @@ using namespace yb::ql;
 
 #define PARSER_CQL_INVALID(loc) parser_->Error(loc, ErrorCode::CQL_STATEMENT_INVALID)
 #define PARSER_CQL_INVALID_MSG(loc, msg) parser_->Error(loc, msg, ErrorCode::CQL_STATEMENT_INVALID)
-
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -265,7 +265,7 @@ using namespace yb::ql;
                           if_clause
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
-                          opt_select_limit select_limit limit_clause select_limit_value
+                          limit_clause select_limit_value
                           offset_clause select_offset_value
 
 %type <PListNode>         // Clauses as list of tree nodes.
@@ -302,6 +302,9 @@ using namespace yb::ql;
                           target_list opt_target_list
                           ctext_row ctext_expr_list func_arg_list col_arg_list json_ref
                           json_ref_single_arrow
+
+%type <PExprVector>       // A vector of expressions.
+                          opt_select_limit_offset select_limit_offset
 
 %type <PRoleOptionListNode>   RoleOptionList optRoleOptionList
 
@@ -2022,19 +2025,13 @@ select_no_parens:
     $1->SetOrderByClause($2);
     $$ = $1;
   }
-  | simple_select opt_sort_clause select_limit opt_for_locking_clause opt_allow_filtering {
+  | simple_select opt_sort_clause select_limit_offset opt_for_locking_clause opt_allow_filtering {
     $1->SetOrderByClause($2);
-    $1->SetLimitClause($3);
+    $1->SetLimitClause($3->at(0));
+    $1->SetOffsetClause($3->at(1));
     $$ = $1;
   }
-  | simple_select opt_sort_clause opt_select_limit offset_clause opt_for_locking_clause
-    opt_allow_filtering {
-    $1->SetOrderByClause($2);
-    $1->SetLimitClause($3);
-    $1->SetOffsetClause($4);
-    $$ = $1;
-  }
-  | simple_select opt_sort_clause for_locking_clause opt_select_limit opt_allow_filtering {
+  | simple_select opt_sort_clause for_locking_clause opt_select_limit_offset opt_allow_filtering {
     PARSER_UNSUPPORTED(@3);
   }
   | with_clause simple_select {
@@ -2043,11 +2040,11 @@ select_no_parens:
   | with_clause simple_select sort_clause {
     PARSER_UNSUPPORTED(@1);
   }
-  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit
+  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit_offset
   opt_allow_filtering {
     PARSER_UNSUPPORTED(@1);
   }
-  | with_clause simple_select opt_sort_clause select_limit opt_for_locking_clause
+  | with_clause simple_select opt_sort_clause select_limit_offset opt_for_locking_clause
   opt_allow_filtering {
     PARSER_UNSUPPORTED(@1);
   }
@@ -2273,18 +2270,35 @@ opt_allow_filtering:
   }
 ;
 
-// SELECT LIMIT.
-select_limit:
+// SELECT LIMIT AND/OR OFFSET.
+select_limit_offset:
   limit_clause {
-    $$ = $1;
+    $$ = MCMakeShared<MCVector<PExpr>>(PTREE_MEM, 2);
+    $$->at(0) = $1;
+    $$->at(1) = nullptr;
+  }
+  | offset_clause {
+    $$ = MCMakeShared<MCVector<PExpr>>(PTREE_MEM, 2);
+    $$->at(0) = nullptr;
+    $$->at(1) = $1;
+  }
+  | limit_clause offset_clause {
+    $$ = MCMakeShared<MCVector<PExpr>>(PTREE_MEM, 2);
+    $$->at(0) = $1;
+    $$->at(1) = $2;
+  }
+  | offset_clause limit_clause {
+    $$ = MCMakeShared<MCVector<PExpr>>(PTREE_MEM, 2);
+    $$->at(0) = $2;
+    $$->at(1) = $1;
   }
 ;
 
-opt_select_limit:
+opt_select_limit_offset:
   /* EMPTY */ {
     $$ = nullptr;
   }
-  | select_limit {
+  | select_limit_offset {
     $$ = $1;
   }
 ;
