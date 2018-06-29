@@ -54,6 +54,9 @@
     <!-- Platform encoding override -->
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- Overriding this property allows us to put test results in a custom directory -->
+    <yb.surefire.reports.directory>${
+      project.build.directory}/surefire-reports</yb.surefire.reports.directory>
 
     <!-- Maven plugins -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
@@ -174,6 +177,7 @@
               -->
               <binDir>${project.basedir}/../../build/latest/bin</binDir>
             </systemPropertyVariables>
+            <reportsDirectory>${yb.surefire.reports.directory}</reportsDirectory>
           </configuration>
         </plugin>
         <plugin>

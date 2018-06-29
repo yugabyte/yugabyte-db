@@ -358,6 +358,30 @@ run_cxx_build() {
   fi
 }
 
+run_repeat_unit_test() {
+  export YB_COMPILER_TYPE
+  set +u
+  local repeat_unit_test_args=(
+    "${repeat_unit_test_inherited_args[@]}"
+  )
+  set -u
+  repeat_unit_test_args+=(
+    "$@"
+    --build-type "$build_type"
+    --num-iter "$num_test_repetitions"
+  )
+  if [[ -n ${test_parallelism:-} ]]; then
+    repeat_unit_test_args+=( --parallelism "$test_parallelism" )
+  fi
+  if "$verbose"; then
+    repeat_unit_test_args+=( --verbose )
+  fi
+  (
+    set -x
+    "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "${repeat_unit_test_args[@]}"
+  )
+}
+
 run_ctest() {
   # Not setting YB_CTEST_VERBOSE here because we don't want the output of a potentially large number
   # of tests to go to stdout.
@@ -438,26 +462,11 @@ run_cxx_test() {
       ctest --verbose -R ^"$cxx_test_name"$ 2>&1 | sed 's/^[0-9][0-9]*: //g'
     )
   else
-    (
-      export YB_COMPILER_TYPE
-      set +u
-      repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
-      set -u
-      if [[ -n ${test_parallelism:-} ]]; then
-        repeat_unit_test_extra_args+=( --parallelism "$test_parallelism" )
-      fi
-      if "$verbose"; then
-        repeat_unit_test_extra_args+=( --verbose )
-      fi
-      set -x +u
-      "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$test_binary_name" \
-         --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
-      set -u
-    )
+    run_repeat_unit_test "$build_type" "$test_binary_name"
   fi
 }
 
-run_java_test() {
+resolve_and_run_java_test() {
   local module_dir
   local language
   local java_test_method_name=${java_test_name##*#}
@@ -480,19 +489,32 @@ run_java_test() {
     # Could not find the test source assuming we are given the complete package. Let's assume we
     # only have the class name.
     module_name=""
+    local rel_source_path=""
     for module_dir in "$YB_SRC_ROOT"/java/*; do
       if [[ -d $module_dir ]]; then
         local module_test_src_root="$module_dir/src/test"
-        if [[ -d $module_test_src_root && -n $(
-                find "$module_test_src_root" \( -name "$java_test_class.java" -or \
-                                                -name "$java_test_class.scala" \) \
-              ) ]]; then
-          local current_module_name=${module_dir##*/}
-          if [[ -n $module_name ]]; then
-            fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                  "'$module_name' and '$current_moudle_name' are valid candidates."
+        if [[ -d $module_test_src_root ]]; then
+          local candidate_files=(
+            $(
+              cd "$module_test_src_root" &&
+              find . \( -name "$java_test_class.java" -or -name "$java_test_class.scala" \)
+            )
+          )
+          if [[ ${#candidate_files[@]} -gt 0 ]]; then
+            local current_module_name=${module_dir##*/}
+            if [[ -n $module_name ]]; then
+              fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                    "'$module_name' and '$current_moudle_name' are valid candidates."
+            fi
+            module_name=$current_module_name
+
+            if [[ ${#candidate_files[@]} -gt 1 ]]; then
+              fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
+                    "${candidate_files[*]}"
+            fi
+
+            rel_source_path=${candidate_files[0]}
           fi
-          module_name=$current_module_name
         fi
       fi
     done
@@ -500,13 +522,30 @@ run_java_test() {
     if [[ -z $module_name ]]; then
       fatal "Could not find module name for Java/Scala test '$java_test_name'"
     fi
+
+    local java_class_with_package=${rel_source_path%.java}
+    java_class_with_package=${java_class_with_package%.scala}
+    java_class_with_package=${java_class_with_package#./java/}
+    java_class_with_package=${java_class_with_package#./scala/}
+    java_class_with_package=${java_class_with_package//\//.}
+    if [[ $java_class_with_package != *.$java_test_name ]]; then
+      fatal "Internal error: could not find Java package name for test class $java_test_name. " \
+            "Found source file: $rel_source_path, and extracted Java class with package from it: " \
+            "$java_class_with_package"
+    fi
+    java_test_name=$java_class_with_package
   fi
 
-  $YB_SRC_ROOT/build-support/run-test.sh "$module_name" "$java_test_name"
+  if [[ $num_test_repetitions -eq 1 ]]; then
+    "$YB_BUILD_SUPPORT_DIR"/run-test.sh "$module_name" "$java_test_name"
+  else
+    run_repeat_unit_test "$module_name" "$java_test_name" --java
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
+# -------------------------------------------------------------------------------------------------
 
 build_type=""
 verbose=false
@@ -1100,7 +1139,7 @@ if ! "$ran_tests_remotely"; then
   fi
 
   if [[ -n $java_test_name ]]; then
-    run_java_test
+    resolve_and_run_java_test
   fi
 
   if "$should_run_ctest"; then

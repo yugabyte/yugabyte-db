@@ -33,7 +33,6 @@ package org.yb.client;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
-import com.sun.security.auth.module.UnixSystem;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,7 +68,6 @@ public class TestUtils {
   public static final boolean IS_LINUX =
       System.getProperty("os.name").toLowerCase().equals("linux");
 
-  private static final long unixUserId = new UnixSystem().getUid();
   private static final long startTimeMillis = System.currentTimeMillis();
   private static Random randomGenerator;
 
@@ -204,8 +202,14 @@ public class TestUtils {
     }
 
     if (!new File(binDir).isDirectory()) {
-      throw new RuntimeException(
-          "Directory that is supposed to contain YB C++ binaries not found: " + binDir);
+      String externalBinDir = findYbRootDir() + "__build/latest/bin";
+      if (new File(externalBinDir).isDirectory()) {
+        binDir = externalBinDir;
+      } else {
+        throw new RuntimeException(
+            "Directory that is supposed to contain YB C++ binaries not found in either of the  " +
+                "following locations: " + binDir + ", " + externalBinDir);
+      }
     }
 
     cppBinariesDir = binDir;
@@ -255,8 +259,8 @@ public class TestUtils {
   public static String getBaseTmpDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
-      testTmpDir = "/tmp/ybtest-" + unixUserId + "-" + startTimeMillis + "-" +
-              randomGenerator.nextInt();
+      testTmpDir = "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
+          randomGenerator.nextInt();
     }
     File f = new File(testTmpDir);
     f.mkdirs();
@@ -429,10 +433,6 @@ public class TestUtils {
   }
 
   public static String HORIZONTAL_LINE = getHorizontalLine();
-
-  public static void printHorizontalLine(PrintStream out) {
-    out.println(HORIZONTAL_LINE);
-  }
 
   public static void printHeading(PrintStream out, String msg) {
     out.println("\n" + HORIZONTAL_LINE + "\n" + msg + "\n" + HORIZONTAL_LINE + "\n");
