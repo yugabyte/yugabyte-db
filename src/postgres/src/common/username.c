@@ -40,6 +40,14 @@ get_user_name(char **errstr)
 	pw = getpwuid(user_id);
 	if (!pw)
 	{
+		// This is a YugaByte workaround for failures to look up a user by uid
+		// an LDAP environment. This is probably caused by our Linuxbrew
+		// installation issues and needs to be fixed properly eventually.
+		const char* yb_fallback_user_name =
+			getenv("YB_PG_FALLBACK_SYSTEM_USER_NAME");
+		if (yb_fallback_user_name) {
+			return yb_fallback_user_name;
+		}
 		*errstr = psprintf(_("could not look up effective user ID %ld: %s"),
 						   (long) user_id,
 						   errno ? strerror(errno) : _("user does not exist"));
