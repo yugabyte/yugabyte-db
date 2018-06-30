@@ -23,3 +23,6 @@ add_subdirectory(pgsql)
 
 # API for Postgres to call.
 add_subdirectory(pggate)
+
+# Support for running a PostgreSQL server as a subprocess of the tserver process.
+add_subdirectory(pgwrapper)

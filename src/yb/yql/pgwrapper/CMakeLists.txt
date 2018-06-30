@@ -11,7 +11,15 @@
 # under the License.
 #
 
-# This directory includes C++ code for our PostgreSQL integration approach based on running
-# postgres as an external process.
+set(PGWRAPPER_SRCS
+    pg_wrapper.cc)
 
-add_yb_test(external_postgres-test)
+set(PGWRAPPER_LIBS
+    yb_util)
+
+ADD_YB_LIBRARY(yb_pgwrapper
+               SRCS ${PGWRAPPER_SRCS}
+               DEPS ${PGWRAPPER_LIBS})
+
+set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_wrapper-test)

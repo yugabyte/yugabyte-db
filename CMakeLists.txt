@@ -1651,8 +1651,6 @@ add_subdirectory(src/yb/yql)
 
 # PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
 add_subdirectory(src/postgres)
-# PostgreSQL-related YB C++ code.
-add_subdirectory(src/yb/postgres)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")
   include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
