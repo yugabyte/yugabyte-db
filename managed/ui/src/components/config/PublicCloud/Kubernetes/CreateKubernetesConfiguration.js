@@ -32,7 +32,7 @@ class CreateKubernetesConfiguration extends Component {
       const providerConfig = {
         "KUBECONFIG_CONTENT": reader.result,
         "KUBECONFIG_NAME": kubeConfigFile.name,
-        "KUBECONFIG_PROVIDER": vals.providerType,
+        "KUBECONFIG_PROVIDER": self.props.type,
         "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount
       };
       const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
@@ -56,7 +56,7 @@ class CreateKubernetesConfiguration extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting } = this.props;
+    const { handleSubmit, submitting, type } = this.props;
     let kubeConfigFileName = "";
     if (isNonEmptyObject(this.state.kubeConfig)) {
       kubeConfigFileName = this.state.kubeConfig.name;
@@ -65,18 +65,12 @@ class CreateKubernetesConfiguration extends Component {
       return (<option value={region.code} key={region.code}>{region.name}</option>);
     });
     regionOptions.unshift(<option value="" key={0}>Select</option>);
-    const providerTypeOptions = KUBERNETES_PROVIDERS.map((provider) => {
-      if (provider.enabled) {
-        return (<option value={provider.code} key={provider.code}>{provider.name}</option>);
-      }
-      return null;
-    }).filter(Boolean);
-    providerTypeOptions.unshift(<option value="" key={0}>Select</option>);
+    const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === type);
 
     return (
       <YBPanelItem
         header={
-          <h2 className="table-container-title">Create Kubernetes Config</h2>
+          <h2 className="table-container-title">Create { providerTypeMetadata.name }</h2>
         }
         body={
           <div className="provider-config-container">
@@ -93,15 +87,6 @@ class CreateKubernetesConfiguration extends Component {
                         <Field name="accountName" placeHolder="Kube Config name"
                                component={YBTextInputWithLabel} insetError={true}
                                className={"kube-provider-input-field"}/>
-                      </Col>
-                    </Row>
-                    <Row className="config-provider-row">
-                      <Col lg={3}>
-                        <div className="form-item-custom-label">Provider</div>
-                      </Col>
-                      <Col lg={7}>
-                        <Field name={"providerType"} component={YBSelect}
-                               insetError={true} options={providerTypeOptions} />
                       </Col>
                     </Row>
                     <Row className="config-provider-row">
