@@ -16,7 +16,8 @@
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
-        "(^README[.]md$)"
+        "(^README[.]md$)",
+        "(^java/pom[.]xml$)"
       ]
     },
     "pycodestyle": {

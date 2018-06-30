@@ -55,8 +55,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <!-- Overriding this property allows us to put test results in a custom directory -->
-    <yb.surefire.reports.directory>${
-      project.build.directory}/surefire-reports</yb.surefire.reports.directory>
+    <yb.surefire.reports.directory>${project.build.directory}/surefire-reports</yb.surefire.reports.directory>
 
     <!-- Maven plugins -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
@@ -307,21 +306,12 @@
         <configuration>
           <maxmemory>2048m</maxmemory>
           <notimestamp>true</notimestamp>
-          <doclet>
-            org.yb.annotations.tools.IncludePublicAnnotationsStandardDoclet
-          </doclet>
-          <docletArtifact>
-            <groupId>org.yb</groupId>
-            <artifactId>interface-annotations</artifactId>
-            <version>${project.version}</version>
-          </docletArtifact>
           <name>User API</name>
           <description>The YB Application Programmer's API</description>
           <excludePackageNames>
             com.google:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
           </excludePackageNames>
           <includeDependencySources>false</includeDependencySources>
-
           <dependencySourceIncludes>
             <dependencySourceInclude>
               org.yb:interface-annotations
