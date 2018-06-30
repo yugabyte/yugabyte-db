@@ -24,7 +24,7 @@ class KubernetesProviderConfiguration extends Component {
   }
 
   render() {
-    const { providers, regions } = this.props;
+    const { providers, regions, type } = this.props;
 
     if (getPromiseState(providers).isLoading() ||
         getPromiseState(providers).isInit()) {
@@ -35,6 +35,9 @@ class KubernetesProviderConfiguration extends Component {
     const configuredProviderData = kubernetesRegions.map((region) => {
       const providerData = providers.data.find((p) => p.uuid === region.provider.uuid);
       const providerConfig = providerData.config;
+      if (providerConfig['KUBECONFIG_PROVIDER'] !== type) {
+        return null;
+      }
       const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === providerConfig['KUBECONFIG_PROVIDER']);
       return {
         "uuid": region.provider.uuid,
@@ -44,19 +47,21 @@ class KubernetesProviderConfiguration extends Component {
         "configPath": providerConfig['KUBECONFIG'],
         "type": providerTypeMetadata && providerTypeMetadata.name
       };
-    });
+    }).filter(Boolean);
 
     if (this.state.listView && isNonEmptyArray(configuredProviderData)) {
       return (
         <ListKubernetesConfigurations
           providers={configuredProviderData}
-          onCreate={this.toggleListView} />
+          onCreate={this.toggleListView}
+          type={type} />
       );
     } else {
       return (
         <CreateKubernetesConfigurationContainer
           onCancel={this.toggleListView}
-          onSubmit={this.toggleListView} />
+          onSubmit={this.toggleListView}
+          type={type} />
       );
     }
   }

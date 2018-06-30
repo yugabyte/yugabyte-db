@@ -7,19 +7,17 @@ import { FlexContainer, FlexShrink, FlexGrow } from '../../../common/flexbox/YBF
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../../panels';
 import { YBCopyButton } from '../../../common/descriptors';
+import { KUBERNETES_PROVIDERS } from 'config';
 
 export default class ListKubernetesConfigurations extends Component {
-  static defaultProps = {
-    title : "Kubernetes Config"
-  }
-
   static propTypes  = {
     providers: PropTypes.array.isRequired,
-    onCreate: PropTypes.func.isRequired
+    onCreate: PropTypes.func.isRequired,
+    type: PropTypes.string.isRequired
   }
 
   render() {
-    const { providers, title } = this.props;
+    const { providers, type } = this.props;
 
     const formatConfigPath = function(item, row) {
       return (
@@ -33,12 +31,13 @@ export default class ListKubernetesConfigurations extends Component {
         </FlexContainer>
       );
     };
+    const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === type);
 
     return (
       <YBPanelItem
         header={
           <Fragment>
-            <h2 className="table-container-title pull-left">{title}</h2>
+            <h2 className="table-container-title pull-left">{providerTypeMetadata.name} configs</h2>
             <FlexContainer className="pull-right">
               <FlexShrink>
                 <Button bsClass="btn btn-orange" onClick={this.props.onCreate}>

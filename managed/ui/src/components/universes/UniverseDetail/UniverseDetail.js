@@ -214,28 +214,27 @@ class HealthCheckList extends Component {
     if (getPromiseState(healthCheck).isLoading()) {
       healthData = <YBLoading />;
     }
-    console.log(healthCheck);
+
     if (getPromiseState(healthCheck).isSuccess() &&
         isNonEmptyArray(healthCheck.data)) {
       const data = JSON.parse(healthCheck.data[healthCheck.data.length - 1]);
       const ts = data["timestamp"];
       const entries = data["data"];
-      console.log(ts);
-      console.log(entries);
-
       const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
       function detailsFormatter(cell, row) {
         if (row.has_error) {
-          return <span>
+          return (
+            <span>
               <span class="label label-danger">ERROR</span>
               <span>{row.details}</span>
-            </span>;
+            </span>
+          );
         } else {
           return <span>{row.details}</span>;
         }
       };
 
-      healthData =
+      healthData = (
         <YBPanelItem
           header={
             <h2 className="health-check-header content-title">Health Check at timestamp: {ts}</h2>
@@ -260,7 +259,8 @@ class HealthCheckList extends Component {
               </TableHeaderColumn>
             </BootstrapTable>
           }
-        />;
+        />
+      );
     }
     return (
       <div className="universe-detail-content-container">
