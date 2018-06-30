@@ -331,7 +331,7 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // Create test table.
     session.execute("create table test_lb_idx (h1 int, h2 text, c int, primary key ((h1, h2))) " +
                     "with transactions = { 'enabled' : true };");
-    session.execute("create index test_lb_idx_1 on test_lb_idx (h1) covering (c);");
+    session.execute("create index test_lb_idx_1 on test_lb_idx (h1) include (c);");
     session.execute("create index test_lb_idx_2 on test_lb_idx (c);");
 
     waitForMetadataRefresh();

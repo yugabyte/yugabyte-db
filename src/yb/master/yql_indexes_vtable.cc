@@ -79,12 +79,12 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
       target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
     }
 
-    string covering;
+    string include;
     for (size_t i = index_info.hash_column_count() + index_info.range_column_count();
          i < index_info.columns().size(); i++) {
-      covering += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      include += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
       if (i != index_info.columns().size() - 1) {
-        covering += ", ";
+        include += ", ";
       }
     }
 
@@ -92,8 +92,8 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     options.set_map_value();
     options.add_map_key()->set_string_value("target");
     options.add_map_value()->set_string_value(target);
-    options.add_map_key()->set_string_value("covering");
-    options.add_map_value()->set_string_value(covering);
+    options.add_map_key()->set_string_value("include");
+    options.add_map_value()->set_string_value(include);
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 
     // Create appropriate table uuids.
