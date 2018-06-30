@@ -33,6 +33,10 @@ YBCStatus ToYBCStatus(const Status& status);
 void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
 void* YBCPAlloc(size_t size);
 
+// YBCStatus definition for Some common Status.
+YBCStatus YBCStatusOK();
+YBCStatus YBCStatusNotSupport(const string& feature_name);
+
 } // namespace yb
 
 #endif // YB_UTIL_YBC_INTERNAL_H

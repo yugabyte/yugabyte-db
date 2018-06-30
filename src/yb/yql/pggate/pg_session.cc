@@ -38,18 +38,6 @@ static MonoDelta kSessionTimeout = 60s;
 PgSession::PgSession(std::shared_ptr<client::YBClient> client, const string& database_name)
     : client_(client), session_(client_->NewSession()) {
   session_->SetTimeout(kSessionTimeout);
-  status_ = session_->SetFlushMode(YBSession::AUTO_FLUSH_SYNC);
-
-  // Check if the given database exist.
-  if (!database_name.empty()) {
-    Result<bool> has_db = ConnectDatabase(database_name);
-    if (has_db.ok() && has_db.get()) {
-      connected_database_ = database_name;
-    } else {
-      status_ = STATUS(InvalidArgument,
-                       strings::Substitute("Database $0 does not exist", database_name));
-    }
-  }
 }
 
 PgSession::~PgSession() {
@@ -62,17 +50,17 @@ void PgSession::Reset() {
   status_ = Status::OK();
 }
 
-YBCPgErrorCode PgSession::GetError(const char **error_text) {
-  if (errmsg_.empty()) {
-    errmsg_ = status_.ToString();
-  }
-  *error_text = errmsg_.c_str();
-  return status_.error_code();
+CHECKED_STATUS PgSession::SetFlushMode(YBSession::FlushMode m) {
+  return session_->SetFlushMode(m);
 }
 
-YBCPgError PgSession::ConnectDatabase(const string& database_name) {
-  Result<bool> db_exists = client_->NamespaceExists(database_name, YQL_DATABASE_PGSQL);
-  return db_exists.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
+  Result<bool> namespace_exists = client_->NamespaceExists(database_name, YQL_DATABASE_PGSQL);
+  if (namespace_exists.ok() && namespace_exists.get()) {
+    connected_database_ = database_name;
+    return Status::OK();
+  }
+  return STATUS_FORMAT(NotFound, "Database '$0' does not exist", database_name);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -112,8 +100,8 @@ shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& t
 
 //--------------------------------------------------------------------------------------------------
 
-#if 0
-YBCPgError PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
+#if (0)
+CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return session_->Apply(std::move(op));
 }
 #endif

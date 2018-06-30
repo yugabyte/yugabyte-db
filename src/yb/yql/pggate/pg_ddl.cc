@@ -43,9 +43,8 @@ PgCreateDatabase::PgCreateDatabase(PgSession::SharedPtr pg_session, const char *
 PgCreateDatabase::~PgCreateDatabase() {
 }
 
-YBCPgError PgCreateDatabase::Exec() {
-  status_ = pg_session_->CreateDatabase(database_name_);
-  return status_.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+CHECKED_STATUS PgCreateDatabase::Exec() {
+  return pg_session_->CreateDatabase(database_name_);
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::SharedPtr pg_session,
@@ -59,9 +58,8 @@ PgDropDatabase::PgDropDatabase(PgSession::SharedPtr pg_session,
 PgDropDatabase::~PgDropDatabase() {
 }
 
-YBCPgError PgDropDatabase::Exec() {
-  status_ = pg_session_->DropDatabase(database_name_, if_exist_);
-  return status_.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+CHECKED_STATUS PgDropDatabase::Exec() {
+  return pg_session_->DropDatabase(database_name_, if_exist_);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -81,10 +79,10 @@ PgCreateSchema::PgCreateSchema(PgSession::SharedPtr pg_session,
 PgCreateSchema::~PgCreateSchema() {
 }
 
-YBCPgError PgCreateSchema::Exec() {
+CHECKED_STATUS PgCreateSchema::Exec() {
   LOG(FATAL) << "Create schema (" << database_name_ << "," << schema_name_ << "," << if_not_exist_
              << ") is underdevelopment";
-  return status_.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+  return STATUS(NotSupported, "SCHEMA is not yet implemented");
 }
 
 PgDropSchema::PgDropSchema(PgSession::SharedPtr pg_session,
@@ -100,10 +98,10 @@ PgDropSchema::PgDropSchema(PgSession::SharedPtr pg_session,
 PgDropSchema::~PgDropSchema() {
 }
 
-YBCPgError PgDropSchema::Exec() {
+CHECKED_STATUS PgDropSchema::Exec() {
   LOG(FATAL) << "Drop schema " << database_name_ << "." << schema_name_ << "," << if_exist_
              << ") is underdevelopment";
-  return status_.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+  return STATUS(NotSupported, "SCHEMA is not yet implemented");
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -123,26 +121,23 @@ PgCreateTable::PgCreateTable(PgSession::SharedPtr pg_session,
 PgCreateTable::~PgCreateTable() {
 }
 
-YBCPgError PgCreateTable::AddColumn(const char *col_name, int col_order, int col_type,
-                                    bool is_hash, bool is_range) {
-  shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(col_type));
+CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
+                                        bool is_hash, bool is_range) {
+  shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
   if (is_hash) {
-    schema_builder_.AddColumn(col_name)->Type(yb_type)->Order(col_order)->HashPrimaryKey();
+    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num)->HashPrimaryKey();
   } else if (is_range) {
-    schema_builder_.AddColumn(col_name)->Type(yb_type)->Order(col_order)->PrimaryKey();
+    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num)->PrimaryKey();
   } else {
-    schema_builder_.AddColumn(col_name)->Type(yb_type)->Order(col_order);
+    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
   }
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgCreateTable::Exec() {
+CHECKED_STATUS PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
-  status_ = schema_builder_.Build(&schema);
-  if (!status_.ok()) {
-    return YBCPgError::YBC_PGERROR_FAILURE;
-  }
+  RETURN_NOT_OK(schema_builder_.Build(&schema));
 
   // Create table.
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
@@ -153,8 +148,7 @@ YBCPgError PgCreateTable::Exec() {
   // TODO(neil) Check for status and if_not_exists flag.
   LOG(DFATAL) << "MUST CHECK FOR if_not_exist_ " << if_not_exist_;
 
-  status_ = table_creator->Create();
-  return status_.ok() ? YBCPgError::YBC_PGERROR_SUCCESS : YBCPgError::YBC_PGERROR_FAILURE;
+  return table_creator->Create();
 }
 
 PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
@@ -170,12 +164,12 @@ PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
 PgDropTable::~PgDropTable() {
 }
 
-YBCPgError PgDropTable::Exec() {
-  status_ = pg_session_->DropTable(table_name_);
-  if (status_.ok() || (status_.IsNotFound() && if_exist_)) {
-    return YBCPgError::YBC_PGERROR_SUCCESS;
+CHECKED_STATUS PgDropTable::Exec() {
+  Status s = pg_session_->DropTable(table_name_);
+  if (s.ok() || (s.IsNotFound() && if_exist_)) {
+    return Status::OK();
   }
-  return YBCPgError::YBC_PGERROR_FAILURE;
+  return s;
 }
 
 }  // namespace pggate
