@@ -3595,7 +3595,25 @@ PostgresMain(int argc, char *argv[],
 	// fails.
 	// TODO: create a YB client based on a "YB mode" switch.
 	if (false) {
-		YBCInitPgGate();
+		YBCInitPgGate(&ybc_pg_session);
+
+		/*
+		 * For each process, we create one YBC session for postgres to use when
+		 * accessing YugaByte storage. YBC session is wrapper for YBSession and also
+		 * contain any YB state variables that are needed for this process.
+		 *
+		 * This might be optimized to reduce the number of sessions, but logically
+		 * having one session per process should work.
+		 */
+		if (ybc_pg_session == NULL) {
+			if (dbname != NULL) {
+				YBCPgCreateSession(NULL, dbname,
+						   &ybc_pg_session);
+			} else if (username != NULL) {
+				YBCPgCreateSession(NULL, username,
+						   &ybc_pg_session);
+			}
+		}
 	}
 	// (end of YugaByte changes)
 	// ------------------------------------------------------------------------

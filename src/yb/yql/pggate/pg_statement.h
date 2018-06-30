@@ -64,12 +64,6 @@ class PgStatement {
     return (stmt != nullptr && stmt->stmt_op_ == op);
   }
 
-  // API for error reporting.
-  YBCPgErrorCode GetError(const char **error_text);
-  bool has_error() {
-    return status_.ok();
-  }
-
  protected:
   // YBSession that this statement belongs to.
   PgSession::SharedPtr pg_session_;

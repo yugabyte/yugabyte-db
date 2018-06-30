@@ -26,8 +26,6 @@
 namespace yb {
 namespace pggate {
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
 class PgEnv {
  public:
   //------------------------------------------------------------------------------------------------

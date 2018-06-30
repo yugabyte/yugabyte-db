@@ -16,74 +16,37 @@
 #ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
-
-extern "C" {
-//--------------------------------------------------------------------------------------------------
-// C++ version of the definition.
-//--------------------------------------------------------------------------------------------------
-
-// State-controlling variables.
-
-// Status / Error.
-typedef enum {
-  YBC_PGERROR_SUCCESS = 0,
-  YBC_PGERROR_NOTFOUND = 100,
-
-  YBC_PGERROR_FAILURE = -1,
-  YBC_PGERROR_INVALID_SESSION = -2,
-  YBC_PGERROR_INVALID_HANDLE = -3,
-} YBCPgError;
-
-typedef int YBCPgErrorCode;
-
-// TODO(neil) Hanlde to Env. Each Postgres process might need just one ENV, maybe more.
-typedef class PgEnv *YBCPgEnv;
-
-// Handle to a session. Postgres should create one YBCPgSession per client connection.
-typedef class PgSession *YBCPgSession;
-
-// Handle to a statement.
-typedef class PgStatement *YBCPgStatement;
-
-// Use YugaByte datatype numeric representation for now.
-// TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
-// class PgType or QLType.
-typedef int YBCPgDataType;
-
-} // extern "C"
-
+#define YB_DEFINE_HANDLE_TYPE(name) typedef class yb::pggate::name *YBC##name
 #else
-//--------------------------------------------------------------------------------------------------
-// C version of the definition.
-//--------------------------------------------------------------------------------------------------
+#define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name
+#endif  // __cplusplus
 
-// Status / Error.
-typedef enum {
-  YBC_PGERROR_SUCCESS = 0,
-  YBC_PGERROR_NOTFOUND = 100,
-
-  YBC_PGERROR_FAILURE = -1,
-  YBC_PGERROR_INVALID_SESSION = -2,
-  YBC_PGERROR_INVALID_HANDLE = -3,
-} YBCPgError;
-
-typedef int YBCPgErrorCode;
+#ifdef __cplusplus
+#include "yb/yql/pggate/pggate.h"
+extern "C" {
+#endif  // __cplusplus
 
 // TODO(neil) Hanlde to Env. Each Postgres process might need just one ENV, maybe more.
-typedef struct PgEnv *YBCPgEnv;
+YB_DEFINE_HANDLE_TYPE(PgEnv);
 
 // Handle to a session. Postgres should create one YBCPgSession per client connection.
-typedef struct PgSession *YBCPgSession;
+YB_DEFINE_HANDLE_TYPE(PgSession);
 
 // Handle to a statement.
-typedef struct PgStatement *YBCPgStatement;
+YB_DEFINE_HANDLE_TYPE(PgStatement);
 
 // Use YugaByte datatype numeric representation for now.
 // TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
 // class PgType or QLType.
 typedef int YBCPgDataType;
 
+#ifdef __cplusplus
+}  // extern "C"
 #endif
+
+#undef YB_DEFINE_HANDLE_TYPE
 
 #endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

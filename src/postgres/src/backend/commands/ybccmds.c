@@ -23,18 +23,19 @@
 
 #include "postgres.h"
 #include "commands/ybccmds.h"
+#include "commands/ybctype.h"
 
 void YBCCreateTable(CreateStmt *stmt) {
   YBCPgStatement handle;
   ListCell *listptr;
   int col_order;
 
-  YBCPgAllocCreateTable(ybc_pg_session,
-                        stmt->relation->catalogname,
-                        stmt->relation->schemaname,     
-                        stmt->relation->relname,
-                        false,
-                        &handle);
+  YBCStatus s = YBCPgAllocCreateTable(ybc_pg_session,
+                                      stmt->relation->catalogname,
+                                      stmt->relation->schemaname,     
+                                      stmt->relation->relname,
+                                      false,
+                                      &handle);
 
   // First process the range column.
   col_order = 0;
