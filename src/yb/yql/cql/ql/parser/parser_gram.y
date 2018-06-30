@@ -281,7 +281,7 @@ using namespace yb::ql;
                           alter_table_op alter_table_ops
 
                           // Create index clauses.
-                          index_params opt_covering_clause
+                          index_params opt_include_clause
 
 %type <PExpr>             // Expressions.
                           a_expr b_expr ctext_expr c_expr AexprConst bindvar
@@ -594,7 +594,7 @@ using namespace yb::ql;
                           HANDLER HAVING HEADER_P HOLD HOUR_P
 
                           IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
-                          INCLUDING INCREMENT INDEX INDEXES INET INFINITY INHERIT INHERITS
+                          INCLUDE INCLUDING INCREMENT INDEX INDEXES INET INFINITY INHERIT INHERITS
                           INITIALLY INLINE_P INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD
                           INT_P INTEGER INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
@@ -4931,6 +4931,7 @@ unreserved_keyword:
   | CONVERSION_P { $$ = $1; }
   | COPY { $$ = $1; }
   | COST { $$ = $1; }
+  | COVERING { $$ = $1; }
   | CSV { $$ = $1; }
   | CUBE { $$ = $1; }
   | CURRENT_P { $$ = $1; }
@@ -4989,6 +4990,7 @@ unreserved_keyword:
   | IMMUTABLE { $$ = $1; }
   | IMPLICIT_P { $$ = $1; }
   | IMPORT_P { $$ = $1; }
+  | INCLUDE { $$ = $1; }
   | INCLUDING { $$ = $1; }
   | INCREMENT { $$ = $1; }
   | INDEX { $$ = $1; }
@@ -5183,7 +5185,6 @@ col_name_keyword:
   | CHARACTER { $$ = $1; }
   | COALESCE { $$ = $1; }
   | COUNTER { $$ = $1; }
-  | COVERING { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
   | DOUBLE_P { $$ = $1; }
@@ -8002,14 +8003,14 @@ defacl_privilege_target:
 
 IndexStmt:
   CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
-  opt_where_clause {
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $12, $13);
+  access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
+  opt_index_options {
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $15, $12);
   }
   | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
-  opt_where_clause {
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $15, $16);
+  access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
+  opt_index_options {
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $18, $15);
   }
 ;
 
@@ -8053,9 +8054,12 @@ opt_index_options:
   }
 ;
 
-opt_covering_clause:
+opt_include_clause:
   /*EMPTY*/ {
     $$ = nullptr;
+  }
+  | INCLUDE '(' columnList ')' {
+    $$ = $3;
   }
   | COVERING '(' columnList ')' {
     $$ = $3;

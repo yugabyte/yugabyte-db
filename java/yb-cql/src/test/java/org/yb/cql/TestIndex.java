@@ -46,7 +46,7 @@ public class TestIndex extends BaseCQLTest {
     // secondary index feature is complete.
     session.execute("create table test_index (h int, r1 int, r2 int, c int, " +
                     "primary key ((h), r1, r2)) with transactions = { 'enabled' : true};");
-    session.execute("create index i on test_index (h, r2, r1) covering (c);");
+    session.execute("create index i on test_index (h, r2, r1) include (c);");
 
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
     session.execute("insert into i (h, r2, r1, c) values (1, 3, 2, 4);");
@@ -65,8 +65,8 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true};");
 
     // Create test indexes with range and non-primary-key columns.
-    session.execute("create index i1 on test_create_index (r1, r2) covering (c1, c4);");
-    session.execute("create index i2 on test_create_index (c4) covering (c1, c2);");
+    session.execute("create index i1 on test_create_index (r1, r2) include (c1, c4);");
+    session.execute("create index i2 on test_create_index (c4) include (c1, c2);");
 
     // Wait to ensure the partitions metadata was updated.
     // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
@@ -82,16 +82,16 @@ public class TestIndex extends BaseCQLTest {
 
     // Verify the covering columns.
     assertIndexOptions("test_create_index", "i1",
-                       "Row[{target=r1, r2, h1, h2, covering=c1, c4}]");
+                       "Row[{target=r1, r2, h1, h2, include=c1, c4}]");
     assertIndexOptions("test_create_index", "i2",
-                       "Row[{target=c4, h1, h2, r1, r2, covering=c1, c2}]");
+                       "Row[{target=c4, h1, h2, r1, r2, include=c1, c2}]");
 
     // Test retrieving non-existent index.
     assertNull(table.getIndex("i3"));
 
     // Test create index with duplicate name.
     try {
-      session.execute("create index i1 on test_create_index (r1) covering (c1);");
+      session.execute("create index i1 on test_create_index (r1) include (c1);");
       fail("Duplicate index created");
     } catch (InvalidQueryException e) {
       LOG.info("Expected exception " + e.getMessage());
@@ -99,15 +99,15 @@ public class TestIndex extends BaseCQLTest {
 
     // Test create index on non-existent table.
     try {
-      session.execute("create index i3 on non_existent_table (k) covering (v);");
+      session.execute("create index i3 on non_existent_table (k) include (v);");
       fail("Index on non-existent table created");
     } catch (InvalidQueryException e) {
       LOG.info("Expected exception " + e.getMessage());
     }
 
     // Test create index if not exists. Verify i1 is still the same.
-    session.execute("create index if not exists i1 on test_create_index (r1) covering (c1);");
-    assertIndexOptions("test_create_index", "i1", "Row[{target=r1, r2, h1, h2, covering=c1, c4}]");
+    session.execute("create index if not exists i1 on test_create_index (r1) include (c1);");
+    assertIndexOptions("test_create_index", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c4}]");
 
     // Create another test table.
     session.execute("create table test_create_index_2 " +
@@ -118,7 +118,7 @@ public class TestIndex extends BaseCQLTest {
 
     // Test create index by the same name on another table.
     try {
-      session.execute("create index i1 on test_create_index_2 (r1, r2) covering (c1, c4);");
+      session.execute("create index i1 on test_create_index_2 (r1, r2) include (c1, c4);");
       fail("Index by the same name created on another table");
     } catch (InvalidQueryException e) {
       LOG.info("Expected exception " + e.getMessage());
@@ -151,9 +151,9 @@ public class TestIndex extends BaseCQLTest {
 
     // Create test indexes with range and non-primary-key columns.
     session.execute("create index i1 on test_clustering_index (r1, r2, c1, c2) " +
-                    "with clustering order by (r2 desc, c1 asc, c2 desc) covering (c3, c4);");
+                    "include (c3, c4) with clustering order by (r2 desc, c1 asc, c2 desc);");
     session.execute("create index i2 on test_clustering_index ((c1, c2), c3, c4) " +
-                    "with clustering order by (c3 asc, c4 desc) covering (c5);");
+                    "include (c5) with clustering order by (c3 asc, c4 desc);");
 
     // Wait to ensure the partitions metadata was updated.
     // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
@@ -199,7 +199,7 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true};");
 
     // Create test index.
-    session.execute("create index i1 on test_drop_index (r1, r2) covering (c1, c2);");
+    session.execute("create index i1 on test_drop_index (r1, r2) include (c1, c2);");
 
     // Wait to ensure the partitions metadata was updated.
     // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
@@ -210,7 +210,7 @@ public class TestIndex extends BaseCQLTest {
                           .getTable("test_drop_index");
     assertEquals("CREATE INDEX i1 ON cql_test_keyspace.test_drop_index (r1, r2, h1, h2);",
                  table.getIndex("i1").asCQLQuery());
-    assertIndexOptions("test_drop_index", "i1", "Row[{target=r1, r2, h1, h2, covering=c1, c2}]");
+    assertIndexOptions("test_drop_index", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c2}]");
 
     // Drop test index.
     session.execute("drop index i1;");
@@ -226,7 +226,7 @@ public class TestIndex extends BaseCQLTest {
                                DEFAULT_TEST_KEYSPACE, "test_drop_index", "i1").one());
 
     // Create another test index by the same name. Verify new index is created.
-    session.execute("create index i1 on test_drop_index (c1, c2) covering (c3, c4);");
+    session.execute("create index i1 on test_drop_index (c1, c2) include (c3, c4);");
 
     // Wait to ensure the partitions metadata was updated.
     // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
@@ -236,7 +236,7 @@ public class TestIndex extends BaseCQLTest {
     assertEquals("CREATE INDEX i1 ON cql_test_keyspace.test_drop_index (c1, c2, h1, h2, r1, r2);",
                  table.getIndex("i1").asCQLQuery());
     assertIndexOptions("test_drop_index", "i1",
-                       "Row[{target=c1, c2, h1, h2, r1, r2, covering=c3, c4}]");
+                       "Row[{target=c1, c2, h1, h2, r1, r2, include=c3, c4}]");
   }
 
   @Test
@@ -250,10 +250,10 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true};");
 
     // Create test index.
-    session.execute("create index i1 on test_drop_cascade (r1, r2) covering (c1, c2);");
-    session.execute("create index i2 on test_drop_cascade (c4) covering (c1);");
-    assertIndexOptions("test_drop_cascade", "i1", "Row[{target=r1, r2, h1, h2, covering=c1, c2}]");
-    assertIndexOptions("test_drop_cascade", "i2", "Row[{target=c4, h1, h2, r1, r2, covering=c1}]");
+    session.execute("create index i1 on test_drop_cascade (r1, r2) include (c1, c2);");
+    session.execute("create index i2 on test_drop_cascade (c4) include (c1);");
+    assertIndexOptions("test_drop_cascade", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c2}]");
+    assertIndexOptions("test_drop_cascade", "i2", "Row[{target=c4, h1, h2, r1, r2, include=c1}]");
 
     // Drop test table. Verify the index is cascade-deleted.
     session.execute("drop table test_drop_cascade;");
@@ -293,10 +293,10 @@ public class TestIndex extends BaseCQLTest {
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     session.execute("create index i1 on test_update (h1);");
-    session.execute("create index i2 on test_update ((r1, r2)) covering (c2);");
-    session.execute("create index i3 on test_update (r2, r1) covering (c1, c2);");
+    session.execute("create index i2 on test_update ((r1, r2)) include (c2);");
+    session.execute("create index i3 on test_update (r2, r1) include (c1, c2);");
     session.execute("create index i4 on test_update (c1);");
-    session.execute("create index i5 on test_update (c2) covering (c1);");
+    session.execute("create index i5 on test_update (c2) include (c1);");
 
     columnMap = new HashMap<String, String>() {{
         put("i1", "h1, h2, r1, r2");
@@ -436,7 +436,7 @@ public class TestIndex extends BaseCQLTest {
     session.execute("create index i2 on test_prepare ((r1, r2));");
     session.execute("create index i3 on test_prepare (r2, r1);");
     session.execute("create index i4 on test_prepare (c1);");
-    session.execute("create index i5 on test_prepare (c2) covering (c1);");
+    session.execute("create index i5 on test_prepare (c2) include (c1);");
 
     // Insert a row.
     session.execute("insert into test_prepare (h1, h2, r1, r2, c1, c2) " +
@@ -586,13 +586,13 @@ public class TestIndex extends BaseCQLTest {
     // index.
     session.execute("create table test_cond (k int primary key, v1 int, v2 text) " +
                     "with transactions = {'enabled' : true};");
-    session.execute("create index test_cond_by_v1 on test_cond (v1) covering (v2);");
+    session.execute("create index test_cond_by_v1 on test_cond (v1) include (v2);");
 
     session.execute("create table test_cond_unique (k int primary key, v1 int, v2 text) " +
                     "with transactions = {'enabled' : true};");
     session.execute("create index test_cond_unique_by_v1 on test_cond_unique (v1);");
     session.execute("create unique index test_cond_unique_by_v2 on test_cond_unique (v2) "+
-                    "covering (v1);");
+                    "include (v1);");
 
     // Insert into first table with conditional DML.
     session.execute("insert into test_cond (k, v1, v2) values (1, 1, 'a');");

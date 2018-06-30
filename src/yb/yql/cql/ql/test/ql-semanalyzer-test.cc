@@ -277,20 +277,20 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   ANALYZE_VALID_STMT("CREATE INDEX i ON t (h1);", &parse_tree);
   ANALYZE_VALID_STMT("CREATE INDEX i ON t (r1);", &parse_tree);
   ANALYZE_VALID_STMT("CREATE INDEX i ON t (c1);", &parse_tree);
-  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1) COVERING (c1);", &parse_tree);
-  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1, h1, h2) WITH CLUSTERING ORDER BY "
-                     "(r1 DESC, h1 DESC, h2 ASC) COVERING (c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1) INCLUDE (c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1, h1, h2) INCLUDE (c1) WITH CLUSTERING ORDER BY "
+                     "(r1 DESC, h1 DESC, h2 ASC);", &parse_tree);
 
   // Duplicate primary key columns.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r1);", &parse_tree);
   // Duplicate covering columns.
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r1);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r2);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2, c1) COVERING (c1);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2) COVERING (c1, c1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2, c1) INCLUDE (c1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2) INCLUDE (c1, c1);", &parse_tree);
   // Non-clustering key column in order by.
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r2, r1) WITH CLUSTERING ORDER BY (r2 DESC, r1 ASC) "
-                       "COVERING (c1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r2, r1) INCLUDE (c1) WITH CLUSTERING ORDER BY "
+                       "(r2 DESC, r1 ASC);", &parse_tree);
 
   // Non-existent table.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2);", &parse_tree);
@@ -305,7 +305,7 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   // Unsupported complex type.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (c);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 ((r1), c);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2) COVERING (c);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2) INCLUDE (c);", &parse_tree);
 
   CHECK_OK(processor->Run("CREATE TABLE t3 (k int primary key, c int);"));
 
@@ -371,11 +371,11 @@ TEST_F(QLTestAnalyzer, TestSelectLocalIndex) {
 
   EXPECT_OK(processor->Run("CREATE INDEX i1 ON t ((h1, h2), r1);"));
   EXPECT_OK(processor->Run("CREATE INDEX i2 ON t ((h1, h2), c2, c1);"));
-  EXPECT_OK(processor->Run("CREATE INDEX i3 ON t ((h1, h2), r2) COVERING (c1);"));
-  EXPECT_OK(processor->Run("CREATE INDEX i4 ON t ((h1, h2), r2) COVERING (c2);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i3 ON t ((h1, h2), r2) INCLUDE (c1);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i4 ON t ((h1, h2), r2) INCLUDE (c2);"));
   EXPECT_OK(processor->Run("CREATE INDEX i5 ON t ((h1, h2), c1);"));
   EXPECT_OK(processor->Run("CREATE INDEX i6 ON t ((c1, r2), c2);"));
-  EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) COVERING (c2);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) INCLUDE (c2);"));
 
   client::YBTableName table_name(kDefaultKeyspaceName, "t");
   processor->RemoveCachedTableDesc(table_name);
