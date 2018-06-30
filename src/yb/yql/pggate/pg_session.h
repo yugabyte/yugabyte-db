@@ -21,8 +21,6 @@
 namespace yb {
 namespace pggate {
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
 class PgSession {
  public:
   // Public types.
@@ -42,13 +40,9 @@ class PgSession {
   // Reset.
   void Reset();
 
-  // API for error reporting.
-  YBCPgErrorCode GetError(const char **error_text);
-  bool has_error() {
-    return status_.ok();
-  }
+  CHECKED_STATUS SetFlushMode(client::YBSession::FlushMode m);
 
-  YBCPgError ConnectDatabase(const std::string& database_name);
+  CHECKED_STATUS ConnectDatabase(const std::string& database_name);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.

@@ -43,4 +43,16 @@ YBCStatus ToYBCStatus(const Status& status) {
   return ybc_status;
 }
 
+YBCStatus YBCStatusOK() {
+  return nullptr;
+}
+
+YBCStatus YBCStatusNotSupport(const string& feature_name) {
+  if (feature_name.empty()) {
+    return ToYBCStatus(STATUS(NotSupported, "Feature is not supported"));
+  } else {
+    return ToYBCStatus(STATUS_FORMAT(NotSupported, "Feature '$0' not supported", feature_name));
+  }
+}
+
 } // namespace yb

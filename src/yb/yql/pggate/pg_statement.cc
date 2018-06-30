@@ -43,15 +43,5 @@ PgStatement::PgStatement(PgSession::SharedPtr pg_session, StmtOp stmt_op) :
 PgStatement::~PgStatement() {
 }
 
-//--------------------------------------------------------------------------------------------------
-
-YBCPgErrorCode PgStatement::GetError(const char **error_text) {
-  if (errmsg_.empty()) {
-    errmsg_ = status_.ToString();
-  }
-  *error_text = errmsg_.c_str();
-  return status_.error_code();
-}
-
 }  // namespace pggate
 }  // namespace yb

@@ -13,7 +13,6 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pggate.h"
-
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/util/flag_tags.h"
 
@@ -39,6 +38,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -91,52 +91,45 @@ PgApiImpl::PgApiImpl()
 
 //--------------------------------------------------------------------------------------------------
 
-YBCPgErrorCode PgApiImpl::GetError(YBCPgSession pg_session, const char **error_text) {
-  if (sessions_.find(pg_session) != sessions_.end()) {
-    // Invalid session.
-    *error_text = "Invalid session handle";
-    Status s = STATUS(InvalidArgument, *error_text);
-    return s.error_code();
-  }
-  return pg_session->GetError(error_text);
-}
-
-//--------------------------------------------------------------------------------------------------
-
-YBCPgError PgApiImpl::CreateEnv(YBCPgEnv *pg_env) {
+CHECKED_STATUS PgApiImpl::CreateEnv(PgEnv **pg_env) {
   *pg_env = pg_env_.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::DestroyEnv(YBCPgEnv pg_env) {
+CHECKED_STATUS PgApiImpl::DestroyEnv(PgEnv *pg_env) {
   pg_env_ = nullptr;
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-YBCPgError PgApiImpl::CreateSession(const YBCPgEnv pg_env,
-                                    const string& database_name,
-                                    YBCPgSession *pg_session) {
+CHECKED_STATUS PgApiImpl::CreateSession(const PgEnv *pg_env,
+                                        const string& database_name,
+                                        PgSession **pg_session) {
   PgSession::SharedPtr session = std::make_shared<PgSession>(client(), database_name);
+  RETURN_NOT_OK(session->SetFlushMode(YBSession::AUTO_FLUSH_SYNC));
+  if (!database_name.empty()) {
+    RETURN_NOT_OK(session->ConnectDatabase(database_name));
+  }
+
   *pg_session = session.get();
   sessions_[*pg_session]= session;
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::DestroySession(YBCPgSession pg_session) {
+CHECKED_STATUS PgApiImpl::DestroySession(PgSession *pg_session) {
   if (sessions_.find(pg_session) == sessions_.end()) {
     // Invalid session.
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
   sessions_[pg_session]= nullptr;
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-PgSession::SharedPtr PgApiImpl::GetSession(YBCPgSession handle) {
-  std::unordered_map<YBCPgSession, PgSession::SharedPtr>::iterator iter;
+PgSession::SharedPtr PgApiImpl::GetSession(PgSession *handle) {
+  std::unordered_map<PgSession*, PgSession::SharedPtr>::iterator iter;
   iter = sessions_.find(handle);
   if (iter == sessions_.end()) {
     // Invalid session.
@@ -145,8 +138,8 @@ PgSession::SharedPtr PgApiImpl::GetSession(YBCPgSession handle) {
   return iter->second;
 }
 
-PgStatement::SharedPtr PgApiImpl::GetStatement(YBCPgStatement handle) {
-  std::unordered_map<YBCPgStatement, PgStatement::SharedPtr>::iterator iter;
+PgStatement::SharedPtr PgApiImpl::GetStatement(PgStatement *handle) {
+  std::unordered_map<PgStatement*, PgStatement::SharedPtr>::iterator iter;
   iter = statements_.find(handle);
   if (iter == statements_.end()) {
     // Invalid session.
@@ -157,74 +150,74 @@ PgStatement::SharedPtr PgApiImpl::GetStatement(YBCPgStatement handle) {
 
 //--------------------------------------------------------------------------------------------------
 
-YBCPgError PgApiImpl::ConnectDatabase(YBCPgSession pg_session, const char *database_name) {
+CHECKED_STATUS PgApiImpl::ConnectDatabase(PgSession *pg_session, const char *database_name) {
   if (sessions_.find(pg_session) == sessions_.end()) {
     // Invalid session.
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
   return pg_session->ConnectDatabase(database_name);
 }
 
-YBCPgError PgApiImpl::AllocCreateDatabase(YBCPgSession pg_session,
-                                          const char *database_name,
-                                          YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocCreateDatabase(PgSession *pg_session,
+                                              const char *database_name,
+                                              PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgCreateDatabase::SharedPtr stmt = make_shared<PgCreateDatabase>(session, database_name);
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::ExecCreateDatabase(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecCreateDatabase(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_DATABASE)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   return static_cast<PgCreateTable*>(handle)->Exec();
 }
 
-YBCPgError PgApiImpl::AllocDropDatabase(YBCPgSession pg_session,
-                                        const char *database_name,
-                                        bool if_exist,
-                                        YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocDropDatabase(PgSession *pg_session,
+                                            const char *database_name,
+                                            bool if_exist,
+                                            PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgDropDatabase::SharedPtr stmt = make_shared<PgDropDatabase>(session, database_name, if_exist);
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::ExecDropDatabase(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecDropDatabase(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_DATABASE)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgDropTable*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-YBCPgError PgApiImpl::AllocCreateSchema(YBCPgSession pg_session,
-                                        const char *database_name,
-                                        const char *schema_name,
-                                        bool if_not_exist,
-                                        YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocCreateSchema(PgSession *pg_session,
+                                            const char *database_name,
+                                            const char *schema_name,
+                                            bool if_not_exist,
+                                            PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgCreateSchema::SharedPtr stmt =
@@ -232,26 +225,26 @@ YBCPgError PgApiImpl::AllocCreateSchema(YBCPgSession pg_session,
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::ExecCreateSchema(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecCreateSchema(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_SCHEMA)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgCreateSchema*>(handle)->Exec();
 }
 
-YBCPgError PgApiImpl::AllocDropSchema(YBCPgSession pg_session,
-                                      const char *database_name,
-                                      const char *schema_name,
-                                      bool if_exist,
-                                      YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocDropSchema(PgSession *pg_session,
+                                          const char *database_name,
+                                          const char *schema_name,
+                                          bool if_exist,
+                                          PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgDropSchema::SharedPtr stmt =
@@ -259,29 +252,29 @@ YBCPgError PgApiImpl::AllocDropSchema(YBCPgSession pg_session,
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::ExecDropSchema(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecDropSchema(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_SCHEMA)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgDropSchema*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-YBCPgError PgApiImpl::AllocCreateTable(YBCPgSession pg_session,
-                                       const char *database_name,
-                                       const char *schema_name,
-                                       const char *table_name,
-                                       bool if_not_exist,
-                                       YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocCreateTable(PgSession *pg_session,
+                                           const char *database_name,
+                                           const char *schema_name,
+                                           const char *table_name,
+                                           bool if_not_exist,
+                                           PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgCreateTable::SharedPtr stmt =
@@ -289,40 +282,40 @@ YBCPgError PgApiImpl::AllocCreateTable(YBCPgSession pg_session,
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::AddCreateTableColumn(YBCPgStatement handle, const char *col_name,
-                                           int col_order, int col_type, bool is_hash,
-                                           bool is_range) {
+CHECKED_STATUS PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_name,
+                                               int attr_num, int attr_ybtype, bool is_hash,
+                                               bool is_range) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgCreateTable *pg_stmt = static_cast<PgCreateTable*>(handle);
-  return pg_stmt->AddColumn(col_name, col_order, col_type, is_hash, is_range);
+  return pg_stmt->AddColumn(attr_name, attr_num, attr_ybtype, is_hash, is_range);
 }
 
-YBCPgError PgApiImpl::ExecCreateTable(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecCreateTable(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgCreateTable*>(handle)->Exec();
 }
 
-YBCPgError PgApiImpl::AllocDropTable(YBCPgSession pg_session,
-                                     const char *database_name,
-                                     const char *schema_name,
-                                     const char *table_name,
-                                     bool if_exist,
-                                     YBCPgStatement *handle) {
+CHECKED_STATUS PgApiImpl::AllocDropTable(PgSession *pg_session,
+                                         const char *database_name,
+                                         const char *schema_name,
+                                         const char *table_name,
+                                         bool if_exist,
+                                         PgStatement **handle) {
   PgSession::SharedPtr session = GetSession(pg_session);
   if (session == nullptr) {
-    return YBCPgError::YBC_PGERROR_INVALID_SESSION;
+    return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   PgDropTable::SharedPtr stmt =
@@ -330,14 +323,14 @@ YBCPgError PgApiImpl::AllocDropTable(YBCPgSession pg_session,
   statements_[stmt.get()] = stmt;
 
   *handle = stmt.get();
-  return YBCPgError::YBC_PGERROR_SUCCESS;
+  return Status::OK();
 }
 
-YBCPgError PgApiImpl::ExecDropTable(YBCPgStatement handle) {
+CHECKED_STATUS PgApiImpl::ExecDropTable(PgStatement *handle) {
   PgStatement::SharedPtr stmt = GetStatement(handle);
   if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_TABLE)) {
     // Invalid handle.
-    return YBCPgError::YBC_PGERROR_INVALID_HANDLE;
+    return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgDropTable*>(handle)->Exec();
 }

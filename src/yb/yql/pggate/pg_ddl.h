@@ -23,6 +23,7 @@ namespace pggate {
 //--------------------------------------------------------------------------------------------------
 // CREATE DATABASE
 //--------------------------------------------------------------------------------------------------
+
 class PgCreateDatabase : public PgStatement {
  public:
   // Public types.
@@ -37,7 +38,7 @@ class PgCreateDatabase : public PgStatement {
   virtual ~PgCreateDatabase();
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   const char *database_name_;
@@ -57,7 +58,7 @@ class PgDropDatabase : public PgStatement {
   virtual ~PgDropDatabase();
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   const char *database_name_;
@@ -66,6 +67,9 @@ class PgDropDatabase : public PgStatement {
 
 //--------------------------------------------------------------------------------------------------
 // CREATE SCHEMA
+//
+// TODO(neil) This is not yet supported.  After Mihnea figures out how PostgreSQL implemented it,
+// we can add support for schema.
 //--------------------------------------------------------------------------------------------------
 
 class PgCreateSchema : public PgStatement {
@@ -85,7 +89,7 @@ class PgCreateSchema : public PgStatement {
   virtual ~PgCreateSchema();
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   const char *database_name_;
@@ -110,7 +114,7 @@ class PgDropSchema : public PgStatement {
   virtual ~PgDropSchema();
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   const char *database_name_;
@@ -139,11 +143,11 @@ class PgCreateTable : public PgStatement {
                 bool if_not_exist);
   virtual ~PgCreateTable();
 
-  YBCPgError AddColumn(const char *col_name, int col_order, int col_type, bool is_hash,
-                       bool is_range);
+  CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
+                           bool is_hash, bool is_range);
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   client::YBTableName table_name_;
@@ -169,7 +173,7 @@ class PgDropTable : public PgStatement {
   virtual ~PgDropTable();
 
   // Execute.
-  YBCPgError Exec();
+  CHECKED_STATUS Exec();
 
  private:
   client::YBTableName table_name_;

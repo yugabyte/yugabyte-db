@@ -15,11 +15,12 @@
 #ifndef YB_YQL_PGGATE_YBC_PGGATE_H
 #define YB_YQL_PGGATE_YBC_PGGATE_H
 
+#include "yb/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
@@ -29,74 +30,74 @@ void YBCInitPgGate();
 // Environment and Session.
 
 // Initialize ENV within which PGSQL calls will be executed.
-YBCPgError YBCPgCreateEnv(YBCPgEnv *pg_env);
-YBCPgError YBCPgDestroyEnv(YBCPgEnv pg_env);
+YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env);
+YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env);
 
 // Initialize a session to process statements that come from the same client connection.
-YBCPgError YBCPgCreateSession(const YBCPgEnv pg_env,
-                              const char *database_name,
-                              YBCPgSession *pg_session);
-YBCPgError YBCPgDestroySession(YBCPgSession pg_session);
+YBCStatus YBCPgCreateSession(const YBCPgEnv pg_env,
+                             const char *database_name,
+                             YBCPgSession *pg_session);
+YBCStatus YBCPgDestroySession(YBCPgSession pg_session);
 
 //--------------------------------------------------------------------------------------------------
 // Connect database. Switch the connected database to the given "database_name".
-YBCPgError YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name);
+YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name);
 
 // Create database.
-YBCPgError YBCPgAllocCreateDatabase(YBCPgSession pg_session,
-                                    const char *database_name,
-                                    YBCPgStatement *handle);
-YBCPgError YBCPgExecCreateDatabase(YBCPgStatement handle);
+YBCStatus YBCPgAllocCreateDatabase(YBCPgSession pg_session,
+                                   const char *database_name,
+                                   YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
 // Drop database.
-YBCPgError YBCPgAllocDropDatabase(YBCPgSession pg_session,
-                                  const char *database_name,
-                                  bool if_exist,
-                                  YBCPgStatement *handle);
-YBCPgError YBCPgExecDropDatabase(YBCPgStatement handle);
+YBCStatus YBCPgAllocDropDatabase(YBCPgSession pg_session,
+                                 const char *database_name,
+                                 bool if_exist,
+                                 YBCPgStatement *handle);
+YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 
 //--------------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
-YBCPgError YBCPgAllocCreateSchema(YBCPgSession pg_session,
-                                  const char *database_name,
-                                  const char *schema_name,
-                                  bool if_not_exist,
-                                  YBCPgStatement *handle);
-YBCPgError YBCPgExecCreateSchema(YBCPgStatement handle);
+YBCStatus YBCPgAllocCreateSchema(YBCPgSession pg_session,
+                                 const char *database_name,
+                                 const char *schema_name,
+                                 bool if_not_exist,
+                                 YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle);
 
 // Drop schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
-YBCPgError YBCPgDropSchema(YBCPgSession pg_session,
-                           const char *schema_name,
-                           bool if_exist,
-                           YBCPgStatement *handle);
-YBCPgError YBCPgExecDropSchema(YBCPgStatement handle);
+YBCStatus YBCPgDropSchema(YBCPgSession pg_session,
+                          const char *schema_name,
+                          bool if_exist,
+                          YBCPgStatement *handle);
+YBCStatus YBCPgExecDropSchema(YBCPgStatement handle);
 
 //--------------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
 // - When "database_name" is NULL, the table "connected_database_name.table_name" is created.
-YBCPgError YBCPgAllocCreateTable(YBCPgSession pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 const char *table_name,
-                                 bool if_not_exist,
-                                 YBCPgStatement *handle);
+YBCStatus YBCPgAllocCreateTable(YBCPgSession pg_session,
+                                const char *database_name,
+                                const char *schema_name,
+                                const char *table_name,
+                                bool if_not_exist,
+                                YBCPgStatement *handle);
 
-YBCPgError YBCPgAddCreateTableColumn(YBCPgStatement handle, const char *col_name, int col_order,
-                                     int col_type, bool is_hash, bool is_range);
+YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                    int attr_ybtype, bool is_hash, bool is_range);
 
-YBCPgError YBCPgExecCreateTable(YBCPgStatement handle);
+YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
-YBCPgError YBCPgAllocDropTable(YBCPgSession pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               const char *table_name,
-                               bool if_exist,
-                               YBCPgStatement *handle);
+YBCStatus YBCPgAllocDropTable(YBCPgSession pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *table_name,
+                              bool if_exist,
+                              YBCPgStatement *handle);
 
-YBCPgError YBCPgExecDropTable(YBCPgStatement handle);
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
 #ifdef __cplusplus
 }
