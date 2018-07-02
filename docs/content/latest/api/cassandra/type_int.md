@@ -18,10 +18,10 @@ There are several different datatypes for integers of different value ranges. In
 DataType | Min | Max |
 ---------|-----|-----|
 `TINYINT` | -128 | 127 |
-`SMALLINT` | -2,147,483,648 | 2,147,483,647 |
-`INT` or `INTEGER` | -32,768 | 32,767 |
-`BIGINT` | -2,147,483,648 | 2,147,483,647 |
-`COUNTER` | -2,147,483,648 | 2,147,483,647 |
+`SMALLINT` | -32,768 | 32,767 |
+`INT` or `INTEGER` | -2,147,483,648 | 2,147,483,647 |
+`BIGINT` | –9,223,372,036,854,775,808 | 9,223,372,036,854,775,807 |
+`COUNTER` | –9,223,372,036,854,775,808 | 9,223,372,036,854,775,807 |
 
 ## Syntax
 The following keywords are used to specify a column of type integer for different constraints including its value ranges.
