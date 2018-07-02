@@ -59,6 +59,7 @@ namespace docdb {
     ((kSSForward, '&')) /* ASCII code 38 */ \
     ((kSSReverse, '\'')) /* ASCII code 39 */ \
     ((kRedisSet, '(')) /* ASCII code 40 */ \
+    ((kRedisList, ')')) /* ASCII code 41*/ \
     /* This is the redis timeseries type. */ \
     ((kRedisTS, '+')) /* ASCII code 43 */ \
     ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
@@ -202,11 +203,13 @@ inline bool IsSerializableIntent(IntentType intent) {
 constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
 constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
 
-// kArray is handled slightly differently and hence we only have kObject, kRedisTS and kRedisSet.
+// kArray is handled slightly differently and hence we only have
+// kObject, kRedisTS, kRedisSet, and kRedisList.
 constexpr inline bool IsObjectType(const ValueType value_type) {
   return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
       value_type == ValueType::kRedisSet || value_type == ValueType::kRedisSortedSet ||
-      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse;
+      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse ||
+      value_type == ValueType::kRedisList;
 }
 
 constexpr inline bool IsCollectionType(const ValueType value_type) {

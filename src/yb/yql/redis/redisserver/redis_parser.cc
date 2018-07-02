@@ -333,6 +333,27 @@ Status ParseZAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return ParseHMSetLikeCommands(op, args, REDIS_TYPE_SORTEDSET, add_double_subkey);
 }
 
+Status ParsePush(YBRedisWriteOp *op, const RedisClientCommand& args, RedisSide side) {
+  op->mutable_request()->set_allocated_push_request(new RedisPushRequestPB());
+  op->mutable_request()->mutable_push_request()->set_side(side);
+  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_LIST);
+
+  auto mutable_key = op->mutable_request()->mutable_key_value();
+  for (int i = 2; i < args.size(); ++i) {
+    mutable_key->add_value(args[i].cdata(), args[i].size());
+  }
+  return Status::OK();
+}
+
+Status ParseLPush(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  return ParsePush(op, args, REDIS_SIDE_LEFT);
+}
+
+Status ParseRPush(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  return ParsePush(op, args, REDIS_SIDE_RIGHT);
+}
+
 template <typename YBRedisOp, typename AddSubKey>
 CHECKED_STATUS ParseCollection(YBRedisOp *op,
                                const RedisClientCommand& args,
@@ -387,6 +408,22 @@ CHECKED_STATUS ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
 CHECKED_STATUS ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_SET, add_string_subkey);
+}
+
+CHECKED_STATUS ParsePop(YBRedisWriteOp *op, const RedisClientCommand& args, RedisSide side) {
+  op->mutable_request()->set_allocated_pop_request(new RedisPopRequestPB());
+  op->mutable_request()->mutable_pop_request()->set_side(side);
+  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_LIST);
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseLPop(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  return ParsePop(op, args, REDIS_SIDE_LEFT);
+}
+
+CHECKED_STATUS ParseRPop(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  return ParsePop(op, args, REDIS_SIDE_RIGHT);
 }
 
 CHECKED_STATUS ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
@@ -787,6 +824,10 @@ CHECKED_STATUS ParseSIsMember(YBRedisReadOp* op, const RedisClientCommand& args)
 
 CHECKED_STATUS ParseSCard(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SCARD);
+}
+
+CHECKED_STATUS ParseLLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_LLEN);
 }
 
 CHECKED_STATUS ParseZCard(YBRedisReadOp* op, const RedisClientCommand& args) {

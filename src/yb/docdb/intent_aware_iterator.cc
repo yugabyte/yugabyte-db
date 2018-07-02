@@ -27,6 +27,7 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
 
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/backoff_waiter.h"
 
 using namespace std::literals;
@@ -412,8 +413,36 @@ Status IntentAwareIterator::NextFullValue(
   if (*latest_record_ht == DocHybridTime::kMin) {
     iter_valid_ = false;
   }
-
   return status_;
+}
+
+void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
+  ROCKSDB_SEEK(iter_.get(), key_bytes);
+
+  if (iter_->Valid()) {
+    iter_->Prev();
+  } else {
+    iter_->SeekToLast();
+  }
+  SkipFutureRecords(Direction::kBackward);
+
+  if (intent_iter_) {
+    ResetIntentUpperbound();
+    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key_bytes));
+    if (intent_iter_->Valid()) {
+      intent_iter_->Prev();
+    } else {
+      intent_iter_->SeekToLast();
+    }
+    SeekToSuitableIntent<Direction::kBackward>();
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
+    skip_future_intents_needed_ = false;
+  }
+
+  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
+    return;
+  }
+  SeekToLatestSubDocKeyInternal();
 }
 
 void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
@@ -444,6 +473,27 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
     return;
   }
   SeekToLatestDocKeyInternal();
+}
+
+void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
+  DCHECK(iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid)
+      << "Expected iter_valid(" << iter_valid_ << ") || resolved_intent_state_("
+      << resolved_intent_state_ << ") == ResolvedIntentState::kValid";
+  // Choose latest subkey among regular and intent iterators.
+  Slice subdockey_slice(
+      !iter_valid_ ||
+      (resolved_intent_state_ == ResolvedIntentState::kValid
+          && iter_->key().compare(resolved_intent_sub_doc_key_encoded_) < 0)
+      ? resolved_intent_key_prefix_.AsSlice() : iter_->key());
+
+  // Strip the hybrid time and seek the slice.
+  auto doc_ht = DocHybridTime::DecodeFromEnd(&subdockey_slice);
+  if (!doc_ht.ok()) {
+    status_ = doc_ht.status();
+    return;
+  }
+  subdockey_slice.remove_suffix(1);
+  Seek(subdockey_slice);
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {

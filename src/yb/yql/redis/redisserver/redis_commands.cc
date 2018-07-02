@@ -131,6 +131,11 @@ namespace redisserver {
     ((pttl, PTtl, 2, READ)) \
     ((setex, SetEx, 4, WRITE)) \
     ((psetex, PSetEx, 4, WRITE)) \
+    ((lpop, LPop, 2, WRITE)) \
+    ((lpush, LPush, -3, WRITE)) \
+    ((rpop, RPop, 2, WRITE)) \
+    ((rpush, RPush, -3, WRITE)) \
+    ((llen, LLen, 2, READ)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
