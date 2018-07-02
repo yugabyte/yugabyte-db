@@ -29,6 +29,7 @@ v_partition_interval    bigint;
 v_partition_created     boolean := false;
 v_partition_name        text;
 v_partition_type        text;
+v_publications          text[];
 v_revoke                text;
 v_row                   record;
 v_sql                   text;
@@ -51,12 +52,14 @@ SELECT control
     , inherit_fk
     , jobmon
     , template_table
+    , publications
 INTO v_control
     , v_partition_type
     , v_partition_interval
     , v_inherit_fk
     , v_jobmon
     , v_template_table
+    , v_publications
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
@@ -278,6 +281,11 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     
     -- Manage additonal constraints if set
     PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id, p_debug := p_debug);
+
+    IF v_publications IS NOT NULL THEN
+        -- NOTE: Publications currently not supported on parent table, but are supported on the table partitions if individually assigned.
+        PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_partition_name);
+    END IF;
 
     v_partition_created := true;
 

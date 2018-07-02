@@ -23,8 +23,10 @@ CREATE TABLE part_config (
     , upsert text NOT NULL DEFAULT ''
     , trigger_return_null boolean NOT NULL DEFAULT true
     , template_table text
+    , publications text[]
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
+    , CONSTRAINT publications_no_empty_set_chk CHECK (publications <> '{}')
 );
 CREATE INDEX part_config_type_idx ON @extschema@.part_config (partition_type);
 SELECT pg_catalog.pg_extension_config_dump('part_config', '');

@@ -8,12 +8,13 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(229);
+SELECT plan(232);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
+CREATE PUBLICATION partman_test_publication;
 
 CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
 INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
@@ -24,7 +25,7 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 ALTER TABLE partman_test.time_taptest_table OWNER TO partman_owner;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily');
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily', p_publications := ARRAY['partman_test_publication']);
 
 SELECT has_partition('partman_test', 'time_taptest_table', 'Check that time_taptest_table is natively partitioned');
 SELECT has_table('partman', 'template_partman_test_time_taptest_table', 'Check that default template table was created');
@@ -160,6 +161,7 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check tha
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[9], 'Check that all child tables were added to publication');
 
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON partman_test.time_taptest_table FROM partman_revoke;
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), CURRENT_TIMESTAMP + '1 day'::interval);
@@ -243,6 +245,7 @@ SELECT col_is_fk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
     ARRAY[22], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[15], 'Check that all child tables were added to publication');
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
@@ -289,6 +292,7 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check tha
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[148], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
     ARRAY[28], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[17], 'Check that all child tables were added to publication');
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD')||' exists');

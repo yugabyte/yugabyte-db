@@ -10,6 +10,7 @@ CREATE FUNCTION create_parent(
     , p_inherit_fk boolean DEFAULT true
     , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
+    , p_publications text[] DEFAULT NULL
     , p_trigger_return_null boolean DEFAULT true
     , p_template_table text DEFAULT NULL
     , p_jobmon boolean DEFAULT true
@@ -53,6 +54,7 @@ v_partition_time                timestamptz;
 v_partition_time_array          timestamptz[];
 v_partition_id_array            bigint[];
 v_partstrat                     char;
+v_publication_exists            text;
 v_row                           record;
 v_sql                           text;
 v_start_time                    timestamptz;
@@ -200,6 +202,23 @@ ELSE
         RAISE EXCEPTION 'Given parent table has been set up with native partitioning therefore cannot be used with pg_partman''s other partitioning types. Either recreate table non-native or set the type argument to ''native''';
     END IF;
 
+END IF;
+
+IF p_publications IS NOT NULL THEN
+    IF current_setting('server_version_num')::int < 100000 THEN
+        RAISE EXCEPTION 'p_publications argument not null but CREATE PUBLICATION is only available in PostgreSQL versions 10.0+';
+    END IF;
+    IF p_publications = '{}' THEN
+        RAISE EXCEPTION 'p_publications cannot be an empty set';
+    END IF;
+    FOR v_row IN 
+        SELECT unnest(p_publications) AS pubname
+    LOOP
+        SELECT pubname INTO v_publication_exists FROM pg_catalog.pg_publication where pubname = v_row.pubname::name;
+        IF v_publication_exists IS NULL THEN
+            RAISE EXCEPTION 'Given publication name (%) does not exist in system catalog. Ensure it is created first.', v_row.pubname;
+        END IF;
+    END LOOP;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -411,7 +430,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , jobmon 
         , upsert
         , trigger_return_null
-        , template_table)
+        , template_table
+        , publications)
     VALUES (
         p_parent_table
         , p_type
@@ -426,7 +446,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , p_jobmon
         , p_upsert
         , p_trigger_return_null
-        , v_template_schema||'.'||v_template_tablename); 
+        , v_template_schema||'.'||v_template_tablename
+        , p_publications); 
 
     v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
 
@@ -561,7 +582,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , jobmon
         , upsert
         , trigger_return_null
-        , template_table)
+        , template_table
+        , publications)
     VALUES (
         p_parent_table
         , p_type
@@ -574,7 +596,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , p_jobmon
         , p_upsert
         , p_trigger_return_null
-        , v_template_schema||'.'||v_template_tablename); 
+        , v_template_schema||'.'||v_template_tablename
+        , p_publications); 
 
     v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
     IF v_last_partition_created = false THEN

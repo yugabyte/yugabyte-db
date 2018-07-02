@@ -66,12 +66,14 @@ AND c.relname = split_part(v_template_table, '.', 2)::name;
         RAISE EXCEPTION 'Unable to find configured template table in system catalogs: %', v_template_table;
     END IF;
 
--- Index creation (only required in 10)
+-- Index creation (Required for all indexes in PG10. Only for non-unique, non-partition key indexes in PG11)
+-- TODO Add check here for PG11 to only allow unique, non-partition key indexes on template
 IF current_setting('server_version_num')::int > 100000 AND current_setting('server_version_num')::int < 110000 THEN
     FOR v_index_list IN 
         SELECT
         array_to_string(regexp_matches(pg_get_indexdef(indexrelid), ' USING .*'),',') AS statement
         , i.indisprimary
+        , i.indisunique
         , ( SELECT array_agg( a.attname ORDER by x.r )
             FROM pg_catalog.pg_attribute a
             JOIN ( SELECT k, row_number() over () as r
@@ -79,8 +81,10 @@ IF current_setting('server_version_num')::int > 100000 AND current_setting('serv
             ON a.attnum = x.k AND a.attrelid = i.indrelid
         ) AS indkey_names
         , c.relname AS index_name
+        , ts.spcname AS tablespace_name
         FROM pg_catalog.pg_index i
         JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
+        LEFT OUTER JOIN pg_catalog.pg_tablespace ts ON c.reltablespace = ts.oid
         WHERE i.indrelid = v_template_oid
         AND i.indisvalid
         ORDER BY 1
@@ -91,11 +95,18 @@ IF current_setting('server_version_num')::int > 100000 AND current_setting('serv
                             , v_child_schema
                             , v_child_tablename
                             , '"' || array_to_string(v_index_list.indkey_names, '","') || '"');
+            IF v_index_list.tablespace_name IS NOT NULL THEN
+                v_sql := v_sql || format(' USING INDEX TABLESPACE %', v_index_list.tablespace_name);
+            END IF;
             RAISE DEBUG 'Create pk: %', v_sql;
             EXECUTE v_sql;
         ELSE
             -- statement column should be just the portion of the index definition that defines what it actually is
-            v_sql := format('CREATE INDEX ON %I.%I %s', v_child_schema, v_child_tablename, v_index_list.statement);
+            v_sql := format('CREATE %s INDEX ON %I.%I %s', CASE WHEN v_index_list.indisunique = TRUE THEN 'UNIQUE' ELSE '' END, v_child_schema, v_child_tablename, v_index_list.statement);
+            IF v_index_list.tablespace_name IS NOT NULL THEN
+                v_sql := v_sql || format(' TABLESPACE %', v_index_list.tablespace_name);
+            END IF;
+
             RAISE DEBUG 'Create index: %', v_sql;
             EXECUTE v_sql;
 
@@ -105,7 +116,8 @@ IF current_setting('server_version_num')::int > 100000 AND current_setting('serv
 END IF; 
 -- End index creation
 
--- Foreign key creation
+-- Foreign key creation (PG10 only)
+-- TODO Add check in for PG11 to not allow FK inheritance from template
 IF v_inherit_fk THEN
     FOR v_fk_list IN 
         SELECT pg_get_constraintdef(con.oid) AS constraint_def

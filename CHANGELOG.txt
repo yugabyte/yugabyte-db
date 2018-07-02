@@ -1,3 +1,11 @@
+3.2.0
+-- Added option to include newly created child tables in a subscription for use in logical replication. PG10+ Only. (Github PR #218).
+    -- Signature of create_parent() function has changed, so ensure calls are accounting for new argument.
+    -- Does not currently work for subpartition tables if they are natively partitioned.
+-- Fix so that unique indexes that exist on the the template table are created on child tables. PG10+ native partitioning only. (GitHub PR #220, Issue #225).
+-- Fix so that indexes inherited from template table are put into the same tablespace as defined on the template table. PG10+ native partitioning only. (Github Issue #223).
+
+
 3.1.3
 -- Allow tablespace inheritance from the template table in PostgreSQL 10+. Note that PG10 currently completely ignores the TABLESPACE flag to the CREATE TABLE command on a native partition parent table. So a natively partitioned parent can never live in a different tablespace other than the default. Tablespaces must be declared for each child table and pg_partman can now do that using the template table the same way it does for indexes and foreign keys (Github Issue #212).
 -- Obey the inherit_fk config option for natively partitioned tables. Previously foreign keys would always be inherited even if this was set to false.

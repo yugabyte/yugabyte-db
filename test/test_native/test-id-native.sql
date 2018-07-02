@@ -27,7 +27,8 @@ INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 CREATE UNLOGGED TABLE partman_test.id_taptest_table (
     col1 bigint 
     , col2 text not null default 'stuff'
-    , col3 timestamptz DEFAULT now()) PARTITION BY RANGE (col1);
+    , col3 timestamptz DEFAULT now()
+    , col4 text) PARTITION BY RANGE (col1);
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.id_taptest_table INCLUDING ALL);
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic, PUBLIC;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
@@ -36,10 +37,11 @@ CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptes
 ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
 ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
 CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+CREATE UNIQUE INDEX ON partman_test.template_id_taptest_table (col4);
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', p_jobmon := false, p_start_partition := '3000000000', p_template_table := 'partman_test.template_id_taptest_table');
 
-INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(3000000001,3000000009));
+INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(3000000001,3000000009), 'stuff'||generate_series(3000000001,3000000009));
 
 SELECT has_table('partman_test', 'id_taptest_table_p3000000000', 'Check id_taptest_table_p3000000000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 exists');
@@ -81,7 +83,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p3000
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON partman_test.id_taptest_table FROM partman_revoke, PUBLIC;
 
 SELECT run_maintenance();
-INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(3000000010,3000000025));
+INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(3000000010,3000000025), 'stuff'||generate_series(3000000010,3000000025));
 -- Run again to make new partition based on latest data
 SELECT run_maintenance();
 
@@ -109,7 +111,7 @@ SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000060', 'partman_
 GRANT DELETE ON partman_test.id_taptest_table TO partman_basic;
 REVOKE ALL ON partman_test.id_taptest_table FROM partman_revoke, PUBLIC;
 ALTER TABLE partman_test.id_taptest_table OWNER TO partman_owner;
-INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(3000000026,3000000038));
+INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(3000000026,3000000038), 'stuff'||generate_series(3000000026,3000000038));
 
 SELECT run_maintenance();
 
@@ -139,7 +141,7 @@ SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000070', 'partman_
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000070', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000070');
 
 -- Requires default table option
---INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(3000000200,3000000210));
+--INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(3000000200,3000000210), 'stuff'||generate_series(3000000200,3000000210));
 --SELECT run_maintenance();
 --SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
 

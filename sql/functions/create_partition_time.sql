@@ -35,6 +35,7 @@ v_partition_expression          text;
 v_partition_interval            interval;
 v_partition_timestamp_end       timestamptz;
 v_partition_timestamp_start     timestamptz;
+v_publications                  text[];
 v_quarter                       text;
 v_revoke                        text;
 v_row                           record;
@@ -66,6 +67,7 @@ SELECT partition_type
     , jobmon
     , datetime_string
     , template_table
+    , publications
 INTO v_partition_type
     , v_control
     , v_partition_interval
@@ -74,6 +76,7 @@ INTO v_partition_type
     , v_jobmon
     , v_datetime_string
     , v_template_table
+    , v_publications
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
@@ -383,6 +386,11 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     -- Manage additonal constraints if set
     PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id, p_debug := p_debug);
 
+    IF v_publications IS NOT NULL THEN
+        -- NOTE: Publications currently not supported on parent table, but are supported on the table partitions if individually assigned.
+        PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_partition_name);
+    END IF;
+
     v_partition_created := true;
 
 END LOOP;
@@ -439,4 +447,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 
