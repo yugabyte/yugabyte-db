@@ -138,18 +138,24 @@ class IntentAwareIterator {
   ReadHybridTime read_time() { return read_time_; }
   HybridTime max_seen_ht() { return max_seen_ht_; }
 
-  // If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
-  // max_deleted_ts, we update max_deleted_ts and result_value (unless it is nullptr).
-  // This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
-  // also.
-  // Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
-  // time.
-  // TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
-  // It could be a simple value as well, not necessarily kTombstone or kObject.
-  CHECKED_STATUS FindLastWriteTime(
+  // Iterate through Next() until a row containing a full record (non merge record) is found.
+  // The key is not guaranteed to stay the same. The key without hybrid time and value of the
+  // merge record go in final_key (optionally), and result_value, while the write time of the
+  // merge record goes in latest_record_ht.
+  CHECKED_STATUS NextFullValue(
+      DocHybridTime* latest_record_ht,
+      Slice* result_value,
+      Slice* final_key = nullptr);
+
+  // Finds the latest record for a particular key, returns the overwrite
+  // time, and optionally also the result value. This latest record may not
+  // be a full record, but instead a merge record (e.g. a TTL row).
+  // This function used to be FindLastWriteTime, which has since been
+  // largely abstracted out into the docdb layer.
+  CHECKED_STATUS FindLatestRecord(
       const Slice& key_without_ht,
-      DocHybridTime* max_deleted_ts,
-      Value* result_value = nullptr);
+      DocHybridTime* max_overwrite_time,
+      Slice* result_value = nullptr);
 
   void DebugDump();
 
@@ -206,6 +212,16 @@ class IntentAwareIterator {
   void ProcessIntent();
 
   void UpdateResolvedIntentSubDocKeyEncoded();
+
+  Status FindLatestIntentRecord(
+    const Slice& key_without_ht,
+    DocHybridTime* max_overwrite_time,
+    bool* found_later_intent_result);
+
+  Status FindLatestRegularRecord(
+    const Slice& key_without_ht,
+    DocHybridTime* max_overwrite_time,
+    bool* found_later_regular_result);
 
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular();

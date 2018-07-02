@@ -26,10 +26,13 @@ static constexpr const char* const kNX = "NX";
 static constexpr const char* const kXX = "XX";
 static constexpr const char* const kINCR = "INCR";
 static constexpr const char* const kCH = "CH";
-static constexpr int64_t kRedisMaxTtlSeconds = std::numeric_limits<int64_t>::max() /
-    yb::MonoTime::kNanosecondsPerSecond;
-// Note that this deviates from vanilla Redis, since vanilla Redis allows negative TTLs. We
-// currently don't support negative TTLs at the docdb level.
-static constexpr int64_t kRedisMinTtlSeconds = 1;
+static constexpr int64_t kRedisMaxTtlMillis = std::numeric_limits<int64_t>::max() /
+    yb::MonoTime::kNanosecondsPerMillisecond;
+static constexpr int64_t kRedisMaxTtlSeconds = kRedisMaxTtlMillis /
+    yb::MonoTime::kMillisecondsPerSecond;
+static constexpr int64_t kRedisMinTtlMillis = std::numeric_limits<int64_t>::min() /
+  yb::MonoTime::kNanosecondsPerMillisecond;
+// SET with the EX flag does not support negative values. However, SETEX does.
+static constexpr int64_t kRedisMinTtlSetExSeconds = 1;
 
 #endif  // YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H

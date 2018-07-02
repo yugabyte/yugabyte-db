@@ -269,6 +269,8 @@ HybridTime HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
   return HybridTime::FromMicrosecondsAndLogicalValue(micros, logical_value);
 }
 
+// CAUTION: USE WITH EXTREME CARE!!! This function does not have overflow checking.
+// It is recommended to use CompareHybridClocksToDelta, below.
 HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
                                                     const MonoDelta& to_add) {
   uint64_t new_physical = GetPhysicalValueMicros(original) + to_add.ToMicroseconds();

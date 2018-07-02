@@ -34,13 +34,54 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/intent_aware_iterator.h"
+
+#include "yb/server/hybrid_clock.h"
 
 namespace yb {
 namespace docdb {
 
 class DocWriteBatch;
+
+// Useful for calculating expiration.
+struct Expiration {
+  Expiration() :
+    ttl(Value::kMaxTtl) {}
+
+  explicit Expiration(MonoDelta default_ttl) :
+    ttl(default_ttl) {}
+
+  explicit Expiration(HybridTime new_write_ht) :
+    ttl(Value::kMaxTtl),
+    write_ht(new_write_ht) {}
+
+  explicit Expiration(HybridTime new_write_ht, MonoDelta new_ttl) :
+    ttl(new_ttl),
+    write_ht(new_write_ht) {}
+
+  MonoDelta ttl;
+  HybridTime write_ht = HybridTime::kMin;
+
+  // A boolean which dictates whether the TTL of kMaxValue
+  // should override the existing TTL. Not compatible with
+  // the concept of default TTL when set to true.
+  bool always_override = false;
+
+  Result<MonoDelta> ComputeRelativeTtl(const HybridTime& input_time) {
+    if (input_time < write_ht)
+      return STATUS(Corruption, "Read time earlier than record write time.");
+    if (ttl == Value::kMaxTtl || ttl.IsNegative())
+      return ttl;
+    MonoDelta elapsed_time = MonoDelta::FromNanoseconds(
+        server::HybridClock::GetPhysicalValueNanos(input_time) -
+        server::HybridClock::GetPhysicalValueNanos(write_ht));
+    // This way, we keep the default TTL, and all negative TTLs are expired.
+    MonoDelta new_ttl(ttl);
+    return new_ttl -= elapsed_time;
+  }
+};
 
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
@@ -83,6 +124,7 @@ typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 struct RedisValue {
   RedisDataType type;
   std::string value;
+  Expiration exp;
 };
 
 class RedisWriteOperation : public DocOperation {
@@ -107,8 +149,9 @@ class RedisWriteOperation : public DocOperation {
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
       int subkey_index = kNilSubkeyIndex);
   Result<RedisValue> GetValue(const DocOperationApplyData& data,
-      int subkey_index = kNilSubkeyIndex);
+      int subkey_index = kNilSubkeyIndex, Expiration* exp = nullptr);
 
+  CHECKED_STATUS ApplySetTtl(const DocOperationApplyData& data);
   CHECKED_STATUS ApplySet(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyGetSet(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyAppend(const DocOperationApplyData& data);
@@ -145,10 +188,18 @@ class RedisReadOperation {
  private:
   Result<RedisDataType> GetValueType(int subkey_index = kNilSubkeyIndex);
 
+  // GetValue when always_override should be true.
+  // This is particularly relevant for the Timeseries datatype, for which
+  // child TTLs override parent TTLs.
+  // TODO: Once the timeseries bug is fixed, this function as well as the
+  // corresponding field can be safely removed.
+  Result<RedisValue>GetOverrideValue(int subkey_index = kNilSubkeyIndex);
+
   Result<RedisValue> GetValue(int subkey_index = kNilSubkeyIndex);
 
   int ApplyIndex(int32_t index, const int32_t len);
   CHECKED_STATUS ExecuteGet();
+  CHECKED_STATUS ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
   CHECKED_STATUS ExecuteHGetAllLikeCommands(
                                     ValueType value_type,
@@ -256,7 +307,8 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   Result<bool> DuplicateUniqueIndexValue(const DocOperationApplyData& data);
 
-  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch);
+  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+                           const ReadHybridTime& read_ht, const MonoTime deadline);
 
   bool IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
 
