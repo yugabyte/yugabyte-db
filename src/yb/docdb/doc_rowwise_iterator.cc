@@ -244,8 +244,7 @@ bool DocRowwiseIterator::HasNext() const {
 
     // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
     Slice sub_doc_key(iter_key_.data().data(), *dockey_size);
-    GetSubDocumentData data = { sub_doc_key, &row_, &doc_found };
-    data.table_ttl = TableTTL(schema_);
+    GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {

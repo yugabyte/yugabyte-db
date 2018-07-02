@@ -66,9 +66,11 @@ CHECKED_STATUS FastDecodeDescendingSignedVarInt(Slice *slice, int64_t *dest);
 Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice);
 
 size_t UnsignedVarIntLength(uint64_t v);
+void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest);
 void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size);
 CHECKED_STATUS FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size);
+Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice);
 Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice);
 
 }  // namespace util

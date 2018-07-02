@@ -117,6 +117,11 @@ bool MonoDelta::Equals(const MonoDelta &rhs) const {
   return nano_delta_ == rhs.nano_delta_;
 }
 
+bool MonoDelta::IsNegative() const {
+  DCHECK(Initialized());
+  return nano_delta_ < 0;
+}
+
 std::string MonoDelta::ToString() const {
   return StringPrintf("%.3fs", ToSeconds());
 }
@@ -157,6 +162,15 @@ MonoDelta& MonoDelta::operator+=(const MonoDelta& rhs) {
   DCHECK(SafeToAdd64(nano_delta_, rhs.nano_delta_));
   DCHECK(nano_delta_ + rhs.nano_delta_ != kUninitialized);
   nano_delta_ += rhs.nano_delta_;
+  return *this;
+}
+
+MonoDelta& MonoDelta::operator-=(const MonoDelta& rhs) {
+  DCHECK(Initialized());
+  DCHECK(rhs.Initialized());
+  DCHECK(SafeToAdd64(nano_delta_, -rhs.nano_delta_));
+  DCHECK(nano_delta_ - rhs.nano_delta_ != kUninitialized);
+  nano_delta_ -= rhs.nano_delta_;
   return *this;
 }
 
@@ -250,6 +264,16 @@ void MonoTime::AddDelta(const MonoDelta &delta) {
     value_ = kMax.value_;
   } else {
     value_ += delta.ToSteadyDuration();
+  }
+}
+
+void MonoTime::SubtractDelta(const MonoDelta &delta) {
+  DCHECK(Initialized());
+  DCHECK(delta.Initialized());
+  if (delta == MonoDelta::kMin) {
+    value_ = kMin.value_;
+  } else {
+    value_ -= delta.ToSteadyDuration();
   }
 }
 

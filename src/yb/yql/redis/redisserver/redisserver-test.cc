@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <cstdio>
 #include <memory>
 #include <random>
 #include <string>
@@ -84,6 +85,8 @@ constexpr int kDefaultTimeoutMs = 100000;
 #else
 constexpr int kDefaultTimeoutMs = 10000;
 #endif
+
+typedef std::tuple<string, string> CollectionEntry;
 
 class TestRedisService : public RedisTableTestBase {
  public:
@@ -181,6 +184,21 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestApproxInt(int line,
+                            const std::vector<std::string>& command,
+                            int64_t expected,
+                            int64_t err_bound) {
+    DoRedisTest(line, command, RedisReplyType::kInteger,
+        [line, expected, err_bound](const RedisReply& reply) {
+          // TODO: this does not check for wraparounds.
+          ASSERT_LE(expected - err_bound, reply.as_integer()) <<
+            "Originator: " << __FILE__ << ":" << line;
+          ASSERT_GE(expected + err_bound, reply.as_integer()) <<
+            "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
+
   // Note: expected empty string will check for null instead
   void DoRedisTestArray(int line,
       const std::vector<std::string>& command,
@@ -247,6 +265,20 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  inline void CheckExpired(std::string* key) {
+    SyncClient();
+    DoRedisTestInt(__LINE__, {"TTL", *key}, -2);
+    DoRedisTestInt(__LINE__, {"PTTL", *key}, -2);
+    DoRedisTestInt(__LINE__, {"EXPIRE", *key, "5"}, 0);
+    SyncClient();
+  }
+
+  inline void CheckExpiredPrimitive(std::string* key) {
+    SyncClient();
+    DoRedisTestNull(__LINE__, {"GET", *key});
+    CheckExpired(key);
+  }
+
   void SyncClient() { client().Commit(); }
 
   void VerifyCallbacks();
@@ -276,7 +308,7 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "60", "v7", expire_command,
         std::to_string(expire_val - ttl_sec + kRedisMaxTtlSeconds)});
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "70", "v8", expire_command,
-        std::to_string(expire_val - ttl_sec + kRedisMinTtlSeconds)});
+        std::to_string(expire_val - ttl_sec + kRedisMinTtlSetExSeconds)});
     // Same kv with different ttl (later one should win).
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "80", "v9", expire_command,
         std::to_string(expire_val)});
@@ -285,7 +317,7 @@ class TestRedisService : public RedisTableTestBase {
     SyncClient();
 
     // Wait for min ttl to expire.
-    std::this_thread::sleep_for(std::chrono::seconds(kRedisMinTtlSeconds + 1));
+    std::this_thread::sleep_for(std::chrono::seconds(kRedisMinTtlSetExSeconds + 1));
 
     SyncClient();
     DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "10"}, "v5");
@@ -391,6 +423,257 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   void CloseRedisClient();
+
+  // Tests not repeated because they are already covered in the primitive TTL test:
+  // Operating on a key that does not exist, EXPIRing with a TTL out of bounds,
+  // Any (P) version of a command.
+  template <typename T>
+  void TestTtlCollection(std::string* collection_key, T* values, int val_size,
+                         std::function<void(std::string*, T*, int)> set_vals,
+                         std::function<void(std::string*, T*)> add_elems,
+                         std::function<void(std::string*, T*)> del_elems,
+                         std::function<void(std::string*, T*, bool)> get_check,
+                         std::function<void(std::string*, int)> check_card) {
+
+    // num_shifts is the number of times we call modify
+    int num_shifts = 7;
+    int size = val_size - num_shifts;
+    std::string key = *collection_key;
+    auto init = std::bind(set_vals, collection_key, std::placeholders::_1, size);
+    auto modify = [add_elems, del_elems, check_card, collection_key, size, this]
+                  (T** values) {
+                    SyncClient();
+                    if (std::rand() % 2) {
+                      del_elems(collection_key, *values);
+                      SyncClient();
+                      check_card(collection_key, size - 1);
+                      SyncClient();
+                      add_elems(collection_key, *values + size);
+                    } else {
+                      add_elems(collection_key, *values + size);
+                      SyncClient();
+                      check_card(collection_key, size + 1);
+                      SyncClient();
+                      del_elems(collection_key, *values);
+                    }
+                    SyncClient();
+                    check_card(collection_key, size);
+                    ++*values;
+                  };
+    auto check = [get_check, check_card, collection_key, size, val_size, values, this]
+                 (T* curr_vals) {
+                   T* it = values;
+                   SyncClient();
+                   for ( ; it < curr_vals; ++it)
+                     get_check(collection_key, it, false);
+                   for ( ; it < curr_vals + size; ++it)
+                     get_check(collection_key, it, true);
+                   for ( ; it < values + val_size; ++it)
+                     get_check(collection_key, it, false);
+                   SyncClient();
+                   check_card(collection_key, size);
+                   SyncClient();
+                 };
+    auto expired = [get_check, collection_key, size, this](T* values) {
+                     CheckExpired(collection_key);
+                     for (T* it = values; it < values + size; ++it)
+                       get_check(collection_key, it, false);
+                     SyncClient();
+                   };
+
+    // Checking TTL and PERSIST on a persistent collection.
+    init(values);
+    DoRedisTestInt(__LINE__, {"TTL", key}, -1);
+    DoRedisTestInt(__LINE__, {"PTTL", key}, -1);
+    DoRedisTestInt(__LINE__, {"PERSIST", key}, 0);
+    SyncClient();
+    // Checking that modification does not change anything.
+    modify(&values);
+    DoRedisTestInt(__LINE__, {"TTL", key}, -1);
+    DoRedisTestInt(__LINE__, {"PTTL", key}, -1);
+    DoRedisTestInt(__LINE__, {"PERSIST", key}, 0);
+    check(values);
+    SyncClient();
+    // Adding TTL and checking that modification does not change anything.
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "7"}, 1);
+    modify(&values);
+    DoRedisTestInt(__LINE__, {"TTL", key}, 7);
+    check(values);
+    SyncClient();
+    // Checking that everything is still there after some time.
+    std::this_thread::sleep_for(3s);
+    DoRedisTestInt(__LINE__, {"TTL", key}, 4);
+    check(values);
+    SyncClient();
+    std::this_thread::sleep_for(5s);
+    expired(values);
+    SyncClient();
+    // Checking expiration changes for a later expiration.
+    init(values);
+    check(values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "5"}, 1);
+    modify(&values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "9"}, 1);
+    DoRedisTestInt(__LINE__, {"TTL", key}, 9);
+    check(values);
+    modify(&values);
+    SyncClient();
+    std::this_thread::sleep_for(5s);
+    DoRedisTestInt(__LINE__, {"TTL", key}, 4);
+    check(values);
+    modify(&values);
+    SyncClient();
+    std::this_thread::sleep_for(5s);
+    SyncClient();
+    expired(values);
+    SyncClient();
+    // Checking expiration changes for an earlier expiration.
+    init(values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "5"}, 1);
+    modify(&values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "3"}, 1);
+    DoRedisTestInt(__LINE__, {"TTL", key}, 3);
+    check(values);
+    modify(&values);
+    SyncClient();
+    std::this_thread::sleep_for(4s);
+    expired(values);
+    SyncClient();
+    // Checking persistence.
+    init(values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "6"}, 1);
+    SyncClient();
+    std::this_thread::sleep_for(3s);
+    DoRedisTestInt(__LINE__, {"PERSIST", key}, 1);
+    DoRedisTestInt(__LINE__, {"TTL", key}, -1);
+    check(values);
+    SyncClient();
+    std::this_thread::sleep_for(6s);
+    check(values);
+    SyncClient();
+    // Testing zero expiration.
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "0"}, 1);
+    expired(values);
+    SyncClient();
+    // Testing negative expiration.
+    init(values);
+    DoRedisTestInt(__LINE__, {"EXPIRE", key, "-7"}, 1);
+    expired(values);
+    SyncClient();
+    // Testing SETEX turns the key back into a primitive.
+    init(values);
+    DoRedisTestOk(__LINE__, {"SETEX", key, "6", "17"});
+    SyncClient();
+    DoRedisTestBulkString(__LINE__, {"GET", key}, "17");
+    SyncClient();
+    std::this_thread::sleep_for(7s);
+    CheckExpired(&key);
+    SyncClient();
+    VerifyCallbacks();
+  }
+
+  void TestTtlSet(std::string* collection_key, std::string* collection_values, int card) {
+    std::function<void(std::string*, std::string*, int)> set_init =
+        [this](std::string* key, std::string* values, int size) {
+          for (auto it = values; it < values + size; ++it) {
+            DoRedisTestInt(__LINE__, {"SADD", *key, *it}, 1);
+            SyncClient();
+          }
+          SyncClient();
+        };
+    std::function<void(std::string*, std::string*)> set_add =
+        [this](std::string* key, std::string* value) {
+          DoRedisTestInt(__LINE__, {"SADD", *key, *value}, 1);
+        };
+    std::function<void(std::string*, std::string*)> set_del =
+        [this](std::string* key, std::string* value) {
+          DoRedisTestInt(__LINE__, {"SREM", *key, *value}, 1);
+        };
+    std::function<void(std::string*, std::string*, bool)> set_check =
+        [this](std::string* key, std::string* value, bool exists) {
+          DoRedisTestInt(__LINE__, {"SISMEMBER", *key, *value}, exists);
+        };
+    std::function<void(std::string*, int)> set_card =
+        [this](std::string* key, int size) {
+          DoRedisTestInt(__LINE__, {"SCARD", *key}, size);
+        };
+
+    TestTtlCollection(collection_key, collection_values, card,
+                      set_init, set_add, set_del, set_check, set_card);
+  }
+
+  void TestTtlSortedSet(std::string* collection_key, CollectionEntry* collection_values, int card) {
+    std::function<void(std::string*, CollectionEntry*, int)> sorted_set_init =
+        [this](std::string* key, CollectionEntry* values, int size) {
+          for (auto it = values; it < values + size; ++it) {
+            DoRedisTestInt(__LINE__, {"ZADD", *key, std::get<0>(*it), std::get<1>(*it)}, 1);
+            SyncClient();
+          }
+          SyncClient();
+        };
+    std::function<void(std::string*, CollectionEntry*)> sorted_set_add =
+        [this](std::string* key, CollectionEntry* value) {
+          DoRedisTestInt(__LINE__, {"ZADD", *key, std::get<0>(*value), std::get<1>(*value)}, 1);
+        };
+    std::function<void(std::string*, CollectionEntry*)> sorted_set_del =
+        [this](std::string* key, CollectionEntry* value) {
+          DoRedisTestInt(__LINE__, {"ZREM", *key, std::get<1>(*value)}, 1);
+        };
+    std::function<void(std::string*, CollectionEntry*, bool)> sorted_set_check =
+        [this](std::string* key, CollectionEntry* value, bool exists) {
+          if (exists) {
+            char buf[20];
+            std::snprintf(buf, sizeof(buf), "%.6f", std::stof(std::get<0>(*value)));
+            DoRedisTestBulkString(__LINE__, {"ZSCORE", *key, std::get<1>(*value)},
+                                  buf);
+          } else {
+            DoRedisTestNull(__LINE__, {"ZSCORE", *key, std::get<1>(*value)});
+          }
+        };
+    std::function<void(std::string*, int)> sorted_set_card =
+        [this](std::string* key, int size) {
+          DoRedisTestInt(__LINE__, {"ZCARD", *key}, size);
+        };
+
+    TestTtlCollection(collection_key, collection_values, card,
+                      sorted_set_init, sorted_set_add, sorted_set_del,
+                      sorted_set_check, sorted_set_card);
+  }
+
+  void TestTtlHash(std::string* collection_key, CollectionEntry* collection_values, int card) {
+    std::function<void(std::string*, CollectionEntry*, int)> hash_init =
+        [this](std::string* key, CollectionEntry* values, int size) {
+          for (auto it = values; it < values + size; ++it) {
+            DoRedisTestInt(__LINE__, {"HSET", *key, std::get<0>(*it), std::get<1>(*it)}, 1);
+            SyncClient();
+          }
+          SyncClient();
+        };
+    std::function<void(std::string*, CollectionEntry*)> hash_add =
+        [this](std::string* key, CollectionEntry* value) {
+          DoRedisTestInt(__LINE__, {"HSET", *key, std::get<0>(*value), std::get<1>(*value)}, 1);
+        };
+    std::function<void(std::string*, CollectionEntry*)> hash_del =
+        [this](std::string* key, CollectionEntry* value) {
+          DoRedisTestInt(__LINE__, {"HDEL", *key, std::get<0>(*value)}, 1);
+        };
+    std::function<void(std::string*, CollectionEntry*, bool)> hash_check =
+        [this](std::string* key, CollectionEntry* value, bool exists) {
+          if (exists)
+            DoRedisTestBulkString(__LINE__, {"HGET", *key, std::get<0>(*value)},
+                                  std::get<1>(*value));
+          else
+            DoRedisTestNull(__LINE__, {"HGET", *key, std::get<0>(*value)});
+        };
+    std::function<void(std::string*, int)> hash_card =
+        [this](std::string* key, int size) {
+          DoRedisTestInt(__LINE__, {"HLEN", *key}, size);
+        };
+
+    TestTtlCollection(collection_key, collection_values, card,
+                      hash_init, hash_add, hash_del, hash_check, hash_card);
+  }
+
   void TestAbort(const std::string& command);
 
  protected:
@@ -1760,19 +2043,19 @@ TEST_F(TestRedisService, TestIncrCorner) {
 }
 
 // This test also uses the open source client
-TEST_F(TestRedisService, TestTtl) {
+TEST_F(TestRedisService, TestTtlSetEx) {
 
   DoRedisTestOk(__LINE__, {"SET", "k1", "v1"});
   DoRedisTestOk(__LINE__, {"SET", "k2", "v2", "EX", "1"});
   DoRedisTestOk(__LINE__, {"SET", "k3", "v3", "EX", NonTsanVsTsan("20", "100")});
   DoRedisTestOk(__LINE__, {"SET", "k4", "v4", "EX", std::to_string(kRedisMaxTtlSeconds)});
-  DoRedisTestOk(__LINE__, {"SET", "k5", "v5", "EX", std::to_string(kRedisMinTtlSeconds)});
+  DoRedisTestOk(__LINE__, {"SET", "k5", "v5", "EX", std::to_string(kRedisMinTtlSetExSeconds)});
 
   // Invalid ttl.
   DoRedisTestExpectError(__LINE__, {"SET", "k6", "v6", "EX",
       std::to_string(kRedisMaxTtlSeconds + 1)});
   DoRedisTestExpectError(__LINE__, {"SET", "k7", "v7", "EX",
-      std::to_string(kRedisMinTtlSeconds - 1)});
+      std::to_string(kRedisMinTtlSetExSeconds - 1)});
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
@@ -2232,7 +2515,7 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
   TestTSTtl("EXPIRE_AT", ttl_sec, curr_time_sec + ttl_sec, "test_expire_at");
 
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_in", "10", "v1", "EXPIRE_IN",
-      std::to_string(kRedisMinTtlSeconds - 1)});
+      std::to_string(kRedisMinTtlSetExSeconds - 1)});
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_in", "10", "v1", "EXPIRE_IN",
       std::to_string(kRedisMaxTtlSeconds + 1)});
 
@@ -2242,11 +2525,11 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec - 10)});
 
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_AT",
-      std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+      std::to_string(curr_time_sec + kRedisMinTtlSetExSeconds - 1)});
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "expire_at",
-      std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+      std::to_string(curr_time_sec + kRedisMinTtlSetExSeconds - 1)});
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "exPiRe_aT",
-                                    std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+                                    std::to_string(curr_time_sec + kRedisMinTtlSetExSeconds - 1)});
 
   DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_IN",
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
@@ -3176,6 +3459,281 @@ TEST_F(TestRedisService, TestHMGetTiming) {
 
   LOG(INFO) << yb::Format("Total HSET time: $0ms Total HMGET time: $1ms",  set_time, get_time);
 
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestTtlSet) {
+  std::string collection_key = "russell";
+  std::string values[10] = {"the", "set", "of", "all", "sets",
+                            "that", "do", "not", "contain", "themselves"};
+  int card = 10;
+  TestTtlSet(&collection_key, values, card);
+}
+
+TEST_F(TestRedisService, TestTtlSortedSet) {
+  std::string collection_key = "sort_me_up";
+  CollectionEntry values[10] = { std::make_tuple("5.4223", "insertion"),
+                                 std::make_tuple("-1", "bogo"),
+                                 std::make_tuple("8", "selection"),
+                                 std::make_tuple("3.1415926", "heap"),
+                                 std::make_tuple("2.718", "quick"),
+                                 std::make_tuple("1", "merge"),
+                                 std::make_tuple("9.9", "bubble"),
+                                 std::make_tuple("0", "radix"),
+                                 std::make_tuple("9.9", "shell"),
+                                 std::make_tuple("11", "comb") };
+  int card = 10;
+  TestTtlSortedSet(&collection_key, values, card);
+}
+
+TEST_F(TestRedisService, TestTtlHash) {
+  std::string collection_key = "hash_browns";
+  CollectionEntry values[10] = { std::make_tuple("eggs", "hyperloglog"),
+                                 std::make_tuple("bagel", "bloom"),
+                                 std::make_tuple("ham", "quotient"),
+                                 std::make_tuple("salmon", "cuckoo"),
+                                 std::make_tuple("porridge", "lp_norm_sketch"),
+                                 std::make_tuple("muffin", "count_sketch"),
+                                 std::make_tuple("doughnut", "hopscotch"),
+                                 std::make_tuple("oatmeal", "fountain_codes"),
+                                 std::make_tuple("fruit", "linear_probing"),
+                                 std::make_tuple("toast", "chained") };
+  int card = 10;
+  TestTtlHash(&collection_key, values, card);
+}
+
+TEST_F(TestRedisService, TestTtlTimeseries) {
+  std::string key = "timeseries";
+  DoRedisTestOk(__LINE__, {"TSADD", key, "1", "hello", "2", "how", "3", "are", "5", "you"});
+  // Checking TTL on timeseries.
+  DoRedisTestInt(__LINE__, {"TTL", key}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", key}, -1);
+  SyncClient();
+  // Checking PERSIST and (P)EXPIRE do not work.
+  DoRedisTestExpectError(__LINE__, {"PERSIST", key});
+  DoRedisTestExpectError(__LINE__, {"EXPIRE", key, "13"});
+  DoRedisTestExpectError(__LINE__, {"PEXPIRE", key, "16384"});
+  SyncClient();
+  // Checking SETEX turns it back into a normal key.
+  DoRedisTestOk(__LINE__, {"SETEX", key, "6", "17"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", key}, "17");
+  SyncClient();
+  std::this_thread::sleep_for(7s);
+  CheckExpired(&key);
+  SyncClient();
+  VerifyCallbacks();
+}
+
+// For testing commands where the value is overwritten, but TTL is not.
+TEST_F(TestRedisService, TestTtlModifyNoOverwrite) {
+  // TODO: when we support RENAME, it should also be added here.
+  std::string k1 = "key";
+  std::string k2 = "keyy";
+  int64_t millisecond_error = 500;
+  // Test integer modify
+  DoRedisTestOk(__LINE__, {"SET", k1, "3"});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "14"}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 14);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 14000, millisecond_error);
+  DoRedisTestInt(__LINE__, {"INCR", k1}, 4);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 14);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 14000, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(5s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 9);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 9000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, "4");
+  DoRedisTestInt(__LINE__, {"INCRBY", k1, "3"}, 7);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 9);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 9000, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(4s);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, "7");
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 5);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 5000, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(5s);
+  CheckExpired(&k1);
+  // Test string modify
+  DoRedisTestOk(__LINE__, {"SETEX", k2, "12", "from what I've tasted of desire "});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 12);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 12000, millisecond_error);
+  DoRedisTestInt(__LINE__, {"APPEND", k2, "I hold with those who favor fire."}, 65);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 12);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 12000, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(5s);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 7);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 7000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k2}, "from what I've tasted of desire "
+                        "I hold with those who favor fire.");
+  SyncClient();
+  std::this_thread::sleep_for(3s);
+  DoRedisTestInt(__LINE__, {"SETRANGE", k2, "5", "the beginning of time, sir"}, 65);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 4);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 4000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k2}, "from the beginning of time, "
+                        "sir I hold with those who favor fire.");
+  SyncClient();
+  std::this_thread::sleep_for(2s);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 2);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 2000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k2}, "from the beginning of time, "
+                        "sir I hold with those who favor fire.");
+  SyncClient();
+  std::this_thread::sleep_for(3s);
+  CheckExpired(&k2);
+  // Test Persist
+  DoRedisTestOk(__LINE__, {"SETEX", k1, "13", "we've been pulling out the nails that hold up"});
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 13);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 13000, millisecond_error);
+  DoRedisTestInt(__LINE__, {"APPEND", k1, " everything you've known"}, 69);
+  SyncClient();
+  std::this_thread::sleep_for(5s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 8);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 8000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, "we've been pulling out the nails "
+                        "that hold up everything you've known");
+  DoRedisTestInt(__LINE__, {"PERSIST", k1}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  SyncClient();
+  std::this_thread::sleep_for(9s);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, "we've been pulling out the nails "
+                        "that hold up everything you've known");
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+}
+
+// For testing TTL-related commands on primitives.
+TEST_F(TestRedisService, TestTtlPrimitive) {
+  std::string k1 = "foo";
+  std::string k2 = "fu";
+  std::string k3 = "phu";
+  std::string value = "bar";
+  int64_t millisecond_error = 500;
+  // Checking expected behavior on a key with no ttl.
+  DoRedisTestOk(__LINE__, {"SET", k1, value});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, -2);
+  DoRedisTestInt(__LINE__, {"PTTL", k2}, -2);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  SyncClient();
+  // Setting a ttl and checking expected return values.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "3"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 3);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 3000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  std::this_thread::sleep_for(2s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 1);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Checking expected return values after expiration.
+  std::this_thread::sleep_for(2s);
+  CheckExpiredPrimitive(&k1);
+  // Testing functionality with SETEX.
+  DoRedisTestOk(__LINE__, {"SETEX", k1, "5", value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 5);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 5000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Set a new, earlier expiration.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "2"}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 2);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 2000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Check that the value expires as expected.
+  std::this_thread::sleep_for(2s);
+  CheckExpiredPrimitive(&k1);
+  // Initialize with SET using the EX flag.
+  DoRedisTestOk(__LINE__, {"SET", k1, value, "EX", "2"});
+  SyncClient();
+  // Set a new, later, expiration.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "8"}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 8);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 8000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Checking expected return values after a while, before expiration.
+  std::this_thread::sleep_for(4s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, 4);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 4000, millisecond_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Persisting the key and checking expected return values.
+  DoRedisTestInt(__LINE__, {"PERSIST", k1}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Check that the key and value are still there after a while.
+  std::this_thread::sleep_for(30s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Persist a key that does not exist.
+  DoRedisTestInt(__LINE__, {"PERSIST", k2}, 0);
+  SyncClient();
+  // Persist a key that has no TTL.
+  DoRedisTestInt(__LINE__, {"PERSIST", k1}, 0);
+  SyncClient();
+  // Vanilla set on a key and persisting it.
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"PERSIST", k2}, 0);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k2}, -1);
+  SyncClient();
+  // Expiring with an invalid TTL. We do not check the minimum,
+  // because any negative value leads to an immediate deletion.
+  DoRedisTestExpectError(__LINE__, {"PEXPIRE", k2,
+      std::to_string(kRedisMaxTtlMillis + 1)});
+  DoRedisTestExpectError(__LINE__, {"EXPIRE", k2,
+      std::to_string(kRedisMaxTtlMillis / MonoTime::kMillisecondsPerSecond + 1)});
+  SyncClient();
+  // Test that setting a zero-valued TTL properly expires the value.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k2, "0"}, 1);
+  CheckExpiredPrimitive(&k2);
+  // One more time with a negative TTL.
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", k2, "-7"}, 1);
+  CheckExpiredPrimitive(&k2);
+  DoRedisTestOk(__LINE__, {"SETEX", k2, "-7", value});
+  CheckExpiredPrimitive(&k2);
+  // Test PExpire
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"PEXPIRE", k2, "3200"}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 3);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 3200, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(1s);
+  DoRedisTestInt(__LINE__, {"TTL", k2}, 2);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 2200, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(3s);
+  CheckExpiredPrimitive(&k2);
+  // Test PSetEx
+  DoRedisTestOk(__LINE__, {"PSETEX", k3, "2300", value});
+  SyncClient();
+  std::this_thread::sleep_for(1s);
+  DoRedisTestInt(__LINE__, {"TTL", k3}, 1);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k3}, 1300, millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(2s);
+  CheckExpiredPrimitive(&k3);
   VerifyCallbacks();
 }
 

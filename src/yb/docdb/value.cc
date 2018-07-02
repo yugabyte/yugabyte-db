@@ -24,13 +24,13 @@ using std::string;
 using strings::Substitute;
 
 const MonoDelta Value::kMaxTtl = yb::common::kMaxTtl;
+const MonoDelta Value::kResetTtl = MonoDelta::FromNanoseconds(0);
 const int64_t Value::kInvalidUserTimestamp = yb::common::kInvalidUserTimestamp;
 
 template <typename T>
 bool DecodeType(const ValueType& expected_value_type, const T& default_value, Slice* slice,
                 T* val) {
   const ValueType value_type = DecodeValueType(*slice);
-
   if (value_type != expected_value_type) {
     *val = default_value;
     return false;
@@ -40,11 +40,17 @@ bool DecodeType(const ValueType& expected_value_type, const T& default_value, Sl
   return true;
 }
 
+CHECKED_STATUS Value::DecodeMergeFlags(Slice* slice, uint64_t* merge_flags) {
+  if (DecodeType(ValueType::kMergeFlags, (uint64_t) 0, slice, merge_flags)) {
+    *merge_flags = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(slice));
+  }
+  return Status::OK();
+}
+
 CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
   if (!DecodeType(ValueType::kHybridTime, DocHybridTime::kInvalid, slice, doc_ht)) {
     return Status::OK();
   }
-
   return doc_ht->DecodeFrom(slice);
 }
 
@@ -84,7 +90,9 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
   }
 
   rocksdb::Slice slice = rocksdb_value;
-
+  RETURN_NOT_OK_PREPEND(
+      DecodeMergeFlags(&slice, &merge_flags_),
+      Format("Failed to decode merge flags in $0", rocksdb_value.ToDebugHexString()));
   RETURN_NOT_OK_PREPEND(
       DecodeIntentDocHT(&slice, &intent_doc_ht_),
       Format("Failed to decode intent ht in $0", rocksdb_value.ToDebugHexString()));
@@ -102,6 +110,9 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
 
 string Value::ToString() const {
   string to_string = primitive_value_.ToString();
+  if (merge_flags_) {
+    to_string += "; merge flags: " + std::to_string(merge_flags_);
+  }
   if (!ttl_.Equals(kMaxTtl)) {
     to_string += "; ttl: " + ttl_.ToString();
   }
@@ -118,6 +129,10 @@ string Value::Encode() const {
 }
 
 void Value::EncodeAndAppend(std::string *value_bytes) const {
+  if (merge_flags_) {
+    value_bytes->push_back(ValueTypeAsChar::kMergeFlags);
+    yb::util::FastAppendUnsignedVarIntToStr(merge_flags_, value_bytes);
+  }
   if (!ttl_.Equals(kMaxTtl)) {
     value_bytes->push_back(ValueTypeAsChar::kTtl);
     yb::util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
@@ -129,13 +144,19 @@ void Value::EncodeAndAppend(std::string *value_bytes) const {
   value_bytes->append(primitive_value_.ToValue());
 }
 
-Status Value::DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
-                                       ValueType* value_type) {
-  MonoDelta ttl;
-  int64_t user_timestamp;
+  Status Value::DecodePrimitiveValueType(
+      const rocksdb::Slice& rocksdb_value,
+      ValueType* value_type,
+      uint64_t* merge_flags,
+      MonoDelta* ttl,
+      int64_t* user_ts) {
   auto slice_copy = rocksdb_value;
-  RETURN_NOT_OK(DecodeTTL(&slice_copy, &ttl));
-  RETURN_NOT_OK(DecodeUserTimestamp(&slice_copy, &user_timestamp));
+  uint64_t local_merge_flags;
+  MonoDelta local_ttl;
+  int64_t local_user_ts;
+  RETURN_NOT_OK(DecodeMergeFlags(&slice_copy, merge_flags ? merge_flags : &local_merge_flags));
+  RETURN_NOT_OK(DecodeTTL(&slice_copy, ttl ? ttl : &local_ttl));
+  RETURN_NOT_OK(DecodeUserTimestamp(&slice_copy, user_ts ? user_ts : &local_user_ts));
   *value_type = DecodeValueType(slice_copy);
   return Status::OK();
 }

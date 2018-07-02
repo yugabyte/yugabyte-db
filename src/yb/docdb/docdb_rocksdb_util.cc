@@ -153,9 +153,13 @@ Status SeekToValidKvAtTs(
   MonoDelta ttl;
   RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
   if (!ttl.Equals(Value::kMaxTtl)) {
-    const HybridTime expiry =
+    // It is advisable to use HasExpiredTTL instead, but here the expiration comes into use.
+    // HasExpiredTTL is more likely to avoid overflow issues, by finding the delta time instead
+    // of the expiration time, but since the actual expiration HybridTime is used in the logic here,
+    // we cannot avoid calculating it anyway.
+    const HybridTime expiration =
         server::HybridClock::AddPhysicalTimeToHybridTime(found_key->hybrid_time(), ttl);
-    if (hybrid_time.CompareTo(expiry) > 0) {
+    if (hybrid_time.CompareTo(expiration) > 0) {
       if (found_value != nullptr) {
         *found_value = Value(PrimitiveValue::kTombstone);
       }
@@ -164,7 +168,7 @@ Status SeekToValidKvAtTs(
       // expire entire subdocuments by adding a TTL to the object marker (we're adding TTLs for
       // every column and every collection element in CQL instead), but logically this is probably
       // what we want.
-      found_key->SetHybridTimeForReadPath(expiry);
+      found_key->SetHybridTimeForReadPath(expiration);
       return Status::OK();
     }
   }
@@ -226,7 +230,7 @@ void PerformRocksDBSeek(
     // all, or a minimum possible DocHybridTime, for seeks.
     // - Reading at a HybridTime requires setting WriteId to kMaxWriteId so that we don't read
     //   a database state that only existed in a middle of a single-shard transaction.
-    // - Seeking to a key with no DocHybridTime is useful in the write-path InternalDocIterator. The
+    // - Seeking to a key with no DocHybridTime is useful in the write-path iterator. The
     //   same effect could have been achieved by using the maximum possible DocHybridTime.
     // - Seeking to a key with a minimum possible DocHybridTime is useful so we can skip the
     //   "top-of-the-row" (or "top-of-the-SubDocument") section (say, "a") and jump to the section
@@ -242,7 +246,7 @@ void PerformRocksDBSeek(
             seek_key);
         // Don't crash if we failed to decode the SubDocKey (that is sometimes possible in
         // special-case seek keys that we construct), or if we decoded it and it had no hybrid
-        // time (which is used in the write-path InternalDocIterator to check if an object init
+        // time (which is used in the write-path iterator to check if an object init
         // marker is present).
         if (subdoc_key_decode_status.ok() && subdoc_key.has_hybrid_time()) {
           DCHECK(dht.write_id() == kMaxWriteId || dht == DocHybridTime::kMin)
