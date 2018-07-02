@@ -91,11 +91,9 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
     case TSOpcode::kListAppend:
       // Return the value of the second operand. The first operand must be a column ID.
       return EvalExpr(tscall.operands(1), table_row, result);
-
     case TSOpcode::kListPrepend:
-      // Return the value of the second operand. The first operand must be a column ID.
+      // Return the value of the first operand. The second operand is a column ID.
       return EvalExpr(tscall.operands(0), table_row, result);
-
     case TSOpcode::kListRemove: {
       QLValue org_list_value;
       QLValue sub_list_value;

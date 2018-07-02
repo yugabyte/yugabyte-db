@@ -125,6 +125,7 @@ struct RedisValue {
   RedisDataType type;
   std::string value;
   Expiration exp;
+  int64_t internal_index = 0;
 };
 
 class RedisWriteOperation : public DocOperation {

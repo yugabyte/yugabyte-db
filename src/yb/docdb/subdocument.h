@@ -35,11 +35,17 @@ class SubDocument : public PrimitiveValue {
 
   ~SubDocument();
 
+  explicit SubDocument(ListExtendOrder extend_order) : SubDocument(ValueType::kArray) {
+    extend_order_ = extend_order;
+  }
+
   // Copy constructor. This is potentially very expensive!
   SubDocument(const SubDocument& other);
 
-  explicit SubDocument(const std::vector<PrimitiveValue> &elements) {
+  explicit SubDocument(const std::vector<PrimitiveValue> &elements,
+                       ListExtendOrder extend_order = ListExtendOrder::APPEND) {
     type_ = ValueType::kArray;
+    extend_order_ = extend_order;
     complex_data_structure_ = new ArrayContainer();
     array_container().reserve(elements.size());
     for (auto& elt : elements) {
@@ -114,6 +120,10 @@ class SubDocument : public PrimitiveValue {
   // Interpret the SubDocument as a RedisSortedSet.
   // Assume current subdocument is of map type (kObject type)
   CHECKED_STATUS ConvertToRedisSortedSet();
+
+  // Interpret the SubDocument as a RedisSortedSet.
+  // Assume current subdocument is of map type (kObject type)
+  CHECKED_STATUS ConvertToRedisList();
 
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.

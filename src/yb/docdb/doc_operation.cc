@@ -78,6 +78,8 @@ ValueType ValueTypeFromRedisType(RedisDataType dt) {
     return ValueType::kRedisSortedSet;
   case RedisDataType::REDIS_TYPE_TIMESERIES:
     return ValueType::kRedisTS;
+  case RedisDataType::REDIS_TYPE_LIST:
+    return ValueType::kRedisList;
   default:
     return ValueType::kInvalid;
   }
@@ -211,6 +213,8 @@ Result<RedisDataType> GetRedisValueType(
       return REDIS_TYPE_TIMESERIES;
     case ValueType::kRedisSortedSet:
       return REDIS_TYPE_SORTEDSET;
+    case ValueType::kRedisList:
+      return REDIS_TYPE_LIST;
     case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       return REDIS_TYPE_STRING;
@@ -275,6 +279,8 @@ Result<RedisValue> GetRedisValue(
         return RedisValue{REDIS_TYPE_SORTEDSET};
       case ValueType::kRedisSet:
         return RedisValue{REDIS_TYPE_SET};
+      case ValueType::kRedisList:
+        return RedisValue{REDIS_TYPE_LIST};
       default:
         return STATUS_SUBSTITUTE(IllegalState, "Invalid value type: $0",
                                  static_cast<int>(doc.value_type()));
@@ -1169,7 +1175,40 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
-  return STATUS(NotSupported, "Redis operation has not been implemented");
+  const RedisKeyValuePB& kv = request_.key_value();
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+  if (data_type != REDIS_TYPE_LIST && data_type != REDIS_TYPE_NONE) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response_.set_error_message(wrong_type_message);
+    return Status::OK();
+  }
+
+  SubDocument list;
+  int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv)) + kv.value_size();
+  list.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(PrimitiveValue(card)));
+
+  SubDocument elements(request_.push_request().side() == REDIS_SIDE_LEFT ?
+                   ListExtendOrder::PREPEND : ListExtendOrder::APPEND);
+  for (auto val : kv.value()) {
+    elements.AddListElement(SubDocument(PrimitiveValue(val)));
+  }
+  list.SetChild(PrimitiveValue(ValueType::kArray), std::move(elements));
+  RETURN_NOT_OK(list.ConvertToRedisList());
+
+  if (data_type == REDIS_TYPE_NONE) {
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), list,
+        data.read_time, data.deadline, redis_query_id()));
+  } else {
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+        DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), list,
+        data.read_time, data.deadline, redis_query_id()));
+  }
+
+  response_.set_int_response(card);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
 }
 
 Status RedisWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
@@ -1177,7 +1216,49 @@ Status RedisWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
-  return STATUS(NotSupported, "Redis operation has not been implemented");
+  const RedisKeyValuePB& kv = request_.key_value();
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+
+  if (!VerifyTypeAndSetCode(kv.type(), data_type, &response_, VerifySuccessIfMissing::kTrue)) {
+    // We already set the error code in the function.
+    return Status::OK();
+  }
+
+  SubDocument list;
+  int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv));
+
+  if (!card) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NIL);
+    return Status::OK();
+  }
+
+  std::vector<int> indices;
+  std::vector<SubDocument> new_value = {SubDocument(PrimitiveValue(ValueType::kTombstone))};
+  std::vector<std::string> value;
+
+  if (request_.pop_request().side() == REDIS_SIDE_LEFT) {
+    indices.push_back(1);
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+        data.read_time, data.deadline, redis_query_id(), Direction::kForward, 0, &value));
+  } else {
+    indices.push_back(card);
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+        data.read_time, data.deadline, redis_query_id(), Direction::kBackward, card + 1, &value));
+  }
+
+  list.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(PrimitiveValue(--card)));
+  RETURN_NOT_OK(list.ConvertToRedisList());
+  RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+        doc_path, list, data.read_time, data.deadline, redis_query_id()));
+
+  if (value.size() != 1)
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Expected one popped value, got $0", value.size());
+
+  response_.set_string_response(value[0]);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
 }
 
 Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
@@ -1287,8 +1368,8 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   // support for Redis.
   GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
 
-  // TODO: change this to include lists when implementing.
-  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet;
+  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet ||
+                                value_type == ValueType::kRedisList;
   bool return_array_response = add_keys || add_values;
 
   if (has_cardinality_subkey) {
@@ -1706,6 +1787,8 @@ Status RedisReadOperation::ExecuteGet() {
       return ExecuteHGetAllLikeCommands(ValueType::kRedisTS, false, false);
     case RedisGetRequestPB_GetRequestType_ZCARD:
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSortedSet, false, false);
+    case RedisGetRequestPB_GetRequestType_LLEN:
+      return ExecuteHGetAllLikeCommands(ValueType::kRedisList, false, false);
     case RedisGetRequestPB_GetRequestType_UNKNOWN: {
       return STATUS(InvalidCommand, "Unknown Get Request not supported");
     }
@@ -2226,15 +2309,15 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
       break;
     }
     case LIST: {
-      MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
+      MonoDelta default_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
           MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
           MonoDelta::kMax;
 
       // At YQL layer list indexes start at 0, but internally we start at 1.
       int index = column_value.subscript_args(0).value().int32_value() + 1;
-      RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(
+      RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
           *sub_path, {index}, {sub_doc}, data.read_time, data.deadline, request_.query_id(),
-          table_ttl, ttl));
+          default_ttl, ttl));
       break;
     }
     default: {
@@ -2273,17 +2356,13 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
             sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
+    case TSOpcode::kListPrepend:
+          sub_doc.SetExtendOrder(ListExtendOrder::PREPEND_BLOCK);
+          FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-              sub_path, sub_doc, data.read_time, data.deadline,
-              ListExtendOrder::APPEND, request_.query_id(), ttl));
-      break;
-    case TSOpcode::kListPrepend:
-          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-          RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-              sub_path, sub_doc, data.read_time, data.deadline,
-              ListExtendOrder::PREPEND, request_.query_id(), ttl));
+              sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListRemove:
       // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented

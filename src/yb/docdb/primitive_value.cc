@@ -59,6 +59,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;            \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
@@ -192,6 +193,7 @@ string PrimitiveValue::ToString() const {
       return "(->)";
     case ValueType::kTombstone:
       return "DEL";
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kArray:
       return "[]";
     case ValueType::kTransactionId:
@@ -379,6 +381,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
@@ -497,7 +500,6 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kMaxByte:
       break;
   }
-
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
@@ -862,6 +864,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;

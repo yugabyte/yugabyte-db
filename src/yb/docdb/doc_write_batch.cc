@@ -16,7 +16,6 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/value_type.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/db.h"
 #include "yb/server/hybrid_clock.h"
@@ -34,10 +33,9 @@ DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
       monotonic_counter_(monotonic_counter) {}
 
 Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, bool has_ancestor) {
-  const auto prev_subdoc_ht = current_entry_.doc_hybrid_time;
-  const auto prev_key_prefix_exact = current_entry_.found_exact_key_prefix;
   subdoc_exists_ = false;
   current_entry_.value_type = ValueType::kInvalid;
+
   // Check the cache first.
   boost::optional<DocWriteBatchCache::Entry> cached_entry =
     cache_.Get(key_prefix_);
@@ -46,8 +44,12 @@ Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, bool has_ancestor) {
     subdoc_exists_ = current_entry_.value_type != ValueType::kTombstone;
     return Status::OK();
   }
+  return SeekToKeyPrefix(iter->Iterator(), has_ancestor);
+}
 
-  IntentAwareIterator* doc_iter = iter->Iterator();
+Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_ancestor) {
+  const auto prev_subdoc_ht = current_entry_.doc_hybrid_time;
+  const auto prev_key_prefix_exact = current_entry_.found_exact_key_prefix;
 
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
@@ -189,6 +191,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
 
   for (int subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
+
     // We don't need to check if intermediate documents already exist if init markers are optional,
     // or if we already know they exist (either from previous reads or our own writes in the same
     // single-shard operation.)
@@ -369,14 +372,14 @@ Status DocWriteBatch::ExtendSubDocument(
     const auto& map = value.object_container();
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
-      child_doc_path.AddSubKey(ent.first);
+      if (ent.first.value_type() != ValueType::kArray)
+          child_doc_path.AddSubKey(ent.first);
       RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second,
                                       read_ht, deadline, query_id, ttl, user_timestamp));
     }
   } else if (value.value_type() == ValueType::kArray) {
-      RETURN_NOT_OK(ExtendList(
-        doc_path, value, read_ht, deadline, ListExtendOrder::APPEND,
-        query_id, ttl, user_timestamp));
+    RETURN_NOT_OK(ExtendList(
+        doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp));
   } else {
     if (!value.IsTombstoneOrPrimitive()) {
       return STATUS_FORMAT(
@@ -411,7 +414,6 @@ Status DocWriteBatch::ExtendList(
     const SubDocument& value,
     const ReadHybridTime& read_ht,
     const MonoTime deadline,
-    ListExtendOrder extend_order,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
@@ -430,15 +432,8 @@ Status DocWriteBatch::ExtendList(
   // No additional lock is required.
   int64_t index =
       std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(list.size()));
-  if (extend_order == ListExtendOrder::APPEND) {
-    for (size_t i = 0; i < list.size(); i++) {
-      DocPath child_doc_path = doc_path;
-      index++;
-      child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i],
-                                      read_ht, deadline, query_id, ttl, user_timestamp));
-    }
-  } else { // PREPEND - adding in reverse order with negated index
+  // PREPEND - adding in reverse order with negated index
+  if (value.GetExtendOrder() == ListExtendOrder::PREPEND_BLOCK) {
     for (size_t i = list.size(); i > 0; i--) {
       DocPath child_doc_path = doc_path;
       index++;
@@ -446,72 +441,137 @@ Status DocWriteBatch::ExtendList(
       RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1],
                                       read_ht, deadline, query_id, ttl, user_timestamp));
     }
+  } else {
+    for (size_t i = 0; i < list.size(); i++) {
+      DocPath child_doc_path = doc_path;
+      index++;
+      child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(
+          value.GetExtendOrder() == ListExtendOrder::APPEND ? index : -index));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i],
+                                      read_ht, deadline, query_id, ttl, user_timestamp));
+    }
   }
   return Status::OK();
 }
 
-// Warning: This uses a raw RocksDB iterator. May run into expiration problems if CQL
-// supports higher-level TTL.
 Status DocWriteBatch::ReplaceInList(
     const DocPath &doc_path,
-    const vector<int>& indexes,
-    const vector<SubDocument>& values,
+    const std::vector<int>& indices,
+    const std::vector<SubDocument>& values,
     const ReadHybridTime& read_ht,
     const MonoTime deadline,
     const rocksdb::QueryId query_id,
-    MonoDelta table_ttl,
-    MonoDelta write_ttl) {
+    const Direction dir,
+    const int64_t start_index,
+    std::vector<string>* results,
+    MonoDelta default_ttl,
+    MonoDelta write_ttl,
+    bool is_cql) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
-  KeyBytes key_bytes = sub_doc_key.Encode();
-  // Ensure we seek directly to indexes and skip init marker if it exists
-  key_bytes.AppendValueType(ValueType::kArrayIndex);
-  rocksdb::Slice seek_key = key_bytes.AsSlice();
-  auto iter = CreateRocksDBIterator(doc_db_.regular, BloomFilterMode::USE_BLOOM_FILTER, seek_key,
-                                    query_id);
+  key_prefix_ = sub_doc_key.Encode();
+
+  auto iter = yb::docdb::CreateIntentAwareIterator(
+      doc_db_,
+      BloomFilterMode::USE_BLOOM_FILTER,
+      key_prefix_.AsSlice(),
+      query_id,
+      /*txn_op_context*/ boost::none,
+      deadline,
+      read_ht);
+
+  Slice key_slice;
+  Slice value_slice;
   SubDocKey found_key;
-  Value found_value;
-  int current_index = 0;
+  int current_index = start_index;
   int replace_index = 0;
-  ROCKSDB_SEEK(iter.get(), seek_key);
+  DocHybridTime doc_ht;
+
+  if (dir == Direction::kForward) {
+    // Ensure we seek directly to indices and skip init marker if it exists.
+    key_prefix_.AppendValueType(ValueType::kArrayIndex);
+    SeekToKeyPrefix(iter.get(), false);
+  } else {
+    // We would like to seek past the entire list and go backwards.
+    key_prefix_.AppendValueType(ValueType::kMaxByte);
+    iter->PrevSubDocKey(key_prefix_);
+    key_prefix_.RemoveValueTypeSuffix(ValueType::kMaxByte);
+    key_prefix_.AppendValueType(ValueType::kArrayIndex);
+  }
+
   while (true) {
-    if (indexes[replace_index] <= 0 || !iter->Valid() || !iter->key().starts_with(seek_key)) {
-      return STATUS_SUBSTITUTE(
+    if (indices[replace_index] <= 0 || !iter->valid() ||
+        !(key_slice = VERIFY_RESULT(iter->FetchKey(&doc_ht))).starts_with(key_prefix_)) {
+      return is_cql ?
+        STATUS_SUBSTITUTE(
           QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
-          indexes[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
+          indices[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
+          current_index) :
+        STATUS_SUBSTITUTE(Corruption,
+          "Index Error: $0, reached beginning of list with size $1",
+          indices[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
     }
 
-    SubDocKey found_key;
-    RETURN_NOT_OK(found_key.FullyDecodeFrom(iter->key()));
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_slice, HybridTimeRequired::kFalse));
+
     MonoDelta entry_ttl;
-    rocksdb::Slice rocksdb_value = iter->value();
-    RETURN_NOT_OK(Value::DecodeTTL(&rocksdb_value, &entry_ttl));
-    entry_ttl = ComputeTTL(entry_ttl, table_ttl);
-    bool has_expired = false;
-    RETURN_NOT_OK(HasExpiredTTL(found_key.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
+    ValueType value_type;
+    value_slice = iter->value();
+    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value_slice, &value_type, nullptr, &entry_ttl));
+
+    bool has_expired = value_type == ValueType::kTombstone;
+    // Redis lists do not have element-level TTL.
+    if (!has_expired && is_cql) {
+      entry_ttl = ComputeTTL(entry_ttl, default_ttl);
+      RETURN_NOT_OK(HasExpiredTTL(doc_ht.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
+    }
+
     if (has_expired) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys()+1);
-      SeekPastSubKey(found_key, iter.get());
+      if (dir == Direction::kForward) {
+        iter->SeekPastSubKey(key_slice);
+      } else {
+        iter->PrevSubDocKey(KeyBytes(key_slice));
+      }
       continue;
     }
 
-    current_index++;
+    // TODO (rahul): it may be cleaner to put this in the read path.
+    // The code below is meant specifically for POP functionality in Redis lists.
+    if (results) {
+      Value v;
+      RETURN_NOT_OK(v.Decode(iter->value()));
+      results->push_back(v.primitive_value().GetString());
+    }
 
-    // Should we verify that the subkeys are indeed numbers as list indexes should be?
+    if (dir == Direction::kForward)
+      current_index++;
+    else
+      current_index--;
+
+    // Should we verify that the subkeys are indeed numbers as list indices should be?
     // Or just go in order for the index'th largest key in any subdocument?
-    if (current_index == indexes[replace_index]) {
+    if (current_index == indices[replace_index]) {
+      // When inserting, key_prefix_ is modified.
+      KeyBytes array_index_prefix(key_prefix_);
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
       RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index],
                                       read_ht, deadline, query_id, write_ttl));
       replace_index++;
-      if (replace_index == indexes.size()) {
+      if (replace_index == indices.size()) {
         return Status::OK();
       }
+      key_prefix_ = array_index_prefix;
     }
-    SeekPastSubKey(found_key, iter.get());
+
+    if (dir == Direction::kForward) {
+      iter->SeekPastSubKey(key_slice);
+    } else {
+      iter->PrevSubDocKey(KeyBytes(key_slice));
+    }
   }
 }
 

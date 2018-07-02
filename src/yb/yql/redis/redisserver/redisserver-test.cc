@@ -3862,5 +3862,56 @@ TEST_F(TestRedisService, TestFlushDb) {
   TestFlush("FLUSHDB", true);
 }
 
+// Test deque functionality of the list.
+TEST_F(TestRedisService, TestListBasic) {
+  DoRedisTestInt(__LINE__, {"LPUSH", "letters", "florea", "elena", "dumitru"}, 3);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 3);
+  DoRedisTestInt(__LINE__, {"LPUSH", "letters", "constantin", "barbu"}, 5);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 5);
+  DoRedisTestBulkString(__LINE__, {"LPOP", "letters"}, "barbu");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 4);
+  DoRedisTestInt(__LINE__, {"LPUSH", "letters", "ana"}, 5);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 5);
+  DoRedisTestInt(__LINE__, {"RPUSH", "letters", "lazar", "maria", "nicolae"}, 8);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 8);
+  DoRedisTestBulkString(__LINE__, {"LPOP", "letters"}, "ana");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 7);
+  DoRedisTestBulkString(__LINE__, {"RPOP", "letters"}, "nicolae");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 6);
+  DoRedisTestInt(__LINE__, {"RPUSH", "letters", "gheorghe", "haralambie", "ion"}, 9);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 9);
+  DoRedisTestInt(__LINE__, {"LPUSH", "letters", "vasile", "udrea", "tudor", "sandu"}, 13);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 13);
+  DoRedisTestInt(__LINE__, {"RPUSH", "letters", "jiu", "kilogram"}, 15);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 15);
+  DoRedisTestBulkString(__LINE__, {"RPOP", "letters"}, "kilogram");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 14);
+  DoRedisTestBulkString(__LINE__, {"LPOP", "letters"}, "sandu");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 13);
+  DoRedisTestInt(__LINE__, {"RPUSH", "letters", "dublu v", "xenia", "i grec"}, 16);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 16);
+  DoRedisTestInt(__LINE__, {"LPUSH", "letters", "radu", "q", "petre", "olga"}, 20);
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 20);
+  DoRedisTestBulkString(__LINE__, {"RPOP", "letters"}, "i grec");
+  DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 19);
+  DoRedisTestInt(__LINE__, {"RPUSH", "letters", "zamfir"}, 20);
+  SyncClient();
+
+  // Degenerate cases
+  DoRedisTestOk(__LINE__, {"SET", "bravo", "alpha"});
+  DoRedisTestNull(__LINE__, {"LPOP", "november"});
+  DoRedisTestNull(__LINE__, {"RPOP", "kilo"});
+  DoRedisTestInt(__LINE__, {"LPUSH", "sierra", "yankee"}, 1);
+  SyncClient();
+  DoRedisTestExpectError(__LINE__, {"LPOP", "bravo"});
+  DoRedisTestBulkString(__LINE__, {"RPOP", "sierra"}, "yankee");
+  DoRedisTestExpectError(__LINE__, {"RPOP", "bravo"});
+  SyncClient();
+  DoRedisTestNull(__LINE__, {"LPOP", "sierra"});
+  DoRedisTestNull(__LINE__, {"RPOP", "sierra"});
+  SyncClient();
+  VerifyCallbacks();
+}
+
 }  // namespace redisserver
 }  // namespace yb

@@ -17,6 +17,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/read_hybrid_time.h"
+#include "yb/util/trilean.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
@@ -32,6 +33,7 @@ class TransactionStatusManager;
 namespace docdb {
 
 class Value;
+struct Expiration;
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
@@ -118,6 +120,9 @@ class IntentAwareIterator {
   // Seek to last doc key.
   void SeekToLastDocKey();
 
+  // Seek to previous SubDocKey as opposed to previous DocKey.
+  void PrevSubDocKey(const KeyBytes& key_bytes);
+
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided.
   void PrevDocKey(const DocKey& doc_key);
@@ -165,6 +170,8 @@ class IntentAwareIterator {
 
   // Seek to latest doc key among regular and intent iterator.
   void SeekToLatestDocKeyInternal();
+  // Seek to latest subdoc key among regular and intent iterator.
+  void SeekToLatestSubDocKeyInternal();
 
   // Skips regular entries with hybrid time after read limit.
   // If `is_forward` is `false` and `iter_` is positioned to the earliest record for the current

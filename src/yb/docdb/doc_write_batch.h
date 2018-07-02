@@ -21,6 +21,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/util/enums.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/docdb/intent_aware_iterator.h"
 
 namespace rocksdb {
 class DB;
@@ -64,9 +65,6 @@ YB_DEFINE_ENUM(InitMarkerBehavior,
                // unless there are delete markers / TTL expiration involved.
                (kOptional));
 
-// Used for extending a list.
-YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND))
-
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix or write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
@@ -79,6 +77,7 @@ class DocWriteBatch {
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
   Status SeekToKeyPrefix(LazyIterator* doc_iter, bool has_ancestor = false);
+  Status SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_ancestor);
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
@@ -141,21 +140,38 @@ class DocWriteBatch {
       const SubDocument& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const MonoTime deadline = MonoTime::kMax,
-      ListExtendOrder extend_order = ListExtendOrder::APPEND,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
-  // 'indexes' must be sorted. List indexes are not zero indexed, the first element is list[1].
+  // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
-      const std::vector<int>& indexes,
+      const std::vector<int>& indices,
       const std::vector<SubDocument>& values,
       const ReadHybridTime& read_ht,
       const MonoTime deadline,
       const rocksdb::QueryId query_id,
-      MonoDelta table_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl);
+      const Direction dir = Direction::kForward,
+      const int64_t start_index = 0,
+      std::vector<string>* results = nullptr,
+      MonoDelta default_ttl = Value::kMaxTtl,
+      MonoDelta write_ttl = Value::kMaxTtl,
+      bool is_cql = false);
+
+  CHECKED_STATUS ReplaceCqlInList(
+      const DocPath &doc_path,
+      const std::vector<int>& indices,
+      const std::vector<SubDocument>& values,
+      const ReadHybridTime& read_ht,
+      const MonoTime deadline,
+      const rocksdb::QueryId query_id,
+      MonoDelta default_ttl = Value::kMaxTtl,
+      MonoDelta write_ttl = Value::kMaxTtl) {
+    return ReplaceInList(doc_path, indices, values, read_ht, deadline, query_id,
+                         Direction::kForward, /* start index */ 0, /* results */ nullptr,
+                         default_ttl, write_ttl, /* is_cql */ true);
+  }
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,

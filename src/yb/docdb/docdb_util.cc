@@ -322,11 +322,10 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
 Status DocDBRocksDBUtil::ExtendList(
     const DocPath& doc_path,
     const SubDocument& value,
-    const ListExtendOrder extend_order,
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, MonoTime::kMax, extend_order));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, MonoTime::kMax));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -337,12 +336,12 @@ Status DocDBRocksDBUtil::ReplaceInList(
     const ReadHybridTime& read_ht,
     const HybridTime& hybrid_time,
     const rocksdb::QueryId query_id,
-    MonoDelta table_ttl,
+    MonoDelta default_ttl,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ReplaceInList(
-      doc_path, indexes, values, read_ht, MonoTime::kMax, query_id, table_ttl, ttl));
+  RETURN_NOT_OK(dwb.ReplaceCqlInList(
+      doc_path, indexes, values, read_ht, MonoTime::kMax, query_id, default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 

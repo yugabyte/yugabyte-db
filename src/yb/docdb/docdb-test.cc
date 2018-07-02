@@ -754,12 +754,11 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
 SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
     HT{ physical: 0 logical: 100 w: 3 }]) -> "other_value"
         )#");
-
   ASSERT_OK(ExtendList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-      SubDocument({PrimitiveValue(5), PrimitiveValue(2)}), ListExtendOrder::PREPEND,
+      SubDocument({PrimitiveValue(5), PrimitiveValue(2)}, ListExtendOrder::PREPEND_BLOCK),
       HybridTime(300)));
   ASSERT_OK(ExtendList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-      SubDocument({PrimitiveValue(7), PrimitiveValue(4)}), ListExtendOrder::APPEND,
+      SubDocument({PrimitiveValue(7), PrimitiveValue(4)}, ListExtendOrder::APPEND),
       HybridTime(400)));
 
   AssertDocDbDebugDumpStrEq(
@@ -827,7 +826,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
   vector<SubDocument> values = {
       SubDocument(PrimitiveValue::kTombstone), SubDocument(PrimitiveValue(17))};
   ASSERT_OK(ReplaceInList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-                          indexes, values, read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
+    indexes, values, read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
 
   AssertDocDbDebugDumpStrEq(
       R"#(

@@ -783,8 +783,9 @@ yb::Status GetSubDocument(
         RETURN_NOT_OK(data.result->ConvertToRedisTS());
       } else if (value_type == ValueType::kRedisSortedSet) {
         RETURN_NOT_OK(data.result->ConvertToRedisSortedSet());
+      } else if (value_type == ValueType::kRedisList) {
+        RETURN_NOT_OK(data.result->ConvertToRedisList());
       }
-      // TODO: Could also handle lists here.
     }
     return Status::OK();
   }
