@@ -184,7 +184,8 @@ class PTDmlStmt : public PTCollection {
                      PTExpr::SharedPtr where_clause = nullptr,
                      PTExpr::SharedPtr if_clause = nullptr,
                      bool else_error = false,
-                     PTDmlUsingClause::SharedPtr using_clause = nullptr);
+                     PTDmlUsingClause::SharedPtr using_clause = nullptr,
+                     bool returns_status = false);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -255,6 +256,10 @@ class PTDmlStmt : public PTCollection {
 
   bool else_error() const {
     return else_error_;
+  }
+
+  bool returns_status() const {
+    return returns_status_;
   }
 
   const PTExpr::SharedPtr& where_clause() const {
@@ -360,25 +365,28 @@ class PTDmlStmt : public PTCollection {
 
   // For inter-statement dependency analysis -
   // Does this DML modify the hash or primary key?
-  bool ModifiesHashKey() const {
-    return modifies_hash_key_;
+  bool ModifiesStaticRow() const {
+    return modifies_static_row_;
   }
-  bool ModifiesPrimaryKey() const {
-    return modifies_primary_key_;
+  bool ModifiesPrimaryRow() const {
+    return modifies_primary_row_;
+  }
+  bool ModifiesMultipleRows() const {
+    return modifies_multiple_rows_;
   }
   // Does this DML read from the hash or primary key?
-  bool ReadsHashKey(const bool has_usertimestamp) const {
+  bool ReadsStaticRow(const bool has_usertimestamp) const {
     // A DML reads from the hash key if it reads a static column, or it modifies the hash key and
     // has a user-defined timestamp (which DocDB will require a read-modify-write by the timestamp).
-    return !static_column_refs_.empty() || (modifies_hash_key_ && has_usertimestamp);
+    return !static_column_refs_.empty() || (modifies_static_row_ && has_usertimestamp);
   }
-  bool ReadsPrimaryKey(const bool has_usertimestamp) const {
+  bool ReadsPrimaryRow(const bool has_usertimestamp) const {
     // A DML reads from the primary key if there is a IF clause (TODO differentiate the case where
     // the IF clause references static columns only) or otherwise reads a non-static column (e.g.
     // counter update), or it modifies the primary key and has a user-defined timestamp (which
     // DocDB will require a read-modify-write by the timestamp).
     return if_clause_ != nullptr || !column_refs_.empty() ||
-        (modifies_primary_key_ && has_usertimestamp);
+        (modifies_primary_row_ && has_usertimestamp);
   }
 
  protected:
@@ -400,8 +408,8 @@ class PTDmlStmt : public PTCollection {
   // Semantic-analyzing the bind variables for hash columns.
   CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
 
-  // Semantic-analyzing statement for inter-statement dependency.
-  CHECKED_STATUS AnalyzeInterDependency(SemContext *sem_context);
+  // Semantic-analyzing the modified columns for inter-statement dependency.
+  CHECKED_STATUS AnalyzeColumnArgs(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
@@ -412,6 +420,7 @@ class PTDmlStmt : public PTCollection {
   const PTExpr::SharedPtr if_clause_;
   const bool else_error_ = false;
   const PTDmlUsingClause::SharedPtr using_clause_;
+  const bool returns_status_ = false;
   MCVector<PTBindVar*> bind_variables_;
 
   // -- The semantic analyzer will decorate this node with the following information --
@@ -463,10 +472,10 @@ class PTDmlStmt : public PTCollection {
   MCUnorderedSet<std::shared_ptr<client::YBTable>> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
 
-  // For inter-dependency analysis of DMLs in a batch/transaction: does this DML modify the hash
-  // hash or primary key?
-  bool modifies_hash_key_ = false;
-  bool modifies_primary_key_ = false;
+  // For inter-dependency analysis of DMLs in a batch/transaction
+  bool modifies_primary_row_ = false;
+  bool modifies_static_row_ = false;
+  bool modifies_multiple_rows_ = false; // Currently only allowed for (range) deletes.
 
   static const PTExpr::SharedPtr kNullPointerRef;
 };

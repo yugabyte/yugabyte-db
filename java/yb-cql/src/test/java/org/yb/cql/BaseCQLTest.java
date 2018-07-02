@@ -429,7 +429,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     try {
       session.execute(stmt);
       fail(String.format("Statement did not fail: %s", stmt));
-    } catch (InvalidQueryException qv) {
+    } catch (QueryValidationException qv) {
       LOG.info("Expected exception", qv);
     }
   }

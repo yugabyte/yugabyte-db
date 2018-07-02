@@ -33,9 +33,10 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            PTCollection::SharedPtr value_clause,
                            PTExpr::SharedPtr if_clause,
                            const bool else_error,
-                           PTDmlUsingClause::SharedPtr using_clause)
-
-  : PTDmlStmt(memctx, loc, nullptr /* where_clause */, if_clause, else_error, using_clause),
+                           PTDmlUsingClause::SharedPtr using_clause,
+                           const bool returns_status)
+    : PTDmlStmt(memctx, loc, nullptr /* where_clause */, if_clause, else_error, using_clause,
+                returns_status),
       relation_(relation),
       columns_(columns),
       value_clause_(value_clause) {
@@ -106,6 +107,12 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       }
       column_args_->at(idx).Init(col_desc, *iter);
       iter++;
+
+      // If returning a status we always return back the whole row.
+      if (returns_status_) {
+        AddRefForAllColumns();
+      }
+
     }
   } else {
     // This case is not yet supported as it's not CQL syntax.
@@ -156,6 +163,10 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       range_keys++;
     }
   }
+
+  // Analyze column args to set if primary and/or static row is modified.
+  RETURN_NOT_OK(AnalyzeColumnArgs(sem_context));
+
   if (StaticColumnArgsOnly()) {
     if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
       return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
@@ -182,9 +193,6 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
-
-  // Analyze for inter-statement dependency.
-  RETURN_NOT_OK(AnalyzeInterDependency(sem_context));
 
   return Status::OK();
 }

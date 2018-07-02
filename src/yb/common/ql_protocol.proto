@@ -294,6 +294,9 @@ message QLWriteRequestPB {
 
   // Child transaction data for additional write requests necessary for index updates, etc.
   optional ChildTransactionDataPB child_transaction_data = 16;
+
+  // Whether to return a status row reporting applied status and execution errors (if any).
+  optional bool returns_status = 18 [default = false];
 }
 
 //-------------------------------------- Read request ----------------------------------------

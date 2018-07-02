@@ -45,7 +45,8 @@ class PTInsertStmt : public PTDmlStmt {
                PTCollection::SharedPtr value_clause,
                PTExpr::SharedPtr if_clause = nullptr,
                bool else_error = false,
-               PTDmlUsingClause::SharedPtr using_clause = nullptr);
+               PTDmlUsingClause::SharedPtr using_clause = nullptr,
+               const bool returns_status = false);
   virtual ~PTInsertStmt();
 
   template<typename... TypeArgs>
