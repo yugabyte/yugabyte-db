@@ -196,6 +196,7 @@ message RedisGetRequestPB {
     TSGET = 14;
     TSCARD = 16;
     ZSCORE = 17;
+    LLEN = 18;
     UNKNOWN = 99;
   }
 
@@ -275,8 +276,8 @@ message RedisIncrRequestPB {
 
 // RPUSH, RPUSHX, LPUSH, LPUSHX
 message RedisPushRequestPB {
-  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
-  optional bool assume_exists = 3 [ default = false];
+  optional RedisSide side = 2 [ default = REDIS_SIDE_LEFT ];
+  optional bool check_existence = 3 [ default = false];
 }
 
 // LINSERT
@@ -286,11 +287,11 @@ message RedisInsertRequestPB {
 
 // LPOP, RPOP, SPOP; blocking versions BLPOP etc. currently not supported.
 message RedisPopRequestPB {
-  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
+  optional RedisSide side = 2 [ default = REDIS_SIDE_LEFT ];
   optional int32 count = 3;                  // Count is allowed only when popping from a set.
 }
 
-// SADD, ZADD
+// SADD
 message RedisAddRequestPB {
   // Following options are for ZADD only.
   optional RedisWriteMode mode = 2 [ default = REDIS_WRITEMODE_UPSERT ];

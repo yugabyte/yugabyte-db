@@ -154,7 +154,6 @@ bool DocDBCompactionFilter::Filter(int level,
     overwrite_ht_.pop_back();
     expiration_.pop_back();
   }
-
   if (subdoc_key.doc_key() != prev_subdoc_key_.doc_key() ||
       subdoc_key.subkeys() != prev_subdoc_key_.subkeys()) {
     within_merge_block_ = false;

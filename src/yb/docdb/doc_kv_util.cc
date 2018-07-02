@@ -202,19 +202,18 @@ CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta&
 const MonoDelta TableTTL(const Schema& schema) {
   MonoDelta ttl = Value::kMaxTtl;
   if (schema.table_properties().HasDefaultTimeToLive()) {
-    uint64_t table_ttl = schema.table_properties().DefaultTimeToLive();
-    return table_ttl == kResetTTL ? Value::kMaxTtl : MonoDelta::FromMilliseconds(table_ttl);
+    uint64_t default_ttl = schema.table_properties().DefaultTimeToLive();
+    return default_ttl == kResetTTL ? Value::kMaxTtl : MonoDelta::FromMilliseconds(default_ttl);
   }
   return ttl;
 }
 
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& table_ttl) {
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& default_ttl) {
   MonoDelta ttl;
   if (!value_ttl.Equals(Value::kMaxTtl)) {
     ttl = value_ttl.ToMilliseconds() == kResetTTL ? Value::kMaxTtl : value_ttl;
   } else {
-    // This is the default.
-    ttl = table_ttl;
+    ttl = default_ttl;
   }
   return ttl;
 }

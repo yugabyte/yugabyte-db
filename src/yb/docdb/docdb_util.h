@@ -132,7 +132,6 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
       const SubDocument& value,
-      const ListExtendOrder extend_order,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
@@ -143,7 +142,7 @@ class DocDBRocksDBUtil {
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
-      MonoDelta table_ttl = Value::kMaxTtl,
+      MonoDelta default_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
