@@ -346,12 +346,12 @@ public class PlacementInfoUtil {
     boolean readOnlyClusterEdit = numRO == 1 && numExistingROs >= 1;
     LOG.info("newRO={}, existingRO={}, rocc={}, roce={}.", numRO, numExistingROs,
              readOnlyClusterCreate, readOnlyClusterEdit);
+    String universeName = universe == null ?
+        taskParams.getPrimaryCluster().userIntent.universeName :
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
 
     // Compose a unique name for the nodes in the universe.
-    taskParams.nodePrefix = Util.getNodePrefix(customerId,
-        !readOnlyClusterCreate && !readOnlyClusterEdit ?
-             taskParams.getPrimaryCluster().userIntent.universeName :
-             universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName);
+    taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
     ConfigureNodesMode mode;
     boolean isPrimaryClusterEdit = (universe != null) && !readOnlyClusterEdit;
