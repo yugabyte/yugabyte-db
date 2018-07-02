@@ -51,9 +51,16 @@ class DocWriteBatchCache {
 
   // Records the generation hybrid_time corresponding to the given encoded key prefix, which is
   // assumed not to include the hybrid_time at the end.
-  void Put(const KeyBytes& encoded_key_prefix, DocHybridTime gen_ht, ValueType value_type,
+  void Put(const KeyBytes& key_bytes, const Entry& entry);
+
+  // Same thing, but doesn't use an already created entry.
+  void Put(const KeyBytes& key_bytes,
+           DocHybridTime gen_ht,
+           ValueType value_type,
            UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
-           bool found_exact_key_prefix = true);
+           bool found_exact_key_prefix = true) {
+    Put(key_bytes, {gen_ht, value_type, user_timestamp, found_exact_key_prefix});
+  }
 
   // Returns the latest generation hybrid_time for the document/subdocument identified by the given
   // encoded key prefix.

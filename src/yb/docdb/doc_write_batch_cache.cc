@@ -37,18 +37,14 @@ using yb::util::FormatBytesAsStr;
 namespace yb {
 namespace docdb {
 
-void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
-                             DocHybridTime gen_ht,
-                             ValueType value_type,
-                             UserTimeMicros user_timestamp,
-                             bool found_exact_key_prefix) {
-  DOCDB_DEBUG_LOG(
+void DocWriteBatchCache::Put(const KeyBytes& key_bytes, const DocWriteBatchCache::Entry& entry) {
+    DOCDB_DEBUG_LOG(
       "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
       BestEffortDocDBKeyToStr(key_bytes),
-      gen_ht.ToString(),
-      ToString(value_type));
-  prefix_to_gen_ht_[key_bytes.AsStringRef()] =
-      {gen_ht, value_type, user_timestamp, found_exact_key_prefix};
+      entry.doc_hybrid_time.ToString(),
+      ToString(entry.value_type));
+
+  prefix_to_gen_ht_[key_bytes.AsStringRef()] = entry;
 }
 
 boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(

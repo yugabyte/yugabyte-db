@@ -27,6 +27,8 @@
 namespace yb {
 namespace docdb {
 
+struct Expiration;
+
 class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
   DocDBCompactionFilter(HybridTime history_cutoff,
@@ -41,6 +43,11 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
               std::string* new_value,
               bool* value_changed) const override;
   const char* Name() const override;
+
+  // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
+  // and kResetTtl because a PERSIST call would lead to a cached TTL of kMaxTtl, and kResetTtl
+  // indicates no TTL in Cassandra.
+  const MonoDelta kNoTtl = MonoDelta::FromNanoseconds(-1);
 
  private:
   // We will not keep history below this hybrid_time. The view of the database at this hybrid_time
@@ -91,6 +98,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // doc_key1 subkey1 HT(15) -> "value1"  | [20, 23]      | 15 < 23, deleting the entry
 
   mutable std::vector<DocHybridTime> overwrite_ht_;
+  mutable std::vector<Expiration> expiration_;
 
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.
@@ -98,7 +106,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
 
   // Default TTL of table.
   MonoDelta table_ttl_;
-
+  mutable bool within_merge_block_ = false;
   ColumnIdsPtr deleted_cols_;
 };
 

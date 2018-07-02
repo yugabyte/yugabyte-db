@@ -191,7 +191,7 @@ std::string ToShortDebugStr(rocksdb::Slice slice) {
 CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
                              const HybridTime& read_hybrid_time, bool* has_expired) {
   *has_expired = false;
-  if (!ttl.Equals(Value::kMaxTtl)) {
+  if (!(ttl.Equals(Value::kMaxTtl) || ttl.Equals(Value::kResetTtl))) {
     // We avoid using AddPhysicalTimeToHybridTime, since there might be overflows after addition.
     *has_expired = server::HybridClock::CompareHybridClocksToDelta(key_hybrid_time,
                                                                    read_hybrid_time, ttl) > 0;

@@ -31,7 +31,6 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
@@ -417,8 +416,8 @@ CHECKED_STATUS BuildSubDocument(
   while (iter->valid()) {
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    DocHybridTime doc_ht;
-    auto key = VERIFY_RESULT(iter->FetchKey(&doc_ht));
+    DocHybridTime write_time;
+    auto key = VERIFY_RESULT(iter->FetchKey(&write_time));
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
             << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
     DCHECK(key.starts_with(data.subdocument_key))
@@ -429,43 +428,46 @@ CHECKED_STATUS BuildSubDocument(
     KeyBytes key_copy(key);
     key = key_copy.AsSlice();
     rocksdb::Slice value = iter->value();
-
     // Checking that IntentAwareIterator returns an entry with correct time.
-    DCHECK_GE(iter->read_time().global_limit, doc_ht.hybrid_time())
+    DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time())
         << "Found key: " << SubDocKey::DebugSliceToString(key);
 
-    if (low_ts > doc_ht) {
+    if (low_ts > write_time) {
       VLOG(3) << "SeekPastSubKey: " << SubDocKey::DebugSliceToString(key);
       iter->SeekPastSubKey(key);
       continue;
     }
-
     Value doc_value;
     RETURN_NOT_OK(doc_value.Decode(value));
     ValueType value_type = doc_value.value_type();
-
     if (key == data.subdocument_key) {
-      const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
+      if (write_time == DocHybridTime::kMin)
+        return STATUS(Corruption, "No hybrid timestamp found on entry");
 
-      DocHybridTime write_time = doc_ht;
-
-      bool has_expired = false;
-      if (!ttl.Equals(Value::kMaxTtl)) {
-        const HybridTime expiry =
-            server::HybridClock::AddPhysicalTimeToHybridTime(doc_ht.hybrid_time(), ttl);
-        if (iter->read_time().read.CompareTo(expiry) > 0) {
-          has_expired = true;
-          if (low_ts.hybrid_time() > expiry) {
-            // We should have expiry > hybrid time from key > low_ts.
-            return STATUS_SUBSTITUTE(Corruption,
-                "Unexpected expiry time $0 found, should be higher than $1",
-                expiry.ToDebugString(), low_ts.ToString());
-          }
-
-          // Treat an expired value as a tombstone written at the same time as the original value.
-          doc_value = Value::Tombstone();
-          value_type = ValueType::kTombstone;
+      // We may need to update the TTL in individual columns.
+      if (write_time.hybrid_time() >= data.exp.write_ht) {
+        // We want to keep the default TTL otherwise.
+        if (doc_value.ttl() != Value::kMaxTtl) {
+          data.exp.write_ht = write_time.hybrid_time();
+          data.exp.ttl = doc_value.ttl();
+        } else if (data.exp.ttl.IsNegative()) {
+          data.exp.ttl = -data.exp.ttl;
         }
+      }
+
+      // If the hybrid time is kMin, then we must be using default TTL.
+      if (data.exp.write_ht == HybridTime::kMin) {
+        data.exp.write_ht = write_time.hybrid_time();
+      }
+
+      bool has_expired;
+      CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
+                             iter->read_time().read, &has_expired));
+
+      // Treat an expired value as a tombstone written at the same time as the original value.
+      if (has_expired) {
+        doc_value = Value::Tombstone();
+        value_type = ValueType::kTombstone;
       }
 
       const bool is_collection = IsCollectionType(value_type);
@@ -475,7 +477,7 @@ CHECKED_STATUS BuildSubDocument(
         if (low_ts < write_time) {
           low_ts = write_time;
         }
-        if (is_collection && !has_expired) {
+        if (is_collection) {
           *data.result = SubDocument(value_type);
         }
 
@@ -496,9 +498,10 @@ CHECKED_STATUS BuildSubDocument(
           return STATUS_FORMAT(Corruption,
               "Expected primitive value type, got $0", value_type);
         }
-
         DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time());
-        if (ttl.Equals(Value::kMaxTtl)) {
+        // TODO: the ttl_seconds in primitive value is currently only in use for CQL. At some
+        // point streamline by refactoring CQL to use the mutable Expiration in GetSubDocumentData.
+        if (data.exp.ttl == Value::kMaxTtl) {
           doc_value.mutable_primitive_value()->SetTtl(-1);
         } else {
           int64_t time_since_write_seconds = (
@@ -506,10 +509,10 @@ CHECKED_STATUS BuildSubDocument(
               server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time())) /
               MonoTime::kMicrosecondsPerSecond;
           int64_t ttl_seconds = std::max(static_cast<int64_t>(0),
-              ttl.ToMilliseconds() / MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
+              data.exp.ttl.ToMilliseconds() /
+              MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
           doc_value.mutable_primitive_value()->SetTtl(ttl_seconds);
         }
-
         // Choose the user supplied timestamp if present.
         const UserTimeMicros user_timestamp = doc_value.user_timestamp();
         doc_value.mutable_primitive_value()->SetWriteTime(
@@ -529,14 +532,15 @@ CHECKED_STATUS BuildSubDocument(
         return Status::OK();
       }
     }
-
     SubDocument descendant{PrimitiveValue(ValueType::kInvalid)};
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
       IntentAwareIteratorPrefixScope prefix_scope(key, iter);
       RETURN_NOT_OK(BuildSubDocument(
-          iter, data.Adjusted(key, &descendant), low_ts, num_values_observed));
+          iter, data.Adjusted(key, &descendant), low_ts,
+          num_values_observed));
+
     }
     if (descendant.value_type() == ValueType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
@@ -603,6 +607,81 @@ CHECKED_STATUS BuildSubDocument(
 
 }  // namespace
 
+yb::Status FindLastWriteTime(
+    IntentAwareIterator* iter,
+    const Slice& key_without_ht,
+    DocHybridTime* max_overwrite_time,
+    Expiration* exp,
+    Value* result_value) {
+
+  Slice value;
+  DocHybridTime doc_ht = *max_overwrite_time;
+  RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &doc_ht, &value));
+  if (!iter->valid()) {
+    return Status::OK();
+  }
+
+  uint64_t merge_flags = 0;
+  MonoDelta ttl;
+  ValueType value_type;
+  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &ttl));
+  if (value_type == ValueType::kInvalid) {
+    return Status::OK();
+  }
+
+  // We update the expiration if and only if the write time is later than the write time
+  // currently stored in expiration, and the record is not a regular record with default TTL.
+  // This is done independently of whether the row is a TTL row.
+  // In the case that the always_override flag is true, default TTL will not be preserved.
+  Expiration new_exp = *exp;
+  if (doc_ht.hybrid_time() >= exp->write_ht) {
+    // We want to keep the default TTL otherwise.
+    if (ttl != Value::kMaxTtl || merge_flags == Value::kTtlFlag || exp->always_override) {
+      new_exp.write_ht = doc_ht.hybrid_time();
+      new_exp.ttl = ttl;
+    } else if (exp->ttl.IsNegative()) {
+      new_exp.ttl = -new_exp.ttl;
+    }
+  }
+
+  // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
+  // original value/init marker.
+  if (merge_flags == Value::kTtlFlag) {
+    DocHybridTime new_ht;
+    RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
+
+    // There could be a case where the TTL row exists, but the value has been
+    // compacted away. Then, it is treated as a Tombstone written at the time
+    // of the TTL row.
+    if (!iter->valid() && !new_exp.ttl.IsNegative()) {
+      new_exp.ttl = -new_exp.ttl;
+    } else {
+      ValueType value_type;
+      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
+      // Because we still do not know whether we are seeking something expired,
+      // we must take the max_overwrite_time as if the value were not expired.
+      doc_ht = new_ht;
+    }
+  }
+
+  if ((value_type == ValueType::kTombstone || value_type == ValueType::kInvalid) &&
+      !new_exp.ttl.IsNegative()) {
+    new_exp.ttl = -new_exp.ttl;
+  }
+  *exp = new_exp;
+
+  if (doc_ht > *max_overwrite_time) {
+    *max_overwrite_time = doc_ht;
+    VLOG(4) << "Max overwritten time for " << key_without_ht.ToDebugHexString() << ": "
+            << *max_overwrite_time;
+  }
+
+  if (result_value)
+    RETURN_NOT_OK(result_value->Decode(value));
+
+  return Status::OK();
+}
+
 yb::Status GetSubDocument(
     const DocDB& doc_db,
     const GetSubDocumentData& data,
@@ -633,26 +712,26 @@ yb::Status GetSubDocument(
   *data.doc_found = false;
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", data.subdocument_key.ToDebugHexString(),
                   db_iter->read_time().ToString());
-  DocHybridTime max_deleted_ts(DocHybridTime::kMin);
 
+  // The latest time at which any prefix of the given key was overwritten.
+  DocHybridTime max_overwrite_ht(DocHybridTime::kMin);
   VLOG(4) << "GetSubDocument(" << data << ")";
 
   SubDocKey found_subdoc_key;
-
   auto dockey_size =
       VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::WHOLE_DOC_KEY));
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
-
   IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
-
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
   } else {
     db_iter->Seek(key_slice);
   }
-
-  // Check ancestors for init markers and tombstones, update max_deleted_ts with them.
+  Value doc_value;
+  // Check ancestors for init markers, tombstones, and expiration, tracking
+  // the expiration and corresponding most recent write time in exp, and the
+  // the general most recent overwrite time in max_overwrite_ht
   {
     auto temp_key = data.subdocument_key;
     temp_key.remove_prefix(dockey_size);
@@ -661,35 +740,30 @@ yb::Status GetSubDocument(
       if (!decode_result) {
         break;
       }
-      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts));
+      RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp));
       key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
     }
   }
-  // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
-  // subdocument_key.
 
-  // Check for init-marker / tombstones at the top level, update max_deleted_ts.
-  Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
-  RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts, &doc_value));
+  // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
+  // subdocument_key. Check for init-marker / tombstones at the top level, update max_overwrite_ht.
+  doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+  RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp, &doc_value));
+
   const ValueType value_type = doc_value.value_type();
 
   if (data.return_type_only) {
-    *data.doc_found = value_type != ValueType::kInvalid;
-    // Check for ttl.
-    if (*data.doc_found) {
-      const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
-      DocHybridTime write_time(DocHybridTime::kMin);
-      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &write_time));
-      if (write_time != DocHybridTime::kMin && !ttl.Equals(Value::kMaxTtl)) {
-        const HybridTime expiry =
-            server::HybridClock::AddPhysicalTimeToHybridTime(write_time.hybrid_time(), ttl);
-        if (db_iter->read_time().read.CompareTo(expiry) > 0) {
-          *data.doc_found = false;
-        }
-      }
+    *data.doc_found = value_type != ValueType::kInvalid &&
+      !data.exp.ttl.IsNegative();
+    // Check for expiration.
+    if (*data.doc_found && max_overwrite_ht != DocHybridTime::kMin) {
+      bool has_expired;
+      CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
+                             db_iter->read_time().read, &has_expired));
+      *data.doc_found = !has_expired;
     }
-
     if (*data.doc_found) {
+      // Observe that this will have the right type but not necessarily the right value.
       *data.result = SubDocument(doc_value.primitive_value());
     }
     return Status::OK();
@@ -699,7 +773,8 @@ yb::Status GetSubDocument(
     *data.result = SubDocument(ValueType::kInvalid);
     int64 num_values_observed = 0;
     IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
-    RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts, &num_values_observed));
+    RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
+                                   &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueType::kInvalid;
     if (*data.doc_found) {
       if (value_type == ValueType::kRedisSet) {
@@ -711,10 +786,8 @@ yb::Status GetSubDocument(
       }
       // TODO: Could also handle lists here.
     }
-
     return Status::OK();
   }
-
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
   *data.result = SubDocument();
@@ -726,18 +799,15 @@ yb::Status GetSubDocument(
     // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
     subkey.AppendToKey(&key_bytes);
     key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
-
     // This seek is to initialize the iterator for BuildSubDocument call.
     IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
     db_iter->SeekForward(&key_bytes);
-
     SubDocument descendant(ValueType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(key_bytes, &descendant), max_deleted_ts, &num_values_observed));
-    if (descendant.value_type() != ValueType::kInvalid) {
-      *data.doc_found = true;
-    }
+        db_iter, data.Adjusted(key_bytes, &descendant), max_overwrite_ht,
+        &num_values_observed));
+    *data.doc_found = descendant.value_type() != ValueType::kInvalid;
     data.result->SetChild(subkey, std::move(descendant));
 
     // Restore subdocument key by truncating the appended subkey.
@@ -747,6 +817,35 @@ yb::Status GetSubDocument(
   key_bytes.Truncate(dockey_size);
   key_bytes.AppendValueType(ValueType::kMaxByte);
   db_iter->SeekForward(&key_bytes);
+  return Status::OK();
+}
+
+// Note: Do not use if also retrieving other value, as some work will be repeated.
+// Assumes every value has a TTL, and the TTL is stored in the row with this key.
+// Also observe that tombstone checking only works because we assume the key has
+// no ancestors.
+yb::Status GetTtl(const Slice& encoded_subdoc_key,
+                  IntentAwareIterator* iter,
+                  bool* doc_found,
+                  Expiration* exp) {
+  auto dockey_size =
+    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::WHOLE_DOC_KEY));
+  Slice key_slice(encoded_subdoc_key.data(), dockey_size);
+  iter->Seek(key_slice);
+  if (!iter->valid())
+    return Status::OK();
+  DocHybridTime doc_ht;
+  auto key = VERIFY_RESULT(iter->FetchKey(&doc_ht));
+  if ((*doc_found = (!key.compare(key_slice)))) {
+    Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+    RETURN_NOT_OK(doc_value.Decode(iter->value()));
+    if (doc_value.value_type() == ValueType::kTombstone) {
+      *doc_found = false;
+    } else {
+      exp->ttl = doc_value.ttl();
+      exp->write_ht = doc_ht.hybrid_time();
+    }
+  }
   return Status::OK();
 }
 
