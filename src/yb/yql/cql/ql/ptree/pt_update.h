@@ -126,7 +126,8 @@ class PTUpdateStmt : public PTDmlStmt {
                PTExpr::SharedPtr where_clause,
                PTExpr::SharedPtr if_clause = nullptr,
                bool else_error = false,
-               PTDmlUsingClause::SharedPtr using_clause = nullptr);
+               PTDmlUsingClause::SharedPtr using_clause = nullptr,
+               const bool return_status = false);
   virtual ~PTUpdateStmt();
 
   template<typename... TypeArgs>

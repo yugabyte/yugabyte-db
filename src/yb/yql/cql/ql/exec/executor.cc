@@ -95,11 +95,35 @@ void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_t
       case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTDeleteStmt: {
-        const PTExpr::SharedPtr& if_clause = static_cast<const PTDmlStmt*>(tnode)->if_clause();
-        if (if_clause != nullptr) {
+        const auto *stmt = static_cast<const PTDmlStmt *>(tnode);
+        if (stmt->if_clause() != nullptr && !stmt->returns_status()) {
           s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-                          "batch execution of conditional DML statement not supported yet");
+              "batch execution of conditional DML statement without RETURNS STATUS AS ROW"
+              "clause is not supported yet");
         }
+
+        if (stmt->ModifiesMultipleRows()) {
+          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+              "batch execution with DML statements modifying multiple rows is not supported yet");
+        }
+
+        if (!returns_status_batch_opt_) {
+          returns_status_batch_opt_ = stmt->returns_status();
+        } else if (stmt->returns_status() != *returns_status_batch_opt_) {
+          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+              "batch execution mixing statements with and without RETURNS STATUS AS ROW "
+              "is not supported");
+        }
+
+        if (*returns_status_batch_opt_) {
+          if (dml_batch_table_ == nullptr) {
+            dml_batch_table_ = stmt->table();
+          } else if (dml_batch_table_->id() != stmt->table()->id()) {
+            s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                "batch execution with RETURNS STATUS statements cannot span multiple tables");
+          }
+        }
+
         break;
       }
       default:
@@ -892,6 +916,11 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
     req->set_else_error(tnode->else_error());
   }
 
+  // Set the RETURNS clause if set.
+  if (tnode->returns_status()) {
+    req->set_returns_status(true);
+  }
+
   // Apply the operation.
   return ApplyOperation(tnode, insert_op);
 }
@@ -935,6 +964,11 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
       return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_else_error(tnode->else_error());
+  }
+
+  // Set the RETURNS clause if set.
+  if (tnode->returns_status()) {
+    req->set_returns_status(true);
   }
 
   // Apply the operation.
@@ -988,6 +1022,11 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
       return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_else_error(tnode->else_error());
+  }
+
+  // Set the RETURNS clause if set.
+  if (tnode->returns_status()) {
+    req->set_returns_status(true);
   }
 
   // Apply the operation.
@@ -1062,9 +1101,7 @@ void Executor::FlushAsync() {
 }
 
 void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
-
-  RETURN_STMT_NOT_OK(ProcessAsyncResults(s));
-
+  bool found_deferred_stmts = false;
   const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
   for (ExecContext& exec_context : exec_contexts_) {
     auto* tnode_contexts = exec_context.tnode_contexts();
@@ -1075,20 +1112,34 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
       const shared_ptr<client::YBqlOp>& op = tnode_context.op();
       const TreeNode *tnode = tnode_context.tnode();
       if (op != nullptr) {
-        // If the operation has been deferred but can be applied now, apply it. If the operation is
-        // not deferred but has been applied, check the response. If the operation fails to apply,
-        // quit the execution and do not commit the transaction if there is one. Any transaction
-        // that is not committed will be aborted at the end.
+
+        // If the operation has been deferred continue to the next operation, but if it can be
+        // applied now, apply it first.
         if (tnode_context.IsDeferred()) {
           if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
                               std::static_pointer_cast<YBqlWriteOp>(op))) {
             RETURN_STMT_NOT_OK(tnode_context.Apply(ql_env_));
           }
+          found_deferred_stmts = true;
           continue;
-        } else {
-          if (op->response().has_applied() && !op->response().applied()) {
-            return StatementExecuted(Status::OK());
-          }
+        }
+
+        if (returns_status_batch_opt_ && *returns_status_batch_opt_ && found_deferred_stmts) {
+          continue; // If returning status we make sure we process results in user-given order.
+        }
+
+        RETURN_STMT_NOT_OK(ProcessAsyncResult(s, &exec_context, tnode_context));
+
+        // If we are within a transaction, check the status of the current operation:
+        // If it failed to apply (either because of an execution error or false IF condition) quit
+        // the execution and do not commit the transaction.
+        // Any transaction that is not committed will be aborted at the end.
+        // Note: For an error response we only get to this point if using 'RETURNS STATUS',
+        //       otherwise ProcessAsyncResult wshuld fail so we would return already above.
+        if (ql_env_->HasTransaction() &&
+            (op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
+            (op->response().has_applied() && !op->response().applied()))) {
+          return StatementExecuted(Status::OK());
         }
 
         // For SELECT statement, check if there are more rows to fetch.
@@ -1106,7 +1157,7 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
         }
 
         // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
-        // completed but exclude the time to commit the transaction if any. Ignore the auxillary
+        // completed but exclude the time to commit the transaction if any. Ignore the auxiliary
         // write operations on the index tables.
         if (ql_metrics_ != nullptr &&
             (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt || !op->table()->IsIndex())) {
@@ -1168,7 +1219,7 @@ namespace {
 // Check if index updates can be issued from CQL proxy directly when executing a DML. Only indexes
 // that index primary key columns only may be updated from CQL proxy.
 bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
-  if (req.has_if_expr()) {
+  if (req.has_if_expr() || req.returns_status()) {
     return false;
   }
 
@@ -1344,13 +1395,14 @@ bool Executor::DeferOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) 
   // okay to apply in the same batch. Our semantics allows the latter write operation to overwrite
   // the prior one.
   const bool has_usertimestamp = op->request().has_user_timestamp_usec();
+
   const bool defer =
-      (tnode->ReadsPrimaryKey(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0) ||
-      (tnode->ReadsHashKey(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0);
+      (tnode->ReadsPrimaryRow(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0) ||
+      (tnode->ReadsStaticRow(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0);
 
   if (!defer) {
-    if (tnode->ModifiesPrimaryKey()) batched_writes_by_primary_key_.insert(op);
-    if (tnode->ModifiesHashKey()) batched_writes_by_hash_key_.insert(op);
+    if (tnode->ModifiesPrimaryRow()) batched_writes_by_primary_key_.insert(op);
+    if (tnode->ModifiesStaticRow()) batched_writes_by_hash_key_.insert(op);
   }
 
   return defer;
@@ -1405,34 +1457,60 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op,
     if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
       return STATUS(TryAgain, resp.error_message());
     }
+
+    if (tnode->opcode() == TreeNodeOpcode::kPTInsertStmt ||
+        tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
+        tnode->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
+      const auto* stmt = static_cast<const PTDmlStmt *>(tnode);
+      if (stmt->returns_status()) {
+        // If we got an error we need to manually produce a result.
+        auto columns = std::make_shared<std::vector<ColumnSchema>>();
+        columns->emplace_back("[applied]", DataType::BOOL);
+        columns->emplace_back("[message]", DataType::STRING);
+
+        columns->insert(columns->end(), stmt->table()->schema().columns().begin(),
+            stmt->table()->schema().columns().end());
+
+        QLRowBlock result_row_block(Schema(*columns, 0));
+        QLRow& row = result_row_block.Extend();
+        row.mutable_column(0)->set_bool_value(false);
+        row.mutable_column(1)->set_string_value(resp.error_message());
+        // Leave the rest of the columns null in this case.
+
+        faststring buffer;
+        result_row_block.Serialize(YQL_CLIENT_CQL, &buffer);
+        shared_ptr<RowsResult> result =
+            std::make_shared<RowsResult>(stmt->table()->name(), columns, buffer.ToString());
+
+        return AppendResult(result);
+      }
+    }
+
     const ErrorCode errcode = QLStatusToErrorCode(resp.status());
     return exec_context->Error(tnode, resp.error_message().c_str(), errcode);
   }
   return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
 
-Status Executor::ProcessAsyncResults(const Status& s) {
+Status Executor::ProcessAsyncResult(const Status& s,
+                                    ExecContext* exec_context,
+                                    const TnodeContext& tnode_context) {
   RETURN_NOT_OK(s);
-  for (auto& exec_context : exec_contexts_) {
-    for (auto& tnode_context : *exec_context.tnode_contexts()) {
-      const TreeNode* tnode = tnode_context.tnode();
-      client::YBqlOp* op = tnode_context.op().get();
-      if (op == nullptr || tnode_context.IsDeferred()) {
-        continue; // Skip empty or deferred op.
-      }
-      Status ss = ql_env_->GetOpError(op);
-      if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
-        // YBOperation returns not-found error when the tablet is not found.
-        const auto errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
-        ss = exec_context.Error(tnode, ss, errcode);
-      }
-      if (ss.ok()) {
-        ss = ProcessOpResponse(op, tnode, &exec_context);
-      }
-      RETURN_NOT_OK(ProcessStatementStatus(*exec_context.parse_tree(), ss));
-    }
+  const TreeNode* tnode = tnode_context.tnode();
+  client::YBqlOp* op = tnode_context.op().get();
+  if (op == nullptr || tnode_context.IsDeferred()) {
+    return Status::OK(); // Skip empty or deferred op.
   }
-  return Status::OK();
+  Status ss = ql_env_->GetOpError(op);
+  if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
+    // YBOperation returns not-found error when the tablet is not found.
+    const auto errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
+    ss = exec_context->Error(tnode, ss, errcode);
+  }
+  if (ss.ok()) {
+    ss = ProcessOpResponse(op, tnode, exec_context);
+  }
+  return ProcessStatementStatus(*exec_context->parse_tree(), ss);
 }
 
 Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
@@ -1453,7 +1531,7 @@ void Executor::StatementExecuted(const Status& s) {
   // - TryAgain - when the transaction has a write conflict with another transaction or read-
   //              restart is required.
   // - Expired - when the transaction expires due to missed heartbeat
-  // - TimedOut - when a tablet times out while contacting the tranaction status tablet
+  // - TimedOut - when a tablet times out while contacting the transaction status tablet
   // The transaction will be retried repeatedly until the CQL client times out and closes the
   // connection.
   if (PREDICT_FALSE(s.IsTryAgain() || s.IsExpired() || s.IsTimedOut())) {
@@ -1481,7 +1559,7 @@ void Executor::StatementExecuted(const Status& s) {
             case TreeNodeOpcode::kPTListNode:
               // The metrics for SELECT/INSERT/UPDATE/DELETE have been updated when the ops have
               // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
-              // in the metrics of its consistuent DMLs only.
+              // in the metrics of its constituent DMLs only.
               break;
             case TreeNodeOpcode::kPTStartTransaction:
               transaction_start_time = tnode_context.start_time();
@@ -1516,6 +1594,8 @@ void Executor::Reset() {
   batched_writes_by_primary_key_.clear();
   batched_writes_by_hash_key_.clear();
   result_ = nullptr;
+  dml_batch_table_ = nullptr;
+  returns_status_batch_opt_ = boost::none;
   cb_.Reset();
   ql_env_->Reset();
 }

@@ -170,7 +170,9 @@ class Executor : public QLExprExecutor {
                                    ExecContext* exec_context);
 
   // Process result of FlushAsyncDone.
-  CHECKED_STATUS ProcessAsyncResults(const Status& s);
+  CHECKED_STATUS ProcessAsyncResult(const Status& s,
+                                    ExecContext* exec_context,
+                                    const TnodeContext& tnode_context);
 
   // Append execution result.
   CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
@@ -350,6 +352,13 @@ class Executor : public QLExprExecutor {
 
   // FlushAsync callback.
   Callback<void(const Status&, bool)> flush_async_cb_;
+
+  // Table for DML batches, where all statements must modify the same table.
+  std::shared_ptr<client::YBTable> dml_batch_table_;
+
+  // Whether this is a batch with statements that returns status.
+  boost::optional<bool> returns_status_batch_opt_;
+
 };
 
 }  // namespace ql

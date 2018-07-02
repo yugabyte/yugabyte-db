@@ -457,6 +457,9 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
           return new RowsResultResponse(down_cast<const ExecuteRequest&>(*request_), rows_result);
         case CQLMessage::Opcode::QUERY:
           return new RowsResultResponse(down_cast<const QueryRequest&>(*request_), rows_result);
+        case CQLMessage::Opcode::BATCH:
+          return new RowsResultResponse(down_cast<const BatchRequest&>(*request_), rows_result);
+
         case CQLMessage::Opcode::AUTH_RESPONSE:
           {
             const auto& req = down_cast<const AuthResponseRequest&>(*request_);
@@ -495,7 +498,6 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
         case CQLMessage::Opcode::PREPARE:   FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::REGISTER:  FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::EVENT:     FALLTHROUGH_INTENDED;
-        case CQLMessage::Opcode::BATCH:     FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::AUTH_CHALLENGE: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::AUTH_SUCCESS:
           break;
