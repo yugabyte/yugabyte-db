@@ -44,7 +44,8 @@ class PTDeleteStmt : public PTDmlStmt {
                PTDmlUsingClause::SharedPtr using_clause = nullptr,
                PTExpr::SharedPtr where_clause = nullptr,
                PTExpr::SharedPtr if_clause = nullptr,
-               bool else_error = false);
+               bool else_error = false,
+               bool returns_status = false);
   virtual ~PTDeleteStmt();
 
   template<typename... TypeArgs>
@@ -79,11 +80,6 @@ class PTDeleteStmt : public PTDmlStmt {
 
   PTExprListNode::SharedPtr target_;
   PTTableRef::SharedPtr relation_;
-
-  // -- The semantic analyzer will decorate this node with the following information --
-
-  // Will be set to true during Analyze if target columns are specified and are all static.
-  bool deleting_only_static_cols_ = false;
 };
 
 }  // namespace ql

@@ -114,8 +114,9 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause,
                            const bool else_error,
-                           PTDmlUsingClause::SharedPtr using_clause)
-  : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause),
+                           PTDmlUsingClause::SharedPtr using_clause,
+                           const bool return_status)
+    : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause, return_status),
       relation_(relation),
       set_clause_(set_clause) {
 }
@@ -156,6 +157,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
     }
   }
 
+  // Analyze column args to set if primary and/or static row is modified.
+  RETURN_NOT_OK(AnalyzeColumnArgs(sem_context));
+
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
 
@@ -165,8 +169,10 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
 
-  // Analyze for inter-statement dependency.
-  RETURN_NOT_OK(AnalyzeInterDependency(sem_context));
+  // If returning a status we always return back the whole row.
+  if (returns_status_) {
+    AddRefForAllColumns();
+  }
 
   return Status::OK();
 }

@@ -1899,49 +1899,64 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   return Status::OK();
 }
 
-Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
-                                              const bool else_error,
-                                              const DocOperationApplyData& data,
-                                              bool* should_apply,
-                                              std::unique_ptr<QLRowBlock>* rowblock,
-                                              QLTableRow* table_row) {
-  // Read column values.
-  Schema static_projection, non_static_projection;
-  RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, table_row));
-
-  // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvalCondition(condition, *table_row, should_apply));
-
-  // Check if an error needs to be returned and the condition is not satisfied.
-  if (!*should_apply && else_error) {
-    // Return OK here. The error will be returned in the response by the caller.
-    return Status::OK();
-  }
-
+Status QLWriteOperation::PopulateConditionalDmlRow(const DocOperationApplyData& data,
+                                                   const bool should_apply,
+                                                   const QLTableRow& table_row,
+                                                   Schema static_projection,
+                                                   Schema non_static_projection,
+                                                   std::unique_ptr<QLRowBlock>* rowblock) {
   // Populate the result set to return the "applied" status, and optionally the hash / primary key
   // and the present column values if the condition is not satisfied and the row does exist
   // (value_map is not empty).
-  const bool return_present_values = !*should_apply && !table_row->IsEmpty();
+  const bool return_present_values = !should_apply && !table_row.IsEmpty();
   const size_t num_key_columns = pk_doc_key_ ? schema_.num_key_columns()
-                                             : schema_.num_hash_key_columns();
+      : schema_.num_hash_key_columns();
   std::vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
   if (return_present_values) {
     columns.insert(columns.end(), schema_.columns().begin(),
-                   schema_.columns().begin() + num_key_columns);
+        schema_.columns().begin() + num_key_columns);
     columns.insert(columns.end(), static_projection.columns().begin(),
-                   static_projection.columns().end());
+        static_projection.columns().end());
     columns.insert(columns.end(), non_static_projection.columns().begin(),
-                   non_static_projection.columns().end());
+        non_static_projection.columns().end());
   }
   rowblock->reset(new QLRowBlock(Schema(columns, 0)));
   QLRow& row = rowblock->get()->Extend();
-  row.mutable_column(0)->set_bool_value(*should_apply);
+  row.mutable_column(0)->set_bool_value(should_apply);
   size_t col_idx = 1;
   if (return_present_values) {
-    RETURN_NOT_OK(PopulateRow(*table_row, schema_, 0, num_key_columns, &row, &col_idx));
-    RETURN_NOT_OK(PopulateRow(*table_row, static_projection, &row, &col_idx));
-    RETURN_NOT_OK(PopulateRow(*table_row, non_static_projection, &row, &col_idx));
+    RETURN_NOT_OK(PopulateRow(table_row, schema_, 0, num_key_columns, &row, &col_idx));
+    RETURN_NOT_OK(PopulateRow(table_row, static_projection, &row, &col_idx));
+    RETURN_NOT_OK(PopulateRow(table_row, non_static_projection, &row, &col_idx));
+  }
+
+  return Status::OK();
+}
+
+Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
+                                           const bool should_apply,
+                                           const QLTableRow& table_row,
+                                           std::unique_ptr<QLRowBlock>* rowblock) {
+
+  std::vector<ColumnSchema> columns;
+  columns.emplace_back(ColumnSchema("[applied]", BOOL));
+  columns.emplace_back(ColumnSchema("[message]", STRING));
+  columns.insert(columns.end(), schema_.columns().begin(), schema_.columns().end());
+
+  rowblock->reset(new QLRowBlock(Schema(columns, 0)));
+  QLRow& row = rowblock->get()->Extend();
+  row.mutable_column(0)->set_bool_value(should_apply);
+  // No message unless there is an error (then message will be set in executor).
+
+  // If not applied report the existing row values as for regular if clause.
+  if (!should_apply) {
+    for (size_t i = 0; i < schema_.num_columns(); i++) {
+      boost::optional<const QLValuePB&> col_val = table_row.GetValue(schema_.column_id(i));
+      if (col_val.is_initialized()) {
+        *(row.mutable_column(i + 2)) = *col_val;
+      }
+    }
   }
 
   return Status::OK();
@@ -2111,184 +2126,198 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
 }
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
-  bool should_apply = true;
   QLTableRow existing_row;
   if (request_.has_if_expr()) {
-    RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
-                                       request_.else_error(),
-                                       data,
-                                       &should_apply,
-                                       &rowblock_,
-                                       &existing_row));
+    // Check if the if-condition is satisfied.
+    bool should_apply = true;
+    Schema static_projection, non_static_projection;
+    RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, &existing_row));
+    RETURN_NOT_OK(EvalCondition(request_.if_expr().condition(), existing_row, &should_apply));
+
+    // Set the response accordingly.
     response_->set_applied(should_apply);
     if (!should_apply && request_.else_error()) {
-      response_->set_status(QLResponsePB::YQL_STATUS_SQL_ERROR);
-      response_->set_error_message("Condition was not satisfied.");
+      return STATUS(QLError, "Condition was not satisfied.");
+    } else if (request_.returns_status()) {
+      RETURN_NOT_OK(PopulateStatusRow(data, should_apply, existing_row, &rowblock_));
+    } else {
+      RETURN_NOT_OK(PopulateConditionalDmlRow(data,
+          should_apply,
+          existing_row,
+          static_projection,
+          non_static_projection,
+          &rowblock_));
+    }
+
+    // If we do not need to apply we are already done.
+    if (!should_apply) {
+      response_->set_status(QLResponsePB::YQL_STATUS_OK);
       return Status::OK();
     }
-  } else if (RequireReadForExpressions(request_)) {
+  } else if (RequireReadForExpressions(request_) || request_.returns_status()) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
+    if (request_.returns_status()) {
+      RETURN_NOT_OK(PopulateStatusRow(data, /* should_apply = */ true, existing_row, &rowblock_));
+    }
   }
 
-  if (should_apply) {
-    const MonoDelta ttl =
-        request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
-    const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
-        request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
+  const MonoDelta ttl =
+      request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
+      request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
 
-    // Initialize the new row being written to either the existing row if read, or just populate
-    // the primary key.
-    QLTableRow new_row;
-    if (!existing_row.IsEmpty()) {
-      new_row = existing_row;
-    } else {
-      size_t idx = 0;
-      for (const QLExpressionPB& expr : request_.hashed_column_values()) {
-        new_row.AllocColumn(schema_.column_id(idx), expr.value());
-        idx++;
-      }
-      for (const QLExpressionPB& expr : request_.range_column_values()) {
-        new_row.AllocColumn(schema_.column_id(idx), expr.value());
-        idx++;
-      }
+  // Initialize the new row being written to either the existing row if read, or just populate
+  // the primary key.
+  QLTableRow new_row;
+  if (!existing_row.IsEmpty()) {
+    new_row = existing_row;
+  } else {
+    size_t idx = 0;
+    for (const QLExpressionPB& expr : request_.hashed_column_values()) {
+      new_row.AllocColumn(schema_.column_id(idx), expr.value());
+      idx++;
     }
+    for (const QLExpressionPB& expr : request_.range_column_values()) {
+      new_row.AllocColumn(schema_.column_id(idx), expr.value());
+      idx++;
+    }
+  }
 
-    switch (request_.type()) {
-      // QL insert == update (upsert) to be consistent with Cassandra's semantics. In either
-      // INSERT or UPDATE, if non-key columns are specified, they will be inserted which will cause
-      // the primary key to be inserted also when necessary. Otherwise, we should insert the
-      // primary key at least.
-      case QLWriteRequestPB::QL_STMT_INSERT:
-      case QLWriteRequestPB::QL_STMT_UPDATE: {
-        // Add the appropriate liveness column only for inserts.
-        // We never use init markers for QL to ensure we perform writes without any reads to
-        // ensure our write path is fast while complicating the read path a bit.
-        if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && pk_doc_path_ != nullptr) {
-          const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
-                                 PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-          const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
-          RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-              sub_path, value, request_.query_id()));
+  switch (request_.type()) {
+    // QL insert == update (upsert) to be consistent with Cassandra's semantics. In either
+    // INSERT or UPDATE, if non-key columns are specified, they will be inserted which will cause
+    // the primary key to be inserted also when necessary. Otherwise, we should insert the
+    // primary key at least.
+    case QLWriteRequestPB::QL_STMT_INSERT:
+    case QLWriteRequestPB::QL_STMT_UPDATE: {
+      // Add the appropriate liveness column only for inserts.
+      // We never use init markers for QL to ensure we perform writes without any reads to
+      // ensure our write path is fast while complicating the read path a bit.
+      if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && pk_doc_path_ != nullptr) {
+        const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
+                               PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+        const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
+        RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+            sub_path, value, request_.query_id()));
+      }
+
+      for (const auto& column_value : request_.column_values()) {
+        if (!column_value.has_column_id()) {
+          return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                               column_value.DebugString());
         }
+        const ColumnId column_id(column_value.column_id());
+        const auto maybe_column = schema_.column_by_id(column_id);
+        RETURN_NOT_OK(maybe_column);
+        const ColumnSchema& column = *maybe_column;
 
+        DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
+                                            : pk_doc_path_->encoded_doc_key(),
+                         PrimitiveValue(column_id));
+
+        QLValue expr_result;
+        if (!column_value.json_args().empty()) {
+          RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
+                                              user_timestamp, column, &new_row));
+        } else if (!column_value.subscript_args().empty()) {
+          RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
+                                              user_timestamp, column, &sub_path));
+        } else {
+          RETURN_NOT_OK(ApplyForRegularColumns(column_value, existing_row, data, sub_path, ttl,
+                                               user_timestamp, column, column_id, &new_row));
+        }
+      }
+
+      if (update_indexes_) {
+        RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
+      }
+      break;
+    }
+    case QLWriteRequestPB::QL_STMT_DELETE: {
+      // We have three cases:
+      // 1. If non-key columns are specified, we delete only those columns.
+      // 2. Otherwise, if range cols are missing, this must be a range delete.
+      // 3. Otherwise, this is a normal delete.
+      // Analyzer ensures these are the only cases before getting here (e.g. range deletes cannot
+      // specify non-key columns).
+      if (request_.column_values_size() > 0) {
+        // Delete the referenced columns only.
         for (const auto& column_value : request_.column_values()) {
-          if (!column_value.has_column_id()) {
-            return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                                 column_value.DebugString());
-          }
+          CHECK(column_value.has_column_id())
+              << "column id missing: " << column_value.DebugString();
           const ColumnId column_id(column_value.column_id());
-          const auto maybe_column = schema_.column_by_id(column_id);
-          RETURN_NOT_OK(maybe_column);
-          const ColumnSchema& column = *maybe_column;
-
-          DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
-                                              : pk_doc_path_->encoded_doc_key(),
-                           PrimitiveValue(column_id));
-
-          QLValue expr_result;
-          if (!column_value.json_args().empty()) {
-            RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
-                                                user_timestamp, column, &new_row));
-          } else if (!column_value.subscript_args().empty()) {
-            RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
-                                                user_timestamp, column, &sub_path));
-          } else {
-            RETURN_NOT_OK(ApplyForRegularColumns(column_value, existing_row, data, sub_path, ttl,
-                                                 user_timestamp, column, column_id, &new_row));
+          const auto column = schema_.column_by_id(column_id);
+          RETURN_NOT_OK(column);
+          const DocPath sub_path(
+              column->is_static() ? hashed_doc_path_->encoded_doc_key()
+                                  : pk_doc_path_->encoded_doc_key(),
+              PrimitiveValue(column_id));
+          RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
+                                                           request_.query_id(), user_timestamp));
+          if (update_indexes_) {
+            new_row.ClearValue(column_id);
           }
         }
-
         if (update_indexes_) {
           RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
         }
-        break;
-      }
-      case QLWriteRequestPB::QL_STMT_DELETE: {
-        // We have three cases:
-        // 1. If non-key columns are specified, we delete only those columns.
-        // 2. Otherwise, if range cols are missing, this must be a range delete.
-        // 3. Otherwise, this is a normal delete.
-        // Analyzer ensures these are the only cases before getting here (e.g. range deletes cannot
-        // specify non-key columns).
-        if (request_.column_values_size() > 0) {
-          // Delete the referenced columns only.
-          for (const auto& column_value : request_.column_values()) {
-            CHECK(column_value.has_column_id())
-                << "column id missing: " << column_value.DebugString();
-            const ColumnId column_id(column_value.column_id());
-            const auto column = schema_.column_by_id(column_id);
-            RETURN_NOT_OK(column);
-            const DocPath sub_path(
-                column->is_static() ? hashed_doc_path_->encoded_doc_key()
-                                    : pk_doc_path_->encoded_doc_key(),
-                PrimitiveValue(column_id));
-            RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
-                                                             request_.query_id(), user_timestamp));
+      } else if (IsRangeOperation(request_, schema_)) {
+        // If the range columns are not specified, we read everything and delete all rows for
+        // which the where condition matches.
+
+        // Create the schema projection -- range deletes cannot reference non-primary key columns,
+        // so the non-static projection is all we need, it should contain all referenced columns.
+        Schema static_projection;
+        Schema projection;
+        RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(),
+            &static_projection, &projection));
+
+        // Construct the scan spec basing on the WHERE condition.
+        vector<PrimitiveValue> hashed_components;
+        RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+            request_.hashed_column_values(), schema_, 0,
+            schema_.num_hash_key_columns(), &hashed_components));
+
+        DocQLScanSpec spec(projection, request_.hash_code(), -1, hashed_components,
+            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+            request_.query_id());
+
+        // Create iterator.
+        DocRowwiseIterator iterator(
+            projection, schema_, txn_op_context_,
+            data.doc_write_batch->doc_db(),
+            data.deadline, data.read_time);
+        RETURN_NOT_OK(iterator.Init(spec));
+
+        // Iterate through rows and delete those that match the condition.
+        // TODO We do not lock here, so other write transactions coming in might appear partially
+        // applied if they happen in the middle of a ranged delete.
+        while (iterator.HasNext()) {
+          existing_row.Clear();
+          RETURN_NOT_OK(iterator.NextRow(&existing_row));
+
+          // Match the row with the where condition before deleting it.
+          bool match = false;
+          RETURN_NOT_OK(spec.Match(existing_row, &match));
+          if (match) {
+            const DocKey& row_key = iterator.row_key();
+            const DocPath row_path(row_key.Encode());
+            RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch));
             if (update_indexes_) {
-              new_row.ClearValue(column_id);
+              liveness_column_exists_ = iterator.LivenessColumnExists();
+              RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
             }
-          }
-          if (update_indexes_) {
-            RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
-          }
-        } else if (IsRangeOperation(request_, schema_)) {
-          // If the range columns are not specified, we read everything and delete all rows for
-          // which the where condition matches.
-
-          // Create the schema projection -- range deletes cannot reference non-primary key columns,
-          // so the non-static projection is all we need, it should contain all referenced columns.
-          Schema static_projection;
-          Schema projection;
-          RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(),
-              &static_projection, &projection));
-
-          // Construct the scan spec basing on the WHERE condition.
-          vector<PrimitiveValue> hashed_components;
-          RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-              request_.hashed_column_values(), schema_, 0,
-              schema_.num_hash_key_columns(), &hashed_components));
-
-          DocQLScanSpec spec(projection, request_.hash_code(), -1, hashed_components,
-              request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
-              request_.query_id());
-
-          // Create iterator.
-          DocRowwiseIterator iterator(
-              projection, schema_, txn_op_context_,
-              data.doc_write_batch->doc_db(),
-              data.deadline, data.read_time);
-          RETURN_NOT_OK(iterator.Init(spec));
-
-          // Iterate through rows and delete those that match the condition.
-          // TODO We do not lock here, so other write transactions coming in might appear partially
-          // applied if they happen in the middle of a ranged delete.
-          while (iterator.HasNext()) {
-            existing_row.Clear();
-            RETURN_NOT_OK(iterator.NextRow(&existing_row));
-
-            // Match the row with the where condition before deleting it.
-            bool match = false;
-            RETURN_NOT_OK(spec.Match(existing_row, &match));
-            if (match) {
-              const DocKey& row_key = iterator.row_key();
-              const DocPath row_path(row_key.Encode());
-              RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch));
-              if (update_indexes_) {
-                liveness_column_exists_ = iterator.LivenessColumnExists();
-                RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
-              }
-            }
-          }
-          data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
-        } else {
-          // Otherwise, delete the referenced row (all columns).
-          RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch));
-          if (update_indexes_) {
-            RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
           }
         }
-        break;
+        data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+      } else {
+        // Otherwise, delete the referenced row (all columns).
+        RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch));
+        if (update_indexes_) {
+          RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
+        }
       }
+      break;
     }
   }
 

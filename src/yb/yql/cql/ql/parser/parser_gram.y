@@ -221,7 +221,6 @@ using namespace yb::ql;
                           // Select.
                           distinct_clause opt_all_clause
                           group_by_item for_locking_clause opt_for_locking_clause
-                          with_clause opt_with_clause cte_list common_table_expr
                           opt_window_clause
 
                           // Insert.
@@ -371,7 +370,7 @@ using namespace yb::ql;
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
 
-%type <PBool>             boolean opt_else_clause
+%type <PBool>             boolean opt_else_clause opt_returns_clause
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -633,7 +632,7 @@ using namespace yb::ql;
                           SEQUENCES SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF
 
                           SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE
-                          STANDALONE_P START STATEMENT STATIC STATISTICS STDIN STDOUT STORAGE
+                          STANDALONE_P START STATEMENT STATIC STATISTICS STATUS STDIN STDOUT STORAGE
                           STRICT_P STRIP_P SUBSTRING SUPERUSER SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
@@ -2037,20 +2036,6 @@ select_no_parens:
   | simple_select opt_sort_clause for_locking_clause opt_select_limit_offset opt_allow_filtering {
     PARSER_UNSUPPORTED(@3);
   }
-  | with_clause simple_select {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | with_clause simple_select sort_clause {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit_offset
-  opt_allow_filtering {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | with_clause simple_select opt_sort_clause select_limit_offset opt_for_locking_clause
-  opt_allow_filtering {
-    PARSER_UNSUPPORTED(@1);
-  }
 ;
 
 select_clause:
@@ -2511,71 +2496,35 @@ locked_rels_list:
   }
 ;
 
-// WITH clause: Not supported.
-opt_with_clause:
-  /*EMPTY*/ {
-  }
-  | with_clause {
-    PARSER_UNSUPPORTED(@1);
-  }
-;
-
-// SQL standard WITH clause looks like:
-//
-// WITH [ RECURSIVE ] <query name> [ (<column>,...) ]
-//    AS (query) [ SEARCH or CYCLE clause ]
-//
-// We don't currently support the SEARCH or CYCLE clause.
-//
-// Recognizing WITH_LA here allows a CTE to be named TIME or ORDINALITY.
-with_clause:
-  WITH cte_list {
-  }
-  | WITH_LA cte_list {
-  }
-  | WITH RECURSIVE cte_list {
-  }
-;
-
-cte_list:
-  common_table_expr {
-  }
-  | cte_list ',' common_table_expr {
-  }
-;
-
-common_table_expr:
-  name opt_name_list AS '(' PreparableStmt ')' {
-  }
-;
-
 //--------------------------------------------------------------------------------------------------
 // INSERT statement.
 //--------------------------------------------------------------------------------------------------
 
 InsertStmt:
-  opt_with_clause INSERT INTO insert_target SelectStmt
-  opt_on_conflict returning_clause {
-    PARSER_CQL_INVALID_MSG(@5, "Missing list of target columns");
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, nullptr, $5);
-  }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' SelectStmt
-  opt_on_conflict returning_clause {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8);
-  }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
-  using_ttl_timestamp_clause
+  INSERT INTO insert_target '(' insert_column_list ')' values_clause opt_using_ttl_timestamp_clause
+  opt_returns_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, nullptr, false, $9);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $3, $5, $7, nullptr, false, $8, $9);
   }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
-  opt_else_clause opt_using_ttl_timestamp_clause
+  | INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause opt_else_clause
+  opt_using_ttl_timestamp_clause opt_returns_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9, $10, $11);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $3, $5, $7, $8, $9, $10, $11);
   }
-  | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
-  opt_on_conflict returning_clause {
-    PARSER_CQL_INVALID_MSG(@5, "DEFAULT VALUES feature is not supported");
+  | INSERT INTO insert_target DEFAULT VALUES opt_on_conflict returning_clause {
+    PARSER_CQL_INVALID_MSG(@4, "DEFAULT VALUES feature is not supported");
+  }
+  | INSERT INTO insert_target values_clause opt_on_conflict returning_clause {
+    PARSER_CQL_INVALID_MSG(@4, "Missing list of target columns");
+  }
+;
+
+opt_returns_clause:
+  /* EMPTY */ {
+    $$ = false;
+  }
+  | RETURNS STATUS AS ROW {
+    $$ = true;
   }
 ;
 
@@ -2698,14 +2647,14 @@ returning_clause:
 //--------------------------------------------------------------------------------------------------
 
 DeleteStmt:
-  opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  opt_using_ttl_timestamp_clause opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7);
+DELETE_P opt_target_list FROM relation_expr_opt_alias opt_using_ttl_timestamp_clause
+  opt_where_or_current_clause opt_returns_clause {
+    $$ = MAKE_NODE(@1, PTDeleteStmt, $2, $4, $5, $6, nullptr, false, $7);
   }
-  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  opt_using_ttl_timestamp_clause opt_where_or_current_clause returning_clause if_clause
-  opt_else_clause{
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7, $9, $10);
+  | DELETE_P opt_target_list FROM relation_expr_opt_alias
+  opt_using_ttl_timestamp_clause where_or_current_clause if_clause opt_else_clause
+  opt_returns_clause {
+    $$ = MAKE_NODE(@1, PTDeleteStmt, $2, $4, $5, $6, $7, $8, $9);
   }
 ;
 
@@ -2714,13 +2663,13 @@ DeleteStmt:
 //--------------------------------------------------------------------------------------------------
 
 UpdateStmt:
-  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
-  set_clause_list opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, nullptr, false, $4);
+  UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET set_clause_list
+  opt_where_or_current_clause opt_returns_clause {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, nullptr, false, $3, $7);
   }
-  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
-  set_clause_list opt_where_or_current_clause returning_clause if_clause opt_else_clause{
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, $9, $10, $4);
+  | UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
+  set_clause_list opt_where_or_current_clause if_clause opt_else_clause opt_returns_clause {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, $7, $8, $3, $9);
   }
 ;
 
@@ -3442,10 +3391,6 @@ inactive_c_expr:
   }
   | ARRAY select_with_parens {
   }
-  // (PostgreSQL) this array case is disabled as the syntax conflicts with (Cassandra) lists
-  // TODO (mihnea) clean up array use in the grammar (either by removing or changing the syntax)
-  //  | ARRAY array_expr {
-  //  }
   | explicit_row {
   }
   | implicit_row {
@@ -3956,29 +3901,6 @@ type_list:
   | type_list ',' Typename {
   }
 ;
-
-// (PostgreSQL) array expressions are disabled as their syntax conflicts with (Cassandra) lists
-// TODO (mihnea) clean up array use in the grammar (either by removing or changing the syntax)
-/*
-array_expr:
-  '[' expr_list ']' {
-  }
-  | '[' array_expr_list ']' {
-  }
-  | '[' ']' {
-  }
-;
-
-array_expr_list:
-  array_expr {
-    // $$ = list_make1($1);
-  }
-  | array_expr_list ',' array_expr
-  {
-    // $$ = lappend($1, $3);
-  }
-;
-*/
 
 extract_list:
   extract_arg FROM a_expr {
@@ -4836,8 +4758,8 @@ opt_charset:
 
 // SQL date/time types.
 ConstDatetime:
-  TIMESTAMP opt_timezone {
-    $$ = MAKE_NODE(@1, PTTimestamp); // TODO ignoring timezone option for now
+  TIMESTAMP {
+    $$ = MAKE_NODE(@1, PTTimestamp);
   }
   | TIMESTAMP '(' Iconst ')' opt_timezone {
     PARSER_UNSUPPORTED(@1);
@@ -4848,7 +4770,7 @@ ConstDatetime:
   | TIME opt_timezone {
     PARSER_UNSUPPORTED(@1);
   }
-  ;
+;
 
 ConstInterval:
   INTERVAL {
@@ -5112,7 +5034,6 @@ unreserved_keyword:
   | RESET { $$ = $1; }
   | RESTART { $$ = $1; }
   | RESTRICT { $$ = $1; }
-  | RETURNS { $$ = $1; }
   | REVOKE { $$ = $1; }
   | ROLE { $$ = $1; }
   | ROLES { $$ = $1; }
@@ -5144,6 +5065,7 @@ unreserved_keyword:
   | START { $$ = $1; }
   | STATEMENT { $$ = $1; }
   | STATISTICS { $$ = $1; }
+  | STATUS { $$ = $1; }
   | STDIN { $$ = $1; }
   | STDOUT { $$ = $1; }
   | STORAGE { $$ = $1; }
@@ -5376,6 +5298,7 @@ reserved_keyword:
   | PRIMARY { $$ = $1; }
   | REFERENCES { $$ = $1; }
   | RETURNING { $$ = $1; }
+  | RETURNS { $$ = $1; }
   | SCHEMA { $$ = $1; }
   | SELECT { $$ = $1; }
   | SESSION_USER { $$ = $1; }

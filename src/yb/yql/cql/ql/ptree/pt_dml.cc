@@ -34,12 +34,14 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      PTExpr::SharedPtr where_clause,
                      PTExpr::SharedPtr if_clause,
                      const bool else_error,
-                     PTDmlUsingClause::SharedPtr using_clause)
+                     PTDmlUsingClause::SharedPtr using_clause,
+                     const bool returns_status)
   : PTCollection(memctx, loc),
     where_clause_(where_clause),
     if_clause_(if_clause),
     else_error_(else_error),
     using_clause_(using_clause),
+    returns_status_(returns_status),
     bind_variables_(memctx),
     table_columns_(memctx),
     func_ops_(memctx),
@@ -230,65 +232,70 @@ CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeInterDependency(SemContext *sem_context) {
-  // A DML modifies the hash key if it modifies a static column. It will potentially affect another
-  // DML reading from the static column.
-  if (column_args_ != nullptr) {
-    for (const auto& arg : *column_args_) {
-      if (arg.IsInitialized() && arg.desc()->is_static()) {
-        modifies_hash_key_ = true;
-        break;
-      }
-    }
+CHECKED_STATUS PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
+
+  // If we have no args, this must be a delete modifying primary key only.
+  if (column_args_->empty() && subscripted_col_args_->empty() && json_col_args_->empty()) {
+    modifies_primary_row_ = true;
+    return Status::OK();
   }
-  // A DML modifies the primary key if the key contains a non-hash column, i.e. not something like
-  // INSERT INTO t (hash_col, static_col) VALUES (...);
-  for (const auto& op : key_where_ops_) {
-    if (!op.desc()->is_hash()) {
-      modifies_primary_key_ = true;
+
+  // If we have range keys we modify the primary row.
+  for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+    if (column_args_->at(idx).IsInitialized()) {
+      modifies_primary_row_ = true;
       break;
     }
   }
+
+  // If we have column args:
+  //  - Writing to static columns => modify static row.
+  //  - Writing to non-static columns -> modify primary row.
+
+  // Check plain column args.
+  for (int idx = num_key_columns_; idx < column_args_->size(); idx++) {
+    if (column_args_->at(idx).IsInitialized()) {
+      if (column_args_->at(idx).desc()->is_static()) {
+        modifies_static_row_ = true;
+      } else {
+        modifies_primary_row_ = true;
+      }
+      if (modifies_static_row_ && modifies_primary_row_) {
+        return Status::OK();
+      }
+    }
+  }
+
+  // Check subscripted column args (e.g. map['k'] or list[1])
+  for (auto& arg : *subscripted_col_args_) {
+    if (arg.desc()->is_static()) {
+      modifies_static_row_ = true;
+    } else {
+      modifies_primary_row_ = true;
+    }
+    if (modifies_static_row_ && modifies_primary_row_) {
+      return Status::OK();
+    }
+  }
+
+  // Check json column args (e.g. json->'key' or json->1)
+  for (auto& arg : *json_col_args_) {
+    if (arg.desc()->is_static()) {
+      modifies_static_row_ = true;
+    } else {
+      modifies_primary_row_ = true;
+    }
+    if (modifies_static_row_ && modifies_primary_row_) {
+      return Status::OK();
+    }
+  }
+
   return Status::OK();
 }
 
 // Are we writing to static columns only, i.e. no range columns or non-static columns.
 bool PTDmlStmt::StaticColumnArgsOnly() const {
-  if (column_args_->empty() && subscripted_col_args_->empty()) {
-    return false;
-  }
-  bool write_range_columns = false;
-  for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
-    if (column_args_->at(idx).IsInitialized()) {
-      write_range_columns = true;
-      break;
-    }
-  }
-  bool write_static_columns = false;
-  bool write_non_static_columns = false;
-  for (int idx = num_key_columns_; idx < column_args_->size(); idx++) {
-    if (column_args_->at(idx).IsInitialized()) {
-      if (column_args_->at(idx).desc()->is_static()) {
-        write_static_columns = true;
-      } else {
-        write_non_static_columns = true;
-      }
-      if (write_static_columns && write_non_static_columns) {
-        break;
-      }
-    }
-  }
-  for (auto& arg : *subscripted_col_args_) {
-    if (write_static_columns && write_non_static_columns) {
-      break;
-    }
-    if (arg.desc()->is_static()) {
-      write_static_columns = true;
-    } else {
-      write_non_static_columns = true;
-    }
-  }
-  return write_static_columns && !write_range_columns && !write_non_static_columns;
+  return modifies_static_row_ && !modifies_primary_row_;
 }
 
 //--------------------------------------------------------------------------------------------------

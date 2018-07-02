@@ -1488,6 +1488,12 @@ RowsResultResponse::RowsResultResponse(
       skip_metadata_(request.params().flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
+RowsResultResponse::RowsResultResponse(
+    const BatchRequest& request, const ql::RowsResult::SharedPtr& result)
+    : ResultResponse(request, Kind::ROWS), result_(result),
+      skip_metadata_(false) { // Batches don't have the skip_metadata flag.
+}
+
 RowsResultResponse::~RowsResultResponse() {
 }
 

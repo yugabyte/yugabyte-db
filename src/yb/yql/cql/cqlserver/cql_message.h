@@ -725,6 +725,8 @@ class RowsResultResponse : public ResultResponse {
  public:
   RowsResultResponse(const QueryRequest& request, const ql::RowsResult::SharedPtr& result);
   RowsResultResponse(const ExecuteRequest& request, const ql::RowsResult::SharedPtr& result);
+  RowsResultResponse(const BatchRequest& request, const ql::RowsResult::SharedPtr& result);
+
   virtual ~RowsResultResponse() override;
 
  protected:

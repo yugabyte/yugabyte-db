@@ -240,12 +240,17 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
                              Schema *non_static_projection,
                              QLTableRow* table_row);
 
-  CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
-                                      const bool else_error,
-                                      const DocOperationApplyData& data,
-                                      bool* should_apply,
-                                      std::unique_ptr<QLRowBlock>* rowblock,
-                                      QLTableRow* table_row);
+  CHECKED_STATUS PopulateConditionalDmlRow(const DocOperationApplyData& data,
+                                           bool should_apply,
+                                           const QLTableRow& table_row,
+                                           Schema static_projection,
+                                           Schema non_static_projection,
+                                           std::unique_ptr<QLRowBlock>* rowblock);
+
+  CHECKED_STATUS PopulateStatusRow(const DocOperationApplyData& data,
+                                   bool should_apply,
+                                   const QLTableRow& table_row,
+                                   std::unique_ptr<QLRowBlock>* rowblock);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch);
 
