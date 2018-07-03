@@ -120,6 +120,7 @@ class BootstrapTest : public LogTestBase {
     TabletOptions tablet_options;
     BootstrapTabletData data = {
         meta,
+        std::shared_future<client::YBClientPtr>(),
         scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
         shared_ptr<MemTracker>(),
         nullptr /* metric_registry */,

@@ -480,6 +480,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   tablet_peer()->SetBootstrapping();
   tablet::TabletOptions tablet_options;
   tablet::BootstrapTabletData data = { metadata,
+                                       std::shared_future<client::YBClientPtr>(),
                                        scoped_refptr<server::Clock>(master_->clock()),
                                        master_->mem_tracker(),
                                        metric_registry_,

@@ -435,7 +435,7 @@ CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeCompression());
       break;
     case PropertyMapType::kTransactions:
-      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeTransactions());
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeTransactions(sem_context));
       break;
   }
   return Status::OK();
@@ -465,10 +465,18 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
         auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
         DCHECK(iter != Transactions::kSubpropertyDataTypes.end());
         bool bool_val;
+        string str_val;
         switch(iter->second) {
           case Transactions::Subproperty::kEnabled:
             RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));
             table_property->SetTransactional(bool_val);
+            break;
+          case Transactions::Subproperty::kConsistencyLevel:
+            RETURN_NOT_OK(
+                GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
+            if (str_val == Transactions::kConsistencyLevelUserEnforced) {
+              table_property->SetConsistencyLevel(YBConsistencyLevel::USER_ENFORCED);
+            }
             break;
         }
       }
@@ -751,7 +759,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
   return Status::OK();
 }
 
-Status PTTablePropertyMap::AnalyzeTransactions() {
+Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
   for (const auto& subproperty : map_elements_->node_list()) {
     string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
@@ -762,9 +770,21 @@ Status PTTablePropertyMap::AnalyzeTransactions() {
     }
 
     bool bool_val;
+    string str_val;
     switch(iter->second) {
       case Transactions::Subproperty::kEnabled:
         RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));
+        break;
+      case Transactions::Subproperty::kConsistencyLevel:
+        if (sem_context->current_create_table_stmt()->opcode() != TreeNodeOpcode::kPTCreateIndex) {
+          return STATUS(InvalidArgument,
+                        Substitute("Unknown property '$0'", subproperty_name).c_str());
+        }
+        RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
+        if (str_val != Transactions::kConsistencyLevelUserEnforced) {
+          return STATUS(InvalidArgument,
+                        Substitute("Invalid value for property '$0'", subproperty_name).c_str());
+        }
         break;
     }
   }
@@ -804,7 +824,8 @@ const std::map<std::string, Compaction::Subproperty> Compaction::kSubpropertyDat
 
 const std::map<std::string, Transactions::Subproperty>
 Transactions::kSubpropertyDataTypes = {
-    {"enabled", Transactions::Subproperty::kEnabled}
+    {"enabled", Transactions::Subproperty::kEnabled},
+    {"consistency_level", Transactions::Subproperty::kConsistencyLevel}
 };
 
 const std::map<std::string, std::set<Compaction::Subproperty>> Compaction::kClassSubproperties = {

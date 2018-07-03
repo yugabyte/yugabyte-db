@@ -14,11 +14,13 @@
 package com.yugabyte.sample.apps;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
@@ -61,10 +63,14 @@ public class CassandraSecondaryIndex extends CassandraKeyValue {
   public List<String> getCreateTableStatements() {
     return Arrays.asList(
         String.format(
-            "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
-            "WITH transactions = { 'enabled' : true };", getTableName()),
+            "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) %s;",
+            getTableName(),
+            appConfig.nonTransactionalIndex ? "" :  "WITH transactions = { 'enabled' : true }"),
         String.format(
-            "CREATE INDEX IF NOT EXISTS %sByValue ON %s (v);", getTableName(), getTableName()));
+            "CREATE INDEX IF NOT EXISTS %sByValue ON %s (v) %s;", getTableName(), getTableName(),
+            appConfig.nonTransactionalIndex ?
+            "WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' }" :
+            ""));
   }
 
   public String getTableName() {
@@ -105,20 +111,42 @@ public class CassandraSecondaryIndex extends CassandraKeyValue {
 
   @Override
   public long doWrite() {
-    Key key = getSimpleLoadGenerator().getKeyToWrite();
-    if (key == null) {
-      return 0;
-    }
+    HashSet<Key> keys = new HashSet<Key>();
 
     try {
-      // Do the write to Cassandra.
-      BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
-      ResultSet resultSet = getCassandraClient().execute(insert);
-      LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
-      getSimpleLoadGenerator().recordWriteSuccess(key);
-      return 1;
+      if (appConfig.batchWrite) {
+        BatchStatement batch = new BatchStatement();
+        PreparedStatement insert = getPreparedInsert();
+        for (int i = 0; i < appConfig.cassandraBatchSize; i++) {
+          Key key = getSimpleLoadGenerator().getKeyToWrite();
+          keys.add(key);
+          batch.add(insert.bind(key.asString(), key.getValueStr()));
+        }
+        // Do the write to Cassandra.
+        ResultSet resultSet = getCassandraClient().execute(batch);
+        LOG.debug("Wrote keys count: " + keys.size() + ", return code: " + resultSet.toString());
+        for (Key key : keys) {
+          getSimpleLoadGenerator().recordWriteSuccess(key);
+        }
+        return keys.size();
+      } else {
+        Key key = getSimpleLoadGenerator().getKeyToWrite();
+        if (key == null) {
+          return 0;
+        }
+        keys.add(key);
+
+        // Do the write to Cassandra.
+        BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
+        ResultSet resultSet = getCassandraClient().execute(insert);
+        LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
+        getSimpleLoadGenerator().recordWriteSuccess(key);
+        return 1;
+      }
     } catch (Exception e) {
-      getSimpleLoadGenerator().recordWriteFailure(key);
+      for (Key key : keys) {
+        getSimpleLoadGenerator().recordWriteFailure(key);
+      }
       throw e;
     }
   }
@@ -141,6 +169,8 @@ public class CassandraSecondaryIndex extends CassandraKeyValue {
       "--num_reads " + appConfig.numKeysToRead,
       "--num_writes " + appConfig.numKeysToWrite,
       "--num_threads_read " + appConfig.numReaderThreads,
-      "--num_threads_write " + appConfig.numWriterThreads);
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--batch_write",
+      "--batch_size " + appConfig.cassandraBatchSize);
   }
 }

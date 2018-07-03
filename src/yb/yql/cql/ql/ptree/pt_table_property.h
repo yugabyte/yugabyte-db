@@ -218,7 +218,7 @@ class PTTablePropertyMap : public PTTableProperty {
   Status AnalyzeCaching();
   Status AnalyzeCompaction();
   Status AnalyzeCompression();
-  Status AnalyzeTransactions();
+  Status AnalyzeTransactions(SemContext *sem_context);
 
   static const std::map<std::string, PTTablePropertyMap::PropertyMapType> kPropertyDataTypes;
   TreeListNode<PTTableProperty>::SharedPtr map_elements_;
@@ -272,8 +272,11 @@ struct Compaction {
 
 struct Transactions {
   enum class Subproperty : int {
-    kEnabled
+    kEnabled,
+    kConsistencyLevel,
   };
+
+  static constexpr auto kConsistencyLevelUserEnforced = "user_enforced";
 
   static const std::map<std::string, Subproperty> kSubpropertyDataTypes;
 };

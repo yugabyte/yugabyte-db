@@ -283,109 +283,16 @@ public class TestIndex extends BaseCQLTest {
     assertEquals(columns, actual);
   }
 
-  Map<String, String> columnMap;
+  private void createTable(String statement, boolean strongConsistency) throws Exception {
+    session.execute(
+        statement + (strongConsistency ? " with transactions = {'enabled' : true};" : ";"));
+  }
 
-  @Test
-  public void testIndexUpdate() throws Exception {
-    // Create test table and indexes.
-    session.execute("create table test_update " +
-                    "(h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, " +
-                    "primary key ((h1, h2), r1, r2)) " +
-                    "with transactions = {'enabled' : true};");
-    session.execute("create index i1 on test_update (h1);");
-    session.execute("create index i2 on test_update ((r1, r2)) include (c2);");
-    session.execute("create index i3 on test_update (r2, r1) include (c1, c2);");
-    session.execute("create index i4 on test_update (c1);");
-    session.execute("create index i5 on test_update (c2) include (c1);");
-
-    columnMap = new HashMap<String, String>() {{
-        put("i1", "h1, h2, r1, r2");
-        put("i2", "r1, r2, h1, h2, c2");
-        put("i3", "r2, r1, h1, h2, c1, c2");
-        put("i4", "c1, h1, h2, r1, r2");
-        put("i5", "c2, h1, h2, r1, r2, c1");
-      }};
-
-    // test_update: Row[1, a, 2, b, 3]
-    assertIndexUpdate("insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 2, 'b', 3);");
-
-    // test_update: Row[1, a, 2, b, 3, c]
-    assertIndexUpdate("update test_update set c2 = 'c' " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-
-    // test_update: Row[1, a, 2, b, 4, d]
-    assertIndexUpdate("update test_update set c1 = 4, c2 = 'd' " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-
-    // test_update: Row[1, a, 2, b, 4, e]
-    assertIndexUpdate("update test_update set c2 = 'e' " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-
-    // test_update: Row[1, a, 2, b, 4, e]
-    //              Row[1, a, 12, bb, 6]
-    assertIndexUpdate("insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 12, 'bb', 6);");
-
-    // test_update: Row[1, a, 12, bb, 6]
-    assertIndexUpdate("delete from test_update " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-
-    // test_update: empty
-    assertIndexUpdate("delete from test_update where h1 = 1 and h2 = 'a';");
-
-    // test_update: Row[11, aa, 22, bb, 3]
-    assertIndexUpdate("update test_update set c1 = 3 " +
-                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
-
-    // test_update: empty
-    assertIndexUpdate("update test_update set c1 = null " +
-                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
-
-    // test_update: Row[11, aa, 222, bbb, 3, c]
-    assertIndexUpdate("update test_update set c1 = 3, c2 = 'c' " +
-                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
-
-    // test_update: empty
-    assertIndexUpdate("delete c1, c2 from test_update " +
-                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
-
-    // test_update: Row[1, a, 2, b]
-    assertIndexUpdate("insert into test_update (h1, h2, r1, r2) values (1, 'a', 2, 'b');");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
-                "Row[1, a, 2, b, NULL]");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
-                "Row[1, a, 2, b, NULL, NULL]");
-
-    // test_update: Row[1, a, 2, b, 4]
-    assertIndexUpdate("update test_update set c1 = 4 " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
-                "");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
-                "Row[1, a, 2, b, 4]");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
-                "Row[1, a, 2, b, 4, NULL]");
-
-    // test_update: Row[1, a, 2, b, 4, c]
-    assertIndexUpdate("update test_update set c2 = 'c' " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
-                "Row[1, a, 2, b, 4]");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
-                "");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
-                "Row[1, a, 2, b, 4, c]");
-
-    // test_update: Row[1, a, 2, b]
-    assertIndexUpdate("delete c1, c2 from test_update " +
-                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
-                "Row[1, a, 2, b, NULL]");
-    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
-                "");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
-                "Row[1, a, 2, b, NULL, NULL]");
-    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
-                "");
+  private void createIndex(String statement, boolean strongConsistency) throws Exception {
+    session.execute(
+        statement + (strongConsistency ? ";" :
+                     " with transactions = {'enabled' : false, " +
+                     "'consistency_level' : 'user_enforced'};"));
   }
 
   private Set<String> queryTable(String table, String columns) {
@@ -396,7 +303,7 @@ public class TestIndex extends BaseCQLTest {
     return rows;
   }
 
-  private void assertIndexUpdate(String query) throws Exception {
+  private void assertIndexUpdate(Map<String, String> columnMap, String query) throws Exception {
     session.execute(query);
     for (Map.Entry<String, String> entry : columnMap.entrySet()) {
       assertEquals("Index " + entry.getKey() + " after " + query,
@@ -405,6 +312,131 @@ public class TestIndex extends BaseCQLTest {
     }
   }
 
+  private void testIndexUpdate(boolean strongConsistency) throws Exception {
+    // Create test table and indexes.
+    createTable("create table test_update " +
+                "(h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, " +
+                "primary key ((h1, h2), r1, r2))", strongConsistency);
+    createIndex("create index i1 on test_update (h1)", strongConsistency);
+    createIndex("create index i2 on test_update ((r1, r2)) include (c2)", strongConsistency);
+    createIndex("create index i3 on test_update (r2, r1) include (c1, c2)", strongConsistency);
+    createIndex("create index i4 on test_update (c1)", strongConsistency);
+    createIndex("create index i5 on test_update (c2) include (c1)", strongConsistency);
+
+    Map<String, String> columnMap = new HashMap<String, String>() {{
+        put("i1", "h1, h2, r1, r2");
+        put("i2", "r1, r2, h1, h2, c2");
+        put("i3", "r2, r1, h1, h2, c1, c2");
+        put("i4", "c1, h1, h2, r1, r2");
+        put("i5", "c2, h1, h2, r1, r2, c1");
+      }};
+
+    // test_update: Row[1, a, 2, b, 3]
+    assertIndexUpdate(columnMap,
+                      "insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 2, 'b', 3);");
+
+    // test_update: Row[1, a, 2, b, 3, c]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c2 = 'c' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, d]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c1 = 4, c2 = 'd' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, e]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c2 = 'e' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, e]
+    //              Row[1, a, 12, bb, 6]
+    assertIndexUpdate(columnMap,
+                      "insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 12, 'bb', 6);");
+
+    // test_update: Row[1, a, 12, bb, 6]
+    assertIndexUpdate(columnMap,
+                      "delete from test_update " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: empty
+    assertIndexUpdate(columnMap,
+                      "delete from test_update where h1 = 1 and h2 = 'a';");
+
+    // test_update: Row[11, aa, 22, bb, 3]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c1 = 3 " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
+
+    // test_update: empty
+    assertIndexUpdate(columnMap,
+                      "update test_update set c1 = null " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
+
+    // test_update: Row[11, aa, 222, bbb, 3, c]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c1 = 3, c2 = 'c' " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
+
+    // test_update: empty
+    assertIndexUpdate(columnMap,
+                      "delete c1, c2 from test_update " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
+
+    // test_update: Row[1, a, 2, b]
+    assertIndexUpdate(columnMap,
+                      "insert into test_update (h1, h2, r1, r2) values (1, 'a', 2, 'b');");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "Row[1, a, 2, b, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, NULL, NULL]");
+
+    // test_update: Row[1, a, 2, b, 4]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c1 = 4 " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "Row[1, a, 2, b, 4]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, 4, NULL]");
+
+    // test_update: Row[1, a, 2, b, 4, c]
+    assertIndexUpdate(columnMap,
+                      "update test_update set c2 = 'c' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "Row[1, a, 2, b, 4]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
+                "Row[1, a, 2, b, 4, c]");
+
+    // test_update: Row[1, a, 2, b]
+    assertIndexUpdate(columnMap,
+                      "delete c1, c2 from test_update " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
+                "Row[1, a, 2, b, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
+                "");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = null;",
+                "Row[1, a, 2, b, NULL, NULL]");
+    assertQuery("select h1, h2, r1, r2, c1, c2 from test_update where c2 = 'c';",
+                "");
+  }
+
+  @Test
+  public void testIndexUpdate() throws Exception {
+    testIndexUpdate(true);
+  }
+
+  @Test
+  public void testWeakIndexUpdate() throws Exception {
+    testIndexUpdate(false);
+  }
 
   private void assertRoutingVariables(String query,
                                       List<String> expectedVars,

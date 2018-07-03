@@ -309,7 +309,7 @@ class PTCreateTable : public TreeNode {
     return table_properties_;
   }
 
-  CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
+  virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
 
  protected:
   PTQualifiedName::SharedPtr relation_;

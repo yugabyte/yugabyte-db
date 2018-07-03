@@ -358,10 +358,6 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   if (!s.ok()) {
     return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
-  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    table_properties.SetTransactional(true);
-  }
-
   b.SetTableProperties(table_properties);
 
   s = b.Build(&schema);
@@ -1265,7 +1261,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     }
   }
 
-  if (!req->update_index_ids().empty()) {
+  if (!req->update_index_ids().empty() && tnode->RequireTransaction()) {
     RETURN_NOT_OK(ql_env_->PrepareChildTransaction(req->mutable_child_transaction_data()));
   }
   return Status::OK();

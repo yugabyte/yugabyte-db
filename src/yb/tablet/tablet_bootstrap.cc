@@ -349,8 +349,8 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 
 Result<bool> TabletBootstrap::OpenTablet() {
   auto tablet = std::make_unique<TabletClass>(
-      meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_, tablet_options_,
-      data_.transaction_participant_context, data_.local_tablet_filter,
+      meta_, data_.client_future, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_,
+      tablet_options_, data_.transaction_participant_context, data_.local_tablet_filter,
       data_.transaction_coordinator_context);
   // Doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {

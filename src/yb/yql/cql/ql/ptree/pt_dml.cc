@@ -215,7 +215,8 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
 }
 
 bool PTDmlStmt::RequireTransaction() const {
-  return IsWriteOp() && !DCHECK_NOTNULL(table_.get())->index_map().empty();
+  return IsWriteOp() && !DCHECK_NOTNULL(table_.get())->index_map().empty() &&
+      table_->InternalSchema().table_properties().is_transactional();
 }
 
 CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {

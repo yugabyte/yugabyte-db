@@ -67,6 +67,10 @@ class PTCreateIndex : public PTCreateTable {
     return PTCreateTable::yb_table_name();
   }
 
+  const std::shared_ptr<client::YBTable>& indexed_table() const {
+    return table_;
+  }
+
   const std::string& indexed_table_id() const {
     return table_->id();
   }
@@ -74,6 +78,8 @@ class PTCreateIndex : public PTCreateTable {
   bool is_local() const {
     return is_local_;
   }
+
+  virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const override;
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
