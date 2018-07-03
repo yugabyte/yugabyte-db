@@ -70,6 +70,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
+      // Wait for Master Leader before doing Master operations, like blacklisting.
+      createWaitForMasterLeaderTask()
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       // Create a task for removal of this server from blacklist on master leader.
       createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);

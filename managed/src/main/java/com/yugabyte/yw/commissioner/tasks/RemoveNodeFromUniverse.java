@@ -75,6 +75,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
         LOG.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
         if (currentNode.isMaster) {
+          // Wait for Master Leader before doing any MasterChangeConfig operations.
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           if (masterReachable) {
             createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
             createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
@@ -96,6 +99,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         // Wait for data move and stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
         LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
+        // TODO: ENG-3243 we should figure out what to do here for going to nodes < RF
         if (tserverReachable) {
           createWaitForDataMoveTask()
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
