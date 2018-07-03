@@ -86,7 +86,7 @@ Update packages on your system, install development tools and additional package
 ```bash
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache
+sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip
 sudo yum install -y cmake3 ctest3
 ```
 
@@ -106,8 +106,9 @@ so that it does not conflict with any other Linuxbrew installation on your works
 not contain any unnecessary packages that would interfere with the build.
 
 ```
-git clone git@github.com:linuxbrew/brew.git ~/.linuxbrew-yb-build
-~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven
+git clone https://github.com/Linuxbrew/brew.git ~/.linuxbrew-yb-build
+~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven readline openssl 
+libuuid bzip2
 ```
 
 We don't need to add `~/.linuxbrew-yb-build/bin` to PATH. The build scripts will automatically
