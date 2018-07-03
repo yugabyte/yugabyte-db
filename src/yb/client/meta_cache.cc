@@ -554,7 +554,8 @@ void LookupRpc::DoFinished(
   }
   // Prefer early failures over controller failures.
   Status new_status = status;
-  if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
+  if (new_status.ok() &&
+      mutable_retrier()->HandleResponse(this, &new_status, rpc::RetryWhenBusy::kFalse)) {
     return;
   }
 
@@ -584,10 +585,9 @@ void LookupRpc::DoFinished(
     }
   }
 
-  if (new_status.IsNetworkError()) {
+  if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
     if (client()->IsMultiMaster()) {
-      LOG(WARNING) << "Encountered a network error from the Master: "
-                   << new_status.ToString() << ", retrying...";
+      LOG(WARNING) << "Encountered a error from the Master: " << new_status << ", retrying...";
       ResetMasterLeaderAndRetry();
       return;
     }

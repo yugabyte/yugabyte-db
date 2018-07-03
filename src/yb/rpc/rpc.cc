@@ -77,13 +77,14 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
-bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
+bool RpcRetrier::HandleResponse(
+    RpcCommand* rpc, Status* out_status, RetryWhenBusy retry_when_busy) {
   ignore_result(DCHECK_NOTNULL(rpc));
   ignore_result(DCHECK_NOTNULL(out_status));
 
   // Always retry a TOO_BUSY error.
   Status controller_status = controller_.status();
-  if (controller_status.IsRemoteError()) {
+  if (controller_status.IsRemoteError() && retry_when_busy) {
     const ErrorStatusPB* err = controller_.error_response();
     if (err &&
         err->has_code() &&
