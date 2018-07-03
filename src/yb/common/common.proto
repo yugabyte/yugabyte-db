@@ -111,6 +111,21 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 2;
 }
 
+enum YBConsistencyLevel {
+  // This consistency level provides Linearizability guarantees and is the default for our system.
+  STRONG = 1;
+
+  // Consistent-prefix consistency means that we always see consistent snapshot of the database in
+  // a well-defined order. If operations A, B and C take place, we will either see A, AB, or ABC.
+  // Note that reads might still go back in time since we might see ABC on one replica and AB on
+  // another.
+  CONSISTENT_PREFIX = 2;
+
+  // For cross-shard transactions only: user-enforced consistency level means it is the user's
+  // responsibility to enforce consistency across shards or tables/indexes.
+  USER_ENFORCED = 3;
+}
+
 // Used for Cassandra Roles and Permissions
 enum ResourceType {
   ALL_KEYSPACES = 1;
@@ -188,6 +203,8 @@ message TablePropertiesPB {
   optional bool is_transactional = 3 [default = false];
   // The table id of the table that this table is co-partitioned with.
   optional bytes copartition_table_id = 4;
+  // For index table only: consistency with respect to the indexed table.
+  optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];
 }
 
 message SchemaPB {
@@ -351,18 +368,6 @@ message ChildTransactionResultPB {
   repeated TransactionInvolvedTabletPB tablets = 1;
   optional fixed64 restart_read_ht = 2;
   map<string, fixed64> read_restarts = 3;
-}
-
-enum YBConsistencyLevel {
-  // This consistency level provides Linearizability guarantees and is the default for our
-  // system.
-  STRONG = 1;
-
-  // Consistent Prefix consistency means that we always see consistent snapshot of the database
-  // in a well defined order. If operations A, B and C take place, we will either see A, AB
-  // or ABC. Note that reads might still go back in time since we might see ABC on one
-  // replica and AB on another.
-  CONSISTENT_PREFIX = 2;
 }
 
 message DeletedColumnPB {

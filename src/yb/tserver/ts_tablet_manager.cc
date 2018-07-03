@@ -916,6 +916,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     tablet_peer->SetBootstrapping();
     tablet::BootstrapTabletData data = {
         meta,
+        async_client_init_.get_client_future(),
         scoped_refptr<server::Clock>(server_->clock()),
         server_->mem_tracker(),
         metric_registry_,

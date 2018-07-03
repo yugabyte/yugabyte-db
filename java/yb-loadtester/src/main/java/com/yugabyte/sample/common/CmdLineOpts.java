@@ -156,16 +156,14 @@ public class CmdLineOpts {
                  AppBase.appConfig.readBackDeltaTimeFromNow);
       }
     }
-    if (appName == AppName.CassandraBatchKeyValue) {
-      if (commandLine.hasOption("batch_size")) {
-        AppBase.appConfig.cassandraBatchSize =
-            Integer.parseInt(commandLine.getOptionValue("batch_size"));
-        if (AppBase.appConfig.cassandraBatchSize > AppBase.appConfig.numUniqueKeysToWrite) {
-          LOG.fatal("The batch size cannot be more than the number of unique keys");
-          System.exit(-1);
-        }
+    if (commandLine.hasOption("batch_size")) {
+      AppBase.appConfig.cassandraBatchSize =
+          Integer.parseInt(commandLine.getOptionValue("batch_size"));
+      if (AppBase.appConfig.cassandraBatchSize > AppBase.appConfig.numUniqueKeysToWrite) {
+        LOG.fatal("The batch size cannot be more than the number of unique keys");
+        System.exit(-1);
       }
-      LOG.info("CassandraBatchKeyValue batch size : " + AppBase.appConfig.cassandraBatchSize);
+      LOG.info("Batch size : " + AppBase.appConfig.cassandraBatchSize);
     }
     if (appName == AppName.CassandraPersonalization) {
       if (commandLine.hasOption("num_stores")) {
@@ -190,6 +188,16 @@ public class CmdLineOpts {
       }
       LOG.info("CassandraPersonalization maximum number of coupons per costomer : " +
                AppBase.appConfig.maxCouponsPerCustomer);
+    }
+    if (appName == AppName.CassandraSecondaryIndex) {
+      if (commandLine.hasOption("non_transactional_index")) {
+        AppBase.appConfig.nonTransactionalIndex = true;
+      }
+      LOG.info("CassandraSecondaryIndex non-transactional index");
+      if (commandLine.hasOption("batch_write")) {
+        AppBase.appConfig.batchWrite = true;
+      }
+      LOG.info("CassandraSecondaryIndex batch write");
     }
     if (appName == AppName.RedisPipelinedKeyValue ||
         appName == AppName.RedisHashPipelined) {
@@ -563,6 +571,13 @@ public class CmdLineOpts {
                       "[CassandraPersonalization] Number of new coupons per customer.");
     options.addOption("max_coupons_per_customer", true,
                       "[CassandraPersonalization] Maximum number of coupons per customer.");
+
+    // Options for CassandraSecondaryIndex app.
+    options.addOption("non_transactional_index", false,
+                      "[CassandraSecondaryIndex] Create secondary index without transactions " +
+                      "enabled.");
+    options.addOption("batch_write", false,
+                      "[CassandraSecondaryIndex] Enable batch write of key values.");
 
     // Options for CassandraSparkKeyValueCopy app.
     options.addOption("keyvaluecopy_input_table", true,

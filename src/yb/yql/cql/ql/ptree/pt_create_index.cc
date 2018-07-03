@@ -96,18 +96,42 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
     }
   }
 
+  // Verify transactions and consistency settings.
+  TableProperties table_properties;
+  RETURN_NOT_OK(ToTableProperties(&table_properties));
+  if (table_->InternalSchema().table_properties().is_transactional()) {
+    if (!table_properties.is_transactional()) {
+      return sem_context->Error(this,
+                                "Transactions must be enabled in an index of a "
+                                "transactions-enabled table.",
+                                ErrorCode::INVALID_TABLE_DEFINITION);
+    }
+    if (table_properties.consistency_level() == YBConsistencyLevel::USER_ENFORCED) {
+      return sem_context->Error(this,
+                                "User-enforced consistency level not allowed in a "
+                                "transactions-enabled index.",
+                                ErrorCode::INVALID_TABLE_DEFINITION);
+    }
+  } else {
+    if (table_properties.is_transactional()) {
+      return sem_context->Error(this,
+                                "Transactions cannot be enabled in an index of a table without "
+                                "transactions enabled.",
+                                ErrorCode::INVALID_TABLE_DEFINITION);
+    }
+    if (table_properties.consistency_level() != YBConsistencyLevel::USER_ENFORCED) {
+      return sem_context->Error(this,
+                                "Consistency level must be user-enforced in an index without "
+                                "transactions enabled.",
+                                ErrorCode::INVALID_TABLE_DEFINITION);
+    }
+  }
+
   // TODO: create local index when co-partition table is available.
   if (is_local_) {
     LOG(WARNING) << "Creating local secondary index " << yb_table_name().ToString()
                  << " as global index.";
     is_local_ = false;
-  }
-
-  if (!is_local_ && !table_->InternalSchema().table_properties().is_transactional()) {
-    return sem_context->Error(this,
-                              "Global secondary index cannot be created "
-                              "on a table in which transactions are disabled",
-                              ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Restore the context value as we are done with this table.
@@ -121,6 +145,11 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
 
 void PTCreateIndex::PrintSemanticAnalysisResult(SemContext *sem_context) {
   PTCreateTable::PrintSemanticAnalysisResult(sem_context);
+}
+
+Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {
+  table_properties->SetTransactional(true);
+  return PTCreateTable::ToTableProperties(table_properties);
 }
 
 }  // namespace ql
