@@ -73,6 +73,61 @@ size_t ColumnSchema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
+  if (HasDefaultTimeToLive()) {
+    pb->set_default_time_to_live(default_time_to_live_);
+  }
+  pb->set_contain_counters(contain_counters_);
+  pb->set_is_transactional(is_transactional_);
+  pb->set_consistency_level(consistency_level_);
+  if (HasCopartitionTableId()) {
+    pb->set_copartition_table_id(copartition_table_id_);
+  }
+}
+
+TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
+  TableProperties table_properties;
+  if (pb.has_default_time_to_live()) {
+    table_properties.SetDefaultTimeToLive(pb.default_time_to_live());
+  }
+  if (pb.has_contain_counters()) {
+    table_properties.SetContainCounters(pb.contain_counters());
+  }
+  if (pb.has_is_transactional()) {
+    table_properties.SetTransactional(pb.is_transactional());
+  }
+  if (pb.has_consistency_level()) {
+    table_properties.SetConsistencyLevel(pb.consistency_level());
+  }
+  if (pb.has_copartition_table_id()) {
+    table_properties.SetCopartitionTableId(pb.copartition_table_id());
+  }
+  return table_properties;
+}
+
+void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
+  if (pb.has_default_time_to_live()) {
+    SetDefaultTimeToLive(pb.default_time_to_live());
+  }
+  if (pb.has_is_transactional()) {
+    SetTransactional(pb.is_transactional());
+  }
+  if (pb.has_consistency_level()) {
+    SetConsistencyLevel(pb.consistency_level());
+  }
+  if (pb.has_copartition_table_id()) {
+    SetCopartitionTableId(pb.copartition_table_id());
+  }
+}
+
+void TableProperties::Reset() {
+  default_time_to_live_ = kNoDefaultTtl;
+  contain_counters_ = false;
+  is_transactional_ = false;
+  consistency_level_ = YBConsistencyLevel::STRONG;
+  copartition_table_id_ = kNoCopartitionTableId;
+}
+
 Schema::Schema(const Schema& other)
   : name_to_index_bytes_(0),
     // TODO: C++11 provides a single-arg constructor

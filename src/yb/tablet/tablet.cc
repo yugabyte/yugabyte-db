@@ -304,6 +304,7 @@ const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
 Tablet::Tablet(
     const scoped_refptr<TabletMetadata>& metadata,
+    const std::shared_future<client::YBClientPtr> &client_future,
     const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     MetricRegistry* metric_registry,
@@ -321,6 +322,7 @@ Tablet::Tablet(
       clock_(clock),
       mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
       tablet_options_(tablet_options),
+      client_future_(client_future),
       local_tablet_filter_(std::move(local_tablet_filter)) {
   CHECK(schema()->has_column_ids());
 
@@ -356,7 +358,7 @@ Tablet::Tablet(
         transaction_participant_context);
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
-      transaction_manager_.emplace(transaction_participant_context->client_future().get(),
+      transaction_manager_.emplace(client_future_.get(),
                                    transaction_participant_context->clock_ptr(),
                                    local_tablet_filter_);
     }
@@ -880,16 +882,20 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     if (write_op->index_requests()->empty()) {
       continue;
     }
-    if (!transaction_manager_) {
-      return STATUS(Corruption, "Transaction manager is not present for index update");
-    }
-    auto txn = std::make_shared<YBTransaction>(
-        &transaction_manager_.get(),
-        VERIFY_RESULT(ChildTransactionData::FromPB(write_op->request().child_transaction_data())));
-    const YBClientPtr client = transaction_participant_->context()->client_future().get();
+    const YBClientPtr client = client_future_.get();
     auto session = std::make_shared<YBSession>(client);
-    session->SetTransaction(txn);
     RETURN_NOT_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
+    client::YBTransactionPtr txn;
+    if (write_op->request().has_child_transaction_data()) {
+      if (!transaction_manager_) {
+        return STATUS(Corruption, "Transaction manager is not present for index update");
+      }
+      txn = std::make_shared<YBTransaction>(
+          &transaction_manager_.get(),
+          VERIFY_RESULT(ChildTransactionData::FromPB(
+              write_op->request().child_transaction_data())));
+      session->SetTransaction(txn);
+    }
 
     // Apply the write ops to update the index
     vector<std::pair<const IndexInfo*, shared_ptr<client::YBqlWriteOp>>> index_ops;
@@ -936,7 +942,9 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
       }
     }
 
-    *response->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
+    if (txn) {
+      *response->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
+    }
   }
   return Status::OK();
 }
@@ -1211,10 +1219,12 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     metadata_->SetIndexMap(std::move(operation_state->index_map()));
 
     // Create transaction manager for secondary index update.
-    if (!metadata_->index_map().empty() && !transaction_manager_) {
+    if (!metadata_->index_map().empty() &&
+        metadata_->schema().table_properties().is_transactional() &&
+        !transaction_manager_) {
       const auto transaction_participant_context =
           DCHECK_NOTNULL(transaction_participant_.get())->context();
-      transaction_manager_.emplace(transaction_participant_context->client_future().get(),
+      transaction_manager_.emplace(client_future_.get(),
                                    transaction_participant_context->clock_ptr(),
                                    local_tablet_filter_);
     }

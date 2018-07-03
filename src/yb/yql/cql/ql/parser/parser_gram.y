@@ -8046,8 +8046,8 @@ opt_index_options:
   /*EMPTY*/ {
     $$ = nullptr;
   }
-  | WITH CLUSTERING ORDER BY '(' orderingList ')' {
-    $$ = $6;
+  | WITH table_properties {
+    $$ = $2;
   }
   | WITH reloptions {
     PARSER_UNSUPPORTED(@1);

@@ -147,4 +147,10 @@ public class AppConfig {
 
   // Use redis cluster client.
   public boolean useRedisCluster = false;
+
+  // Create secondary index without transactions enabled.
+  public boolean nonTransactionalIndex = false;
+
+  // Enable batch write.
+  public boolean batchWrite = false;
 }

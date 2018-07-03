@@ -50,6 +50,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/enums.h"
 #include "yb/util/status.h"
 
 // Check that two schemas are equal, yielding a useful error message in the case that
@@ -360,19 +361,6 @@ const TableId kNoCopartitionTableId = "";
 
 class TableProperties {
  public:
-  TableProperties()
-      : default_time_to_live_(kNoDefaultTtl),
-        contain_counters_(false),
-        is_transactional_(false),
-        copartition_table_id_(kNoCopartitionTableId) {}
-
-  TableProperties(const TableProperties& other) {
-    default_time_to_live_ = other.default_time_to_live_;
-    contain_counters_ = other.contain_counters_;
-    is_transactional_ = other.is_transactional_;
-    copartition_table_id_ = other.copartition_table_id_;
-  }
-
   // Containing counters is a internal property instead of a user-defined property, so we don't use
   // it when comparing table properties.
   bool operator==(const TableProperties& other) const {
@@ -403,12 +391,20 @@ class TableProperties {
     return is_transactional_;
   }
 
+  YBConsistencyLevel consistency_level() const {
+    return consistency_level_;
+  }
+
   void SetContainCounters(bool contain_counters) {
     contain_counters_ = contain_counters;
   }
 
   void SetTransactional(bool is_transactional) {
     is_transactional_ = is_transactional;
+  }
+
+  void SetConsistencyLevel(YBConsistencyLevel consistency_level) {
+    consistency_level_ = consistency_level;
   }
 
   TableId CopartitionTableId() const {
@@ -423,59 +419,21 @@ class TableProperties {
     copartition_table_id_ = copartition_table_id;
   }
 
-  void ToTablePropertiesPB(TablePropertiesPB *pb) const {
-    if (HasDefaultTimeToLive()) {
-      pb->set_default_time_to_live(default_time_to_live_);
-    }
-    pb->set_contain_counters(contain_counters_);
-    pb->set_is_transactional(is_transactional_);
-    if (HasCopartitionTableId()) {
-      pb->set_copartition_table_id(copartition_table_id_);
-    }
-  }
+  void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
-  static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb) {
-    TableProperties table_properties;
-    if (pb.has_default_time_to_live()) {
-      table_properties.SetDefaultTimeToLive(pb.default_time_to_live());
-    }
-    if (pb.has_contain_counters()) {
-      table_properties.SetContainCounters(pb.contain_counters());
-    }
-    if (pb.has_is_transactional()) {
-      table_properties.SetTransactional(pb.is_transactional());
-    }
-    if (pb.has_copartition_table_id()) {
-      table_properties.SetCopartitionTableId(pb.copartition_table_id());
-    }
-    return table_properties;
-  }
+  static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
 
-  void AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
-    if (pb.has_default_time_to_live()) {
-      SetDefaultTimeToLive(pb.default_time_to_live());
-    }
-    if (pb.has_is_transactional()) {
-      SetTransactional(pb.is_transactional());
-    }
-    if (pb.has_copartition_table_id()) {
-      SetCopartitionTableId(pb.copartition_table_id());
-    }
-  }
+  void AlterFromTablePropertiesPB(const TablePropertiesPB& pb);
 
-  void Reset() {
-    default_time_to_live_ = kNoDefaultTtl;
-    contain_counters_ = false;
-    is_transactional_ = false;
-    copartition_table_id_ = kNoCopartitionTableId;
-  }
+  void Reset();
 
  private:
   static const int kNoDefaultTtl = -1;
-  int64_t default_time_to_live_;
-  bool contain_counters_;
-  bool is_transactional_;
-  TableId copartition_table_id_;
+  int64_t default_time_to_live_ = kNoDefaultTtl;
+  bool contain_counters_ = false;
+  bool is_transactional_ = false;
+  YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
+  TableId copartition_table_id_ = kNoCopartitionTableId;
 };
 
 // The schema for a set of rows.
