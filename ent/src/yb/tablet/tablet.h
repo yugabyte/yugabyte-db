@@ -23,6 +23,7 @@ class Tablet : public yb::tablet::Tablet {
   // Create a new tablet.
   Tablet(
       const scoped_refptr<TabletMetadata>& metadata,
+      const std::shared_future<client::YBClientPtr> &client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       MetricRegistry* metric_registry,
@@ -31,7 +32,7 @@ class Tablet : public yb::tablet::Tablet {
       TransactionParticipantContext* transaction_participant_context,
       client::LocalTabletFilter local_tablet_filter,
       TransactionCoordinatorContext* transaction_coordinator_context)
-      : super(metadata, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
+  : super(metadata, client_future, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
           tablet_options, transaction_participant_context, std::move(local_tablet_filter),
           transaction_coordinator_context) {}
 
