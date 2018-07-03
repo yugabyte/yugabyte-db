@@ -436,7 +436,7 @@ foreach (@{ $catalogs->{indexing}->{data} })
 		if $unique && $columns eq "btree(oid oid_ops)";
 }
 
-my $YQL_PRIMARY_KEYS = {
+my %YQL_PRIMARY_KEYS = (
 	'pg_attribute' => '(attrelid, attname)',
 	'pg_inherits' => '(inhrelid, inhseqno)',
 	'pg_index' => '(indexrelid)',
@@ -460,8 +460,8 @@ my $YQL_PRIMARY_KEYS = {
 	'pg_range' => '(rngtypid)',
 	'pg_sequence' => '(seqrelid)',
 	'pg_subscription_rel' => '(srrelid, srsubid)'
-};
-while (my ($catname, $yql_primary_key) = each $YQL_PRIMARY_KEYS) {
+);
+while (my ($catname, $yql_primary_key) = each %YQL_PRIMARY_KEYS) {
 	$catalogs->{$catname}->{yql_primary_key} = $yql_primary_key;
 }
 
