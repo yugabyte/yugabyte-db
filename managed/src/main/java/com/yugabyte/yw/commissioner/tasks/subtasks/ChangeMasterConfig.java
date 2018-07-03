@@ -93,6 +93,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       if (!taskParams().useHostPort) {
         throw new RuntimeException(msg);
       } else {
+        // TODO(bogdan): why don't we throw here???
         response = null;
       }
     } finally {
