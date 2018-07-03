@@ -80,6 +80,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 
 YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kWaiting)(kFinished));
 YB_DEFINE_ENUM(BackoffStrategy, (kLinear)(kExponential));
+YB_STRONGLY_TYPED_BOOL(RetryWhenBusy);
 
 // Provides utilities for retrying failed RPCs.
 //
@@ -102,7 +103,10 @@ class RpcRetrier {
   //
   // Otherwise, returns false and writes the controller status to
   // 'out_status'.
-  bool HandleResponse(RpcCommand* rpc, Status* out_status);
+  // retry_when_busy should be set to false if user does not want to retry request when server
+  // returned that he is busy.
+  bool HandleResponse(RpcCommand* rpc, Status* out_status,
+                      RetryWhenBusy retry_when_busy = RetryWhenBusy::kTrue);
 
   // Retries an RPC at some point in the near future. If 'why_status' is not OK,
   // records it as the most recent error causing the RPC to retry. This is

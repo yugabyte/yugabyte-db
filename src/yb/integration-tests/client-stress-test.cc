@@ -36,6 +36,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/substitute.h"
@@ -109,7 +110,7 @@ TEST_F(ClientStressTest, TestLookupTimeouts) {
 }
 
 // Override the base test to run in multi-master mode.
-class ClientStressTest_MultiMaster: public ClientStressTest {
+class ClientStressTest_MultiMaster : public ClientStressTest {
  protected:
   ExternalMiniClusterOptions default_opts() override {
     ExternalMiniClusterOptions result;
@@ -319,6 +320,65 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
              << total_num_rejections << " memory rejections";
     }
     SleepFor(MonoDelta::FromMilliseconds(200));
+  }
+}
+
+namespace {
+
+class ClientStressTestSmallQueueMultiMasterWithTServers : public ClientStressTest {
+ protected:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_masters = 3;
+    result.master_rpc_ports = { 0, 0, 0 };
+    result.extra_master_flags = {
+        "--master_svc_queue_length=5"s, "--master_inject_latency_on_tablet_lookups_ms=50"s };
+    result.num_tablet_servers = 3;
+    return result;
+  }
+};
+
+} // namespace
+
+// Check behaviour of meta cache in case of server queue is full.
+TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMasterWithTServers) {
+  TestWorkload workload(cluster_.get());
+  workload.Setup();
+
+  struct Item {
+    client::YBClientPtr client;
+    std::unique_ptr<client::TableHandle> table;
+    client::YBSessionPtr session;
+    std::future<Status> future;
+  };
+
+  std::vector<Item> items;
+  constexpr size_t kNumRequests = 40;
+  while (items.size() != kNumRequests) {
+    Item item;
+    client::YBClientBuilder builder;
+    ASSERT_OK(cluster_->CreateClient(&builder, &item.client));
+    item.table = std::make_unique<client::TableHandle>();
+    ASSERT_OK(item.table->Open(TestWorkloadOptions::kDefaultTableName, item.client.get()));
+    item.session = std::make_shared<client::YBSession>(item.client);
+    ASSERT_OK(item.session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
+    items.push_back(std::move(item));
+  }
+
+  int32_t key = 0;
+  const std::string kStringValue("string value");
+  for (auto& item : items) {
+    auto op = item.table->NewInsertOp();
+    auto req = op->mutable_request();
+    QLAddInt32HashValue(req, ++key);
+    item.table->AddInt32ColumnValue(req, item.table->schema().columns()[1].name(), -key);
+    item.table->AddStringColumnValue(req, item.table->schema().columns()[2].name(), kStringValue);
+    ASSERT_OK(item.session->Apply(op));
+    item.future = item.session->FlushFuture();
+  }
+
+  for (auto& item : items) {
+    ASSERT_OK(item.future.get());
   }
 }
 
