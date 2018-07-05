@@ -3285,12 +3285,12 @@ RETURNS numeric
 AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION oracle.round(float, int)
+CREATE OR REPLACE FUNCTION oracle.round(float4, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.round($1::numeric, $2)$$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION oracle.trunc(float, int)
+CREATE OR REPLACE FUNCTION oracle.trunc(float4, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
 LANGUAGE sql IMMUTABLE STRICT;
