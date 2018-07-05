@@ -16,7 +16,8 @@ set(PGGATE_SRCS
     pggate.cc
     pg_session.cc
     pg_statement.cc
-    pg_ddl.cc)
+    pg_ddl.cc
+    pg_insert.cc)
 
 set(PGGATE_LIBS
     yb_util
