@@ -12,7 +12,6 @@
 //
 package com.yugabyte.jedis;
 
-import com.sun.tools.javac.comp.Check;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
