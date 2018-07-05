@@ -16,6 +16,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include <mutex>
+#include <queue>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -116,24 +117,47 @@ class Delayer {
   std::deque<std::pair<MonoTime, std::function<void()>>> queue_;
 };
 
-class RunningTransaction {
+class RunningTransaction;
+
+typedef std::shared_ptr<RunningTransaction> RunningTransactionPtr;
+
+class RunningTransactionContext {
+ public:
+  explicit RunningTransactionContext(TransactionParticipantContext* participant_context)
+      : participant_context_(*participant_context) {
+  }
+
+  virtual ~RunningTransactionContext() {}
+
+  virtual bool RemoveUnlocked(const TransactionId& id) = 0;
+
+  int64_t NextRequestIdUnlocked() {
+    return ++request_serial_;
+  }
+
+ protected:
+  friend class RunningTransaction;
+
+  rpc::Rpcs rpcs_;
+  TransactionParticipantContext& participant_context_;
+  int64_t request_serial_ = 0;
+  std::mutex mutex_;
+};
+
+class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
  public:
   RunningTransaction(TransactionMetadata metadata,
                      IntraTxnWriteId last_write_id,
-                     rpc::Rpcs* rpcs,
-                     TransactionParticipantContext* context,
-                     std::atomic<int64_t>* request_serial)
+                     RunningTransactionContext* context)
       : metadata_(std::move(metadata)),
         last_write_id_(last_write_id),
-        rpcs_(*rpcs),
         context_(*context),
-        request_serial_(request_serial),
-        get_status_handle_(rpcs->InvalidHandle()),
-        abort_handle_(rpcs->InvalidHandle()) {
+        get_status_handle_(context->rpcs_.InvalidHandle()),
+        abort_handle_(context->rpcs_.InvalidHandle()) {
   }
 
   ~RunningTransaction() {
-    rpcs_.Abort({&get_status_handle_, &abort_handle_});
+    context_.rpcs_.Abort({&get_status_handle_, &abort_handle_});
   }
 
   const TransactionId& id() const {
@@ -162,7 +186,7 @@ class RunningTransaction {
 
   void RequestStatusAt(client::YBClient* client,
                        const StatusRequest& request,
-                       std::unique_lock<std::mutex>* lock) const {
+                       std::unique_lock<std::mutex>* lock) {
     if (last_known_status_hybrid_time_ > HybridTime::kMin) {
       auto transaction_status =
           GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
@@ -179,13 +203,14 @@ class RunningTransaction {
     if (!was_empty) {
       return;
     }
+    auto request_id = context_.NextRequestIdUnlocked();
     lock->unlock();
-    SendStatusRequest(client, lock->mutex());
+    SendStatusRequest(client, request_id);
   }
 
   void Abort(client::YBClient* client,
              TransactionStatusCallback callback,
-             std::unique_lock<std::mutex>* lock) const {
+             std::unique_lock<std::mutex>* lock) {
     bool was_empty = abort_waiters_.empty();
     abort_waiters_.push_back(std::move(callback));
     lock->unlock();
@@ -195,14 +220,14 @@ class RunningTransaction {
     tserver::AbortTransactionRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
-    req.set_propagated_hybrid_time(context_.Now().ToUint64());
-    rpcs_.RegisterAndStart(
+    req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
+    context_.rpcs_.RegisterAndStart(
         client::AbortTransaction(
             TransactionRpcDeadline(),
             nullptr /* tablet */,
             client,
             &req,
-            std::bind(&RunningTransaction::AbortReceived, this, _1, _2, lock->mutex())),
+            std::bind(&RunningTransaction::AbortReceived, this, _1, _2, shared_from_this())),
         &abort_handle_);
   }
 
@@ -228,19 +253,19 @@ class RunningTransaction {
     }
   }
 
-  void SendStatusRequest(client::YBClient* client, std::mutex* mutex) const {
+  void SendStatusRequest(client::YBClient* client, int64_t serial_no) {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
-    req.set_propagated_hybrid_time(context_.Now().ToUint64());
-    int64_t serial_no = ++*request_serial_;
-    rpcs_.RegisterAndStart(
+    req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
+    context_.rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             TransactionRpcDeadline(),
             nullptr /* tablet */,
             client,
             &req,
-            std::bind(&RunningTransaction::StatusReceived, this, client, _1, _2, serial_no, mutex)),
+            std::bind(&RunningTransaction::StatusReceived, this, client, _1, _2, serial_no,
+                      shared_from_this())),
         &get_status_handle_);
   }
 
@@ -248,15 +273,15 @@ class RunningTransaction {
                       const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       int64_t serial_no,
-                      std::mutex* mutex) const {
+                      const RunningTransactionPtr& shared_self) {
     auto delay_usec = FLAGS_transaction_delay_status_reply_usec_in_tests;
     if (delay_usec > 0) {
       delayer_.Delay(
           MonoTime::Now() + MonoDelta::FromMicroseconds(delay_usec),
           std::bind(&RunningTransaction::DoStatusReceived, this, client, status, response,
-                    serial_no, mutex));
+                    serial_no, shared_self));
     } else {
-      DoStatusReceived(client, status, response, serial_no, mutex);
+      DoStatusReceived(client, status, response, serial_no, shared_self);
     }
   }
 
@@ -264,72 +289,96 @@ class RunningTransaction {
                         const Status& status,
                         const tserver::GetTransactionStatusResponsePB& response,
                         int64_t serial_no,
-                        std::mutex* mutex) const {
+                        const RunningTransactionPtr& shared_self) {
     if (response.has_propagated_hybrid_time()) {
-      context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+      context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
     }
 
-    rpcs_.Unregister(&get_status_handle_);
+    context_.rpcs_.Unregister(&get_status_handle_);
     decltype(status_waiters_) status_waiters;
-    HybridTime time;
+    HybridTime time_of_status;
     TransactionStatus transaction_status;
     const bool ok = status.ok();
-    bool send_new_request;
+    int64_t new_request_id = -1;
     {
-      std::unique_lock<std::mutex> lock(*mutex);
-      if (ok) {
-        DCHECK(response.has_status_hybrid_time() ||
-               response.status() == TransactionStatus::ABORTED);
-        time = response.has_status_hybrid_time()
-            ? HybridTime(response.status_hybrid_time())
-            : HybridTime::kMax;
-        if (last_known_status_hybrid_time_ <= time) {
-          last_known_status_hybrid_time_ = time;
-          last_known_status_ = response.status();
-        }
-        time = last_known_status_hybrid_time_;
-        transaction_status = last_known_status_;
-
-        status_waiters.reserve(status_waiters_.size());
-        auto w = status_waiters_.begin();
-        for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
-          if (it->serial_no <= serial_no ||
-              GetStatusAt(it->global_limit_ht, time, transaction_status) ||
-              time < it->read_ht) {
-            status_waiters.push_back(std::move(*it));
-          } else {
-            if (w != it) {
-              *w = std::move(*it);
-            }
-            ++w;
-          }
-        }
-        status_waiters_.erase(w, status_waiters_.end());
-      } else {
+      std::unique_lock<std::mutex> lock(context_.mutex_);
+      if (!ok) {
         status_waiters_.swap(status_waiters);
+        lock.unlock();
+        for (const auto& waiter : status_waiters) {
+          waiter.callback(status);
+        }
+        return;
       }
-      send_new_request = !status_waiters_.empty();
-    }
-    if (send_new_request) {
-      SendStatusRequest(client, mutex);
-    }
-    if (!ok) {
-      for (const auto& waiter : status_waiters) {
-        waiter.callback(status);
+
+      DCHECK(response.has_status_hybrid_time() ||
+             response.status() == TransactionStatus::ABORTED);
+      time_of_status = response.has_status_hybrid_time()
+          ? HybridTime(response.status_hybrid_time())
+          : HybridTime::kMax;
+      if (last_known_status_hybrid_time_ <= time_of_status) {
+        last_known_status_hybrid_time_ = time_of_status;
+        last_known_status_ = response.status();
+        if (response.status() == TransactionStatus::ABORTED) {
+          context_.RemoveUnlocked(id());
+        }
       }
-      return;
+      time_of_status = last_known_status_hybrid_time_;
+      transaction_status = last_known_status_;
+
+      status_waiters = ExtractFinishedStatusWaitersUnlocked(
+          serial_no, time_of_status, transaction_status);
+      if (!status_waiters_.empty()) {
+        new_request_id = context_.NextRequestIdUnlocked();
+      }
     }
+    if (new_request_id >= 0) {
+      SendStatusRequest(client, new_request_id);
+    }
+    NotifyWaiters(serial_no, time_of_status, transaction_status, status_waiters);
+  }
+
+  // Extracts status waiters from status_waiters_ that could be notified at this point.
+  // Extracted waiters also removed from status_waiters_.
+  std::vector<StatusRequest> ExtractFinishedStatusWaitersUnlocked(
+      int64_t serial_no, HybridTime time_of_status, TransactionStatus transaction_status) {
+    std::vector<StatusRequest> result;
+    result.reserve(status_waiters_.size());
+    auto w = status_waiters_.begin();
+    for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
+      if (it->serial_no <= serial_no ||
+          GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
+          time_of_status < it->read_ht) {
+        result.push_back(std::move(*it));
+      } else {
+        if (w != it) {
+          *w = std::move(*it);
+        }
+        ++w;
+      }
+    }
+    status_waiters_.erase(w, status_waiters_.end());
+    return result;
+  }
+
+  // Notify provided status waiters.
+  void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
+                     TransactionStatus transaction_status,
+                     const std::vector<StatusRequest>& status_waiters) {
     for (const auto& waiter : status_waiters) {
-      auto status_for_waiter = GetStatusAt(waiter.global_limit_ht, time, transaction_status);
+      auto status_for_waiter = GetStatusAt(
+          waiter.global_limit_ht, time_of_status, transaction_status);
       if (status_for_waiter) {
         // We know status at global_limit_ht, so could notify waiter.
-        waiter.callback(TransactionStatusResult{*status_for_waiter, time});
-      } else if (time >= waiter.read_ht) {
+        waiter.callback(TransactionStatusResult{*status_for_waiter, time_of_status});
+      } else if (time_of_status >= waiter.read_ht) {
         // It means that between read_ht and global_limit_ht transaction was pending.
         // It implies that transaction was not committed before request was sent.
         // We could safely respond PENDING to caller.
-        DCHECK_LE(waiter.serial_no, serial_no);
-        waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time});
+        LOG_IF(DFATAL, waiter.serial_no > serial_no)
+            << "Notify waiter with request id greater than id of status request: "
+            << waiter.serial_no << " vs " << serial_no;
+        waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time_of_status});
       } else {
         waiter.callback(STATUS_FORMAT(
             TryAgain,
@@ -338,7 +387,7 @@ class RunningTransaction {
             waiter.read_ht,
             waiter.global_limit_ht,
             TransactionStatus_Name(transaction_status),
-            time));
+            time_of_status));
       }
     }
   }
@@ -358,15 +407,15 @@ class RunningTransaction {
 
   void AbortReceived(const Status& status,
                      const tserver::AbortTransactionResponsePB& response,
-                     std::mutex* mutex) const {
+                     const RunningTransactionPtr& shared_self) {
     if (response.has_propagated_hybrid_time()) {
-      context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+      context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
     }
 
     decltype(abort_waiters_) abort_waiters;
     {
-      std::lock_guard<std::mutex> lock(*mutex);
-      rpcs_.Unregister(&abort_handle_);
+      std::lock_guard<std::mutex> lock(context_.mutex_);
+      context_.rpcs_.Unregister(&abort_handle_);
       abort_waiters_.swap(abort_waiters);
     }
     auto result = MakeAbortResult(status, response);
@@ -377,28 +426,26 @@ class RunningTransaction {
 
   TransactionMetadata metadata_;
   IntraTxnWriteId last_write_id_ = 0;
-  rpc::Rpcs& rpcs_;
-  TransactionParticipantContext& context_;
-  std::atomic<int64_t>* request_serial_;
+  RunningTransactionContext& context_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
 
-  mutable TransactionStatus last_known_status_;
-  mutable HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
-  mutable std::vector<StatusRequest> status_waiters_;
-  mutable rpc::Rpcs::Handle get_status_handle_;
-  mutable rpc::Rpcs::Handle abort_handle_;
-  mutable std::vector<TransactionStatusCallback> abort_waiters_;
+  TransactionStatus last_known_status_;
+  HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
+  std::vector<StatusRequest> status_waiters_;
+  rpc::Rpcs::Handle get_status_handle_;
+  rpc::Rpcs::Handle abort_handle_;
+  std::vector<TransactionStatusCallback> abort_waiters_;
 
   // Used only in tests.
-  mutable Delayer delayer_;
+  Delayer delayer_;
 };
 
 } // namespace
 
-class TransactionParticipant::Impl {
+class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
   explicit Impl(TransactionParticipantContext* context)
-      : context_(*context), log_prefix_(context->tablet_id() + ": ") {}
+      : RunningTransactionContext(context), log_prefix_(context->tablet_id() + ": ") {}
 
   ~Impl() {
     transactions_.clear();
@@ -417,10 +464,10 @@ class TransactionParticipant::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
-        transactions_.emplace(*metadata, 0, &rpcs_, &context_, &request_serial_);
+        transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
         store = true;
       } else {
-        DCHECK_EQ(it->metadata(), *metadata);
+        DCHECK_EQ((**it).metadata(), *metadata);
       }
     }
     if (store) {
@@ -437,7 +484,7 @@ class TransactionParticipant::Impl {
     if (it == transactions_.end()) {
       return HybridTime::kInvalid;
     }
-    return it->local_commit_time();
+    return (**it).local_commit_time();
   }
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
@@ -446,7 +493,7 @@ class TransactionParticipant::Impl {
     if (it == transactions_.end()) {
       return boost::none;
     }
-    return it->metadata();
+    return (**it).metadata();
   }
 
   boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
@@ -456,7 +503,7 @@ class TransactionParticipant::Impl {
     if (it == transactions_.end()) {
       return boost::none;
     }
-    return std::make_pair(it->metadata(), it->last_write_id());
+    return std::make_pair((**it).metadata(), (**it).last_write_id());
   }
 
   void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
@@ -466,9 +513,7 @@ class TransactionParticipant::Impl {
       DCHECK(false) << "Update last write id for unknown transaction: " << id;
       return;
     }
-    transactions_.modify(it, [value](RunningTransaction& transaction) {
-      transaction.UpdateLastWriteId(value);
-    });
+    (**it).UpdateLastWriteId(value);
   }
 
   void RequestStatusAt(const StatusRequest& request) {
@@ -480,15 +525,48 @@ class TransactionParticipant::Impl {
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
       return;
     }
-    return it->RequestStatusAt(client(), request, &lock);
+    (**it).RequestStatusAt(client(), request, &lock);
   }
 
+  // Registers request, giving him newly allocated id and returning this id.
   int64_t RegisterRequest() {
-    return ++request_serial_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto result = NextRequestIdUnlocked();
+    running_requests_.push_back(result);
+    return result;
   }
 
-  void Abort(const TransactionId& id,
-             TransactionStatusCallback callback) {
+  // Unregisters previously registered request.
+  void UnregisterRequest(int64_t request) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    DCHECK(!running_requests_.empty());
+    if (running_requests_.front() != request) {
+      complete_requests_.push(request);
+      return;
+    }
+    running_requests_.pop_front();
+    while (!complete_requests_.empty() && complete_requests_.top() == running_requests_.front()) {
+      complete_requests_.pop();
+      running_requests_.pop_front();
+    }
+
+    CleanTransactionsUnlocked();
+  }
+
+  // Cleans transactions that are requested and now is safe to clean.
+  // See RemoveUnlocked for details.
+  void CleanTransactionsUnlocked() {
+    int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
+                                                    : running_requests_.front();
+    while (!cleanup_queue_.empty() && cleanup_queue_.front().first < min_request) {
+      const auto& id = cleanup_queue_.front().second;
+      transactions_.erase(id);
+      VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
+      cleanup_queue_.pop_front();
+    }
+  }
+
+  void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     std::unique_lock<std::mutex> lock(mutex_);
     auto it = FindOrLoad(id);
     if (it == transactions_.end()) {
@@ -496,7 +574,7 @@ class TransactionParticipant::Impl {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
-    return it->Abort(client(), std::move(callback), &lock);
+    (**it).Abort(client(), std::move(callback), &lock);
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -519,10 +597,9 @@ class TransactionParticipant::Impl {
         LOG_WITH_PREFIX(WARNING) << "Apply of unknown transaction: " << data.transaction_id;
         return Status::OK();
       } else {
-        transactions_.modify(it, [&data](RunningTransaction& transaction) {
-          transaction.SetLocalCommitTime(data.commit_ht);
-        });
-        // TODO(dtxn) cleanup
+        if (!RemoveUnlocked(it)) {
+          (**it).SetLocalCommitTime(data.commit_ht);
+        }
       }
       if (data.mode == ProcessingMode::LEADER) {
         tserver::UpdateTransactionRequestPB req;
@@ -530,7 +607,7 @@ class TransactionParticipant::Impl {
         auto& state = *req.mutable_state();
         state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
         state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
-        state.add_tablets(context_.tablet_id());
+        state.add_tablets(participant_context_.tablet_id());
 
         auto handle = rpcs_.Prepare();
         if (handle != rpcs_.InvalidHandle()) {
@@ -540,7 +617,7 @@ class TransactionParticipant::Impl {
               client(),
               &req,
               [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-                context_.UpdateClock(propagated_hybrid_time);
+                participant_context_.UpdateClock(propagated_hybrid_time);
                 rpcs_.Unregister(handle);
                 LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
               });
@@ -555,20 +632,55 @@ class TransactionParticipant::Impl {
     db_ = db;
   }
 
-  TransactionParticipantContext* context() const {
-    return &context_;
+  TransactionParticipantContext* participant_context() const {
+    return &participant_context_;
+  }
+
+  size_t TEST_GetNumRunningTransactions() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return transactions_.size();
   }
 
  private:
-  typedef boost::multi_index_container<RunningTransaction,
+  typedef boost::multi_index_container<RunningTransactionPtr,
       boost::multi_index::indexed_by <
           boost::multi_index::hashed_unique <
-              boost::multi_index::const_mem_fun<RunningTransaction,
-                                                const TransactionId&,
-                                                &RunningTransaction::id>
+              boost::multi_index::const_mem_fun<
+                  RunningTransaction, const TransactionId&, &RunningTransaction::id>
           >
       >
   > Transactions;
+
+  // Tries to remove transaction with specified id.
+  // Returns true if transaction is not exists after call to this method, otherwise returns false.
+  // Which means that transaction will be removed later.
+  bool RemoveUnlocked(const TransactionId& id) override {
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      return true;
+    }
+    return RemoveUnlocked(it);
+  }
+
+  bool RemoveUnlocked(const Transactions::iterator& it) {
+    if (running_requests_.empty()) {
+      transactions_.erase(it);
+      VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << (**it).id()
+                          << ", left: " << transactions_.size();
+      return true;
+    }
+
+    // We cannot remove transaction at this point, because there are running requests,
+    // that reads provisional DB and could request status of this transaction.
+    // So we store transaction in queue and wait when all requests that we launched before our try
+    // to remove this transaction are completed.
+    // Since we try to remove transaction after all its records is removed from provisional DB
+    // it is safe to complete removal at this point, because it means that there will be no more
+    // queries to status of this transactions.
+    cleanup_queue_.emplace_back(request_serial_, (**it).id());
+    VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id();
+    return false;
+  }
 
   // TODO(dtxn) unlock during load
   Transactions::const_iterator FindOrLoad(const TransactionId& id) {
@@ -632,28 +744,33 @@ class TransactionParticipant::Impl {
       iter->Prev();
     }
 
-    it = transactions_.emplace(
-        std::move(*metadata), next_write_id, &rpcs_, &context_, &request_serial_).first;
+    it = transactions_.insert(std::make_shared<RunningTransaction>(
+        std::move(*metadata), next_write_id, this)).first;
 
     return it;
   }
 
   client::YBClient* client() const {
-    return context_.client_future().get().get();
+    return participant_context_.client_future().get().get();
   }
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
-  TransactionParticipantContext& context_;
   std::string log_prefix_;
 
   rocksdb::DB* db_ = nullptr;
-  std::mutex mutex_;
-  rpc::Rpcs rpcs_;
   Transactions transactions_;
-  std::atomic<int64_t> request_serial_{0};
+  // Ids of running requests, stored in increasing order.
+  std::deque<int64_t> running_requests_;
+  // Ids of complete requests, minimal request is on top.
+  // Contains only ids greater than first running request id, otherwise entry is removed
+  // from both collections.
+  std::priority_queue<int64_t, std::vector<int64_t>, std::greater<void>> complete_requests_;
+  // Queue of transaction ids that should be cleaned, paired with request that should be completed
+  // in order to be able to do clean.
+  std::deque<std::pair<int64_t, TransactionId>> cleanup_queue_;
 };
 
 TransactionParticipant::TransactionParticipant(TransactionParticipantContext* context)
@@ -694,6 +811,10 @@ int64_t TransactionParticipant::RegisterRequest() {
   return impl_->RegisterRequest();
 }
 
+void TransactionParticipant::UnregisterRequest(int64_t request) {
+  impl_->UnregisterRequest(request);
+}
+
 void TransactionParticipant::Abort(const TransactionId& id,
                                    TransactionStatusCallback callback) {
   return impl_->Abort(id, std::move(callback));
@@ -708,7 +829,11 @@ void TransactionParticipant::SetDB(rocksdb::DB* db) {
 }
 
 TransactionParticipantContext* TransactionParticipant::context() const {
-  return impl_->context();
+  return impl_->participant_context();
+}
+
+size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
+  return impl_->TEST_GetNumRunningTransactions();
 }
 
 } // namespace tablet

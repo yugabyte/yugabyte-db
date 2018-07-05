@@ -84,6 +84,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return 0;
   }
 
+  void UnregisterRequest(int64_t) override {
+    Fail();
+  }
+
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
     Fail();
   }

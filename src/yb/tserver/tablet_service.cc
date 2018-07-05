@@ -975,11 +975,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     }
   }
 
+  RequestScope request_scope;
   if (transactional) {
     // Serial number is used for check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    read_time.serial_no =
-        down_cast<Tablet*>(tablet.get())->transaction_participant()->RegisterRequest();
+    request_scope = RequestScope(down_cast<Tablet*>(tablet.get())->transaction_participant());
+    read_time.serial_no = request_scope.request_id();
   }
 
   const auto& remote_address = context.remote_address();

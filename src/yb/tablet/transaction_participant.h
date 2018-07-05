@@ -105,8 +105,6 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void RequestStatusAt(const StatusRequest& request) override;
 
-  int64_t RegisterRequest() override;
-
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
@@ -115,7 +113,12 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
+  size_t TEST_GetNumRunningTransactions() const;
+
  private:
+  int64_t RegisterRequest() override;
+  void UnregisterRequest(int64_t request) override;
+
   class Impl;
   std::unique_ptr<Impl> impl_;
 };

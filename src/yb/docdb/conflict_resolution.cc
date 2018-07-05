@@ -89,7 +89,8 @@ class ConflictResolver {
   ConflictResolver(const DocDB& doc_db,
                    TransactionStatusManager* status_manager,
                    ConflictResolverContext* context)
-      : doc_db_(doc_db), status_manager_(*status_manager), context_(*context) {}
+      : doc_db_(doc_db), status_manager_(*status_manager), request_scope_(status_manager),
+        context_(*context) {}
 
   TransactionStatusManager& status_manager() {
     return status_manager_;
@@ -294,6 +295,7 @@ class ConflictResolver {
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   Slice intent_key_upperbound_;
   TransactionStatusManager& status_manager_;
+  RequestScope request_scope_;
   ConflictResolverContext& context_;
   TransactionIdSet conflicts_;
   std::vector<TransactionData> transactions_;
