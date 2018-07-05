@@ -160,6 +160,60 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+// INSERT Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgAllocInsert(YBCPgSession pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->AllocInsert(pg_session,
+                                        database_name,
+                                        schema_name,
+                                        table_name,
+                                        handle));
+}
+
+YBCStatus YBCPgInsertSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value) {
+  return ToYBCStatus(pgapi->InsertSetColumnInt2(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgInsertSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value) {
+  return ToYBCStatus(pgapi->InsertSetColumnInt4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgInsertSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value) {
+  return ToYBCStatus(pgapi->InsertSetColumnInt8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgInsertSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value) {
+  return ToYBCStatus(pgapi->InsertSetColumnFloat4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgInsertSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value) {
+  return ToYBCStatus(pgapi->InsertSetColumnFloat8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgInsertSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
+                                   int attr_bytes) {
+  return ToYBCStatus(pgapi->InsertSetColumnText(handle, attr_num, attr_value, attr_bytes));
+}
+
+YBCStatus YBCPgInsertSetColumnSerializedData(YBCPgStatement handle, int attr_num,
+                                             const char *attr_value, int attr_bytes) {
+  return ToYBCStatus(pgapi->InsertSetColumnSerializedData(handle, attr_num, attr_value,
+                                                          attr_bytes));
+}
+
+YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecInsert(handle));
+}
+
+// UPDATE Operations -------------------------------------------------------------------------------
+
+// DELETE Operations -------------------------------------------------------------------------------
+
+// SELECT Operations -------------------------------------------------------------------------------
+
 } // extern "C"
 
 } // namespace pggate

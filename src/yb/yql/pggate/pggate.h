@@ -135,6 +135,41 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
+  //------------------------------------------------------------------------------------------------
+  // Insert.
+  CHECKED_STATUS AllocInsert(PgSession *pg_session,
+                             const char *database_name,
+                             const char *schema_name,
+                             const char *table_name,
+                             PgStatement **handle);
+
+  CHECKED_STATUS InsertSetColumnInt2(PgStatement *handle, int attr_num, int16_t attr_value);
+
+  CHECKED_STATUS InsertSetColumnInt4(PgStatement *handle, int attr_num, int32_t attr_value);
+
+  CHECKED_STATUS InsertSetColumnInt8(PgStatement *handle, int attr_num, int64_t attr_value);
+
+  CHECKED_STATUS InsertSetColumnFloat4(PgStatement *handle, int attr_num, float attr_value);
+
+  CHECKED_STATUS InsertSetColumnFloat8(PgStatement *handle, int attr_num, double attr_value);
+
+  CHECKED_STATUS InsertSetColumnText(PgStatement *handle, int attr_num, const char *attr_value,
+                                     int attr_bytes);
+
+  CHECKED_STATUS InsertSetColumnSerializedData(PgStatement *handle, int attr_num,
+                                               const char *attr_value, int attr_bytes);
+
+  CHECKED_STATUS ExecInsert(PgStatement *handle);
+
+  //------------------------------------------------------------------------------------------------
+  // Update.
+
+  //------------------------------------------------------------------------------------------------
+  // Delete.
+
+  //------------------------------------------------------------------------------------------------
+  // Select.
+
  private:
   // Control variables.
   PggateOptions pggate_options_;

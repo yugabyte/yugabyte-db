@@ -20,6 +20,7 @@
 
 #ifdef __cplusplus
 #define YB_DEFINE_HANDLE_TYPE(name) typedef class yb::pggate::name *YBC##name
+
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name
 #endif  // __cplusplus
