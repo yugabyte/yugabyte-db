@@ -662,6 +662,9 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return 0;
   }
 
+  void UnregisterRequest(int64_t) override {
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };

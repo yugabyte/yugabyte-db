@@ -1416,6 +1416,10 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
       data.keys_locked, &need_read_snapshot);
 
+  RequestScope request_scope;
+  if (transaction_participant_) {
+    request_scope = RequestScope(transaction_participant_.get());
+  }
   auto read_op = need_read_snapshot
       ? ScopedReadOperation(this, RequireLease::kTrue, data.read_time())
       : ScopedReadOperation();

@@ -80,6 +80,8 @@ struct StatusRequest {
   TransactionStatusCallback callback;
 };
 
+class RequestScope;
+
 class TransactionStatusManager {
  public:
   virtual ~TransactionStatusManager() {}
@@ -100,13 +102,61 @@ class TransactionStatusManager {
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
   virtual void RequestStatusAt(const StatusRequest& request) = 0;
 
+  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
+
+  virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
+
+ private:
+  friend class RequestScope;
+
   // Registers new request assigning next serial no to it. So this serial no could be used
   // to check whether one request happened before another one.
   virtual int64_t RegisterRequest() = 0;
 
-  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
+  // request_id - is request id returned by RegisterRequest, that should be unregistered.
+  virtual void UnregisterRequest(int64_t request_id) = 0;
+};
 
-  virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
+// Utility class that invokes RegisterRequest on creation and UnregisterRequest on deletion.
+class RequestScope {
+ public:
+  RequestScope() noexcept : status_manager_(nullptr), request_id_(0) {}
+
+  explicit RequestScope(TransactionStatusManager* status_manager)
+      : status_manager_(status_manager), request_id_(status_manager->RegisterRequest()) {
+  }
+
+  RequestScope(RequestScope&& rhs) noexcept
+      : status_manager_(rhs.status_manager_), request_id_(rhs.request_id_) {
+    rhs.status_manager_ = nullptr;
+  }
+
+  void operator=(RequestScope&& rhs) {
+    Reset();
+    status_manager_ = rhs.status_manager_;
+    request_id_ = rhs.request_id_;
+    rhs.status_manager_ = nullptr;
+  }
+
+  ~RequestScope() {
+    Reset();
+  }
+
+  int64_t request_id() const { return request_id_; }
+
+  RequestScope(const RequestScope&) = delete;
+  void operator=(const RequestScope&) = delete;
+
+ private:
+  void Reset() {
+    if (status_manager_) {
+      status_manager_->UnregisterRequest(request_id_);
+      status_manager_ = nullptr;
+    }
+  }
+
+  TransactionStatusManager* status_manager_;
+  int64_t request_id_;
 };
 
 struct TransactionOperationContext {
