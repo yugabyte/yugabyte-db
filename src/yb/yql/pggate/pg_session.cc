@@ -27,6 +27,11 @@ using namespace std::literals;  // NOLINT
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
+using client::YBSchema;
+using client::YBColumnSchema;
+using client::YBTable;
+using client::YBTableName;
+using client::YBTableType;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kSessionTimeout = 60s;
@@ -100,11 +105,59 @@ shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& t
 
 //--------------------------------------------------------------------------------------------------
 
-#if (0)
+Status PgSession::LoadTable(
+    const YBTableName& name,
+    const bool write_table,
+    shared_ptr<YBTable> *table,
+    vector<ColumnDesc> *col_descs,
+    int *num_key_columns,
+    int *num_partition_columns) {
+
+  *table = nullptr;
+  shared_ptr<YBTable> pg_table;
+
+  VLOG(3) << "Loading table descriptor for " << name.ToString();
+  pg_table = GetTableDesc(name);
+  if (pg_table == nullptr) {
+    return STATUS_FORMAT(NotFound, "Table $0 does not exist", name.ToString());
+  }
+  if (pg_table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
+    return STATUS(InvalidArgument, "Cannot access non-postgres table");
+  }
+
+  const YBSchema& schema = pg_table->schema();
+  const int num_columns = schema.num_columns();
+  if (num_key_columns != nullptr) {
+    *num_key_columns = schema.num_key_columns();
+  }
+  if (num_partition_columns != nullptr) {
+    *num_partition_columns = schema.num_hash_key_columns();
+  }
+
+  if (col_descs != nullptr) {
+    col_descs->resize(num_columns);
+    for (int idx = 0; idx < num_columns; idx++) {
+      // Find the column descriptor.
+      const YBColumnSchema col = schema.Column(idx);
+      // TODO(neil) It would make a lot more sense if we index by attr_num instead of ID.
+      (*col_descs)[idx].Init(idx,
+                             schema.ColumnId(idx),
+                             col.name(),
+                             idx < *num_partition_columns,
+                             idx < *num_key_columns,
+                             col.order() /* attr_num */,
+                             col.type(),
+                             YBColumnSchema::ToInternalDataType(col.type()));
+    }
+  }
+
+  *table = pg_table;
+  return Status::OK();
+}
+
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return session_->Apply(std::move(op));
 }
-#endif
 
 }  // namespace pggate
 }  // namespace yb

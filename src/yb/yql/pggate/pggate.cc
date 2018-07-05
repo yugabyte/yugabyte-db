@@ -14,6 +14,7 @@
 
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pg_ddl.h"
+#include "yb/yql/pggate/pg_insert.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
@@ -333,6 +334,121 @@ CHECKED_STATUS PgApiImpl::ExecDropTable(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return static_cast<PgDropTable*>(handle)->Exec();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PgApiImpl::AllocInsert(PgSession *pg_session,
+                                      const char *database_name,
+                                      const char *schema_name,
+                                      const char *table_name,
+                                      PgStatement **handle) {
+  PgSession::SharedPtr session = GetSession(pg_session);
+  if (session == nullptr) {
+    return STATUS(InvalidArgument, "Invalid session handle");
+  }
+
+  PgInsert::SharedPtr stmt = make_shared<PgInsert>(session, database_name, schema_name, table_name);
+  RETURN_NOT_OK(stmt->Prepare());
+  statements_[stmt.get()] = stmt;
+
+  *handle = stmt.get();
+  return Status::OK();
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnInt2(PgStatement *handle, int attr_num,
+                                              int16_t attr_value) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnInt2(attr_num, attr_value);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnInt4(PgStatement *handle, int attr_num,
+                                              int32_t attr_value) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnInt4(attr_num, attr_value);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnInt8(PgStatement *handle, int attr_num,
+                                              int64_t attr_value) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnInt8(attr_num, attr_value);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnFloat4(PgStatement *handle, int attr_num,
+                                                float attr_value) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnFloat4(attr_num, attr_value);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnFloat8(PgStatement *handle, int attr_num,
+                                                double attr_value) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnFloat8(attr_num, attr_value);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnText(PgStatement *handle, int attr_num,
+                                              const char *attr_value, int attr_bytes) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnText(attr_num, attr_value, attr_bytes);
+}
+
+CHECKED_STATUS PgApiImpl::InsertSetColumnSerializedData(PgStatement *handle, int attr_num,
+                                                        const char *attr_value, int attr_bytes) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->SetColumnSerializedData(attr_num, attr_value, attr_bytes);
+}
+
+CHECKED_STATUS PgApiImpl::ExecInsert(PgStatement *handle) {
+  PgStatement::SharedPtr stmt = GetStatement(handle);
+  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  return pg_stmt->Exec();
 }
 
 } // namespace pggate

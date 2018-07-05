@@ -17,6 +17,7 @@
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/gutil/callback.h"
+#include "yb/yql/pggate/pg_coldesc.h"
 
 namespace yb {
 namespace pggate {
@@ -63,9 +64,11 @@ class PgSession {
   CHECKED_STATUS DropTable(const client::YBTableName& name);
 
   // API for read and write database content.
-#if 0
+  CHECKED_STATUS LoadTable(const client::YBTableName& table_name, bool for_write,
+                           std::shared_ptr<client::YBTable>* table, vector<ColumnDesc>* col_descs,
+                           int* key_col_count, int* partition_col_count);
+
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
-#endif
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
