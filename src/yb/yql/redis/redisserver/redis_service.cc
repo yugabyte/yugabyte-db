@@ -185,6 +185,10 @@ class Operation {
     return *operation_;
   }
 
+  bool has_operation() const {
+    return operation_ != nullptr;
+  }
+
   size_t space_used_by_request() const {
     return operation_ ? operation_->space_used_by_request() : 0;
   }
@@ -406,9 +410,11 @@ class Block : public std::enable_shared_from_this<Block> {
     metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
     VLOG(3) << "Received status from call " << status.ToString(true);
 
+    std::unordered_map<const client::YBOperation*, Status> op_errors;
     if (!status.ok()) {
       if (session_ != nullptr) {
         for (const auto& error : session_->GetPendingErrors()) {
+          op_errors[&error->failed_op()] = std::move(error->status());
           YB_LOG_EVERY_N_SECS(WARNING, 1) << "Explicit error while inserting: "
                                           << error->status().ToString();
         }
@@ -416,7 +422,11 @@ class Block : public std::enable_shared_from_this<Block> {
     }
 
     for (auto* op : ops_) {
-      op->Respond(status);
+      if (op->has_operation() && op_errors.find(&op->operation()) != op_errors.end()) {
+        op->Respond(op_errors[&op->operation()]);
+      } else {
+        op->Respond(Status::OK());
+      }
     }
 
     Processed();
