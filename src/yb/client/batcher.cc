@@ -195,7 +195,7 @@ void Batcher::CheckForFinishedFlush() {
   Status s;
   if (had_errors_) {
     // User is responsible for fetching errors from the error collector.
-    s = STATUS(IOError, "Some errors occurred");
+    s = STATUS(IOError, "Errors occured while reaching out to the tablet servers");
   }
 
   RunCallback(s);
