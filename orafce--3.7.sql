@@ -469,7 +469,7 @@ CREATE FUNCTION oracle.dbtimezone()
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_dbtimezone'
 LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns server time zone (orafce.timezone)';
+COMMENT ON FUNCTION oracle.dbtimezone() IS 'Ruturns server time zone (orafce.timezone)';
 
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
