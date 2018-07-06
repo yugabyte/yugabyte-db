@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import Measure from 'react-measure';
 import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
@@ -12,7 +11,7 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
          DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { YBTabsPanel, YBPanelItem } from '../../panels';
+import { YBTabsPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -21,6 +20,8 @@ import { hasLiveNodes } from 'utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
+import UniverseHealthCheckList from './UniverseHealthCheckList/UniverseHealthCheckList.js';
+
 import './UniverseDetail.scss';
 
 class UniverseDetail extends Component {
@@ -129,8 +130,8 @@ class UniverseDetail extends Component {
       <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
         <ListBackupsContainer currentUniverse={currentUniverse.data} />
       </Tab>,
-      <Tab eventKey={"alerts"} title="Alerts" key="alerts-tab" mountOnEnter={true} unmountOnExit={true}>
-        <HealthCheckList universe={universe}/>
+      <Tab eventKey={"health"} title="Health" key="alerts-tab" mountOnEnter={true} unmountOnExit={true}>
+        <UniverseHealthCheckList universe={universe} />
       </Tab>
     ];
     const currentBreadCrumb = (
@@ -203,69 +204,6 @@ class UniverseDetail extends Component {
           </YBTabsPanel>
         </Measure>
       </Grid>
-    );
-  }
-}
-
-class HealthCheckList extends Component {
-  render() {
-    const {universe: {healthCheck}} = this.props;
-    let healthData = <span/>;
-    if (getPromiseState(healthCheck).isLoading()) {
-      healthData = <YBLoading />;
-    }
-
-    if (getPromiseState(healthCheck).isSuccess() &&
-        isNonEmptyArray(healthCheck.data)) {
-      const data = JSON.parse(healthCheck.data[healthCheck.data.length - 1]);
-      const ts = data["timestamp"];
-      const entries = data["data"];
-      const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
-      function detailsFormatter(cell, row) {
-        if (row.has_error) {
-          return (
-            <span>
-              <span class="label label-danger">ERROR</span>
-              <span>{row.details}</span>
-            </span>
-          );
-        } else {
-          return <span>{row.details}</span>;
-        }
-      };
-
-      healthData = (
-        <YBPanelItem
-          header={
-            <h2 className="health-check-header content-title">Health Check at timestamp: {ts}</h2>
-          }
-          body={
-            <BootstrapTable data={entries} bodyStyle={tableBodyContainer} pagination={true}
-                            search multiColumnSearch searchPlaceholder='Search by Name or Type'>
-              <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-              <TableHeaderColumn dataField="node">
-                Node
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="process">
-                Process
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="message"
-                  columnClassName="no-border name-column" className="no-border">
-                Message
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="details" dataFormat={detailsFormatter}
-                            columnClassName="word-wrap">
-                Details
-              </TableHeaderColumn>
-            </BootstrapTable>
-          }
-        />
-      );
-    }
-    return (
-      <div className="universe-detail-content-container">
-        {healthData}
-      </div>
     );
   }
 }

@@ -1,0 +1,64 @@
+// Copyright (c) YugaByte, Inc.
+
+@import "_style/colors.scss";
+
+.UniverseHealthCheckList {
+  .TreeNode-header {
+    display: inline-block;
+    padding: 4px 10px 5px 4px;
+    border-radius: 4px;
+    transition: background 0.3s, color 0.3s;
+
+    &:hover {
+      color: $YB_ORANGE_HOVER;
+      background: #f1f2f3;
+    }
+  }
+
+  .tree-node-main-heading {
+    font-size: 14px;
+    font-weight: bold;
+    padding-right: 6px;
+  }
+
+  .label-danger {
+    margin-right: 6px;
+  }
+
+  .expand-cell {
+    width: 50%;
+  }
+
+  .status-good {
+    color: $YB_SUCCESS_COLOR;
+  }
+
+  .status-bad {
+    color: $YB_FAIL_COLOR;
+  }
+
+  .count {
+    margin-left: 10px;
+  }
+
+  .status-good,
+  .status-bad {
+    i.fa {
+      position: relative;
+      top: 1px;
+      width: 1em;
+      margin-right: 2px;
+      font-size: 18px;
+      text-align: center;
+    }
+  }
+
+  .react-bs-table {
+    i.fa {
+      top: 2px;
+      font-size: 20px;
+      line-height: 18px;
+      margin: -2px 4px -2px 0;
+    }
+  }
+}
