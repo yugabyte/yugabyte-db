@@ -12,15 +12,15 @@
 // under the License.
 //
 //
-// Treenode definitions for CREATE TYPE statements.
+// Treenode definitions for ALTER TYPE statements.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/crypt.h"
 
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
+DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
 namespace ql {
@@ -30,63 +30,21 @@ using yb::util::bcrypt_hashpw;
 using yb::util::kBcryptHashSize;
 
 //--------------------------------------------------------------------------------------------------
-// Password.
-PTRolePassword::PTRolePassword(MemoryContext* memctx,
-                               YBLocation::SharedPtr loc,
-                               const MCSharedPtr<MCString>& password)
-    : PTRoleOption(memctx, loc),
-      password_(password) {
-}
+// Alter Role.
 
-PTRolePassword::~PTRolePassword() {
-}
-
-//--------------------------------------------------------------------------------------------------
-// Login.
-
-PTRoleLogin::PTRoleLogin(MemoryContext *memctx,
+PTAlterRole::PTAlterRole(MemoryContext* memctx,
                          YBLocation::SharedPtr loc,
-                         bool login)
-    : PTRoleOption(memctx, loc),
-      login_(login) {
-
-}
-
-PTRoleLogin::~PTRoleLogin() {
-}
-
-//--------------------------------------------------------------------------------------------------
-// Superuser.
-
-PTRoleSuperuser::PTRoleSuperuser(MemoryContext* memctx,
-                                 YBLocation::SharedPtr loc,
-                                 bool superuser)
-    : PTRoleOption(memctx, loc),
-      superuser_(superuser) {
-
-}
-
-PTRoleSuperuser::~PTRoleSuperuser() {
-}
-
-//--------------------------------------------------------------------------------------------------
-// Create Role.
-
-PTCreateRole::PTCreateRole(MemoryContext* memctx,
-                           YBLocation::SharedPtr loc,
-                           const MCSharedPtr<MCString>& name,
-                           const PTRoleOptionListNode::SharedPtr& roleOptions,
-                           bool create_if_not_exists)
+                         const MCSharedPtr<MCString>& name,
+                         const PTRoleOptionListNode::SharedPtr& roleOptions)
     : TreeNode(memctx, loc),
       name_(name),
-      roleOptions_(roleOptions),
-      create_if_not_exists_(create_if_not_exists) {
+      roleOptions_(roleOptions) {
 }
 
-PTCreateRole::~PTCreateRole() {
+PTAlterRole::~PTAlterRole() {
 }
 
-CHECKED_STATUS PTCreateRole::Analyze(SemContext* sem_context) {
+CHECKED_STATUS PTAlterRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
   RETURN_NOT_AUTH(sem_context);
 
@@ -148,10 +106,10 @@ CHECKED_STATUS PTCreateRole::Analyze(SemContext* sem_context) {
   return Status::OK();
 }
 
-void PTCreateRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
+void PTAlterRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
 
-  MCString sem_output("\tRole ", sem_context->PTempMem());
-  sem_output = sem_output + " role_name  " + role_name() + " salted_hash =  " + *salted_hash_;
+  MCString sem_output("\tAlter Role ", sem_context->PTempMem());
+  sem_output = sem_output + " role_name  " + role_name() + " salted_hash = " + *salted_hash_;
   sem_output = sem_output + " login = " + (login() ? "true" : "false");
   sem_output = sem_output + " superuser = " + (superuser() ? "true" : "false");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;

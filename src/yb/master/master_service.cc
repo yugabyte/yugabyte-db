@@ -121,7 +121,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     if (!s.ok()) {
       LOG(WARNING) << "Unable to register tablet server (" << rpc.requestor_string() << "): "
                    << s.ToString();
-      // TODO: add service-specific errors
+      // TODO: add service-specific errors.
       rpc.RespondFailure(s);
       return;
     }
@@ -141,7 +141,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   // This allows the TS to register and tablet-report in the same RPC.
   s = server_->ts_manager()->LookupTS(req->common().ts_instance(), &ts_desc);
   if (s.IsNotFound()) {
-    LOG(INFO) << "Got heartbeat from  unknown tablet server { "
+    LOG(INFO) << "Got heartbeat from unknown tablet server { "
               << req->common().ts_instance().ShortDebugString()
               << " } as " << rpc.requestor_string()
               << "; Asking this server to re-register.";
@@ -161,7 +161,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   ts_desc->set_num_live_replicas(req->num_live_tablets());
   ts_desc->set_leader_count(req->leader_count());
 
-  // Set the TServer metrics in TS Descriptor
+  // Set the TServer metrics in TS Descriptor.
   if (req->has_metrics()) {
     if (req->metrics().has_total_ram_usage()) {
       ts_desc->set_total_memory_usage(req->metrics().total_ram_usage());
@@ -316,11 +316,16 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
-
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
                                    CreateRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::CreateRole);
+}
+
+void MasterServiceImpl::AlterRole(const AlterRoleRequestPB* req,
+                                  AlterRoleResponsePB* resp,
+                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AlterRole);
 }
 
 void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
@@ -456,7 +461,7 @@ void MasterServiceImpl::DumpState(
 
     LOG(INFO) << "Sending dump command to " << masters_raft.size()-1 << " peers.";
 
-    // Remove our entry before broadcasting to all peers
+    // Remove our entry before broadcasting to all peers.
     std::vector<RaftPeerPB>::iterator it;
     bool found = false;
     for (it = masters_raft.begin(); it != masters_raft.end(); it++) {

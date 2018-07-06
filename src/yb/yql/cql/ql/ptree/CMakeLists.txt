@@ -26,6 +26,7 @@ add_library(ql_ptree
             pt_alter_table.cc
             pt_create_type.cc
             pt_create_role.cc
+            pt_alter_role.cc
             pt_grant.cc
 
             pt_create_index.cc

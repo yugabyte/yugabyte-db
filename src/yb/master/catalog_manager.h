@@ -236,7 +236,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
 
-  // Accessors for the last reported schema version
+  // Accessors for the last reported schema version.
   bool set_reported_schema_version(uint32_t version);
   uint32_t reported_schema_version() const;
 
@@ -338,7 +338,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
  public:
   explicit TableInfo(TableId table_id);
 
-  // Determines whether or not this table is a system table supported by the master
+  // Determines whether or not this table is a system table supported by the master.
   bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
 
   const TableName name() const;
@@ -357,7 +357,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
-  // Return the table type of the table
+  // Return the table type of the table.
   TableType GetTableType() const;
 
   // Add a tablet to this table.
@@ -378,10 +378,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;
 
-  // Returns true if the table creation is in-progress
+  // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
-  // Returns true if an "Alter" operation is in-progress
+  // Returns true if an "Alter" operation is in-progress.
   bool IsAlterInProgress(uint32_t version) const;
 
   // Set the Status related to errors on CreateTable.
@@ -414,10 +414,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   typedef std::map<std::string, TabletInfo *> TabletInfoMap;
   TabletInfoMap tablet_map_;
 
-  // Protects tablet_map_ and pending_tasks_
+  // Protects tablet_map_ and pending_tasks_.
   mutable simple_spinlock lock_;
 
-  // List of pending tasks (e.g. create/alter tablet requests)
+  // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
@@ -459,7 +459,7 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
 struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
-  // Get the namespace name
+  // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
   }
@@ -745,7 +745,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void Shutdown();
   CHECKED_STATUS CheckOnline() const;
 
-  // Create a new Table with the specified attributes
+  // Create a new Table with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
@@ -753,11 +753,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
-  // Get the information about an in-progress create operation
+  // Get the information about an in-progress create operation.
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                    IsCreateTableDoneResponsePB* resp);
 
-  // Truncate the specified table
+  // Truncate the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
@@ -765,10 +765,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                TruncateTableResponsePB* resp,
                                rpc::RpcContext* rpc);
 
-  // Get the information about an in-progress truncate operation
+  // Get the information about an in-progress truncate operation.
   CHECKED_STATUS IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                                      IsTruncateTableDoneResponsePB* resp);
-  // Delete the specified table
+  // Delete the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
@@ -776,11 +776,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              DeleteTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
-  // Get the information about an in-progress delete operation
+  // Get the information about an in-progress delete operation.
   CHECKED_STATUS IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
                                    IsDeleteTableDoneResponsePB* resp);
 
-  // Alter the specified table
+  // Alter the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
@@ -788,15 +788,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                             AlterTableResponsePB* resp,
                             rpc::RpcContext* rpc);
 
-  // Get the information about an in-progress alter operation
+  // Get the information about an in-progress alter operation.
   CHECKED_STATUS IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                   IsAlterTableDoneResponsePB* resp);
 
-  // Get the information about the specified table
+  // Get the information about the specified table.
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
 
-  // List all the running tables
+  // List all the running tables.
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
                             ListTablesResponsePB* resp);
 
@@ -842,7 +842,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
-  // Grant Permission to a role
+  // Grant Permission to a role.
   CHECKED_STATUS GrantPermission(const GrantPermissionRequestPB* req,
                                  GrantPermissionResponsePB* resp,
                                  rpc::RpcContext* rpc);
@@ -851,15 +851,23 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
 
-  // Create a new role for authentication/authorization
+  // Create a new role for authentication/authorization.
   //
-  // The RPC context is provided for logging/tracing purposes,
+  // The RPC context is provided for logging/tracing purposes.
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS CreateRole(const CreateRoleRequestPB* req,
                             CreateRoleResponsePB* resp,
                             rpc::RpcContext* rpc);
 
-  // Delete the role
+  // Alter an existing role for authentication/authorization.
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS AlterRole(const AlterRoleRequestPB* req,
+                           AlterRoleResponsePB* resp,
+                           rpc::RpcContext* rpc);
+
+  // Delete the role.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
@@ -867,12 +875,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                             DeleteRoleResponsePB* resp,
                             rpc::RpcContext* rpc);
 
-  // Generic Create Role function for both default roles and user defined roles
+  // Generic Create Role function for both default roles and user defined roles.
   CHECKED_STATUS CreateRoleUnlocked(const std::string& role_name,
                                     const std::string& salted_hash,
                                     const bool login, const bool superuser);
 
-  // Grant one role to another role
+  // Grant one role to another role.
   CHECKED_STATUS GrantRole(const GrantRoleRequestPB* req,
                            GrantRoleResponsePB* resp,
                            rpc::RpcContext* rpc);
@@ -897,7 +905,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListUDTypes(const ListUDTypesRequestPB* req,
                              ListUDTypesResponsePB* resp);
 
-  // Get the info (id, name, namespace, fields names, field types) of a (user-defined) type
+  // Get the info (id, name, namespace, fields names, field types) of a (user-defined) type.
   CHECKED_STATUS GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
@@ -1154,7 +1162,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                         const scoped_refptr<TableInfo>& table,
                                         std::vector<TabletInfo*>* tablets);
 
-  // Helper for creating copartitioned table
+  // Helper for creating copartitioned table.
   CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB req,
                                           CreateTableResponsePB* resp,
                                           rpc::RpcContext* rpc,
@@ -1448,9 +1456,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
   RoleInfoMap roles_map_;
 
-  // TODO (Bristy) : Implement (resource) --> (role->permissions) map
+  // TODO (Bristy) : Implement (resource) --> (role->permissions) map.
 
-  // Config information
+  // Config information.
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;
 
   Master *master_;
@@ -1469,7 +1477,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   bool tablet_exists_;
 
   // Background thread, used to execute the catalog manager tasks
-  // like the assignment and cleaner
+  // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
   gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
 

@@ -104,6 +104,8 @@ using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
+using yb::master::AlterRoleRequestPB;
+using yb::master::AlterRoleResponsePB;
 using yb::master::CreateRoleRequestPB;
 using yb::master::CreateRoleResponsePB;
 using yb::master::DeleteUDTypeRequestPB;
@@ -530,16 +532,16 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
                                    const std::string &type_name,
                                    std::shared_ptr<QLType> *ql_type) {
-  // Setting up request
+  // Setting up request.
   GetUDTypeInfoRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
   req.mutable_type()->set_type_name(type_name);
 
-  // Sending request
+  // Sending request.
   GetUDTypeInfoResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetUDTypeInfo);
 
-  // Filling in return values
+  // Filling in return values.
   std::vector<string> field_names;
   for (const auto& field_name : resp.udtype().field_names()) {
     field_names.push_back(field_name);
@@ -561,13 +563,35 @@ CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
 
   // Setting up request.
   CreateRoleRequestPB req;
+  req.set_salted_hash(salted_hash);
   req.set_name(role_name);
   req.set_login(login);
   req.set_superuser(superuser);
-  req.set_salted_hash(salted_hash);
 
   CreateRoleResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateRole);
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::AlterRole(const std::string& role_name,
+                                   const boost::optional<std::string>& salted_hash,
+                                   const boost::optional<bool> login,
+                                   const boost::optional<bool> superuser) {
+  // Setting up request.
+  AlterRoleRequestPB req;
+  req.set_name(role_name);
+  if (salted_hash) {
+    req.set_salted_hash(*salted_hash);
+  }
+  if (login) {
+    req.set_login(*login);
+  }
+  if (superuser) {
+    req.set_superuser(*superuser);
+  }
+
+  AlterRoleResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, AlterRole);
   return Status::OK();
 }
 
@@ -612,8 +636,6 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateUDType);
   return Status::OK();
 }
-
-
 
 CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
                                       const std::string &type_name) {

@@ -256,7 +256,7 @@ message SysTabletsEntryPB {
 
   // DEPRECATED. Replaced by 'partition'.
   optional bytes DEPRECATED_start_key = 1;
-  optional bytes DEPRECATED_end_key   = 2;
+  optional bytes DEPRECATED_end_key = 2;
 
   // Tablet partition.
   optional PartitionPB partition = 7;
@@ -1040,10 +1040,21 @@ message CreateRoleRequestPB {
   optional string salted_hash = 2;
   optional bool login = 3;
   optional bool superuser = 4;
-
 }
 
 message CreateRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message AlterRoleRequestPB {
+  optional string name = 1;
+  optional string salted_hash = 2;
+  optional bool login = 3;
+  optional bool superuser = 4;
+}
+
+message AlterRoleResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
@@ -1186,6 +1197,7 @@ service MasterService {
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
+  rpc AlterRole(AlterRoleRequestPB) returns (AlterRoleResponsePB);
   rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
   rpc GrantRole(GrantRoleRequestPB) returns (GrantRoleResponsePB);
 

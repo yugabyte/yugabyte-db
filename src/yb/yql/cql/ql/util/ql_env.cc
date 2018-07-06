@@ -335,6 +335,13 @@ Status QLEnv::CreateRole(const std::string& role_name,
   return client_->CreateRole(role_name, salted_hash, login, superuser);
 }
 
+Status QLEnv::AlterRole(const std::string& role_name,
+                        const boost::optional<std::string>& salted_hash,
+                        const boost::optional<bool> login,
+                        const boost::optional<bool> superuser) {
+  return client_->AlterRole(role_name, salted_hash, login, superuser);
+}
+
 Status QLEnv::DeleteRole(const std::string& role_name) {
   return client_->DeleteRole(role_name);
 }

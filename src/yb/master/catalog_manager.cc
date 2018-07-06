@@ -3219,7 +3219,7 @@ Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
     role = FindPtrOrNull(roles_map_, req->resource_name());
     if (role == nullptr) {
       s = STATUS(NotFound,
-                 Substitute("The role $0 does not exists", req->role_name()));
+                 Substitute("The role $0 does not exist", req->role_name()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
   }
@@ -3518,8 +3518,7 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
                                   CreateRoleResponsePB* resp,
                                   rpc::RpcContext* rpc) {
 
-  LOG(INFO) << "CreateRole from " << RequestorString(rpc)
-            << ": " << req->DebugString();
+  LOG(INFO) << "CreateRole from " << RequestorString(rpc) << ": " << req->DebugString();
 
   RETURN_NOT_OK(CheckOnline());
   Status s;
@@ -3528,7 +3527,7 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
   std::lock_guard<LockType> l_big(lock_);
 
   if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
-     s = STATUS(AlreadyPresent,
+    s = STATUS(AlreadyPresent,
                Substitute("Role $0 already exists", req->name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
   }
@@ -3537,7 +3536,42 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
     LOG(INFO) << "Created role: " << req->name();
   }
   return s;
+}
 
+Status CatalogManager::AlterRole(const AlterRoleRequestPB* req,
+                                 AlterRoleResponsePB* resp,
+                                 rpc::RpcContext* rpc) {
+
+  VLOG(1) << "AlterRole from " << RequestorString(rpc) << ": " << req->DebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+  Status s;
+
+  TRACE("Acquired catalog manager lock");
+  std::lock_guard<LockType> l_big(lock_);
+
+  auto role = FindPtrOrNull(roles_map_, req->name());
+  if (role == nullptr) {
+    s = STATUS(NotFound,
+        Substitute("Role $0 does not exist", req->name()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  // Modify the role.
+  auto l = role->LockForWrite();
+  if (req->has_login()) {
+    l->mutable_data()->pb.set_can_login(req->login());
+  }
+  if (req->has_superuser()) {
+    l->mutable_data()->pb.set_is_superuser(req->superuser());
+  }
+  if (req->has_salted_hash()) {
+    l->mutable_data()->pb.set_salted_hash(req->salted_hash());
+  }
+
+  VLOG(1) << "Altered role with request: " << req->ShortDebugString();
+  l->Commit();
+  return Status::OK();
 }
 
 Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
@@ -3557,12 +3591,10 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   TRACE("Acquired catalog manager lock");
   std::lock_guard<LockType> l_big(lock_);
 
-  scoped_refptr<RoleInfo> role;
-  role = FindPtrOrNull(roles_map_, req->name());
-
-  if (FindPtrOrNull(roles_map_, req->name()) == nullptr) {
+  auto role = FindPtrOrNull(roles_map_, req->name());
+  if (role == nullptr) {
     s = STATUS(NotFound,
-        Substitute("The role $0 does not exists", req->name()));
+        Substitute("Role $0 does not exist", req->name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -3603,7 +3635,7 @@ Status CatalogManager::GrantRole(const GrantRoleRequestPB* req,
     std::lock_guard<LockType> l_big(lock_);
     if (FindPtrOrNull(roles_map_, req->granted_role()) == nullptr) {
       s = STATUS(NotFound,
-                 Substitute("The role $0 does not exists", req->granted_role()));
+                 Substitute("Role $0 does not exist", req->granted_role()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
@@ -3611,7 +3643,7 @@ Status CatalogManager::GrantRole(const GrantRoleRequestPB* req,
     rp = FindPtrOrNull(roles_map_, req->recipient_role());
     if (rp == nullptr) {
       s = STATUS(NotFound,
-                 Substitute("The role $0 does not exists", req->recipient_role()));
+                 Substitute("Role $0 does not exist", req->recipient_role()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 

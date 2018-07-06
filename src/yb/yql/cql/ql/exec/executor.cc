@@ -48,7 +48,6 @@ using strings::Substitute;
     if (PREDICT_FALSE(!_s.ok())) return StatementExecuted(MoveStatus(_s)); \
   } while (false)
 
-
 //--------------------------------------------------------------------------------------------------
 
 Executor::Executor(QLEnv *ql_env, const QLMetrics* ql_metrics)
@@ -178,6 +177,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTCreateRole:
       return ExecPTNode(static_cast<const PTCreateRole *>(tnode));
 
+    case TreeNodeOpcode::kPTAlterRole:
+      return ExecPTNode(static_cast<const PTAlterRole *>(tnode));
+
     case TreeNodeOpcode::kPTGrantRole:
       return ExecPTNode(static_cast<const PTGrantRole *>(tnode));
 
@@ -220,11 +222,8 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 }
 
 Status Executor::ExecPTNode(const PTCreateRole *tnode) {
-
-  const std::string role_name = tnode->role_name();
-  const std::string salted_hash = tnode->salted_hash();
-
-  Status s = exec_context().CreateRole(role_name, salted_hash, tnode->login(), tnode->superuser());
+  Status s = exec_context().CreateRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
+                                       tnode->superuser());
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -235,7 +234,21 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_ROLE) {
       return Status::OK();
     }
-    // TODO (Bristy) : Set result_ properly
+    // TODO (Bristy) : Set result_ properly.
+    return exec_context().Error(tnode, s, error_code);
+  }
+
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTAlterRole *tnode) {
+  Status s = exec_context().AlterRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
+                                      tnode->superuser());
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = ErrorCode::ROLE_NOT_FOUND;
     return exec_context().Error(tnode, s, error_code);
   }
 
@@ -256,7 +269,7 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
     if (s.IsNotFound()) {
       error_code = ErrorCode::ROLE_NOT_FOUND;
     }
-    // TODO (Bristy) : Set result_ properly
+    // TODO (Bristy) : Set result_ properly.
     return exec_context().Error(tnode, s, error_code);
   }
   return Status::OK();
@@ -507,11 +520,11 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     }
 
     case OBJECT_ROLE: {
-      // Drop the role
+      // Drop the role.
       const string role_name(tnode->name()->QLName());
       s = exec_context().DeleteRole(role_name);
       error_not_found = ErrorCode::ROLE_NOT_FOUND;
-      // TODO (Bristy) : Set result_ properly
+      // TODO (Bristy) : Set result_ properly.
       break;
     }
 
@@ -537,7 +550,6 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
   return Status::OK();
 }
 
-
 Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
   const string role_name = tnode->role_name()->QLName();
   const string canonical_resource = tnode->canonical_resource();
@@ -559,7 +571,7 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
     }
     return exec_context().Error(tnode, s, error_code);
   }
-  // TODO (Bristy) : Return proper result
+  // TODO (Bristy) : Return proper result.
   return Status::OK();
 }
 
@@ -580,7 +592,7 @@ Status Executor::GetOffsetOrLimit(
                                 ErrorCode::INVALID_ARGUMENTS);
   }
 
-  // this should be ensured by checks before getting here
+  // This should be ensured by checks before getting here.
   DCHECK(expr_pb.has_value() && expr_pb.value().has_int32_value())
       << "Integer constant expected for " + clause_type + " clause";
 

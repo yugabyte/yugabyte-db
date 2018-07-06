@@ -30,6 +30,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
@@ -108,6 +109,9 @@ class Executor : public QLExprExecutor {
 
   // Creates a role.
   CHECKED_STATUS ExecPTNode(const PTCreateRole *tnode);
+
+  // Alter an existing role.
+  CHECKED_STATUS ExecPTNode(const PTAlterRole *tnode);
 
   // Grants a role to another role.
   CHECKED_STATUS ExecPTNode(const PTGrantRole *tnode);
@@ -256,13 +260,13 @@ class Executor : public QLExprExecutor {
 
   //------------------------------------------------------------------------------------------------
 
-  // Set the time to live for the values affected by the current write request
+  // Set the time to live for the values affected by the current write request.
   CHECKED_STATUS TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
-  // Set the timestamp for the values affected by the current write request
+  // Set the timestamp for the values affected by the current write request.
   CHECKED_STATUS TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
-  // Convert PTExpr to appropriate QLExpressionPB with appropriate validation
+  // Convert PTExpr to appropriate QLExpressionPB with appropriate validation.
   CHECKED_STATUS PTExprToPBValidated(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
 
   //------------------------------------------------------------------------------------------------
