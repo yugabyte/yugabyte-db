@@ -46,7 +46,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
-#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 
 #include "yb/common/schema.h"
@@ -638,9 +638,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<TransactionParticipant> transaction_participant_;
 
-  // Created only when secondary indexes are present.
   std::shared_future<client::YBClientPtr> client_future_;
+
+  // Created only when secondary indexes are present.
   boost::optional<client::TransactionManager> transaction_manager_;
+  boost::optional<client::YBMetaDataCache> metadata_cache_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
 
