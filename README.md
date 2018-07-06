@@ -21,6 +21,10 @@ Community Edition of the YugaByte Database.
     - [Prerequisites for Mac OS X](#prerequisites-for-mac-os-x)
     - [Prerequisites for drivers and sample apps](#prerequisites-for-drivers-and-sample-apps)
     - [Building the code](#building-the-code)
+    - [Running the C++ tests](#running-the-c-tests)
+    - [Building Java code alone](#building-java-code-alone)
+    - [Running the Java tests](#running-the-java-tests)
+    - [Viewing log outputs of Java tests](#viewing-log-outputs-of-java-tests)
 - [Reporting Issues](#reporting-issues)
 - [Contributing](#contributing)
 - [License](#license)
@@ -107,7 +111,7 @@ not contain any unnecessary packages that would interfere with the build.
 
 ```
 git clone https://github.com/Linuxbrew/brew.git ~/.linuxbrew-yb-build
-~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven readline openssl 
+~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven readline openssl \
 libuuid bzip2
 ```
 
@@ -179,6 +183,71 @@ The above command will build the release configuration, put the C++ binaries in
 `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that
 directory. Then it will build the Java code as well. The `--with-assembly` flag tells the build
 script to build the `yb-sample-apps.jar` file containing sample Java apps.
+
+### Running the C++ tests
+
+To run all the C++ tests you can use following command:
+```
+./yb_build.sh release --ctest
+```
+
+If you omit `release` argument, it will run java tests against debug YugaByte build.
+
+To run specific test:
+
+```
+./yb_build.sh release --cxx-test util_monotime-test
+```
+
+Also you can run specific sub-test:
+
+```
+./yb_build.sh release --cxx-test util_monotime-test --gtest_filter TestMonoTime.TestCondition
+```
+
+### Building Java code alone
+
+You can skip building C++ code, this can be useful when you only need to rebuild Java code:
+```
+cd ~/code/yugabyte-db
+./yb_build.sh --scb
+```
+
+### Running the Java tests
+
+Given that you've already built C++ and Java code you can run Java tests using following command:
+```
+./yb_build.sh release --scb --sj --java-tests
+```
+
+If you omit `release` argument, it will run java tests against debug YugaByte build.
+
+Alternatively, to run specific test:
+```
+./yb_build.sh --scb --sj --java-test org.yb.client.TestYBClient
+```
+
+To run a specific Java sub-test within a test file use the # syntax, for example:
+```
+./yb_build.sh --scb --sj --java-test org.yb.client.TestYBClient#testClientCreateDestroy
+```
+
+###  Viewing log outputs of Java tests
+
+You can find Java tests output in corresponding directory (you might
+need to change `yb-client` to respective Java tests module):
+```
+$ ls -1 java/yb-client/target/surefire-reports/
+TEST-org.yb.client.TestYBClient.xml
+org.yb.client.TestYBClient-output.txt
+org.yb.client.TestYBClient.testAffinitizedLeaders.stderr.txt
+org.yb.client.TestYBClient.testAffinitizedLeaders.stdout.txt
+…
+org.yb.client.TestYBClient.testWaitForLoadBalance.stderr.txt
+org.yb.client.TestYBClient.testWaitForLoadBalance.stdout.txt
+org.yb.client.TestYBClient.txt
+```
+Note that the YB logs are contained in the output file now.
 
 ## Reporting Issues
 
