@@ -42,6 +42,7 @@ class YBSession;
 namespace cqlserver {
 
 extern const char* const kRoleColumnNameSaltedHash;
+extern const char* const kRoleColumnNameCanLogin;
 
 class CQLMetrics;
 class CQLProcessor;

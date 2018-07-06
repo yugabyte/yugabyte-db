@@ -111,9 +111,8 @@ class QLEnv {
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
   virtual void RemoveCachedTableDesc(const TableId& table_id);
 
-
   // Permission related methods.
-  // Grant Permission with the given arguments
+  // Grant Permission with the given arguments.
   virtual CHECKED_STATUS GrantPermission(const PermissionType& permission,
                                          const ResourceType& resource_type,
                                          const std::string& canonical_resource,
@@ -135,19 +134,26 @@ class QLEnv {
         current_cql_call()->ql_session()->current_keyspace() :
         current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
   }
-  // Role related methods
+
+  // Role related methods.
 
   virtual std::string CurrentRoleName() const {
     return (current_call_ != nullptr) ?
         current_cql_call()->ql_session()->current_role_name() : kUndefinedRoleName;
   }
 
-  // Create role with the given arguments
+  // Create role with the given arguments.
   CHECKED_STATUS CreateRole(const std::string& role_name,
-                            const std::string&  salted_hash,
+                            const std::string& salted_hash,
                             const bool login, const bool superuser);
 
-  // Delete role by name
+  // Alter an existing role with the given arguments.
+  CHECKED_STATUS AlterRole(const std::string& role_name,
+                           const boost::optional<std::string>& salted_hash,
+                           const boost::optional<bool> login,
+                           const boost::optional<bool> superuser);
+
+  // Delete role by name.
   virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
   CHECKED_STATUS GrantRole(const std::string& granted_role_name,
@@ -155,7 +161,7 @@ class QLEnv {
 
   // (User-defined) Type related methods.
 
-  // Create (user-defined) type with the given arguments
+  // Create (user-defined) type with the given arguments.
   CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
                               const std::string &type_name,
                               const std::vector<std::string> &field_names,

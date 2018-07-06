@@ -42,6 +42,7 @@ namespace yb {
 namespace cqlserver {
 
 const char* const kRoleColumnNameSaltedHash = "salted_hash";
+const char* const kRoleColumnNameCanLogin = "can_login";
 
 using std::shared_ptr;
 using std::string;
@@ -78,8 +79,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
-      // TODO: enhance this once we need the other fields to create an AuthenticatedUser.
-      Substitute("SELECT $0 FROM system_auth.roles WHERE role = ?", kRoleColumnNameSaltedHash));
+      Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
+                 kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
 }
 
 const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {

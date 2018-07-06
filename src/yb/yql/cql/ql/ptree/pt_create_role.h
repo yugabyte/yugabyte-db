@@ -55,7 +55,7 @@ class PTRoleOption : public TreeNode {
 
 using PTRoleOptionListNode = TreeListNode<PTRoleOption>;
 
-class PTRolePassword : public PTRoleOption  {
+class PTRolePassword : public PTRoleOption {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -94,8 +94,7 @@ class PTRolePassword : public PTRoleOption  {
 
 };
 
-
-class PTRoleLogin : public PTRoleOption  {
+class PTRoleLogin : public PTRoleOption {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -133,7 +132,7 @@ class PTRoleLogin : public PTRoleOption  {
   const bool login_;
 };
 
-class PTRoleSuperuser : public PTRoleOption  {
+class PTRoleSuperuser : public PTRoleOption {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -148,7 +147,6 @@ class PTRoleSuperuser : public PTRoleOption  {
                   bool superuser);
 
   virtual ~PTRoleSuperuser();
-
 
   virtual PTRoleOptionType option_type() override {
     return PTRoleOptionType::kSuperuser;
@@ -171,7 +169,6 @@ class PTRoleSuperuser : public PTRoleOption  {
  private:
   const bool superuser_;
 };
-
 
 //--------------------------------------------------------------------------------------------------
 // CREATE ROLE statement.
@@ -207,13 +204,13 @@ class PTCreateRole : public TreeNode {
   virtual CHECKED_STATUS Analyze(SemContext* sem_context) override;
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
-  // Role name
+  // Role name.
   const char* role_name() const {
     return name_->c_str();
   }
 
   std::string salted_hash() const {
-    // Empty salted hash denotes no password, salted_hash can contain null characters
+    // Empty salted hash denotes no password. salted_hash can contain null characters.
     return (salted_hash_ != nullptr) ?  std::string(salted_hash_->c_str(), kBcryptHashSize) : "";
   }
 
@@ -233,9 +230,9 @@ class PTCreateRole : public TreeNode {
 
   const MCSharedPtr<MCString>  name_;
   PTRoleOptionListNode::SharedPtr roleOptions_;
-  MCSharedPtr<MCString> salted_hash_;
-  bool login_;
-  bool superuser_;
+  MCSharedPtr<MCString> salted_hash_ = nullptr;
+  bool login_ = false;
+  bool superuser_ = false;
   const bool create_if_not_exists_;
 
 };

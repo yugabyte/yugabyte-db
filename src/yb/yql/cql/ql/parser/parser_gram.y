@@ -74,8 +74,9 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_role.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 #include "yb/yql/cql/ql/ptree/pt_grant.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
@@ -206,7 +207,7 @@ using namespace yb::ql;
                           ConstraintElem ConstraintAttr
 
                           // Create role.
-                          CreateRoleStmt
+                          CreateRoleStmt AlterRoleStmt
 
                           // Truncate table.
                           TruncateStmt
@@ -324,7 +325,6 @@ using namespace yb::ql;
 %type <POrderByListNode>  // Sortby List for orderby clause
                           sortby_list opt_sort_clause sort_clause
 
-
 %type <POrderBy>          // Sortby for orderby clause
                           sortby
 
@@ -383,7 +383,7 @@ using namespace yb::ql;
 %type <PChar>             enable_trigger
 
 %type <PString>           createdb_opt_name RoleId opt_type foreign_server_version
-                          opt_foreign_server_version opt_in_database OptSchemaName copy_file_name
+                          opt_foreign_server_version OptSchemaName copy_file_name
                           database_name access_method_clause access_method attr_name name
                           cursor_name file_name index_name opt_index_name
                           cluster_index_specification generic_option_name opt_charset
@@ -427,7 +427,7 @@ using namespace yb::ql;
                           AlterOwnerStmt AlterSeqStmt AlterSystemStmt InactiveAlterTableStmt
                           AlterTblSpcStmt AlterExtensionStmt AlterExtensionContentsStmt
                           AlterForeignTableStmt AlterCompositeTypeStmt AlterUserStmt
-                          AlterUserMappingStmt AlterUserSetStmt AlterRoleStmt AlterRoleSetStmt
+                          AlterUserMappingStmt AlterUserSetStmt
                           AlterPolicyStmt AlterDefaultPrivilegesStmt
                           DefACLAction AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
                           ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
@@ -621,7 +621,6 @@ using namespace yb::ql;
                           PARSER PARTIAL PARTITION PASSING PASSWORD PERMISSION PERMISSIONS PLACING
                           PLANS POLICY POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED
                           PRIMARY PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROGRAM
-
 
                           QUOTE
 
@@ -860,6 +859,9 @@ stmt:
     $$ = $1;
   }
   | CreateRoleStmt {
+    $$ = $1;
+  }
+  | AlterRoleStmt {
     $$ = $1;
   }
   | GrantStmt {
@@ -4602,7 +4604,6 @@ udt_name:
   }
 ;
 
-
 opt_array_bounds:
   opt_array_bounds '[' ']' {
     PARSER_UNSUPPORTED(@1);
@@ -5410,8 +5411,6 @@ inactive_stmt:
   | AlterSystemStmt
   | AlterTblSpcStmt
   | AlterCompositeTypeStmt
-  | AlterRoleSetStmt
-  | AlterRoleStmt
   | AlterTSConfigurationStmt
   | AlterTSDictionaryStmt
   | AlterUserMappingStmt
@@ -5499,13 +5498,12 @@ inactive_stmt:
 
 /*****************************************************************************
  *
- * Create a new Postgres DBMS role
+ * Create a new role
  *
  *****************************************************************************/
 
-
 CreateRoleStmt: CREATE ROLE role_name optRoleOptionList {
-    $$ = MAKE_NODE(@1, PTCreateRole, $3 , $4,  false /* create_if_not_exists */ );
+    $$ = MAKE_NODE(@1, PTCreateRole, $3 , $4, false /* create_if_not_exists */ );
   }
   | CREATE ROLE IF_P NOT_LA EXISTS role_name optRoleOptionList{
     $$ = MAKE_NODE(@1, PTCreateRole, $6 , $7, true /* create_if_not_exists */ );
@@ -5642,24 +5640,13 @@ CreateUserStmt:
 
 /*****************************************************************************
  *
- * Alter a postgresql DBMS role
+ * Alter a role
  *
  *****************************************************************************/
 
 AlterRoleStmt:
-  ALTER ROLE RoleSpec opt_with AlterOptRoleList {
-  }
-;
-
-opt_in_database:
-  /* EMPTY */ { }
-  | IN_P DATABASE database_name { $$ = $3; }
-;
-
-AlterRoleSetStmt:
-  ALTER ROLE RoleSpec opt_in_database SetResetClause {
-  }
-  | ALTER ROLE ALL opt_in_database SetResetClause {
+  ALTER ROLE role_name optRoleOptionList {
+    $$ = MAKE_NODE(@1, PTAlterRole, $3 , $4);
   }
 ;
 

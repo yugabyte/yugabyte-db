@@ -191,7 +191,7 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->UseKeyspace(keyspace_name);
   }
 
-  // Grant Permission with the given arguments
+  // Grant Permission with the given arguments.
   CHECKED_STATUS GrantPermission(const PermissionType& permission,
                                  const ResourceType& resource_type,
                                  const std::string& canonical_resource,
@@ -205,13 +205,21 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->CurrentKeyspace();
   }
 
-  // Role related methods
+  // Role related methods.
 
-  // Create role with given arguments
+  // Create role with given arguments.
   CHECKED_STATUS CreateRole(const std::string& role_name,
                             const std::string& salted_hash,
                             const bool login, const bool superuser) {
     return ql_env_->CreateRole(role_name, salted_hash, login, superuser);
+  }
+
+  // Alter an existing role with the given arguments.
+  CHECKED_STATUS AlterRole(const std::string& role_name,
+                           const boost::optional<std::string>& salted_hash,
+                           const boost::optional<bool> login,
+                           const boost::optional<bool> superuser) {
+    return ql_env_->AlterRole(role_name, salted_hash, login, superuser);
   }
 
   // Delete role by name.
@@ -226,7 +234,7 @@ class ExecContext : public ProcessContextBase {
 
   // (User-defined) Type related methods.
 
-  // Create (user-defined) type with the given arguments
+  // Create (user-defined) type with the given arguments.
   CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
                               const std::string &type_name,
                               const std::vector<std::string> &field_names,

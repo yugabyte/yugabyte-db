@@ -252,6 +252,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetUDTypeInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateRole);
+YB_CLIENT_SPECIALIZE_SIMPLE(AlterRole);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteRole);
 YB_CLIENT_SPECIALIZE_SIMPLE(GrantRole);
 YB_CLIENT_SPECIALIZE_SIMPLE(GrantPermission);
@@ -1128,7 +1129,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   }
 }
 
-// API to clear and reset master addresses, used during master config change
+// API to clear and reset master addresses, used during master config change.
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   if (addrs.empty()) {
@@ -1148,7 +1149,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
   return Status::OK();
 }
 
-// Add a given master to the master address list
+// Add a given master to the master address list.
 Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   master_server_addrs_.push_back(addr.ToString());
@@ -1194,7 +1195,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
   return Status::OK();
 }
 
-// Remove a given master from the list of master_server_addrs_
+// Remove a given master from the list of master_server_addrs_.
 Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
   vector<HostPort> new_list;
 
