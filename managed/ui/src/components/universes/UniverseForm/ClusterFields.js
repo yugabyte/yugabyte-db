@@ -746,7 +746,7 @@ export default class ClusterFields extends Component {
     }
 
     if (isNonEmptyObject(deviceInfo)) {
-      if (self.state.volumeType === 'EBS') {
+      if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
         if (deviceInfo.ebsType === 'IO1') {
           iopsField = (
             <span className="volume-info form-group-shrinked">
@@ -758,42 +758,34 @@ export default class ClusterFields extends Component {
             </span>
           );
         }
+        const isInGcp = this.getCurrentProvider(self.state.providerSelected).code === "gcp";
+        const numVolumes = (
+          <span className="volume-info-field volume-info-count">
+            <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
+                   label="Number of Volumes" onInputChanged={self.numVolumesChanged}/>
+          </span>
+        );
+        const volumeSize = (
+          <span className="volume-info-field volume-info-size">
+            <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput} label="Volume Size"
+                   valueFormat={volumeTypeFormat} readOnly={isInGcp} />
+          </span>
+        );
         deviceDetail = (
           <span className="volume-info">
-            <span className="volume-info-field volume-info-count">
-              <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
-                     label="Number of Volumes" onInputChanged={self.numVolumesChanged}/>
-            </span>
+            {numVolumes}
             &times;
-            <span className="volume-info-field volume-info-size">
-              <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput} label="Volume Size"
-                     valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}/>
-            </span>
+            {volumeSize}
           </span>
         );
-        ebsTypeSelector = (
-          <span className="volume-info form-group-shrinked">
-            <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel} options={ebsTypesList}
-                   label="EBS Type" onInputChanged={self.ebsTypeChanged}/>
-          </span>
-        );
-      } else if (self.state.volumeType === 'SSD') {
-        let mountPointsDetail = <span />;
-        if (self.state.deviceInfo.mountPoints != null) {
-          mountPointsDetail = (
-            <span>
-              <label className="form-item-label">Mount Points</label>
-              {self.state.deviceInfo.mountPoints}
+        if (!isInGcp) {
+          ebsTypeSelector = (
+            <span className="volume-info form-group-shrinked">
+              <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel} options={ebsTypesList}
+                     label="EBS Type" onInputChanged={self.ebsTypeChanged}/>
             </span>
           );
         }
-        deviceDetail = (
-          <span className="volume-info">
-            {deviceInfo.numVolumes} &times;&nbsp;
-            {volumeTypeFormat(deviceInfo.volumeSize)} {deviceInfo.volumeType} &nbsp;
-            {mountPointsDetail}
-          </span>
-        );
       }
     }
 
