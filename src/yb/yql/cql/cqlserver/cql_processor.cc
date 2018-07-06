@@ -72,6 +72,7 @@ constexpr const char* const kCassandraPasswordAuthenticator =
     "org.apache.cassandra.auth.PasswordAuthenticator";
 
 extern const char* const kRoleColumnNameSaltedHash;
+extern const char* const kRoleColumnNameCanLogin;
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -469,9 +470,14 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
               const auto& schema = row_block->schema();
               const auto& saved_hash =
                   row.column(schema.find_column(kRoleColumnNameSaltedHash)).string_value();
-              if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+              const auto& can_login =
+                  row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
+              if (!can_login) {
                 return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
-                    "Invalid password for " + params.username);
+                    params.username + " is not permitted to log in");
+              } else if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+                return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                    "Provided username " + params.username + " and/or password are incorrect");
               } else {
                 call_->ql_session()->set_current_role_name(params.username);
                 return new AuthSuccessResponse(*request_, "" /* this does not matter" */);
@@ -493,7 +499,7 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
         case CQLMessage::Opcode::AUTH_CHALLENGE: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::AUTH_SUCCESS:
           break;
-        // default: fall through
+        // default: fall through.
       }
       LOG(FATAL) << "Internal error: not a request that returns result "
                  << static_cast<int>(request_->opcode());
@@ -504,7 +510,7 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
       return new SchemaChangeResultResponse(*request_, schema_change_result);
     }
 
-    // default: fall through
+    // default: fall through.
   }
   LOG(ERROR) << "Internal error: unknown result type " << static_cast<int>(result->type());
   return new ErrorResponse(

@@ -285,7 +285,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
 
-  // set 'alter_in_progress' to true if an AlterTable operation is in-progress.
+  // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
                                         bool *alter_in_progress);
 
@@ -330,12 +330,17 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   Result<bool> NamespaceExists(const std::string& namespace_name,
                                YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
-
   // Authentication and Authorization
   // Create a new role.
   CHECKED_STATUS CreateRole(const std::string& role_name,
                             const std::string& salted_hash,
                             const bool login, const bool superuser);
+
+  // Alter an existing role.
+  CHECKED_STATUS AlterRole(const std::string& role_name,
+                           const boost::optional<std::string>& salted_hash,
+                           const boost::optional<bool> login,
+                           const boost::optional<bool> superuser);
 
   // Delete a role.
   CHECKED_STATUS DeleteRole(const std::string& role_name);
