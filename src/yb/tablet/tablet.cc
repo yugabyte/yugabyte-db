@@ -364,6 +364,11 @@ Tablet::Tablet(
     }
   }
 
+  // Create index table metadata cache for secondary index update.
+  if (!metadata_->index_map().empty()) {
+    metadata_cache_.emplace(client_future_.get());
+  }
+
   // TODO(dtxn) Create coordinator only for status tablets
   if (transaction_coordinator_context) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
@@ -901,7 +906,12 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     vector<std::pair<const IndexInfo*, shared_ptr<client::YBqlWriteOp>>> index_ops;
     for (auto& pair : *write_op->index_requests()) {
       client::YBTablePtr index_table;
-      RETURN_NOT_OK(client->OpenTable(pair.first->table_id(), &index_table));
+      bool cache_used_ignored = false;
+      if (!metadata_cache_) {
+        return STATUS(Corruption, "Table metadata cache is not present for index update");
+      }
+      RETURN_NOT_OK(metadata_cache_->GetTable(pair.first->table_id(), &index_table,
+                                              &cache_used_ignored));
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
       index_op->mutable_request()->Swap(&pair.second);
       index_op->mutable_request()->MergeFrom(pair.second);
@@ -1215,18 +1225,22 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
       }
     }
 
+    // Clear old index table metadata cache.
+    metadata_cache_ = boost::none;
+
     // Update the index info.
     metadata_->SetIndexMap(std::move(operation_state->index_map()));
 
-    // Create transaction manager for secondary index update.
-    if (!metadata_->index_map().empty() &&
-        metadata_->schema().table_properties().is_transactional() &&
-        !transaction_manager_) {
-      const auto transaction_participant_context =
-          DCHECK_NOTNULL(transaction_participant_.get())->context();
-      transaction_manager_.emplace(client_future_.get(),
-                                   transaction_participant_context->clock_ptr(),
-                                   local_tablet_filter_);
+    // Create transaction manager and index table metadata cache for secondary index update.
+    if (!metadata_->index_map().empty()) {
+      if (metadata_->schema().table_properties().is_transactional() && !transaction_manager_) {
+        const auto transaction_participant_context =
+            DCHECK_NOTNULL(transaction_participant_.get())->context();
+        transaction_manager_.emplace(client_future_.get(),
+                                     transaction_participant_context->clock_ptr(),
+                                     local_tablet_filter_);
+      }
+      metadata_cache_.emplace(client_future_.get());
     }
 
     // If the current schema and the new one are equal, there is nothing to do.
