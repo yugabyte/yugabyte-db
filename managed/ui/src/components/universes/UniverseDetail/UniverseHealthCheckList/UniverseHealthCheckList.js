@@ -24,7 +24,7 @@ const UniverseHealthCheckList = props => {
     content = (
       <div>
         <h2 className="health-check-header content-title">Health Checks</h2>
-        {timestamps.map(timestamp => <TimestampTree timestamp={timestamp} />)}
+        <TimestampList timestamps={timestamps} />
       </div>
     );
   }
@@ -36,41 +36,49 @@ const UniverseHealthCheckList = props => {
   );
 };
 
-const TimestampTree = props => {
-  const {timestamp} = props;
+const TimestampList = props => {
+  const {timestamps} = props;
   return (
-    <TreeNode
-      key={timestamp.timestampMoment.unix()}
-      header={
-        <div>
-          <span className="tree-node-main-heading">{timestampFormatter(timestamp.timestampMoment)}</span>
-          {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, 'healthy')}
-          {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, 'failing')}
-        </div>
-      }
-      body={
-        <div>
-          {timestamp.nodes.map(node => <NodeTree node={node} />)}
-        </div>
-      }
-    />
+    <div>
+      {timestamps.map(timestamp => (
+        <TreeNode
+          key={timestamp.timestampMoment.unix()}
+          header={
+            <div>
+              <span className="tree-node-main-heading">{timestampFormatter(timestamp.timestampMoment)}</span>
+              {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, 'healthy')}
+              {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, 'failing')}
+            </div>
+          }
+          body={
+            <div>
+              <NodeList nodes={timestamp.nodes} />
+            </div>
+          }
+        />
+      ))}
+    </div>
   );
 };
 
-const NodeTree = props => {
-  const {node} = props;
+const NodeList = props => {
+  const {nodes} = props;
   return (
-    <TreeNode
-      key={node.ipAddress}
-      header={
-        <div>
-          <span className="tree-node-main-heading">{node.ipAddress}</span>
-          {countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
-          {countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
-        </div>
-      }
-      body={<ChecksTable checks={node.checks} />}
-    />
+    <div>
+      {nodes.map(node => (
+        <TreeNode
+          key={node.ipAddress}
+          header={
+            <div>
+              <span className="tree-node-main-heading">{node.ipAddress}</span>
+              {countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
+              {countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
+            </div>
+          }
+          body={<ChecksTable checks={node.checks} />}
+        />
+      ))}
+    </div>
   );
 };
 
@@ -80,7 +88,7 @@ const ChecksTable = props => {
     <YBPanelItem
       body={
         <BootstrapTable data={checks}>
-          <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
+          <TableHeaderColumn dataField="key" isKey={true} hidden={true}/>
           <TableHeaderColumn dataField="has_error" dataFormat={checkStatusFormatter}>
             Status
           </TableHeaderColumn>
@@ -129,7 +137,7 @@ const checkStatusFormatter = hasError => (
 const detailsFormatter = (cell, row) => (
   <span>
     {row.has_error && (
-      <span class="label label-danger">ERROR</span>
+      <span className="label label-danger">ERROR</span>
     )}
     {row.details}
   </span>
@@ -142,6 +150,7 @@ function prepareData(data) {
     const timestampMoment = moment(timeData.timestamp);
     const nodesByIpAddress = {};
     timeData.data.forEach(check => {
+      check.key = getKeyForCheck(check);
       const ipAddress = check.node;
       if (!nodesByIpAddress[ipAddress]) {
         nodesByIpAddress[ipAddress] = {
@@ -171,5 +180,7 @@ function prepareData(data) {
     return {timestampMoment, nodes, healthyNodes, errorNodes};
   });
 }
+
+const getKeyForCheck = check => `${check.node}-${check.process}-${check.message}`;
 
 export default UniverseHealthCheckList;
