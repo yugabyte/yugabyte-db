@@ -83,8 +83,8 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   current_partition_index_++;
   uint64_t partition_counter = current_partition_index_;
   // Hash_values_options_ vector starts from the first column with an 'IN' restriction.
-  int hash_key_size = req->hashed_column_values().size();
-  int fixed_cols_size = hash_key_size - hash_values_options_->size();
+  const int hash_key_size = req->hashed_column_values().size();
+  const int fixed_cols_size = hash_key_size - hash_values_options_->size();
 
   // Set the right values for the missing/unset columns by converting partition index into positions
   // for each hash column and using the corresponding values from the hash values options vector.
@@ -99,6 +99,9 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();
   }
+
+  req->clear_hash_code();
+  req->clear_max_hash_code();
 }
 
 }  // namespace ql
