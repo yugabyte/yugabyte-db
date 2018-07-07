@@ -246,9 +246,8 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 }
 
 Status Executor::ExecPTNode(const PTCreateRole *tnode) {
-  Status s = exec_context().CreateRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
+  const Status s = ql_env_->CreateRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
                                        tnode->superuser());
-
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
@@ -268,9 +267,8 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTAlterRole *tnode) {
-  Status s = exec_context().AlterRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
+  const Status s = ql_env_->AlterRole(tnode->role_name(), tnode->salted_hash(), tnode->login(),
                                       tnode->superuser());
-
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::ROLE_NOT_FOUND;
     return exec_context().Error(tnode, s, error_code);
@@ -282,9 +280,7 @@ Status Executor::ExecPTNode(const PTAlterRole *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTGrantRole *tnode) {
-
-  Status s = exec_context().GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
-
+  const Status s = ql_env_->GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsInvalidArgument()) {
@@ -324,7 +320,7 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
     field_types.push_back(field->ql_type());
   }
 
-  Status s = exec_context().CreateUDType(keyspace_name, type_name, field_names, field_types);
+  Status s = ql_env_->CreateUDType(keyspace_name, type_name, field_names, field_types);
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
@@ -403,7 +399,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   // Create table.
-  shared_ptr<YBTableCreator> table_creator(exec_context().NewTableCreator());
+  shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
   table_creator->table_name(table_name)
       .table_type(YBTableType::YQL_TABLE_TYPE)
       .schema(&schema);
@@ -451,7 +447,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
 Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
-  shared_ptr<YBTableAlterer> table_alterer(exec_context().NewTableAlterer(table_name));
+  shared_ptr<YBTableAlterer> table_alterer(ql_env_->NewTableAlterer(table_name));
 
   for (const auto& mod_column : tnode->mod_columns()) {
     switch (mod_column->mod_type()) {
@@ -503,7 +499,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_TABLE: {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
-      s = exec_context().DeleteTable(table_name);
+      s = ql_env_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
@@ -515,7 +511,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       // Drop the index.
       const YBTableName table_name = tnode->yb_table_name();
       YBTableName indexed_table_name;
-      s = exec_context().DeleteIndexTable(table_name, &indexed_table_name);
+      s = ql_env_->DeleteIndexTable(table_name, &indexed_table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
@@ -526,7 +522,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_SCHEMA: {
       // Drop the keyspace.
       const string keyspace_name(tnode->name()->last_name().c_str());
-      s = exec_context().DeleteKeyspace(keyspace_name);
+      s = ql_env_->DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
       break;
@@ -536,7 +532,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       // Drop the type.
       const string type_name(tnode->name()->last_name().c_str());
       const string namespace_name(tnode->name()->first_name().c_str());
-      s = exec_context().DeleteUDType(namespace_name, type_name);
+      s = ql_env_->DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);
       ql_env_->RemoveCachedUDType(namespace_name, type_name);
@@ -546,7 +542,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_ROLE: {
       // Drop the role.
       const string role_name(tnode->name()->QLName());
-      s = exec_context().DeleteRole(role_name);
+      s = ql_env_->DeleteRole(role_name);
       error_not_found = ErrorCode::ROLE_NOT_FOUND;
       // TODO (Bristy) : Set result_ properly.
       break;
@@ -582,8 +578,8 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
   ResourceType resource_type = tnode->resource_type();
   PermissionType permission = tnode->permission();
 
-  Status s = exec_context().GrantPermission(permission, resource_type, canonical_resource,
-                                            resource_name, namespace_name, role_name);
+  Status s = ql_env_->GrantPermission(permission, resource_type, canonical_resource,
+                                      resource_name, namespace_name, role_name);
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -809,15 +805,15 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
                                         current_result->rows_data(),
                                         &current_fetch_row_count));
 
-  size_t previous_fetches_row_count = exec_context->params()->total_num_rows_read();
-  size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
+  const size_t previous_fetches_row_count = exec_context->params()->total_num_rows_read();
+  const size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
   // Statement (paging) parameters.
   StatementParameters current_params;
   RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
 
-  size_t total_rows_skipped = exec_context->params()->total_rows_skipped() +
-      current_params.total_rows_skipped();
+  const size_t total_rows_skipped = exec_context->params()->total_rows_skipped() +
+                                    current_params.total_rows_skipped();
 
   // The limit for this select: min of page size and result limit (if set).
   uint64_t fetch_limit = exec_context->params()->page_size(); // default;
@@ -837,8 +833,9 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   // might be non-empty, but just contain num_rows_skipped, in this case the
   // 'next_partition_key' and 'next_row_key' would be empty indicating that we've finished
   // reading the current partition.
-  bool finished_current_read_partition = current_result->paging_state().empty() ||
-      (current_params.next_partition_key().empty() && current_params.next_row_key().empty());
+  const bool finished_current_read_partition = current_result->paging_state().empty() ||
+                                               (current_params.next_partition_key().empty() &&
+                                                current_params.next_row_key().empty());
   if (finished_current_read_partition) {
 
     // If there or no other partitions to query, we are done.
@@ -850,8 +847,6 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
 
     // Otherwise, we continue to the next partition.
     tnode_context->AdvanceToNextPartition(op->mutable_request());
-    op->mutable_request()->clear_hash_code();
-    op->mutable_request()->clear_max_hash_code();
   }
 
   // If we reached the fetch limit (min of paging state and limit clause) we are done.
@@ -1072,13 +1067,13 @@ Status Executor::ExecPTNode(const PTCommit *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTTruncateStmt *tnode) {
-  return exec_context().TruncateTable(tnode->table_id());
+  return ql_env_->TruncateTable(tnode->table_id());
 }
 
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
-  Status s = exec_context().CreateKeyspace(tnode->name());
+  Status s = ql_env_->CreateKeyspace(tnode->name());
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -1102,7 +1097,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
-  const Status s = exec_context().UseKeyspace(tnode->name());
+  const Status s = ql_env_->UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
     return exec_context().Error(tnode, s, error_code);
