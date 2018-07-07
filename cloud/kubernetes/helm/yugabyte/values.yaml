@@ -9,7 +9,7 @@ Image:
 
 persistentVolume:
   count: 2
-  storage: 100Mi
+  storage: 10Gi
   storageClass: standard 
 
 PodManagementPolicy: Parallel
