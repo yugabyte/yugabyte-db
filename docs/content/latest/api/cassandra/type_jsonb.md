@@ -13,8 +13,17 @@ aliases:
 ---
 
 ## Synopsis
-`JSONB` datatype is used to efficiently model json data. This datatype makes it easy to model data
-json data which doesn't have a set schema and might change often.
+`JSONB` datatype is used to efficiently model json data. This datatype makes it easy to model
+json data which does not have a set schema and might change often. This datatype is similar to
+the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html). 
+The json document is serialized into a format which is easy for search and retrieval. 
+This is achieved by storing all the json keys in sorted order, which allows for efficient binary 
+search of keys. Similarly arrays are stored such that random access for a particular array index 
+into the serialized json document is possible.
+
+Currently, updates to some attributes of a JSONB column require a full read-modify-write operation. 
+Note that there are plans to enhance the JSONB datatype to support efficient incremental updates in 
+a future version.
 
 ## Syntax
 ```
