@@ -79,6 +79,10 @@ class StorageConfiguration extends Component {
       const configData = [];
 
       customerConfigs.data.forEach((config) => {
+        const storageConfig = storageConfigTypes[config.name];
+        if (!isDefinedNotNull(storageConfig)) {
+          return;
+        }
         const fieldAttrs = storageConfigTypes[config.name]['fields'];
         for (const configItem in config.data) {
           const configAttr = fieldAttrs.find((item) => item.id === configItem);
