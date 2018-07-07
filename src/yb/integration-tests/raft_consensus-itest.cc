@@ -115,6 +115,7 @@ using itest::LeaderStepDown;
 using itest::TabletServerMapUnowned;
 using itest::RemoveServer;
 using itest::StartElection;
+using itest::WaitUntilNumberOfAliveTServersEqual;
 using itest::WaitUntilLeader;
 using itest::WriteSimpleTestRow;
 using master::GetTabletLocationsRequestPB;
@@ -170,7 +171,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       ++id;
     }
 
-    // Send the call
+    // Send the call.
     {
       SCOPED_TRACE(req.DebugString());
       ASSERT_OK(replica_proxy->Read(req, &resp, &rpc));
@@ -694,7 +695,7 @@ void RaftConsensusITest::Write128KOpsToLeader(int num_writes) {
   rpc.set_timeout(MonoDelta::FromMilliseconds(10000));
   int key = 0;
 
-  // generate a 128Kb dummy payload
+  // generate a 128Kb dummy payload.
   string test_payload(128 * 1024, '0');
   for (int i = 0; i < num_writes; i++) {
     rpc.Reset();
@@ -720,7 +721,7 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
   ASSERT_TRUE(replica != nullptr);
   ExternalTabletServer* replica_ets = cluster_->tablet_server_by_uuid(replica->uuid());
 
-  // Pause a replica
+  // Pause a replica.
   ASSERT_OK(replica_ets->Pause());
   LOG(INFO)<< "Paused one of the replicas, starting to write.";
 
@@ -1377,7 +1378,7 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
     }
   }
 
-  // Restart every node that was killed, and wait for the nodes to converge
+  // Restart every node that was killed, and wait for the nodes to converge.
   for (TServerDetails* killed_node : killed_leaders) {
     CHECK_OK(cluster_->tablet_server_by_uuid(killed_node->uuid())->Restart());
   }
@@ -1692,6 +1693,43 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10));
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not accept writes as follower: "
                                   << s.ToString();
+}
+
+// Test for #350: sets the consensus RPC timeout to be long, and freezes both followers before
+// asking the leader to step down. Prior to fixing #350, the step-down process would block
+// until the pending requests timed out.
+TEST_F(RaftConsensusITest, TestStepDownWithSlowFollower) {
+  vector<string> ts_flags = {
+      "--enable_leader_failure_detection=false",
+      // Bump up the RPC timeout, so that we can verify that the stepdown responds
+      // quickly even when an outbound request is hung.
+      "--consensus_rpc_timeout_ms=15000",
+      // Make heartbeats more often so we can detect dead tservers faster.
+      "--raft_heartbeat_interval_ms=10",
+      // Set it high enough so that the election rpcs don't time out.
+      "--leader_failure_max_missed_heartbeat_periods=100"
+  };
+  vector<string> master_flags = {
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false",
+      "--tserver_unresponsive_timeout_ms=5000"
+  };
+  BuildAndStart(ts_flags, master_flags);
+
+  vector<TServerDetails *> tservers = TServerDetailsVector(tablet_servers_);
+  ASSERT_OK(StartElection(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitUntilLeader(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+
+  // Stop both followers.
+  for (int i = 1; i < 3; i++) {
+    ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[i]->uuid())->Pause());
+  }
+
+  // Wait until the paused tservers have stopped heartbeating.
+  ASSERT_OK(WaitUntilNumberOfAliveTServersEqual(1, cluster_->master_proxy().get(),
+                                                MonoDelta::FromSeconds(20)));
+
+  // Step down should respond quickly despite the hung requests.
+  ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(3)));
 }
 
 void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
