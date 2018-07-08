@@ -1,4 +1,7 @@
-CREATE FUNCTION inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
+-- Fix bug with inheriting indexes from template tables with native partitioning. Was throwing syntax error related to format() function. Thanks to iwarford on github for reporting the issue (Github Issue #223).
+
+
+CREATE OR REPLACE FUNCTION inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE

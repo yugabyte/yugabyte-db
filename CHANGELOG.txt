@@ -1,3 +1,7 @@
+3.2.1
+-- Fix bug with inheriting indexes from template tables with native partitioning. Was throwing syntax error related to format() function. Thanks to iwarford on github for reporting the issue (Github Issue #223).
+
+
 3.2.0
 -- Added option to include newly created child tables in a subscription for use in logical replication. PG10+ Only. (Github PR #218).
     -- Signature of create_parent() function has changed, so ensure calls are accounting for new argument.
