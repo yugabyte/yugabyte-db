@@ -87,9 +87,15 @@ spec:
       - name: yb-master
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         command:
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
+          - "--rpc_bind_addresses=$(POD_IP)"
           - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
           - "--master_replication_factor=3"
         ports:
