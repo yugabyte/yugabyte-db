@@ -296,10 +296,13 @@ class TransactionState {
         if (leader && !ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) {
           SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
         }
-      } else {
+      } else if (!just_committed_) {
         for (auto& tablet : unnotified_tablets_) {
           context_.NotifyApplying({tablet, id_, commit_time_});
         }
+      } else {
+        // We skip first attempt to guarantee that at least 500ms passed between requests.
+        just_committed_ = false;
       }
     }
   }
@@ -448,6 +451,7 @@ class TransactionState {
     commit_time_ = data.hybrid_time;
     VLOG_WITH_PREFIX(4) << "Commit time: " << commit_time_;
     status_ = TransactionStatus::COMMITTED;
+    just_committed_ = true;
     unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
     for (const auto& tablet : unnotified_tablets_) {
       context_.NotifyApplying({tablet, id_, commit_time_});
@@ -505,6 +509,7 @@ class TransactionState {
   // would not be so. To add stability we introduce a separate field for it.
   HybridTime commit_time_;
   std::unordered_set<TabletId> unnotified_tablets_;
+  bool just_committed_ = false;
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
   // The operation that we a currently replicating in RAFT.
