@@ -445,7 +445,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
   explicit Impl(TransactionParticipantContext* context)
-      : RunningTransactionContext(context), log_prefix_(context->tablet_id() + ": ") {}
+      : RunningTransactionContext(context), log_prefix_(context->tablet_id() + ": ") {
+    LOG_WITH_PREFIX(INFO) << "Start";
+  }
 
   ~Impl() {
     transactions_.clear();
@@ -558,8 +560,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   void CleanTransactionsUnlocked() {
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
-    while (!cleanup_queue_.empty() && cleanup_queue_.front().first < min_request) {
-      const auto& id = cleanup_queue_.front().second;
+    while (!cleanup_queue_.empty() && cleanup_queue_.front().request_id < min_request) {
+      const auto& id = cleanup_queue_.front().transaction_id;
       transactions_.erase(id);
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
       cleanup_queue_.pop_front();
@@ -595,7 +597,6 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // 1) Write batch failed, but originator doesn't know that.
         // 2) Failed to notify status tablet that we applied transaction.
         LOG_WITH_PREFIX(WARNING) << "Apply of unknown transaction: " << data.transaction_id;
-        return Status::OK();
       } else {
         if (!RemoveUnlocked(it)) {
           (**it).SetLocalCommitTime(data.commit_ht);
@@ -677,7 +678,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     // Since we try to remove transaction after all its records is removed from provisional DB
     // it is safe to complete removal at this point, because it means that there will be no more
     // queries to status of this transactions.
-    cleanup_queue_.emplace_back(request_serial_, (**it).id());
+    cleanup_queue_.push_back({request_serial_, (**it).id()});
     VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id();
     return false;
   }
@@ -688,6 +689,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (it != transactions_.end()) {
       return it;
     }
+
+    LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id;
 
     docdb::KeyBytes key;
     AppendTransactionKeyPrefix(id, &key);
@@ -728,7 +731,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       docdb::IntentType intent_type;
       DocHybridTime doc_ht;
       auto status = docdb::DecodeIntentKey(iter->value(), &intent_prefix, &intent_type, &doc_ht);
-      LOG_IF(DFATAL, !status.ok()) << "Failed to decode intent: " << status;
+      LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent: " << status;
       if (status.ok() && docdb::IsStrongIntent(intent_type)) {
         iter->Seek(iter->value());
         if (iter->Valid()) {
@@ -736,7 +739,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
                   << " => " << iter->value().ToDebugHexString();
           status = docdb::DecodeIntentValue(
               iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
-          LOG_IF(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
+          LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
           ++next_write_id;
         }
         break;
@@ -758,6 +761,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return log_prefix_;
   }
 
+  struct CleanupQueueEntry {
+    int64_t request_id;
+    TransactionId transaction_id;
+  };
+
   std::string log_prefix_;
 
   rocksdb::DB* db_ = nullptr;
@@ -770,7 +778,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::priority_queue<int64_t, std::vector<int64_t>, std::greater<void>> complete_requests_;
   // Queue of transaction ids that should be cleaned, paired with request that should be completed
   // in order to be able to do clean.
-  std::deque<std::pair<int64_t, TransactionId>> cleanup_queue_;
+  std::deque<CleanupQueueEntry> cleanup_queue_;
 };
 
 TransactionParticipant::TransactionParticipant(TransactionParticipantContext* context)
