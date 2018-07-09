@@ -132,7 +132,7 @@ a:hover > {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: -1;
+    z-index: 0;
     @include transition(0.125s);
     border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
   }
@@ -161,6 +161,7 @@ a:hover > {
     color: $YB_VIOLET_TEXT;
     padding-top: 6px;
     text-decoration: none;
+    position: relative;
   }
 
   .btn-icon {
