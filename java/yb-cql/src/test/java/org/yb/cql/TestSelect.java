@@ -676,15 +676,14 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(0, rows.size());
   }
 
-  @Test
-  public void testToken() throws Exception {
-    LOG.info("TEST TOKEN - Start");
-    setupTable("token_test", 10);
+  private void runPartitionHashTest(String func_name) throws Exception {
+    LOG.info(String.format("TEST %s - Start", func_name));
+    setupTable(String.format("%s_test", func_name), 10);
 
     // Testing only basic token call as sanity check here.
     // Main token tests are in YbSqlQuery (C++) and TestBindVariable (Java) tests.
-    Iterator<Row> rows = session.execute("SELECT * FROM token_test WHERE " +
-            "token(h1, h2) = token(2, 'h2')").iterator();
+    Iterator<Row> rows = session.execute(String.format("SELECT * FROM %s_test WHERE " +
+        "%s(h1, h2) = %s(2, 'h2')", func_name, func_name, func_name)).iterator();
 
     assertTrue(rows.hasNext());
     // Checking result.
@@ -697,7 +696,17 @@ public class TestSelect extends BaseCQLTest {
     assertEquals("v1002", row.getString(5));
     assertFalse(rows.hasNext());
 
-    LOG.info("TEST TOKEN - End");
+    LOG.info(String.format("TEST %s - End", func_name));
+  }
+
+  @Test
+  public void testToken() throws Exception {
+    runPartitionHashTest("token");
+  }
+
+  @Test
+  public void testPartitionHash() throws Exception {
+    runPartitionHashTest("partition_hash");
   }
 
   @Test

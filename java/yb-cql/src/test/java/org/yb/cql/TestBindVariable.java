@@ -18,6 +18,7 @@ import java.util.*;
 import java.math.BigDecimal;
 import java.net.InetAddress;
 
+import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -1613,25 +1614,24 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("End test");
   }
 
-  @Test
-  public void testBindingToken() throws Exception {
+  private void testPartitionOps(String func_name, String bind_var_name,
+                                boolean returnsLong) throws Exception {
     LOG.info("Begin test");
 
     //----------------------------------------------------------------------------------------------
-    // Testing token as partition key reference -- e.g. "token(h1, h2, h3)"
+    // Testing function as partition key reference -- e.g. "func(h1, h2, h3)"
     //----------------------------------------------------------------------------------------------
-
-    // this is the name CQL uses for the virtual column that token() references
-    String tokenVcolName = "partition key token";
 
     // Setup test table.
     setupTable("test_bind", 10 /* num_rows */);
 
     {
-      // Simple bind (by position) with token.
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", Long.MIN_VALUE);
+      // Simple bind (by position).
+      String selectStmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+          " WHERE h1 = ? AND h2 = ? AND %s(h1, h2) >= ?;", func_name);
+      ResultSet rs = (returnsLong) ?
+          session.execute(selectStmt, new Integer(7), "h7", Long.MIN_VALUE) :
+          session.execute(selectStmt, new Integer(7), "h7", new Integer(0));
 
       // Checking result.
       List <Row> rows = rs.all();
@@ -1646,15 +1646,20 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      // Simple bind (by name) with token.
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      ResultSet rs = session.execute(selectStmt,
-              new HashMap<String, Object>() {{
-                put("h1", new Integer(7));
-                put("h2", "h7");
-                put(tokenVcolName, Long.MIN_VALUE);
-              }});
+      // Simple bind (by name).
+      String selectStmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+          " WHERE h1 = ? AND h2 = ? AND %s(h1, h2) >= ?;", func_name);
+      ResultSet rs = (returnsLong) ? session.execute(selectStmt,
+          new HashMap<String, Object>() {{
+            put("h1", new Integer(7));
+            put("h2", "h7");
+            put(bind_var_name, Long.MIN_VALUE);
+          }}) : session.execute(selectStmt,
+          new HashMap<String, Object>() {{
+            put("h1", new Integer(7));
+            put("h2", "h7");
+            put(bind_var_name, new Integer(0));
+          }});
 
       // Checking result.
       List <Row> rows = rs.all();
@@ -1669,11 +1674,13 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      // Prepare bind (by position) with token
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      // Prepare bind (by position).
+      String selectStmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+          " WHERE h1 = ? AND h2 = ? AND %s(h1, h2) >= ?;", func_name);
       PreparedStatement stmt = session.prepare(selectStmt);
-      ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", Long.MIN_VALUE));
+      ResultSet rs = (returnsLong) ?
+          session.execute(stmt.bind(new Integer(7), "h7", Long.MIN_VALUE)) :
+          session.execute(stmt.bind(new Integer(7), "h7", new Integer(0)));
       // Checking result.
       List <Row> rows = rs.all();
       assertEquals(1, rows.size());
@@ -1687,15 +1694,19 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      // Prepare bind (by name) with token
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      // Prepare bind (by name).
+      String selectStmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+          " WHERE h1 = ? AND h2 = ? AND %s(h1, h2) >= ?;", func_name);
       PreparedStatement stmt = session.prepare(selectStmt);
-      ResultSet rs = session.execute(stmt
-              .bind()
-              .setInt("h1", 7)
-              .setString("h2", "h7")
-              .setLong(tokenVcolName, Long.MIN_VALUE));
+      BoundStatement bstmt = stmt.bind()
+          .setInt("h1", 7)
+          .setString("h2", "h7");
+      if (returnsLong) {
+        bstmt.setLong(bind_var_name, Long.MIN_VALUE);
+      } else {
+        bstmt.setInt(bind_var_name, new Integer(0));
+      }
+      ResultSet rs = session.execute(bstmt);
       // Checking result.
       List <Row> rows = rs.all();
       assertEquals(1, rows.size());
@@ -1709,15 +1720,20 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      // Prepare bind (by name with named markers) with token
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-              " WHERE h1 = :b1 AND h2 = :b2 AND token(h1, h2) >= :b3;";
+      // Prepare bind (by name with named markers).
+      String selectStmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+          " WHERE h1 = :b1 AND h2 = :b2 AND %s(h1, h2) >= :b3;", func_name);
       PreparedStatement stmt = session.prepare(selectStmt);
-      ResultSet rs = session.execute(stmt
-              .bind()
-              .setInt("b1", 7)
-              .setString("b2", "h7")
-              .setLong("b3", Long.MIN_VALUE));
+      BoundStatement bstmt = stmt
+          .bind()
+          .setInt("b1", 7)
+          .setString("b2", "h7");
+      if (returnsLong) {
+        bstmt.setLong("b3", Long.MIN_VALUE);
+      } else {
+        bstmt.setInt("b3", new Integer(0));
+      }
+      ResultSet rs = session.execute(bstmt);
       // Checking result.
       List <Row> rows = rs.all();
       assertEquals(1, rows.size());
@@ -1735,11 +1751,12 @@ public class TestBindVariable extends BaseCQLTest {
     //----------------------------------------------------------------------------------------------
 
     // This is the name template CQL uses for binding args of token builtin call.
-    String argNameTemplate = "arg%d(system.token)";
+    String argNameTemplate = "arg%d(system." + func_name + ")";
 
     {
-      // Bind by position for token bcall arguments.
-      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?)";
+      // Bind by position for bcall arguments.
+      String selectStmt = String.format("SELECT * FROM test_bind WHERE %s(h1, h2) = %s(?, ?)",
+          func_name, func_name);
       Iterator<Row> rows = session.execute(selectStmt, new Integer(6), "h6").iterator();
 
       assertTrue(rows.hasNext());
@@ -1756,7 +1773,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- simple bind, all args.
-      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?);";
+      String selectStmt = String.format("SELECT * FROM test_bind WHERE %s(h1, h2) = " +
+          "%s(?, ?);", func_name, func_name);
 
       Map<String, Object> bvarMap = new HashMap<>();
       bvarMap.put(String.format(argNameTemplate, 0), new Integer(5));
@@ -1778,7 +1796,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- prepare bind, some of the args.
-      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(3, ?);";
+      String selectStmt = String.format("SELECT * FROM test_bind WHERE %s(h1, h2) = " +
+          "%s(3, ?);", func_name, func_name);
 
       Map<String, Object> bvarMap = new HashMap<>();
       bvarMap.put(String.format(argNameTemplate, 1), "h3");
@@ -1799,7 +1818,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- prepare bind, mixed un-named and named markers.
-      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, :second);";
+      String selectStmt = String.format("SELECT * FROM test_bind WHERE %s(h1, h2) = " +
+          "%s(?, :second);", func_name, func_name);
 
       Map<String, Object> bvarMap = new HashMap<>();
       bvarMap.put(String.format(argNameTemplate, 0), new Integer(8));
@@ -1820,6 +1840,16 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     LOG.info("End test");
+  }
+
+  @Test
+  public void testBindingToken() throws Exception {
+    testPartitionOps("token", "partition key token", /* returnsLong */ true);
+  }
+
+  @Test
+  public void testBindingPartitionHash() throws Exception {
+    testPartitionOps("partition_hash", "[partition_hash]", /* returnsLong */ false);
   }
 
   @Test

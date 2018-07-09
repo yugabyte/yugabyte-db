@@ -199,6 +199,9 @@ const vector<BFDecl> kBFDirectory = {
 
   // Token().
   { "Token", "token", "", INT64, {TYPEARGS} },
+  // partition_hash(). partition_hash returns a uint16, but since we only support signed
+  // integers, we use INT32 here instead.
+  { "PartitionHash", "partition_hash", "", INT32, {TYPEARGS} },
 
   // Counter functions.
   { "IncCounter", "counter+", "", INT64, {INT64, INT64} },

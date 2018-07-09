@@ -127,6 +127,348 @@ class TestQLQuery : public QLTestBase {
     TestSelectWithBounds(select_stmt, processor, rows, start_idx, end_idx, " ORDER BY r1 DESC");
   }
 
+  void TestScanWithBoundsPartitionOps(const std::string& func_name, int64_t max_hash,
+                                      int64_t min_hash) {
+    //----------------------------------------------------------------------------------------------
+    // Setting up cluster
+    //----------------------------------------------------------------------------------------------
+
+    // Init the simulated cluster.
+    ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+    // Get a processor.
+    TestQLProcessor *processor = GetQLProcessor();
+
+    // Create test table.
+    CHECK_OK(processor->Run("CREATE TABLE scan_bounds_test (h1 int, h2 text, r1 int, v1 int,"
+                                " PRIMARY KEY((h1, h2), r1));"));
+
+    client::YBTableName name(kDefaultKeyspaceName, "scan_bounds_test");
+    shared_ptr<client::YBTable> table;
+
+    ASSERT_OK(client_->OpenTable(name, &table));
+
+    //----------------------------------------------------------------------------------------------
+    // Initializing rows data
+    //----------------------------------------------------------------------------------------------
+
+    // generating input data with hash_code and inserting into table
+    std::vector<std::tuple<int64_t, int, string, int, int>> rows;
+    for (int i = 0; i < 10; i++) {
+      std::string i_str = std::to_string(i);
+      google::protobuf::RepeatedPtrField<QLExpressionPB> row;
+      row.Add()->mutable_value()->set_int32_value(i);
+      row.Add()->mutable_value()->set_string_value(i_str);
+
+      std::string part_key;
+      CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
+      uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);
+
+      int64_t cql_hash = func_name == "token" ? YBPartition::YBToCqlHashCode(hash_code) : hash_code;
+      std::tuple<int64_t, int, string, int, int> values(cql_hash, i, i_str, i, i);
+      rows.push_back(values);
+      string stmt = Substitute("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
+                                   "($0, '$1', $2, $3);", i, i, i, i);
+      CHECK_OK(processor->Run(stmt));
+    }
+
+    // ordering rows by hash code
+    std::sort(rows.begin(), rows.end(),
+              [](const std::tuple<int64_t, int, string, int, int>& r1,
+                 const std::tuple<int64_t, int, string, int, int>& r2) -> bool {
+                return std::get<0>(r1) < std::get<0>(r2);
+              });
+
+    // CQL uses 64 bit hashes, but YB uses 16-bit internally.
+    // Our bucket range is [cql_hash, cql_hash + bucket_size) -- start-inclusive, end-exclusive
+    // We test the bucket ranges below by choosing the appropriate values for the bounds.
+    int64_t bucket_size = 1;
+    if (func_name == "token") {
+      bucket_size = bucket_size << 48;
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with lower bound
+    //----------------------------------------------------------------------------------------------
+
+    //---------------------------------- Exclusive Lower Bound -------------------------------------
+    string select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) > $1";
+
+    // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows,
+        0, 10);
+    // Partial range: hashes 4, 5, 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[3])), processor, rows,
+        4, 10);
+    // Empty range: no hashes.
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows,
+        0, 0);
+    // Empty range: no hashes (checking overflow for max Cql hash)
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, max_hash), processor, rows,
+        0, 0);
+
+    //---------------------------------- Inclusive Lower Bound -------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) >= $1";
+    // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
+        processor, rows, 0, 10);
+    // Partial range: hashes 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[6]) + bucket_size - 1),
+        processor, rows, 6, 10);
+    // Empty range: no hashes
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        rows, 0, 0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with upper bound
+    //----------------------------------------------------------------------------------------------
+
+    //---------------------------------- Exclusive Upper Bound -------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) < $1";
+    // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        rows, 0, 10);
+    // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[7]) + bucket_size - 1),
+        processor, rows, 0, 7);
+    // Empty range: no hashes
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
+        processor, rows, 0, 0);
+
+    //---------------------------------- Inclusive Upper Bound -------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) <= $1";
+    // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows, 0, 10);
+    // Partial range: hashes 0, 1, 2
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows, 0, 3);
+    // Empty range: no hashes
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows, 0,
+        0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with both lower and upper bounds
+    //----------------------------------------------------------------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) $1 $2 AND $3(h1, h2) "
+        "$4 $5";
+    // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[0]) + bucket_size - 1,
+                   func_name, "<=", std::get<0>(rows[9])), processor, rows, 0, 10);
+    // Partial Range: hashes 2, 3, 4, 5, 6, 7, 8
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">", std::get<0>(rows[1]),
+                   func_name, "<=", std::get<0>(rows[8])), processor, rows, 2, 9);
+    // Partial Range: hashes 4, 5, 6
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[4]) + bucket_size - 1,
+                   func_name, "<", std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
+        4, 7);
+    // Empty Range (inclusive lower bound): no hashes
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[2]) + bucket_size - 1,
+                   func_name, "<", std::get<0>(rows[2]) + bucket_size - 1), processor, rows, 0, 0);
+    // Empty Range (inclusive upper bound): no hashes
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">", std::get<0>(rows[2]),
+                   func_name, "<=", std::get<0>(rows[2])), processor, rows, 0, 0);
+    // Empty range: no hashes (checking overflow for max Cql hash)
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, "<=", std::get<0>(rows[9]), func_name, ">",
+        max_hash), processor, rows, 0, 0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with range limits
+    //----------------------------------------------------------------------------------------------
+    // Entire range: [min, max].
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name, "<=", max_hash),
+        processor, rows, 0, 10);
+
+    // Entire range: [min, min] (upper bound min is treated as a special case in Cassandra).
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name,  "<=", min_hash),
+        processor, rows, 0, func_name == "token" ? 10 : 0);
+
+    // Entire range: [min, min). (upper bound min is treated as a special case in Cassandra).
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name, "<", min_hash),
+        processor, rows, 0, func_name == "token" ? 10 : 0);
+
+    // Empty range: (max, max].
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">", max_hash, func_name, "<=", max_hash),
+        processor, rows, 0, 0);
+
+    // Empty range: (max, min] (max as strict lower bound already excludes all hashes).
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, ">", max_hash, func_name, "<=", min_hash),
+        processor, rows, 0, 0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with exact partition key
+    //----------------------------------------------------------------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) = $1";
+    // testing existing hash: 2
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
+        2, 3);
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
+        2, 3);
+    // testing non-existing hash: empty
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        rows, 0, 0);
+    TestSelectWithoutOrderBy(
+        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        rows, 0, 0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Select with conditions on both partition key and individual hash columns
+    //   - These queries are not always logical (i.e. partition key condition is usually irrelevant
+    //   - if part. column values are given) but Cassandra supports them so we replicate its
+    //     behavior
+    //----------------------------------------------------------------------------------------------
+    select_stmt_template = "SELECT * FROM scan_bounds_test WHERE "
+        "h1 = $0 AND h2 = '$1' AND $2(h1, h2) $3 $4";
+
+    // checking existing row with exact partition key: 6
+    TestSelectWithOrderBy(
+        Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]), func_name,
+                   "=", std::get<0>(rows[6])), processor, rows, 6, 7);
+    // checking existing row with partition key bound: 3 with partition upper bound 7 (to include 3)
+    TestSelectWithOrderBy(
+        Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]), func_name,
+                   "<=", std::get<0>(rows[7])), processor, rows, 3, 4);
+    // checking existing row with partition key bound: 4 with partition lower bound 5 (to exclude 4)
+    TestSelectWithOrderBy(
+        Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]), func_name,
+                   ">=", std::get<0>(rows[5])), processor, rows, 0, 0);
+    // checking existing row with partition key bound: 7 with partition upper bound 6 (to exclude 7)
+    TestSelectWithOrderBy(
+        Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]), func_name,
+                   "<=", std::get<0>(rows[6])), processor, rows, 0, 0);
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Invalid Statements
+    //----------------------------------------------------------------------------------------------
+
+    // Invalid number of arguments.
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0() > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1) > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2,h1) > 0",
+                                  func_name));
+
+    // Invalid argument values.
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h2,h1) > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h1) > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h2,h2) > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(r1,h2) > 0", func_name));
+    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(r1,v1) > 0", func_name));
+
+    // Illogical conditions.
+    // Two "greater-than" bounds
+    CHECK_INVALID_STMT(
+        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) > 0 AND $1(h1,h2) >= 0",
+        func_name, func_name));
+    // Two "less-than" bounds
+    CHECK_INVALID_STMT(
+        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) <= 0 AND $1(h1,h2) < 0",
+        func_name, func_name));
+    // Two "equal" conditions
+    CHECK_INVALID_STMT(
+        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) = 0",
+        func_name, func_name));
+    // Both "equal" and "less than" conditions
+    CHECK_INVALID_STMT(
+        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) <= 0",
+        func_name, func_name));
+    // Both "equal" and "greater than" conditions
+    CHECK_INVALID_STMT(
+        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) >= 0",
+        func_name, func_name));
+  }
+
+  void TestPartitionHash(const std::string& func_name) {
+    //----------------------------------------------------------------------------------------------
+    // Setting up cluster
+    //----------------------------------------------------------------------------------------------
+
+    // Init the simulated cluster.
+    ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+    // Get a processor.
+    TestQLProcessor *processor = GetQLProcessor();
+
+    //----------------------------------------------------------------------------------------------
+    // Testing all simple types (that are allowed in primary keys)
+    //----------------------------------------------------------------------------------------------
+    CHECK_OK(processor->Run(
+        "create table partition_hash_bcall_simple_test("
+        " h1 tinyint, h2 smallint, h3 int, h4 bigint, h5 varchar, h6 blob, h7 timestamp, "
+        " h8 decimal, h9 inet, h10 uuid, h11 timeuuid, r int, v int,"
+        " primary key((h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11), r));"));
+
+    // Sample values to check hash value computation
+    string key_values = "99, 9999, 999999, 99999999, 'foo bar', 0x12fe9a, "
+        "'1999-12-01 16:32:44 GMT', 987654.0123, '204.101.0.168', "
+        "97bda55b-6175-4c39-9e04-7c0205c709dc, 97bda55b-6175-1c39-9e04-7c0205c709dc";
+
+    string insert_stmt = "INSERT INTO partition_hash_bcall_simple_test (h1, h2, h3, h4, h5, h6, "
+        "h7, h8, h9, h10, h11, r, v) VALUES ($0, 1, 1);";
+
+    CHECK_OK(processor->Run(Substitute(insert_stmt, key_values)));
+
+    string select_stmt = Substitute(
+        "SELECT * FROM partition_hash_bcall_simple_test WHERE "
+            "$0(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11) = $1($2)", func_name,
+        func_name, key_values);
+
+    CHECK_OK(processor->Run(select_stmt));
+    auto row_block = processor->row_block();
+
+    // Checking result.
+    ASSERT_EQ(1, row_block->row_count());
+
+    //----------------------------------------------------------------------------------------------
+    // Testing parametric types (i.e. with frozen)
+    //----------------------------------------------------------------------------------------------
+    CHECK_OK(processor->Run("CREATE TYPE udt_partition_hash_test(a int, b text)"));
+
+    CHECK_OK(processor->Run(
+        "CREATE TABLE partition_hash_bcall_frozen_test("
+        " h1 frozen<map<int,text>>, h2 frozen<set<text>>, h3 frozen<list<int>>, "
+        " h4 frozen<udt_partition_hash_test>, r int, v int, PRIMARY KEY ((h1, h2, h3, h4), r))"));
+
+    // Sample values to check hash value computation
+    key_values = "{1 : 'a', 2 : 'b'}, {'x', 'y'}, [3, 1, 2], {a : 1, b : 'foo'}";
+
+    insert_stmt = Substitute("INSERT INTO partition_hash_bcall_frozen_test "
+                                 "(h1, h2, h3, h4, r, v) VALUES ($0, 1, 1);", key_values);
+    CHECK_OK(processor->Run(insert_stmt));
+
+    select_stmt = Substitute("SELECT * FROM partition_hash_bcall_frozen_test WHERE "
+                                 "$0(h1, h2, h3, h4) = $1($2)", func_name, func_name, key_values);
+    CHECK_OK(processor->Run(select_stmt));
+
+    // Checking result.
+    row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+  }
+
 };
 
 TEST_F(TestQLQuery, TestMissingSystemTable) {
@@ -1246,332 +1588,41 @@ TEST_F(TestQLQuery, TestPagination) {
 }
 
 TEST_F(TestQLQuery, TestTokenBcall) {
-  //------------------------------------------------------------------------------------------------
-  // Setting up cluster
-  //------------------------------------------------------------------------------------------------
-
-  // Init the simulated cluster.
-  ASSERT_NO_FATALS(CreateSimulatedCluster());
-
-  // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
-
-  //------------------------------------------------------------------------------------------------
-  // Testing all simple types (that are allowed in primary keys)
-  //------------------------------------------------------------------------------------------------
-  CHECK_OK(processor->Run("create table token_bcall_simple_test("
-      " h1 tinyint, h2 smallint, h3 int, h4 bigint, h5 varchar, h6 blob, h7 timestamp, "
-      " h8 decimal, h9 inet, h10 uuid, h11 timeuuid, r int, v int,"
-      " primary key((h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11), r));"));
-
-  // Sample values to check hash value computation
-  string key_values = "99, 9999, 999999, 99999999, 'foo bar', 0x12fe9a, "
-      "'1999-12-01 16:32:44 GMT', 987654.0123, '204.101.0.168', "
-      "97bda55b-6175-4c39-9e04-7c0205c709dc, 97bda55b-6175-1c39-9e04-7c0205c709dc";
-
-  string insert_stmt = "INSERT INTO token_bcall_simple_test (h1, h2, h3, h4, h5, h6, h7, h8, h9, "
-      "h10, h11, r, v) VALUES ($0, 1, 1);";
-
-  CHECK_OK(processor->Run(Substitute(insert_stmt, key_values)));
-
-  string select_stmt = Substitute("SELECT * FROM token_bcall_simple_test WHERE "
-      "token(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11) = token($0)", key_values);
-
-  CHECK_OK(processor->Run(select_stmt));
-  auto row_block = processor->row_block();
-
-  // Checking result.
-  ASSERT_EQ(1, row_block->row_count());
-
-  //------------------------------------------------------------------------------------------------
-  // Testing parametric types (i.e. with frozen)
-  //------------------------------------------------------------------------------------------------
-  CHECK_OK(processor->Run("CREATE TYPE udt_token_test(a int, b text)"));
-
-  CHECK_OK(processor->Run("CREATE TABLE token_bcall_frozen_test("
-      " h1 frozen<map<int,text>>, h2 frozen<set<text>>, h3 frozen<list<int>>, "
-      " h4 frozen<udt_token_test>, r int, v int, PRIMARY KEY ((h1, h2, h3, h4), r))"));
-
-  // Sample values to check hash value computation
-  key_values = "{1 : 'a', 2 : 'b'}, {'x', 'y'}, [3, 1, 2], {a : 1, b : 'foo'}";
-
-  insert_stmt = Substitute("INSERT INTO token_bcall_frozen_test "
-     "(h1, h2, h3, h4, r, v) VALUES ($0, 1, 1);", key_values);
-  CHECK_OK(processor->Run(insert_stmt));
-
-  select_stmt = Substitute("SELECT * FROM token_bcall_frozen_test WHERE "
-      "token(h1, h2, h3, h4) = token($0)", key_values);
-  CHECK_OK(processor->Run(select_stmt));
-
-  // Checking result.
-  row_block = processor->row_block();
-  ASSERT_EQ(1, row_block->row_count());
+  TestPartitionHash("token");
 }
 
-TEST_F(TestQLQuery, TestScanWithBounds) {
-  //------------------------------------------------------------------------------------------------
-  // Setting up cluster
-  //------------------------------------------------------------------------------------------------
+TEST_F(TestQLQuery, TestPartitionHashBcall) {
+  TestPartitionHash("partition_hash");
+}
 
-  // Init the simulated cluster.
-  ASSERT_NO_FATALS(CreateSimulatedCluster());
+TEST_F(TestQLQuery, TestScanWithBoundsToken) {
+  TestScanWithBoundsPartitionOps("token", std::numeric_limits<int64_t>::max(),
+                                 std::numeric_limits<int64_t>::min());
+}
 
+TEST_F(TestQLQuery, TestScanWithBoundsPartitionHash) {
+  TestScanWithBoundsPartitionOps("partition_hash", std::numeric_limits<uint16_t>::max(),
+                                 std::numeric_limits<uint16_t>::min());
   // Get a processor.
   TestQLProcessor *processor = GetQLProcessor();
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE partition_hash(h1, h2) > 65536");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE partition_hash(h1, h2) > -1");
 
-  // Create test table.
-  CHECK_OK(processor->Run("CREATE TABLE scan_bounds_test (h1 int, h2 text, r1 int, v1 int,"
-                          " PRIMARY KEY((h1, h2), r1));"));
-
-  client::YBTableName name(kDefaultKeyspaceName, "scan_bounds_test");
-  shared_ptr<client::YBTable> table;
-
-  ASSERT_OK(client_->OpenTable(name, &table));
-
-  //------------------------------------------------------------------------------------------------
-  // Initializing rows data
-  //------------------------------------------------------------------------------------------------
-
-  // generating input data with hash_code and inserting into table
-  std::vector<std::tuple<int64_t, int, string, int, int>> rows;
-  for (int i = 0; i < 10; i++) {
-    std::string i_str = std::to_string(i);
-    google::protobuf::RepeatedPtrField<QLExpressionPB> row;
-    row.Add()->mutable_value()->set_int32_value(i);
-    row.Add()->mutable_value()->set_string_value(i_str);
-
-    std::string part_key;
-    CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
-    uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);
-
-    int64_t cql_hash = YBPartition::YBToCqlHashCode(hash_code);
-    std::tuple<int64_t, int, string, int, int> values(cql_hash, i, i_str, i, i);
-    rows.push_back(values);
-    string stmt = Substitute("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
-                             "($0, '$1', $2, $3);", i, i, i, i);
-    CHECK_OK(processor->Run(stmt));
-  }
-
-  // ordering rows by hash code
-  std::sort(rows.begin(), rows.end(),
-      [](const std::tuple<int64_t, int, string, int, int>& r1,
-         const std::tuple<int64_t, int, string, int, int>& r2) -> bool {
-        return std::get<0>(r1) < std::get<0>(r2);
-      });
-
-  // CQL uses 64 bit hashes, but YB uses 16-bit internally.
-  // Our bucket range is [cql_hash, cql_hash + bucket_size) -- start-inclusive, end-exclusive
-  // We test the bucket ranges below by choosing the appropriate values for the bounds.
-  int64_t bucket_size = 1;
-  bucket_size = bucket_size << 48;
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with lower bound
-  //------------------------------------------------------------------------------------------------
-
-  //---------------------------------- Exclusive Lower Bound ---------------------------------------
-  string select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) > $0";
-
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[0]) - 1), processor, rows,
-      0, 10);
-  // Partial range: hashes 4, 5, 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[3])), processor, rows,
-      4, 10);
-  // Empty range: no hashes.
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9])), processor, rows,
-      0, 0);
-  // Empty range: no hashes (checking overflow for max Cql hash)
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, INT64_MAX), processor, rows,
-      0, 0);
-
-  //---------------------------------- Inclusive Lower Bound ---------------------------------------
-  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) >= $0";
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1), processor, rows,
-      0, 10);
-  // Partial range: hashes 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[6]) + bucket_size - 1), processor, rows,
-      6, 10);
-  // Empty range: no hashes
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
-      0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with upper bound
-  //------------------------------------------------------------------------------------------------
-
-  //---------------------------------- Exclusive Upper Bound ---------------------------------------
-  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) < $0";
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
-      0, 10);
-  // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
-      0, 7);
-  // Empty range: no hashes
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1), processor, rows,
-      0, 0);
-
-  //---------------------------------- Inclusive Upper Bound ---------------------------------------
-  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) <= $0";
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9])), processor, rows,
-      0, 10);
-  // Partial range: hashes 0, 1, 2
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
-      0, 3);
-  // Empty range: no hashes
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[0]) - 1), processor, rows,
-      0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with both lower and upper bounds
-  //------------------------------------------------------------------------------------------------
-  select_stmt_template =
-      "SELECT * FROM scan_bounds_test WHERE token(h1, h2) $0 $1 AND token(h1, h2) $2 $3";
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", std::get<0>(rows[0]) + bucket_size - 1,
-          "<=", std::get<0>(rows[9])), processor, rows,
-      0, 10);
-  // Partial Range: hashes 2, 3, 4, 5, 6, 7, 8
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">", std::get<0>(rows[1]),
-          "<=", std::get<0>(rows[8])), processor, rows,
-      2, 9);
-  // Partial Range: hashes 4, 5, 6
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", std::get<0>(rows[4]) + bucket_size - 1,
-          "<", std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
-      4, 7);
-  // Empty Range (inclusive lower bound): no hashes
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", std::get<0>(rows[2]) + bucket_size - 1,
-          "<", std::get<0>(rows[2]) + bucket_size - 1), processor, rows,
-      0, 0);
-  // Empty Range (inclusive upper bound): no hashes
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">", std::get<0>(rows[2]),
-          "<=", std::get<0>(rows[2])), processor, rows,
-      0, 0);
-  // Empty range: no hashes (checking overflow for max Cql hash)
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, "<=", std::get<0>(rows[9]), ">", INT64_MAX), processor, rows,
-      0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with token range limits
-  //------------------------------------------------------------------------------------------------
-  // Entire range: [min, max].
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", INT64_MIN, "<=", INT64_MAX), processor, rows, 0, 10);
-
-  // Entire range: [min, min] (upper bound min is treated as a special case in Cassandra).
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", INT64_MIN, "<=", INT64_MIN), processor, rows, 0, 10);
-
-  // Entire range: [min, min). (upper bound min is treated as a special case in Cassandra).
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">=", INT64_MIN, "<", INT64_MIN), processor, rows, 0, 10);
-
-  // Empty range: (max, max].
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">", INT64_MAX, "<=", INT64_MAX), processor, rows, 0, 0);
-
-  // Empty range: (max, min] (max as strict lower bound already excludes all hashes).
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, ">", INT64_MAX, "<=", INT64_MIN), processor, rows, 0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with exact partition key (equal condition with token)
-  //------------------------------------------------------------------------------------------------
-  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) = $0";
-  // testing existing hash: 2
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
-      2, 3);
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
-      2, 3);
-  // testing non-existing hash: empty
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
-      0, 0);
-  TestSelectWithoutOrderBy(
-      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
-      0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Select with conditions on both partition key and individual hash columns
-  //   - These queries are not always logical (i.e. partition key condition is usually irrelevant
-  //   - if part. column values are given) but Cassandra supports them so we replicate its behavior
-  //------------------------------------------------------------------------------------------------
-  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE "
-                         "h1 = $0 AND h2 = '$1' AND token(h1, h2) $2 $3";
-
-  // checking existing row with exact partition key: 6
-  TestSelectWithOrderBy(
-      Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]),
-          "=", std::get<0>(rows[6])), processor, rows,
-      6, 7);
-  // checking existing row with partition key bound: 3 with partition upper bound 7 (to include 3)
-  TestSelectWithOrderBy(
-      Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]),
-          "<=", std::get<0>(rows[7])), processor, rows,
-      3, 4);
-  // checking existing row with partition key bound: 4 with partition lower bound 5 (to exclude 4)
-  TestSelectWithOrderBy(
-      Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]),
-          ">=", std::get<0>(rows[5])), processor, rows,
-      0, 0);
-  // checking existing row with partition key bound: 7 with partition upper bound 6 (to exclude 7)
-  TestSelectWithOrderBy(
-      Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]),
-          "<=", std::get<0>(rows[6])), processor, rows,
-      0, 0);
-
-  //------------------------------------------------------------------------------------------------
-  // Testing Invalid Statements
-  //------------------------------------------------------------------------------------------------
-
-  // Invalid number of arguments for token
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token() > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1) > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2,h1) > 0");
-
-  // Invalid argument values for token
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h2,h1) > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h1) > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h2,h2) > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(r1,h2) > 0");
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(r1,v1) > 0");
-
-  // Illogical conditions on token
-  // Two "greater-than" bounds
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) > 0 AND token(h1,h2) >= 0");
+  // Test mix of partition hash and token
+  CHECK_INVALID_STMT(
+      "SELECT * FROM scan_bounds_test WHERE partition_hash(h1,h2) > 0 AND token(h1,h2) >= 0");
   // Two "less-than" bounds
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) <= 0 AND token(h1,h2) < 0");
+  CHECK_INVALID_STMT(
+      "SELECT * FROM scan_bounds_test WHERE partition_hash(h1,h2) <= 0 AND token(h1,h2) < 0");
   // Two "equal" conditions
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) = 0");
+  CHECK_INVALID_STMT(
+      "SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND partition_hash(h1,h2) = 0");
   // Both "equal" and "less than" conditions
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) <= 0");
+  CHECK_INVALID_STMT(
+      "SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND partition_hash(h1,h2) <= 0");
   // Both "equal" and "greater than" conditions
-  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) >= 0");
-
+  CHECK_INVALID_STMT(
+      "SELECT * FROM scan_bounds_test WHERE partition_hash(h1,h2) = 0 AND token(h1,h2) >= 0");
 }
 
 TEST_F(TestQLQuery, TestInvalidGrammar) {
