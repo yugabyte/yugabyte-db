@@ -1299,6 +1299,12 @@ class PTBindVar : public PTExpr {
     return token_bindvar_name;
   }
 
+  // Name used for binding the 'partition_hash()' builtin function.
+  static const string& partition_hash_bindvar_name() {
+    static string partition_hash_bindvar_name = "[partition_hash]";
+    return partition_hash_bindvar_name;
+  }
+
   // The name Cassandra uses for binding the args of a builtin system call e.g. "token(?, ?)"
   static const string bcall_arg_bindvar_name(const string& bcall_name, size_t arg_position) {
     return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);

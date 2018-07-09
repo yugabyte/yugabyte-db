@@ -115,6 +115,67 @@ class BfqlTest : public YBTest {
 
     return Status::OK();
   }
+
+  // Test token() and partition_hash().
+  template <typename ResultVal, typename BuiltinFunction>
+  void testPartitionHash(const std::string& name, DataType return_type, ResultVal result_val,
+                         BuiltinFunction builtin_function) {
+    BFTestValue::SharedPtr result = make_shared<BFTestValue>();
+    vector<BFTestValue::SharedPtr> test_params(8);
+    for (int pindex = 0; pindex < 8; pindex++) {
+      test_params[pindex] = make_shared<BFTestValue>();
+    }
+    test_params[0]->set_int8_value(100);
+    test_params[1]->set_int16_value(200);
+    test_params[2]->set_int32_value(300);
+    test_params[3]->set_int64_value(400);
+    test_params[4]->set_timestamp_value(500);
+    test_params[5]->set_string_value("600");
+    test_params[7]->set_binary_value("700");
+
+    Uuid uuid;
+    ASSERT_OK(uuid.FromString("80000000-0000-0000-0000-000000000000"));
+    test_params[6]->set_uuid_value(uuid);
+
+    // Convert test_params to params.
+    vector<BFTestValue::SharedPtr> params(test_params.begin(), test_params.end());
+
+    // Use wrong return type and expect error.
+    // NOTES:
+    // - BFExecApiTest::ExecQLFunc("builin_name") will combine the two steps of finding and
+    //   executing opcode into one function call. This is only convenient for testing. In actual
+    //   code, except execute-immediate feature, this process is divided into two steps.
+    result->set_ql_type_id(DataType::STRING);
+    ASSERT_NOK(BFExecApiTest::ExecQLFunc(name, params, result));
+
+    // Use correct return type.
+    result->set_ql_type_id(return_type);
+    ASSERT_OK(BFExecApiTest::ExecQLFunc(name, params, result));
+
+    // Call the C++ function directly and verify result.
+    BFTestValue::SharedPtr expected_result = make_shared<BFTestValue>();
+    ASSERT_OK(builtin_function(params, expected_result));
+    ASSERT_EQ(result_val(result), result_val(expected_result));
+
+    // Convert shared_ptr to raw pointer to test the API for raw pointers.
+    BFTestValue *raw_result = result.get();
+    vector<BFTestValue*> raw_params(8);
+    for (int pindex = 0; pindex < 8; pindex++) {
+      raw_params[pindex] = params[pindex].get();
+    }
+
+    // Use wrong return type and expect error.
+    raw_result->set_ql_type_id(DataType::STRING);
+    ASSERT_NOK(BFExecApiTest::ExecQLFunc(name, raw_params, raw_result));
+
+    // Use correct return type.
+    raw_result->set_ql_type_id(return_type);
+    ASSERT_OK(BFExecApiTest::ExecQLFunc(name, raw_params, raw_result));
+
+    // Call the C++ function directly and verify result.
+    ASSERT_OK(builtin_function(params, expected_result));
+    ASSERT_EQ(result_val(result), result_val(expected_result));
+  }
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -337,62 +398,25 @@ TEST_F(BfqlTest, TestCompatibleSignature) {
 }
 
 // Test variadic function calls (TOKEN).
-TEST_F(BfqlTest, TestVariadicBuiltin) {
-  BFTestValue::SharedPtr result = make_shared<BFTestValue>();
-  vector<BFTestValue::SharedPtr> test_params(8);
-  for (int pindex = 0; pindex < 8; pindex++) {
-    test_params[pindex] = make_shared<BFTestValue>();
-  }
-  test_params[0]->set_int8_value(100);
-  test_params[1]->set_int16_value(200);
-  test_params[2]->set_int32_value(300);
-  test_params[3]->set_int64_value(400);
-  test_params[4]->set_timestamp_value(500);
-  test_params[5]->set_string_value("600");
-  test_params[7]->set_binary_value("700");
+TEST_F(BfqlTest, TestVariadicBuiltinToken) {
+  testPartitionHash("token", DataType::INT64,
+                    [](BFTestValue::SharedPtr val) -> int64_t { return val->int64_value(); },
+                    [](const vector<BFTestValue::SharedPtr>& params,
+                       BFTestValue::SharedPtr expected_result) -> Status {
+                      return Token<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(params,
+                                                                                   expected_result);
+                    });
+}
 
-  Uuid uuid;
-  ASSERT_OK(uuid.FromString("80000000-0000-0000-0000-000000000000"));
-  test_params[6]->set_uuid_value(uuid);
-
-  // Convert test_params to params.
-  vector<BFTestValue::SharedPtr> params(test_params.begin(), test_params.end());
-
-  // Use wrong return type and expect error.
-  // NOTES:
-  // - BFExecApiTest::ExecQLFunc("builin_name") will combine the two steps of finding and
-  //   executing opcode into one function call. This is only convenient for testing. In actual code,
-  //   except execute-immediate feature, this process is divided into two steps.
-  result->set_ql_type_id(DataType::STRING);
-  ASSERT_NOK(BFExecApiTest::ExecQLFunc("token", params, result));
-
-  // Use correct return type.
-  result->set_ql_type_id(DataType::INT64);
-  ASSERT_OK(BFExecApiTest::ExecQLFunc("token", params, result));
-
-  // Call the C++ function Token() directly and verify result.
-  BFTestValue::SharedPtr expected_result = make_shared<BFTestValue>();
-  ASSERT_OK((Token<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(params, expected_result)));
-  ASSERT_EQ(result->int64_value(), expected_result->int64_value());
-
-  // Convert shared_ptr to raw pointer to test the API for raw pointers.
-  BFTestValue *raw_result = result.get();
-  vector<BFTestValue*> raw_params(8);
-  for (int pindex = 0; pindex < 8; pindex++) {
-    raw_params[pindex] = params[pindex].get();
-  }
-
-  // Use wrong return type and expect error.
-  raw_result->set_ql_type_id(DataType::STRING);
-  ASSERT_NOK(BFExecApiTest::ExecQLFunc("token", raw_params, raw_result));
-
-  // Use correct return type.
-  raw_result->set_ql_type_id(DataType::INT64);
-  ASSERT_OK(BFExecApiTest::ExecQLFunc("token", raw_params, raw_result));
-
-  // Call the C++ function Token() directly and verify result.
-  ASSERT_OK((Token<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(params, expected_result)));
-  ASSERT_EQ(raw_result->int64_value(), expected_result->int64_value());
+// Test variadic function calls (PARTITION_HASH).
+TEST_F(BfqlTest, TestVariadicBuiltinPartitionHash) {
+  testPartitionHash("partition_hash", DataType::INT32,
+                    [](BFTestValue::SharedPtr val) -> int32_t { return val->int32_value(); },
+                    [](const vector<BFTestValue::SharedPtr>& params,
+                       BFTestValue::SharedPtr expected_result) -> Status {
+                      return PartitionHash<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(
+                          params, expected_result);
+                    });
 }
 
 // Test bad function calls.

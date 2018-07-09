@@ -167,11 +167,45 @@ class PTToken : public PTBcall {
     return is_partition_key_ref_;
   }
 
+  virtual const std::string func_name() {
+    return "token";
+  }
+
  private:
   // true if this token call is just reference to the partition key, e.g.: "token(h1, h2, h3)"
   // false for regular builtin calls to be evaluated, e.g.: "token(2,3,4)"
   bool is_partition_key_ref_ = false;
 };
+
+// Represents partition_hash() function.
+class PTPartitionHash : public PTToken {
+ public:
+
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTPartitionHash> SharedPtr;
+  typedef MCSharedPtr<const PTPartitionHash> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTPartitionHash(MemoryContext *memctx,
+                  YBLocation::SharedPtr loc,
+                  const MCSharedPtr<MCString>& name,
+                  PTExprListNode::SharedPtr args) : PTToken(memctx, loc, name, args) { }
+
+  virtual ~PTPartitionHash() {}
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTPartitionHash::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTPartitionHash>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  const std::string func_name() override {
+    return "partition_hash";
+  }
+};
+
 
 }  // namespace ql
 }  // namespace yb
