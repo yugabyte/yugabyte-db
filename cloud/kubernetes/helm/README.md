@@ -50,7 +50,7 @@ helm init --service-account yugabyte-helm --upgrade
 ### Installing YugaByte helm package on your kubernetes cluster
 If the helm init was successful then you can go ahead and run the helm install command to install the yugabyte helm chart 
 ```
-helm install yugabyte --name yb-demo
+helm install yugabyte --namespace yb-demo --name yb-demo
 ```
 
 Follow the instructions on the NOTES section.
