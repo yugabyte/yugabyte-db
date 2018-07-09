@@ -356,3 +356,15 @@
     display: flex;
   }
 }
+
+.btn-group-radio {
+  label {
+    &.readonly {
+      cursor: not-allowed;
+    }
+    &.readonly:not(.btn-orange) {
+      background-color: #eee;
+      border-color: #dedee0;
+    }
+  }
+}
