@@ -220,16 +220,17 @@ Given that you've already built C++ and Java code you can run Java tests using f
 ./yb_build.sh release --scb --sj --java-tests
 ```
 
-If you omit `release` argument, it will run java tests against debug YugaByte build.
+If you omit `release` argument, it will run java tests against debug YugaByte build, so you should then either
+build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
 
 Alternatively, to run specific test:
 ```
-./yb_build.sh --scb --sj --java-test org.yb.client.TestYBClient
+./yb_build.sh release --scb --sj --java-test org.yb.client.TestYBClient
 ```
 
 To run a specific Java sub-test within a test file use the # syntax, for example:
 ```
-./yb_build.sh --scb --sj --java-test org.yb.client.TestYBClient#testClientCreateDestroy
+./yb_build.sh release --scb --sj --java-test org.yb.client.TestYBClient#testClientCreateDestroy
 ```
 
 ###  Viewing log outputs of Java tests
