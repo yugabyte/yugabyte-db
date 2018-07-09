@@ -520,6 +520,9 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
         if (strcmp(bcall->name()->c_str(), "token") == 0) {
           sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
         }
+        if (strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
+          sem_state->set_bindvar_name(PTBindVar::partition_hash_bindvar_name());
+        }
       }
       break;
     }
@@ -631,13 +634,15 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2, ref->operators());
     } else if (op1->expr_op() == ExprOperator::kBcall) {
       const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
-      if (strcmp(bcall->name()->c_str(), "token") == 0) {
+      if (strcmp(bcall->name()->c_str(), "token") == 0 ||
+          strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
         const PTToken *token = static_cast<const PTToken *>(bcall);
         if (token->is_partition_key_ref()) {
           return where_state->AnalyzePartitionKeyOp(sem_context, this, op2);
         } else {
-          return sem_context->Error(this, "Only token calls that reference partition key allowed",
-              ErrorCode::FEATURE_NOT_SUPPORTED);
+          return sem_context->Error(this,
+                                    "token/partition_hash calls need to reference partition key",
+                                    ErrorCode::FEATURE_NOT_SUPPORTED);
         }
       } else if (strcmp(bcall->name()->c_str(), "ttl") == 0 ||
                  strcmp(bcall->name()->c_str(), "writetime") == 0 ||

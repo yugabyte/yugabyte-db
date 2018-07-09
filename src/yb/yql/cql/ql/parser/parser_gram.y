@@ -639,6 +639,7 @@ using namespace yb::ql;
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
                           THEN TIME TIMESTAMP TIMEUUID TINYINT TO TOKEN TRAILING TRANSACTION
                           TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
+                          PARTITION_HASH
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USE USER USING UUID
@@ -3482,7 +3483,8 @@ func_application:
     }
     $$ = MAKE_NODE(@1, PTBcall, $1, $3);
   }
-  // special treatment for token because it is a reserved keyword and produces a dedicated C++ class
+  // special treatment for token and partition_hash because it is a reserved keyword and produces
+  // a dedicated C++ class.
   | TOKEN '(' ')' {
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
     auto name = parser_->MakeString($1);
@@ -3494,6 +3496,18 @@ func_application:
     }
     auto name = parser_->MakeString($1);
     $$ = MAKE_NODE(@1, PTToken, name, $3);
+  }
+  | PARTITION_HASH '(' ')' {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
+    auto name = parser_->MakeString($1);
+    $$ = MAKE_NODE(@1, PTPartitionHash, name, args);
+  }
+  | PARTITION_HASH '(' func_arg_list opt_sort_clause ')' {
+    if ($4 != nullptr) {
+      PARSER_UNSUPPORTED(@1);
+    }
+    auto name = parser_->MakeString($1);
+    $$ = MAKE_NODE(@1, PTPartitionHash, name, $3);
   }
   | CAST '(' a_expr AS Typename ')' {
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
@@ -5357,6 +5371,7 @@ reserved_keyword:
   | ONLY { $$ = $1; }
   | OR { $$ = $1; }
   | ORDER { $$ = $1; }
+  | PARTITION_HASH { $$ = $1; }
   | PLACING { $$ = $1; }
   | PRIMARY { $$ = $1; }
   | REFERENCES { $$ = $1; }

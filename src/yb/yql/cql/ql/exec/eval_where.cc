@@ -77,9 +77,22 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
     QLValue result;
     RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row(), &result));
-    DCHECK(result.value().has_int64_value())
-        << "Partition key operations are expected to return BIGINT";
-    uint16_t hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
+    DCHECK(result.value().has_int64_value() || result.value().has_int32_value())
+        << "Partition key operations are expected to return 64/16 bit integer";
+    uint16_t hash_code;
+    // 64 bits for token and 32 bits for partition_hash.
+    if (result.value().has_int32_value()) {
+      // Validate bounds for uint16_t.
+      int32_t val = result.int32_value();
+      if (val < std::numeric_limits<uint16_t>::min() ||
+          val > std::numeric_limits<uint16_t>::max()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "$0 out of bounds for unsigned 16 bit integer",
+                                 val);
+      }
+      hash_code = val;
+    } else {
+      hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
+    }
 
     // We always use inclusive intervals [start, end] for hash_code
     switch (op.yb_op()) {
@@ -98,7 +111,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
       case QL_OP_LESS_THAN:
         // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
         // adds no real restriction). So we skip (do nothing) in that case.
-        if (result.int64_value() != INT64_MIN) {
+        if (!result.value().has_int64_value() || result.int64_value() != INT64_MIN) {
           if (hash_code > YBPartition::kMinHashCode) {
             req->set_max_hash_code(hash_code - 1);
           } else {
@@ -111,7 +124,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
       case QL_OP_LESS_THAN_EQUAL:
         // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
         // adds no real restriction). So we skip (do nothing) in that case.
-        if (result.int64_value() != INT64_MIN) {
+        if (!result.value().has_int64_value() || result.int64_value() != INT64_MIN) {
           req->set_max_hash_code(hash_code);
         }
         break;

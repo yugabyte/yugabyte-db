@@ -73,16 +73,28 @@ Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
 //--------------------------------------------------------------------------------------------------
 
 template<typename PTypePtr, typename RTypePtr>
-Status Token(const vector<PTypePtr>& params, RTypePtr result) {
+uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
   for (int i = 0; i < params.size(); i++) {
     const PTypePtr& param = params[i];
     param->AppendToKeyBytes(&encoded_key);
   }
 
-  uint16_t hash = YBPartition::HashColumnCompoundValue(encoded_key);
+  return YBPartition::HashColumnCompoundValue(encoded_key);
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status Token(const vector<PTypePtr>& params, RTypePtr result) {
+  uint16_t hash = YBHash(params, result);
   // Convert to CQL hash since this may be used in expressions above.
   result->set_int64_value(YBPartition::YBToCqlHashCode(hash));
+
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
+  result->set_int32_value(YBHash(params, result));
 
   return Status::OK();
 }

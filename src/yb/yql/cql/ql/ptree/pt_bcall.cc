@@ -346,8 +346,10 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   // Analyzing the arguments: their types need to be inferred based on table schema (hash columns).
   size_t size = sem_context->current_table()->schema().num_hash_key_columns();
   if (args().size() != size) {
-    return sem_context->Error(this, "Invalid token call, wrong number of arguments",
-                              ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(
+        this,
+        Substitute("Invalid $0 call, wrong number of arguments", func_name()).c_str(),
+        ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   // Check if reference to partition key.
@@ -356,16 +358,19 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
     for (const PTExpr::SharedPtr &arg : args()) {
       if (arg->expr_op() != ExprOperator::kRef) {
         return sem_context->Error(arg,
-            "Invalid token call, all arguments must be either column references or literals",
+            Substitute("Invalid $0 call, all arguments must be either column references or "
+            "literals", func_name()).c_str(),
             ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       PTRef *col_ref = static_cast<PTRef *>(arg.get());
       RETURN_NOT_OK(col_ref->Analyze(sem_context));
       if (col_ref->desc()->index() != index) {
-        return sem_context->Error(col_ref,
-                                  "Invalid token call, found reference to unexpected column",
-                                  ErrorCode::CQL_STATEMENT_INVALID);
+        return sem_context->Error(
+            col_ref,
+            Substitute("Invalid $0 call, found reference to unexpected column",
+                       func_name()).c_str(),
+            ErrorCode::CQL_STATEMENT_INVALID);
       }
       index++;
     }
@@ -382,14 +387,15 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
         arg->expr_op() != ExprOperator::kCollection &&
         arg->expr_op() != ExprOperator::kBindVar) {
       return sem_context->Error(arg,
-          "Invalid token call, all arguments must be either column references or literals",
+          Substitute("Invalid $0 call, all arguments must be either column references or "
+          "literals", func_name()).c_str(),
           ErrorCode::CQL_STATEMENT_INVALID);
     }
     SemState sem_state(sem_context);
     sem_state.SetExprState(schema.Column(index).type(),
                            YBColumnSchema::ToInternalDataType(schema.Column(index).type()));
     if (arg->expr_op() == ExprOperator::kBindVar) {
-      sem_state.set_bindvar_name(PTBindVar::bcall_arg_bindvar_name("token", index));
+      sem_state.set_bindvar_name(PTBindVar::bcall_arg_bindvar_name(func_name(), index));
     }
 
     // All arguments are literals and are folded to the corresponding column type during analysis.
