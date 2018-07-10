@@ -51,7 +51,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   @Inject
   KubernetesManager kubernetesManager;
 
-  static final Pattern nodeNamePattern = Pattern.compile("(.*)-n(\\d+)+");
+  static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   @Override
   public void initialize(ITaskParams params) {
@@ -144,8 +144,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (!matcher.matches()) {
       throw new RuntimeException("Invalid nodeName : " + nodeName);
     }
-    String nodeNamePrefix = matcher.group(1);
-    int nodeIdx = Integer.parseInt(matcher.group(2));
-    return String.format("%s-%s-%d", nodeNamePrefix, isMaster ? "yb-master": "yb-tserver", nodeIdx - 1);
+    int nodeIdx = Integer.parseInt(matcher.group(1));
+    return String.format("%s-%d", isMaster ? "yb-master": "yb-tserver", nodeIdx - 1);
   }
 }

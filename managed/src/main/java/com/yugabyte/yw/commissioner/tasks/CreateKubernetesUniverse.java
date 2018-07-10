@@ -11,6 +11,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.Common;
+import org.yb.client.YBClient;
 
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +50,10 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 
       createSwamperTargetUpdateTask(false);
+
+      // Create a simple redis table.
+      createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
