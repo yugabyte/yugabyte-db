@@ -89,7 +89,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     defaultProvider.save();
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INIT);
     assertEquals(providerConfig, config.getValue());
-    assertEquals(ImmutableList.of("helm", "init", "--service-account", "demo-account", "--upgrade"),
+    assertEquals(ImmutableList.of("helm", "init", "--service-account", "demo-account", "--upgrade", "--wait"),
         command.getValue());
   }
 
@@ -107,7 +107,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void helmInstallWithRequiredConfig() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
-    assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz", "--name", "demo-universe", "--wait"),
+    assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
+        "--namespace", "demo-universe", "--name", "demo-universe", "--wait"),
         command.getValue());
     assertTrue(config.getValue().isEmpty());
   }
@@ -124,7 +125,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void getPodInfos() {
     runCommand(KubernetesCommandExecutor.CommandType.POD_INFO);
-    assertEquals(ImmutableList.of("kubectl", "get", "pods", "-o", "json", "-l", "release=demo-universe"),
+    assertEquals(ImmutableList.of("kubectl", "get", "pods",
+        "--namespace", "demo-universe", "-o", "json",  "-l", "release=demo-universe"),
         command.getValue());
     assertTrue(config.getValue().isEmpty());
   }
@@ -141,8 +143,10 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void deleteStorage() {
     runCommand(KubernetesCommandExecutor.CommandType.VOLUME_DELETE);
     assertEquals(ImmutableList.of(
-        ImmutableList.of("kubectl", "delete", "pvc", "-l", "app=demo-universe-yb-master"),
-        ImmutableList.of("kubectl", "delete", "pvc", "-l", "app=demo-universe-yb-tserver")),
+        ImmutableList.of("kubectl", "delete", "pvc",
+            "--namespace", "demo-universe", "-l", "app=yb-master"),
+        ImmutableList.of("kubectl", "delete", "pvc",
+            "--namespace", "demo-universe", "-l", "app=yb-tserver")),
         command.getAllValues());
     assertTrue(config.getValue().isEmpty());
   }
