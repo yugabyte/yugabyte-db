@@ -17,6 +17,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/result.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -30,12 +31,16 @@ class SecureContext;
 
 namespace server {
 
+YB_DEFINE_ENUM(SecureContextType, (kServerToServer)(kClientToServer));
+
 // Creates secure context and sets up messenger builder to use it.
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& hosts, FsManager* fs_manager, rpc::MessengerBuilder* builder);
+    const std::string& hosts, FsManager* fs_manager, SecureContextType type,
+    rpc::MessengerBuilder* builder);
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& root_dir, const std::string& name, rpc::MessengerBuilder* builder);
+    const std::string& root_dir, const std::string& name, SecureContextType type,
+    rpc::MessengerBuilder* builder);
 
 } // namespace server
 } // namespace yb

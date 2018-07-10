@@ -28,6 +28,8 @@
 
 using namespace std::literals;
 
+DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
+
 namespace yb {
 namespace rpc {
 
@@ -402,8 +404,11 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
       if (bytes[0] == 0x16 && bytes[1] == 0x03) { // TLS handshake header
         state_ = SecureState::kHandshake;
         RETURN_NOT_OK(Init());
-      } else {
+      } else if (FLAGS_allow_insecure_connections) {
         Established(SecureState::kDisabled);
+      } else {
+        return STATUS_FORMAT(NetworkError, "Insecure connection header: $0",
+                             Slice(bytes, 2).ToDebugHexString());
       }
       return ProcessReceived(data, read_buffer_full);
     }

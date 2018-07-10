@@ -28,25 +28,42 @@ DEFINE_string(certs_dir, "",
               "Directory that contains certificate authority, private key and certificates for "
               "this server. By default 'certs' subdir in data folder is used.");
 
+DEFINE_bool(use_client_to_server_encryption, false, "Use client to server encryption");
+
+DEFINE_string(certs_for_client_dir, "",
+              "Directory that contains certificate authority, private key and certificates for "
+              "this server that should be used for client to server communications. "
+              "When empty, the same dir as for server to server communications is used.");
+
 namespace yb {
 namespace server {
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& hosts, FsManager* fs_manager, rpc::MessengerBuilder* builder) {
+    const std::string& hosts, FsManager* fs_manager, SecureContextType type,
+    rpc::MessengerBuilder* builder) {
   std::vector<HostPort> host_ports;
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
   return server::SetupSecureContext(
-      DirName(fs_manager->GetTabletMetadataDir()), host_ports[0].host(), builder);
+      DirName(fs_manager->GetTabletMetadataDir()), host_ports[0].host(), type, builder);
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
-    const std::string& root_dir, const std::string& name, rpc::MessengerBuilder* builder) {
-  if (!FLAGS_use_node_to_node_encryption) {
+    const std::string& root_dir, const std::string& name, SecureContextType type,
+    rpc::MessengerBuilder* builder) {
+  auto use = type == SecureContextType::kServerToServer ? FLAGS_use_node_to_node_encryption
+                                                        : FLAGS_use_client_to_server_encryption;
+  if (!use) {
     return std::unique_ptr<rpc::SecureContext>();
   }
 
-  auto dir = FLAGS_certs_dir;
+  std::string dir;
+  if (type == SecureContextType::kClientToServer) {
+    dir = FLAGS_certs_for_client_dir;
+  }
+  if (dir.empty()) {
+    dir = FLAGS_certs_dir;
+  }
   if (dir.empty()) {
     dir = JoinPathSegments(root_dir, "certs");
   }
@@ -58,13 +75,15 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   RETURN_NOT_OK(ReadFileToString(Env::Default(), JoinPathSegments(dir, "ca.crt"), &data));
   RETURN_NOT_OK(result->AddCertificateAuthority(data));
 
-  RETURN_NOT_OK(ReadFileToString(
-      Env::Default(), JoinPathSegments(dir, Format("node.$0.key", name)), &data));
-  RETURN_NOT_OK(result->UsePrivateKey(data));
+  if (!name.empty()) {
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(dir, Format("node.$0.key", name)), &data));
+    RETURN_NOT_OK(result->UsePrivateKey(data));
 
-  RETURN_NOT_OK(ReadFileToString(
-      Env::Default(), JoinPathSegments(dir, Format("node.$0.crt", name)), &data));
-  RETURN_NOT_OK(result->UseCertificate(data));
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(dir, Format("node.$0.crt", name)), &data));
+    RETURN_NOT_OK(result->UseCertificate(data));
+  }
 
   builder->SetListenProtocol(rpc::SecureStream::StaticProtocol());
   builder->AddStreamFactory(
