@@ -23,7 +23,8 @@ AsyncClientInitialiser::AsyncClientInitialiser(
     const std::string& client_name, const uint32_t num_reactors, const uint32_t timeout_seconds,
     const std::string& tserver_uuid, const yb::server::ServerBaseOptions* opts,
     scoped_refptr<MetricEntity> metric_entity,
-    const std::shared_ptr<MemTracker>& parent_mem_tracker)
+    const std::shared_ptr<MemTracker>& parent_mem_tracker,
+    const std::shared_ptr<rpc::Messenger>& messenger)
     : client_future_(client_promise_.get_future()) {
   client_builder_.set_client_name(client_name);
   client_builder_.default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
@@ -46,6 +47,10 @@ AsyncClientInitialiser::AsyncClientInitialiser(
 
   if (!tserver_uuid.empty()) {
     client_builder_.set_tserver_uuid(tserver_uuid);
+  }
+
+  if (messenger) {
+    client_builder_.use_messenger(messenger);
   }
 
   init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));

@@ -52,13 +52,17 @@ void QLDmlTestBase::SetUp() {
   cluster_.reset(new MiniCluster(env_.get(), opts));
   ASSERT_OK(cluster_->Start());
 
-  // Connect to the cluster.
-  ASSERT_OK(cluster_->CreateClient(&client_));
+  ASSERT_OK(CreateClient());
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
   HybridTime::TEST_SetPrettyToString(true);
+}
+
+Status QLDmlTestBase::CreateClient() {
+  // Connect to the cluster.
+  return cluster_->CreateClient(&client_);
 }
 
 void QLDmlTestBase::DoTearDown() {

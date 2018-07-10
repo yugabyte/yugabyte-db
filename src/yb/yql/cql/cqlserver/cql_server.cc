@@ -34,6 +34,8 @@ TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 DEFINE_int64(cql_rpc_block_size, 1_MB, "CQL RPC block size");
 DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace cqlserver {
 

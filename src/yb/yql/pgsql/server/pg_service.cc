@@ -47,7 +47,8 @@ PgServiceImpl::PgServiceImpl(PgServer* server, const PgServerOptions& opts)
                          FLAGS_pgsql_ybclient_reactor_threads,
                          FLAGS_pgsql_rpc_timeout_secs,
                          server->tserver() ? server->tserver()->permanent_uuid() : "",
-                         &opts, server->metric_entity(), server->mem_tracker()),
+                         &opts, server->metric_entity(), server->mem_tracker(),
+                         server->tserver()->messenger()),
       pg_env_(std::make_shared<PgEnv>(async_client_init_.client())) {
 }
 
