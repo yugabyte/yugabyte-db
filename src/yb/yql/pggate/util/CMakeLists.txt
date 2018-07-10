@@ -11,35 +11,16 @@
 # under the License.
 #
 
-# Utility functions that are specific for PGGate.
-add_subdirectory(util)
+set(PGGATE_UTIL_SRCS
+    pg_net_writer.cc
+    pg_net_reader.cc
+    pg_bind.cc)
 
-# PGGate API library.
-set(PGGATE_SRCS
-    ybc_pggate.cc
-    pggate.cc
-    pggate_c_wrappers_impl.cc
-    pg_session.cc
-    pg_statement.cc
-    pg_ddl.cc
-    pg_insert.cc
-    pg_api_example.cc
-    pg_dml.cc
-    pg_dml_write.cc
-    pg_insert.cc
-    pg_update.cc
-    pg_delete.cc
-    pg_select.cc)
-
-set(PGGATE_LIBS
+set(PGGATE_UTIL_LIBS
     yb_util
     yb_common
-    yb_client
-    yb_pggate_util)
+    yb_client)
 
-ADD_YB_LIBRARY(yb_pggate
-               SRCS ${PGGATE_SRCS}
-               DEPS ${PGGATE_LIBS})
-
-# Test
-add_subdirectory(test)
+ADD_YB_LIBRARY(yb_pggate_util
+               SRCS ${PGGATE_UTIL_SRCS}
+               DEPS ${PGGATE_UTIL_LIBS})

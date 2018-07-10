@@ -127,7 +127,7 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& requ
   int32_t max_hash_code = request.has_max_hash_code() ?
       static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
   vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request.hashed_column_values(),
+  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request.partition_column_values(),
                                              schema,
                                              0,
                                              &hashed_components));

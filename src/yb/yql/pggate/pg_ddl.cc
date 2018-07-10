@@ -36,7 +36,7 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgCreateDatabase::PgCreateDatabase(PgSession::SharedPtr pg_session, const char *database_name)
-    : PgStatement(pg_session, StmtOp::STMT_CREATE_DATABASE),
+    : PgDdl(pg_session, StmtOp::STMT_CREATE_DATABASE),
       database_name_(database_name) {
 }
 
@@ -50,7 +50,7 @@ CHECKED_STATUS PgCreateDatabase::Exec() {
 PgDropDatabase::PgDropDatabase(PgSession::SharedPtr pg_session,
                                const char *database_name,
                                bool if_exist)
-    : PgStatement(pg_session, StmtOp::STMT_DROP_DATABASE),
+    : PgDdl(pg_session, StmtOp::STMT_DROP_DATABASE),
       database_name_(database_name),
       if_exist_(if_exist) {
 }
@@ -70,7 +70,7 @@ PgCreateSchema::PgCreateSchema(PgSession::SharedPtr pg_session,
                                const char *database_name,
                                const char *schema_name,
                                bool if_not_exist)
-    : PgStatement(pg_session, StmtOp::STMT_CREATE_SCHEMA),
+    : PgDdl(pg_session, StmtOp::STMT_CREATE_SCHEMA),
       database_name_(database_name),
       schema_name_(schema_name),
       if_not_exist_(if_not_exist) {
@@ -89,7 +89,7 @@ PgDropSchema::PgDropSchema(PgSession::SharedPtr pg_session,
                            const char *database_name,
                            const char *schema_name,
                            bool if_exist)
-    : PgStatement(pg_session, StmtOp::STMT_CREATE_SCHEMA),
+    : PgDdl(pg_session, StmtOp::STMT_CREATE_SCHEMA),
       database_name_(database_name),
       schema_name_(schema_name),
       if_exist_(if_exist) {
@@ -113,7 +113,7 @@ PgCreateTable::PgCreateTable(PgSession::SharedPtr pg_session,
                              const char *schema_name,
                              const char *table_name,
                              bool if_not_exist)
-    : PgStatement(pg_session, StmtOp::STMT_CREATE_TABLE),
+    : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
       if_not_exist_(if_not_exist) {
 }
@@ -145,10 +145,23 @@ CHECKED_STATUS PgCreateTable::Exec() {
                                         .schema(&schema)
                                         .hash_schema(YBHashSchema::kPgsqlHash);
 
-  // TODO(neil) Check for status and if_not_exists flag.
-  LOG(DFATAL) << "MUST CHECK FOR if_not_exist_ " << if_not_exist_;
+  Status s = table_creator->Create();
+  if (PREDICT_FALSE(!s.ok())) {
+    const char *errmsg = "Server error";
+    if (s.IsAlreadyPresent()) {
+      if (if_not_exist_) {
+        return Status::OK();
+      }
+      errmsg = "Duplicate table";
+    } else if (s.IsNotFound()) {
+      errmsg = "Schema not found";
+    } else if (s.IsInvalidArgument()) {
+      errmsg = "Invalid table definition";
+    }
+    return STATUS(InvalidArgument, errmsg);
+  }
 
-  return table_creator->Create();
+  return Status::OK();
 }
 
 PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
@@ -156,7 +169,7 @@ PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
                          const char *schema_name,
                          const char *table_name,
                          bool if_exist)
-    : PgStatement(pg_session, StmtOp::STMT_CREATE_TABLE),
+    : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
       if_exist_(if_exist) {
 }

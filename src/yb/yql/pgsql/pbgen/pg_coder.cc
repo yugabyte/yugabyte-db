@@ -235,7 +235,7 @@ CHECKED_STATUS PgCoder::TStmtToPB(const PgTSelectStmt *tstmt) {
   // First set the internal partition for the "oid" column.
   const MCVector<ColumnArg>& column_args = tstmt->column_args();
   for (const ColumnArg& col : column_args) {
-    PgsqlExpressionPB *col_pb = req->add_hashed_column_values();
+    PgsqlExpressionPB *col_pb = req->add_partition_column_values();
     const ColumnDesc *col_desc = col.desc();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(TExprToPB(col.expr(), col_pb));

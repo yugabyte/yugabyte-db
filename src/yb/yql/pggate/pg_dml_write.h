@@ -12,39 +12,52 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_INSERT_H_
-#define YB_YQL_PGGATE_PG_INSERT_H_
+#ifndef YB_YQL_PGGATE_PG_DML_WRITE_H_
+#define YB_YQL_PGGATE_PG_DML_WRITE_H_
 
-#include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_dml.h"
 
 namespace yb {
 namespace pggate {
 
 //--------------------------------------------------------------------------------------------------
-// INSERT
+// DML WRITE - Insert, Update, Delete.
 //--------------------------------------------------------------------------------------------------
 
-class PgInsert : public PgDmlWrite {
+class PgDmlWrite : public PgDml {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgInsert> SharedPtr;
-  typedef std::shared_ptr<const PgInsert> SharedPtrConst;
+  // Abstract class without constructors.
+  virtual ~PgDmlWrite();
 
-  typedef std::unique_ptr<PgInsert> UniPtr;
-  typedef std::unique_ptr<const PgInsert> UniPtrConst;
+  // Prepare write operations.
+  CHECKED_STATUS Prepare();
 
-  // Constructors.
-  PgInsert(PgSession::SharedPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
-  virtual ~PgInsert();
+  // Execute.
+  CHECKED_STATUS Exec();
 
- private:
-  virtual void AllocWriteRequest() override;
+  // Setup internal structures for binding values.
+  void PrepareBinds();
+
+ protected:
+  // Constructor.
+  PgDmlWrite(PgSession::SharedPtr pg_session,
+             const char *database_name,
+             const char *schema_name,
+             const char *table_name,
+             StmtOp stmt_op);
+
+  // Allocate write request.
+  virtual void AllocWriteRequest() = 0;
+
+  // Allocate column expression.
+  PgsqlExpressionPB *AllocColumnExprPB(int attr_num) override;
+
+  // Protobuf code.
+  std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
+  PgsqlWriteRequestPB *write_req_ = nullptr;
 };
 
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_INSERT_H_
+#endif // YB_YQL_PGGATE_PG_DML_WRITE_H_

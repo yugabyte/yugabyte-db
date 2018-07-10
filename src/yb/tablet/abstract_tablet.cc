@@ -15,6 +15,7 @@
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
 #include "yb/yql/pgsql/ybpostgres/pg_send.h"
+#include "yb/yql/pggate/util/pg_net_writer.h"
 
 namespace yb {
 namespace tablet {
@@ -93,7 +94,6 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
   }
   RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
 
-  PgsqlRSRowDesc rsrow_desc(pgsql_read_request.rsrow_desc());
   PgsqlResultSet resultset;
   TRACE("Start Execute");
   const Status s = doc_op.Execute(QLStorage(), deadline, read_time, schema, query_schema,
@@ -115,9 +115,16 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
   result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
 
   TRACE("Start Serialize");
-  pgapi::PGSend sender;
-  sender.WriteTupleDesc(rsrow_desc, &result->rows_data);
-  sender.WriteTuples(resultset, rsrow_desc, &result->rows_data);
+  if (pgsql_read_request.has_rsrow_desc()) {
+    // Communicating directly with postgre client.
+    PgsqlRSRowDesc rsrow_desc(pgsql_read_request.rsrow_desc());
+    pgapi::PGSend sender;
+    sender.WriteTupleDesc(rsrow_desc, &result->rows_data);
+    sender.WriteTuples(resultset, rsrow_desc, &result->rows_data);
+  } else {
+    // Communicating with PgGate API.
+    RETURN_NOT_OK(pggate::PgNetWriter::WriteTuples(resultset, &result->rows_data));
+  }
   TRACE("Done Serialize");
 
   return Status::OK();

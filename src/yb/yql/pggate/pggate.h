@@ -82,6 +82,12 @@ class PgApiImpl {
   // Read statement.
   PgStatement::SharedPtr GetStatement(PgStatement *handle);
 
+  // Delete statement.
+  CHECKED_STATUS DeleteStatement(PgStatement *handle);
+
+  // Remove all values and expressions that were bound to the given statement.
+  CHECKED_STATUS ClearBinds(PgStatement *handle);
+
   //------------------------------------------------------------------------------------------------
   // Connect database. Switch the connected database to the given "database_name".
   CHECKED_STATUS ConnectDatabase(PgSession *pg_session, const char *database_name);
@@ -175,6 +181,51 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
+  CHECKED_STATUS AllocSelect(PgSession *pg_session,
+                             const char *database_name,
+                             const char *schema_name,
+                             const char *table_name,
+                             PgStatement **handle);
+
+  // Setting values for partition and range columns.
+  // At the moment, when reading, DocDB requires these values to be set.
+  // We'll support a full scan soon.
+  CHECKED_STATUS SelectSetColumnInt2(PgStatement *handle, int attr_num, int16_t attr_value);
+
+  CHECKED_STATUS SelectSetColumnInt4(PgStatement *handle, int attr_num, int32_t attr_value);
+
+  CHECKED_STATUS SelectSetColumnInt8(PgStatement *handle, int attr_num, int64_t attr_value);
+
+  CHECKED_STATUS SelectSetColumnFloat4(PgStatement *handle, int attr_num, float attr_value);
+
+  CHECKED_STATUS SelectSetColumnFloat8(PgStatement *handle, int attr_num, double attr_value);
+
+  CHECKED_STATUS SelectSetColumnText(PgStatement *handle, int attr_num, const char *attr_value,
+                                     int attr_bytes);
+
+  CHECKED_STATUS SelectSetColumnSerializedData(PgStatement *handle, int attr_num,
+                                               const char *attr_value, int attr_bytes);
+
+  // Binding expressions with either values or memory spaces.
+  CHECKED_STATUS SelectBindExprInt2(PgStatement *handle, int attr_num, int16_t *attr_value);
+
+  CHECKED_STATUS SelectBindExprInt4(PgStatement *handle, int attr_num, int32_t *attr_value);
+
+  CHECKED_STATUS SelectBindExprInt8(PgStatement *handle, int attr_num, int64_t *attr_value);
+
+  CHECKED_STATUS SelectBindExprFloat4(PgStatement *handle, int attr_num, float *attr_value);
+
+  CHECKED_STATUS SelectBindExprFloat8(PgStatement *handle, int attr_num, double *attr_value);
+
+  CHECKED_STATUS SelectBindExprText(PgStatement *handle, int attr_num, char *attr_value,
+                                    int64_t *attr_bytes);
+
+  CHECKED_STATUS SelectBindExprSerializedData(PgStatement *handle, int attr_num,
+                                              char *attr_value, int64_t *attr_bytes);
+
+  CHECKED_STATUS ExecSelect(PgStatement *handle);
+
+  CHECKED_STATUS SelectFetch(PgStatement *handle, int64 *row_count);
 
  private:
   // Control variables.

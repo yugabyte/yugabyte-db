@@ -11,35 +11,14 @@
 # under the License.
 #
 
-# Utility functions that are specific for PGGate.
-add_subdirectory(util)
+add_library(pggate_test pggate_test.cc)
+target_link_libraries(pggate_test
+                      yb_pggate
+                      yb_client
+                      yb_test_util
+                      yb_client_test_util
+                      integration-tests)
 
-# PGGate API library.
-set(PGGATE_SRCS
-    ybc_pggate.cc
-    pggate.cc
-    pggate_c_wrappers_impl.cc
-    pg_session.cc
-    pg_statement.cc
-    pg_ddl.cc
-    pg_insert.cc
-    pg_api_example.cc
-    pg_dml.cc
-    pg_dml_write.cc
-    pg_insert.cc
-    pg_update.cc
-    pg_delete.cc
-    pg_select.cc)
-
-set(PGGATE_LIBS
-    yb_util
-    yb_common
-    yb_client
-    yb_pggate_util)
-
-ADD_YB_LIBRARY(yb_pggate
-               SRCS ${PGGATE_SRCS}
-               DEPS ${PGGATE_LIBS})
-
-# Test
-add_subdirectory(test)
+set(YB_TEST_LINK_LIBS pggate_test ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pggate_test_select)
+ADD_COMMON_YB_TEST_DEPENDENCIES(pggate_test_select)
