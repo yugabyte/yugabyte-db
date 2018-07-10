@@ -1,0 +1,54 @@
+Certificate:
+    Data:
+        Version: 1 (0x0)
+        Serial Number: 19 (0x13)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=YugaByte CA
+        Validity
+            Not Before: Jul 10 16:55:47 2018 GMT
+            Not After : Jul 14 16:55:47 2023 GMT
+        Subject: CN=127.0.0.4
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (1024 bit)
+                Modulus:
+                    00:c0:c2:d7:0c:51:b8:2f:c5:1a:11:e6:3e:fd:2a:
+                    5a:ea:7e:c7:76:c7:e7:6c:ae:81:8e:50:d4:ae:ef:
+                    89:61:a7:4e:e2:c4:eb:22:48:e6:c3:60:7f:85:05:
+                    8f:70:bb:4f:e5:20:cc:7c:d8:8a:44:9e:a8:56:8f:
+                    f6:82:81:ea:46:46:6a:0a:c9:13:4d:49:a9:6a:2b:
+                    64:b3:73:23:8f:a3:f0:02:51:2a:41:54:f7:f7:d0:
+                    4e:d3:9d:fe:48:e4:2f:ff:2f:7b:9e:12:52:00:9d:
+                    b4:fe:93:f1:81:06:cf:19:39:34:11:9f:aa:00:8a:
+                    14:86:a6:57:d3:d9:b0:e5:ad
+                Exponent: 65537 (0x10001)
+    Signature Algorithm: sha256WithRSAEncryption
+         95:21:86:a4:cd:9c:98:af:81:c2:5c:01:08:47:d8:30:59:eb:
+         3b:2c:9f:2f:82:cf:8f:3a:c3:bc:a7:dd:7a:7f:0a:c9:b0:9d:
+         b3:91:75:36:0c:91:29:f3:a7:4c:aa:21:6f:e9:ad:ac:0a:9e:
+         91:d4:63:47:15:ad:2d:36:45:d0:ae:6e:3e:2a:89:23:e9:6c:
+         92:89:80:33:b9:3a:a0:0d:c0:b0:8c:ac:91:ee:1d:c2:5a:f0:
+         10:2a:96:47:81:65:ad:b2:b8:5e:f7:12:45:e3:e8:07:61:24:
+         91:82:e5:8a:f3:3b:94:10:2e:f3:e3:be:c6:84:26:41:23:1a:
+         07:58:7e:1b:dc:8e:41:af:63:c4:5f:c1:0a:d3:f7:2d:6b:2f:
+         33:1c:c2:7c:92:a4:ba:fc:3e:5c:34:14:ef:7e:05:17:52:a8:
+         93:75:b6:ce:9e:08:cb:5e:61:b4:23:de:56:72:91:34:da:4e:
+         6f:b8:dc:9f:2b:d6:3b:ff:cd:ef:8f:2f:86:e7:30:eb:13:9c:
+         26:43:2d:f1:f1:37:d3:7c:a6:eb:ac:3a:7e:39:d1:8d:c3:00:
+         8e:f3:f7:64:6f:d8:e8:d5:a9:03:2e:02:a8:7f:23:79:85:f6:
+         11:83:0b:1e:bf:c0:b5:46:fd:5f:ad:a8:0f:d5:4f:d2:dd:73:
+         e2:d8:77:0d
+-----BEGIN CERTIFICATE-----
+MIICGjCCAQICARMwDQYJKoZIhvcNAQELBQAwFjEUMBIGA1UEAwwLWXVnYUJ5dGUg
+Q0EwHhcNMTgwNzEwMTY1NTQ3WhcNMjMwNzE0MTY1NTQ3WjAUMRIwEAYDVQQDDAkx
+MjcuMC4wLjQwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAMDC1wxRuC/FGhHm
+Pv0qWup+x3bH52yugY5Q1K7viWGnTuLE6yJI5sNgf4UFj3C7T+UgzHzYikSeqFaP
+9oKB6kZGagrJE01JqWorZLNzI4+j8AJRKkFU9/fQTtOd/kjkL/8ve54SUgCdtP6T
+8YEGzxk5NBGfqgCKFIamV9PZsOWtAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAJUh
+hqTNnJivgcJcAQhH2DBZ6zssny+Cz486w7yn3Xp/CsmwnbORdTYMkSnzp0yqIW/p
+rawKnpHUY0cVrS02RdCubj4qiSPpbJKJgDO5OqANwLCMrJHuHcJa8BAqlkeBZa2y
+uF73EkXj6AdhJJGC5YrzO5QQLvPjvsaEJkEjGgdYfhvcjkGvY8RfwQrT9y1rLzMc
+wnySpLr8Plw0FO9+BRdSqJN1ts6eCMteYbQj3lZykTTaTm+43J8r1jv/ze+PL4bn
+MOsTnCZDLfHxN9N8puusOn450Y3DAI7z92Rv2OjVqQMuAqh/I3mF9hGDCx6/wLVG
+/V+tqA/VT9Ldc+LYdw0=
+-----END CERTIFICATE-----
