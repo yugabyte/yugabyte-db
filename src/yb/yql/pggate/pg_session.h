@@ -82,6 +82,10 @@ class PgSession {
   // AS INDICATOR FOR ALIVE OR DEAD SESSIONS.
 
   // Access functions for connected database.
+  const char* connected_dbname() const {
+    return connected_database_.c_str();
+  }
+
   const string& connected_database() const {
     return connected_database_;
   }

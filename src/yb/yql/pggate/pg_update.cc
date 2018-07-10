@@ -10,41 +10,49 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_INSERT_H_
-#define YB_YQL_PGGATE_PG_INSERT_H_
-
-#include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_update.h"
+#include "yb/client/yb_op.h"
 
 namespace yb {
 namespace pggate {
 
+using std::make_shared;
+using std::shared_ptr;
+using std::string;
+using namespace std::literals;  // NOLINT
+
+using client::YBClient;
+using client::YBSession;
+using client::YBMetaDataCache;
+using client::YBTable;
+using client::YBTableName;
+using client::YBTableType;
+using client::YBPgsqlWriteOp;
+
+// TODO(neil) This should be derived from a GFLAGS.
+static MonoDelta kSessionTimeout = 60s;
+
 //--------------------------------------------------------------------------------------------------
-// INSERT
+// PgUpdate
 //--------------------------------------------------------------------------------------------------
 
-class PgInsert : public PgDmlWrite {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgInsert> SharedPtr;
-  typedef std::shared_ptr<const PgInsert> SharedPtrConst;
+PgUpdate::PgUpdate(PgSession::SharedPtr pg_session,
+                   const char *database_name,
+                   const char *schema_name,
+                   const char *table_name)
+    : PgDmlWrite(pg_session, database_name, schema_name, table_name, StmtOp::STMT_UPDATE) {
+}
 
-  typedef std::unique_ptr<PgInsert> UniPtr;
-  typedef std::unique_ptr<const PgInsert> UniPtrConst;
+PgUpdate::~PgUpdate() {
+}
 
-  // Constructors.
-  PgInsert(PgSession::SharedPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
-  virtual ~PgInsert();
-
- private:
-  virtual void AllocWriteRequest() override;
-};
+void PgUpdate::AllocWriteRequest() {
+  write_op_.reset(table_->NewPgsqlUpdate());
+  write_req_ = write_op_->mutable_request();
+}
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_INSERT_H_

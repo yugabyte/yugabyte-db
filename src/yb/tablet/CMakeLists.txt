@@ -89,7 +89,8 @@ target_link_libraries(tablet
   consensus
   rocksdb
   yb_docdb
-  yb_client)
+  yb_client
+  yb_pggate_util)
 
 add_library(tablet_test_util
             local_tablet_writer.cc

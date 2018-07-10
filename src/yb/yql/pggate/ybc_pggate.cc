@@ -36,6 +36,11 @@ extern "C" {
 void YBCInitPgGate() {
   CHECK(pgapi.get() == nullptr) << __PRETTY_FUNCTION__ << " can only be called once";
   pgapi = std::make_unique<pggate::PgApiImpl>();
+  LOG(INFO) << "PgGate open";
+}
+
+void YBCDestroyPgGate() {
+  pgapi = nullptr;
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
@@ -49,6 +54,7 @@ YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env) {
 YBCStatus YBCPgCreateSession(const YBCPgEnv pg_env,
                              const char *database_name,
                              YBCPgSession *pg_session) {
+  string db_name = database_name == NULL ? "" : database_name;
   return ToYBCStatus(pgapi->CreateSession(pg_env, database_name, pg_session));
 }
 
@@ -63,8 +69,8 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 }
 
 YBCStatus YBCPgAllocCreateDatabase(YBCPgSession pg_session,
-                                    const char *database_name,
-                                    YBCPgStatement *handle) {
+                                   const char *database_name,
+                                   YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->AllocCreateDatabase(pg_session, database_name, handle));
 }
 
@@ -73,14 +79,24 @@ YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgAllocDropDatabase(YBCPgSession pg_session,
-                                  const char *database_name,
-                                  bool if_exist,
-                                  YBCPgStatement *handle) {
+                                 const char *database_name,
+                                 bool if_exist,
+                                 YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->AllocDropDatabase(pg_session, database_name, if_exist, handle));
 }
 
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropDatabase(handle));
+}
+
+// Schema Operations -------------------------------------------------------------------------------
+
+YBCStatus YBCPgDeleteStatement(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->DeleteStatement(handle));
+}
+
+YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ClearBinds(handle));
 }
 
 // Schema Operations -------------------------------------------------------------------------------
@@ -215,6 +231,87 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 // DELETE Operations -------------------------------------------------------------------------------
 
 // SELECT Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgAllocSelect(YBCPgSession pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->AllocSelect(pg_session,
+                                        database_name,
+                                        schema_name,
+                                        table_name,
+                                        handle));
+}
+
+YBCStatus YBCPgSelectSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value) {
+  return ToYBCStatus(pgapi->SelectSetColumnInt2(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value) {
+  return ToYBCStatus(pgapi->SelectSetColumnInt4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value) {
+  return ToYBCStatus(pgapi->SelectSetColumnInt8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value) {
+  return ToYBCStatus(pgapi->SelectSetColumnFloat4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value) {
+  return ToYBCStatus(pgapi->SelectSetColumnFloat8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
+                                   int attr_bytes) {
+  return ToYBCStatus(pgapi->SelectSetColumnText(handle, attr_num, attr_value, attr_bytes));
+}
+
+YBCStatus YBCPgSelectSetColumnSerializedData(YBCPgStatement handle, int attr_num,
+                                             const char *attr_value, int attr_bytes) {
+  return ToYBCStatus(pgapi->SelectSetColumnSerializedData(handle, attr_num, attr_value,
+                                                          attr_bytes));
+}
+
+YBCStatus YBCPgSelectBindExprInt2(YBCPgStatement handle, int attr_num, int16_t *attr_value) {
+  return ToYBCStatus(pgapi->SelectBindExprInt2(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectBindExprInt4(YBCPgStatement handle, int attr_num, int32_t *attr_value) {
+  return ToYBCStatus(pgapi->SelectBindExprInt4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectBindExprInt8(YBCPgStatement handle, int attr_num, int64_t *attr_value) {
+  return ToYBCStatus(pgapi->SelectBindExprInt8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectBindExprFloat4(YBCPgStatement handle, int attr_num, float *attr_value) {
+  return ToYBCStatus(pgapi->SelectBindExprFloat4(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectBindExprFloat8(YBCPgStatement handle, int attr_num, double *attr_value) {
+  return ToYBCStatus(pgapi->SelectBindExprFloat8(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgSelectBindExprText(YBCPgStatement handle, int attr_num, char *attr_value,
+                                  int64_t *attr_bytes) {
+  return ToYBCStatus(pgapi->SelectBindExprText(handle, attr_num, attr_value, attr_bytes));
+}
+
+YBCStatus YBCPgSelectBindExprSerializedData(YBCPgStatement handle, int attr_num,
+                                             char *attr_value, int64_t *attr_bytes) {
+  return ToYBCStatus(pgapi->SelectBindExprSerializedData(handle, attr_num, attr_value,
+                                                         attr_bytes));
+}
+
+YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecSelect(handle));
+}
+
+YBCStatus YBCPgSelectFetch(YBCPgStatement handle, int64_t *row_count) {
+  return ToYBCStatus(pgapi->SelectFetch(handle, row_count));
+}
 
 } // extern "C"
 

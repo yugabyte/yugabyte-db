@@ -1062,7 +1062,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   // haven't hit it, or we are asked to return paging state even when we have hit the limit.
   // Otherwise, leave the paging state empty which means we are completely done reading for the
   // whole SELECT statement.
-  if (pgsql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
+  if (pgsql_read_request.partition_column_values().empty() && !response->has_paging_state() &&
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
           pgsql_read_request.return_paging_state())) {
     const string& next_partition_key = metadata_->partition().partition_key_end();

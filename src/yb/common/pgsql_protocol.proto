@@ -193,7 +193,7 @@ message PgsqlReadRequestPB {
   // - Partition columns are used to compute the hash code.
   // - Range columns combining with partition columns are used for indexing.
   optional uint32 hash_code = 4;
-  repeated PgsqlExpressionPB hashed_column_values = 5;
+  repeated PgsqlExpressionPB partition_column_values = 5;
 
   //------------------------------------------------------------------------------------------------
   // Tuple descriptor.
@@ -205,7 +205,7 @@ message PgsqlReadRequestPB {
   // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
   // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
   // database in our coding.
-  optional PgsqlRSRowDescPB rsrow_desc = 6; // required.
+  optional PgsqlRSRowDescPB rsrow_desc = 6;
   repeated PgsqlExpressionPB selected_exprs = 7; // required.
 
   //------------------------------------------------------------------------------------------------
