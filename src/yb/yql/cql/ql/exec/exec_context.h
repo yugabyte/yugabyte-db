@@ -43,27 +43,34 @@ class TnodeContext {
   }
 
   // Access function for op.
-  const std::shared_ptr<client::YBqlOp>& op() const {
-    return op_;
+  const std::vector<std::shared_ptr<client::YBqlOp>>& ops() const {
+    return ops_;
   }
 
-  // Apply YBClient read/write operation.
+  // Apply one YBClient read/write operation.
   CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op, QLEnv* ql_env, bool defer = false) {
-    op_ = op;
+    ops_ = {op};
     deferred_ = defer;
     return defer ? Status::OK() : ql_env->Apply(op);
   }
 
-  // Apply the deferred operation.
+  // Add an operation -- need to call Apply below to apply all added ops.
+  void AddOperation(std::shared_ptr<client::YBqlOp> op) {
+    ops_.push_back(op);
+  }
+
+  // Apply all operations.
   CHECKED_STATUS Apply(QLEnv* ql_env) {
-    DCHECK(IsDeferred());
     deferred_ = false;
-    return ql_env->Apply(op_);
+    for (auto& op : ops_) {
+      RETURN_NOT_OK(ql_env->Apply(op));
+    }
+    return Status::OK();
   }
 
   // Is the operation deferred?
   bool IsDeferred() const {
-    return op_ != nullptr && deferred_;
+    return !ops_.empty() && deferred_;
   }
 
   // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
@@ -110,8 +117,8 @@ class TnodeContext {
   // Execution start time.
   const MonoTime start_time_;
 
-  // Read/write operation to execute.
-  std::shared_ptr<client::YBqlOp> op_;
+  // Read/write operations to execute.
+  std::vector<std::shared_ptr<client::YBqlOp>> ops_;
 
   // Is the operation deferred?
   bool deferred_ = false;
@@ -273,9 +280,22 @@ class ExecContext : public ProcessContextBase {
     return num_retries_;
   }
 
+  int64_t num_flushes() const {
+    return num_flushes_;
+  }
+
+  void inc_num_flushes() {
+    num_flushes_ += 1;
+  }
+
   // Apply YBClient read/write operation.
   CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op, const bool defer = false) {
     return tnode_context()->Apply(op, ql_env_, defer);
+  }
+
+  // Apply YBClient read/write operation.
+  CHECKED_STATUS ApplyAll() {
+    return tnode_context()->Apply(ql_env_);
   }
 
   // Reset this ExecContext to re-execute the statement.
@@ -294,6 +314,9 @@ class ExecContext : public ProcessContextBase {
   std::list<TnodeContext> tnode_contexts_;
 
   int64_t num_retries_ = 0;
+
+  // The number of times we called flush for this exec context.
+  int64_t num_flushes_ = 0;
 };
 
 }  // namespace ql

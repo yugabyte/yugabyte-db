@@ -40,6 +40,10 @@ METRIC_DEFINE_histogram(
     "Number of retries to successfully execute a SQL query", yb::MetricUnit::kOperations,
     "Number of retries to successfully execute a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute,
+    "Number of flushes to successfully execute a SQL query", yb::MetricUnit::kOperations,
+    "Number of flushes to successfully execute a SQL query", 60000000LU, 2);
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
     "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a SELECT statement", 60000000LU, 2);
@@ -100,6 +104,9 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
           metric_entity);
   num_retries_to_execute_ql_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute.Instantiate(
+          metric_entity);
+  num_flushes_to_execute_ql_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute.Instantiate(
           metric_entity);
 
   ql_select_ =

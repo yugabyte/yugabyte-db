@@ -40,6 +40,7 @@ void ExecContext::AddTnode(const TreeNode *tnode) {
 
 void ExecContext::Reset() {
   tnode_contexts_.clear();
+  num_flushes_ = 0;
   num_retries_++;
 }
 

@@ -71,6 +71,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final String TSERVER_READ_METRIC =
     "handler_latency_yb_tserver_TabletServerService_Read";
 
+  protected static final String TSERVER_SELECT_METRIC =
+      "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt";
+
+  protected static final String TSERVER_FLUSHES_METRIC =
+      "handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute";
+
   protected Cluster cluster;
   protected Session session;
 
@@ -541,6 +547,18 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     execute(deleteKeyspaceStmt);
   }
 
+  // Get metrics of all tservers.
+  public Map<MiniYBDaemon, Metrics> getAllMetrics() throws Exception {
+    Map<MiniYBDaemon, Metrics> initialMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      Metrics metrics = new Metrics(ts.getLocalhostIP(),
+                                    ts.getCqlWebPort(),
+                                    "server");
+      initialMetrics.put(ts, metrics);
+    }
+    return initialMetrics;
+  }
+
   // Get IO metrics of all tservers.
   public Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
     Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
@@ -645,4 +663,5 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
     return totalSum;
   }
+
 }

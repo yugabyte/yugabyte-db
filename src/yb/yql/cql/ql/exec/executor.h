@@ -170,9 +170,9 @@ class Executor : public QLExprExecutor {
                                    ExecContext* exec_context);
 
   // Process result of FlushAsyncDone.
-  CHECKED_STATUS ProcessAsyncResult(const Status& s,
-                                    ExecContext* exec_context,
-                                    const TnodeContext& tnode_context);
+  CHECKED_STATUS ProcessAsyncResults(const Status& s,
+                                     ExecContext* exec_context,
+                                     const TnodeContext& tnode_context);
 
   // Append execution result.
   CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
@@ -291,7 +291,8 @@ class Executor : public QLExprExecutor {
                                  const MCList<JsonColumnOp>& jsoncol_where_ops,
                                  const MCList<PartitionKeyOp>& partition_key_ops,
                                  const MCList<FuncOp>& func_ops,
-                                 bool *no_results);
+                                 bool *no_results,
+                                 uint64_t *max_selected_rows_estimate);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(QLWriteRequestPB *req,
@@ -358,7 +359,6 @@ class Executor : public QLExprExecutor {
 
   // Whether this is a batch with statements that returns status.
   boost::optional<bool> returns_status_batch_opt_;
-
 };
 
 }  // namespace ql

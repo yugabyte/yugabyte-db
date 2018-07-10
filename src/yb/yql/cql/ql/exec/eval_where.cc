@@ -67,7 +67,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
                                          const MCList<JsonColumnOp>& jsoncol_where_ops,
                                          const MCList<PartitionKeyOp>& partition_key_ops,
                                          const MCList<FuncOp>& func_ops,
-                                         bool *no_results) {
+                                         bool *no_results,
+                                         uint64_t *max_selected_rows_estimate) {
   // If where clause restrictions guarantee no results can be found this will be set to true below.
   *no_results = false;
 
@@ -143,7 +144,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   // If we find an 'IN', we add subsequent hash column values options to the execution context.
   // Then, the executor will use them to produce the partitions that need to be read.
   bool is_multi_partition = false;
-  uint64_t partitions_count = 0;
+  uint64_t partitions_count = 1;
   TnodeContext *tnode_context = exec_context().tnode_context();
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -172,7 +173,6 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
       case QL_OP_IN: {
         if (!is_multi_partition) {
           is_multi_partition = true;
-          partitions_count = 1;
         }
 
         // De-duplicating and ordering values from the 'IN' expression.
@@ -208,8 +208,16 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     }
   }
 
-  // Set the partitions count in the execution context, will be 0 if not IN conditions found.
-  tnode_context->set_partitions_count(partitions_count);
+  if (key_where_ops.empty()) {
+    // Cannot yet estimate num rows if hash key is missing (table scan).
+    *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
+  } else {
+    // If this is a multi-partition select, set the partitions count in the execution context.
+    if (is_multi_partition) {
+      tnode_context->set_partitions_count(partitions_count);
+    }
+    *max_selected_rows_estimate = partitions_count;
+  }
 
   // Skip generation of query condition if where clause is empty.
   if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty() &&
@@ -221,8 +229,27 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
   where_pb->set_op(QL_OP_AND);
   for (const auto& col_op : where_ops) {
-    RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
+    QLConditionPB* cond = where_pb->add_operands()->mutable_condition();
+    RETURN_NOT_OK(WhereOpToPB(cond, col_op));
+    // Update the estimate for the number of selected rows if needed.
+    if (col_op.desc()->is_primary()) {
+      if (cond->op() == QL_OP_IN) {
+        int in_size = cond->operands(1).value().list_value().elems_size();
+        if (in_size == 0 || // Can happen when binding an empty list as 'IN' argument.
+            *max_selected_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
+          *max_selected_rows_estimate *= in_size;
+        } else {
+          *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
+        }
+      } else if (cond->op() == QL_OP_EQUAL) {
+        // Nothing to do (equality condition implies one option).
+      } else {
+        // Cannot yet estimate num rows for inequality (and other) conditions.
+        *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
+      }
+    }
   }
+
   for (const auto& col_op : subcol_where_ops) {
     RETURN_NOT_OK(WhereSubColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
   }
