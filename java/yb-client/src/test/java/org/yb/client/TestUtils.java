@@ -207,7 +207,7 @@ public class TestUtils {
         binDir = externalBinDir;
       } else {
         throw new RuntimeException(
-            "Directory that is supposed to contain YB C++ binaries not found in either of the  " +
+            "Directory that is supposed to contain YB C++ binaries not found in either of the " +
                 "following locations: " + binDir + ", " + externalBinDir);
       }
     }

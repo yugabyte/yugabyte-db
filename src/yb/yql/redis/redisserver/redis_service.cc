@@ -883,8 +883,11 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     client_builder.set_metric_entity(server_->metric_entity());
     client_builder.set_parent_mem_tracker(server_->mem_tracker());
     client_builder.set_callback_threadpool_size(FLAGS_redis_callbacks_threadpool_size);
-    if (server_->tserver() != nullptr && !server_->tserver()->permanent_uuid().empty()) {
-      client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
+    if (server_->tserver() != nullptr) {
+      if (!server_->tserver()->permanent_uuid().empty()) {
+        client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
+      }
+      client_builder.use_messenger(server_->tserver()->messenger());
     }
 
     CloudInfoPB cloud_info_pb;

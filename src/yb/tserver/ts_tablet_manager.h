@@ -454,7 +454,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
 
-  yb::client::AsyncClientInitialiser async_client_init_;
+  boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

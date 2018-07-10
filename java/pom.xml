@@ -163,19 +163,6 @@
             <redirectTestOutputToFile>true</redirectTestOutputToFile>
             <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
             <argLine>${testArgLine}</argLine>
-            <systemPropertyVariables>
-              <!--
-                Explicitly specify the YB binary directory since yb-cql tests use
-                TestUtils in yb-client in a JAR (e.g.
-                ~/.m2/repository/org/yb/yb-client/0.8.0-SNAPSHOT/yb-client-0.8.0-SNAPSHOT-tests.jar)
-                so it cannot derive the bin dir from the class's location in
-                TestUtils.findBuildDir().
-
-                When Java tests are run on Jenkins, the build script will override with Jenkins's
-                bin dir via Maven's command line argument "-DbinDir=...".
-              -->
-              <binDir>${project.basedir}/../../build/latest/bin</binDir>
-            </systemPropertyVariables>
             <reportsDirectory>${yb.surefire.reports.directory}</reportsDirectory>
           </configuration>
         </plugin>

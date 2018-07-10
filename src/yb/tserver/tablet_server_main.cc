@@ -47,6 +47,7 @@
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/tserver/factory.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/consensus/log_util.h"
 #include "yb/util/flags.h"
@@ -137,16 +138,18 @@ static int TabletServerMain(int argc, char** argv) {
 
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  YB_EDITION_NS_PREFIX TabletServer server(*tablet_server_options);
+  YB_EDITION_NS_PREFIX Factory factory;
+
+  auto server = factory.CreateTabletServer(*tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Init());
   LOG(INFO) << "Starting tablet server...";
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
   std::unique_ptr<CallHome> call_home;
   if (FLAGS_callhome_enabled) {
-    call_home = std::make_unique<CallHome>(&server, ServerType::TSERVER);
+    call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
     call_home->ScheduleCallHome();
   }
 
@@ -161,7 +164,7 @@ static int TabletServerMain(int argc, char** argv) {
         (tablet_server_options->dump_info_path.empty()
              ? ""
              : tablet_server_options->dump_info_path + "-redis");
-    redis_server.reset(new RedisServer(redis_server_options, &server));
+    redis_server.reset(new RedisServer(redis_server_options, server.get()));
     LOG(INFO) << "Starting redis server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";
@@ -178,7 +181,7 @@ static int TabletServerMain(int argc, char** argv) {
         (tablet_server_options->dump_info_path.empty()
              ? ""
              : tablet_server_options->dump_info_path + "-pgsql");
-    pgsql_server.reset(new PgServer(pgsql_server_options, &server));
+    pgsql_server.reset(new PgServer(pgsql_server_options, server.get()));
     LOG(INFO) << "Starting Postgresql server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pgsql_server->Start());
     LOG(INFO) << "Postgresql server successfully started.";
@@ -200,9 +203,7 @@ static int TabletServerMain(int argc, char** argv) {
              ? ""
              : tablet_server_options->dump_info_path + "-cql");
     boost::asio::io_service io;
-    cql_server.reset(new CQLServer(
-        cql_server_options, &io, &server,
-        std::bind(&TSTabletManager::PreserveLocalLeadersOnly, server.tablet_manager(), _1)));
+    cql_server = factory.CreateCQLServer(cql_server_options, &io, server.get());
     LOG(INFO) << "Starting CQL server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(cql_server->Start());
     LOG(INFO) << "CQL server successfully started.";
