@@ -129,7 +129,9 @@ struct OutboundCallMetrics {
 // over.
 class CallResponse {
  public:
-  static constexpr size_t kMaxSidecarSlices = 8;
+  // Maximum number of separate payloads in one response i.e. max number of separate results that
+  // return rows (not just status) for the ops grouped together in one tserver RPC call.
+  static constexpr size_t kMaxSidecarSlices = 16;
 
   CallResponse();
 

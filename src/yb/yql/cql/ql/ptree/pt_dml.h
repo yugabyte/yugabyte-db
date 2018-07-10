@@ -64,6 +64,10 @@ class ColumnOpCounter {
     return true;
   }
 
+  bool IsEmpty() const {
+    return gt_count_ == 0 && lt_count_ == 0 && eq_count_ == 0 && in_count_ == 0;
+  }
+
  private:
   // These are counts for regular columns.
   int gt_count_;
@@ -389,6 +393,11 @@ class PTDmlStmt : public PTCollection {
         (modifies_primary_row_ && has_usertimestamp);
   }
 
+  bool HasPrimaryKeysSet() const {
+    DCHECK(!IsWriteOp());
+    return select_has_primary_keys_set_;
+  }
+
  protected:
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
@@ -476,6 +485,10 @@ class PTDmlStmt : public PTCollection {
   bool modifies_primary_row_ = false;
   bool modifies_static_row_ = false;
   bool modifies_multiple_rows_ = false; // Currently only allowed for (range) deletes.
+
+  // For optimizing SELECT queries with IN condition on hash key: does this SELECT have all primary
+  // key columns set with '=' or 'IN' conditions.
+  bool select_has_primary_keys_set_ = false;
 
   static const PTExpr::SharedPtr kNullPointerRef;
 };

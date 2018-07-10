@@ -474,13 +474,23 @@ void Batcher::FlushBuffersIfReady() {
   // Now flush the ops for each tablet.
   auto start = ops.begin();
   auto start_group = GetOpGroup(*start);
+  int num_sidecars = 0; // QL read ops and some QL write ops return rows in a sidecar.
   for (auto it = start; it != ops.end(); ++it) {
     auto it_group = GetOpGroup(*it);
-    if ((**it).tablet.get() != (**start).tablet.get() || start_group != it_group) {
+    // Aggregate and flush the ops so far if either:
+    //   - we reached the next tablet or group
+    //   - we gathered more ops with rows result than we can handle in one call (kMaxSidecarSlices).
+    if ((**it).tablet.get() != (**start).tablet.get() ||
+        start_group != it_group ||
+        num_sidecars >= rpc::CallResponse::kMaxSidecarSlices) {
       FlushBuffer(
           start->get()->tablet.get(), start, it, /* allow_local_calls_in_curr_thread */ false);
       start = it;
       start_group = it_group;
+      num_sidecars = 0;
+    }
+    if ((**it).yb_op->returns_sidecar()) {
+      num_sidecars++;
     }
   }
 
