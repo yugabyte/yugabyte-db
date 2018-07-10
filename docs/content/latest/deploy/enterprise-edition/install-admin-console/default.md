@@ -8,6 +8,7 @@ YugaByte DB clusters are created and managed from YugaWare. The default option t
 Connect to the YugaWare instance and do the following.
 
 - Install Replicated.
+
 ```{.sh .copy .separator-dollar}
 $ curl -sSL https://get.replicated.com/docker | sudo bash
 ```
