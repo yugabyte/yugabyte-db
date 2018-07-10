@@ -12,8 +12,8 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_INSERT_H_
-#define YB_YQL_PGGATE_PG_INSERT_H_
+#ifndef YB_YQL_PGGATE_PG_DELETE_H_
+#define YB_YQL_PGGATE_PG_DELETE_H_
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
@@ -21,24 +21,24 @@ namespace yb {
 namespace pggate {
 
 //--------------------------------------------------------------------------------------------------
-// INSERT
+// DELETE
 //--------------------------------------------------------------------------------------------------
 
-class PgInsert : public PgDmlWrite {
+class PgDelete : public PgDmlWrite {
  public:
   // Public types.
-  typedef std::shared_ptr<PgInsert> SharedPtr;
-  typedef std::shared_ptr<const PgInsert> SharedPtrConst;
+  typedef std::shared_ptr<PgDelete> SharedPtr;
+  typedef std::shared_ptr<const PgDelete> SharedPtrConst;
 
-  typedef std::unique_ptr<PgInsert> UniPtr;
-  typedef std::unique_ptr<const PgInsert> UniPtrConst;
+  typedef std::unique_ptr<PgDelete> UniPtr;
+  typedef std::unique_ptr<const PgDelete> UniPtrConst;
 
   // Constructors.
-  PgInsert(PgSession::SharedPtr pg_session,
+  PgDelete(PgSession::SharedPtr pg_session,
            const char *database_name,
            const char *schema_name,
            const char *table_name);
-  virtual ~PgInsert();
+  virtual ~PgDelete();
 
  private:
   virtual void AllocWriteRequest() override;
@@ -47,4 +47,4 @@ class PgInsert : public PgDmlWrite {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_INSERT_H_
+#endif // YB_YQL_PGGATE_PG_DELETE_H_

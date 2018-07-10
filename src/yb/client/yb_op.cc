@@ -504,9 +504,9 @@ void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
-  if (!read_request_->hashed_column_values().empty()) {
+  if (!read_request_->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
-    RETURN_NOT_OK(table_->partition_schema().EncodeKey(read_request_->hashed_column_values(),
+    RETURN_NOT_OK(table_->partition_schema().EncodeKey(read_request_->partition_column_values(),
         partition_key));
 
     // TODO(neil) We borrow "EncodeMultiColumnHashValue" for now. For postgresql, this encoding

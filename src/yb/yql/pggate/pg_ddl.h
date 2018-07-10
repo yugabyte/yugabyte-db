@@ -20,11 +20,22 @@
 namespace yb {
 namespace pggate {
 
+class PgDdl : public PgStatement {
+ public:
+  PgDdl(PgSession::SharedPtr pg_session, StmtOp stmt_op)
+      : PgStatement(pg_session, stmt_op) {
+  }
+
+  virtual CHECKED_STATUS ClearBinds() {
+    return STATUS(InvalidArgument, "This statement cannot be bound to any values");
+  }
+};
+
 //--------------------------------------------------------------------------------------------------
 // CREATE DATABASE
 //--------------------------------------------------------------------------------------------------
 
-class PgCreateDatabase : public PgStatement {
+class PgCreateDatabase : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgCreateDatabase> SharedPtr;
@@ -44,7 +55,7 @@ class PgCreateDatabase : public PgStatement {
   const char *database_name_;
 };
 
-class PgDropDatabase : public PgStatement {
+class PgDropDatabase : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgDropDatabase> SharedPtr;
@@ -72,7 +83,7 @@ class PgDropDatabase : public PgStatement {
 // we can add support for schema.
 //--------------------------------------------------------------------------------------------------
 
-class PgCreateSchema : public PgStatement {
+class PgCreateSchema : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgCreateSchema> SharedPtr;
@@ -97,7 +108,7 @@ class PgCreateSchema : public PgStatement {
   bool if_not_exist_;
 };
 
-class PgDropSchema : public PgStatement {
+class PgDropSchema : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgDropSchema> SharedPtr;
@@ -126,7 +137,7 @@ class PgDropSchema : public PgStatement {
 // CREATE TABLE
 //--------------------------------------------------------------------------------------------------
 
-class PgCreateTable : public PgStatement {
+class PgCreateTable : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgCreateTable> SharedPtr;
@@ -155,7 +166,7 @@ class PgCreateTable : public PgStatement {
   client::YBSchemaBuilder schema_builder_;
 };
 
-class PgDropTable : public PgStatement {
+class PgDropTable : public PgDdl {
  public:
   // Public types.
   typedef std::shared_ptr<PgDropTable> SharedPtr;

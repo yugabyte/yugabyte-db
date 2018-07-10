@@ -67,6 +67,10 @@ class PgStatement {
     return (stmt != nullptr && stmt->stmt_op_ == op);
   }
 
+  //------------------------------------------------------------------------------------------------
+  // Clear all values and expressions that were bound to the given statement.
+  virtual CHECKED_STATUS ClearBinds() = 0;
+
  protected:
   // YBSession that this statement belongs to.
   PgSession::SharedPtr pg_session_;
