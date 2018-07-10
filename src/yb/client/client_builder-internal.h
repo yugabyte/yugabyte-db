@@ -80,6 +80,8 @@ class YBClientBuilder::Data {
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
+  std::shared_ptr<rpc::Messenger> messenger_;
+
   bool skip_master_leader_resolution_ = false;
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

@@ -1125,6 +1125,12 @@ if "$build_java"; then
   fi
   java_build_start_time_sec=$(date +%s)
   time ( build_yb_java_code $mvn_opts ${build_opts[@]} )
+
+  if [[ $YB_EDITION == "enterprise" ]]; then
+    cd "$YB_SRC_ROOT"/ent/java
+    time ( build_yb_java_code $mvn_opts ${build_opts[@]} )
+  fi
+
   java_build_end_time_sec=$(date +%s)
   log "Java build finished, total time information above."
 fi

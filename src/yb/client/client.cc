@@ -313,6 +313,11 @@ YBClientBuilder& YBClientBuilder::set_parent_mem_tracker(const MemTrackerPtr& me
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::use_messenger(const std::shared_ptr<rpc::Messenger>& messenger) {
+  data_->messenger_ = messenger;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
   data_->skip_master_leader_resolution_ = value;
   return *this;
@@ -324,10 +329,14 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   shared_ptr<YBClient> c(new YBClient());
 
   // Init messenger.
-  MessengerBuilder builder(data_->client_name_);
-  builder.set_num_reactors(data_->num_reactors_);
-  builder.set_metric_entity(data_->metric_entity_);
-  c->data_->messenger_ = VERIFY_RESULT(builder.Build());
+  if (data_->messenger_) {
+    c->data_->messenger_ = data_->messenger_;
+  } else {
+    MessengerBuilder builder(data_->client_name_);
+    builder.set_num_reactors(data_->num_reactors_);
+    builder.set_metric_entity(data_->metric_entity_);
+    c->data_->messenger_ = VERIFY_RESULT(builder.Build());
+  }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;

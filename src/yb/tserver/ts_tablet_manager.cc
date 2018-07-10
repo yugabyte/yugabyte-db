@@ -292,11 +292,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     server_(server),
     next_report_seq_(0),
     metric_registry_(metric_registry),
-    state_(MANAGER_INITIALIZING),
-    async_client_init_(
-        "tserver_client", 0 /* num_reactors */,
-        FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
-        &server->options(), server->metric_entity(), server->mem_tracker()) {
+    state_(MANAGER_INITIALIZING) {
 
   ThreadPoolMetrics metrics = {
       METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),
@@ -387,6 +383,12 @@ TSTabletManager::~TSTabletManager() {
 
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
+
+  async_client_init_.emplace(
+      "tserver_client", 0 /* num_reactors */,
+      FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
+      &server_->options(), server_->metric_entity(), server_->mem_tracker(),
+      server_->messenger());
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -916,7 +918,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     tablet_peer->SetBootstrapping();
     tablet::BootstrapTabletData data = {
         meta,
-        async_client_init_.get_client_future(),
+        async_client_init_->get_client_future(),
         scoped_refptr<server::Clock>(server_->clock()),
         server_->mem_tracker(),
         metric_registry_,
@@ -940,7 +942,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
-                                    async_client_init_.get_client_future(),
+                                    async_client_init_->get_client_future(),
                                     scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     &server_->proxy_cache(),
@@ -979,7 +981,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 }
 
 void TSTabletManager::Shutdown() {
-  async_client_init_.Shutdown();
+  async_client_init_->Shutdown();
 
   if(background_task_) {
     background_task_->Shutdown();

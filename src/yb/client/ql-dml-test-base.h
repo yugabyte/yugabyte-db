@@ -56,6 +56,8 @@ class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
+  virtual CHECKED_STATUS CreateClient();
+
   shared_ptr<YBClient> client_;
 };
 

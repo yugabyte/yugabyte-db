@@ -219,6 +219,8 @@ class YBClientBuilder {
 
   YBClientBuilder& set_parent_mem_tracker(const std::shared_ptr<MemTracker>& mem_tracker);
 
+  YBClientBuilder& use_messenger(const std::shared_ptr<rpc::Messenger>& messenger);
+
   // Creates the client.
   //
   // The return value may indicate an error in the create operation, or a
