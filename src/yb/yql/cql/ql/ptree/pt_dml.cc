@@ -142,7 +142,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
         }
       }
     }
-  } else {
+  } else { // ReadOp
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
     bool has_incomplete_hash = false;
@@ -159,6 +159,15 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
         }
       }
       key_where_ops_.clear();
+    } else {
+      select_has_primary_keys_set_ = true;
+      // Unset if there is a range key without a condition.
+      for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+        if (op_counters[idx].IsEmpty()) {
+          select_has_primary_keys_set_ = false;
+          break;
+        }
+      }
     }
   }
 

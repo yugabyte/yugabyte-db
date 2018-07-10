@@ -655,11 +655,18 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   bool no_results = false;
   req->set_is_aggregate(tnode->is_aggregate());
+  uint64_t max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
   Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                              tnode->subscripted_col_where_ops(), tnode->json_col_where_ops(),
-                             tnode->partition_key_ops(), tnode->func_ops(), &no_results);
+                             tnode->partition_key_ops(), tnode->func_ops(),
+                             &no_results, &max_selected_rows_estimate);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+  }
+
+  if (!tnode->HasPrimaryKeysSet()) {
+    // If not all primary keys have '=' or 'IN' conditions the max rows estimate is not reliable.
+    max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
@@ -766,6 +773,21 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   if (tnode_context->UnreadPartitionsRemaining() > 0) {
     tnode_context->InitializePartition(select_op->mutable_request(),
                                        continue_select ? params.next_partition_index() : 0);
+
+    // We can optimize to run the ops in parallel (rather than serially) if:
+    //   - the estimated max number of rows is less than req limit (min of page size and CQL limit).
+    //   - there is no offset (which requires passing skipped rows from one request to the next).
+    if (max_selected_rows_estimate <= req->limit() && !req->has_offset()) {
+      tnode_context->AddOperation(select_op);
+      while (tnode_context->UnreadPartitionsRemaining() > 1) {
+        shared_ptr<YBqlReadOp> op(table->NewQLSelect());
+        op->mutable_request()->CopyFrom(select_op->request());
+        tnode_context->AdvanceToNextPartition(op->mutable_request());
+        tnode_context->AddOperation(op);
+        select_op = op; // Use new op as base for the next one, if any.
+      }
+      return exec_context().ApplyAll();
+    }
   }
 
   // Apply the operator.
@@ -1093,6 +1115,7 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 void Executor::FlushAsync() {
+  exec_context().inc_num_flushes();
   batched_writes_by_primary_key_.clear();
   batched_writes_by_hash_key_.clear();
   if (!ql_env_->FlushAsync(&flush_async_cb_)) {
@@ -1109,15 +1132,27 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
          curr != tnode_contexts->end(); curr = next) {
       next = std::next(curr);
       TnodeContext& tnode_context = *curr;
-      const shared_ptr<client::YBqlOp>& op = tnode_context.op();
+
+      if (tnode_context.ops().empty()) {
+        continue;
+      }
+
       const TreeNode *tnode = tnode_context.tnode();
-      if (op != nullptr) {
+      const auto& main_op = tnode_context.ops().front();
+
+      if (tnode_context.ops().size() > 1) {
+        // This should be a parallel SELECT (i.e. with IN condition) which guarantees that the tnode
+        // is not deferred and that there are no more rows to fetch.
+        // So we just need to process the results.
+        DCHECK_EQ(tnode_context.tnode()->opcode(), TreeNodeOpcode::kPTSelectStmt);
+        RETURN_STMT_NOT_OK(ProcessAsyncResults(s, &exec_context, tnode_context));
+      } else { // Exactly one operation (main_op).
 
         // If the operation has been deferred continue to the next operation, but if it can be
         // applied now, apply it first.
         if (tnode_context.IsDeferred()) {
-          if (!DeferOperation(static_cast<const PTDmlStmt*>(tnode),
-                              std::static_pointer_cast<YBqlWriteOp>(op))) {
+          if (!DeferOperation(static_cast<const PTDmlStmt *>(tnode),
+              std::static_pointer_cast<YBqlWriteOp>(main_op))) {
             RETURN_STMT_NOT_OK(tnode_context.Apply(ql_env_));
           }
           found_deferred_stmts = true;
@@ -1128,68 +1163,73 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
           continue; // If returning status we make sure we process results in user-given order.
         }
 
-        RETURN_STMT_NOT_OK(ProcessAsyncResult(s, &exec_context, tnode_context));
+        RETURN_STMT_NOT_OK(ProcessAsyncResults(s, &exec_context, tnode_context));
 
         // If we are within a transaction, check the status of the current operation:
         // If it failed to apply (either because of an execution error or false IF condition) quit
         // the execution and do not commit the transaction.
         // Any transaction that is not committed will be aborted at the end.
         // Note: For an error response we only get to this point if using 'RETURNS STATUS',
-        //       otherwise ProcessAsyncResult wshuld fail so we would return already above.
+        //       otherwise ProcessAsyncResults should fail so we would return already above.
         if (ql_env_->HasTransaction() &&
-            (op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
-            (op->response().has_applied() && !op->response().applied()))) {
+            (main_op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
+            (main_op->response().has_applied() && !main_op->response().applied()))) {
           return StatementExecuted(Status::OK());
         }
 
         // For SELECT statement, check if there are more rows to fetch.
         if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-          const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
-          const auto& read_op = std::static_pointer_cast<YBqlReadOp>(op);
+          const auto *select_stmt = static_cast<const PTSelectStmt *>(tnode);
+          const auto &read_op = std::static_pointer_cast<YBqlReadOp>(main_op);
           const auto more_rows = FetchMoreRowsIfNeeded(select_stmt, read_op,
-                                                       &exec_context, &tnode_context);
+              &exec_context, &tnode_context);
           RETURN_STMT_NOT_OK(more_rows);
           if (*more_rows) {
             continue;
           }
-          // Evaluate aggregate functions if they are selected.
-          RETURN_STMT_NOT_OK(AggregateResultSets(select_stmt));
         }
-
-        // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
-        // completed but exclude the time to commit the transaction if any. Ignore the auxiliary
-        // write operations on the index tables.
-        if (ql_metrics_ != nullptr &&
-            (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt || !op->table()->IsIndex())) {
-          const auto delta_usec = (now - tnode_context.start_time()).ToMicroseconds();
-          switch (tnode->opcode()) {
-            case TreeNodeOpcode::kPTSelectStmt:
-              ql_metrics_->ql_select_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTInsertStmt:
-              ql_metrics_->ql_insert_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTUpdateStmt:
-              ql_metrics_->ql_update_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTDeleteStmt:
-              ql_metrics_->ql_delete_->Increment(delta_usec);
-              break;
-            default:
-              LOG(FATAL) << "unexpected operation";
-          }
-          ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
-        }
-
-        // Apply child transaction results if any.
-        const QLResponsePB& response = op->response();
-        if (response.has_child_transaction_result()) {
-          const auto& result = response.child_transaction_result();
-          RETURN_STMT_NOT_OK(ql_env_->ApplyChildTransactionResult(result));
-        }
-
-        tnode_contexts->erase(curr);
       }
+
+      // For SELECT statement, aggregate result sets if needed.
+      if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+        const auto *select_stmt = static_cast<const PTSelectStmt *>(tnode);
+        // Evaluate aggregate functions if they are selected.
+        RETURN_STMT_NOT_OK(AggregateResultSets(select_stmt));
+      }
+
+      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
+      // completed but exclude the time to commit the transaction if any. Ignore the auxillary
+      // write operations on the index tables.
+      if (ql_metrics_ != nullptr &&
+          (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt || !main_op->table()->IsIndex())) {
+        const auto delta_usec = (now - tnode_context.start_time()).ToMicroseconds();
+        switch (tnode->opcode()) {
+          case TreeNodeOpcode::kPTSelectStmt:
+            ql_metrics_->ql_select_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTInsertStmt:
+            ql_metrics_->ql_insert_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTUpdateStmt:
+            ql_metrics_->ql_update_->Increment(delta_usec);
+            break;
+          case TreeNodeOpcode::kPTDeleteStmt:
+            ql_metrics_->ql_delete_->Increment(delta_usec);
+            break;
+          default:
+            LOG(FATAL) << "unexpected operation";
+        }
+        ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
+      }
+
+      // Apply child transaction results if any.
+      const QLResponsePB& response = main_op->response();
+      if (response.has_child_transaction_result()) {
+        const auto& result = response.child_transaction_result();
+        RETURN_STMT_NOT_OK(ql_env_->ApplyChildTransactionResult(result));
+      }
+
+      tnode_contexts->erase(curr);
     }
   }
 
@@ -1492,25 +1532,28 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op,
   return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
 
-Status Executor::ProcessAsyncResult(const Status& s,
-                                    ExecContext* exec_context,
-                                    const TnodeContext& tnode_context) {
+Status Executor::ProcessAsyncResults(const Status& s,
+                                     ExecContext* exec_context,
+                                     const TnodeContext& tnode_context) {
   RETURN_NOT_OK(s);
+  if (tnode_context.IsDeferred()) {
+    return Status::OK(); // Skip deferred op.
+  }
   const TreeNode* tnode = tnode_context.tnode();
-  client::YBqlOp* op = tnode_context.op().get();
-  if (op == nullptr || tnode_context.IsDeferred()) {
-    return Status::OK(); // Skip empty or deferred op.
+  for (auto& op : tnode_context.ops()) {
+    Status ss = ql_env_->GetOpError(op.get());
+    if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
+      // YBOperation returns not-found error when the tablet is not found.
+      const auto
+          errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
+      ss = exec_context->Error(tnode, ss, errcode);
+    }
+    if (ss.ok()) {
+      ss = ProcessOpResponse(op.get(), tnode, exec_context);
+    }
+    RETURN_NOT_OK(ProcessStatementStatus(*exec_context->parse_tree(), ss));
   }
-  Status ss = ql_env_->GetOpError(op);
-  if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
-    // YBOperation returns not-found error when the tablet is not found.
-    const auto errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
-    ss = exec_context->Error(tnode, ss, errcode);
-  }
-  if (ss.ok()) {
-    ss = ProcessOpResponse(op, tnode, exec_context);
-  }
-  return ProcessStatementStatus(*exec_context->parse_tree(), ss);
+  return Status::OK();
 }
 
 Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
@@ -1579,6 +1622,8 @@ void Executor::StatementExecuted(const Status& s) {
         }
       }
       ql_metrics_->num_retries_to_execute_ql_->Increment(exec_context.num_retries());
+      ql_metrics_->num_flushes_to_execute_ql_->Increment(exec_context.num_flushes());
+
     }
   }
 

@@ -42,6 +42,7 @@ class QLMetrics {
   scoped_refptr<yb::Histogram> time_to_execute_ql_query_;
   scoped_refptr<yb::Histogram> num_rounds_to_analyze_ql_;
   scoped_refptr<yb::Histogram> num_retries_to_execute_ql_;
+  scoped_refptr<yb::Histogram> num_flushes_to_execute_ql_;
 
   scoped_refptr<yb::Histogram> ql_select_;
   scoped_refptr<yb::Histogram> ql_insert_;

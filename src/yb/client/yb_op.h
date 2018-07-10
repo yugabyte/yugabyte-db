@@ -96,6 +96,7 @@ class YBOperation {
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
   virtual bool succeeded() = 0;
+  virtual bool returns_sidecar() = 0;
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
@@ -138,6 +139,9 @@ class YBRedisOp : public YBOperation {
   RedisResponsePB* mutable_response();
 
   uint16_t hash_code() const { return hash_code_; }
+
+  // Redis does not use sidecars.
+  bool returns_sidecar() override { return false; }
 
   virtual const std::string& GetKey() const = 0;
 
@@ -259,6 +263,10 @@ class YBqlWriteOp : public YBqlOp {
 
   bool read_only() override { return false; };
 
+  bool returns_sidecar() override {
+    return ql_write_request_->has_if_expr() || ql_write_request_->returns_status();
+  }
+
   virtual void SetHashCode(uint16_t hash_code) override;
 
   uint16_t GetHashCode() const;
@@ -307,6 +315,8 @@ class YBqlReadOp : public YBqlOp {
   virtual std::string ToString() const override;
 
   virtual bool read_only() override { return true; };
+
+  bool returns_sidecar() override { return true; }
 
   virtual void SetHashCode(uint16_t hash_code) override;
 
@@ -385,6 +395,9 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   bool read_only() override { return false; };
 
+  // TODO check for e.g. returning clause.
+  bool returns_sidecar() override { return true; }
+
   virtual void SetHashCode(uint16_t hash_code) override;
 
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
@@ -418,6 +431,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   virtual std::string ToString() const override;
 
   virtual bool read_only() override { return true; };
+
+  bool returns_sidecar() override { return true; }
 
   virtual void SetHashCode(uint16_t hash_code) override;
 

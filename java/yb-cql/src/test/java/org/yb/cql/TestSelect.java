@@ -13,8 +13,10 @@
 package org.yb.cql;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.Statement;
 import com.yugabyte.driver.core.TableSplitMetadata;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import org.junit.Test;
@@ -836,6 +838,90 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM in_test WHERE h2 NOT IN ('a', 1)");
 
     LOG.info("TEST IN KEYWORD - End");
+  }
+
+  private void assertSelectWithFlushes(String stmt,
+                                       List<String> expectedRows,
+                                       int expectedFlushesCount) throws Exception {
+    assertSelectWithFlushes(new SimpleStatement(stmt), expectedRows, expectedFlushesCount);
+  }
+
+  private void assertSelectWithFlushes(Statement stmt,
+                                       List<String> expectedRows,
+                                       int expectedFlushesCount) throws Exception {
+
+    // Get the initial metrics.
+    Map<MiniYBDaemon, Metrics> beforeMetrics = getAllMetrics();
+
+    List<Row> rows = session.execute(stmt).all();
+
+    // Get the after metrics.
+    Map<MiniYBDaemon, Metrics> afterMetrics = getAllMetrics();
+
+    // Check the result.
+    assertEquals(expectedRows, rows.stream().map(Row::toString).collect(Collectors.toList()));
+
+    // Check the metrics.
+    int numFlushes = 0;
+    int numSelects = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      numFlushes += afterMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalSum -
+          beforeMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalSum;
+      numSelects += afterMetrics.get(ts).getHistogram(TSERVER_SELECT_METRIC).totalCount -
+          beforeMetrics.get(ts).getHistogram(TSERVER_SELECT_METRIC).totalCount;
+    }
+
+    // We could have a node-refresh even in the middle of this select, triggering selects to the
+    // system tables -- but each of those should do exactly one flush. Therefore, we subtract
+    // the extra selects (if any) from numFlushes.
+    numFlushes -= numSelects - 1;
+    assertEquals(expectedFlushesCount, numFlushes);
+  }
+
+  @Test
+  public void testLargeParallelIn() throws Exception {
+    LOG.info("TEST IN KEYWORD - Start");
+
+    // Setup the table.
+    session.execute("CREATE TABLE parallel_in_test(h1 int, h2 int, r1 int, v1 int," +
+                        "primary key ((h1, h2), r1))");
+
+    PreparedStatement insert = session.prepare(
+        "INSERT INTO parallel_in_test(h1, h2, r1, v1) VALUES (?, ?, ?, ?)");
+    for (Integer i = 0; i < 400; i++) {
+      session.execute(insert.bind(i / 20, i % 20, new Integer(1), new Integer(1)));
+    }
+
+    // SELECT statement: 200 options, 100 with actual results (i.e. for r = 1).
+    String select = "SELECT * FROM parallel_in_test WHERE " +
+        "h1 IN (0,2,4,6,8,10,12,14,16,18) AND h2 IN (1,3,5,7,9,11,13,15,17,19) AND r1 IN (1,2)";
+
+    // Compute expected rows.
+    List<String> expectedRows = new ArrayList<>();
+    String rowTemplate = "Row[%d, %d, 1, 1]";
+    for (int i = 0; i < 20; i += 2) {
+      for (int j = 1; j < 20; j += 2) {
+        expectedRows.add(String.format(rowTemplate, i, j));
+      }
+    }
+
+    // Test normal query: expect parallel execution.
+    assertSelectWithFlushes(select, expectedRows, /* expectedFlushesCount = */1);
+
+    // Test limit greater or equal than max results (200): expect parallel execution.
+    assertSelectWithFlushes(select + " LIMIT 200", expectedRows, /* expectedFlushesCount = */1);
+
+    // Test limit smaller than max results (200): expect serial execution.
+    assertSelectWithFlushes(select + " LIMIT 199", expectedRows, /* expectedFlushesCount = */100);
+
+    // Test page size equal to max results: expect parallel execution.
+    SimpleStatement stmt = new SimpleStatement(select);
+    stmt.setFetchSize(200);
+    assertSelectWithFlushes(stmt, expectedRows, /* expectedFlushesCount = */1);
+
+    // Test offset clause: always use serial execution with offset.
+    assertSelectWithFlushes(select + " OFFSET 1", expectedRows.subList(1, expectedRows.size()),
+        /* expectedFlushesCount = */100);
   }
 
   @Test
