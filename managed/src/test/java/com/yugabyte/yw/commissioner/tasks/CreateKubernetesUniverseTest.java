@@ -21,6 +21,9 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.Common;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 import play.libs.Json;
 
 import java.util.ArrayList;
@@ -40,6 +43,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,6 +56,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   Commissioner commissioner;
 
   Universe defaultUniverse;
+
+  YBClient mockClient;
 
   String nodePrefix = "demo-universe";
 
@@ -77,6 +83,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
+      TaskType.CreateTable,
       TaskType.UniverseUpdateSucceeded);
 
 
@@ -85,12 +92,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of("removeFile", false)),
+      Json.toJson(ImmutableMap.of("tableType", "REDIS_TABLE_TYPE",
+                                  "tableName", "redis")),
       Json.toJson(ImmutableMap.of())
   );
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
-   for (TaskType taskType: KUBERNETES_CREATE_UNIVERSE_TASKS) {
+    for (TaskType taskType: KUBERNETES_CREATE_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(1, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
@@ -141,6 +150,16 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"host-yb-tserver-2\"}}]}";
     when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(response);
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    YBTable mockTable = mock(YBTable.class);
+    when(mockTable.getName()).thenReturn("redis");
+    when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
+    try {
+      when(mockClient.createRedisTable(any())).thenReturn(mockTable);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockKubernetesManager, times(1)).helmInit(defaultProvider.uuid);

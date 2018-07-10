@@ -99,17 +99,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
-            " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"host-yb-master-0\"}}," +
+            " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
         "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"host-yb-tserver-0\"}}," +
+            "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
         "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.92\"}, \"spec\": {\"hostname\": \"host-yb-master-1\"}}," +
+            "\"podIP\": \"123.456.78.92\"}, \"spec\": {\"hostname\": \"yb-master-1\"}}," +
         "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
-            " \"podIP\": \"123.456.78.93\"}, \"spec\": {\"hostname\": \"host-yb-tserver-1\"}}," +
+            " \"podIP\": \"123.456.78.93\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}," +
         "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.94\"}, \"spec\": {\"hostname\": \"host-yb-master-2\"}}," +
+            "\"podIP\": \"123.456.78.94\"}, \"spec\": {\"hostname\": \"yb-master-2\"}}," +
         "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"host-yb-tserver-2\"}}]}";
+            "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}]}";
     when(kubernetesManager.getPodInfos(any(), any())).thenReturn(shellResponse);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.POD_INFO);
