@@ -107,6 +107,9 @@ DEFINE_int32(redis_max_value_size, 64_MB,
 DEFINE_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
+DEFINE_int32(redis_password_caching_duration_ms, 5000,
+             "The duration for which we will cache the redis passwords. 0 to disable.");
+
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 DEFINE_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
 
@@ -121,6 +124,7 @@ using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
 using yb::client::YBStatusCallback;
+using yb::client::YBTable;
 using yb::client::YBTableName;
 using yb::rpc::ConnectionPtr;
 using yb::rpc::ConnectionWeakPtr;
@@ -658,18 +662,65 @@ class TabletOperations {
   OperationType last_conflict_type_ = OperationType::kNone;
 };
 
+string GetYBTableNameForRedisDatabase(const string& db_name) {
+  if (db_name == "0") {
+    return common::kRedisTableName;
+  } else {
+    return StrCat(common::kRedisTableName, "_", db_name);
+  }
+}
+
+struct RedisServiceImplData : public RedisServiceData {
+  RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses);
+
+  constexpr static int kRpcTimeoutSec = 5;
+
+  void AppendToMonitors(ConnectionPtr conn) override;
+  void LogToMonitors(const string& end, const string& db, const RedisClientCommand& cmd) override;
+  CHECKED_STATUS OpenYBTableForDB(const string& db_name) override;
+
+  std::shared_ptr<client::YBTable> GetYBTableCached(const string& db_name);
+  CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
+  CHECKED_STATUS Initialize();
+
+  bool initialized() const { return yb_client_initialized_.load(std::memory_order_relaxed); }
+
+  std::string yb_tier_master_addresses_;
+
+  yb::rpc::RpcMethodMetrics metrics_error_;
+  InternalMetrics metrics_internal_;
+
+  // Mutex that protects the creation of client_ and populating db_to_opened_table_.
+  rw_spinlock yb_mutex_;
+  std::atomic<bool> yb_client_initialized_;
+  std::shared_ptr<client::YBClient> client_;
+  SessionPool session_pool_;
+  std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
+
+  std::vector<ConnectionWeakPtr> monitoring_clients_;
+  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
+  rw_spinlock monitoring_clients_mutex_;
+
+  std::mutex redis_password_mutex_;
+  MonoTime redis_cached_password_validity_expiry_;
+  vector<string> redis_cached_passwords_;
+
+  RedisServer* server_;
+
+};
+
 class BatchContextImpl : public BatchContext {
  public:
   BatchContextImpl(
       const std::shared_ptr<client::YBClient>& client,
-      const RedisServer* server,
+      RedisServiceImplData* impl_data,
       const std::shared_ptr<client::YBTable>& table,
       SessionPool* session_pool,
       const std::shared_ptr<RedisInboundCall>& call,
       const InternalMetrics& metrics_internal,
       const MemTrackerPtr& mem_tracker)
       : client_(client),
-        server_(server),
+        impl_data_(impl_data),
         table_(table),
         session_pool_(session_pool),
         call_(call),
@@ -692,8 +743,12 @@ class BatchContextImpl : public BatchContext {
     return client_;
   }
 
+  RedisServiceImplData* service_data() override {
+    return impl_data_;
+  }
+
   const RedisServer* server() override {
-    return server_;
+    return impl_data_->server_;
   }
 
   const std::shared_ptr<client::YBTable>& table() const override {
@@ -782,7 +837,7 @@ class BatchContextImpl : public BatchContext {
   }
 
   std::shared_ptr<client::YBClient> client_;
-  const RedisServer* server_ = nullptr;
+  RedisServiceImplData* impl_data_ = nullptr;
   std::shared_ptr<client::YBTable> table_;
   SessionPool* session_pool_;
   std::shared_ptr<RedisInboundCall> call_;
@@ -835,60 +890,67 @@ class RedisServiceImpl::Impl {
     return true;
   }
 
-  vector<string> GetRedisPasswords() {
-    vector<string> ret;
-    CHECK_OK(client_->GetRedisPasswords(&ret));
-    return ret;
-  }
-
   bool CheckAuthentication(RedisConnectionContext* conn_context) {
     if (!conn_context->is_authenticated()) {
-      conn_context->set_authenticated(!FLAGS_enable_redis_auth || GetRedisPasswords().empty());
+      vector<string> passwords;
+      Status s = data_.GetRedisPasswords(&passwords);
+      conn_context->set_authenticated(!FLAGS_enable_redis_auth || (s.ok() && passwords.empty()));
     }
     return conn_context->is_authenticated();
   }
 
-  constexpr static int kRpcTimeoutSec = 5;
-
   void PopulateHandlers();
-  void AppendToMonitors(ConnectionPtr conn);
-  void LogToMonitors(const string& end, int db, const RedisClientCommand& cmd);
   // Fetches the appropriate handler for the command, nullptr if none exists.
   const RedisCommandInfo* FetchHandler(const RedisClientCommand& cmd_args);
-  CHECKED_STATUS SetUpYBClient();
 
   std::deque<std::string> names_;
   std::unordered_map<Slice, RedisCommandInfoPtr, Slice::Hash> command_name_to_info_map_;
-  yb::rpc::RpcMethodMetrics metrics_error_;
-  InternalMetrics metrics_internal_;
 
-  std::string yb_tier_master_addresses_;
-  std::mutex yb_mutex_;  // Mutex that protects the creation of client_ and table_.
-  std::atomic<bool> yb_client_initialized_;
-  std::shared_ptr<client::YBClient> client_;
-  SessionPool session_pool_;
-  std::shared_ptr<client::YBTable> table_;
-
-  std::vector<ConnectionWeakPtr> monitoring_clients_;
-  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
-  rw_spinlock monitoring_clients_mutex_;
-
-  RedisServer* server_;
+  RedisServiceImplData data_;
 };
 
-void RedisServiceImpl::Impl::AppendToMonitors(ConnectionPtr conn) {
+RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses)
+    : yb_tier_master_addresses_(std::move(yb_tier_master_addresses)),
+      yb_client_initialized_(false),
+      server_(server) {}
+
+Status RedisServiceImplData::OpenYBTableForDB(const string& db_name) {
+  {
+    boost::shared_lock<rw_spinlock> rguard(yb_mutex_);
+    if (db_to_opened_table_.find(db_name) != db_to_opened_table_.end()) {
+      return Status::OK();
+    }
+  }
+
+  std::shared_ptr<client::YBTable> table;
+  YBTableName table_name(common::kRedisKeyspaceName, GetYBTableNameForRedisDatabase(db_name));
+  RETURN_NOT_OK(client_->OpenTable(table_name, &table));
+  {
+    boost::lock_guard<rw_spinlock> guard(yb_mutex_);
+    db_to_opened_table_[db_name] = table;
+  }
+  return Status::OK();
+}
+
+std::shared_ptr<client::YBTable> RedisServiceImplData::GetYBTableCached(const string& db_name) {
+  boost::shared_lock<rw_spinlock> rguard(yb_mutex_);
+  return db_to_opened_table_[db_name];
+}
+
+void RedisServiceImplData::AppendToMonitors(ConnectionPtr conn) {
   boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
   monitoring_clients_.emplace_back(conn);
   num_clients_monitoring_->IncrementBy(1);
 }
 
-void RedisServiceImpl::Impl::LogToMonitors(
-    const string& end, int db, const RedisClientCommand& cmd) {
+void RedisServiceImplData::LogToMonitors(
+    const string& end, const string& db, const RedisClientCommand& cmd) {
   boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
 
   if (monitoring_clients_.empty()) return;
 
   // Prepare the string to be sent to all the monitoring clients.
+  // TODO: Use timestamp that works with converter.
   int64_t now_ms = ToMicroseconds(CoarseMonoClock::Now().time_since_epoch());
   std::stringstream ss;
   ss << "+";
@@ -928,50 +990,9 @@ void RedisServiceImpl::Impl::LogToMonitors(
   }
 }
 
-void RedisServiceImpl::Impl::PopulateHandlers() {
-  auto metric_entity = server_->metric_entity();
-  FillRedisCommands(metric_entity, std::bind(&Impl::SetupMethod, this, _1));
-
-  // Set up metrics for erroneous calls.
-  metrics_error_.handler_latency = YB_REDIS_METRIC(error).Instantiate(metric_entity);
-  metrics_internal_[static_cast<size_t>(OperationType::kWrite)].handler_latency =
-      YB_REDIS_METRIC(set_internal).Instantiate(metric_entity);
-  metrics_internal_[static_cast<size_t>(OperationType::kRead)].handler_latency =
-      YB_REDIS_METRIC(get_internal).Instantiate(metric_entity);
-  metrics_internal_[static_cast<size_t>(OperationType::kLocal)].handler_latency =
-      metrics_internal_[static_cast<size_t>(OperationType::kRead)].handler_latency;
-
-  auto* proto = &METRIC_redis_monitoring_clients;
-  num_clients_monitoring_ = proto->Instantiate(metric_entity, 0);
-}
-
-const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCommand& cmd_args) {
-  if (cmd_args.size() < 1) {
-    return nullptr;
-  }
-  Slice cmd_name = cmd_args[0];
-  auto iter = command_name_to_info_map_.find(cmd_args[0]);
-  if (iter == command_name_to_info_map_.end()) {
-    YB_LOG_EVERY_N_SECS(ERROR, 60)
-        << "Command " << cmd_name << " not yet supported. "
-        << "Arguments: " << ToString(cmd_args) << ". "
-        << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
-    return nullptr;
-  }
-  return iter->second.get();
-}
-
-RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresses)
-    : yb_tier_master_addresses_(std::move(yb_tier_master_addresses)),
-      yb_client_initialized_(false),
-      server_(server) {
-  // TODO(ENG-446): Handle metrics for all the methods individually.
-  PopulateHandlers();
-}
-
-Status RedisServiceImpl::Impl::SetUpYBClient() {
-  std::lock_guard<std::mutex> guard(yb_mutex_);
-  if (!yb_client_initialized_.load(std::memory_order_relaxed)) {
+Status RedisServiceImplData::Initialize() {
+  boost::lock_guard<rw_spinlock> guard(yb_mutex_);
+  if (!initialized()) {
     YBClientBuilder client_builder;
     client_builder.set_client_name("redis_ybclient");
     client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
@@ -1000,14 +1021,71 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
           server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
     }
 
-    const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
-    RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
+    std::shared_ptr<client::YBTable> table;
+    YBTableName table_name(common::kRedisKeyspaceName, GetYBTableNameForRedisDatabase("0"));
+    RETURN_NOT_OK(client_->OpenTable(table_name, &table));
+    db_to_opened_table_["0"] = table;
 
     session_pool_.Init(client_, server_->metric_entity());
 
     yb_client_initialized_.store(true, std::memory_order_release);
   }
   return Status::OK();
+}
+
+Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
+  MonoTime now = MonoTime::Now();
+
+  std::lock_guard<std::mutex> lock(redis_password_mutex_);
+  if (redis_cached_password_validity_expiry_.Initialized() &&
+      now < redis_cached_password_validity_expiry_) {
+    *passwords = redis_cached_passwords_;
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(client_->GetRedisPasswords(&redis_cached_passwords_));
+  *passwords = redis_cached_passwords_;
+  redis_cached_password_validity_expiry_ =
+      now + MonoDelta::FromMilliseconds(FLAGS_redis_password_caching_duration_ms);
+  return Status::OK();
+}
+
+void RedisServiceImpl::Impl::PopulateHandlers() {
+  auto metric_entity = data_.server_->metric_entity();
+  FillRedisCommands(metric_entity, std::bind(&Impl::SetupMethod, this, _1));
+
+  // Set up metrics for erroneous calls.
+  data_.metrics_error_.handler_latency = YB_REDIS_METRIC(error).Instantiate(metric_entity);
+  data_.metrics_internal_[static_cast<size_t>(OperationType::kWrite)].handler_latency =
+      YB_REDIS_METRIC(set_internal).Instantiate(metric_entity);
+  data_.metrics_internal_[static_cast<size_t>(OperationType::kRead)].handler_latency =
+      YB_REDIS_METRIC(get_internal).Instantiate(metric_entity);
+  data_.metrics_internal_[static_cast<size_t>(OperationType::kLocal)].handler_latency =
+      data_.metrics_internal_[static_cast<size_t>(OperationType::kRead)].handler_latency;
+
+  auto* proto = &METRIC_redis_monitoring_clients;
+  data_.num_clients_monitoring_ = proto->Instantiate(metric_entity, 0);
+}
+
+const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCommand& cmd_args) {
+  if (cmd_args.size() < 1) {
+    return nullptr;
+  }
+  Slice cmd_name = cmd_args[0];
+  auto iter = command_name_to_info_map_.find(cmd_args[0]);
+  if (iter == command_name_to_info_map_.end()) {
+    YB_LOG_EVERY_N_SECS(ERROR, 60)
+        << "Command " << cmd_name << " not yet supported. "
+        << "Arguments: " << ToString(cmd_args) << ". "
+        << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
+    return nullptr;
+  }
+  return iter->second.get();
+}
+
+RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresses)
+    : data_(server, std::move(yb_tier_master_addresses)) {
+  PopulateHandlers();
 }
 
 void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
@@ -1024,8 +1102,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   }
 
   // Ensure that we have the required YBClient(s) initialized.
-  if (!yb_client_initialized_.load(std::memory_order_acquire)) {
-    auto status = SetUpYBClient();
+  if (!data_.initialized()) {
+    auto status = data_.Initialize();
     if (!status.ok()) {
       auto message = StrCat("Could not open .redis table. ", status.ToString());
       for (size_t idx = 0; idx != call->client_batch().size(); ++idx) {
@@ -1039,13 +1117,15 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // We process them as follows:
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
-  auto context = make_scoped_refptr<BatchContextImpl>(
-      client_, server_, table_, &session_pool_, call, metrics_internal_,
-      server_->mem_tracker());
   const auto& batch = call->client_batch();
   auto conn = call->connection();
   const string remote = yb::ToString(conn->remote());
   RedisConnectionContext* conn_context = &(call->connection_context());
+  string db_name = conn_context->redis_db_to_use();
+  auto yb_table = data_.GetYBTableCached(db_name);
+  auto context = make_scoped_refptr<BatchContextImpl>(
+      data_.client_, &data_, yb_table, &data_.session_pool_, call, data_.metrics_internal_,
+      data_.server_->mem_tracker());
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
 
@@ -1077,15 +1157,22 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
     } else if (!CheckAuthentication(conn_context) && cmd_info->name != "auth") {
       RespondWithFailure(call, idx, "Authentication required.", "NOAUTH");
     } else {
+      if (cmd_info->name != "config" && cmd_info->name != "monitor") {
+        data_.LogToMonitors(remote, db_name, c);
+      }
+
       // Handle the call.
       cmd_info->functor(*cmd_info, idx, context.get());
-    }
 
-    // Add to the appenders after the call has been handled (i.e. reponded with "OK").
-    if (cmd_info->name == "monitor") {
-      AppendToMonitors(conn);
-    } else if (cmd_info->name != "config") {
-      LogToMonitors(remote, 0, c);
+      if (cmd_info->name == "select" && db_name != conn_context->redis_db_to_use()) {
+        // update context.
+        context->Commit();
+        db_name = conn_context->redis_db_to_use();
+        yb_table = data_.GetYBTableCached(db_name);
+        context = make_scoped_refptr<BatchContextImpl>(
+            data_.client_, &data_, yb_table, &data_.session_pool_, call, data_.metrics_internal_,
+            data_.server_->mem_tracker());
+      }
     }
   }
   context->Commit();

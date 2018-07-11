@@ -45,6 +45,13 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     authenticated_.store(flag, std::memory_order_release);
   }
 
+  std::string redis_db_to_use() const {
+    return redis_db_name_;
+  }
+
+  void use_redis_db(const std::string& name) {
+    redis_db_name_ = name;
+  }
 
   static std::string Name() { return "Redis"; }
 
@@ -69,6 +76,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   size_t commands_in_batch_ = 0;
   size_t end_of_batch_ = 0;
   std::atomic<bool> authenticated_{false};
+  std::string redis_db_name_ = "0";
 
   MemTrackerPtr call_mem_tracker_;
 };

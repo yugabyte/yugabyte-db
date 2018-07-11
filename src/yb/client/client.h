@@ -273,6 +273,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
+  CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -543,10 +544,6 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // instance and is used in cases such as the load tester, for binding reads and writes from the
   // same client to the same data.
   const std::string client_id_;
-
-  std::mutex redis_password_mutex_;
-  MonoTime redis_cached_password_validity_expiry_;
-  vector<string> redis_cached_passwords_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

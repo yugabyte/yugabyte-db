@@ -110,6 +110,10 @@ namespace redisserver {
     ((config, Config, -1, LOCAL)) \
     ((info, Info, -1, LOCAL)) \
     ((role, Role, 1, LOCAL)) \
+    ((select, Select, 2, LOCAL)) \
+    ((createdb, CreateDB, 2, LOCAL)) \
+    ((listdb, ListDB, 1, LOCAL)) \
+    ((deletedb, DeleteDB, 2, LOCAL)) \
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((monitor, Monitor, 1, LOCAL)) \
@@ -247,11 +251,20 @@ class LocalCommandData {
   BatchContextPtr context_;
 };
 
+string GetYBTableNameForRedisDatabase(const string& db_name) {
+  if (db_name == "0") {
+    return common::kRedisTableName;
+  } else {
+    return StrCat(common::kRedisTableName, "_", db_name);
+  }
+}
 
 void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
   vector<string> tablets, partitions;
   vector<master::TabletLocationsPB> locations;
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const auto redis_table_name =
+      GetYBTableNameForRedisDatabase(data.call()->connection_context().redis_db_to_use());
+  const YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
   auto s = data.client()->GetTablets(table_name, 0, &tablets, &partitions, &locations,
                                      true /* update tablets cache */);
   if (!s.ok()) {
@@ -333,6 +346,10 @@ void HandleEcho(LocalCommandData data) {
 
 void HandleMonitor(LocalCommandData data) {
   data.Respond();
+
+  // Add to the appenders after the call has been handled (i.e. reponded with "OK").
+  auto conn = data.call()->connection();
+  data.context()->service_data()->AppendToMonitors(conn);
 }
 
 void HandleRole(LocalCommandData data) {
@@ -429,11 +446,14 @@ void HandleConfig(LocalCommandData data) {
 
 void HandleAuth(LocalCommandData data) {
   vector<string> passwords;
-  auto status = data.client()->GetRedisPasswords(&passwords);
+  auto status = data.context()->service_data()->GetRedisPasswords(&passwords);
   RedisResponsePB resp;
   if (!status.ok() || !AcceptPassword(passwords, data.arg(1).ToBuffer())) {
     resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-    resp.set_error_message(strings::Substitute("ERR: Bad Password. $0", status.ToString()));
+    auto error_message =
+        (status.ok() ? "ERR: Bad Password."
+                     : strings::Substitute("ERR: Bad Password. $0", status.ToString()));
+    resp.set_error_message(error_message);
   } else {
     RedisConnectionContext& context = data.call()->connection_context();
     context.set_authenticated(true);
@@ -442,12 +462,12 @@ void HandleAuth(LocalCommandData data) {
   data.Respond(&resp);
 }
 
-void HandleFlushDB(LocalCommandData data) {
+void FlushDBs(LocalCommandData data, const vector<string> ids) {
   RedisResponsePB resp;
 
-  const Status s = FLAGS_yedis_enable_flush ?
-    data.client()->TruncateTable(data.table()->id()) :
-    STATUS(InvalidArgument, "FLUSHDB and FLUSHALL are not enabled.");
+  const Status s = FLAGS_yedis_enable_flush
+                       ? data.client()->TruncateTables(ids)
+                       : STATUS(InvalidArgument, "FLUSHDB and FLUSHALL are not enabled.");
 
   if (s.ok()) {
     resp.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -459,8 +479,139 @@ void HandleFlushDB(LocalCommandData data) {
   data.Respond(&resp);
 }
 
+void HandleFlushDB(LocalCommandData data) {
+  FlushDBs(data, {data.table()->id()});
+}
+
 void HandleFlushAll(LocalCommandData data) {
-  HandleFlushDB(data);
+  vector<yb::client::YBTableName> table_names;
+  const string prefix = common::kRedisTableName;
+  Status s = data.client()->ListTables(&table_names, prefix);
+  if (!s.ok()) {
+    RedisResponsePB resp;
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+    data.Respond(&resp);
+    return;
+  }
+  // Gather table ids.
+  vector<string> table_ids;
+  for (const auto& name : table_names) {
+    std::shared_ptr<client::YBTable> table;
+    s = data.client()->OpenTable(name, &table);
+    if (!s.ok()) {
+      RedisResponsePB resp;
+      const Slice message = s.message();
+      resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+      resp.set_error_message(message.data(), message.size());
+      data.Respond(&resp);
+      return;
+    }
+    table_ids.push_back(table->id());
+  }
+  FlushDBs(data, table_ids);
+}
+
+void HandleCreateDB(LocalCommandData data) {
+  RedisResponsePB resp;
+  // Figure out the redis table name that we should be using.
+  const string db_name = data.arg(1).ToBuffer();
+  const string redis_table_name = GetYBTableNameForRedisDatabase(db_name);
+  YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
+
+  gscoped_ptr<yb::client::YBTableCreator> table_creator(data.client()->NewTableCreator());
+  Status s = table_creator->table_name(table_name)
+                 .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                 .Create();
+  if (s.ok()) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else if (s.IsAlreadyPresent()) {
+    VLOG(1) << "Table '" << table_name.ToString() << "' already exists";
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else {
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+  }
+  data.Respond(&resp);
+}
+
+void HandleListDB(LocalCommandData data) {
+  RedisResponsePB resp;
+  // Figure out the redis table name that we should be using.
+  vector<yb::client::YBTableName> table_names;
+  const string prefix = common::kRedisTableName;
+  const size_t prefix_len = strlen(common::kRedisTableName);
+  Status s = data.client()->ListTables(&table_names, prefix);
+  if (!s.ok()) {
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+    data.Respond(&resp);
+    return;
+  }
+
+  auto array_response = resp.mutable_array_response();
+  vector<string> dbs;
+  for (const auto& ybname : table_names) {
+    if (!ybname.is_redis_table()) continue;
+    const auto& tablename = ybname.table_name();
+    if (tablename == common::kRedisTableName) {
+      dbs.push_back("0");
+    } else {
+      // Of the form <prefix>_<DB>.
+      dbs.push_back(tablename.substr(prefix_len + 1));
+    }
+  }
+  std::sort(dbs.begin(), dbs.end());
+  for (const string& db : dbs) {
+    AddElements(redisserver::EncodeAsBulkString(db), array_response);
+  }
+  array_response->set_encoded(true);
+  resp.set_code(RedisResponsePB::OK);
+  data.Respond(&resp);
+}
+
+void HandleDeleteDB(LocalCommandData data) {
+  RedisResponsePB resp;
+  // Figure out the redis table name that we should be using.
+  const string db_name = data.arg(1).ToBuffer();
+  const string redis_table_name = GetYBTableNameForRedisDatabase(db_name);
+  YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
+
+  Status s = data.client()->DeleteTable(table_name, /* wait */ true);
+  if (s.ok()) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else if (s.IsNotFound()) {
+    VLOG(1) << "Table '" << table_name.ToString() << "' does not exist.";
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else {
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+  }
+  data.Respond(&resp);
+}
+
+void HandleSelect(LocalCommandData data) {
+  RedisResponsePB resp;
+  const string db_name = data.arg(1).ToBuffer();
+  RedisServiceData* sd = data.context()->service_data();
+  auto s = sd->OpenYBTableForDB(db_name);
+  if (s.ok()) {
+    // Update RedisConnectionContext to use the specified table.
+    RedisConnectionContext& context = data.call()->connection_context();
+    context.use_redis_db(db_name);
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else {
+    const Slice message = s.message();
+    VLOG(1) << " Could not open Redis Table for db " << db_name << " : " << message.ToString();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+    data.call()->MarkForClose();
+  }
+  data.Respond(&resp);
 }
 
 void HandleDebugSleep(LocalCommandData data) {
