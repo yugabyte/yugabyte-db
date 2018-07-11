@@ -6,7 +6,7 @@
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home)](https://github.com/YugaByte/ga-beacon)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home)](https://github.com/YugaByte/ga-beacon?pixel&useReferer)
 
 A cloud-native database for building mission-critical applications. This repository contains the
 Community Edition of the YugaByte Database.
