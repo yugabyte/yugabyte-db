@@ -139,10 +139,8 @@ using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
 
-using namespace yb::size_literals;
+using namespace yb::size_literals;  // NOLINT.
 
-DEFINE_int32(redis_password_caching_duration_ms, 5000,
-             "The duration for which we will cache the redis passwords. 0 to disable.");
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -406,8 +404,12 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
+  return TruncateTables({table_id}, wait);
+}
+
+Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   MonoTime deadline = MonoTime::Now() + default_admin_operation_timeout();
-  return data_->TruncateTable(this, table_id, deadline, wait);
+  return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
@@ -628,6 +630,16 @@ CHECKED_STATUS YBClient::SetRedisPasswords(const std::vector<string>& passwords)
   return SetRedisConfig(kRequirePass, passwords);
 }
 
+CHECKED_STATUS YBClient::GetRedisPasswords(vector<string>* passwords) {
+  Status s = GetRedisConfig(kRequirePass, passwords);
+  if (s.IsNotFound()) {
+    // If the redis config has no kRequirePass key.
+    passwords->clear();
+    s = Status::OK();
+  }
+  return s;
+}
+
 CHECKED_STATUS YBClient::SetRedisConfig(const string& key, const vector<string>& values) {
   // Setting up request.
   RedisConfigSetRequestPB req;
@@ -650,29 +662,6 @@ CHECKED_STATUS YBClient::GetRedisConfig(const string& key, vector<string>* value
   for (const auto& arg : resp.args())
     values->push_back(arg);
   return Status::OK();
-}
-
-CHECKED_STATUS YBClient::GetRedisPasswords(vector<string>* passwords) {
-  MonoTime now = MonoTime::Now();
-  {
-    std::lock_guard<std::mutex> lock(redis_password_mutex_);
-    if (redis_cached_password_validity_expiry_.Initialized() &&
-        now < redis_cached_password_validity_expiry_) {
-      *passwords = redis_cached_passwords_;
-      return Status::OK();
-    }
-
-    redis_cached_password_validity_expiry_ =
-        now + MonoDelta::FromMilliseconds(FLAGS_redis_password_caching_duration_ms);
-    Status s = GetRedisConfig(kRequirePass, &redis_cached_passwords_);
-    if (s.IsNotFound()) {
-      // If the redis config has no kRequirePass key.
-      redis_cached_passwords_.clear();
-      s = Status::OK();
-    }
-    *passwords = redis_cached_passwords_;
-    return s;
-  }
 }
 
 CHECKED_STATUS YBClient::GrantRole(const std::string& granted_role_name,

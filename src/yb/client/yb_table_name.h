@@ -101,8 +101,9 @@ class YBTableName {
   }
 
   bool is_redis_table() const {
-    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
-        table_name_ == common::kRedisTableName);
+    return (
+        (has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
+        table_name_.find(common::kRedisTableName) == 0);
   }
 
   std::string ToString() const {

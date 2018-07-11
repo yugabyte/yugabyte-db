@@ -114,10 +114,10 @@ class YBClient::Data {
                                             const std::string& deleted_table_id,
                                             const MonoTime& deadline);
 
-  CHECKED_STATUS TruncateTable(YBClient* client,
-                               const std::string& table_id,
-                               const MonoTime& deadline,
-                               bool wait = true);
+  CHECKED_STATUS TruncateTables(YBClient* client,
+                                const std::vector<std::string>& table_ids,
+                                const MonoTime& deadline,
+                                bool wait = true);
 
   CHECKED_STATUS IsTruncateTableInProgress(YBClient* client,
                                            const std::string& table_id,

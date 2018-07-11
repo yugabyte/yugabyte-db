@@ -594,9 +594,9 @@ void TestRedisService::DoRedisTest(int line,
     const Callback& callback) {
   expected_callbacks_called_++;
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
-  client().Send(command, [this, line, reply_type, callback] (const RedisReply& reply) {
-    VLOG(4) << "Received response for line: " << __FILE__ << ":" << line
-            << " : " << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
+  client().Send(command, [this, line, reply_type, callback](const RedisReply& reply) {
+    VLOG(4) << "Received response for line: " << __FILE__ << ":" << line << " : "
+            << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type())
         << "Originator: " << __FILE__ << ":" << line << ", reply: " << reply.ToString();
@@ -1241,6 +1241,154 @@ void ConnectWithPassword(
 
   test->SyncClient();
   test->UseClient(nullptr);
+}
+
+TEST_F(TestRedisService, TestSelect) {
+  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+
+  const string default_db("0");
+  const string second_db("2");
+
+  UseClient(rc1);
+  DoRedisTestOk(__LINE__, {"SET", "key", "v1"});
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Select without creating a db should fail.
+  DoRedisTestExpectError(__LINE__, {"SELECT", second_db.c_str()});
+  SyncClient();
+
+  // The connection would be closed upon a bad Select.
+  DoRedisTestExpectError(__LINE__, {"PING"});
+  SyncClient();
+
+  // Use a different client.
+  UseClient(rc2);
+  // Get the value from the default_db.
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Create DB.
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  SyncClient();
+
+  // Select should now go through.
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  SyncClient();
+
+  // Get should be empty.
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+  // Set a diffferent value
+  DoRedisTestOk(__LINE__, {"SET", "key", "v2"});
+  SyncClient();
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+  // Select the original db and get the value.
+  DoRedisTestOk(__LINE__, {"SELECT", default_db.c_str()});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  UseClient(rc3);
+  // By default we should get the value from db-0
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  // Select second db.
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+
+  // List DB.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+
+  // Delete DB.
+  DoRedisTestOk(__LINE__, {"DeleteDB", second_db.c_str()});
+  SyncClient();
+  // Expect to not be able to read the value.
+  DoRedisTestExpectError(__LINE__, {"GET", "key"});
+  SyncClient();
+  // Expect to not be able to read the value.
+  DoRedisTestExpectError(__LINE__, {"SET", "key", "v2"});
+  SyncClient();
+
+  // List DB.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db});
+  SyncClient();
+
+  rc1->Disconnect();
+  rc2->Disconnect();
+  rc3->Disconnect();
+
+  UseClient(nullptr);
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestTruncate) {
+  const string default_db("0");
+  const string second_db("2");
+
+  DoRedisTestOk(__LINE__, {"SET", "key", "v1"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Create DB.
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  // Select should now go through.
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  SyncClient();
+
+  // Set a diffferent value
+  DoRedisTestOk(__LINE__, {"SET", "key", "v2"});
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+
+  // Select the original db and get the value.
+  DoRedisTestOk(__LINE__, {"SELECT", default_db.c_str()});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Flush the default_db
+  DoRedisTestOk(__LINE__, {"FLUSHDB"});
+
+  // Get should be empty.
+  DoRedisTestOk(__LINE__, {"SELECT", default_db.c_str()});
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"SELECT", default_db.c_str()});
+  DoRedisTestOk(__LINE__, {"SET", "key", "v1"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Flush the default_db
+  DoRedisTestOk(__LINE__, {"FLUSHALL"});
+
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"SELECT", default_db.c_str()});
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+
+  // List DB.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+
+  VerifyCallbacks();
 }
 
 TEST_F(TestRedisService, TestMonitor) {
