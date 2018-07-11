@@ -52,6 +52,8 @@ static bool ValidateRedisPasswordSeparator(const char* flagname, const string& v
 DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
 DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+
+__attribute__((unused))
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
 
 namespace yb {
