@@ -30,6 +30,26 @@
 namespace yb {
 namespace redisserver {
 
+typedef boost::function<void(const Status&)> StatusFunctor;
+
+class RedisConnectionContext;
+
+class RedisServiceData {
+ public:
+  // Used for Monitor.
+  virtual void AppendToMonitors(std::shared_ptr<rpc::Connection> conn) = 0;
+  virtual void LogToMonitors(
+      const string& end, const string& db, const RedisClientCommand& cmd) = 0;
+
+  // Used for Auth.
+  virtual CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) = 0;
+
+  // Used for Select.
+  virtual CHECKED_STATUS OpenYBTableForDB(const string& db_name) = 0;
+
+  virtual ~RedisServiceData() {}
+};
+
 // Context for batch of Redis commands.
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
  public:
@@ -38,6 +58,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
   virtual const std::shared_ptr<RedisInboundCall>& call() const = 0;
   virtual const std::shared_ptr<client::YBClient>& client() const = 0;
   virtual const RedisServer* server() = 0;
+  virtual RedisServiceData* service_data() = 0;
 
   virtual void Apply(
       size_t index,

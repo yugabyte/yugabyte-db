@@ -2099,27 +2099,30 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  // Lookup the table and verify if it exists.
-  TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The table does not exist");
-    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  for (int i = 0; i < req->table_ids_size(); i++) {
+    const auto& table_id = req->table_ids(i);
+    // Lookup the table and verify if it exists.
+    TRACE("Looking up table");
+    scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, table_id);
+    if (table == nullptr) {
+      Status s = STATUS(NotFound, Substitute("The table for table_id $0 does not exist", table_id));
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    }
+
+    TRACE("Locking table");
+    auto l = table->LockForRead();
+    if (l->data().started_deleting() || l->data().is_deleted()) {
+      Status s = STATUS(NotFound, Substitute("The table $0 does not exist", table->ToString()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    }
+
+    // Send a Truncate() request to each tablet in the table.
+    SendTruncateTableRequest(table);
+
+    LOG(INFO) << "Successfully initiated TRUNCATE for " << table->ToString() << " per request from "
+              << RequestorString(rpc);
+    background_tasks_->Wake();
   }
-
-  TRACE("Locking table");
-  auto l = table->LockForRead();
-  if (l->data().started_deleting() || l->data().is_deleted()) {
-    Status s = STATUS(NotFound, "The table does not exist");
-    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
-  }
-
-  // Send a Truncate() request to each tablet in the table.
-  SendTruncateTableRequest(table);
-
-  LOG(INFO) << "Successfully initiated TRUNCATE for " << table->ToString()
-            << " per request from " << RequestorString(rpc);
-  background_tasks_->Wake();
   return Status::OK();
 }
 

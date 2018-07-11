@@ -596,14 +596,16 @@ Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, deleted_table_id, _1, _2));
 }
 
-Status YBClient::Data::TruncateTable(YBClient* client,
-                                     const string& table_id,
+Status YBClient::Data::TruncateTables(YBClient* client,
+                                     const vector<string>& table_ids,
                                      const MonoTime& deadline,
                                      bool wait) {
   TruncateTableRequestPB req;
   TruncateTableResponsePB resp;
 
-  req.set_table_id(table_id);
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
+  }
   RETURN_NOT_OK((SyncLeaderMasterRpc<TruncateTableRequestPB, TruncateTableResponsePB>(
       deadline, client, req, &resp, nullptr /* num_attempts */, "TruncateTable",
       &MasterServiceProxy::TruncateTable)));
@@ -613,10 +615,12 @@ Status YBClient::Data::TruncateTable(YBClient* client,
 
   // Spin until the table is fully truncated, if requested.
   if (wait) {
-    RETURN_NOT_OK(WaitForTruncateTableToFinish(client, table_id, deadline));
+    for (const auto& table_id : table_ids) {
+      RETURN_NOT_OK(WaitForTruncateTableToFinish(client, table_id, deadline));
+    }
   }
 
-  LOG(INFO) << "Truncated table " << table_id;
+  LOG(INFO) << "Truncated table(s) " << JoinStrings(table_ids, ",");
   return Status::OK();
 }
 
