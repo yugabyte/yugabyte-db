@@ -191,9 +191,8 @@ void RetryingTSRpcTask::RpcCallback() {
   // Defer the actual work of the callback off of the reactor thread.
   // This is necessary because our callbacks often do synchronous writes to
   // the catalog table, and we can't do synchronous IO on the reactor.
-  CHECK_OK(callback_pool_->SubmitClosure(
-               Bind(&RetryingTSRpcTask::DoRpcCallback,
-                    Unretained(this))));
+  CHECK_OK(callback_pool_->SubmitFunc(
+      std::bind(&RetryingTSRpcTask::DoRpcCallback, shared_from(this))));
 }
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
@@ -272,6 +271,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       if (state() != MonitoredTaskState::kAborted) {
         LOG_WITH_PREFIX(FATAL) << "Unable to mark task as MonitoredTaskState::kWaiting";
       }
+      AbortIfScheduled();
       return false;
     }
     return true;
