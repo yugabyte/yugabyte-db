@@ -1226,10 +1226,10 @@ TEST_F(TestRedisService, TestAuth) {
   shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
   shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
   UseClient(rc1);
-  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
   UseClient(rc2);
-  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
 
   // Set require pass using one connection
@@ -1239,7 +1239,7 @@ TEST_F(TestRedisService, TestAuth) {
   UseClient(nullptr);
   // Other pre-established connections should still be able to work, without re-authentication.
   UseClient(rc2);
-  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
 
   // Ensure that new connections need the correct password to authenticate.
@@ -2671,7 +2671,6 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   // AUTH accepts 1 argument.
   DoRedisTestExpectError(__LINE__, {"AUTH", "foo", "subkey5", "19", "subkey6", "14"});
   DoRedisTestExpectError(__LINE__, {"AUTH"});
-  DoRedisTestOk(__LINE__, {"AUTH", "foo"});
   // CONFIG should be dummy implementations, that respond OK irrespective of the arguments
   DoRedisTestOk(__LINE__, {"CONFIG", "foo", "subkey5", "19", "subkey6", "14"});
   DoRedisTestOk(__LINE__, {"CONFIG"});
