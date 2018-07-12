@@ -344,6 +344,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
     c->data_->messenger_ = VERIFY_RESULT(builder.Build());
   }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
+  c->data_->metric_entity_ = data_->metric_entity_;
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
@@ -810,6 +811,10 @@ Status YBClient::GetTablets(const YBTableName& table_name,
 
 const std::shared_ptr<rpc::Messenger>& YBClient::messenger() const {
   return data_->messenger_;
+}
+
+const scoped_refptr<MetricEntity>& YBClient::metric_entity() const {
+  return data_->metric_entity_;
 }
 
 rpc::ProxyCache& YBClient::proxy_cache() const {

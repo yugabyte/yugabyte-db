@@ -63,7 +63,7 @@ YBSessionData::YBSessionData(shared_ptr<YBClient> client, const scoped_refptr<Cl
       read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
       timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
-  const auto metric_entity = client_->messenger()->metric_entity();
+  const auto metric_entity = client_->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
