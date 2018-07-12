@@ -120,7 +120,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
   std::unique_lock<simple_spinlock> l(lock_);
 
   if (!dns_resolve_histogram_) {
-    auto metric_entity = client->messenger()->metric_entity();
+    auto metric_entity = client->metric_entity();
     if (metric_entity) {
       dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);

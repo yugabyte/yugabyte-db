@@ -250,6 +250,7 @@ class YBClient::Data {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<DnsResolver> dns_resolver_;
   scoped_refptr<internal::MetaCache> meta_cache_;
+  scoped_refptr<MetricEntity> metric_entity_;
 
   // Set of hostnames and IPs on the local host.
   // This is initialized at client startup.
