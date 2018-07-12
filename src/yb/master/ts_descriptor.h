@@ -321,7 +321,7 @@ Status TSDescriptor::GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
     }
     auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
     if (!(*result_cache)) {
-      result_cache->reset(new TProxy(proxy_cache, hostport));
+      *result_cache = std::make_shared<TProxy>(proxy_cache, hostport);
     }
     *result = *result_cache;
   }
