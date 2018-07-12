@@ -30,9 +30,10 @@ class YBProf:
     records_ = []
     symbols_ = {}
 
-    def __init__(self, output_prefix, pprof_url):
+    def __init__(self, output_prefix, pprof_url, seconds):
         self.file_prefix_ = output_prefix
         self.pprof_url_ = pprof_url
+        self.seconds_ = seconds
 
     def parse_header_line(self, line):
         print('header: %s' % line)
@@ -70,7 +71,7 @@ class YBProf:
             print("Unexpected format in line: %s" % line)
 
     def invoke_heap_profile_handler(self):
-        heap_profile_url = self.pprof_url_ + "/heap?seconds=20"
+        heap_profile_url = self.pprof_url_ + "/heap?seconds=" + str(self.seconds_)
         raw_output_file = self.file_prefix_ + ".raw.txt"
         print("Invoking heap profile handler: " + heap_profile_url)
         output_fhd = open(raw_output_file, "w")
@@ -131,16 +132,18 @@ class YBProf:
         fhd = open(filename, "w")
         fhd.write("<html>\n")
         fhd.write("<title>Top Call Stacks By: " + sort_metric + "</title>\n")
-        fhd.write("<body>\n")
+        fhd.write("<body style=\"font-family: sans-serif\">\n")
         fhd.write("<b>Top " + str(max_call_stacks) + " Call Stacks By: " + sort_metric + "</b>\n")
-        fhd.write("<table border=1>\n")
+        fhd.write("<p>\n")
+        fhd.write("<table style=\"border-collapse: collapse\" border=1 cellpadding=5>\n")
         fhd.write("<tr>\n")
-        fhd.write("<td>In Use Cnt</td>\n")
-        fhd.write("<td>In Use Bytes</td>\n")
-        fhd.write("<td>In Use Avg Size</td>\n")
-        fhd.write("<td>Alloc Cnt</td>\n")
-        fhd.write("<td>Alloc Bytes</td>\n")
-        fhd.write("<td>Alloc Avg Size</td>\n")
+        fhd.write("<th>In Use Cnt</th>\n")
+        fhd.write("<th>In Use Bytes</th>\n")
+        fhd.write("<th>In Use Avg Size</th>\n")
+        fhd.write("<th>Alloc Cnt</th>\n")
+        fhd.write("<th>Alloc Bytes</th>\n")
+        fhd.write("<th>Alloc Avg Size</th>\n")
+        fhd.write("<th>Call Stack</th>\n")
         fhd.write("</tr>\n")
         sorted_records = sorted(self.records_, key=lambda k: k[sort_metric], reverse=True)
         for record in sorted_records:
@@ -199,15 +202,17 @@ class YBProf:
 
 def print_usage():
     print("Usage:")
-    print 'yb-prof.py --profile_url <url> --output_file_prefix <file_prefix>'
+    print('yb-prof.py --profile_url=<url> --output_file_prefix=<file_prefix> ' +
+          '--seconds=<time_in_seconds>')
     print("**********************")
 
 
 def main(argv):
     profile_url = ''
     output_prefix = ''
+    seconds = '20'
     try:
-        opts, args = getopt.getopt(argv, "h:", ["profile_url=", "output_file_prefix="])
+        opts, args = getopt.getopt(argv, "h:", ["profile_url=", "output_file_prefix=", "seconds="])
     except getopt.GetoptError:
         print("Incorrect getopt options")
         print_usage()
@@ -220,6 +225,8 @@ def main(argv):
             profile_url = arg
         elif opt in ("--output_file_prefix"):
             output_file_prefix = arg
+        elif opt in ("--seconds"):
+            seconds = int(arg)
         else:
             assert False, "** Unhandled option. **"
     if ((profile_url == '') or (output_file_prefix == '')):
@@ -227,7 +234,7 @@ def main(argv):
         sys.exit(1)
     print("Profile Base URL:" + profile_url)
     print("Output File Prefix:" + output_file_prefix)
-    heap_prof = YBProf(output_file_prefix, profile_url)
+    heap_prof = YBProf(output_file_prefix, profile_url, seconds)
     heap_prof.invoke_heap_profile_handler()
 
 
