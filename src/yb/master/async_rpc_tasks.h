@@ -163,9 +163,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
-  auto BindRpcCallback() ->
-    decltype(std::bind(&RetryingTSRpcTask::RpcCallback, shared_from(this))) {
-      return std::bind(&RetryingTSRpcTask::RpcCallback, shared_from(this));
+  auto BindRpcCallback() {
+    return std::bind(&RetryingTSRpcTask::RpcCallback, shared_from(this));
   }
 
   // Handle the actual work of the RPC callback. This is run on the master's worker
