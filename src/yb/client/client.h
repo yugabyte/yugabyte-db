@@ -498,6 +498,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   const std::shared_ptr<rpc::Messenger>& messenger() const;
 
+  const scoped_refptr<MetricEntity>& metric_entity() const;
+
   rpc::ProxyCache& proxy_cache() const;
 
  private:
