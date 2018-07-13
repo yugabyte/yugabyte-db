@@ -89,6 +89,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(newTservers, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Set the node state to live.
+      createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Update the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
