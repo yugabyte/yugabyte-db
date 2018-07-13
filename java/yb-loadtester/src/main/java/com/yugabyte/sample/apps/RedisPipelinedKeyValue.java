@@ -81,11 +81,11 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
       Pipeline currPipeline = getRedisPipeline();
       Jedis currJedis = getJedisClient();
       if (appConfig.sleepTime == 0) {  // 0 disables running pipelines in parallel.
-        doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch);
+        doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch, false);
       } else {
         flushPool.submit(new Runnable() {
           public void run() {
-            doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch);
+            doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch, true);
           }
         });
         LOG.debug("Submitted a runnable. Now resetting clients");
@@ -123,7 +123,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
 
   protected void doActualFlush(Jedis jedis, Pipeline pipeline,
                                ArrayList<Callable<Integer>> pipelineCallables,
-                               long batch) {
+                               long batch, boolean closeAfterFlush) {
     LOG.debug("Flushing pipeline. batch " + batch + " size = " +
               pipelineCallables.size() + " pending batches " +
               pendingPipelineBatches.addAndGet(1));
@@ -133,8 +133,10 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
       for (Callable<Integer> c : pipelineCallables) {
         count += c.call();
       }
-      pipeline.close();
-      jedis.close();
+      if (closeAfterFlush) {
+        pipeline.close();
+        jedis.close();
+      }
     } catch (Exception e) {
       throw new RuntimeException(
         "Caught Exception from redis pipeline " + getRedisServerInUse(), e);
