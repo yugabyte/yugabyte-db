@@ -408,7 +408,6 @@ public class PlacementInfoUtil {
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, universe, mode, cluster);
 
-    LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
     ensureUniqueNodeNames(taskParams.nodeDetailsSet.stream()
                                                    .filter(n -> n.isInPlacement(placementUuid))
                                                    .collect(Collectors.toSet()));
@@ -1137,6 +1136,7 @@ public class PlacementInfoUtil {
         selectMasters(primaryNodes, numMastersToChoose);
       }
     }
+    LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
   }
 
   /**

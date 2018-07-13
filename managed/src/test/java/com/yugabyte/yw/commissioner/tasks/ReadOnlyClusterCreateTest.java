@@ -101,6 +101,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
       TaskType.WaitForServer,
+      TaskType.SetNodeState,
       TaskType.UpdatePlacementInfo,
       TaskType.UniverseUpdateSucceeded
   );
@@ -110,6 +111,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of())
