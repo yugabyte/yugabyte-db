@@ -57,10 +57,7 @@ using tserver::AlterSchemaRequestPB;
 using tserver::AlterSchemaResponsePB;
 
 void AlterSchemaOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
-  index_map_.clear();
-  for (const auto& index : indexes) {
-    index_map_.emplace(index.table_id(), IndexInfo(index));
-  }
+  index_map_.FromPB(indexes);
 }
 
 string AlterSchemaOperationState::ToString() const {
