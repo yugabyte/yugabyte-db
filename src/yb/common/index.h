@@ -36,10 +36,14 @@ class IndexInfo {
 
     explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
     IndexColumn() {}
+
+    void ToPB(IndexInfoPB::IndexColumnPB* pb) const;
   };
 
   explicit IndexInfo(const IndexInfoPB& pb);
   IndexInfo() {}
+
+  void ToPB(IndexInfoPB* pb) const;
 
   const TableId& table_id() const { return table_id_; }
   uint32_t schema_version() const { return schema_version_; }
@@ -72,9 +76,16 @@ class IndexInfo {
 };
 
 // A map to look up an index by its index table id.
-using IndexMap = std::unordered_map<TableId, IndexInfo>;
+class IndexMap : public std::unordered_map<TableId, IndexInfo> {
+ public:
+  explicit IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
+  IndexMap() {}
 
-Result<const IndexInfo*> FindIndex(const IndexMap& index_map, const TableId& index_id);
+  void FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
+  void ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) const;
+
+  Result<const IndexInfo*> FindIndex(const TableId& index_id) const;
+};
 
 }  // namespace yb
 

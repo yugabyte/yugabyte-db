@@ -359,7 +359,7 @@ Tablet::Tablet(
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
       transaction_manager_.emplace(client_future_.get(),
-                                   transaction_participant_context->clock_ptr(),
+                                   scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
     }
   }
@@ -1234,10 +1234,8 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     // Create transaction manager and index table metadata cache for secondary index update.
     if (!metadata_->index_map().empty()) {
       if (metadata_->schema().table_properties().is_transactional() && !transaction_manager_) {
-        const auto transaction_participant_context =
-            DCHECK_NOTNULL(transaction_participant_.get())->context();
         transaction_manager_.emplace(client_future_.get(),
-                                     transaction_participant_context->clock_ptr(),
+                                     scoped_refptr<server::Clock>(clock_),
                                      local_tablet_filter_);
       }
       metadata_cache_.emplace(client_future_.get());

@@ -329,6 +329,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     }
     RETURN_NOT_OK(create_status);
 
+    meta_->SetIndexMap(IndexMap(superblock_->indexes()));
+
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     superblock_->set_rocksdb_dir(meta_->rocksdb_dir());
 

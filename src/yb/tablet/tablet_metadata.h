@@ -81,22 +81,22 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
   static CHECKED_STATUS CreateNew(FsManager* fs_manager,
-                          const std::string& table_id,
-                          const std::string& tablet_id,
-                          const std::string& table_name,
-                          const TableType table_type,
-                          const Schema& schema,
-                          const PartitionSchema& partition_schema,
-                          const Partition& partition,
-                          const TabletDataState& initial_tablet_data_state,
-                          scoped_refptr<TabletMetadata>* metadata,
-                          const std::string& data_root_dir = std::string(),
-                          const std::string& wal_root_dir = std::string());
+                                  const std::string& table_id,
+                                  const std::string& tablet_id,
+                                  const std::string& table_name,
+                                  const TableType table_type,
+                                  const Schema& schema,
+                                  const PartitionSchema& partition_schema,
+                                  const Partition& partition,
+                                  const TabletDataState& initial_tablet_data_state,
+                                  scoped_refptr<TabletMetadata>* metadata,
+                                  const std::string& data_root_dir = std::string(),
+                                  const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
   static CHECKED_STATUS Load(FsManager* fs_manager,
-                     const std::string& tablet_id,
-                     scoped_refptr<TabletMetadata>* metadata);
+                             const std::string& tablet_id,
+                             scoped_refptr<TabletMetadata>* metadata);
 
   // Try to load an existing tablet. If it does not exist, create it.
   // If it already existed, verifies that the schema of the tablet matches the
@@ -104,15 +104,15 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   //
   // This is mostly useful for tests which instantiate tablets directly.
   static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
-                             const std::string& table_id,
-                             const std::string& tablet_id,
-                             const std::string& table_name,
-                             const TableType table_type,
-                             const Schema& schema,
-                             const PartitionSchema& partition_schema,
-                             const Partition& partition,
-                             const TabletDataState& initial_tablet_data_state,
-                             scoped_refptr<TabletMetadata>* metadata);
+                                     const std::string& table_id,
+                                     const std::string& tablet_id,
+                                     const std::string& table_name,
+                                     const TableType table_type,
+                                     const Schema& schema,
+                                     const PartitionSchema& partition_schema,
+                                     const Partition& partition,
+                                     const TabletDataState& initial_tablet_data_state,
+                                     scoped_refptr<TabletMetadata>* metadata);
 
   const std::string& tablet_id() const {
     DCHECK_NE(state_, kNotLoadedYet);

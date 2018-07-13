@@ -179,7 +179,43 @@ public class MiniYBDaemon {
       thread.setName("Termination handler for " + MiniYBDaemon.this);
       thread.start();
     }
+  }
 
+  /**
+   * Helper runnable that can log what the processes are sending on their stdout and stderr that
+   * we'd otherwise miss.
+   */
+  private class ProcessInputStreamLogPrinterRunnable implements Runnable {
+
+    private final String logPrefix;
+
+    public ProcessInputStreamLogPrinterRunnable() {
+      logPrefix = type.shortStr() + indexForLog + LOG_PREFIX_SEPARATOR + PID_PREFIX +
+                  getPidStr() + LOG_PREFIX_SEPARATOR + ":" + rpcPort +
+                  (TestUtils.isJenkins() ? "" // No need for a clickable web UI link on Jenkins.
+                                         : LOG_PREFIX_SEPARATOR + "http://" + getWebHostAndPort()) +
+                  " ";
+    }
+
+    public String getLogPrefix() {
+      return logPrefix;
+    }
+
+    @Override
+    public void run() {
+      try {
+        String line;
+        BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        while ((line = in.readLine()) != null) {
+          System.out.println(logPrefix + line);
+        }
+        in.close();
+      } catch (Exception e) {
+        if (!e.getMessage().contains("Stream closed")) {
+          LOG.error("Caught error while reading a process' output", e);
+        }
+      }
+    }
   }
 
   /**
@@ -202,6 +238,11 @@ public class MiniYBDaemon {
     this.redisWebPort = redisWebPort;
     this.pgsqlWebPort = pgsqlWebPort;
     this.dataDirPath = dataDirPath;
+    ProcessInputStreamLogPrinterRunnable printer = new ProcessInputStreamLogPrinterRunnable();
+    logPrinterThread = new Thread(printer);
+    logPrinterThread.setDaemon(true);
+    logPrinterThread.setName("Log printer for " + printer.getLogPrefix().trim());
+    logPrinterThread.start();
     new TerminationHandler().startInBackground();
   }
 
@@ -229,6 +270,21 @@ public class MiniYBDaemon {
     }
   }
 
+  public Thread getLogPrinterThread() {
+    return logPrinterThread;
+  }
+
+  /**
+   * Restart the daemon.
+   * @return the restarted daemon
+   */
+  MiniYBDaemon restart() throws Exception {
+    return new MiniYBDaemon(type, indexForLog, commandLine,
+                            new ProcessBuilder(commandLine).redirectErrorStream(true).start(),
+                            bindIp, rpcPort, webPort, cqlWebPort, redisWebPort, pgsqlWebPort,
+                            dataDirPath);
+  }
+
   @Override
   public String toString() {
     return type.toString().toLowerCase() + " process on bind IP " + bindIp + ", rpc port " +
@@ -247,22 +303,10 @@ public class MiniYBDaemon {
   private final int pgsqlWebPort;
   private final String dataDirPath;
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
+  private final Thread logPrinterThread;
 
   public HostAndPort getWebHostAndPort() {
     return HostAndPort.fromParts(bindIp, webPort);
-  }
-
-  /**
-   * @return the prefix to be used for each line of this daemon's logs.
-   */
-  public String getLogPrefix() {
-    String withoutHttpPort = type.shortStr() + indexForLog + LOG_PREFIX_SEPARATOR + PID_PREFIX +
-        getPidStr() + LOG_PREFIX_SEPARATOR + ":" + rpcPort;
-    if (TestUtils.isJenkins()) {
-      // No need to provide a clickable web UI link on Jenkins.
-      return withoutHttpPort + " ";
-    }
-    return withoutHttpPort + LOG_PREFIX_SEPARATOR + "http://" + getWebHostAndPort() + " ";
   }
 
   public int getWebPort() {
@@ -277,7 +321,7 @@ public class MiniYBDaemon {
     return dataDirPath;
   }
 
-  // TODO: rename tp getBindIp
+  // TODO: rename to getBindIp
   public String getLocalhostIP() {
     return bindIp;
   }

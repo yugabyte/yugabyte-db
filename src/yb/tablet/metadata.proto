@@ -132,6 +132,9 @@ message TabletSuperBlockPB {
 
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 19;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 21;
 }
 
 message FilePB {
