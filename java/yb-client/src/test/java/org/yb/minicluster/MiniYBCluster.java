@@ -107,7 +107,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
-  private final YBClient syncClient;
+  private YBClient syncClient;
   private final int defaultTimeoutMs;
 
   private String masterAddresses;
@@ -155,7 +155,10 @@ public class MiniYBCluster implements AutoCloseable {
     this.numShardsPerTserver = numShardsPerTserver;
 
     startCluster(numMasters, numTservers, masterArgs, tserverArgs);
+    startSyncClient();
+  }
 
+  private void startSyncClient() throws Exception {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
@@ -568,20 +571,11 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
-    ProcessBuilder processBuilder = new ProcessBuilder(command);
-    processBuilder.redirectErrorStream(true);
-    Process proc = processBuilder.start();
+    Process proc = new ProcessBuilder(command).redirectErrorStream(true).start();
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
                          redisWebPort, pgsqlWebPort, dataDirPath);
-
-    ProcessInputStreamLogPrinterRunnable printer =
-        new ProcessInputStreamLogPrinterRunnable(proc.getInputStream(), daemon.getLogPrefix());
-    final Thread logPrinterThread = new Thread(printer);
-    logPrinterThread.setDaemon(true);
-    logPrinterThread.setName("Log printer for " + daemon.getLogPrefix().trim());
-    processInputPrinters.add(logPrinterThread);
-    logPrinterThread.start();
+    processInputPrinters.add(daemon.getLogPrinterThread());
 
     Thread.sleep(300);
     try {
@@ -595,6 +589,51 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Started " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
 
     return daemon;
+  }
+
+  private MiniYBDaemon restart(MiniYBDaemon daemon) throws Exception {
+    String[] command = daemon.getCommandLine();
+    LOG.info("Restarting process: {}", Joiner.on(" ").join(command));
+    daemon = daemon.restart();
+    processInputPrinters.add(daemon.getLogPrinterThread());
+
+    Process proc = daemon.getProcess();
+    Thread.sleep(300);
+    try {
+      int ev = proc.exitValue();
+      throw new Exception("We tried starting a process (" + command[0] + ") but it exited with " +
+          "value=" + ev);
+    } catch (IllegalThreadStateException ex) {
+      // This means the process is still alive, it's like reverse psychology.
+    }
+
+    LOG.info("Restarted " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+
+    return daemon;
+  }
+
+  /**
+   * Restart the cluster
+   */
+  public void restart() throws Exception {
+    List<MiniYBDaemon> masters = new ArrayList<>(masterProcesses.values());
+    List<MiniYBDaemon> tservers = new ArrayList<>(tserverProcesses.values());
+
+    LOG.info("Shutting down mini cluster");
+    shutdownDaemons();
+
+    LOG.info("Restarting mini cluster");
+    for (MiniYBDaemon master : masters) {
+      master = restart(master);
+      masterProcesses.put(master.getWebHostAndPort(), master);
+    }
+    for (MiniYBDaemon tserver : tservers) {
+      tserver = restart(tserver);
+      tserverProcesses.put(tserver.getWebHostAndPort(), tserver);
+    }
+    startSyncClient();
+
+    LOG.info("Restarted mini cluster");
   }
 
   private void processCoreFile(MiniYBDaemon daemon) throws Exception {
@@ -701,19 +740,7 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
-    List<Process> processes = new ArrayList<>();
-    List<MiniYBDaemon> allDaemons = new ArrayList<>();
-    allDaemons.addAll(masterProcesses.values());
-    allDaemons.addAll(tserverProcesses.values());
-    processes.addAll(destroyDaemons(masterProcesses.values()));
-    processes.addAll(destroyDaemons(tserverProcesses.values()));
-    for (Process process : processes) {
-      process.waitFor();
-    }
-    for (Thread thread : processInputPrinters) {
-      thread.interrupt();
-    }
-
+    shutdownDaemons();
     for (String path : pathsToDelete) {
       try {
         File f = new File(path);
@@ -726,14 +753,30 @@ public class MiniYBCluster implements AutoCloseable {
         LOG.warn("Could not delete path {}", path, e);
       }
     }
-    if (syncClient != null) {
-      syncClient.shutdown();
-    }
+    LOG.info("Mini cluster shutdown finished");
+  }
 
+  private void shutdownDaemons() throws Exception {
+    List<Process> processes = new ArrayList<>();
+    List<MiniYBDaemon> allDaemons = new ArrayList<>();
+    allDaemons.addAll(masterProcesses.values());
+    allDaemons.addAll(tserverProcesses.values());
+    processes.addAll(destroyDaemons(masterProcesses.values()));
+    processes.addAll(destroyDaemons(tserverProcesses.values()));
+    for (Process process : processes) {
+      process.waitFor();
+    }
+    for (Thread thread : processInputPrinters) {
+      thread.interrupt();
+    }
+    processInputPrinters.clear();
     for (MiniYBDaemon daemon : allDaemons) {
       daemon.waitForShutdown();
     }
-    LOG.info("Mini cluster shutdown finished");
+    if (syncClient != null) {
+      syncClient.shutdown();
+      syncClient = null;
+    }
   }
 
   /**
@@ -822,37 +865,4 @@ public class MiniYBCluster implements AutoCloseable {
   public YBClient getClient() {
     return syncClient;
   }
-
-  /**
-   * Helper runnable that can log what the processes are sending on their stdout and stderr that
-   * we'd otherwise miss.
-   */
-  static class ProcessInputStreamLogPrinterRunnable implements Runnable {
-
-    private final InputStream is;
-    private final String logPrefix;
-
-    public ProcessInputStreamLogPrinterRunnable(InputStream is, String logPrefix) {
-      this.is = is;
-      this.logPrefix = logPrefix;
-    }
-
-    @Override
-    public void run() {
-      try {
-        String line;
-        BufferedReader in = new BufferedReader(new InputStreamReader(is));
-        while ((line = in.readLine()) != null) {
-          System.out.println(logPrefix + line);
-        }
-        in.close();
-      } catch (Exception e) {
-        if (!e.getMessage().contains("Stream closed")) {
-          LOG.error("Caught error while reading a process' output", e);
-        }
-      }
-    }
-
-  }
-
 }

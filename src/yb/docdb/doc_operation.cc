@@ -2425,7 +2425,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   const auto& index_ids = request_.update_index_ids();
   index_requests_.reserve(index_ids.size() * 2);
   for (const TableId& index_id : index_ids) {
-    const IndexInfo* index = VERIFY_RESULT(FindIndex(index_map_, index_id));
+    const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
     if (IsRowDeleted(existing_row, new_row)) {
       index_key_changed = true;

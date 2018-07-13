@@ -519,6 +519,50 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
+  public void testClusterRestart() throws Exception {
+    // Create test table with index.
+    session.execute("create table test_cluster_restart (k int primary key, v text) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_cluster_restart_by_v on test_cluster_restart (v);");
+
+    // Insert some rows and query them by the indexed column.
+    final int ROW_COUNT = 100;
+    PreparedStatement insertStmt = session.prepare(
+        "insert into test_cluster_restart (k, v) values (?, ?);");
+    for (int i = 0; i < ROW_COUNT; i++) {
+      session.execute(insertStmt.bind(Integer.valueOf(i), "v" + i));
+    }
+    PreparedStatement selectStmt = session.prepare(
+        "select k from test_cluster_restart where v = ?;");
+    for (int i = 0; i < ROW_COUNT; i++) {
+      assertEquals(i, session.execute(selectStmt.bind("v" + i)).one().getInt("k"));
+    }
+
+    // Restart the cluster
+    miniCluster.restart();
+    setUpCqlClient();
+
+    // Update half of the rows. Query them back and verify the unmodified rows still can still
+    // be queried while the modified ones have the new value.
+    PreparedStatement updateStmt = session.prepare(
+        "update test_cluster_restart set v = ? where k = ?;");
+    for (int i = ROW_COUNT / 2; i < ROW_COUNT; i++) {
+      session.execute(updateStmt.bind("vv" + i, Integer.valueOf(i)));
+    }
+    selectStmt = session.prepare(
+        "select k from test_cluster_restart where v = ?;");
+    for (int i = 0; i < ROW_COUNT; i++) {
+      assertEquals(i, session.execute(
+          selectStmt.bind((i >= ROW_COUNT / 2 ? "vv" : "v") + i)).one().getInt("k"));
+    }
+
+    // Also verify that the old index values do not exist any more.
+    for (int i = ROW_COUNT / 2; i < ROW_COUNT; i++) {
+      assertNull(session.execute(selectStmt.bind("v" + i)).one());
+    }
+  }
+
+  @Test
   public void testRestarts() throws Exception {
 
     // Test concurrent inserts into a table with secondary index, which require a read of the

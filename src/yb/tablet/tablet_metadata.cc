@@ -338,6 +338,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
 
     table_name_ = superblock.table_name();
     table_type_ = superblock.table_type();
+    index_map_.FromPB(superblock.indexes());
     rocksdb_dir_ = superblock.rocksdb_dir();
     wal_dir_ = superblock.wal_dir();
 
@@ -537,6 +538,7 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) con
   partition_schema_.ToPB(pb.mutable_partition_schema());
   pb.set_table_name(table_name_);
   pb.set_table_type(table_type_);
+  index_map_.ToPB(pb.mutable_indexes());
   pb.set_rocksdb_dir(rocksdb_dir_);
   pb.set_wal_dir(wal_dir_);
 
