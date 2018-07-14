@@ -14,10 +14,12 @@
 set(PGGATE_SRCS
     ybc_pggate.cc
     pggate.cc
+    pggate_c_wrappers_impl.cc
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc
-    pg_insert.cc)
+    pg_insert.cc
+    pg_api_example.cc)
 
 set(PGGATE_LIBS
     yb_util

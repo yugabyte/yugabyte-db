@@ -25,12 +25,32 @@
 #ifndef PG_YB_UTILS_H
 #define PG_YB_UTILS_H
 
+#include "postgres.h"
+
 #include "yb/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
+extern YBCPgSession ybc_pg_session;
 
 /*
  * Given a status returned by YB C++ code, reports that status using ereport if
  * it is not OK.
  */
 void HandleYBStatus(YBCStatus status);
+
+/*
+ * YB initialization that needs to happen when a PostgreSQL backend process
+ * is started. Reports errors using ereport.
+ */
+void YBInitPostgresBackend(
+	const char* program_name,
+    const char* db_name,
+    const char* user_name);
+
+/*
+ * This should be called on all exit paths from the PostgreSQL backend process.
+ * Only main PostgreSQL backend thread is expected to call this.
+ */
+void YBOnPostgresBackendShutdown();
 
 #endif // PG_YB_UTILS_H

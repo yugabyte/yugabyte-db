@@ -22,6 +22,7 @@ namespace pggate {
 using std::make_shared;
 using std::shared_ptr;
 using std::string;
+using std::vector;
 using namespace std::literals;  // NOLINT
 
 using client::YBClient;
@@ -32,12 +33,12 @@ using client::YBMetaDataCache;
 static MonoDelta kSessionTimeout = 60s;
 
 //--------------------------------------------------------------------------------------------------
-// Class PgSession
+// Class PgStatement
 //--------------------------------------------------------------------------------------------------
 
-PgStatement::PgStatement(PgSession::SharedPtr pg_session, StmtOp stmt_op) :
-    pg_session_(pg_session),
-    stmt_op_(stmt_op) {
+PgStatement::PgStatement(PgSession::SharedPtr pg_session, StmtOp stmt_op)
+    : pg_session_(pg_session),
+      stmt_op_(stmt_op) {
 }
 
 PgStatement::~PgStatement() {

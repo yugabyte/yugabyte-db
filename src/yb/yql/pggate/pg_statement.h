@@ -15,6 +15,9 @@
 #ifndef YB_YQL_PGGATE_PG_STATEMENT_H_
 #define YB_YQL_PGGATE_PG_STATEMENT_H_
 
+#include <string>
+#include <vector>
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 

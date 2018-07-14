@@ -451,5 +451,6 @@ CHECKED_STATUS PgApiImpl::ExecInsert(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+
 } // namespace pggate
 } // namespace yb

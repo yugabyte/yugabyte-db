@@ -19,26 +19,35 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-#define YB_DEFINE_HANDLE_TYPE(name) typedef class yb::pggate::name *YBC##name
+
+#define YB_DEFINE_HANDLE_TYPE(name) \
+    namespace yb { \
+    namespace pggate { \
+    class name; \
+    } \
+    } \
+    typedef class yb::pggate::name *YBC##name;
 
 #else
-#define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name
+#define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name;
 #endif  // __cplusplus
 
 #ifdef __cplusplus
-#include "yb/yql/pggate/pggate.h"
 extern "C" {
 #endif  // __cplusplus
 
 // TODO(neil) Hanlde to Env. Each Postgres process might need just one ENV, maybe more.
-YB_DEFINE_HANDLE_TYPE(PgEnv);
+YB_DEFINE_HANDLE_TYPE(PgEnv)
 
 // Handle to a session. Postgres should create one YBCPgSession per client connection.
-YB_DEFINE_HANDLE_TYPE(PgSession);
+YB_DEFINE_HANDLE_TYPE(PgSession)
 
 // Handle to a statement.
-YB_DEFINE_HANDLE_TYPE(PgStatement);
+YB_DEFINE_HANDLE_TYPE(PgStatement)
 
+//--------------------------------------------------------------------------------------------------
+// Other definitions are the same between C++ and C.
+//--------------------------------------------------------------------------------------------------
 // Use YugaByte datatype numeric representation for now.
 // TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
 // class PgType or QLType.
@@ -46,7 +55,7 @@ typedef int YBCPgDataType;
 
 #ifdef __cplusplus
 }  // extern "C"
-#endif
+#endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
 

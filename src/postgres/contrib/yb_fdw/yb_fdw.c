@@ -27,6 +27,7 @@
 #include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/print.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
@@ -34,9 +35,8 @@
 #include "optimizer/var.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/sampling.h"
 
-#include "yb/util/ybc_util.h"
+#include "yb_fdw_pggate_api.h"
 
 PG_MODULE_MAGIC;
 
@@ -295,6 +295,8 @@ ybGetForeignRelSize(PlannerInfo *root,
 	YbFdwPlanState *fdw_private;
 
 	YB_FDW_LOG_FUNCTION_ENTRY();
+	YBCLogInfo("Base rel:");
+	pprint(baserel);
 
 	/*
 	 * We can fetch foreign data wrapper options here if needed.
@@ -305,6 +307,8 @@ ybGetForeignRelSize(PlannerInfo *root,
 
 	/* Estimate relation size */
 	estimate_size(root, baserel, fdw_private);
+
+	YBCPgApiExample* stmt = YBCPgApiExample_New(NULL, NULL, NULL);
 }
 
 /*
@@ -637,7 +641,6 @@ yb_acquire_sample_rows(
 {
 	int			numrows = 0;
 	double		rowstoskip = -1;	/* -1 means not set yet */
-	ReservoirStateData rstate;
 	TupleDesc	tupDesc;
 	Datum	   *values;
 	bool	   *nulls;
@@ -661,9 +664,6 @@ yb_acquire_sample_rows(
 	tupcontext = AllocSetContextCreate(CurrentMemoryContext,
 									   "yb_fdw temporary context",
 									   ALLOCSET_DEFAULT_SIZES);
-
-	/* Prepare for sampling rows */
-	reservoir_init_selection_state(&rstate, targrows);
 
 	*totalrows = 0;
 	*totaldeadrows = 0;
