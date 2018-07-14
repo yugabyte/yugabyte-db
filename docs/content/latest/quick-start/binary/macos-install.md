@@ -11,6 +11,9 @@ $ python --version
 Python 2.7.10
 ```
 
+c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc are 1048576. Edit
+/etc/sysctl.conf on High Sierra if necessary
+
 ## Download
 
 Download the YugaByte DB CE package as shown below.
