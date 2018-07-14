@@ -28,7 +28,18 @@
     },
     "googleccplint": {
       "type": "googlecpplint",
-      "exclude": "(src/yb/yql/cql/ql/kwlist.h|src/yb/yql/pgsql/syn/pg_kwlist.h)",
+      "exclude": [
+        "(^src/yb/yql/cql/ql/kwlist[.]h$)",
+        "(^src/yb/yql/pgsql/syn/pg_kwlist[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_undef[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_cxx_decl[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_common[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_c_wrapper_common[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_c_wrapper_decl[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_c_wrapper_impl[.]h$)",
+        "(^src/yb/yql/pggate/if_macros_c_pg_wrapper_inl[.]h$)",
+        "(^src/yb/yql/pggate/pggate_if[.]h$)"
+      ],
       "include": [
         "(\\.cpp$)",
         "(\\.cc$)",

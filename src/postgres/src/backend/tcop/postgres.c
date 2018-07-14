@@ -77,9 +77,6 @@
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 
-#include "yb/util/ybc_util.h"
-#include "yb/yql/pggate/ybc_pggate.h"
-
 /* ----------------
  *		global variables
  * ----------------
@@ -99,9 +96,6 @@ int			max_stack_depth = 100;
 
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
-
-/* Global variables that are used to interact with YugaByte CAPI */
-YBCPgSession ybc_pg_session = NULL;
 
 /* ----------------
  *		private variables
@@ -2601,6 +2595,8 @@ quickdie(SIGNAL_ARGS)
 	 */
 	on_exit_reset();
 
+	YBOnPostgresBackendShutdown();
+
 	/*
 	 * Note we do exit(2) not exit(0).  This is to force the postmaster into a
 	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
@@ -2641,6 +2637,8 @@ die(SIGNAL_ARGS)
 		ProcessInterrupts();
 
 	errno = save_errno;
+
+	YBOnPostgresBackendShutdown();
 }
 
 /*
@@ -3584,40 +3582,6 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
-	// ------------------------------------------------------------------------
-	// YugaByte changes
-	//
-	// TODO: move this to some initialization hook.
-	if (!YBCInit(argv[0], palloc)) {
-		proc_exit(1);
-	}
-	// Currently, if we enable this, PostgreSQL's test suite ("make check")
-	// fails.
-	// TODO: create a YB client based on a "YB mode" switch.
-	if (false) {
-		YBCInitPgGate(&ybc_pg_session);
-
-		/*
-		 * For each process, we create one YBC session for postgres to use when
-		 * accessing YugaByte storage. YBC session is wrapper for YBSession and also
-		 * contain any YB state variables that are needed for this process.
-		 *
-		 * This might be optimized to reduce the number of sessions, but logically
-		 * having one session per process should work.
-		 */
-		if (ybc_pg_session == NULL) {
-			if (dbname != NULL) {
-				YBCPgCreateSession(NULL, dbname,
-						   &ybc_pg_session);
-			} else if (username != NULL) {
-				YBCPgCreateSession(NULL, username,
-						   &ybc_pg_session);
-			}
-		}
-	}
-	// (end of YugaByte changes)
-	// ------------------------------------------------------------------------
-
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;

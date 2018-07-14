@@ -23,18 +23,38 @@ from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root, get_bool
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
 
 
-def is_error_on_warning_flag(flag):
-    return flag == '-Werror' or flag.startswith('-Werror=')
+def adjust_error_on_warning_flag(flag, allow_error_on_warning):
+    """
+    Adjust a given compiler flag according to whether we want to allow any flags that turn warnings
+    into errors. We disable these flags during the configure step.
+    """
+    if flag == '-Werror':
+        # Skip this flag altogether, whether these are the flags for configure or make. PostgreSQL
+        # code is not warning-free.
+        return None
+
+    if allow_error_on_warning:
+        # No changes.
+        return flag
+
+    if flag.startswith('-Werror='):
+        # Convert e.g. -Werror=implicit-function-declaration to -Wimplicit-function-declaration.
+        return '-W' + flag[8:]
+
+    return flag
 
 
 def filter_compiler_flags(compiler_flags, allow_error_on_warning):
     """
     This function optionaly removes flags that turn warnings into errors.
     """
-    if allow_error_on_warning:
-        return compiler_flags
+    adjusted_flags = [
+        adjust_error_on_warning_flag(flag, allow_error_on_warning)
+        for flag in compiler_flags.split()
+    ]
     return ' '.join([
-        flag for flag in compiler_flags.split() if not is_error_on_warning_flag(flag)])
+        flag for flag in adjusted_flags if flag is not None
+    ])
 
 
 def get_path_variants(path):
@@ -102,6 +122,32 @@ class PostgresBuilder:
             raise RuntimeError(
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
+    def adjust_cflags_in_makefile(self):
+        makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
+        new_makefile_lines = []
+        new_cflags = os.environ['CFLAGS'].strip()
+        found_cflags = False
+        repalced_cflags = False
+        with open(makefile_global_path) as makefile_global_input_f:
+            for line in makefile_global_input_f:
+                line = line.rstrip("\n")
+                if line.startswith('CFLAGS = '):
+                    existing_cflags = line[9:].strip()
+                    found_cflags = True
+                    if existing_cflags != new_cflags:
+                        line = 'CFLAGS = $(YB_PREPEND_CFLAGS) ' + \
+                            new_cflags + ' $(YB_APPEND_CFLAGS)'
+                        replaced_cflags = True
+                new_makefile_lines.append(line)
+
+        if not found_cflags:
+            raise RuntimeError("Could not find a CFLAGS line in %s" % makefile_global_path)
+
+        if replaced_cflags:
+            logging.info("Replaced cflags in %s", makefile_global_path)
+            with open(makefile_global_path, 'w') as makefile_global_out_f:
+                makefile_global_out_f.write("\n".join(new_makefile_lines) + "\n")
+
     def set_env_vars(self, step):
         if step not in ['configure', 'make']:
             raise RuntimeError(
@@ -119,7 +165,7 @@ class PostgresBuilder:
                 del os.environ[var_name]
 
         additional_c_cxx_flags = [
-            '-Wno-error=missing-prototypes',
+            '-Wimplicit-function-declaration',
             '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
             '-DUSE_SSE42_CRC32C=1',
@@ -142,6 +188,8 @@ class PostgresBuilder:
             os.environ[var_name] = filter_compiler_flags(
                     os.environ.get(var_name, '') + ' ' + ' '.join(additional_c_cxx_flags),
                     allow_error_on_warning=(step == 'make'))
+        if step == 'make':
+            self.adjust_cflags_in_makefile()
 
         for env_var_name in ['MAKEFLAGS']:
             if env_var_name in os.environ:
@@ -165,10 +213,11 @@ class PostgresBuilder:
             for env_var_name in ['CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'LIBS']:
                 if env_var_name in os.environ:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
-
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
         os.environ['YB_NO_REMOTE_BUILD'] = '1'
+
+        os.environ['YB_BUILD_TYPE'] = self.build_type
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
@@ -215,10 +264,11 @@ class PostgresBuilder:
         configure_cmd_line = [
                 './configure',
                 '--prefix', self.pg_prefix,
-                '--config-cache',
                 '--enable-depend',
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
+        if not get_bool_env_var('YB_NO_PG_CONFIG_CACHE'):
+            configure_cmd_line.append('--config-cache')
 
         # We get readline-related errors in ASAN/TSAN, so let's disable readline there.
         if self.build_type in ['asan', 'tsan']:
@@ -260,7 +310,8 @@ class PostgresBuilder:
         # environment.
         make_script_content = "#!/usr/bin/env bash\n"
         for env_var_name in [
-                'YB_SRC_ROOT', 'YB_BUILD_ROOT', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'PATH']:
+                'YB_SRC_ROOT', 'YB_BUILD_ROOT', 'YB_BUILD_TYPE', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS',
+                'PATH']:
             env_var_value = os.environ[env_var_name]
             if env_var_value is None:
                 raise RuntimeError("Expected env var %s to be set" % env_var_name)

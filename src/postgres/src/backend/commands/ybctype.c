@@ -25,6 +25,8 @@
 
 #include "commands/ybctype.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
 YBCPgDataType YBCDataTypeFromName(TypeName *typeName) {
   // TODO(mihnea or neil) Pluggin correct type conversion.
   //

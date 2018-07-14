@@ -15,6 +15,8 @@
 #ifndef YB_YQL_PGGATE_YBC_PGGATE_H
 #define YB_YQL_PGGATE_YBC_PGGATE_H
 
+#include <stdint.h>
+
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -86,7 +88,7 @@ YBCStatus YBCPgAllocCreateTable(YBCPgSession pg_session,
                                 YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_ybtype, bool is_hash, bool is_range);
+                                    int attr_type, bool is_hash, bool is_range);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
@@ -125,8 +127,12 @@ YBCStatus YBCPgInsertSetColumnSerializedData(YBCPgStatement handle, int attr_num
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
+#include "yb/yql/pggate/if_macros_c_wrapper_decl.h"
+#include "yb/yql/pggate/pggate_if.h"
+#include "yb/yql/pggate/if_macros_undef.h"
+
 #ifdef __cplusplus
-}
+}  // extern "C"
 #endif
 
 #endif  // YB_YQL_PGGATE_YBC_PGGATE_H

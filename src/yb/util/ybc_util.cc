@@ -40,14 +40,9 @@ constexpr size_t kFormattingBufSize = 16384;
 
 extern "C" {
 
-int YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
+YBCStatus YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
   YBCSetPAllocFn(palloc_fn);
-  yb::Status s = yb::InitInternal(argv0);
-  if (s.ok()) {
-    return true;
-  }
-  LOG(WARNING) << "YugaByte initialization failed: " << s;
-  return false;
+  return ToYBCStatus(yb::InitInternal(argv0));
 }
 
 #define DEFINE_YBC_LOG_FUNCTION(level_capitalized, level_caps, extra_content) \
@@ -70,11 +65,6 @@ DEFINE_YBC_LOG_FUNCTION(WarningStackTrace, WARNING, GetStackTraceWithoutTopFrame
 DEFINE_YBC_LOG_FUNCTION(ErrorStackTrace,   ERROR,   GetStackTraceWithoutTopFrame())
 
 #undef DEFINE_YBC_LOG_FUNCTION
-
-YBCStatus YBCTestStatus() {
-  auto s = STATUS(IllegalState, "Something not quite right");
-  return ToYBCStatus(s);
-}
 
 } // extern "C"
 

@@ -332,6 +332,16 @@ set +u
 compiler_args_str="${compiler_args[*]}"
 set -u
 
+if [[ ${build_type:-} == "asan" && \
+      $PWD == */postgres_build/src/backend/utils/adt && \
+      $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ]]; then
+  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0:
+  # undefined reference to `__muloti4'
+  # (full log at http://bit.ly/2lYdYnp).
+  # Related to the problem reported at http://bit.ly/2NvS6MR.
+  compiler_args+=( -fno-sanitize=undefined )
+fi
+
 output_file=""
 input_files=()
 library_files=()

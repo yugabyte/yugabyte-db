@@ -29,12 +29,12 @@ typedef struct YBCStatusStruct {
 
 typedef struct YBCStatusStruct* YBCStatus;
 
+#define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
+
 typedef void* (*YBCPAllocFn)(size_t size);
 
 // Global initialization of the YugaByte subsystem.
-int YBCInit(const char* argv0, YBCPAllocFn palloc_fn);
-
-YBCStatus YBCTestStatus();
+CHECKED_YBCSTATUS YBCInit(const char* argv0, YBCPAllocFn palloc_fn);
 
 // Logging functions with printf-like formatting capabilities.
 void YBCLogInfo(const char* format, ...);
