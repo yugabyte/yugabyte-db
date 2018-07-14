@@ -10,6 +10,12 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
+
+set(POSTGRES_EXTRA_C_CXX_FLAGS "")
+foreach(include_dir ${Boost_INCLUDE_DIRS})
+  set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
+endforeach(include_dir)
+
 # Invoke our PostgreSQL build script.
 #
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
@@ -19,8 +25,8 @@ add_custom_target(
   COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
   --build_root "${YB_BUILD_ROOT}"
 
-  --cflags     " ${CMAKE_C_FLAGS}"
-  --cxxflags   " ${CMAKE_CXX_FLAGS}"
+  --cflags     " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
+  --cxxflags   " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
   --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
   --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
 

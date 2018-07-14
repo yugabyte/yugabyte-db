@@ -13,6 +13,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/util/ybc-internal.h"
 
+#include "yb/yql/pggate/pggate.h"
+
 namespace yb {
 namespace pggate {
 
@@ -136,7 +138,7 @@ YBCStatus YBCPgAllocCreateTable(YBCPgSession pg_session,
                                              if_not_exist, handle));
 }
 
-YBCStatus YBCPgAddCreateTableColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
                                     int attr_ybtype, bool is_hash, bool is_range) {
   return ToYBCStatus(pgapi->CreateTableAddColumn(handle, attr_name, attr_num, attr_ybtype,
                                                  is_hash, is_range));

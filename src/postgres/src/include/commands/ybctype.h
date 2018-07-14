@@ -27,6 +27,8 @@
 #include "catalog/dependency.h"
 #include "nodes/parsenodes.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 extern YBCPgDataType YBCDataTypeFromName(TypeName *typeName);
 
 #endif

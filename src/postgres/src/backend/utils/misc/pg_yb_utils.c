@@ -28,11 +28,62 @@
 
 #include "pg_yb_utils.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
+YBCPgSession ybc_pg_session = NULL;
+
 void HandleYBStatus(YBCStatus status) {
 	if (!status)
 		return;
 	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg(status->msg)));
+			 errmsg("%s", status->msg)));
+}
+
+void YBInitPostgresBackend(
+		const char* program_name,
+		const char* db_name,
+		const char* user_name) {
+	HandleYBStatus(YBCInit(program_name, palloc));
+
+	/*
+	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
+	 * to the YugaByte cluster right away from every backend process. We
+	 * only do this if this env variable is set, so we can still run the
+	 * regular PostgreSQL "make check".
+	 */
+	const char* pg_yb_mode = getenv("YB_ENABLED_IN_POSTGRES");
+
+	if (pg_yb_mode != NULL && strcmp(pg_yb_mode, "1") == 0) {
+		YBCInitPgGate();
+
+		/*
+			* For each process, we create one YBC session for PostgreSQL to use
+			* when accessing YugaByte storage.
+			*
+			* TODO: do we really need to DB name / username here?
+			*/
+		if (db_name != NULL) {
+			HandleYBStatus(YBCPgCreateSession(
+				/* pg_env */ NULL, db_name, &ybc_pg_session));
+		} else if (user_name != NULL) {
+			HandleYBStatus(
+				YBCPgCreateSession(
+					/* pg_env */ NULL, user_name, &ybc_pg_session));
+		}
+	}
+}
+
+void YBOnPostgresBackendShutdown() {
+	YBCLogInfo("YBOnPostgresBackendShutdown called");
+	static bool shutdown_done = false;
+	if (shutdown_done) {
+		return;
+	}
+	if (ybc_pg_session) {
+		YBCPgDestroySession(ybc_pg_session);
+		ybc_pg_session = NULL;
+	}
+	shutdown_done = true;
 }

@@ -22,8 +22,12 @@
  */
 
 #include "postgres.h"
+
 #include "commands/ybccmds.h"
 #include "commands/ybctype.h"
+
+#include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_yb_utils.h"
 
 void YBCCreateTable(CreateStmt *stmt) {
   YBCPgStatement handle;
@@ -32,7 +36,7 @@ void YBCCreateTable(CreateStmt *stmt) {
 
   YBCStatus s = YBCPgAllocCreateTable(ybc_pg_session,
                                       stmt->relation->catalogname,
-                                      stmt->relation->schemaname,     
+                                      stmt->relation->schemaname,
                                       stmt->relation->relname,
                                       false,
                                       &handle);
@@ -46,7 +50,7 @@ void YBCCreateTable(CreateStmt *stmt) {
     // TODO(mihnea or neil) Need to learn how to check the constraints in ColumnDef and
     // CreateStatement and identify the primary column.
     if (0) {
-      YBCPgAddCreateTableColumn(handle, colDef->colname, col_order, col_type, false, true);
+      YBCPgCreateTableAddColumn(handle, colDef->colname, col_order, col_type, false, true);
     }
     col_order++;
   }
@@ -60,7 +64,7 @@ void YBCCreateTable(CreateStmt *stmt) {
     // TODO(mihnea or neil) Need to learn how to check the constraints in ColumnDef and
     // CreateStatement and identify the primary column.
     if (1) {
-      YBCPgAddCreateTableColumn(handle, colDef->colname, col_order, col_type, false, false);
+      YBCPgCreateTableAddColumn(handle, colDef->colname, col_order, col_type, false, false);
     }
     col_order++;
   }

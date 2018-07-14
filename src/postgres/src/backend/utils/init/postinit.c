@@ -61,6 +61,7 @@
 #include "utils/timeout.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -885,6 +886,9 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		}
 		return;
 	}
+
+	/* Connect to YugaByte cluster. */
+	YBInitPostgresBackend("postgres", dbname, username);
 
 	/*
 	 * Now, take a writer's lock on the database we are trying to connect to.

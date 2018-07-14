@@ -19,8 +19,12 @@
 #include <thread>
 #include <unordered_map>
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/ybc_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
@@ -30,6 +34,8 @@
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
+
+#include "yb/yql/pggate/type_mapping.h"
 
 namespace yb {
 namespace pggate {
@@ -200,6 +206,12 @@ class PgApiImpl {
   // shared_ptr instead of calling "free(ptr)" will save us from crashing.
   std::unordered_map<PgStatement*, PgStatement::SharedPtr> statements_;
 };
+
+// Generate C++ interface class declarations from the common DSL.
+// TODO: move this to a separate file.
+#include "yb/yql/pggate/if_macros_cxx_decl.h"
+#include "yb/yql/pggate/pggate_if.h"
+#include "yb/yql/pggate/if_macros_undef.h"
 
 }  // namespace pggate
 }  // namespace yb

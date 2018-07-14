@@ -48,15 +48,6 @@
 #include "utils/elog.h"
 #include "utils/palloc.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
-/* ----------------------------------------------------------------
- * YugaByte API setup.
- * ----------------------------------------------------------------
- */
-
-extern YBCPgSession ybc_pg_session;
-
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)
  * ----------------------------------------------------------------
