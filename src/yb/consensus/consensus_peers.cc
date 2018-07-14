@@ -138,10 +138,15 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     return STATUS(IllegalState, "Peer was closed.");
   }
 
+  // Only allow one request at a time. No sense waking up the raft thread pool if the task will just
+  // abort anyway.
+  if (request_pending_) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(raft_pool_token_->SubmitFunc([=, s_this = shared_from_this()]() {
     s_this->SendNextRequest(trigger_mode);
   }));
-
   return Status::OK();
 }
 
@@ -366,14 +371,12 @@ Status Peer::PrepareRemoteBootstrapRequest() {
 
 void Peer::ProcessRemoteBootstrapResponse() {
   // If the peer is already closed return.
-  {
-    std::unique_lock<simple_spinlock> lock(peer_lock_);
-    if (closed_) {
-      return;
-    }
-    DCHECK(request_pending_) << "Got a remote bootstrap response when nothing was pending";
-    request_pending_ = false;
+  std::unique_lock<simple_spinlock> lock(peer_lock_);
+  if (closed_) {
+    return;
   }
+  DCHECK(request_pending_) << "Got a remote bootstrap response when nothing was pending";
+  request_pending_ = false;
 
   // We treat remote bootstrap as fire-and-forget.
   if (controller_.status().ok() && rb_response_.has_error()) {
