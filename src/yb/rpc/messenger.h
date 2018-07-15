@@ -100,6 +100,9 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder &UseDefaultConnectionContextFactory(
+      const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr);
+
   MessengerBuilder &AddStreamFactory(const Protocol* protocol, StreamFactoryPtr factory);
 
   MessengerBuilder &SetListenProtocol(const Protocol* protocol) {
