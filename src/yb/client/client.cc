@@ -341,6 +341,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
     MessengerBuilder builder(data_->client_name_);
     builder.set_num_reactors(data_->num_reactors_);
     builder.set_metric_entity(data_->metric_entity_);
+    builder.UseDefaultConnectionContextFactory(data_->parent_mem_tracker_);
     c->data_->messenger_ = VERIFY_RESULT(builder.Build());
   }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);

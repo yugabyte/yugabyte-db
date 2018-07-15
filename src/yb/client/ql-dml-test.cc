@@ -209,10 +209,14 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     EXPECT_EQ(row.column(1).string_value(), "d");
   }
 
-  auto used_tracker = MemTracker::GetRootTracker()->FindChild("server")->FindChild("Read Buffer")->
-                      FindChild("Inbound RPC")->FindChild("Used");
+  auto read_tracker = MemTracker::GetRootTracker()->FindChild("server")->FindChild("Read Buffer");
+  auto used_tracker = read_tracker->FindChild(
+      rpc::YBInboundConnectionContext::Name())->FindChild("Used");
 
   ASSERT_EQ(0, used_tracker->peak_consumption());
+
+  auto outbound_tracker = read_tracker->FindChild(rpc::YBOutboundConnectionContext::Name());
+  ASSERT_NE(nullptr, outbound_tracker);
 }
 
 TEST_F(QLDmlTest, TestInsertWrongSchema) {
