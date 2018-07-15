@@ -107,9 +107,6 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       num_reactors_(4),
       coarse_timer_granularity_(100ms),
-      connection_context_factory_(
-          rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
-              FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit)),
       listen_protocol_(TcpStream::StaticProtocol()) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
@@ -138,6 +135,9 @@ MessengerBuilder &MessengerBuilder::set_metric_entity(
 }
 
 Result<std::shared_ptr<Messenger>> MessengerBuilder::Build() {
+  if (!connection_context_factory_) {
+    UseDefaultConnectionContextFactory();
+  }
   std::unique_ptr<Messenger> messenger(new Messenger(*this));
   RETURN_NOT_OK(messenger->Init());
 
@@ -150,6 +150,13 @@ MessengerBuilder &MessengerBuilder::AddStreamFactory(
     const Protocol* protocol, StreamFactoryPtr factory) {
   auto p = stream_factories_.emplace(protocol, std::move(factory));
   LOG_IF(DFATAL, !p.second) << "Duplicate stream factory: " << protocol->ToString();
+  return *this;
+}
+
+MessengerBuilder &MessengerBuilder::UseDefaultConnectionContextFactory(
+    const std::shared_ptr<MemTracker>& parent_mem_tracker) {
+  connection_context_factory_ = rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
+      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit, parent_mem_tracker);
   return *this;
 }
 

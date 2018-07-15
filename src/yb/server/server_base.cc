@@ -192,6 +192,7 @@ Status RpcServerBase::Init() {
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
+  builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_.reset(new rpc::ProxyCache(messenger_));
