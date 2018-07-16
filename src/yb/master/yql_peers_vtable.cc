@@ -12,6 +12,9 @@
 //
 
 #include "yb/master/yql_peers_vtable.h"
+
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/ts_descriptor.h"
 
 namespace yb {
@@ -46,30 +49,24 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
 
   size_t index = 0;
   for (const shared_ptr<TSDescriptor>& desc : descs) {
+    size_t current_index = index++;
     TSInformationPB ts_info;
     // This is thread safe since all operations are reads.
     desc->GetTSInformationPB(&ts_info);
-
-    if (ts_info.registration().common().rpc_addresses_size() == 0) {
-      return STATUS_SUBSTITUTE(IllegalState,
-                               "tserver $0 doesn't have any rpc addresses registered",
-                               desc->permanent_uuid());
-    }
 
     // The system.peers table has one entry for each of its peers, whereas there is no entry for
     // the node that the CQL client connects to. In this case, this node is the 'remote_endpoint'
     // in QLReadRequestPB since that is address of the CQL proxy which sent this request. As a
     // result, skip 'remote_endpoint' in the results.
     if (!util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
-      InetAddress addr;
+      auto ips = util::GetPublicPrivateIPs(ts_info);
       // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
       // so pick the first one.
-      const string& ts_host = ts_info.registration().common().rpc_addresses(0).host();
-      if (addr.FromString(ts_host).ok()) {
+      if (ips.ok()) {
         QLRow &row = (*vtable)->Extend();
-        RETURN_NOT_OK(SetColumnValue(kPeer, addr, &row));
-        RETURN_NOT_OK(SetColumnValue(kRPCAddress, addr, &row));
-        RETURN_NOT_OK(SetColumnValue(kPreferredIp, addr, &row));
+        RETURN_NOT_OK(SetColumnValue(kPeer, ips->public_ip, &row));
+        RETURN_NOT_OK(SetColumnValue(kRPCAddress, ips->public_ip, &row));
+        RETURN_NOT_OK(SetColumnValue(kPreferredIp, ips->private_ip, &row));
 
         // Datacenter and rack.
         CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
@@ -87,13 +84,11 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
         RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
         // Tokens.
-        RETURN_NOT_OK(SetColumnValue(kTokens, util::GetTokensValue(index, descs.size()), &row));
+        RETURN_NOT_OK(SetColumnValue(
+            kTokens, util::GetTokensValue(current_index, descs.size()), &row));
       } else {
-        LOG (WARNING) << strings::Substitute("Skipping host $0, since we couldn't resolve it to an "
-                                                 "IP address", ts_host);
       }
     }
-    index++;
   }
 
   return Status::OK();

@@ -190,21 +190,21 @@ public class TestReadFromFollowers extends BaseJedisTest {
     YBClient syncClient = miniCluster.getClient();
 
     // Create the cluster config pb to be sent to the masters
-    org.yb.WireProtocol.CloudInfoPB cloudInfo0 = org.yb.WireProtocol.CloudInfoPB.newBuilder()
+    org.yb.Common.CloudInfoPB cloudInfo0 = org.yb.Common.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION)
         .setPlacementZone(PLACEMENT_ZONE0)
         .build();
 
     // Create the cluster config pb to be sent to the masters
-    org.yb.WireProtocol.CloudInfoPB cloudInfo1 = org.yb.WireProtocol.CloudInfoPB.newBuilder()
+    org.yb.Common.CloudInfoPB cloudInfo1 = org.yb.Common.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION)
         .setPlacementZone(PLACEMENT_ZONE1)
         .build();
 
     // Create the cluster config pb to be sent to the masters
-    org.yb.WireProtocol.CloudInfoPB cloudInfo2 = org.yb.WireProtocol.CloudInfoPB.newBuilder()
+    org.yb.Common.CloudInfoPB cloudInfo2 = org.yb.Common.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION)
         .setPlacementZone(PLACEMENT_ZONE2)

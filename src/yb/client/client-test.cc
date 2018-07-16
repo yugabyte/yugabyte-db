@@ -482,11 +482,10 @@ TEST_F(ClientTest, TestListTabletServers) {
   set<string> expected_ts_uuids;
   set<string> expected_ts_hostnames;
   for (int i = 0; i < tss.size(); ++i) {
-    expected_ts_uuids.insert(
-        cluster_->mini_tablet_server(i)->server()->instance_pb().permanent_uuid());
+    auto server = cluster_->mini_tablet_server(i)->server();
+    expected_ts_uuids.insert(server->instance_pb().permanent_uuid());
     actual_ts_uuids.insert(tss[i]->uuid());
-    expected_ts_hostnames.insert(
-      cluster_->mini_tablet_server(i)->server()->first_rpc_address().address().to_string());
+    expected_ts_hostnames.insert(server->options().broadcast_addresses[0].host());
     actual_ts_hostnames.insert(tss[i]->hostname());
   }
   ASSERT_EQ(expected_ts_uuids, actual_ts_uuids);
@@ -1931,7 +1930,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
-        &proxy_cache, HostPortFromPB(ts_info.rpc_addresses(0)));
+        &proxy_cache, HostPortFromPB(ts_info.private_rpc_addresses(0)));
 
     std::unique_ptr<QLRowBlock> row_block;
     ASSERT_OK(WaitFor([&]() -> bool {

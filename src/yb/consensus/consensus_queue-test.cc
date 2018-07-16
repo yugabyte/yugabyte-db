@@ -860,8 +860,8 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
   ASSERT_TRUE(rb_req.IsInitialized()) << rb_req.ShortDebugString();
   ASSERT_EQ(kTestTablet, rb_req.tablet_id());
   ASSERT_EQ(kLeaderUuid, rb_req.bootstrap_peer_uuid());
-  ASSERT_EQ(FakeRaftPeerPB(kLeaderUuid).last_known_addr().ShortDebugString(),
-            rb_req.bootstrap_peer_addr().ShortDebugString());
+  ASSERT_EQ(FakeRaftPeerPB(kLeaderUuid).last_known_private_addr()[0].ShortDebugString(),
+            rb_req.source_private_addr()[0].ShortDebugString());
 }
 
 }  // namespace consensus

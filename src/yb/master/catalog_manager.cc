@@ -84,6 +84,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
@@ -4167,7 +4168,9 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
 
-  HostPort bootstrap_peer_addr = HostPortFromPB(req.bootstrap_peer_addr());
+  HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
+      req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
+      master_->MakeCloudInfoPB()));
 
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
@@ -4978,9 +4981,7 @@ void CatalogManager::SelectReplicas(
     peer->set_permanent_uuid(ts->permanent_uuid());
 
     // TODO: This is temporary, we will use only UUIDs.
-    for (const HostPortPB& addr : reg.common().rpc_addresses()) {
-      peer->mutable_last_known_addr()->CopyFrom(addr);
-    }
+    TakeRegistration(reg.mutable_common(), peer);
     peer->set_member_type(member_type);
   }
 }
@@ -5000,7 +5001,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
     }
     TSInfoPB* tsinfo_pb = replica_pb->mutable_ts_info();
     tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
-    tsinfo_pb->add_rpc_addresses()->CopyFrom(peer.last_known_addr());
+    CopyRegistration(peer, tsinfo_pb);
   }
   return Status::OK();
 }
@@ -5060,10 +5061,8 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
       replica_pb->mutable_ts_info()->set_permanent_uuid(
           tsinfo_pb.tserver_instance().permanent_uuid());
-      replica_pb->mutable_ts_info()->mutable_rpc_addresses()->Swap(
-          tsinfo_pb.mutable_registration()->mutable_common()->mutable_rpc_addresses());
-      replica_pb->mutable_ts_info()->mutable_cloud_info()->Swap(
-          tsinfo_pb.mutable_registration()->mutable_common()->mutable_cloud_info());
+      TakeRegistration(
+          tsinfo_pb.mutable_registration()->mutable_common(), replica_pb->mutable_ts_info());
       replica_pb->mutable_ts_info()->set_placement_uuid(
           tsinfo_pb.registration().common().placement_uuid());
     }
@@ -5299,8 +5298,8 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_di
   rpc.set_deadline(timeout);
   req.set_on_disk(on_disk);
 
-  for (RaftPeerPB peer : peers) {
-    HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
+  for (const RaftPeerPB& peer : peers) {
+    HostPort hostport = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
     peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
 
     DumpMasterStateResponsePB resp;
@@ -5519,8 +5518,22 @@ int64_t CatalogManager::GetNumBlacklistReplicas() {
     tablet->GetReplicaLocations(&locs);
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
       replica.second.ts_desc->GetRegistration(&reg);
-      HostPort hp = HostPortFromPB(reg.common().rpc_addresses(0));
-      if (blacklistState.tservers_.count(hp) != 0) {
+      bool blacklisted = false;
+      for (const auto& hp : reg.common().private_rpc_addresses()) {
+        if (blacklistState.tservers_.count(HostPortFromPB(hp)) != 0) {
+          blacklisted = true;
+          break;
+        }
+      }
+      if (!blacklisted) {
+        for (const auto& hp : reg.common().broadcast_addresses()) {
+          if (blacklistState.tservers_.count(HostPortFromPB(hp)) != 0) {
+            blacklisted = true;
+            break;
+          }
+        }
+      }
+      if (blacklisted) {
         blacklist_replicas++;
       }
     }

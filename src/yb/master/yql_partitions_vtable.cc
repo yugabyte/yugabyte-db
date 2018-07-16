@@ -11,10 +11,13 @@
 // under the License.
 //
 
+#include "yb/master/yql_partitions_vtable.h"
+
 #include "yb/common/ql_value.h"
 #include "yb/common/redis_constants_common.h"
+
 #include "yb/master/catalog_manager.h"
-#include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/master_util.h"
 
 namespace yb {
 namespace master {
@@ -71,7 +74,7 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
       QLMapValuePB *map_value = replica_addresses.mutable_map_value();
       for (const auto replica : tabletLocationsPB.replicas()) {
         InetAddress addr;
-        RETURN_NOT_OK(addr.FromString(replica.ts_info().rpc_addresses(0).host()));
+        RETURN_NOT_OK(addr.FromString(DesiredHostPort(replica.ts_info(), CloudInfoPB()).host()));
         QLValue elem_key;
         elem_key.set_inetaddress_value(addr);
         *map_value->add_keys() = elem_key.value();

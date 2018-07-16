@@ -548,7 +548,8 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   if (type == consensus::ADD_SERVER) {
     peer_pb.set_member_type(member_type);
   }
-  RETURN_NOT_OK(HostPortToPB(master->bound_rpc_hostport(), peer_pb.mutable_last_known_addr()));
+  RETURN_NOT_OK(HostPortToPB(
+      master->bound_rpc_hostport(), peer_pb.mutable_last_known_private_addr()->Add()));
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(type);
   req.set_use_host(use_hostport);

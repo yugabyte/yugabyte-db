@@ -547,7 +547,9 @@ message StartRemoteBootstrapRequestPB {
   // Identification for the host we are bootstrapping from.
   // TODO: Consider renaming these to bootstrap_source_*.
   required bytes bootstrap_peer_uuid = 2;
-  required HostPortPB bootstrap_peer_addr = 3;
+  repeated HostPortPB source_private_addr = 3;
+  repeated HostPortPB source_broadcast_addr = 6;
+  optional CloudInfoPB source_cloud_info = 7;
 
   // The caller's term. In the case that the target of this request has a
   // TOMBSTONED replica with a term higher than this one, the request will fail.

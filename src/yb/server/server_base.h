@@ -93,6 +93,14 @@ class RpcServerBase {
   // Return a PB describing the status of the server (version info, bound ports, etc)
   virtual void GetStatusPB(ServerStatusPB* status) const;
 
+  CloudInfoPB MakeCloudInfoPB() const {
+    return options_.MakeCloudInfoPB();
+  }
+
+  const ServerBaseOptions& options() const {
+    return options_;
+  }
+
  protected:
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
@@ -143,6 +151,8 @@ class RpcServerBase {
   DISALLOW_COPY_AND_ASSIGN(RpcServerBase);
 };
 
+YB_STRONGLY_TYPED_BOOL(RpcOnly);
+
 // Base class for tablet server and master.
 // Handles starting and stopping the RPC server and web server,
 // and provides a common interface for server-type-agnostic functions.
@@ -160,7 +170,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GetStatusPB(ServerStatusPB* status) const override;
 
   // Centralized method to get the Registration information for either the Master or Tserver.
-  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const;
+  CHECKED_STATUS GetRegistration(
+      ServerRegistrationPB* reg, RpcOnly rpc_only = RpcOnly::kFalse) const;
 
  protected:
   RpcAndWebServerBase(
@@ -191,6 +202,15 @@ class RpcAndWebServerBase : public RpcServerBase {
 };
 
 std::shared_ptr<MemTracker> CreateMemTrackerForServer();
+
+YB_STRONGLY_TYPED_BOOL(Private);
+
+// Returns public/private address for test server with specified index.
+std::string TEST_RpcAddress(int index, Private priv);
+// Returns bind endpoint for test server with specified index and specified port.
+std::string TEST_RpcBindEndpoint(int index, uint16_t port);
+// Breaks connectivity in test for specified messenger of server with index.
+void TEST_BreakConnectivity(rpc::Messenger* messenger, int index);
 
 } // namespace server
 } // namespace yb

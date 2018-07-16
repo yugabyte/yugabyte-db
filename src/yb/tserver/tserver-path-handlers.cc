@@ -257,8 +257,9 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
   sorted_peers.assign(cstate.config().peers().begin(), cstate.config().peers().end());
   std::sort(sorted_peers.begin(), sorted_peers.end(), &CompareByMemberType);
   for (const RaftPeerPB& peer : sorted_peers) {
-    string peer_addr_or_uuid =
-        peer.has_last_known_addr() ? peer.last_known_addr().host() : peer.permanent_uuid();
+    std::string peer_addr_or_uuid = !peer.last_known_private_addr().empty()
+        ? peer.last_known_private_addr()[0].host()
+        : peer.permanent_uuid();
     peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
     string role_name = RaftPeerPB::Role_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
     string formatted = Substitute("$0: $1", role_name, peer_addr_or_uuid);

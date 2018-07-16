@@ -735,7 +735,8 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     std::unique_ptr<YBTabletServer> ts(new YBTabletServer());
     ts->data_ = new YBTabletServer::Data(
-        e.instance_id().permanent_uuid(), e.registration().common().rpc_addresses(0).host());
+        e.instance_id().permanent_uuid(),
+        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();
@@ -825,6 +826,10 @@ ThreadPool *YBClient::callback_threadpool() {
   return data_->cb_threadpool_.get();
 }
 
+const std::string& YBClient::proxy_uuid() const {
+  return data_->uuid_;
+}
+
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
                                  const MonoTime& deadline,
@@ -888,7 +893,7 @@ Status YBClient::GetMasterUUID(const string& host,
   ServerEntryPB server;
   MonoDelta rpc_timeout = default_rpc_timeout();
   int timeout_ms = static_cast<int>(rpc_timeout.ToMilliseconds());
-  RETURN_NOT_OK(GetMasterEntryForHost(data_->proxy_cache_.get(), hp, timeout_ms, &server));
+  RETURN_NOT_OK(master::GetMasterEntryForHost(data_->proxy_cache_.get(), hp, timeout_ms, &server));
 
   if (server.has_error()) {
     return STATUS(RuntimeError,

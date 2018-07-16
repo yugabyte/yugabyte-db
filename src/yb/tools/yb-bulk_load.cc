@@ -392,9 +392,9 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
     if (!csv_replicas.empty()) {
       csv_replicas += ",";
     }
-    const string &host = replica.ts_info().rpc_addresses(0).host();
+    const string &host = replica.ts_info().private_rpc_addresses(0).host();
     csv_replicas += host;
-    host_to_rpcport[host] = replica.ts_info().rpc_addresses(0).port();
+    host_to_rpcport[host] = replica.ts_info().private_rpc_addresses(0).port();
   }
 
   // Invoke the bulk_load_helper script.

@@ -81,15 +81,20 @@ DEFINE_int32(metrics_log_interval_ms, 0,
              "value, then metrics logging will be disabled.");
 TAG_FLAG(metrics_log_interval_ms, advanced);
 
+DEFINE_string(server_broadcast_addresses, "", "Broadcast addresses for this server.");
+
 ServerBaseOptions::ServerBaseOptions()
     : env(Env::Default()),
       dump_info_path(FLAGS_server_dump_info_path),
       dump_info_format(FLAGS_server_dump_info_format),
       metrics_log_interval_ms(FLAGS_metrics_log_interval_ms),
-      placement_cloud(FLAGS_placement_cloud),
-      placement_region(FLAGS_placement_region),
-      placement_zone(FLAGS_placement_zone),
-      placement_uuid(FLAGS_placement_uuid) {}
+      placement_uuid(FLAGS_placement_uuid) {
+  if (!FLAGS_server_broadcast_addresses.empty()) {
+    auto status = HostPort::ParseStrings(FLAGS_server_broadcast_addresses, 0, &broadcast_addresses);
+    LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_server_broadcast_addresses << ": "
+                                 << status;
+  }
+}
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
     : env(options.env),
@@ -100,11 +105,12 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       dump_info_path(options.dump_info_path),
       dump_info_format(options.dump_info_format),
       metrics_log_interval_ms(options.metrics_log_interval_ms),
-      placement_cloud(options.placement_cloud),
-      placement_region(options.placement_region),
-      placement_zone(options.placement_zone),
       placement_uuid(options.placement_uuid),
-      master_addresses_flag(options.master_addresses_flag) {
+      master_addresses_flag(options.master_addresses_flag),
+      broadcast_addresses(options.broadcast_addresses),
+      placement_cloud_(options.placement_cloud_),
+      placement_region_(options.placement_region_),
+      placement_zone_(options.placement_zone_) {
   SetMasterAddressesNoValidation(options.GetMasterAddresses());
 }
 
@@ -183,6 +189,36 @@ Status ServerBaseOptions::DetermineMasterAddresses(
   }
   *master_addresses_resolved_str = JoinStrings(master_addr_strings, ",");
   return Status::OK();
+}
+
+CloudInfoPB ServerBaseOptions::MakeCloudInfoPB() const {
+  CloudInfoPB result;
+  result.set_placement_cloud(placement_cloud());
+  result.set_placement_region(placement_region());
+  result.set_placement_zone(placement_zone());
+  return result;
+}
+
+const std::string& ServerBaseOptions::placement_cloud() const {
+  return placement_cloud_.empty() ? FLAGS_placement_cloud : placement_cloud_;
+}
+
+const std::string& ServerBaseOptions::placement_region() const {
+  return placement_region_.empty() ? FLAGS_placement_region : placement_region_;
+}
+
+const std::string& ServerBaseOptions::placement_zone() const {
+  return placement_zone_.empty() ? FLAGS_placement_zone : placement_zone_;
+}
+
+bool ServerBaseOptions::has_placement_cloud() const {
+  return !placement_cloud_.empty();
+}
+
+void ServerBaseOptions::SetPlacement(std::string cloud, std::string region, std::string zone) {
+  placement_cloud_ = std::move(cloud);
+  placement_region_ = std::move(region);
+  placement_zone_ = std::move(zone);
 }
 
 } // namespace server

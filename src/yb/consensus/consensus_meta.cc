@@ -258,5 +258,20 @@ Status ConsensusMetadata::UpdateOnDiskSize() {
   return Status::OK();
 }
 
+const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from) {
+  return DesiredHostPort(
+      peer.last_known_broadcast_addr(), peer.last_known_private_addr(), peer.cloud_info(), from);
+}
+
+void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest) {
+  dest->mutable_last_known_private_addr()->Swap(source->mutable_private_rpc_addresses());
+  dest->mutable_last_known_broadcast_addr()->Swap(source->mutable_broadcast_addresses());
+  dest->mutable_cloud_info()->Swap(source->mutable_cloud_info());
+}
+
+void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest) {
+  TakeRegistration(&source, dest);
+}
+
 } // namespace consensus
 } // namespace yb

@@ -89,7 +89,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
 
   TSRegistrationPB reg;
   // Fake host:port combo, with uuid as host, for ease of testing.
-  auto hp = reg.mutable_common()->add_rpc_addresses();
+  auto hp = reg.mutable_common()->add_private_rpc_addresses();
   hp->set_host(uuid);
   // Same cloud info as cluster config, with modifyable AZ.
   auto ci = reg.mutable_common()->mutable_cloud_info();
@@ -98,7 +98,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
   ci->set_placement_zone(az);
 
   std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg));
+  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
   return ts;
 }
 

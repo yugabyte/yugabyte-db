@@ -64,6 +64,7 @@ CHECKED_STATUS GetRaftConfigMember(const RaftConfigPB& config,
 // Return an host/port for the uuid in the given config. Error out if not found.
 CHECKED_STATUS GetHostPortFromConfig(const RaftConfigPB& config,
                                      const std::string& uuid,
+                                     const CloudInfoPB& from,
                                      HostPort* hp);
 
 CHECKED_STATUS GetMutableRaftConfigMember(RaftConfigPB* config,

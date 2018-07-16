@@ -67,6 +67,7 @@ DECLARE_int32(ts_admin_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
+DECLARE_string(use_private_ip);
 
 namespace yb {
 
@@ -141,6 +142,9 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_consensus_svc_num_threads = 8;
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
+  // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
+  FLAGS_use_private_ip = "cloud";
+
   // This dictates the RF of newly created tables.
   if (num_ts_initial_ >= 3) {
     FLAGS_replication_factor = 3;
@@ -188,9 +192,10 @@ Status MiniCluster::StartMasters() {
   }
   for (int i = 0; i < num_masters_initial_; i++) {
     gscoped_ptr<MiniMaster> mini_master(
-        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i]));
-    RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_rpc_ports_),
-                          Substitute("Couldn't start follower $0", i));
+        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i));
+    auto status = mini_master->StartDistributedMaster(master_rpc_ports_);
+    LOG_IF(INFO, !status.ok()) << "Failed to start master: " << status;
+    RETURN_NOT_OK_PREPEND(status, Substitute("Couldn't start follower $0", i));
     VLOG(1) << "Started MiniMaster with UUID " << mini_master->permanent_uuid()
             << " at index " << i;
     mini_masters_[i] = shared_ptr<MiniMaster>(mini_master.release());
@@ -250,11 +255,18 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
 
   // set the master addresses
   auto master_addr = std::make_shared<vector<HostPort>>();
-  std::vector<std::string> master_addr_strings;
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
     master_addr->push_back(HostPort(master->bound_rpc_addr()));
-    master_addr_strings.push_back(HostPort(master->bound_rpc_addr()).ToString());
+    for (const auto& hp : master->master()->opts().broadcast_addresses) {
+      master_addr->push_back(hp);
+    }
   }
+
+  std::vector<std::string> master_addr_strings;
+  for (const auto& hp : *master_addr) {
+    master_addr_strings.push_back(hp.ToString());
+  }
+
   tablet_server->options()->master_addresses_flag = JoinStrings(master_addr_strings, ",");
   tablet_server->options()->SetMasterAddresses(master_addr);
   tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];

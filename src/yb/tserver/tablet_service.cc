@@ -1103,8 +1103,10 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
       for (QLReadRequestPB& ql_read_req : *mutable_req->mutable_ql_batch()) {
         // Update the remote endpoint.
         ql_read_req.set_allocated_remote_endpoint(host_port_pb);
+        ql_read_req.set_allocated_proxy_uuid(mutable_req->mutable_proxy_uuid());
         BOOST_SCOPE_EXIT(&ql_read_req) {
           ql_read_req.release_remote_endpoint();
+          ql_read_req.release_proxy_uuid();
         } BOOST_SCOPE_EXIT_END;
 
         tablet::QLReadRequestResult result;

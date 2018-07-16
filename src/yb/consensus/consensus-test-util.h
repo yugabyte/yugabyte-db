@@ -93,8 +93,9 @@ inline ReplicateMsgPtr CreateDummyReplicate(int term,
 RaftPeerPB FakeRaftPeerPB(const std::string& uuid) {
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(uuid);
-  peer_pb.mutable_last_known_addr()->set_host(Substitute("$0-fake-hostname", CURRENT_TEST_NAME()));
-  peer_pb.mutable_last_known_addr()->set_port(0);
+  auto addr = peer_pb.mutable_last_known_private_addr()->Add();
+  addr->set_host(Substitute("$0-fake-hostname", CURRENT_TEST_NAME()));
+  addr->set_port(0);
   return peer_pb;
 }
 
@@ -123,7 +124,7 @@ RaftConfigPB BuildRaftConfigPBForTests(int num) {
     RaftPeerPB* peer_pb = raft_config.add_peers();
     peer_pb->set_member_type(RaftPeerPB::VOTER);
     peer_pb->set_permanent_uuid(Substitute("peer-$0", i));
-    HostPortPB* hp = peer_pb->mutable_last_known_addr();
+    HostPortPB* hp = peer_pb->mutable_last_known_private_addr()->Add();
     hp->set_host(Substitute("peer-$0.fake-domain-for-tests", i));
     hp->set_port(0);
   }

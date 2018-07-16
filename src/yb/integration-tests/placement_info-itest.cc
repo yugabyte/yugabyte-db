@@ -46,9 +46,7 @@ class PlacementInfoTest : public YBTest {
     for (int i = 0; i < kNumTservers; i++) {
       auto opts = tserver::TabletServerOptions::CreateTabletServerOptions();
       ASSERT_OK(opts);
-      opts->placement_cloud = "aws";
-      opts->placement_region = PlacementRegion(i);
-      opts->placement_zone = PlacementZone(i);
+      opts->SetPlacement("aws", PlacementRegion(i), PlacementZone(i));
       tserver_opts.push_back(*opts);
     }
 

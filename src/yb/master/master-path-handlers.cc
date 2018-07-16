@@ -715,8 +715,8 @@ class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumper
         jw_->String(peer.permanent_uuid());
 
         jw_->String("addr");
-        jw_->String(Substitute("$0:$1", peer.last_known_addr().host(),
-                               peer.last_known_addr().port()));
+        const auto& host_port = peer.last_known_private_addr()[0];
+        jw_->String(Format("$0:$1", host_port.host(), host_port.port()));
 
         jw_->EndObject();
       }

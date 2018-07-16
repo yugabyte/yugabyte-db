@@ -2005,7 +2005,10 @@ public class AsyncYBClient implements AutoCloseable {
             new ArrayList<>(tabletLocations.getReplicasCount());
         for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
 
-          List<Common.HostPortPB> addresses = replica.getTsInfo().getRpcAddressesList();
+          List<Common.HostPortPB> addresses = replica.getTsInfo().getBroadcastAddressesList();
+          if (addresses.isEmpty()) {
+            addresses = replica.getTsInfo().getPrivateRpcAddressesList();
+          }
           if (addresses.isEmpty()) {
             LOG.warn("Tablet server for tablet " + getTabletIdAsString() + " doesn't have any " +
                 "address");
@@ -2144,7 +2147,11 @@ public class AsyncYBClient implements AutoCloseable {
       List<Common.HostPortPB> addresses = new ArrayList<Common.HostPortPB>(tabletLocations
           .getReplicasCount());
       for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
-        addresses.add(replica.getTsInfo().getRpcAddresses(0));
+        if (replica.getTsInfo().getBroadcastAddressesList().isEmpty()) {
+          addresses.add(replica.getTsInfo().getPrivateRpcAddresses(0));
+        } else {
+          addresses.add(replica.getTsInfo().getBroadcastAddresses(0));
+        }
       }
       return addresses;
     }

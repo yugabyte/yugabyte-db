@@ -338,7 +338,7 @@ public class TestYBClient extends BaseYBClientTest {
     createMiniCluster(3, masterArgs, tserverArgs);
     
     // Create the cluster config pb to be sent to the masters
-    org.yb.WireProtocol.CloudInfoPB cloudInfo0 = org.yb.WireProtocol.CloudInfoPB.newBuilder()
+    org.yb.Common.CloudInfoPB cloudInfo0 = org.yb.Common.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION)
         .setPlacementZone(PLACEMENT_ZONE)
@@ -514,14 +514,14 @@ public class TestYBClient extends BaseYBClientTest {
     createMiniCluster(3, tserverArgs);
     LOG.info("created mini cluster");
     
-    List<org.yb.WireProtocol.CloudInfoPB> leaders = new ArrayList<org.yb.WireProtocol.CloudInfoPB>();
+    List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
     
-    org.yb.WireProtocol.CloudInfoPB.Builder cloudInfoBuilder = org.yb.WireProtocol.CloudInfoPB.newBuilder().
+    org.yb.Common.CloudInfoPB.Builder cloudInfoBuilder = org.yb.Common.CloudInfoPB.newBuilder().
     setPlacementCloud("testCloud").setPlacementRegion("testRegion");
     
-    org.yb.WireProtocol.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
-    org.yb.WireProtocol.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
-    org.yb.WireProtocol.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
+    org.yb.Common.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
+    org.yb.Common.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
+    org.yb.Common.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
     
     // First, making the first two zones affinitized leaders.
     leaders.add(ci0);

@@ -98,7 +98,9 @@ message RaftPeerPB {
   // permament uuid can be retrieved at a later time through RPC.
   optional bytes permanent_uuid = 1;
   optional MemberType member_type = 2;
-  optional HostPortPB last_known_addr = 3;
+  repeated HostPortPB last_known_private_addr = 3;
+  repeated HostPortPB last_known_broadcast_addr = 4;
+  optional CloudInfoPB cloud_info = 5;
 }
 
 enum ConsensusConfigType {

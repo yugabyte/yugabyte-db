@@ -74,7 +74,7 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
 
     RaftPeerPB.Builder pbb =
         RaftPeerPB.newBuilder()
-                  .setLastKnownAddr(hpb.build());
+                  .addLastKnownPrivateAddr(hpb.build());
 
     if (uuid != null) {
       pbb.setPermanentUuid(ByteString.copyFromUtf8(uuid));
