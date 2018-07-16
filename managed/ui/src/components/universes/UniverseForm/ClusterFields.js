@@ -149,6 +149,7 @@ export default class ClusterFields extends Component {
           this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
           this.setState({instanceTypeSelected: formValues[clusterType].instanceTypeSelected});
+          this.setDeviceInfo(formValues[clusterType].instanceTypeSelected, this.props.cloud.instanceTypes.data);
 
           if (formValues[clusterType].spotPrice && formValues[clusterType].spotPrice > 0) {
             this.setState({useSpotPrice: true, spotPrice: formValues[clusterType].spotPrice});
@@ -786,28 +787,33 @@ export default class ClusterFields extends Component {
 
     if (isNonEmptyObject(deviceInfo)) {
       if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
-        if (deviceInfo.ebsType === 'IO1') {
+        const isIoType = deviceInfo.ebsType === 'IO1';
+        if (isIoType) {
           iopsField = (
             <span className="volume-info form-group-shrinked">
               <label className="form-item-label">Provisioned IOPS</label>
               <span className="volume-info-field volume-info-iops">
-                <Field name={`${clusterType}.diskIops`} component={YBUnControlledNumericInput} label="Provisioned IOPS"
-                       onInputChanged={self.diskIopsChanged}/>
+                <Field name={`${clusterType}.diskIops`} component={YBUnControlledNumericInput}
+                       label="Provisioned IOPS" onInputChanged={self.diskIopsChanged}
+                       readOnly={isFieldReadOnly} />
               </span>
             </span>
           );
         }
         const isInGcp = this.getCurrentProvider(self.state.providerSelected).code === "gcp";
+        const isInAws = this.getCurrentProvider(self.state.providerSelected).code === "aws";
         const numVolumes = (
           <span className="volume-info-field volume-info-count">
             <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
-                   label="Number of Volumes" onInputChanged={self.numVolumesChanged}/>
+                   label="Number of Volumes" onInputChanged={self.numVolumesChanged}
+                   readOnly={isIoType || isFieldReadOnly} />
           </span>
         );
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
-            <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput} label="Volume Size"
-                   valueFormat={volumeTypeFormat} readOnly={isInGcp} />
+            <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput}
+                   label="Volume Size" valueFormat={volumeTypeFormat}
+                   readOnly={isInGcp || isIoType || isFieldReadOnly} />
           </span>
         );
         deviceDetail = (
@@ -817,11 +823,13 @@ export default class ClusterFields extends Component {
             {volumeSize}
           </span>
         );
-        if (!isInGcp) {
+        // Only for AWS EBS, show type option.
+        if (isInAws && self.state.volumeType === "EBS") {
           ebsTypeSelector = (
             <span className="volume-info form-group-shrinked">
-              <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel} options={ebsTypesList}
-                     label="EBS Type" onInputChanged={self.ebsTypeChanged}/>
+              <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel}
+                     options={ebsTypesList} label="EBS Type" onInputChanged={self.ebsTypeChanged}
+                     readOnlySelect={isFieldReadOnly} />
             </span>
           );
         }
@@ -1053,13 +1061,11 @@ export default class ClusterFields extends Component {
                   {deviceDetail}
                 </div>
               </div>
-              { self.state.deviceInfo.ebsType === 'IO1' &&
               <div className="form-right-aligned-labels form-inline-controls">
                 <div className="form-group universe-form-instance-info">
                   {iopsField}
                 </div>
               </div>
-              }
               <div className="form-right-aligned-labels form-inline-controls">
                 <div className="form-group universe-form-instance-info">
                   {ebsTypeSelector}

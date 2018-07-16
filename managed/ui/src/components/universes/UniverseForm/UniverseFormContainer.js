@@ -144,9 +144,9 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync',
+    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
-    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
+    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.mountPoints',
     'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
 
 
@@ -171,6 +171,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].ebsType = userIntent.deviceInfo.ebsType;
+    data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return {value: item.uuid, name: item.name, label: item.name};
