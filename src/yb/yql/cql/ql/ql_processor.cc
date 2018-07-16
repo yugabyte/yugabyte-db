@@ -79,13 +79,13 @@ using client::YBSession;
 using client::YBMetaDataCache;
 
 // Runs the StatementExecutedCallback cb and returns if the status s is not OK.
-#define CB_RETURN_NOT_OK(cb, s)    \
-  do {                             \
-    ::yb::Status _s = (s);         \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      (cb).Run(_s, nullptr);       \
-      return;                      \
-    }                              \
+#define CB_RETURN_NOT_OK(cb, s)                 \
+  do {                                          \
+    ::yb::Status _s = (s);                      \
+    if (PREDICT_FALSE(!_s.ok())) {              \
+      (cb).Run(_s, nullptr);                    \
+      return;                                   \
+    }                                           \
   } while (0)
 
 QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
@@ -135,7 +135,7 @@ QLProcessor::~QLProcessor() {
 }
 
 Status QLProcessor::Parse(const string& ql_stmt, ParseTree::UniPtr* parse_tree,
-                           const bool reparsed, shared_ptr<MemTracker> mem_tracker) {
+                          const bool reparsed, shared_ptr<MemTracker> mem_tracker) {
   // Parse the statement and get the generated parse tree.
   const MonoTime begin_time = MonoTime::Now();
   RETURN_NOT_OK(parser_.Parse(ql_stmt, reparsed, mem_tracker));
@@ -165,7 +165,7 @@ Status QLProcessor::Analyze(const string& ql_stmt, ParseTree::UniPtr* parse_tree
 }
 
 Status QLProcessor::Prepare(const string& ql_stmt, ParseTree::UniPtr* parse_tree,
-                             const bool reparsed, shared_ptr<MemTracker> mem_tracker) {
+                            const bool reparsed, shared_ptr<MemTracker> mem_tracker) {
   RETURN_NOT_OK(Parse(ql_stmt, parse_tree, reparsed, mem_tracker));
   const Status s = Analyze(ql_stmt, parse_tree);
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !reparsed) {
@@ -177,28 +177,31 @@ Status QLProcessor::Prepare(const string& ql_stmt, ParseTree::UniPtr* parse_tree
 }
 
 void QLProcessor::ExecuteAsync(const string& ql_stmt, const ParseTree& parse_tree,
-                                const StatementParameters& params, StatementExecutedCallback cb) {
+                               const StatementParameters& params, StatementExecutedCallback cb) {
   executor_.ExecuteAsync(ql_stmt, parse_tree, &params, std::move(cb));
 }
 
 void QLProcessor::RunAsync(const string& ql_stmt, const StatementParameters& params,
-                            StatementExecutedCallback cb, const bool reparsed) {
+                           StatementExecutedCallback cb, const bool reparsed) {
   ParseTree::UniPtr parse_tree;
   const Status s = Prepare(ql_stmt, &parse_tree, reparsed);
   if (PREDICT_FALSE(!s.ok())) {
     return cb.Run(s, nullptr /* result */);
   }
   const ParseTree* ptree = parse_tree.release();
+  // Do not make a copy of ql_stmt when binding to the RunAsyncDone callback because when error
+  // occurs due to stale matadata, the statement needs to be reexecuted. We should pass the original
+  // ql_stmt reference which is guaranteed to still be alive after the statement is reexecuted.
   ExecuteAsync(ql_stmt, *ptree, params,
-               Bind(&QLProcessor::RunAsyncDone, Unretained(this), ql_stmt, Unretained(&params),
-                    Owned(ptree), cb));
+               Bind(&QLProcessor::RunAsyncDone, Unretained(this), ConstRef(ql_stmt),
+                    Unretained(&params), Owned(ptree), cb));
 }
 
 // RunAsync callback added to keep the parse tree in-scope while it is being run asynchronously.
 // When called, just forward the status and result to the actual callback cb.
 void QLProcessor::RunAsyncDone(const string& ql_stmt, const StatementParameters* params,
-                                const ParseTree *parse_tree, StatementExecutedCallback cb,
-                                const Status& s, const ExecutedResult::SharedPtr& result) {
+                               const ParseTree *parse_tree, StatementExecutedCallback cb,
+                               const Status& s, const ExecutedResult::SharedPtr& result) {
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
     return RunAsync(ql_stmt, *params, cb, true /* reparsed */);
   }
@@ -210,12 +213,12 @@ void QLProcessor::BeginBatch(StatementExecutedCallback cb) {
 }
 
 void QLProcessor::ExecuteBatch(const std::string& ql_stmt, const ParseTree& parse_tree,
-                                const StatementParameters& params) {
+                               const StatementParameters& params) {
   executor_.ExecuteBatch(ql_stmt, parse_tree, &params);
 }
 
 void QLProcessor::RunBatch(const std::string& ql_stmt, const StatementParameters& params,
-                            ParseTree::UniPtr* parse_tree, bool reparsed) {
+                           ParseTree::UniPtr* parse_tree, bool reparsed) {
   const Status s = Prepare(ql_stmt, parse_tree, reparsed);
   if (PREDICT_FALSE(!s.ok())) {
     return executor_.StatementExecuted(s);
