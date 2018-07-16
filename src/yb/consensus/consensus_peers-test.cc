@@ -62,7 +62,6 @@ namespace consensus {
 using log::Log;
 using log::LogOptions;
 using log::LogAnchorRegistry;
-using std::shared_ptr;
 using std::unique_ptr;
 
 const char* kTableId = "test-peers-table";
@@ -119,7 +118,7 @@ class ConsensusPeersTest : public YBTest {
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(
       const string& peer_name,
-      std::shared_ptr<Peer>* peer) {
+      std::unique_ptr<Peer>* peer) {
     RaftPeerPB peer_pb;
     peer_pb.set_permanent_uuid(peer_name);
     auto proxy_ptr = new DelayablePeerProxy<NoOpTestPeerProxy>(
@@ -165,6 +164,7 @@ class ConsensusPeersTest : public YBTest {
   scoped_refptr<server::Clock> clock_;
 };
 
+
 // Tests that a remote peer is correctly built and tracked
 // by the message queue.
 // After the operations are considered done the proxy (which
@@ -174,10 +174,10 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   // We use a majority size of 2 since we make one fake remote peer
   // in addition to our real local log.
 
-  std::shared_ptr<Peer> remote_peer;
+  std::unique_ptr<Peer> remote_peer;
   DelayablePeerProxy<NoOpTestPeerProxy>* proxy = NewRemotePeer(kFollowerUuid, &remote_peer);
 
-  // Append a bunch of messages to the queue.
+  // Append a bunch of messages to the queue
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 20);
 
   // The above append ends up appending messages in term 2, so we update the peer's term to match.
@@ -194,11 +194,11 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
 }
 
 TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
-  // Create a set of remote peers.
-  std::shared_ptr<Peer> remote_peer1;
+  // Create a set of remote peers
+  std::unique_ptr<Peer> remote_peer1;
   NewRemotePeer("peer-1", &remote_peer1);
 
-  std::shared_ptr<Peer> remote_peer2;
+  std::unique_ptr<Peer> remote_peer2;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
@@ -219,7 +219,7 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
   ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
 
-  // Replication should time out, because the time.
+  // Replication should time out, because the time
   WaitForMajorityReplicatedIndex(first.index());
   const auto elapsed_time = MonoTime::Now() - start_time;
   LOG(INFO) << "Replication elapsed time: " << elapsed_time;
@@ -229,12 +229,12 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
 }
 
 TEST_F(ConsensusPeersTest, TestRemotePeers) {
-  // Create a set of remote peers.
-  std::shared_ptr<Peer> remote_peer1;
+  // Create a set of remote peers
+  std::unique_ptr<Peer> remote_peer1;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer1_proxy =
       NewRemotePeer("peer-1", &remote_peer1);
 
-  std::shared_ptr<Peer> remote_peer2;
+  std::unique_ptr<Peer> remote_peer2;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
@@ -271,7 +271,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
     std::this_thread::sleep_for(1ms);
   }
 
-  // Now append another message to the queue.
+  // Now append another message to the queue
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 2, 1);
 
   // We should not see it replicated, even after 10ms,
