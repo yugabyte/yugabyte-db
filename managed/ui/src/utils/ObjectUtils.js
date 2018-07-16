@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import { getPrimaryCluster } from "./UniverseUtils";
+import { getClusterByType } from "./UniverseUtils";
 
 const _ = require('lodash');
 
@@ -153,22 +153,26 @@ export function arePlacementInfoEqual(placementInfo1, placementInfo2) {
 }
 
 export function areUniverseConfigsEqual(config1, config2) {
-  const primaryCluster1 = config1 && getPrimaryCluster(config1.clusters);
-  const primaryCluster2 = config2 && getPrimaryCluster(config2.clusters);
-  const clustersEqual = (isNonEmptyObject(primaryCluster1) && isNonEmptyObject(primaryCluster2)) ||
-                        (!isNonEmptyObject(primaryCluster1) && !isNonEmptyObject(primaryCluster2));
+  const type = isNonEmptyObject(config1) && config1.currentClusterType;
+  if (!type) {
+    return false;
+  }
+  const cluster1 = config1 && getClusterByType(config1.clusters, type);
+  const cluster2 = config2 && getClusterByType(config2.clusters, type);
+  const clustersEqual = (isNonEmptyObject(cluster1) && isNonEmptyObject(cluster2)) ||
+                        (!isNonEmptyObject(cluster1) && !isNonEmptyObject(cluster2));
   let userIntentsEqual = true;
   let placementObjectsEqual = true;
-  if (isNonEmptyObject(primaryCluster1) && isNonEmptyObject(primaryCluster2)) {
-    if (primaryCluster1.userIntent && primaryCluster2.userIntent) {
-      userIntentsEqual = areIntentsEqual(primaryCluster1.userIntent, primaryCluster2.userIntent);
+  if (isNonEmptyObject(cluster1) && isNonEmptyObject(cluster2)) {
+    if (cluster1.userIntent && cluster2.userIntent) {
+      userIntentsEqual = areIntentsEqual(cluster1.userIntent, cluster2.userIntent);
     } else {
-      userIntentsEqual = _.isEqual(primaryCluster1.userIntent, primaryCluster2.userIntent);
+      userIntentsEqual = _.isEqual(cluster1.userIntent, cluster2.userIntent);
     }
-    if (isNonEmptyObject(primaryCluster1.placementInfo) && isNonEmptyObject(primaryCluster2.placementInfo)) {
-      placementObjectsEqual = arePlacementInfoEqual(primaryCluster1.placementInfo, primaryCluster2.placementInfo);
+    if (isNonEmptyObject(cluster1.placementInfo) && isNonEmptyObject(cluster2.placementInfo)) {
+      placementObjectsEqual = arePlacementInfoEqual(cluster1.placementInfo, cluster2.placementInfo);
     } else {
-      placementObjectsEqual = _.isEqual(primaryCluster1.placementInfo, primaryCluster2.placementInfo);
+      placementObjectsEqual = _.isEqual(cluster1.placementInfo, cluster2.placementInfo);
     }
   }
   return clustersEqual && userIntentsEqual && placementObjectsEqual;

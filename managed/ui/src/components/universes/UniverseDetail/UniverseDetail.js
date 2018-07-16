@@ -27,6 +27,7 @@ import './UniverseDetail.scss';
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
+    this.onEditReadReplicaButtonClick = this.onEditReadReplicaButtonClick.bind(this);
     this.state = {
       dimensions: {},
     };
@@ -74,6 +75,13 @@ class UniverseDetail extends Component {
     browserHistory.push(location);
   };
 
+  onEditReadReplicaButtonClick = () => {
+    const location = Object.assign({}, browserHistory.getCurrentLocation());
+    const query = {edit: true, async: true};
+    Object.assign(location.query, query);
+    browserHistory.push(location);
+  };
+
   getUniverseInfo = () => {
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     this.props.getUniverseInfo(universeUUID);
@@ -98,6 +106,9 @@ class UniverseDetail extends Component {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
+    }
+    if (isNonEmptyObject(query) && query.edit && query.async) {
+      return <UniverseFormContainer type="Async" />;
     }
     if (isNonEmptyObject(query) && query.edit) {
       return <UniverseFormContainer type="Edit" />;
@@ -176,6 +187,11 @@ class UniverseDetail extends Component {
 
                   <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                     Upgrade Software
+                  </YBLabelWithIcon>
+                </MenuItem>
+                <MenuItem eventKey="2" onClick={this.onEditReadReplicaButtonClick} >
+                  <YBLabelWithIcon icon="fa fa-copy fa-fw">
+                    Configure Read Replica
                   </YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={showGFlagsModal} >
