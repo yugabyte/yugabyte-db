@@ -69,7 +69,7 @@ void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
   VLOG(1) << "Updating peers from new config: " << config.ShortDebugString();
 
   std::lock_guard<simple_spinlock> lock(lock_);
-  // Create new peers.
+  // Create new peers
   for (const RaftPeerPB& peer_pb : config.peers()) {
     if (peers_.find(peer_pb.permanent_uuid()) != peers_.end()) {
       continue;
@@ -100,7 +100,7 @@ void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
       LOG(WARNING) << GetLogPrefix()
                    << "Peer was closed, removing from peers. Peer: "
                    << (*iter).second->peer_pb().ShortDebugString();
-      iter = peers_.erase(iter++);
+      iter = peers_.erase(iter);
     } else {
       iter++;
     }
@@ -109,7 +109,7 @@ void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
 
 void PeerManager::Close() {
   std::lock_guard<simple_spinlock> lock(lock_);
-  for (const auto& entry : peers_) {
+  for (const PeersMap::value_type& entry : peers_) {
     entry.second->Close();
   }
   peers_.clear();

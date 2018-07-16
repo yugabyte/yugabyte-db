@@ -114,11 +114,11 @@ namespace consensus {
 //  SignalRequest()                    return
 //
 class Peer;
-typedef std::shared_ptr<Peer> PeerPtr;
+typedef std::unique_ptr<Peer> PeerPtr;
 
-class Peer : public std::enable_shared_from_this<Peer> {
+class Peer {
  public:
-  // Initializes a peer and start sending periodic heartbeats.
+  // Initializes a peer and get its status.
   CHECKED_STATUS Init();
 
   // Signals that this peer has a new request to replicate/store.
@@ -180,11 +180,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Run on 'raft_pool_token'. Does response handling that requires IO or may block.
   void DoProcessResponse();
 
-  // Fetch the desired remote bootstrap request from the queue and set up rb_request_ appropriately.
+  // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
+  // goes to ProcessRemoteBootstrapResponse().
   //
   // Returns a bad Status if remote bootstrap is disabled, or if the request cannot be generated for
   // some reason.
-  CHECKED_STATUS PrepareRemoteBootstrapRequest();
+  CHECKED_STATUS SendRemoteBootstrapRequest();
 
   // Handle RPC callback from initiating remote bootstrap.
   void ProcessRemoteBootstrapResponse();
@@ -222,6 +223,10 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   rpc::RpcController controller_;
 
+  // Held if there is an outstanding request.  This is used in order to ensure that we only have a
+  // single request outstanding at a time, and to wait for the outstanding requests at Close().
+  Semaphore sem_;
+
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
   ResettableHeartbeater heartbeater_;
@@ -239,11 +244,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Lock that protects Peer state changes, initialization, etc.  Must not try to acquire sem_ while
   // holding peer_lock_.
   mutable simple_spinlock peer_lock_;
+  std::atomic<State> state_;
   Consensus* consensus_ = nullptr;
-
-  bool request_pending_ = false;
-  bool closed_ = false;
-  bool has_sent_first_request_ = false;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for
@@ -305,7 +307,7 @@ class PeerProxyFactory {
   }
 };
 
-// PeerProxy implementation that does RPC calls.
+// PeerProxy implementation that does RPC calls
 class RpcPeerProxy : public PeerProxy {
  public:
   RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy);
@@ -343,7 +345,7 @@ class RpcPeerProxy : public PeerProxy {
   ConsensusServiceProxyPtr consensus_proxy_;
 };
 
-// PeerProxyFactory implementation that generates RPCPeerProxies.
+// PeerProxyFactory implementation that generates RPCPeerProxies
 class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
   RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache);
