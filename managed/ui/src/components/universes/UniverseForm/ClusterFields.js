@@ -73,13 +73,23 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
-    this.state = initialState;
+
+    if (this.props.type === "Async" && isNonEmptyObject(this.props.universe.currentUniverse.data)) {
+      if (isDefinedNotNull(getReadOnlyCluster(this.props.universe.currentUniverse.data.universeDetails.clusters))) {
+        this.state = { ...initialState, isReadOnlyExists: true, editNotAllowed: this.props.editNotAllowed};
+      } else {
+        this.state = { ...initialState, isReadOnlyExists: false, editNotAllowed: false};
+      }
+    } else {
+      this.state = initialState;
+    }
   }
 
   componentWillMount() {
     const {formValues, clusterType, updateFormField, type} = this.props;
+    const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
     // Set default software version in case of create
-    if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion) && type !== "Edit") {
+    if (isNonEmptyArray(this.props.softwareVersions) && !isNonEmptyString(this.state.ybSoftwareVersion) && type === "Create") {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
       updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
     }
@@ -88,10 +98,11 @@ export default class ClusterFields extends Component {
       this.setState({nodeSetViaAZList: true});
     }
 
-    if (this.props.type === "Edit") {
-      const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+    const isEditReadOnlyFlow = this.props.type === "Async" && this.state.isReadOnlyExists;
+    if (this.props.type === "Edit" || isEditReadOnlyFlow) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      const userIntent = primaryCluster && primaryCluster.userIntent;
+      const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
+      const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       if (userIntent && providerUUID) {
         const ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
@@ -125,7 +136,6 @@ export default class ClusterFields extends Component {
         this.setState({numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3});
         this.setState({replicationFactor: formValues[clusterType].replicationFactor ?
                                           Number(formValues[clusterType].replicationFactor) : 3});
-
         if (isNonEmptyString(formValues[clusterType].provider)) {
           this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
@@ -165,7 +175,7 @@ export default class ClusterFields extends Component {
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
       && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && providerSelected) {
 
-      if (nextProps.type !== "Edit") {
+      if (nextProps.type === "Create" || (nextProps.type === "Async" && !this.state.isReadOnlyExists)) {
         let instanceTypeSelected = null;
         const currentProviderCode = this.getCurrentProvider(providerSelected).code;
         instanceTypeSelected = DEFAULT_INSTANCE_TYPE_MAP[currentProviderCode];
@@ -238,7 +248,10 @@ export default class ClusterFields extends Component {
       }
     }
     // Form Actions on Edit Universe Success
-    if (getPromiseState(this.props.universe.editUniverse).isLoading() && getPromiseState(nextProps.universe.editUniverse).isSuccess()) {
+    if ((getPromiseState(this.props.universe.editUniverse).isLoading() && getPromiseState(nextProps.universe.editUniverse).isSuccess()) ||
+        (getPromiseState(this.props.universe.addReadReplica).isLoading() && getPromiseState(nextProps.universe.addReadReplica).isSuccess()) ||
+        (getPromiseState(this.props.universe.editReadReplica).isLoading() && getPromiseState(nextProps.universe.editReadReplica).isSuccess()) ||
+        (getPromiseState(this.props.universe.deleteReadReplica).isLoading() && getPromiseState(nextProps.universe.deleteReadReplica).isSuccess())) {
       this.props.fetchCurrentUniverse(currentUniverse.data.universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
@@ -246,7 +259,6 @@ export default class ClusterFields extends Component {
       browserHistory.push(this.props.location.pathname);
     }
     // Form Actions on Configure Universe Success
-
     if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
       this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
     }
@@ -259,7 +271,7 @@ export default class ClusterFields extends Component {
         return acc;
       }, 0);
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
-      if (this.props.type === "Edit") {
+      if (this.props.type === "Edit" || (nextProps.type === "Async" && !this.state.isReadOnlyExists)) {
         const cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
         if (isDefinedNotNull(cluster)) {
           numNodesAvailable += cluster.userIntent.numNodes;
@@ -300,7 +312,7 @@ export default class ClusterFields extends Component {
         !self.state.nodeSetViaAZList;
     };
 
-    // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
+    // Fire Configure only if either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (configureIntentValid()) {
       if (isNonEmptyObject(currentUniverse.data)) {
         if (this.hasFieldChanged()) {
@@ -374,7 +386,7 @@ export default class ClusterFields extends Component {
     const {formValues, clusterType} = this.props;
     if (formValues[clusterType]) {
       return {
-        universeName: formValues[clusterType].universeName,
+        universeName: formValues['primary'].universeName,
         numNodes: formValues[clusterType].numNodes,
         provider: formValues[clusterType].provider,
         providerType: this.getCurrentProvider(formValues[clusterType].provider).code,
@@ -482,9 +494,11 @@ export default class ClusterFields extends Component {
   }
 
   replicationFactorChanged = value => {
-    const {updateFormField, clusterType} = this.props;
+    const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
+    const clusterExists = isDefinedNotNull(data.universeDetails) ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType)) : null;
     const self = this;
-    if (isEmptyObject(this.props.universe.currentUniverse.data)) {
+
+    if (!clusterExists) {
       this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
           self.setState({numNodes: value});
@@ -504,13 +518,13 @@ export default class ClusterFields extends Component {
     const existingIntent = isNonEmptyObject(primaryCluster) ?
       _.clone(primaryCluster.userIntent, true) : null;
     const currentIntent = this.getCurrentUserIntent();
+
     return !areIntentsEqual(existingIntent, currentIntent);
   };
 
   handleUniverseConfigure(universeTaskParams) {
     const {universe: {currentUniverse}, formValues, clusterType} = this.props;
-    const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-    if (!isNonEmptyObject(primaryCluster)) return;
+    
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function() {
@@ -518,11 +532,11 @@ export default class ClusterFields extends Component {
     };
 
     if (verifyIntentConditions() ) {
-      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
-        const prevPrimaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-        const nextPrimaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-        if (isNonEmptyObject(prevPrimaryCluster) && isNonEmptyObject(nextPrimaryCluster) &&
-          areIntentsEqual(prevPrimaryCluster.userIntent, nextPrimaryCluster.userIntent)) {
+      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails) && isNonEmptyObject(getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType))) {
+        const prevCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+        const nextCluster = getClusterByType(universeTaskParams.clusters, clusterType);
+        if (isNonEmptyObject(prevCluster) && isNonEmptyObject(nextCluster) &&
+          areIntentsEqual(prevCluster.userIntent, nextCluster.userIntent)) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
           this.props.submitConfigureUniverse(universeTaskParams);
@@ -540,10 +554,16 @@ export default class ClusterFields extends Component {
     if (isNonEmptyObject(universeConfigTemplate.data)) {
       universeTaskParams = _.clone(universeConfigTemplate.data, true);
     }
+
+
+    if (this.props.type === "Async" && !isDefinedNotNull(getReadOnlyCluster(currentUniverse.data.universeDetails.clusters))) {
+      universeTaskParams = _.clone(currentUniverse.data.universeDetails, true);
+    }
     if (isNonEmptyObject(currentUniverse.data)) {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
+    
     const userIntent = {
       universeName: formValues[clusterType].universeName,
       provider: formValues[clusterType].provider,
@@ -620,10 +640,12 @@ export default class ClusterFields extends Component {
     return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
   }
 
-  providerChanged(value) {
-    const {updateFormField, clusterType} = this.props;
+  providerChanged = (value) => {
+    const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
     const providerUUID = value;
-    if (isEmptyObject(this.props.universe.currentUniverse.data)) {
+
+    const targetCluster = clusterType !== "primary" ? isNonEmptyObject(data) && getPrimaryCluster(data.universeDetails.clusters) : isNonEmptyObject(data) && getReadOnlyCluster(data.universeDetails.clusters);
+    if (isEmptyObject(data) || isDefinedNotNull(targetCluster)) {
       this.props.updateFormField(`${clusterType}.regionList`, []);
       //If we have accesskeys for a current selected provider we set that in the state or we fallback to default value.
       let defaultAccessKeyCode = initialState.accessKeyCode;
@@ -682,7 +704,7 @@ export default class ClusterFields extends Component {
   getSuggestedSpotPrice(instanceType, regions) {
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     const regionUUIDs = regions.map(region => region.value);
-    if (this.props.type !== "Edit" && isDefinedNotNull(currentProvider) &&
+    if ((this.props.type === "Create" || (this.props.clusterType === "async" && !this.state.isReadOnlyExists)) && isDefinedNotNull(currentProvider) &&
         (currentProvider.code === "aws" || currentProvider.code === "gcp") && isNonEmptyArray(regionUUIDs)) {
       this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
       this.setState({gettingSuggestedSpotPrice: true});
@@ -726,7 +748,7 @@ export default class ClusterFields extends Component {
       cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
-    const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && this.props.type === "Edit";
+    const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
     const deviceInfo = this.state.deviceInfo;
 
     if (isNonEmptyObject(formValues[clusterType])) {
@@ -913,7 +935,6 @@ export default class ClusterFields extends Component {
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
-
     const azSelectorTable = (
       <div>
         <AZSelectorTable {...this.props} clusterType={clusterType}
@@ -980,7 +1001,7 @@ export default class ClusterFields extends Component {
                   </Col>
                   <Col lg={7} className="button-group-row">
                     <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                           label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
+                           label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
                   </Col>
                 </div>
               </Row>

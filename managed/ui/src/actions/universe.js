@@ -30,6 +30,14 @@ export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 
+// Read replicas
+export const ADD_READ_REPLICA = 'ADD_READ_REPLICA';
+export const ADD_READ_REPLICA_RESPONSE = 'ADD_READ_REPLICA_RESPONSE';
+export const EDIT_READ_REPLICA = 'EDIT_READ_REPLICA';
+export const EDIT_READ_REPLICA_RESPONSE = 'EDIT_READ_REPLICA_RESPONSE';
+export const DELETE_READ_REPLICA = 'DELETE_READ_REPLICA';
+export const DELETE_READ_REPLICA_RESPONSE = 'DELETE_READ_REPLICA_RESPONSE';
+
 // Get the Master Leader for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
 export const GET_MASTER_LEADER_RESPONSE = 'GET_MASTER_LEADER_RESPONSE';
@@ -205,6 +213,54 @@ export function editUniverse(formValues, universeUUID) {
 export function editUniverseResponse(response) {
   return {
     type: EDIT_UNIVERSE_RESPONSE,
+    payload: response
+  };
+}
+
+export function addUniverseReadReplica(formValues, universeUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster`, formValues);
+  return {
+    type: ADD_READ_REPLICA,
+    payload: request
+  };
+}
+
+export function addUniverseReadReplicaResponse(response) {
+  return {
+    type: ADD_READ_REPLICA_RESPONSE,
+    payload: response
+  };
+}
+
+export function editUniverseReadReplica(formValues, universeUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
+  return {
+    type: EDIT_READ_REPLICA,
+    payload: request
+  };
+}
+
+export function editUniverseReadReplicaResponse(response) {
+  return {
+    type: EDIT_READ_REPLICA_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteUniverseReadReplica(cluster_uuid, universeUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster/${cluster_uuid}`);
+  return {
+    type: DELETE_READ_REPLICA,
+    payload: request
+  };
+}
+
+export function deleteUniverseReadReplicaResponse(response) {
+  return {
+    type: DELETE_READ_REPLICA_RESPONSE,
     payload: response
   };
 }
