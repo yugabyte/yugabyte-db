@@ -14,6 +14,8 @@
 
 #include <aws/route53/model/ChangeResourceRecordSetsRequest.h>
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/net/net_util.h"
@@ -57,17 +59,11 @@ bool DnsManager::AreLiveTServersChanged(
   TSRegistrationPB reg;
   for (const auto& ts_desc : live_tservers) {
     ts_desc->GetRegistration(&reg);
-    const auto& addrs = reg.common().rpc_addresses();
-    if (addrs.size() == 0) {
+    const auto& addr = DesiredHostPort(reg.common(), CloudInfoPB());
+    if (addr.host().empty()) {
       LOG(ERROR) << "Unable to find TS address: " << reg.DebugString();
-    } else {
-      if (addrs.size() > 1) {
-        LOG(WARNING) << "TS has multiple addresses: " << reg.DebugString()
-                     << ". Using the first one.";
-      }
-      if (!live_tserver_hosts_.count(addrs.Get(0).host())) {
-        return true;
-      }
+    } else if (!live_tserver_hosts_.count(addr.host())) {
+      return true;
     }
   }
   return false;
@@ -84,8 +80,8 @@ void DnsManager::MayBeUpdateTServersDns(
     TSRegistrationPB reg;
     for (const auto& ts_desc : live_tservers) {
       ts_desc->GetRegistration(&reg);
-      if (reg.common().rpc_addresses_size() > 0) {
-        const auto& host = reg.common().rpc_addresses(0).host();
+      const auto& host = DesiredHostPort(reg.common(), CloudInfoPB()).host();
+      if (!host.empty()) {
         live_tserver_hosts_new_.push_back(host);
       }
     }

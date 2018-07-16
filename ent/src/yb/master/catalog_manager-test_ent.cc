@@ -21,7 +21,7 @@ std::shared_ptr<TSDescriptor> SetupTSEnt(const string& uuid,
   // Set the placement uuid field for read_only clusters.
   reg.mutable_common()->set_placement_uuid(placement_uuid);
   // Fake host:port combo, with uuid as host, for ease of testing.
-  auto hp = reg.mutable_common()->add_rpc_addresses();
+  auto hp = reg.mutable_common()->add_private_rpc_addresses();
   hp->set_host(uuid);
   // Same cloud info as cluster config, with modifyable AZ.
   auto ci = reg.mutable_common()->mutable_cloud_info();
@@ -30,7 +30,7 @@ std::shared_ptr<TSDescriptor> SetupTSEnt(const string& uuid,
   ci->set_placement_zone(az);
 
   std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg));
+  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
 
   return ts;
 }
