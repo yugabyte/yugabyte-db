@@ -62,7 +62,6 @@ namespace consensus {
 using log::Log;
 using log::LogOptions;
 using log::LogAnchorRegistry;
-using std::shared_ptr;
 using std::unique_ptr;
 
 const char* kTableId = "test-peers-table";
@@ -119,7 +118,7 @@ class ConsensusPeersTest : public YBTest {
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(
       const string& peer_name,
-      std::shared_ptr<Peer>* peer) {
+      std::unique_ptr<Peer>* peer) {
     RaftPeerPB peer_pb;
     peer_pb.set_permanent_uuid(peer_name);
     auto proxy_ptr = new DelayablePeerProxy<NoOpTestPeerProxy>(
@@ -165,6 +164,7 @@ class ConsensusPeersTest : public YBTest {
   scoped_refptr<server::Clock> clock_;
 };
 
+
 // Tests that a remote peer is correctly built and tracked
 // by the message queue.
 // After the operations are considered done the proxy (which
@@ -174,12 +174,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   // We use a majority size of 2 since we make one fake remote peer
   // in addition to our real local log.
 
-  std::shared_ptr<Peer> remote_peer;
-  BOOST_SCOPE_EXIT(&remote_peer) {
-    // This guarantees that the Peer object doesn't get destroyed if there is a pending request.
-    remote_peer->Close();
-  } BOOST_SCOPE_EXIT_END
-
+  std::unique_ptr<Peer> remote_peer;
   DelayablePeerProxy<NoOpTestPeerProxy>* proxy = NewRemotePeer(kFollowerUuid, &remote_peer);
 
   // Append a bunch of messages to the queue
@@ -200,10 +195,10 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
 
 TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   // Create a set of remote peers
-  std::shared_ptr<Peer> remote_peer1;
+  std::unique_ptr<Peer> remote_peer1;
   NewRemotePeer("peer-1", &remote_peer1);
 
-  std::shared_ptr<Peer> remote_peer2;
+  std::unique_ptr<Peer> remote_peer2;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
@@ -211,10 +206,9 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   const auto kAppendDelayTime = 1s;
   log_->TEST_SetSleepDuration(kAppendDelayTime);
   remote_peer2_proxy->DelayResponse();
-  BOOST_SCOPE_EXIT(&remote_peer1, &remote_peer2) {
-    // This guarantees that the Peer objects don't get destroyed if there is a pending request.
-    remote_peer1->Close();
-    remote_peer2->Close();
+  BOOST_SCOPE_EXIT(&log_, &remote_peer2_proxy) {
+    log_->TEST_SetSleepDuration(0s);
+    remote_peer2_proxy->Respond(TestPeerProxy::kUpdate);
   } BOOST_SCOPE_EXIT_END
 
   // Append one message to the queue.
@@ -235,21 +229,14 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
 }
 
 TEST_F(ConsensusPeersTest, TestRemotePeers) {
-  // Create a set of remote peers.
-  std::shared_ptr<Peer> remote_peer1;
-
+  // Create a set of remote peers
+  std::unique_ptr<Peer> remote_peer1;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer1_proxy =
       NewRemotePeer("peer-1", &remote_peer1);
 
-  std::shared_ptr<Peer> remote_peer2;
+  std::unique_ptr<Peer> remote_peer2;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
-
-  BOOST_SCOPE_EXIT(&remote_peer1, &remote_peer2) {
-    // This guarantees that the Peer objects don't get destroyed if there is a pending request.
-    remote_peer1->Close();
-    remote_peer2->Close();
-  } BOOST_SCOPE_EXIT_END
 
   // Delay the response from the second remote peer.
   remote_peer2_proxy->DelayResponse();
@@ -387,9 +374,6 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // OK to have called UpdateConsensus() a few times due to regularly
   // scheduled heartbeats.
   ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
-
-  // This guarantees that the Peer object doesn't get destroyed if there is a pending request.
-  peer->Close();
 }
 
 }  // namespace consensus

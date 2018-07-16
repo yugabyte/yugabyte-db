@@ -146,7 +146,6 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     std::lock_guard<simple_spinlock> l(peer_lock_);
 
     if (PREDICT_FALSE(state_ == kPeerClosed)) {
-      shared_this_ = nullptr;
       return STATUS(IllegalState, "Peer was closed.");
     }
 
@@ -234,8 +233,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       auto status = consensus_->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       if (PREDICT_FALSE(!status.ok())) {
         LOG(WARNING) << "Unable to change role for peer " << uuid << ": " << status.ToString(false);
-
-        // Since we released the semaphore, we need to call SignalRequest again to send a message.
+        // Since we released the semaphore, we need to call SignalRequest again to send a message
         status = SignalRequest(RequestTriggerMode::kAlwaysSend);
         if (PREDICT_FALSE(!status.ok())) {
           LOG(WARNING) << "Unexpected error when trying to send request: "
@@ -336,11 +334,7 @@ void Peer::DoProcessResponse() {
   bool more_pending = false;
   queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);
 
-  auto state = state_.load(std::memory_order_acquire);
-  if (state == kPeerClosed) {
-    std::lock_guard<simple_spinlock> lock(peer_lock_);
-    shared_this_ = nullptr;
-  } else if (more_pending) {
+  if (more_pending && state_.load(std::memory_order_acquire) != kPeerClosed) {
     lock.release();
     SendNextRequest(RequestTriggerMode::kAlwaysSend);
   }
@@ -378,7 +372,6 @@ void Peer::ProcessResponseError(const Status& status) {
       << " for tablet " << tablet_id_
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
       << " Already tried " << failed_attempts_ << " times. State: " << state_;
-
 }
 
 string Peer::LogPrefixUnlocked() const {
@@ -387,50 +380,30 @@ string Peer::LogPrefixUnlocked() const {
                     peer_pb_.last_known_addr().host(), peer_pb_.last_known_addr().port());
 }
 
-void Peer::Close(CreateReferenceToItself create_reference_to_itself) {
+void Peer::Close() {
   WARN_NOT_OK(heartbeater_.Stop(), "Could not stop heartbeater");
 
   // If the peer is already closed return.
-  if (state_.load(std::memory_order_acquire) == kPeerClosed) {
-    return;
-  }
   {
     std::lock_guard<simple_spinlock> lock(peer_lock_);
     if (state_ == kPeerClosed) return;
     DCHECK(state_ == kPeerRunning || state_ == kPeerStarted) << "Unexpected state: " << state_;
     state_ = kPeerClosed;
-
-    if (create_reference_to_itself) {
-      // We want this object to stay alive until we have processed the last response.
-      // If we can take ownership of the semaphore, we know it's safe to destroy this
-      // object, so we can destroy the reference we are creating here.
-      shared_this_ = shared_from_this();
-    }
   }
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Closing peer: " << peer_pb_.permanent_uuid();
 
   // Acquire the semaphore to wait for any concurrent request to finish.  They will see the state_
   // == kPeerClosed and not start any new requests, but we can't currently cancel the already-sent
   // ones. (see KUDU-699)
-  std::unique_lock<Semaphore> lock(sem_, std::try_to_lock);
-  if (lock.owns_lock()) {
-    // If we are here there is no pending request. So we can destroy the reference to this object.
-    shared_this_ = nullptr;
-  }
-
+  std::lock_guard<Semaphore> l(sem_);
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
+  // We don't own the ops (the queue does).
+  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);
   replicate_msg_refs_.clear();
 }
 
 Peer::~Peer() {
-  if (state_ != kPeerClosed) {
-    LOG_WITH_PREFIX_UNLOCKED(DFATAL)
-      << "Peer::Closed() was not called before letting the object be destroyed";
-    Close(CreateReferenceToItself::kFalse);
-  }
-
-  // We don't own the ops (the queue does).
-  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);
+  Close();
 }
 
 RpcPeerProxy::RpcPeerProxy(HostPort hostport,
