@@ -89,8 +89,22 @@ bool TSManager::LookupTSByUUID(const string& uuid,
   return true;
 }
 
+bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& old_addresses,
+                     const google::protobuf::RepeatedPtrField<HostPortPB>& new_addresses) {
+  for (const auto& old_address : old_addresses) {
+    for (const auto& new_address : new_addresses) {
+      if (old_address.host() == new_address.host() && old_address.port() == new_address.port())
+        return true;
+    }
+  }
+
+  return false;
+}
+
 Status TSManager::RegisterTS(const NodeInstancePB& instance,
                              const TSRegistrationPB& registration,
+                             CloudInfoPB local_cloud_info,
+                             rpc::ProxyCache* proxy_cache,
                              TSDescSharedPtr* desc) {
   std::lock_guard<rw_spinlock> l(lock_);
   const string& uuid = instance.permanent_uuid();
@@ -103,37 +117,36 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
       map_entry.second->GetNodeInstancePB(&current_instance_pb);
       map_entry.second->GetRegistration(&current_registration_pb);
 
-      for (const auto& existing_rpc_address : current_registration_pb.common().rpc_addresses()) {
-        for (const auto& new_rpc_address : registration.common().rpc_addresses()) {
-          if (new_rpc_address.host() == existing_rpc_address.host() &&
-              new_rpc_address.port() == existing_rpc_address.port()) {
-            if (current_instance_pb.instance_seqno() >= instance.instance_seqno()) {
-              // Skip adding the node since we already have a node with the same rpc address and
-              // a higher sequence number.
-              LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
-                  << " since an entry with same host/port but a higher sequence number exists "
-                  << current_instance_pb.ShortDebugString();
-              return Status::OK();
-            } else {
-              LOG(WARNING) << "Removing entry: " << current_instance_pb.ShortDebugString()
-                  << " since we received registration for a tserver with a higher sequence number: "
-                  << instance.ShortDebugString();
-              // Mark the old node to be removed, since we have a newer sequence number.
-              map_entry.second->SetRemoved();
-            }
-          }
+      if (HasSameHostPort(current_registration_pb.common().private_rpc_addresses(),
+                          registration.common().private_rpc_addresses()) ||
+          HasSameHostPort(current_registration_pb.common().broadcast_addresses(),
+                          registration.common().broadcast_addresses())) {
+        if (current_instance_pb.instance_seqno() >= instance.instance_seqno()) {
+          // Skip adding the node since we already have a node with the same rpc address and
+          // a higher sequence number.
+          LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
+              << " since an entry with same host/port but a higher sequence number exists "
+              << current_instance_pb.ShortDebugString();
+          return Status::OK();
+        } else {
+          LOG(WARNING) << "Removing entry: " << current_instance_pb.ShortDebugString()
+              << " since we received registration for a tserver with a higher sequence number: "
+              << instance.ShortDebugString();
+          // Mark the old node to be removed, since we have a newer sequence number.
+          map_entry.second->SetRemoved();
         }
       }
     }
 
-    gscoped_ptr<TSDescriptor> new_desc;
-    RETURN_NOT_OK(TSDescriptor::RegisterNew(instance, registration, &new_desc));
+    auto new_desc = VERIFY_RESULT(TSDescriptor::RegisterNew(
+        instance, registration, std::move(local_cloud_info), proxy_cache));
     InsertOrDie(&servers_by_id_, uuid, TSDescSharedPtr(new_desc.release()));
     LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
               << " } with Master, full list: " << yb::ToString(servers_by_id_);
   } else {
     const TSDescSharedPtr& found = FindOrDie(servers_by_id_, uuid);
-    RETURN_NOT_OK(found->Register(instance, registration));
+    RETURN_NOT_OK(found->Register(
+        instance, registration, std::move(local_cloud_info), proxy_cache));
     LOG(INFO) << "Re-registered known tablet server { " << instance.ShortDebugString()
               << " } with Master";
   }

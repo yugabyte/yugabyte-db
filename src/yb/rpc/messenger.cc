@@ -336,8 +336,9 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
 
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
-    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call](Reactor*) {
-      call->Transferred(STATUS(NetworkError, "TEST: Connectivity is broken"), nullptr);
+    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call, remote](Reactor*) {
+      call->Transferred(STATUS_FORMAT(
+          NetworkError, "TEST: Connectivity is broken with $0", remote.address()), nullptr);
     }));
     return;
   }

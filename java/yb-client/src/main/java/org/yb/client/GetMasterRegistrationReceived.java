@@ -175,7 +175,7 @@ final class GetMasterRegistrationReceived {
           Master.TabletLocationsPB.ReplicaPB.newBuilder();
 
       Master.TSInfoPB.Builder tsInfoBuilder = Master.TSInfoPB.newBuilder();
-      tsInfoBuilder.addRpcAddresses(ProtobufHelper.hostAndPortToPB(hostAndPort));
+      tsInfoBuilder.addPrivateRpcAddresses(ProtobufHelper.hostAndPortToPB(hostAndPort));
       tsInfoBuilder.setPermanentUuid(r.getInstanceId().getPermanentUuid());
       replicaBuilder.setTsInfo(tsInfoBuilder);
       if (r.getRole().equals(Metadata.RaftPeerPB.Role.LEADER)) {

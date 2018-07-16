@@ -150,7 +150,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                 ReadHybridTime read_time,
                                 HybridTime safe_ht_to_read,
                                 tablet::RequireLease require_lease,
-                                HostPortPB* hostPortPB,
+                                HostPortPB* host_port_pb,
                                 ReadResponsePB* resp,
                                 rpc::RpcContext* context);
 

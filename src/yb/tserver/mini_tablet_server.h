@@ -126,6 +126,7 @@ class MiniTabletServer {
 
   gscoped_ptr<FsManager> fs_manager_;
   gscoped_ptr<TabletServer> server_;
+  std::unique_ptr<Tunnel> tunnel_;
 };
 
 } // namespace tserver

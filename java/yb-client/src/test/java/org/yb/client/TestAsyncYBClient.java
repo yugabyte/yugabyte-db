@@ -85,7 +85,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       Common.HostPortPB.Builder hostBuilder = Common.HostPortPB.newBuilder();
       hostBuilder.setHost(badHostname + i);
       hostBuilder.setPort(i);
-      tsInfoBuilder.addRpcAddresses(hostBuilder);
+      tsInfoBuilder.addPrivateRpcAddresses(hostBuilder);
       tsInfoBuilder.setPermanentUuid(ByteString.copyFromUtf8("some uuid"));
       Master.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
           Master.TabletLocationsPB.ReplicaPB.newBuilder();

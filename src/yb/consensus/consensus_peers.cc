@@ -45,6 +45,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/map-util.h"
@@ -375,9 +376,9 @@ void Peer::ProcessResponseError(const Status& status) {
 }
 
 string Peer::LogPrefixUnlocked() const {
-  return Substitute("T $0 P $1 -> Peer $2 ($3:$4): ",
-                    tablet_id_, leader_uuid_, peer_pb_.permanent_uuid(),
-                    peer_pb_.last_known_addr().host(), peer_pb_.last_known_addr().port());
+  return Format("T $0 P $1 -> Peer $2 ($3, $4): ",
+                tablet_id_, leader_uuid_, peer_pb_.permanent_uuid(),
+                peer_pb_.last_known_private_addr(), peer_pb_.last_known_broadcast_addr());
 }
 
 void Peer::Close() {
@@ -406,9 +407,8 @@ Peer::~Peer() {
   Close();
 }
 
-RpcPeerProxy::RpcPeerProxy(HostPort hostport,
-                           ConsensusServiceProxyPtr consensus_proxy)
-    : hostport_(hostport), consensus_proxy_(std::move(consensus_proxy)) {
+RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
+    : hostport_(std::move(hostport)), consensus_proxy_(std::move(consensus_proxy)) {
 }
 
 void RpcPeerProxy::UpdateAsync(const ConsensusRequestPB* request,
@@ -452,13 +452,13 @@ void RpcPeerProxy::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req
 RpcPeerProxy::~RpcPeerProxy() {}
 
 RpcPeerProxyFactory::RpcPeerProxyFactory(
-    shared_ptr<Messenger> messenger, rpc::ProxyCache* proxy_cache)
-    : messenger_(std::move(messenger)), proxy_cache_(proxy_cache) {}
+    shared_ptr<Messenger> messenger, rpc::ProxyCache* proxy_cache, CloudInfoPB from)
+    : messenger_(std::move(messenger)), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  auto hostport = HostPortFromPB(peer_pb.last_known_addr());
+  auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
   auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_, hostport);
-  return std::make_unique<RpcPeerProxy>(hostport, std::move(proxy));
+  return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
 }
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
@@ -468,10 +468,11 @@ std::shared_ptr<rpc::Messenger> RpcPeerProxyFactory::messenger() const { return 
 Status SetPermanentUuidForRemotePeer(
     rpc::ProxyCache* proxy_cache,
     std::chrono::steady_clock::duration timeout,
+    const CloudInfoPB& from,
     RaftPeerPB* remote_peer) {
 
   DCHECK(!remote_peer->has_permanent_uuid());
-  HostPort hostport = HostPortFromPB(remote_peer->last_known_addr());
+  HostPort hostport = HostPortFromPB(DesiredHostPort(*remote_peer, from));
   auto deadline = std::chrono::steady_clock::now() + timeout;
 
   auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache, hostport);

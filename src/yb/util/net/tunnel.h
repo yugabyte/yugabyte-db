@@ -1,4 +1,3 @@
-//
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -11,33 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-//
 
-#ifndef YB_UTIL_NET_NET_FWD_H
-#define YB_UTIL_NET_NET_FWD_H
+#ifndef YB_UTIL_NET_TUNNEL_H
+#define YB_UTIL_NET_TUNNEL_H
 
-namespace boost {
-namespace asio {
-namespace ip {
+#include <boost/asio/io_context.hpp>
 
-class address;
-
-template <typename InternetProtocol>
-class basic_endpoint;
-
-class tcp;
-
-} // namespace ip
-} // namespace asio
-} // namespace boost
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
-typedef boost::asio::ip::address IpAddress;
-typedef boost::asio::ip::basic_endpoint<boost::asio::ip::tcp> Endpoint;
-class HostPort;
-class Tunnel;
+// Tunnel that accepts connections at local endpoints and transparently transfer traffic
+// to remote endpoint.
+class Tunnel {
+ public:
+  explicit Tunnel(boost::asio::io_context* io_context);
+  ~Tunnel();
+
+  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote);
+  void Shutdown();
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 } // namespace yb
 
-#endif // YB_UTIL_NET_NET_FWD_H
+#endif // YB_UTIL_NET_TUNNEL_H

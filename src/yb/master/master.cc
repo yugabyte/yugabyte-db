@@ -298,7 +298,7 @@ Status Master::ResetMemoryState(const RaftConfigPB& config) {
 
   auto master_addr = std::make_shared<std::vector<HostPort>>();
   for (const RaftPeerPB& peer : config.peers()) {
-    master_addr->push_back(HostPort(peer.last_known_addr().host(), peer.last_known_addr().port()));
+    master_addr->push_back(HostPortFromPB(DesiredHostPort(peer, opts_.MakeCloudInfoPB())));
   }
 
   SetMasterAddresses(master_addr);

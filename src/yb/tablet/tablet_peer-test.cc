@@ -123,8 +123,9 @@ class TabletPeerTest : public YBTabletTest,
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
     config_peer.set_member_type(RaftPeerPB::VOTER);
-    config_peer.mutable_last_known_addr()->set_host("fake-host");
-    config_peer.mutable_last_known_addr()->set_port(0);
+    auto addr = config_peer.mutable_last_known_private_addr()->Add();
+    addr->set_host("fake-host");
+    addr->set_port(0);
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(

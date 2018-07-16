@@ -377,3 +377,9 @@ message DeletedColumnPB {
   // Required. Hybrid Time when column was deleted on this tablet.
   optional fixed64 deleted_hybrid_time = 2;
 }
+
+message CloudInfoPB {
+  optional string placement_cloud = 1;
+  optional string placement_region = 2;
+  optional string placement_zone = 3;
+}

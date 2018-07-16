@@ -769,12 +769,7 @@ bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
     return true;
   }
 
-  vector<HostPort> host_ports;
-  rts.GetHostPorts(&host_ports);
-  for (const HostPort& hp : host_ports) {
-    if (IsLocalHostPort(hp)) return true;
-  }
-  return false;
+  return rts.HasHostFrom(local_host_names_);
 }
 
 namespace internal {

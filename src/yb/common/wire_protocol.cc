@@ -50,6 +50,15 @@
 using google::protobuf::RepeatedPtrField;
 using std::vector;
 
+DEFINE_string(use_private_ip, "never",
+              "When to use private IP for connection. "
+              "cloud - would use private IP if destination node is located in the same cloud. "
+              "region - would use private IP if destination node is located in the same cloud and "
+                  "region. "
+              "zone - would use private IP if destination node is located in the same cloud, "
+                  "region and zone."
+              "never - would never use private IP if broadcast address is specified.");
+
 namespace yb {
 
 void StatusToPB(const Status& status, AppStatusPB* pb) {
@@ -112,7 +121,7 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
   } else if (status.IsBusy()) {
     pb->set_code(AppStatusPB::BUSY);
   } else {
-    LOG(WARNING) << "Unknown error code translation from internal error "
+    LOG(WARNING) << "Unknown error code translation connect_from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
     pb->set_code(AppStatusPB::UNKNOWN_ERROR);
     is_unknown = true;
@@ -213,6 +222,16 @@ HostPort HostPortFromPB(const HostPortPB& host_port_pb) {
   host_port.set_host(host_port_pb.host());
   host_port.set_port(host_port_pb.port());
   return host_port;
+}
+
+bool HasHostPortPB(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp) {
+  for (const auto& i : list) {
+    if (i.host() == hp.host() && i.port() == hp.port()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint) {
@@ -365,25 +384,69 @@ Status SchemaToColumnPBs(const Schema& schema,
   return Status::OK();
 }
 
-Status FindLeaderHostPort(const RepeatedPtrField<ServerEntryPB>& entries,
-                          HostPort* leader_hostport) {
-  for (const ServerEntryPB& entry : entries) {
-    if (entry.has_error()) {
-      LOG(WARNING) << "Error encountered for server entry " << entry.ShortDebugString()
-                   << ": " << StatusFromPB(entry.error()).ToString();
-      continue;
-    }
-    if (!entry.has_role()) {
-      return STATUS(IllegalState,
-          strings::Substitute("Every server in must have a role, but entry ($0) has no role.",
-                              entry.ShortDebugString()));
-    }
-    if (entry.role() == consensus::RaftPeerPB::LEADER) {
-      *leader_hostport = HostPortFromPB(entry.registration().rpc_addresses(0));
-      return Status::OK();
+Result<UsePrivateIpMode> GetPrivateIpMode() {
+  for (auto i : kUsePrivateIpModeList) {
+    if (FLAGS_use_private_ip == ToCString(i)) {
+      return i;
     }
   }
-  return STATUS(NotFound, "No leader found.");
+  return STATUS_FORMAT(
+      IllegalState,
+      "Invalid value of FLAGS_use_private_ip: $0, using private ip everywhere",
+      FLAGS_use_private_ip);
+}
+
+UsePrivateIpMode GetMode() {
+  auto result = GetPrivateIpMode();
+  if (result.ok()) {
+    return *result;
+  }
+  YB_LOG_EVERY_N_SECS(WARNING, 300) << result.status();
+  return UsePrivateIpMode::never;
+}
+
+bool UsePublicIp(const CloudInfoPB& connect_to,
+                 const CloudInfoPB& connect_from) {
+  auto mode = GetMode();
+
+  if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
+    return true;
+  }
+  if (mode == UsePrivateIpMode::cloud) {
+    return false;
+  }
+  if (connect_to.placement_region() != connect_from.placement_region()) {
+    return true;
+  }
+  if (mode == UsePrivateIpMode::region) {
+    return false;
+  }
+  if (connect_to.placement_zone() != connect_from.placement_zone()) {
+    return true;
+  }
+  return mode != UsePrivateIpMode::zone;
+}
+
+const HostPortPB& DesiredHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from) {
+  if (!broadcast_addresses.empty() && UsePublicIp(connect_to, connect_from)) {
+    return broadcast_addresses[0];
+  }
+  if (!private_host_ports.empty()) {
+    return private_host_ports[0];
+  }
+  static const HostPortPB empty_host_port;
+  return empty_host_port;
+}
+
+const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
+                                  const CloudInfoPB& connect_from) {
+  return DesiredHostPort(
+      registration.broadcast_addresses(), registration.private_rpc_addresses(),
+      registration.cloud_info(), connect_from);
 }
 
 } // namespace yb

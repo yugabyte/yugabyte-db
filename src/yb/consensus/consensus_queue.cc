@@ -147,7 +147,7 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
       metrics_(metric_entity),
       clock_(clock) {
   DCHECK(local_peer_pb_.has_permanent_uuid());
-  DCHECK(local_peer_pb_.has_last_known_addr());
+  DCHECK(!local_peer_pb_.last_known_private_addr().empty());
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
@@ -477,7 +477,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   req->set_dest_uuid(uuid);
   req->set_tablet_id(tablet_id_);
   req->set_bootstrap_peer_uuid(local_peer_uuid_);
-  *req->mutable_bootstrap_peer_addr() = local_peer_pb_.last_known_addr();
+  *req->mutable_source_private_addr() = local_peer_pb_.last_known_private_addr();
+  *req->mutable_source_broadcast_addr() = local_peer_pb_.last_known_broadcast_addr();
+  *req->mutable_source_cloud_info() = local_peer_pb_.cloud_info();
   req->set_caller_term(queue_state_.current_term);
   peer->needs_remote_bootstrap = false; // Now reset the flag.
   return Status::OK();

@@ -627,7 +627,9 @@ Status HandleReplacingStaleTablet(
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   const string& tablet_id = req.tablet_id();
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
-  HostPort bootstrap_peer_addr = HostPortFromPB(req.bootstrap_peer_addr());
+  HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
+      req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
+      server_->MakeCloudInfoPB()));
   int64_t leader_term = req.caller_term();
 
   const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
@@ -1198,10 +1200,9 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
 void TSTabletManager::InitLocalRaftPeerPB() {
   DCHECK_EQ(state(), MANAGER_INITIALIZING);
   local_peer_pb_.set_permanent_uuid(fs_manager_->uuid());
-  auto addr = server_->first_rpc_address();
-  HostPort hp;
-  CHECK_OK(HostPortFromEndpointReplaceWildcard(addr, &hp));
-  CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
+  ServerRegistrationPB reg;
+  CHECK_OK(server_->GetRegistration(&reg, server::RpcOnly::kTrue));
+  TakeRegistration(&reg, &local_peer_pb_);
 }
 
 void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,

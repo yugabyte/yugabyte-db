@@ -268,6 +268,8 @@ message ReadRequestPB {
 
   // See ReadHybridTime for explation of next two fields.
   optional ReadHybridTimePB read_time = 9;
+
+  optional string proxy_uuid = 11;
 }
 
 message ReadResponsePB {

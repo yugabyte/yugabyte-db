@@ -132,7 +132,7 @@ class MasterTest : public YBTest {
     // Start master with the create flag on.
     mini_master_.reset(
         new MiniMaster(Env::Default(), GetTestPath("Master"),
-                       AllocateFreePort(), AllocateFreePort()));
+                       AllocateFreePort(), AllocateFreePort(), 0));
     ASSERT_OK(mini_master_->Start());
     ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
@@ -250,7 +250,7 @@ static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* p
 // Test that shutting down a MiniMaster without starting it does not
 // SEGV.
 TEST_F(MasterTest, TestShutdownWithoutStart) {
-  MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort());
+  MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort(), 0);
   m.Shutdown();
 }
 
@@ -348,7 +348,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
-  MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_rpc_addresses());
+  MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_private_rpc_addresses());
   MakeHostPortPB("localhost", 2000, fake_reg.mutable_common()->add_http_addresses());
 
   {

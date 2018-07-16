@@ -31,9 +31,9 @@ QLValuePB GetTokensValue(size_t index, size_t node_count) {
   return value_pb;
 }
 
-bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
-                                  const InetAddress& remote_endpoint) {
-  for (HostPortPB rpc_address : ts_info.registration().common().rpc_addresses()) {
+bool RemoteEndpointMatchesList(const google::protobuf::RepeatedPtrField<HostPortPB>& host_ports,
+                               const InetAddress& remote_endpoint) {
+  for (const HostPortPB& rpc_address : host_ports) {
     // host portion of rpc_address might be a hostname and hence we need to resolve it.
     vector<InetAddress> resolved_addresses;
     if (!InetAddress::Resolve(rpc_address.host(), &resolved_addresses).ok()) {
@@ -44,6 +44,19 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
         resolved_addresses.end()) {
       return true;
     }
+  }
+
+  return false;
+}
+
+bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
+                                  const InetAddress& remote_endpoint) {
+  const auto& common = ts_info.registration().common();
+  if (RemoteEndpointMatchesList(common.private_rpc_addresses(), remote_endpoint)) {
+    return true;
+  }
+  if (RemoteEndpointMatchesList(common.broadcast_addresses(), remote_endpoint)) {
+    return true;
   }
   return false;
 }
@@ -65,6 +78,27 @@ QLValuePB GetReplicationValue(int replication_factor) {
   elem->set_string_value(std::to_string(replication_factor));
 
   return value_pb;
+}
+
+Result<PublicPrivateIPs> GetPublicPrivateIPs(const TSInformationPB& ts_info) {
+  const auto& private_host = ts_info.registration().common().private_rpc_addresses()[0].host();
+  if (private_host.empty()) {
+    return STATUS_SUBSTITUTE(IllegalState,
+        "tserver $0 doesn't have any rpc addresses registered",
+        ts_info.tserver_instance().permanent_uuid());
+  }
+  const auto* broadcast_address = !ts_info.registration().common().broadcast_addresses().empty() ?
+      &ts_info.registration().common().broadcast_addresses()[0].host() : &private_host;
+
+  PublicPrivateIPs result;
+  RETURN_NOT_OK(result.private_ip.FromString(private_host));
+  if (broadcast_address != &private_host) {
+    RETURN_NOT_OK(result.public_ip.FromString(*broadcast_address));
+  } else {
+    result.public_ip = result.private_ip;
+  }
+
+  return result;
 }
 
 }  // namespace util

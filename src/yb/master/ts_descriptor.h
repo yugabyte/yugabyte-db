@@ -72,9 +72,11 @@ typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
 // This class is thread-safe.
 class TSDescriptor {
  public:
-  static CHECKED_STATUS RegisterNew(const NodeInstancePB& instance,
-                                            const TSRegistrationPB& registration,
-                                            gscoped_ptr<TSDescriptor>* desc);
+  static Result<std::unique_ptr<TSDescriptor>> RegisterNew(
+      const NodeInstancePB& instance,
+      const TSRegistrationPB& registration,
+      CloudInfoPB local_cloud_info,
+      rpc::ProxyCache* proxy_cache);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -89,7 +91,9 @@ class TSDescriptor {
 
   // Register this tablet server.
   CHECKED_STATUS Register(const NodeInstancePB& instance,
-                          const TSRegistrationPB& registration);
+                          const TSRegistrationPB& registration,
+                          CloudInfoPB local_cloud_info,
+                          rpc::ProxyCache* proxy_cache);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
@@ -125,9 +129,8 @@ class TSDescriptor {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  CHECKED_STATUS GetProxy(rpc::ProxyCache* proxy_cache,
-                          std::shared_ptr<TProxy>* proxy) {
-    return GetOrCreateProxy(proxy_cache, proxy, &proxies_.get<TProxy>());
+  CHECKED_STATUS GetProxy(std::shared_ptr<TProxy>* proxy) {
+    return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
   }
 
   // Increment the accounting of the number of replicas recently created on this
@@ -230,13 +233,14 @@ class TSDescriptor {
 
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
-                                          const TSRegistrationPB& registration);
+                                          const TSRegistrationPB& registration,
+                                          CloudInfoPB local_cloud_info,
+                                          rpc::ProxyCache* proxy_cache);
 
   mutable simple_spinlock lock_;
  private:
   template <class TProxy>
-  CHECKED_STATUS GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
-                                  std::shared_ptr<TProxy>* result,
+  CHECKED_STATUS GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                   std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
@@ -270,6 +274,8 @@ class TSDescriptor {
   struct TSMetrics tsMetrics_;
 
   const std::string permanent_uuid_;
+  CloudInfoPB local_cloud_info_;
+  rpc::ProxyCache* proxy_cache_;
   int64_t latest_seqno_;
 
   // The last time a heartbeat was received for this node.
@@ -310,8 +316,7 @@ class TSDescriptor {
 };
 
 template <class TProxy>
-Status TSDescriptor::GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
-                                      std::shared_ptr<TProxy>* result,
+Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -321,7 +326,7 @@ Status TSDescriptor::GetOrCreateProxy(rpc::ProxyCache* proxy_cache,
     }
     auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
     if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache, hostport);
+      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport);
     }
     *result = *result_cache;
   }

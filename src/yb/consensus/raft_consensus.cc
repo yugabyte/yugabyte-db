@@ -196,7 +196,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     LostLeadershipListener lost_leadership_listener,
     ThreadPool* raft_pool) {
-  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger, proxy_cache));
+  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
+      messenger, proxy_cache, local_peer_pb.cloud_info()));
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
@@ -2015,7 +2016,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                          "member_type received: $1", server_uuid,
                          RaftPeerPB::MemberType_Name(server.member_type())));
         }
-        if (!server.has_last_known_addr()) {
+        if (server.last_known_private_addr().empty()) {
           return STATUS(InvalidArgument, "server must have last_known_addr specified",
                                          req.ShortDebugString());
         }
@@ -2025,16 +2026,18 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
       case REMOVE_SERVER:
         if (use_hostport) {
-          if (!server.has_last_known_addr()) {
+          if (server.last_known_private_addr().empty()) {
             return STATUS(InvalidArgument, "Must have last_known_addr specified.",
                           req.ShortDebugString());
           }
           HostPort leader_hp;
-          RETURN_NOT_OK(GetHostPortFromConfig(new_config, peer_uuid(), &leader_hp));
-          if (leader_hp.port() == server.last_known_addr().port() &&
-              leader_hp.host() == server.last_known_addr().host()) {
-            return STATUS(InvalidArgument, "Cannot remove live leader using hostport.",
-                          req.ShortDebugString());
+          RETURN_NOT_OK(GetHostPortFromConfig(
+              new_config, peer_uuid(), queue_->local_cloud_info(), &leader_hp));
+          for (const auto& host_port : server.last_known_private_addr()) {
+            if (leader_hp.port() == host_port.port() && leader_hp.host() == host_port.host()) {
+              return STATUS(InvalidArgument, "Cannot remove live leader using hostport.",
+                            req.ShortDebugString());
+            }
           }
         }
         if (server_uuid == peer_uuid()) {

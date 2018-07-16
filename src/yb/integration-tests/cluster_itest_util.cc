@@ -46,6 +46,7 @@
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -119,10 +120,9 @@ const string& TServerDetails::uuid() const {
   return instance_id.permanent_uuid();
 }
 
-string TServerDetails::ToString() const {
-  return Substitute(
-      "TabletServer: $0, Rpc address: $1", instance_id.permanent_uuid(),
-      registration.common().rpc_addresses(0).ShortDebugString());
+std::string TServerDetails::ToString() const {
+  return Format("TabletServer: $0, Rpc address: $1", instance_id.permanent_uuid(),
+                DesiredHostPort(registration.common(), CloudInfoPB()));
 }
 
 client::YBSchema SimpleIntKeyYBSchema() {
@@ -363,7 +363,8 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
 
   ts_map->clear();
   for (const ListTabletServersResponsePB::Entry& entry : resp.servers()) {
-    HostPort host_port = HostPortFromPB(entry.registration().common().rpc_addresses(0));
+    HostPort host_port = HostPortFromPB(DesiredHostPort(
+        entry.registration().common(), CloudInfoPB()));
 
     std::unique_ptr<TServerDetails> peer(new TServerDetails());
     peer->instance_id.CopyFrom(entry.instance_id());
@@ -799,7 +800,7 @@ Status AddServer(const TServerDetails* leader,
   RaftPeerPB* peer = req.mutable_server();
   peer->set_permanent_uuid(replica_to_add->uuid());
   peer->set_member_type(member_type);
-  *peer->mutable_last_known_addr() = replica_to_add->registration.common().rpc_addresses(0);
+  CopyRegistration(replica_to_add->registration.common(), peer);
   if (cas_config_opid_index) {
     req.set_cas_config_opid_index(*cas_config_opid_index);
   }
@@ -1042,7 +1043,7 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
   req.set_dest_uuid(ts->uuid());
   req.set_tablet_id(tablet_id);
   req.set_bootstrap_peer_uuid(bootstrap_source_uuid);
-  RETURN_NOT_OK(HostPortToPB(bootstrap_source_addr, req.mutable_bootstrap_peer_addr()));
+  RETURN_NOT_OK(HostPortToPB(bootstrap_source_addr, req.mutable_source_private_addr()->Add()));
   req.set_caller_term(caller_term);
 
   RETURN_NOT_OK(ts->consensus_proxy->StartRemoteBootstrap(req, &resp, &rpc));

@@ -212,7 +212,7 @@ Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   RETURN_NOT_OK(proxy_->ListTabletServers(req, &resp, &rpc));
   tablet_servers->clear();
   for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
-    const HostPortPB& addr = e.registration().common().rpc_addresses(0);
+    const HostPortPB& addr = DesiredHostPort(e.registration().common(), CloudInfoPB());
     shared_ptr<YsckTabletServer> ts(new RemoteYsckTabletServer(
         e.instance_id().permanent_uuid(), HostPortFromPB(addr), proxy_cache_.get()));
     InsertOrDie(tablet_servers, ts->uuid(), ts);

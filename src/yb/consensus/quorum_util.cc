@@ -34,6 +34,8 @@
 #include <set>
 #include <string>
 
+#include "yb/consensus/consensus_meta.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
@@ -96,13 +98,14 @@ Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb) 
   return GetRaftConfigMember(cstate.config(), cstate.leader_uuid(), peer_pb);
 }
 
-Status GetHostPortFromConfig(const RaftConfigPB& config, const std::string& uuid, HostPort* hp) {
+Status GetHostPortFromConfig(const RaftConfigPB& config, const std::string& uuid,
+                             const CloudInfoPB& from, HostPort* hp) {
   if (!hp) {
     return STATUS(InvalidArgument, "Need a non-null hostport.");
   }
   for (const RaftPeerPB& peer : config.peers()) {
     if (peer.permanent_uuid() == uuid) {
-      *hp = HostPortFromPB(peer.last_known_addr());
+      *hp = HostPortFromPB(DesiredHostPort(peer, from));
       return Status::OK();
     }
   }
@@ -113,15 +116,26 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
   RepeatedPtrField<RaftPeerPB> modified_peers;
   bool removed = false;
   bool use_host = req.has_use_host() && req.use_host();
-  const HostPortPB hp = req.server().last_known_addr();
+  const HostPortPB* hp = nullptr;
   if (use_host) {
-    LOG(INFO) << "Using host/port " << hp.ShortDebugString() << " instead of UUID";
+    if (req.server().last_known_private_addr().size() != 1) {
+      LOG(WARNING) << "Remove from raft config with invalid host specified: "
+                << req.server().ShortDebugString();
+      return false;
+    }
+    hp = &req.server().last_known_private_addr()[0];
+    LOG(INFO) << "Using host/port " << hp->ShortDebugString() << " instead of UUID";
   }
-  const string& uuid = req.server().permanent_uuid();
+  const std::string& uuid = req.server().permanent_uuid();
   for (const RaftPeerPB& peer : config->peers()) {
-    if ((use_host && peer.last_known_addr().host() == hp.host() &&
-         peer.last_known_addr().port() == hp.port()) ||
-        (!use_host && peer.permanent_uuid() == uuid)) {
+    bool matches;
+    if (use_host) {
+      matches = HasHostPortPB(peer.last_known_private_addr(), *hp) ||
+                HasHostPortPB(peer.last_known_broadcast_addr(), *hp);
+    } else {
+      matches = peer.permanent_uuid() == uuid;
+    }
+    if (matches) {
       removed = true;
       continue;
     }
@@ -239,7 +253,7 @@ Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type) {
     }
     uuids.insert(peer.permanent_uuid());
 
-    if (num_peers > 1 && !peer.has_last_known_addr()) {
+    if (num_peers > 1 && peer.last_known_private_addr().empty()) {
       return STATUS(IllegalState,
           Substitute("Peer: $0 has no address. RaftConfig: $1",
                      peer.permanent_uuid(), config.ShortDebugString()));

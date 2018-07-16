@@ -36,6 +36,7 @@
 #include <vector>
 #include <mutex>
 
+#include "yb/common/common.pb.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
@@ -69,13 +70,18 @@ class ServerBaseOptions {
 
   int32_t metrics_log_interval_ms;
 
-  std::string placement_cloud;
-  std::string placement_region;
-  std::string placement_zone;
+  const std::string& placement_cloud() const;
+  const std::string& placement_region() const;
+  const std::string& placement_zone() const;
+
+  bool has_placement_cloud() const;
+  void SetPlacement(std::string cloud, std::string region, std::string zone);
 
   std::string placement_uuid;
 
   std::string master_addresses_flag;
+
+  std::vector<HostPort> broadcast_addresses;
 
   static Status DetermineMasterAddresses(
       const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
@@ -91,6 +97,8 @@ class ServerBaseOptions {
 
   addresses_shared_ptr GetMasterAddresses() const;
 
+  CloudInfoPB MakeCloudInfoPB() const;
+
   ServerBaseOptions(const ServerBaseOptions& options);
 
  protected:
@@ -104,6 +112,10 @@ class ServerBaseOptions {
   // will guarantee inconsistent in-transit views of the vector are never seen during/across
   // config changes.
   addresses_shared_ptr master_addresses_;
+
+  std::string placement_cloud_;
+  std::string placement_region_;
+  std::string placement_zone_;
 
   // Mutex to avoid concurrent access to the variable above.
   mutable std::mutex master_addresses_mtx_;

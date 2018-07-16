@@ -43,6 +43,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata.RaftPeerPB.Role;
 import org.yb.master.Master.TabletLocationsPB;
 import org.yb.master.Master.TabletLocationsPB.ReplicaPB;
+import org.yb.Common.HostPortPB;
 
 /**
  * Information about the locations of tablets in a YB table.
@@ -130,18 +131,25 @@ public class LocatedTablet {
       this.pb = pb;
     }
 
-    public String getRpcHost() {
-      if (pb.getTsInfo().getRpcAddressesList().isEmpty()) {
+    public HostPortPB getRpcHostPort() {
+      if (!pb.getTsInfo().getBroadcastAddressesList().isEmpty()) {
+        return pb.getTsInfo().getBroadcastAddresses(0);
+      }
+
+      if (pb.getTsInfo().getPrivateRpcAddressesList().isEmpty()) {
         return null;
       }
-      return pb.getTsInfo().getRpcAddressesList().get(0).getHost();
+      return pb.getTsInfo().getPrivateRpcAddressesList().get(0);
+    }
+
+    public String getRpcHost() {
+      HostPortPB host_port = getRpcHostPort();
+      return host_port == null ? null : host_port.getHost();
     }
 
     public Integer getRpcPort() {
-      if (pb.getTsInfo().getRpcAddressesList().isEmpty()) {
-        return null;
-      }
-      return pb.getTsInfo().getRpcAddressesList().get(0).getPort();
+      HostPortPB host_port = getRpcHostPort();
+      return host_port == null ? null : host_port.getPort();
     }
 
     public String getRole() {
@@ -164,7 +172,7 @@ public class LocatedTablet {
       return pb.getTsInfo().getPlacementUuid().toStringUtf8();
     }
 
-    public org.yb.WireProtocol.CloudInfoPB getCloudInfo() {
+    public org.yb.Common.CloudInfoPB getCloudInfo() {
       return pb.getTsInfo().getCloudInfo();
     }
   }

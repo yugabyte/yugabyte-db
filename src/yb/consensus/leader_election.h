@@ -196,7 +196,6 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
   struct VoterState {
     PeerProxyPtr proxy;
-    HostPort address;
 
     rpc::RpcController rpc;
     VoteRequestPB request;

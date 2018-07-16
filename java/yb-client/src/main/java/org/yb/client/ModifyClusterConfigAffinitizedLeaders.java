@@ -15,7 +15,7 @@ package org.yb.client;
 
 import java.util.List;
 
-import org.yb.WireProtocol.CloudInfoPB;
+import org.yb.Common.CloudInfoPB;
 import org.yb.master.Master;
 
 /**

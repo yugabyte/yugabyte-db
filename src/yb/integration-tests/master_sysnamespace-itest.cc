@@ -58,9 +58,9 @@ class MasterSysNamespaceTest : public YBTest {
     for (const TabletLocationsPB::ReplicaPB& replica : locs_pb.replicas()) {
       if (replica.role() == consensus::RaftPeerPB::LEADER) {
         ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().host(),
-                  replica.ts_info().rpc_addresses(0).host());
+                  replica.ts_info().private_rpc_addresses(0).host());
         ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().port(),
-                  replica.ts_info().rpc_addresses(0).port());
+                  replica.ts_info().private_rpc_addresses(0).port());
         ASSERT_EQ(cluster_->leader_mini_master()->permanent_uuid(),
                   replica.ts_info().permanent_uuid());
       } else {
@@ -69,9 +69,9 @@ class MasterSysNamespaceTest : public YBTest {
         for (i = 0; i < cluster_->num_masters(); i++) {
           if (cluster_->mini_master(i)->permanent_uuid() == replica.ts_info().permanent_uuid()) {
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().host(),
-                      replica.ts_info().rpc_addresses(0).host());
+                      replica.ts_info().private_rpc_addresses(0).host());
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().port(),
-                      replica.ts_info().rpc_addresses(0).port());
+                      replica.ts_info().private_rpc_addresses(0).port());
             ASSERT_EQ(consensus::RaftPeerPB::FOLLOWER, replica.role());
             break;
           }

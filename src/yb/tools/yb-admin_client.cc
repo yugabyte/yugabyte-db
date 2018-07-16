@@ -192,7 +192,7 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     HostPort* peer_addr) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
-  auto rpc_addresses = peer_ts_info.rpc_addresses();
+  auto rpc_addresses = peer_ts_info.private_rpc_addresses();
   CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
         .ShortDebugString();
 
@@ -253,7 +253,7 @@ Status ClusterAdminClient::ChangeConfig(
   // Look up RPC address of peer if adding as a new server.
   if (cc_type == consensus::ADD_SERVER) {
     HostPort host_port = VERIFY_RESULT(GetFirstRpcAddressForTS(peer_uuid));
-    RETURN_NOT_OK(HostPortToPB(host_port, peer_pb.mutable_last_known_addr()));
+    RETURN_NOT_OK(HostPortToPB(host_port, peer_pb.mutable_last_known_private_addr()->Add()));
   }
 
   // Look up the location of the tablet leader from the Master.
@@ -506,7 +506,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   peer_pb.set_permanent_uuid(peer_uuid);
   // Ignored by ChangeConfig if request != ADD_SERVER.
   peer_pb.set_member_type(RaftPeerPB::PRE_VOTER);
-  HostPortPB *peer_host_port = peer_pb.mutable_last_known_addr();
+  HostPortPB *peer_host_port = peer_pb.mutable_last_known_private_addr()->Add();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);
   req.set_dest_uuid(leader_uuid);
@@ -608,10 +608,11 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
   RETURN_NOT_OK(ListTabletServers(&servers));
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (server.instance_id().permanent_uuid() == uuid) {
-      if (!server.has_registration() || server.registration().common().rpc_addresses_size() == 0) {
+      if (!server.has_registration() ||
+          server.registration().common().private_rpc_addresses().empty()) {
         break;
       }
-      return HostPortFromPB(server.registration().common().rpc_addresses(0));
+      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
     }
   }
 
@@ -629,7 +630,7 @@ Status ClusterAdminClient::ListAllTabletServers() {
   }
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     cout << server.instance_id().permanent_uuid() << kColumnSep
-         << FormatFirstHostPort(server.registration().common().rpc_addresses())
+         << FormatFirstHostPort(server.registration().common().private_rpc_addresses())
          << endl;
   }
 
@@ -659,7 +660,7 @@ Status ClusterAdminClient::ListAllMasters() {
           << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
               RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep
           << RightPadToWidth(
-              (master_reg ? FormatFirstHostPort(master_reg->rpc_addresses()) : "UNKNOWN"),
+              (master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses()) : "UNKNOWN"),
               kHostPortColWidth) << kColumnSep
           << (lresp.masters(i).has_error() ?
               PBEnumToString(lresp.masters(i).error().code()) : "ALIVE") << kColumnSep
@@ -685,8 +686,8 @@ Status ClusterAdminClient::ListAllMasters() {
       if (r_resp.masters(i).member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
         const auto& master = r_resp.masters(i);
         cout << master.permanent_uuid() << "  "
-             << master.last_known_addr().host() << "/"
-             << master.last_known_addr().port() << endl;
+             << master.last_known_private_addr(0).host() << "/"
+             << master.last_known_private_addr(0).port() << endl;
       } else {
         cout << "UNREACHABLE MASTER at index " << i << "." << endl;
       }
@@ -752,7 +753,7 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int 
     for (const auto& replica : locations_of_this_tablet.replicas()) {
       if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
         if (leader_host_port.empty()) {
-          leader_host_port = FormatHostPort(replica.ts_info().rpc_addresses(0));
+          leader_host_port = FormatHostPort(replica.ts_info().private_rpc_addresses(0));
         } else {
           LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
                      << ": " << locations_of_this_tablet.ShortDebugString();
@@ -802,7 +803,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id)
   }
   for (const auto& replica : locs.replicas()) {
     cout << replica.ts_info().permanent_uuid() << kColumnSep
-         << RightPadToWidth(FormatHostPort(replica.ts_info().rpc_addresses(0)),
+         << RightPadToWidth(FormatHostPort(replica.ts_info().private_rpc_addresses(0)),
                             kHostPortColWidth) << kColumnSep
          << PBEnumToString(replica.role()) << endl;
   }
@@ -862,7 +863,7 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
     if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
       master_proxy_->ChangeLoadBalancerState(req, &resp, &rpc);
     } else {
-      HostPortPB hp_pb = list_resp.masters(i).registration().rpc_addresses(0);
+      HostPortPB hp_pb = list_resp.masters(i).registration().private_rpc_addresses(0);
 
       MasterServiceProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
       proxy.ChangeLoadBalancerState(req, &resp, &rpc);

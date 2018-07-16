@@ -502,6 +502,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   rpc::ProxyCache& proxy_cache() const;
 
+  const std::string& proxy_uuid() const;
+
  private:
   class Data;
 

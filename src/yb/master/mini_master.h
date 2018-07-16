@@ -38,6 +38,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/util/env.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -55,9 +56,8 @@ class MasterOptions;
 // TODO: Store the distributed cluster configuration in the object, to avoid
 // having multiple Start methods.
 class MiniMaster {
-
  public:
-  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port);
+  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port, int index);
   ~MiniMaster();
 
   // Start a master running on the loopback interface and
@@ -106,6 +106,7 @@ class MiniMaster {
   const uint16_t rpc_port_, web_port_;
 
   gscoped_ptr<Master> master_;
+  int index_;
 };
 
 } // namespace master

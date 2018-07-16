@@ -124,6 +124,13 @@ QLValuePB GetReplicationValue(int replication_factor);
 bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
                                   const InetAddress& remote_endpoint);
 
+struct PublicPrivateIPs {
+  InetAddress private_ip;
+  InetAddress public_ip;
+};
+
+Result<PublicPrivateIPs> GetPublicPrivateIPs(const TSInformationPB& ts_info);
+
 }  // namespace util
 }  // namespace master
 }  // namespace yb

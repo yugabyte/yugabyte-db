@@ -152,6 +152,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
 
+  const std::string& proxy_uuid() const;
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;

@@ -71,7 +71,7 @@ class SysCatalogTest : public YBTest {
     // Start master with the create flag on.
     mini_master_.reset(
         new MiniMaster(Env::Default(), GetTestPath("Master"), AllocateFreePort(),
-                       AllocateFreePort()));
+                       AllocateFreePort(), 0));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -142,7 +142,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   auto dir = GetTestPath("Master") + "valid_cluster_uuid_test";
   ASSERT_OK(Env::Default()->CreateDir(dir));
   std::unique_ptr<MiniMaster> mini_master =
-      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort());
+      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort(), 0);
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
@@ -163,7 +163,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   dir = GetTestPath("Master") + "empty_cluster_uuid_test";
   ASSERT_OK(Env::Default()->CreateDir(dir));
   mini_master =
-      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort());
+      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort(), 0);
   FLAGS_cluster_uuid = "";
   ASSERT_OK(mini_master->Start());
   master = mini_master->master();
