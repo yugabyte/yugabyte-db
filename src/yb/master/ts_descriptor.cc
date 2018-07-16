@@ -48,13 +48,15 @@
 namespace yb {
 namespace master {
 
-Status TSDescriptor::RegisterNew(const NodeInstancePB& instance,
-                                 const TSRegistrationPB& registration,
-                                 gscoped_ptr<TSDescriptor>* desc) {
-  gscoped_ptr<TSDescriptor> ret(new YB_EDITION_NS_PREFIX TSDescriptor(instance.permanent_uuid()));
-  RETURN_NOT_OK(ret->Register(instance, registration));
-  desc->swap(ret);
-  return Status::OK();
+Result<std::unique_ptr<TSDescriptor>> TSDescriptor::RegisterNew(
+    const NodeInstancePB& instance,
+    const TSRegistrationPB& registration,
+    CloudInfoPB local_cloud_info,
+    rpc::ProxyCache* proxy_cache) {
+  std::unique_ptr<TSDescriptor> result = std::make_unique<YB_EDITION_NS_PREFIX TSDescriptor>(
+      instance.permanent_uuid());
+  RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
+  return std::move(result);
 }
 
 TSDescriptor::TSDescriptor(std::string perm_id)
@@ -71,14 +73,18 @@ TSDescriptor::~TSDescriptor() {
 }
 
 Status TSDescriptor::Register(const NodeInstancePB& instance,
-                              const TSRegistrationPB& registration) {
+                              const TSRegistrationPB& registration,
+                              CloudInfoPB local_cloud_info,
+                              rpc::ProxyCache* proxy_cache) {
   std::lock_guard<simple_spinlock> l(lock_);
-  RETURN_NOT_OK(RegisterUnlocked(instance, registration));
-  return Status::OK();
+  return RegisterUnlocked(instance, registration, std::move(local_cloud_info), proxy_cache);
 }
 
-Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
-                                const TSRegistrationPB& registration) {
+Status TSDescriptor::RegisterUnlocked(
+    const NodeInstancePB& instance,
+    const TSRegistrationPB& registration,
+    CloudInfoPB local_cloud_info,
+    rpc::ProxyCache* proxy_cache) {
   CHECK_EQ(instance.permanent_uuid(), permanent_uuid_);
 
   if (instance.instance_seqno() < latest_seqno_) {
@@ -107,6 +113,8 @@ Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
   if (registration.common().has_placement_uuid()) {
     placement_uuid_ = registration.common().placement_uuid();
   }
+  local_cloud_info_ = std::move(local_cloud_info);
+  proxy_cache_ = proxy_cache;
 
   return Status::OK();
 }
@@ -204,10 +212,18 @@ bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
   TSRegistrationPB reg;
   GetRegistration(&reg);
-  for (const auto& rpc_hp : reg.common().rpc_addresses()) {
-    if (hp.host() == rpc_hp.host() && hp.port() == rpc_hp.port()) {
-      return true;
-    }
+  auto predicate = [&hp](const HostPortPB& rhs) {
+    return rhs.host() == hp.host() && rhs.port() == hp.port();
+  };
+  if (std::find_if(reg.common().private_rpc_addresses().begin(),
+                   reg.common().private_rpc_addresses().end(),
+                   predicate) != reg.common().private_rpc_addresses().end()) {
+    return true;
+  }
+  if (std::find_if(reg.common().broadcast_addresses().begin(),
+                   reg.common().broadcast_addresses().end(),
+                   predicate) != reg.common().broadcast_addresses().end()) {
+    return true;
   }
   return false;
 }
@@ -219,17 +235,12 @@ void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
-  const auto& addrs = registration_->common().rpc_addresses();
-  if (addrs.size() == 0) {
+  const auto& addr = DesiredHostPort(registration_->common(), local_cloud_info_);
+  if (addr.host().empty()) {
     return STATUS(NetworkError, "Unable to find the TS address: ", registration_->DebugString());
   }
 
-  if (addrs.size() > 1) {
-    LOG(WARNING) << "Multiple TS addresses " << yb::ToString(addrs) << ". Using "
-                 << addrs[0].ShortDebugString();
-  }
-
-  return HostPortFromPB(addrs[0]);
+  return HostPortFromPB(addr);
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

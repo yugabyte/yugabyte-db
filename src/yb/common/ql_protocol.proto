@@ -367,6 +367,9 @@ message QLReadRequestPB {
   // set.
   optional HostPortPB remote_endpoint = 13;
 
+  // If this request comes from proxy, it should be filled with UUID of this proxy.
+  optional string proxy_uuid = 20;
+
   // the upper limit for partition (hash) key scan ranges (inclusive)
   optional uint32 max_hash_code = 14;
 

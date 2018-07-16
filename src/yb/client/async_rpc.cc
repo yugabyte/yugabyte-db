@@ -488,6 +488,7 @@ ReadRpc::ReadRpc(
     : AsyncRpcBase(batcher, tablet, allow_local_calls_in_curr_thread, ops, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
+  req_.set_proxy_uuid(batcher->proxy_uuid());
 
   int ctr = 0;
   for (auto& op : ops_) {

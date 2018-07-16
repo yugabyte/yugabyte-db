@@ -159,8 +159,9 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
 
   SetCurrentMasterIndex(new_config.opid_index());
 
+  CloudInfoPB cloud_info = opts_.MakeCloudInfoPB();
   for (const auto& peer : new_config.peers()) {
-    HostPort hp = HostPortFromPB(peer.last_known_addr());
+     HostPort hp = HostPortFromPB(DesiredHostPort(peer, cloud_info));
     if (std::find(new_master_addresses->begin(), new_master_addresses->end(), hp) ==
        new_master_addresses->end()) {
       new_master_addresses->push_back(std::move(hp));

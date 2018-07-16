@@ -60,7 +60,15 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
       ServerInfo master = null;
       HostPortPB rpc_addr = null;
       for (WireProtocol.ServerEntryPB entry : respBuilder.getMastersList()) {
-        rpc_addr = entry.hasRegistration() ? entry.getRegistration().getRpcAddresses(0) : null;
+        if (entry.hasRegistration()) {
+          if (entry.getRegistration().getBroadcastAddressesList().isEmpty()) {
+            rpc_addr = entry.getRegistration().getPrivateRpcAddresses(0);
+          } else {
+            rpc_addr = entry.getRegistration().getBroadcastAddresses(0);
+          }
+        } else {
+          rpc_addr = null;
+        }
         master = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
                                 rpc_addr != null ? rpc_addr.getHost() : "UNKNOWN",
                                 rpc_addr != null ? rpc_addr.getPort() : 0,

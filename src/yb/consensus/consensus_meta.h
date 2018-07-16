@@ -43,6 +43,7 @@
 namespace yb {
 
 class FsManager;
+class ServerRegistrationPB;
 
 namespace consensus {
 
@@ -193,6 +194,10 @@ class ConsensusMetadata {
 
   DISALLOW_COPY_AND_ASSIGN(ConsensusMetadata);
 };
+
+const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from);
+void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest);
+void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest);
 
 } // namespace consensus
 } // namespace yb

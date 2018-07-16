@@ -127,8 +127,9 @@ class RemoteBootstrapTest : public YBTabletTest {
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(fs_manager()->uuid());
     config_peer.set_member_type(RaftPeerPB::VOTER);
-    config_peer.mutable_last_known_addr()->set_host("fake-host");
-    config_peer.mutable_last_known_addr()->set_port(0);
+    auto hp = config_peer.mutable_last_known_private_addr()->Add();
+    hp->set_host("fake-host");
+    hp->set_port(0);
 
     tablet_peer_.reset(
         new TabletPeerClass(tablet()->metadata(),

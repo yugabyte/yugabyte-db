@@ -42,7 +42,9 @@
 #include "yb/server/webserver.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/rpc/messenger.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
 
 using strings::Substitute;
@@ -53,12 +55,17 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 namespace yb {
 namespace master {
 
-MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port)
+std::string MasterBindEndpoint(int index, uint16_t port) {
+  return Format("127.0.0.$0:$1", 20 + index * 2, port);
+}
+
+MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port, int index)
     : running_(false),
       env_(env),
       fs_root_(std::move(fs_root)),
       rpc_port_(rpc_port),
-      web_port_(web_port) {}
+      web_port_(web_port),
+      index_(index + 1) {}
 
 MiniMaster::~MiniMaster() {
   if (running_) {
@@ -92,7 +99,8 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!running_);
   CHECK(!master_);
 
-  HostPort local_host_port("127.0.0.1", rpc_port);
+  HostPort local_host_port;
+  RETURN_NOT_OK(local_host_port.ParseString(MasterBindEndpoint(index_, rpc_port), rpc_port));
   auto master_addresses = std::make_shared<std::vector<HostPort>>();
   master_addresses->push_back(local_host_port);
   MasterOptions opts(master_addresses);
@@ -108,7 +116,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                                 MasterOptions* opts) {
-  opts->rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", rpc_port);
+  opts->rpc_opts.rpc_bind_addresses = MasterBindEndpoint(index_, rpc_port);
   opts->webserver_opts.port = web_port;
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
@@ -118,6 +126,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   RETURN_NOT_OK(server->StartAsync());
 
   master_.swap(server);
+
   running_ = true;
 
   return Status::OK();
@@ -130,9 +139,12 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
 
   auto peer_addresses = std::make_shared<std::vector<HostPort>>();
 
+  int index = 0;
   for (uint16_t peer_port : peer_ports) {
-    HostPort peer_address("127.0.0.1", peer_port);
-    peer_addresses->push_back(peer_address);
+    ++index;
+    HostPort hp;
+    RETURN_NOT_OK(hp.ParseString(MasterBindEndpoint(index, peer_port), peer_port));
+    peer_addresses->push_back(std::move(hp));
   }
   MasterOptions opts(peer_addresses);
 

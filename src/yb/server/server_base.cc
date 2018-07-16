@@ -405,29 +405,34 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
   }
 }
 
-Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
+Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly rpc_only) const {
   std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
 
   // Fall back to hostname resolution if the rpc hostname is a wildcard.
   if (addrs.size() > 1 || addrs[0].host() == kWildCardHostAddress || addrs[0].port() == 0) {
     auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
-    RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
+    RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_private_rpc_addresses()),
                           "Failed to add RPC endpoints to registration");
   } else {
-    RETURN_NOT_OK_PREPEND(HostPortsToPBs(addrs, reg->mutable_rpc_addresses()),
+    RETURN_NOT_OK_PREPEND(HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses()),
                           "Failed to add RPC addresses to registration");
-    LOG(INFO) << "Using private ip address " << reg->rpc_addresses(0).host();
+    LOG(INFO) << "Using private ip address " << reg->private_rpc_addresses(0).host();
   }
 
-  std::vector<Endpoint> web_addrs;
-  RETURN_NOT_OK_PREPEND(CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
-                        "Unable to get bound HTTP addresses");
-  RETURN_NOT_OK_PREPEND(AddHostPortPBs(web_addrs, reg->mutable_http_addresses()),
-                        "Failed to add HTTP addresses to registration");
+  RETURN_NOT_OK(HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses()));
 
-  reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
-  reg->mutable_cloud_info()->set_placement_region(options_.placement_region);
-  reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone);
+  if (!rpc_only) {
+    std::vector<Endpoint> web_addrs;
+    RETURN_NOT_OK_PREPEND(
+        CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
+        "Unable to get bound HTTP addresses");
+    RETURN_NOT_OK_PREPEND(AddHostPortPBs(
+        web_addrs, reg->mutable_http_addresses()),
+        "Failed to add HTTP addresses to registration");
+  }
+  reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
+  reg->mutable_cloud_info()->set_placement_region(options_.placement_region());
+  reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone());
   reg->set_placement_uuid(options_.placement_uuid);
   return Status::OK();
 }
@@ -504,6 +509,27 @@ Status RpcAndWebServerBase::Start() {
 void RpcAndWebServerBase::Shutdown() {
   RpcServerBase::Shutdown();
   web_server_->Stop();
+}
+
+std::string TEST_RpcAddress(int index, Private priv) {
+  return Format("127.0.0.$0", index * 2 + (priv ? 0 : 1));
+}
+
+std::string TEST_RpcBindEndpoint(int index, uint16_t port) {
+  return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
+}
+
+void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
+  const int kMaxServers = 10;
+  for (int i = 1; i <= kMaxServers; ++i) {
+    // We group servers by 2. When servers belongs to the same group, they should use
+    // private ip for communication, otherwise public ip should be used.
+    bool same_group = (i - 1) / 2 == (index - 1) / 2;
+    auto broken_address = boost::asio::ip::address::from_string(
+        TEST_RpcAddress(i, Private(!same_group)));
+    LOG(INFO) << "Break " << index << " => " << broken_address;
+    messenger->BreakConnectivityWith(broken_address);
+  }
 }
 
 } // namespace server

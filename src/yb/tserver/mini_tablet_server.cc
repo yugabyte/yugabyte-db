@@ -37,23 +37,29 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/schema.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/common/schema.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/server/metadata.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/consensus/log.h"
-#include "yb/consensus/log.pb.h"
-#include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
+
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
 
 using std::pair;
@@ -84,8 +90,13 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
-  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.$0:$1", index_, rpc_port);
+  opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
+  opts_.broadcast_addresses = {
+      HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
   opts_.webserver_opts.port = 0;
+  if (!opts_.has_placement_cloud()) {
+    opts_.SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
+  }
   opts_.fs_opts.wal_paths = { fs_root };
   opts_.fs_opts.data_paths = { fs_root };
 }
@@ -108,6 +119,15 @@ Status MiniTabletServer::Start() {
   RETURN_NOT_OK(server->Start());
 
   server_.swap(server);
+
+  server::TEST_BreakConnectivity(server_->messenger().get(), index_);
+
+  tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
+  std::vector<Endpoint> local;
+  RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
+  Endpoint remote = VERIFY_RESULT(ParseEndpoint(opts_.rpc_opts.rpc_bind_addresses, 0));
+  RETURN_NOT_OK(tunnel_->Start(local.front(), remote));
+
   started_ = true;
   return Status::OK();
 }
@@ -117,12 +137,16 @@ Status MiniTabletServer::WaitStarted() {
 }
 
 void MiniTabletServer::Shutdown() {
+  if (tunnel_) {
+    tunnel_->Shutdown();
+  }
   if (started_) {
     // Save bind address and port so we can later restart the server.
-    opts_.rpc_opts.rpc_bind_addresses =
-        Substitute("127.0.0.$0:$1", index_, bound_rpc_addr().port());
+    opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(
+        index_, bound_rpc_addr().port());
     opts_.webserver_opts.port = bound_http_addr().port();
     server_->Shutdown();
+    tunnel_.reset();
     server_.reset();
   }
   started_ = false;
@@ -187,8 +211,9 @@ RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
   peer->set_member_type(RaftPeerPB::VOTER);
-  peer->mutable_last_known_addr()->set_host(bound_rpc_addr().address().to_string());
-  peer->mutable_last_known_addr()->set_port(bound_rpc_addr().port());
+  auto host_port = peer->mutable_last_known_private_addr()->Add();
+  host_port->set_host(bound_rpc_addr().address().to_string());
+  host_port->set_port(bound_rpc_addr().port());
   return config;
 }
 

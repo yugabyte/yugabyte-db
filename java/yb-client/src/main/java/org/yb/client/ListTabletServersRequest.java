@@ -37,6 +37,7 @@ import static org.yb.master.Master.*;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.yb.util.ServerInfo;
+import org.yb.Common.HostPortPB;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.util.ArrayList;
@@ -75,9 +76,13 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
     if (!hasErr) {
       ServerInfo server;
       for (ListTabletServersResponsePB.Entry entry : respBuilder.getServersList()) {
+        org.yb.WireProtocol.ServerRegistrationPB common = entry.getRegistration().getCommon();
+        HostPortPB hostPort = common.getBroadcastAddressesList().isEmpty()
+            ? common.getPrivateRpcAddresses(0)
+            : common.getBroadcastAddresses(0);
         server = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
-                                entry.getRegistration().getCommon().getRpcAddresses(0).getHost(),
-                                entry.getRegistration().getCommon().getRpcAddresses(0).getPort(),
+                                hostPort.getHost(),
+                                hostPort.getPort(),
                                 false, ""); // Leader info is not present as its for all tservers.
         servers.add(server);
       }

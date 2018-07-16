@@ -82,6 +82,8 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
 
+  CHECK_OK(GetPrivateIpMode());
+
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
   YB_EDITION_NS_PREFIX Master server(*opts_result);

@@ -152,8 +152,9 @@ Status SysCatalogTable::ConvertConfigToMasterAddresses(
   std::shared_ptr<std::vector<HostPort>> loaded_master_addresses =
     std::make_shared<std::vector<HostPort>>();
   bool has_missing_uuids = false;
+  auto cloud_info = master_->MakeCloudInfoPB();
   for (const auto& peer : config.peers()) {
-    HostPort hp = HostPortFromPB(peer.last_known_addr());
+    HostPort hp = HostPortFromPB(DesiredHostPort(peer, cloud_info));
     if (check_missing_uuids && !peer.has_permanent_uuid()) {
       LOG(WARNING) << "No uuid for master peer at " << hp.ToString();
       has_missing_uuids = true;
@@ -286,9 +287,8 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   auto master_addresses = options.GetMasterAddresses();  // ENG-285
   for (const HostPort& host_port : *master_addresses) {
     RaftPeerPB peer;
-    HostPortPB peer_host_port_pb;
-    RETURN_NOT_OK(HostPortToPB(host_port, &peer_host_port_pb));
-    peer.mutable_last_known_addr()->CopyFrom(peer_host_port_pb);
+    // TODO(public_ip)
+    RETURN_NOT_OK(HostPortToPB(host_port, peer.mutable_last_known_private_addr()->Add()));
     peer.set_member_type(RaftPeerPB::VOTER);
     new_config.add_peers()->CopyFrom(peer);
   }
@@ -315,6 +315,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
         consensus::SetPermanentUuidForRemotePeer(
           &master_->proxy_cache(),
           std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
+          master_->MakeCloudInfoPB(),
           &new_peer),
         Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
       resolved_config.add_peers()->CopyFrom(new_peer);
@@ -422,7 +423,8 @@ void SysCatalogTable::SysCatalogStateChanged(
                   Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
       WARN_NOT_OK(
           apply_pool_->SubmitFunc(
-              std::bind(&Master::InformRemovedMaster, master_, peer.last_known_addr())),
+              std::bind(&Master::InformRemovedMaster, master_,
+                        DesiredHostPort(peer, master_->MakeCloudInfoPB()))),
           Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
     }
   } else {
@@ -600,10 +602,9 @@ Schema SysCatalogTable::BuildTableSchema() {
 // ==================================================================
 void SysCatalogTable::InitLocalRaftPeerPB() {
   local_peer_pb_.set_permanent_uuid(master_->fs_manager()->uuid());
-  auto addr = master_->first_rpc_address();
-  HostPort hp;
-  CHECK_OK(HostPortFromEndpointReplaceWildcard(addr, &hp));
-  CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
+  ServerRegistrationPB reg;
+  CHECK_OK(master_->GetRegistration(&reg, server::RpcOnly::kTrue));
+  TakeRegistration(&reg, &local_peer_pb_);
 }
 
 Status SysCatalogTable::Visit(VisitorBase* visitor) {

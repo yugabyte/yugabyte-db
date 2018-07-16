@@ -117,6 +117,8 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   if (req->has_registration()) {
     Status s = server_->ts_manager()->RegisterTS(req->common().ts_instance(),
                                                  req->registration(),
+                                                 server_->MakeCloudInfoPB(),
+                                                 &server_->proxy_cache(),
                                                  &ts_desc);
     if (!s.ok()) {
       LOG(WARNING) << "Unable to register tablet server (" << rpc.requestor_string() << "): "

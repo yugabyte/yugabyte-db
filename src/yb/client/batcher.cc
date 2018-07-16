@@ -499,6 +499,10 @@ YBTransactionPtr Batcher::transaction() const {
   return transaction_;
 }
 
+const std::string& Batcher::proxy_uuid() const {
+  return client_->proxy_uuid();
+}
+
 void Batcher::FlushBuffer(
     RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
     const bool allow_local_calls_in_curr_thread) {

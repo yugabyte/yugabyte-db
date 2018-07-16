@@ -300,6 +300,10 @@ class PeerMessageQueue {
     propagated_safe_time_provider_ = std::move(provider);
   }
 
+  const CloudInfoPB& local_cloud_info() const {
+    return local_peer_pb_.cloud_info();
+  }
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
 

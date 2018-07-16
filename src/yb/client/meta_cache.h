@@ -120,7 +120,7 @@ class RemoteTabletServer {
 
   std::string ToString() const;
 
-  void GetHostPorts(std::vector<HostPort>* host_ports) const;
+  bool HasHostFrom(const std::unordered_set<std::string>& hosts) const;
 
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
@@ -131,7 +131,8 @@ class RemoteTabletServer {
   mutable simple_spinlock lock_;
   const std::string uuid_;
 
-  std::vector<HostPort> rpc_hostports_;
+  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_;
+  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
   yb::CloudInfoPB cloud_info_pb_;
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   scoped_refptr<Histogram> dns_resolve_histogram_;

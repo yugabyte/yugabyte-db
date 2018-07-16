@@ -39,11 +39,7 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   client_builder_.set_parent_mem_tracker(parent_mem_tracker);
 
   // Build cloud_info_pb.
-  CloudInfoPB cloud_info_pb;
-  cloud_info_pb.set_placement_cloud(opts->placement_cloud);
-  cloud_info_pb.set_placement_region(opts->placement_region);
-  cloud_info_pb.set_placement_zone(opts->placement_zone);
-  client_builder_.set_cloud_info_pb(cloud_info_pb);
+  client_builder_.set_cloud_info_pb(opts->MakeCloudInfoPB());
 
   if (!tserver_uuid.empty()) {
     client_builder_.set_tserver_uuid(tserver_uuid);

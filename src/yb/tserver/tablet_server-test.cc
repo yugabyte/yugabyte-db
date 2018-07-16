@@ -769,9 +769,9 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(server.GetRegistration(&reg), "Ignore"));
-  ASSERT_EQ(1, reg.rpc_addresses().size());
-  ASSERT_EQ("10.20.30.40", reg.rpc_addresses(0).host());
-  ASSERT_EQ(2017, reg.rpc_addresses(0).port());
+  ASSERT_EQ(1, reg.private_rpc_addresses().size());
+  ASSERT_EQ("10.20.30.40", reg.private_rpc_addresses(0).host());
+  ASSERT_EQ(2017, reg.private_rpc_addresses(0).port());
 
   reg.Clear();
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
@@ -781,7 +781,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));
-  ASSERT_EQ(2, reg.rpc_addresses().size());
+  ASSERT_EQ(2, reg.private_rpc_addresses().size());
 }
 
 // We are not checking if a row is out of bounds in YB because we are using a completely different

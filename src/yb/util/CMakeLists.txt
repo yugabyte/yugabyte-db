@@ -182,6 +182,7 @@ set(UTIL_SRCS
   net/net_util.cc
   net/sockaddr.cc
   net/socket.cc
+  net/tunnel.cc
   oid_generator.cc
   once.cc
   opid.cc

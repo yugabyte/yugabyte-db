@@ -348,7 +348,8 @@ class RpcPeerProxy : public PeerProxy {
 // PeerProxyFactory implementation that generates RPCPeerProxies
 class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
-  RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache);
+  RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache,
+                      CloudInfoPB from);
 
   PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override;
 
@@ -359,6 +360,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
  private:
   std::shared_ptr<rpc::Messenger> messenger_;
   rpc::ProxyCache* const proxy_cache_;
+  const CloudInfoPB from_;
 };
 
 // Query the consensus service at last known host/port that is specified in 'remote_peer' and set
@@ -366,6 +368,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
 Status SetPermanentUuidForRemotePeer(
     rpc::ProxyCache* proxy_cache,
     std::chrono::steady_clock::duration timeout,
+    const CloudInfoPB& from,
     RaftPeerPB* remote_peer);
 
 }  // namespace consensus

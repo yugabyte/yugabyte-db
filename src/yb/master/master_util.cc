@@ -14,12 +14,14 @@
 #include "yb/master/master_util.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master.service.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
 namespace yb {
+namespace master {
 
 using master::GetMasterRegistrationRequestPB;
 using master::GetMasterRegistrationResponsePB;
@@ -44,4 +46,30 @@ Status GetMasterEntryForHost(rpc::ProxyCache* proxy_cache,
   return Status::OK();
 }
 
+const HostPortPB& DesiredHostPort(const TSInfoPB& ts_info, const CloudInfoPB& from) {
+  return DesiredHostPort(ts_info.broadcast_addresses(), ts_info.private_rpc_addresses(),
+                         ts_info.cloud_info(), from);
+}
+
+void TakeRegistration(consensus::RaftPeerPB* source, TSInfoPB* dest) {
+  dest->mutable_private_rpc_addresses()->Swap(source->mutable_last_known_private_addr());
+  dest->mutable_broadcast_addresses()->Swap(source->mutable_last_known_broadcast_addr());
+  dest->mutable_cloud_info()->Swap(source->mutable_cloud_info());
+}
+
+void CopyRegistration(consensus::RaftPeerPB source, TSInfoPB* dest) {
+  TakeRegistration(&source, dest);
+}
+
+void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {
+  dest->mutable_private_rpc_addresses()->Swap(source->mutable_private_rpc_addresses());
+  dest->mutable_broadcast_addresses()->Swap(source->mutable_broadcast_addresses());
+  dest->mutable_cloud_info()->Swap(source->mutable_cloud_info());
+}
+
+void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest) {
+  TakeRegistration(&source, dest);
+}
+
+} // namespace master
 } // namespace yb

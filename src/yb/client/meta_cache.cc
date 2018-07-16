@@ -132,13 +132,14 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
     return Status::OK();
   }
 
-  CHECK(!rpc_hostports_.empty());
-
-  ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
-
   // TODO: if the TS advertises multiple host/ports, pick the right one
   // based on some kind of policy. For now just use the first always.
-  proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), rpc_hostports_[0]));
+  auto hostport = HostPortFromPB(DesiredHostPort(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
+      client->data_->cloud_info_pb_));
+  CHECK(!hostport.host().empty());
+  ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
+  proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
 
   return Status::OK();
 }
@@ -148,10 +149,8 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
 
   std::lock_guard<simple_spinlock> l(lock_);
 
-  rpc_hostports_.clear();
-  for (const HostPortPB& hostport_pb : pb.rpc_addresses()) {
-    rpc_hostports_.push_back(HostPort(hostport_pb.host(), hostport_pb.port()));
-  }
+  private_rpc_hostports_ = pb.private_rpc_addresses();
+  public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
 }
 
@@ -174,17 +173,31 @@ shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
 }
 
 string RemoteTabletServer::ToString() const {
-  string ret = uuid_;
+  string ret = "{ uuid: " + uuid_;
   std::lock_guard<simple_spinlock> l(lock_);
-  if (!rpc_hostports_.empty()) {
-    strings::SubstituteAndAppend(&ret, " ($0)", rpc_hostports_[0].ToString());
+  if (!private_rpc_hostports_.empty()) {
+    ret += Format(" private: $0", private_rpc_hostports_);
   }
+  if (!public_rpc_hostports_.empty()) {
+    ret += Format(" public: $0", public_rpc_hostports_);
+  }
+  ret += Format(" cloud_info: $0", cloud_info_pb_);
   return ret;
 }
 
-void RemoteTabletServer::GetHostPorts(vector<HostPort>* host_ports) const {
+bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& hosts) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  *host_ports = rpc_hostports_;
+  for (const auto& hp : private_rpc_hostports_) {
+    if (hosts.count(hp.host())) {
+      return true;
+    }
+  }
+  for (const auto& hp : public_rpc_hostports_) {
+    if (hosts.count(hp.host())) {
+      return true;
+    }
+  }
+  return false;
 }
 
 ////////////////////////////////////////////////////////////

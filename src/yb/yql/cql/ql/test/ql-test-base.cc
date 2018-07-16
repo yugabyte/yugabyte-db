@@ -17,6 +17,9 @@
 
 #include "yb/client/client.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
 namespace yb {
 namespace ql {
 
@@ -47,6 +50,7 @@ void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
   YBClientBuilder builder;
   builder.add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str());
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
+  builder.set_tserver_uuid(cluster_->mini_tablet_server(0)->server()->permanent_uuid());
   ASSERT_OK(builder.Build(&client_));
   metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));

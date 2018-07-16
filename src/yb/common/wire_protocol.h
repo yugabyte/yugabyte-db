@@ -65,6 +65,9 @@ Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 // Returns the HostPort created from the specified protobuf.
 HostPort HostPortFromPB(const HostPortPB& host_port_pb);
 
+bool HasHostPortPB(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp);
+
 // Returns an Endpoint from HostPortPB.
 CHECKED_STATUS EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint);
 
@@ -121,12 +124,27 @@ Status SchemaToColumnPBs(
   google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
   int flags = 0);
 
-// Set 'leader_hostport' to the host/port of the leader server if one
-// can be found in 'entries'.
-//
-// Returns Status::NotFound if no leader is found.
-Status FindLeaderHostPort(const google::protobuf::RepeatedPtrField<ServerEntryPB>& entries,
-                          HostPort* leader_hostport);
+YB_DEFINE_ENUM(UsePrivateIpMode, (cloud)(region)(zone)(never));
+
+// Returns mode for selecting between private and public IP.
+Result<UsePrivateIpMode> GetPrivateIpMode();
+
+// Pick host and port that should be used to connect node
+// broadcast_addresses - node public host ports
+// private_host_ports - node private host ports
+// connect_to - node placement information
+// connect_from - placement information of connect originator
+const HostPortPB& DesiredHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
+
+// Pick host and port that should be used to connect node
+// registration - node registration information
+// connect_from - placement information of connect originator
+const HostPortPB& DesiredHostPort(
+    const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
 
 //----------------------------------- CQL value encode functions ---------------------------------
 static inline void CQLEncodeLength(const int32_t length, faststring* buffer) {

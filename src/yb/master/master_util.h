@@ -25,6 +25,14 @@
 
 namespace yb {
 
+namespace consensus {
+
+class RaftPeerPB;
+
+}
+
+namespace master {
+
 // Given a hostport, return the master server information protobuf.
 // Does not apply to tablet server.
 CHECKED_STATUS GetMasterEntryForHost(
@@ -33,6 +41,15 @@ CHECKED_STATUS GetMasterEntryForHost(
     int timeout,
     ServerEntryPB* e);
 
+const HostPortPB& DesiredHostPort(const TSInfoPB& ts_info, const CloudInfoPB& from);
+
+void TakeRegistration(consensus::RaftPeerPB* source, TSInfoPB* dest);
+void CopyRegistration(consensus::RaftPeerPB source, TSInfoPB* dest);
+
+void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest);
+void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest);
+
+} // namespace master
 } // namespace yb
 
 #endif // YB_MASTER_MASTER_UTIL_H

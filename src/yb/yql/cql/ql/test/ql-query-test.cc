@@ -1503,7 +1503,7 @@ TEST_F(TestQLQuery, TestSystemLocal) {
   auto row_block = processor->row_block();
   EXPECT_EQ(1, row_block->row_count());
   QLRow& row = row_block->row(0);
-  EXPECT_EQ("127.0.0.1", row.column(2).inetaddress_value().ToString()); // broadcast address.
+  EXPECT_EQ("127.0.0.3", row.column(2).inetaddress_value().ToString()); // broadcast address.
 }
 
 TEST_F(TestQLQuery, TestSystemTablesWithRestart) {
@@ -1533,7 +1533,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   TestQLProcessor* processor = GetQLProcessor();
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-  ASSERT_EQ(num_tservers - 1, row_block->row_count());
+  ASSERT_EQ(num_tservers, row_block->row_count());
 
   auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
   NodeInstancePB instance;
@@ -1542,18 +1542,18 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
 
   // Use an invalid hostname for registration.
   master::TSRegistrationPB registration;
-  auto hostport_pb = registration.mutable_common()->add_rpc_addresses();
+  auto hostport_pb = registration.mutable_common()->add_private_rpc_addresses();
   const string invalid_host = "randomhost";
   hostport_pb->set_host(invalid_host);
   hostport_pb->set_port(123);
 
   std::shared_ptr<master::TSDescriptor> desc;
-  ASSERT_OK(ts_manager->RegisterTS(instance, registration, &desc));
+  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr, &desc));
 
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   row_block = processor->row_block();
-  ASSERT_EQ(num_tservers - 1, row_block->row_count());
+  ASSERT_EQ(num_tservers, row_block->row_count());
   for (const auto& row : row_block->rows()) {
     ASSERT_NE(invalid_host, row.column(0).inetaddress_value().ToString());
   }

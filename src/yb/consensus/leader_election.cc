@@ -35,6 +35,7 @@
 #include <mutex>
 #include <functional>
 
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
@@ -201,7 +202,6 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
 
     auto state = std::make_unique<VoterState>();
     state->proxy = proxy_factory->NewProxy(peer);
-    state->address = HostPortFromPB(peer.last_known_addr());
     CHECK(voter_state_.emplace(peer.permanent_uuid(), std::move(state)).second);
   }
 

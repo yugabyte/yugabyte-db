@@ -122,7 +122,8 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
 
       // Queue NEW_NODE event for all the live tservers.
       for (const master::TSInformationPB& ts_info : live_tservers) {
-        if (ts_info.registration().common().rpc_addresses_size() == 0) {
+        const auto& hostport_pb = DesiredHostPort(ts_info.registration().common(), CloudInfoPB());
+        if (hostport_pb.host().empty()) {
           LOG (WARNING) << "Skipping TS since it doesn't have any rpc address: "
                         << ts_info.DebugString();
           continue;
@@ -130,7 +131,6 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
 
         // Use only the first rpc address.
         InetAddress addr;
-        const yb::HostPortPB& hostport_pb = ts_info.registration().common().rpc_addresses(0);
         if (PREDICT_FALSE(!addr.FromString(hostport_pb.host()).ok())) {
           LOG(WARNING) << strings::Substitute("Couldn't parse host $0", hostport_pb.host());
           continue;

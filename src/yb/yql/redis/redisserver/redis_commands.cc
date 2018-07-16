@@ -23,6 +23,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/master/master.pb.h"
+#include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
@@ -283,14 +284,14 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
 
     for (const auto &replica : location.replicas()) {
       if (replica.role() == consensus::RaftPeerPB::LEADER) {
-        ts_info.push_back(
-            redisserver::EncodeAsBulkString(replica.ts_info().rpc_addresses(0).host()).ToBuffer());
+        auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
+        ts_info.push_back(redisserver::EncodeAsBulkString(host).ToBuffer());
 
         const auto redis_port = data.server()->opts().rpc_opts.default_port;
 
         VLOG(1) << "Start key: " << start_key
                 << ", end key: " << end_key_exclusive - 1
-                << ", node " << replica.ts_info().rpc_addresses(0).host()
+                << ", node " << host
                 << ", port " << redis_port;
 
         ts_info.push_back(redisserver::EncodeAsInteger(redis_port).ToBuffer());

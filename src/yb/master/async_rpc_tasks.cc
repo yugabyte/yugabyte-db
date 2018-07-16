@@ -14,6 +14,7 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/master/master.h"
@@ -326,9 +327,9 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &ts_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &ts_admin_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&master_->proxy_cache(), &consensus_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_admin_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&consensus_proxy));
 
   ts_proxy_.swap(ts_proxy);
   ts_admin_proxy_.swap(ts_admin_proxy);
@@ -791,14 +792,16 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   peer->set_member_type(member_type_);
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);
-  if (peer_reg.common().rpc_addresses_size() == 0) {
+
+  if (peer_reg.common().private_rpc_addresses().empty()) {
     YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
                                  << replacement_replica->permanent_uuid()
                                  << " has no registered rpc address: "
                                  << peer_reg.ShortDebugString();
     return false;
   }
-  *peer->mutable_last_known_addr() = peer_reg.common().rpc_addresses(0);
+
+  TakeRegistration(peer_reg.mutable_common(), peer);
 
   return true;
 }

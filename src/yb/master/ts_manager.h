@@ -39,6 +39,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -89,6 +90,8 @@ class TSManager {
   // If successful, *desc reset to the registered descriptor.
   CHECKED_STATUS RegisterTS(const NodeInstancePB& instance,
                             const TSRegistrationPB& registration,
+                            CloudInfoPB local_cloud_info,
+                            rpc::ProxyCache* proxy_cache,
                             TSDescSharedPtr* desc);
 
   // Return all of the currently registered TS descriptors into the provided list.
