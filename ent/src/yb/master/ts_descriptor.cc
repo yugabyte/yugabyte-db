@@ -9,12 +9,6 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
-                                      const TSRegistrationPB& registration) {
-  RETURN_NOT_OK(super::RegisterUnlocked(instance, registration));
-  return Status::OK();
-}
-
 bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const {
   const PlacementInfoPB& placement_info = replication_info.live_replicas();
   if (placement_info.has_placement_uuid()) {
