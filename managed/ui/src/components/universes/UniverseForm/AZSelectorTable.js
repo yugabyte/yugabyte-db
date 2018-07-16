@@ -4,7 +4,7 @@ import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput, YBCheckBox } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
-import { isNonEmptyArray, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from '../../../utils/UniverseUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -17,7 +17,15 @@ const nodeStates = {
 export default class AZSelectorTable extends Component {
   constructor(props) {
     super(props);
-    this.state = {azItemState: {}};
+    if (this.props.type === "Async" && isNonEmptyObject(this.props.universe.currentUniverse.data)) {
+      if (isDefinedNotNull(getReadOnlyCluster(this.props.universe.currentUniverse.data.universeDetails.clusters))) {
+        this.state = { azItemState: {}, isReadOnlyExists: true};
+      } else {
+        this.state = { azItemState: {}, isReadOnlyExists: false};
+      }
+    } else {
+      this.state = {azItemState: {}};
+    }
   }
 
   static propTypes = {
@@ -87,12 +95,10 @@ export default class AZSelectorTable extends Component {
     });
     numNodesChangedViaAzList(totalNodesInConfig);
 
-    let cluster = null;
-    if (clusterType === "primary") {
-      cluster = getPrimaryCluster(universeConfigTemplate.clusters);
-    } else {
-      cluster = getReadOnlyCluster(universeConfigTemplate.clusters);
-    }
+    const cluster = clusterType === "primary"
+                    ? getPrimaryCluster(universeConfigTemplate.clusters)
+                    : getReadOnlyCluster(universeConfigTemplate.clusters);
+    
     if ((currentProvider.code !== "onprem" || totalNodesInConfig <= maxNumNodes) &&
         totalNodesInConfig >= minNumNodes && isNonEmptyObject(cluster)) {
       const newPlacementInfo = _.clone(cluster.placementInfo, true);
@@ -270,31 +276,31 @@ export default class AZSelectorTable extends Component {
       const azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;
       this.setState({azItemState: azGroups});
     }
-    if (type === "Edit" &&  isNonEmptyObject(currentUniverse)) {
+    if ((type === "Edit" || (type === "Async" && this.state.isReadOnlyExists)) && isNonEmptyObject(currentUniverse)) {
       const azGroups = this.getGroupWithCounts(currentUniverse.data.universeDetails).groups;
       this.setState({azItemState: azGroups});
     }
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {universeConfigTemplate}} = nextProps;
+    const {universe: {universeConfigTemplate}, clusterType} = nextProps;
     if (getPromiseState(universeConfigTemplate).isSuccess()) {
       const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
       const azGroups = placementInfo.groups;
       if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)) {
         this.setState({azItemState: azGroups});
       }
-      const primaryCluster = isNonEmptyObject(universeConfigTemplate.data) ?
-        getPrimaryCluster(universeConfigTemplate.data.clusters) :
+      const currentCluster = isNonEmptyObject(universeConfigTemplate.data) ?
+        getClusterByType(universeConfigTemplate.data.clusters, clusterType) :
         null;
-      if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.placementInfo) &&
+      if (isNonEmptyObject(currentCluster) && isNonEmptyObject(currentCluster.placementInfo) &&
           !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
         if (isNonEmptyObject(uniqueAZs)) {
           const placementStatusObject = {
             numUniqueRegions: placementInfo.uniqueRegions,
             numUniqueAzs: placementInfo.uniqueAzs,
-            replicationFactor: primaryCluster.userIntent.replicationFactor
+            replicationFactor: currentCluster.userIntent.replicationFactor
           };
           this.props.setPlacementStatus(placementStatusObject);
         }
@@ -303,7 +309,7 @@ export default class AZSelectorTable extends Component {
   }
 
   render() {
-    const {universe: {universeConfigTemplate}, cloud: {regions}, clusterType} = this.props;
+    const {universe: {universeConfigTemplate}, cloud: {regions}, isReadOnly, clusterType} = this.props;
     const self = this;
     let azListForSelectedRegions = [];
 
@@ -331,27 +337,27 @@ export default class AZSelectorTable extends Component {
           <FlexGrow power={1}>
             <Row>
               <Col xs={8}>
-                <Field name={`select${idx}`} component={YBControlledSelect}
+                <Field name={`select${idx}`} isReadOnly={isReadOnly} component={YBControlledSelect}
                     options={azListOptions} selectVal={azGroupItem.value}
                     onInputChanged={self.handleAZChange.bind(self, idx)}/>
               </Col>
               <Col xs={4}>
-                <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+                <Field name={`nodes${idx}`} readOnly={isReadOnly} component={YBControlledNumericInput}
                 val={azGroupItem.count}
                 onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
               </Col>
             </Row>
           </FlexGrow>
-          <FlexShrink power={0} key={idx} className="form-right-control">
+          {!isReadOnly && <FlexShrink power={0} key={idx} className="form-right-control">
             <Field name={`affinitized${idx}`} component={YBCheckBox} checkState={azGroupItem.isAffinitized}
                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
-          </FlexShrink>
+          </FlexShrink>}
         </FlexContainer>
     ));
       return (
         <div className={"az-table-container form-field-grid"}>
           <div className="az-selector-label">
-            <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>
+            {!isReadOnly && <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>}
             <h4>Availability Zones</h4>
           </div>
           <FlexContainer>
@@ -365,9 +371,9 @@ export default class AZSelectorTable extends Component {
                 </Col>
               </Row>
             </FlexGrow>
-            <FlexShrink power={0} className="form-right-control">
+            {!isReadOnly && <FlexShrink power={0} className="form-right-control">
               <label>Preferred</label>
-            </FlexShrink>
+            </FlexShrink>}
           </FlexContainer>
           {azList}
         </div>

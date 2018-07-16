@@ -12,7 +12,7 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER,
   PERFORM_UNIVERSE_NODE_ACTION, PERFORM_UNIVERSE_NODE_ACTION_RESPONSE, FETCH_UNIVERSE_BACKUPS,
   FETCH_UNIVERSE_BACKUPS_RESPONSE, RESET_UNIVERSE_BACKUPS, GET_HEALTH_CHECK,
-  GET_HEALTH_CHECK_RESPONSE
+  GET_HEALTH_CHECK_RESPONSE, ADD_READ_REPLICA, ADD_READ_REPLICA_RESPONSE, EDIT_READ_REPLICA, EDIT_READ_REPLICA_RESPONSE, DELETE_READ_REPLICA, DELETE_READ_REPLICA_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import { getInitialState, setInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
@@ -32,6 +32,9 @@ const INITIAL_STATE = {
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
+  addReadReplica: getInitialState([]),
+  editReadReplica: getInitialState([]),
+  deleteReadReplica: getInitialState([]),
   universeTasks: getInitialState([]),
   universePerNodeStatus: getInitialState({}),
   universeMasterLeader: getInitialState({}),
@@ -63,6 +66,20 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, showModal: true, visibleModal: action.payload};
     case CLOSE_DIALOG:
       return { ...state, showModal: false, visibleModal: "", universeConfigTemplate: getInitialState({}), universeResourceTemplate: getInitialState({})};
+
+    // Read Replica Operations
+    case ADD_READ_REPLICA:
+      return setLoadingState(state, "addReadReplica", {});
+    case ADD_READ_REPLICA_RESPONSE:
+      return setPromiseResponse(state, "addReadReplica", action);
+    case EDIT_READ_REPLICA:
+      return setLoadingState(state, "editReadReplica", {});
+    case EDIT_READ_REPLICA_RESPONSE:
+      return setPromiseResponse(state, "editReadReplica", action);
+    case DELETE_READ_REPLICA:
+      return setLoadingState(state, "deleteReadReplica", {});
+    case DELETE_READ_REPLICA_RESPONSE:
+      return setPromiseResponse(state, "deleteReadReplica", action);
 
     // Universe GET operations
     case FETCH_UNIVERSE_INFO:

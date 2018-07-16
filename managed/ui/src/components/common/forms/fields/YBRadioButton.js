@@ -6,10 +6,13 @@ import {isValidObject} from '../../../../utils/ObjectUtils';
 export default class YBRadioButton extends Component {
 
   render() {
-    const { input, checkState, fieldValue, label, disabled, onClick } = this.props;
+    const { input, checkState, fieldValue, label, disabled, isReadOnly, onClick } = this.props;
     let labelClass = this.props.labelClass || 'radio-label';
     if (disabled) {
       labelClass += ' disabled';
+    }
+    if (isReadOnly) {
+      labelClass += ' readonly';
     }
     const name = this.props.name || input.name;
     const id = this.props.id || `radio_button_${name}_${fieldValue}`;
@@ -21,7 +24,7 @@ export default class YBRadioButton extends Component {
       <label htmlFor={id} className={labelClass}>
         <input {...input} type="radio"
                id={id} name={name} value={fieldValue} defaultChecked={checkState}
-               disabled={disabled} onClick={onCheckClick}
+               disabled={disabled} readOnly={isReadOnly} onClick={onCheckClick}
         />
         {label}
       </label>

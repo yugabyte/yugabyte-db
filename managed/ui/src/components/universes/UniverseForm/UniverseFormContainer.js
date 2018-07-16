@@ -12,11 +12,11 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
-         fetchUniverseTasksResponse } from '../../../actions/universe';
+         fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, deleteUniverseReadReplica, addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, deleteUniverseReadReplicaResponse } from '../../../actions/universe';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat }
   from '../../../utils/ObjectUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -45,6 +45,24 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchCustomerTasksFailure(response.payload));
         }
+      });
+    },
+
+    submitAddUniverseReadReplica: (values, universeUUID) => {
+      dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
+        dispatch(addUniverseReadReplicaResponse(response.payload));
+      });
+    },
+
+    submitEditUniverseReadReplica: (values, universeUUID) => {
+      dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
+        dispatch(editUniverseReadReplicaResponse(response.payload));
+      });
+    },
+
+    submitDeleteUniverseReadReplica: (cluster_uuid, universeUUID) => {
+      dispatch(deleteUniverseReadReplica(cluster_uuid, universeUUID)).then((response) => {
+        dispatch(deleteUniverseReadReplicaResponse(response.payload));
       });
     },
 
@@ -131,13 +149,13 @@ const formFieldNames =
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
   const data = {
+    "formType": "Create",
     "primary": {
       "universeName": "",
       "ybSoftwareVersion": "",
       "numNodes": 3,
       "isMultiAZ": true,
       "instanceType": "c4.2xlarge",
-      "formType": "create",
       "accessKeyCode": "yugabyte-default",
       "spotPrice": "0.00",
       "useSpotPrice": IN_DEVELOPMENT_MODE,
@@ -145,7 +163,9 @@ function mapStateToProps(state, ownProps) {
       "useTimeSync": false
     },
     "async": {
+      "universeName": "",
       "numNodes": 3,
+      "isMultiAZ": true,
       "spotPrice": "0.00",
       "useSpotPrice": IN_DEVELOPMENT_MODE,
       "assignPublicIP":  true,
@@ -153,13 +173,13 @@ function mapStateToProps(state, ownProps) {
     }
   };
 
-  if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
+  if (isNonEmptyObject(currentUniverse.data) && ownProps.type !== "Create") {
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
     if (isDefinedNotNull(primaryCluster)) {
       const userIntent = primaryCluster.userIntent;
       data.primary = {};
       data.primary.universeName = currentUniverse.data.name;
-      data.formType = "edit";
+      data.formType = "Edit";
       data.primary.assignPublicIP = userIntent.assignPublicIP;
       data.primary.provider = userIntent.provider;
       data.primary.numNodes = userIntent.numNodes;
@@ -183,6 +203,33 @@ function mapStateToProps(state, ownProps) {
       data.primary.tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
         return {name: key, value: userIntent.tserverGFlags[key]};
       });
+    }
+  
+    if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Async") {
+      const readOnlyCluster = getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+      data.formType = "Async";
+      if (isDefinedNotNull(readOnlyCluster)) {
+        const userIntent = readOnlyCluster.userIntent;
+        data.async = {};
+        data.async.universeName = currentUniverse.data.name;
+        data.async.assignPublicIP = userIntent.assignPublicIP;
+        data.async.provider = userIntent.provider;
+        data.async.numNodes = userIntent.numNodes;
+        data.async.replicationFactor = userIntent.replicationFactor;
+        data.async.instanceType = userIntent.instanceType;
+        data.async.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+        data.async.accessKeyCode = userIntent.accessKeyCode;
+        data.async.spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
+        data.async.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
+        data.async.diskIops = userIntent.deviceInfo.diskIops;
+        data.async.numVolumes = userIntent.deviceInfo.numVolumes;
+        data.async.volumeSize = userIntent.deviceInfo.volumeSize;
+        data.async.ebsType = userIntent.deviceInfo.ebsType;
+  
+        data.async.regionList = readOnlyCluster.regions.map((item) => {
+          return {value: item.uuid, name: item.name, label: item.name};
+        });
+      }
     }
   }
 
@@ -209,9 +256,9 @@ function mapStateToProps(state, ownProps) {
 
 const asyncValidate = (values, dispatch ) => {
   return new Promise((resolve, reject) => {
-    if (values.primary && isNonEmptyString(values.primary.universeName)) {
+    if (values.primary && isNonEmptyString(values.primary.universeName) && values.formType !== "Async" ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status !== 200 && values.formType !== "edit") {
+        if (response.payload.status !== 200 && values.formType !== "Edit") {
           reject({"primary": {"universeName": 'Universe name already exists'}});
         } else {
           resolve();

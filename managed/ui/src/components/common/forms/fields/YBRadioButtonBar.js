@@ -25,7 +25,7 @@ export default class YBRadioButtonBar extends Component {
   };
 
   render() {
-    const { input, options } = this.props;
+    const { input, options, isReadOnly } = this.props;
     const self = this;
     function radioButtonForOption(option) {
       let value, display;
@@ -43,7 +43,7 @@ export default class YBRadioButtonBar extends Component {
       }
 
       return (
-        <YBRadioButton key={value} {...input} fieldValue={value} checkState={isChecked}
+        <YBRadioButton key={value} {...input} isReadOnly={isReadOnly} fieldValue={value} checkState={isChecked}
           label={display} labelClass={getLabelClass()} onClick={self.radioButtonChecked}>
         </YBRadioButton>
       );
@@ -74,7 +74,7 @@ export class YBRadioButtonBarDefault extends Component {
   };
 
   render() {
-    const { input, options } = this.props;
+    const { input, options, isReadOnly } = this.props;
     const self = this;
     function radioButtonForOption(option) {
       let value, display;
@@ -89,7 +89,7 @@ export class YBRadioButtonBarDefault extends Component {
       const isChecked = _.isEqual(self.state.fieldValue.toString(), value.toString());
 
       return (
-        <YBRadioButton key={value} {...input} fieldValue={value} checkState={isChecked}
+        <YBRadioButton key={value} {...input} isReadOnly={isReadOnly} fieldValue={value} checkState={isChecked}
           label={display} onClick={self.radioButtonChecked}>
         </YBRadioButton>
       );
