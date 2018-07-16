@@ -40,18 +40,15 @@ namespace enterprise {
 class TSDescriptor : public yb::master::TSDescriptor {
   typedef yb::master::TSDescriptor super;
  public:
-  explicit TSDescriptor(const std::string& perm_id) : super(perm_id) {}
+  explicit TSDescriptor(std::string perm_id)
+      : super(std::move(perm_id)) {}
   virtual ~TSDescriptor() {}
 
   bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const override;
 
+ private:
   // Is the ts in a read-only placement.
   bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
-
- protected:
-  CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
-                                  const TSRegistrationPB& registration) override;
-
 };
 
 } // namespace enterprise
