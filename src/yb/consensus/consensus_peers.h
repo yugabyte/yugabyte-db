@@ -114,9 +114,9 @@ namespace consensus {
 //  SignalRequest()                    return
 //
 class Peer;
-typedef std::unique_ptr<Peer> PeerPtr;
+typedef std::shared_ptr<Peer> PeerPtr;
 
-class Peer {
+class Peer : public std::enable_shared_from_this<Peer> {
  public:
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
@@ -131,6 +131,8 @@ class Peer {
   // behavior.
   PeerProxy* GetPeerProxyForTests();
 
+  YB_STRONGLY_TYPED_BOOL(CreateReferenceToItself);
+
   // Stop sending requests and periodic heartbeats.
   //
   // This does not block waiting on any current outstanding requests to finish.
@@ -140,7 +142,7 @@ class Peer {
   // This method must be called before the Peer's associated ThreadPoolToken
   // is destructed. Once this method returns, it is safe to destruct
   // the ThreadPoolToken.
-  void Close();
+  void Close(CreateReferenceToItself create_reference_to_itself = CreateReferenceToItself::kTrue);
 
   void SetTermForTest(int term);
 
@@ -246,6 +248,9 @@ class Peer {
   mutable simple_spinlock peer_lock_;
   std::atomic<State> state_;
   Consensus* consensus_ = nullptr;
+
+  // Pointer to this object to avoid its destruction. Used to wait for pending requests.
+  std::shared_ptr<Peer> shared_this_ = nullptr;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for
