@@ -1204,9 +1204,27 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
 Status CatalogManager::CheckLocalHostInMasterAddresses() {
   auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
   auto local_hostport = master_->first_rpc_address();
+  const auto kResolveSleepInterval = 1s;
+  const auto kResolveMaxIterations = 5;
+
   for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
-    if (peer_addr.equals(local_hostport)) {
-      return Status::OK();
+    std::vector<Endpoint> addresses;
+    // Ignore resolve errors for this check.
+    int numIters = 0;
+    Status s = peer_addr.ResolveAddresses(&addresses);
+    while (!s.ok()) {
+      numIters++;
+      if (numIters > kResolveMaxIterations) {
+        return STATUS_FORMAT(ConfigurationError, "Could not resolve address of $0",
+                             peer_addr.ToString());
+      }
+      std::this_thread::sleep_for(kResolveSleepInterval);
+      s = peer_addr.ResolveAddresses(&addresses);
+    }
+    for (auto const& address : addresses) {
+      if (local_hostport == address) {
+        return Status::OK();
+      }
     }
   }
 

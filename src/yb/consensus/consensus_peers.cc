@@ -369,8 +369,7 @@ void Peer::ProcessRemoteBootstrapResponse() {
 void Peer::ProcessResponseError(const Status& status) {
   DCHECK_EQ(0, sem_.GetValue());
   failed_attempts_++;
-  LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't send request to peer " << peer_pb_.permanent_uuid()
-      << " for tablet " << tablet_id_
+  YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
       << " Already tried " << failed_attempts_ << " times. State: " << state_;
 }
