@@ -107,7 +107,8 @@ export default class MetricsPanelOverview extends Component {
 
   getGraphWidth(containerWidth) {
     const width = containerWidth - WIDTH_OFFSET+25+Math.round(16000/containerWidth);
-    const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
+    // TODO workaround before bootstrap 4
+    const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX) > 3 ? 3 : Math.ceil(width / MAX_GRAPH_WIDTH_PX);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
 
