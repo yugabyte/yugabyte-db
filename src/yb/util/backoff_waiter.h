@@ -29,7 +29,7 @@ class BackoffWaiter {
 
   bool Wait();
 
-  int attempt() const {
+  size_t attempt() const {
     return attempt_;
   }
 
@@ -39,7 +39,7 @@ class BackoffWaiter {
   }
 
  private:
-  int attempt_ = 0;
+  size_t attempt_ = 0;
   std::chrono::steady_clock::time_point deadline_;
   std::chrono::steady_clock::duration max_wait_;
 };

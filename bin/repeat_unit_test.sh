@@ -317,6 +317,9 @@ $RANDOM.$RANDOM.$RANDOM.$$
         rm -rf "$YB_SUREFIRE_REPORTS_DIR"
         popd
       else
+        if [[ $pass_or_fail == "PASSED" ]]; then
+          mv "$raw_test_log_path" "$test_log_path"
+        fi
         # Compress C++ test log.
         if [[ -f $test_log_path ]]; then
           gzip "$test_log_path"
