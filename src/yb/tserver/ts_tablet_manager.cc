@@ -818,10 +818,7 @@ Status TSTabletManager::DeleteTablet(
   scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
   tablet_peer->Shutdown();
 
-  yb::OpId last_logged_opid;
-  if (tablet_peer->log()) {
-    last_logged_opid = tablet_peer->log()->GetLatestEntryOpId();
-  }
+  yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
   Status s = DeleteTabletData(meta,
                               delete_type,
