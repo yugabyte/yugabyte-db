@@ -17,6 +17,7 @@ import java.util.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ColumnDefinitions.Definition;
 import com.datastax.driver.core.PreparedStatement;
@@ -436,6 +437,39 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
+  }
+
+  @Test
+  public void testWeakIndexBatchUpdate() throws Exception {
+    // Test batch insert into a table with secondary index.
+    session.execute("create table test_batch (k int primary key, v text);");
+    session.execute("create index test_batch_by_v on test_batch (v) " +
+                    "with transactions = {'enabled' : false, " +
+                    "'consistency_level' : 'user_enforced'};");
+
+    final int BATCH_SIZE = 20;
+    final int KEY_COUNT = 1000;
+
+    PreparedStatement statement = session.prepare("insert into test_batch (k, v) values (?, ?);");
+    int k = 0;
+    while (k < KEY_COUNT) {
+      BatchStatement batch = new BatchStatement();
+      for (int i = 0; i < BATCH_SIZE; i++) {
+        batch.add(statement.bind(Integer.valueOf(k), "v" + k));
+        k++;
+      }
+      session.execute(batch);
+    }
+
+    // Verify the rows in the index are identical to the indexed table.
+    assertEquals(queryTable("test_batch", "k, v"),
+                 queryTable("test_batch_by_v", "k, v"));
+
+    // Verify that all the rows can be read.
+    statement = session.prepare("select k from test_batch where v = ?;");
+    for (int i = 0; i < KEY_COUNT; i++) {
+      assertEquals(session.execute(statement.bind("v" + i)).one().getInt("k"), i);
+    }
   }
 
   private void assertRoutingVariables(String query,
