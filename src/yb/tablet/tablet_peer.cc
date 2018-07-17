@@ -172,6 +172,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     clock_ = clock;
     proxy_cache_ = proxy_cache;
     log_ = log;
+    // "Publish" the log pointer so it can be retrieved using the log() accessor.
+    log_atomic_ = log.get();
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
@@ -265,7 +267,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
   }
 
   TRACE("TabletPeer::Init() finished");
-  VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer Initted";
+  VLOG_WITH_PREFIX(2) << "Peer Initted";
+
   return Status::OK();
 }
 
@@ -274,7 +277,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     std::lock_guard<simple_spinlock> l(state_change_lock_);
     TRACE("Starting consensus");
 
-    VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer starting";
+    VLOG_WITH_PREFIX(2) << "Peer starting";
 
     VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
 
@@ -650,6 +653,20 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   return Status::OK();
 }
 
+log::Log* TabletPeer::log() const {
+  Log* log = log_atomic_.load(std::memory_order_acquire);
+  LOG_IF_WITH_PREFIX(FATAL, !log) << "log() called before the log instance is initialized.";
+  return log;
+}
+
+yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
+  Log* log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    return log->GetLatestEntryOpId();
+  }
+  return yb::OpId();
+}
+
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
@@ -820,6 +837,11 @@ uint64_t TabletPeer::OnDiskSize() const {
   }
 
   return ret;
+}
+
+std::string TabletPeer::LogPrefix() const {
+  return Substitute("T $0 P $1 [state=$2]: ",
+      tablet_id_, cached_permanent_uuid_, TabletStatePB_Name(state()));
 }
 
 scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {

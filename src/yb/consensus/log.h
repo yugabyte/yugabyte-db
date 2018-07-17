@@ -165,10 +165,6 @@ class Log : public RefCountedThreadSafe<Log> {
     max_segment_size_ = max_segment_size;
   }
 
-  void DisableAsyncAllocationForTests() {
-    options_.async_preallocate_segments = false;
-  }
-
   void DisableSync() {
     sync_disabled_ = true;
   }
