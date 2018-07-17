@@ -229,8 +229,11 @@ Status RemoteBootstrapSession::Init() {
                         Substitute("Unable to access superblock for tablet $0",
                                    tablet_id));
 
+  if (!tablet_peer_->log_available()) {
+    return STATUS(IllegalState, "Tablet is not running (log is uninitialized)");
+  }
   // Get the latest opid in the log at this point in time so we can re-anchor.
-  auto last_logged_opid = tablet_peer_->log()->GetLatestEntryOpId();
+  auto last_logged_opid = tablet_peer_->GetLatestLogEntryOpId();
 
   auto tablet = tablet_peer_->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {

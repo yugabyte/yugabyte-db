@@ -12,7 +12,9 @@
 
 
 set(POSTGRES_EXTRA_C_CXX_FLAGS "")
-foreach(include_dir ${Boost_INCLUDE_DIRS})
+get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+             PROPERTY INCLUDE_DIRECTORIES)
+foreach(include_dir ${yb_cmake_include_dirs})
   set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
 endforeach(include_dir)
 

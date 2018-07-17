@@ -243,11 +243,20 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Returns a non-ok status if the tablet isn't running.
   CHECKED_STATUS GetGCableDataSize(int64_t* retention_size) const;
 
-  // Return a pointer to the Log.
-  // TabletPeer keeps a reference to Log after Init().
-  log::Log* log() const {
-    return log_.get();
+  // Returns true if it is safe to retrieve the log pointer using the log() function from this
+  // tablet peer. Once the log pointer is initialized, it will stay valid for the lifetime of the
+  // TabletPeer.
+  bool log_available() const {
+    return log_atomic_.load(std::memory_order_acquire) != nullptr;
   }
+
+  // Return a pointer to the Log. TabletPeer keeps a reference to Log after Init(). This function
+  // will crash if the log has not been initialized yet.
+  log::Log* log() const;
+
+  // Returns the OpId of the latest entry in the log, or a zero OpId if the log has not been
+  // initialized.
+  yb::OpId GetLatestLogEntryOpId() const;
 
   server::Clock& clock() const override {
     return *clock_;
@@ -307,6 +316,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Caller should hold the lock_.
   uint64_t OnDiskSize() const;
 
+  std::string LogPrefix() const;
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -341,7 +352,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   OperationTracker operation_tracker_;
   OperationOrderVerifier operation_order_verifier_;
+
   scoped_refptr<log::Log> log_;
+  std::atomic<log::Log*> log_atomic_{nullptr};
+
   std::shared_ptr<TabletClass> tablet_;
   rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;

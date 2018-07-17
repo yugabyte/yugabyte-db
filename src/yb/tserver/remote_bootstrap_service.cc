@@ -150,6 +150,9 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));
+  RPC_RETURN_NOT_OK(tablet_peer->CheckRunning(),
+                    RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
+                    Substitute("Tablet is not running yet: $0", tablet_id));
 
   scoped_refptr<RemoteBootstrapSessionClass> session;
   {
