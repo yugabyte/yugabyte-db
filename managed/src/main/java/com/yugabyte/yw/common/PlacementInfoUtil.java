@@ -354,7 +354,8 @@ public class PlacementInfoUtil {
     taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
     ConfigureNodesMode mode;
-    boolean isPrimaryClusterEdit = (universe != null) && !readOnlyClusterEdit;
+    boolean isPrimaryClusterEdit = (universe != null) && !readOnlyClusterEdit &&
+                                   !readOnlyClusterCreate;
     // If no placement info, and if this is the first primary or readonly cluster create attempt,
     // choose a new placement.
     if (cluster.placementInfo == null && (!isPrimaryClusterEdit || readOnlyClusterCreate)) {
@@ -369,13 +370,16 @@ public class PlacementInfoUtil {
     // Otherwise it is a primary or readonly cluster creation phase changes.
     LOG.info("Placement={}, numNodes={}, AZ={}.", cluster.placementInfo,
              taskParams.nodeDetailsSet.size(), taskParams.userAZSelected);
-    if (isPrimaryClusterEdit && !readOnlyClusterCreate && !readOnlyClusterEdit) {
-      // If user AZ Selection is made for Edit get a new configuration from placement info
-      if (taskParams.userAZSelected) {
-        mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
-        configureNodeStates(taskParams, universe, mode, cluster);
-        return;
-      }
+
+    // If user AZ Selection is made for Edit get a new configuration from placement info
+    if (taskParams.userAZSelected) {
+      mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
+      configureNodeStates(taskParams, universe, mode, cluster);
+      return;
+    }
+
+    // For primary cluster edit only there is possiblity of leader changes.
+    if (isPrimaryClusterEdit) {
       Cluster oldCluster = universe.getUniverseDetails().getPrimaryCluster();
       verifyEditParams(oldCluster, cluster);
 
@@ -387,17 +391,18 @@ public class PlacementInfoUtil {
         taskParams.nodeDetailsSet.addAll(universe.getNodes());
       }
     } else {
-      mode = getPureExpandOrShrinkMode(readOnlyClusterEdit ? universe.getUniverseDetails(): null,
+      mode = getPureExpandOrShrinkMode(readOnlyClusterEdit ? universe.getUniverseDetails() : null,
                                        taskParams, cluster);
     }
 
     // If not a pure expand/shrink, we will pick a new set of nodes. If the provider or region list
-    // changed, we will pick a new placement (i.e full move, create universe).
-    if (!readOnlyClusterCreate && mode == ConfigureNodesMode.NEW_CONFIG) {
-      if (isProviderOrRegionChange(cluster,
+    // changed, we will pick a new placement (i.e full move, create primary/RO cluster).
+    if (mode == ConfigureNodesMode.NEW_CONFIG) {
+      if (isProviderOrRegionChange(
+              cluster,
               (isPrimaryClusterEdit || readOnlyClusterEdit) ?
-              universe.getNodes() : taskParams.nodeDetailsSet)) {
-        LOG.info("Provider or region changed, getting new placement info for full move.");
+                  universe.getNodes() : taskParams.nodeDetailsSet)) {
+        LOG.info("Provider or region changed, getting new placement info.");
         cluster.placementInfo = getPlacementInfo(cluster.userIntent);
       } else {
         LOG.info("Performing full move with existing placement info.");
