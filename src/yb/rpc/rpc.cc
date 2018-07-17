@@ -172,6 +172,11 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     controller_.Reset();
     rpc->SendRpc();
   } else {
+    // Service unavailable here means that we failed to to schedule delayed task, i.e. reactor
+    // is shutted down.
+    if (new_status.IsServiceUnavailable()) {
+      new_status = STATUS_FORMAT(Aborted, "Aborted because of $0", new_status);
+    }
     rpc->Finished(new_status);
   }
   expected_state = RpcRetrierState::kRunning;
