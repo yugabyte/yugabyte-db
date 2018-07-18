@@ -234,7 +234,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& table_id,
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   return server_->tablet_manager()->CreateNewTablet(table_id, tablet_id, partition.second, table_id,
-    table_type, schema_with_ids, partition.first, config, nullptr);
+    table_type, schema_with_ids, partition.first, boost::none /* index_info */, config, nullptr);
 }
 
 void MiniTabletServer::FailHeartbeats() {

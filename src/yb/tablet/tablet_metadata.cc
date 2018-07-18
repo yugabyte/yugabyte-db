@@ -95,6 +95,7 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                  const Schema& schema,
                                  const PartitionSchema& partition_schema,
                                  const Partition& partition,
+                                 const boost::optional<IndexInfo>& index_info,
                                  const TabletDataState& initial_tablet_data_state,
                                  scoped_refptr<TabletMetadata>* metadata,
                                  const string& data_root_dir,
@@ -140,6 +141,7 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                                        schema,
                                                        partition_schema,
                                                        partition,
+                                                       index_info,
                                                        initial_tablet_data_state));
   RETURN_NOT_OK(ret->Flush());
   metadata->swap(ret);
@@ -163,6 +165,7 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
                                     const Schema& schema,
                                     const PartitionSchema& partition_schema,
                                     const Partition& partition,
+                                    const boost::optional<IndexInfo>& index_info,
                                     const TabletDataState& initial_tablet_data_state,
                                     scoped_refptr<TabletMetadata>* metadata) {
   Status s = Load(fs_manager, tablet_id, metadata);
@@ -175,7 +178,7 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
     return Status::OK();
   } else if (s.IsNotFound()) {
     return CreateNew(fs_manager, table_id, tablet_id, table_name, table_type,
-                     schema, partition_schema, partition,
+                     schema, partition_schema, partition, index_info,
                      initial_tablet_data_state, metadata);
   } else {
     return s;
@@ -273,6 +276,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
                                const Schema& schema,
                                PartitionSchema partition_schema,
                                Partition partition,
+                               const boost::optional<IndexInfo>& index_info,
                                const TabletDataState& tablet_data_state)
     : state_(kNotWrittenYet),
       table_id_(std::move(table_id)),
@@ -284,6 +288,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
       schema_version_(0),
       table_name_(std::move(table_name)),
       table_type_(table_type),
+      index_info_(index_info),
       rocksdb_dir_(rocksdb_dir),
       wal_dir_(wal_dir),
       partition_schema_(std::move(partition_schema)),
@@ -339,6 +344,9 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     table_name_ = superblock.table_name();
     table_type_ = superblock.table_type();
     index_map_.FromPB(superblock.indexes());
+    if (superblock.has_index_info()) {
+      index_info_.emplace(superblock.index_info());
+    }
     rocksdb_dir_ = superblock.rocksdb_dir();
     wal_dir_ = superblock.wal_dir();
 
@@ -539,6 +547,9 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) con
   pb.set_table_name(table_name_);
   pb.set_table_type(table_type_);
   index_map_.ToPB(pb.mutable_indexes());
+  if (index_info_) {
+    index_info_->ToPB(pb.mutable_index_info());
+  }
   pb.set_rocksdb_dir(rocksdb_dir_);
   pb.set_wal_dir(wal_dir_);
 
@@ -597,12 +608,6 @@ string TabletMetadata::table_name() const {
   std::lock_guard<LockType> l(data_lock_);
   DCHECK_NE(state_, kNotLoadedYet);
   return table_name_;
-}
-
-TableType TabletMetadata::table_type() const {
-  std::lock_guard<LockType> l(data_lock_);
-  DCHECK_NE(state_, kNotLoadedYet);
-  return table_type_;
 }
 
 uint32_t TabletMetadata::schema_version() const {

@@ -798,7 +798,7 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   Partition partition;
   ASSERT_OK(
     mini_server_->server()->tablet_manager()->CreateNewTablet("TestWriteOutOfBoundsTable", tabletId,
-      partition, tabletId, YQL_TABLE_TYPE, schema, partition_schema,
+      partition, tabletId, YQL_TABLE_TYPE, schema, partition_schema, boost::none /* index_info */,
       mini_server_->CreateLocalConfig(), nullptr));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));

@@ -180,9 +180,11 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
  public:
   QLWriteOperation(const Schema& schema,
                    const IndexMap& index_map,
+                   const Schema* unique_index_key_schema,
                    const TransactionOperationContextOpt& txn_op_context)
       : schema_(schema),
         index_map_(index_map),
+        unique_index_key_schema_(unique_index_key_schema),
         txn_op_context_(txn_op_context)
   {}
 
@@ -252,6 +254,8 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
                                    const QLTableRow& table_row,
                                    std::unique_ptr<QLRowBlock>* rowblock);
 
+  Result<bool> DuplicateUniqueIndexValue(const DocOperationApplyData& data);
+
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch);
 
   bool IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
@@ -264,6 +268,7 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   const Schema& schema_;
   const IndexMap& index_map_;
+  const Schema* unique_index_key_schema_ = nullptr;
 
   // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a
   // static column being written.

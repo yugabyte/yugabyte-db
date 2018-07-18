@@ -328,10 +328,13 @@ message SysTablesEntryPB {
   // Secondary indexes of the table.
   repeated IndexInfoPB indexes = 12;
 
-  // For index table:
+  // For index table: [to be deprecated and replaced by "index_info"]
   optional bytes indexed_table_id = 13; // Indexed table id of this index.
   optional bool is_local_index = 14 [ default = false ]; // Whether this is a local index.
   optional bool is_unique_index = 15 [ default = false ]; // Whether this is a unique index.
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 22;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.

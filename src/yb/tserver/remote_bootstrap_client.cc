@@ -316,6 +316,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                                      schema,
                                                      partition_schema,
                                                      partition,
+                                                     superblock_->has_index_info() ?
+                                                     boost::optional<IndexInfo>(
+                                                         superblock_->index_info()) :
+                                                     boost::none,
                                                      tablet::TABLET_DATA_COPYING,
                                                      &meta_,
                                                      data_root_dir,

@@ -108,7 +108,8 @@ class TsTabletManagerTest : public YBTest {
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(
       tablet_manager_->CreateNewTablet(tablet_id, tablet_id, partition.second, tablet_id,
-        TableType::DEFAULT_TABLE_TYPE, full_schema, partition.first, config_, &tablet_peer));
+        TableType::DEFAULT_TABLE_TYPE, full_schema, partition.first, boost::none /* index_info */,
+        config_, &tablet_peer));
     if (out_tablet_peer) {
       (*out_tablet_peer) = tablet_peer;
     }

@@ -357,6 +357,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  // For index table
+  bool is_local_index() const;
+  bool is_unique_index() const;
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -1180,6 +1184,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      const bool is_copartitioned,
                                      const NamespaceId& namespace_id,
                                      const vector<Partition>& partitions,
+                                     IndexInfoPB* index_info,
                                      vector<TabletInfo*>* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table);
@@ -1214,7 +1219,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TableInfo* CreateTableInfo(const CreateTableRequestPB& req,
                              const Schema& schema,
                              const PartitionSchema& partition_schema,
-                             const NamespaceId& namespace_id);
+                             const NamespaceId& namespace_id,
+                             IndexInfoPB* index_info);
 
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
@@ -1222,12 +1228,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TabletInfo *CreateTabletInfo(TableInfo* table,
                                const PartitionPB& partition);
 
+  // Create index info.
+  CHECKED_STATUS CreateIndexInfo(const TableId& indexed_table_id,
+                                 const Schema& indexed_schema,
+                                 const Schema& index_schema,
+                                 const bool is_local,
+                                 const bool is_unique,
+                                 IndexInfoPB* index_info);
+
   // Add index info to the indexed table.
-  CHECKED_STATUS AddIndexInfoToTable(const TableId& indexed_table_id,
-                                     const TableId& index_table_id,
-                                     const Schema& index_schema,
-                                     bool is_local,
-                                     bool is_unique);
+  CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                                     const IndexInfoPB& index_info);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,

@@ -1125,7 +1125,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false, namespace_id,
-                                      partitions, &tablets, nullptr, &table));
+                                      partitions, nullptr, &tablets, nullptr, &table));
     LOG(INFO) << "Inserted new table info into CatalogManager maps: "
               << namespace_name << "." << table_name;
 
@@ -1381,59 +1381,48 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
-namespace {
-
-CHECKED_STATUS AddIndexColumn(
-    const Schema& indexed_schema,
-    const Schema& index_schema,
-    const size_t index_col_idx,
-    google::protobuf::RepeatedPtrField<IndexInfoPB::IndexColumnPB>* cols) {
-
-  const auto& col_name = index_schema.column(index_col_idx).name();
-  const auto indexed_col_idx = indexed_schema.find_column(col_name);
-  if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
-    return STATUS(NotFound, "The indexed table column does not exist", col_name);
+Status CatalogManager::CreateIndexInfo(const TableId& indexed_table_id,
+                                       const Schema& indexed_schema,
+                                       const Schema& index_schema,
+                                       const bool is_local,
+                                       const bool is_unique,
+                                       IndexInfoPB* index_info) {
+  // index_info's table_id is set in CreateTableInfo() after the table id is generated.
+  index_info->set_indexed_table_id(indexed_table_id);
+  index_info->set_version(0);
+  index_info->set_is_local(is_local);
+  index_info->set_is_unique(is_unique);
+  for (size_t i = 0; i < index_schema.num_columns(); i++) {
+    const auto& col_name = index_schema.column(i).name();
+    const auto indexed_col_idx = indexed_schema.find_column(col_name);
+    if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
+      return STATUS(NotFound, "The indexed table column does not exist", col_name);
+    }
+    auto* col = index_info->add_columns();
+    col->set_column_id(index_schema.column_id(i));
+    col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
   }
-  auto* col = cols->Add();
-  col->set_column_id(index_schema.column_id(index_col_idx));
-  col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
+  index_info->set_hash_column_count(index_schema.num_hash_key_columns());
+  index_info->set_range_column_count(index_schema.num_range_key_columns());
+
+  for (size_t i = 0; i < indexed_schema.num_hash_key_columns(); i++) {
+    index_info->add_indexed_hash_column_ids(indexed_schema.column_id(i));
+  }
+  for (size_t i = indexed_schema.num_hash_key_columns(); i < indexed_schema.num_key_columns();
+       i++) {
+    index_info->add_indexed_range_column_ids(indexed_schema.column_id(i));
+  }
+
   return Status::OK();
 }
 
-} // namespace
-
-Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
-                                           const TableId& index_table_id,
-                                           const Schema& index_schema,
-                                           const bool is_local,
-                                           const bool is_unique) {
-  // Lookup the indexed table and verify if it exists.
-  TRACE("Looking up indexed table");
-  scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
-  if (indexed_table == nullptr) {
-    return STATUS(NotFound, "The indexed table does not exist");
-  }
-
-  Schema indexed_schema;
-  RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
-
-  // Populate index info.
-  IndexInfoPB index_info;
-  index_info.set_table_id(index_table_id);
-  index_info.set_version(0);
-  index_info.set_is_local(is_local);
-  index_info.set_is_unique(is_unique);
-  for (size_t i = 0; i < index_schema.num_columns(); i++) {
-    RETURN_NOT_OK(AddIndexColumn(indexed_schema, index_schema, i, index_info.mutable_columns()));
-  }
-  index_info.set_hash_column_count(index_schema.num_hash_key_columns());
-  index_info.set_range_column_count(index_schema.num_range_key_columns());
-
+Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                                           const IndexInfoPB& index_info) {
   TRACE("Locking indexed table");
   auto l = indexed_table->LockForWrite();
 
   // Add index info to indexed table and increment schema version.
-  l->mutable_data()->pb.add_indexes()->Swap(&index_info);
+  l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
                                Substitute("Alter table version=$0 ts=$1",
@@ -1486,8 +1475,9 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
     return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
   }
 
+  // TODO: pass index_info for copartitioned index.
   RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true, namespace_id,
-                                        partitions, nullptr, resp, &this_table_info));
+                                    partitions, nullptr, nullptr, resp, &this_table_info));
 
   TRACE("Inserted new table info into CatalogManager maps");
 
@@ -1665,6 +1655,26 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
+  // For index table, populate the index info.
+  scoped_refptr<TableInfo> indexed_table;
+  Schema indexed_schema;
+  IndexInfoPB index_info;
+  if (req.has_indexed_table_id()) {
+    TRACE("Looking up indexed table");
+    indexed_table = GetTableInfo(req.indexed_table_id());
+    if (indexed_table == nullptr) {
+      return STATUS(NotFound, "The indexed table does not exist");
+    }
+    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+
+    RETURN_NOT_OK(CreateIndexInfo(req.indexed_table_id(),
+                                  indexed_schema,
+                                  schema,
+                                  req.is_local_index(),
+                                  req.is_unique_index(),
+                                  &index_info));
+  }
+
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   s = CheckValidReplicationInfo(replication_info, all_ts_descs, partitions, resp);
@@ -1687,7 +1697,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false, namespace_id,
-                                      partitions, &tablets, resp, &table));
+                                      partitions, &index_info, &tablets, resp, &table));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 
@@ -1725,8 +1735,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, insert index info in the indexed table.
   if (req.has_indexed_table_id()) {
-    s = AddIndexInfoToTable(req.indexed_table_id(), table->id(), schema, req.is_local_index(),
-                            req.is_unique_index());
+    s = AddIndexInfoToTable(indexed_table, index_info);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
                                 s.CloneAndPrepend(
@@ -1844,6 +1853,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const bool is_copartitioned,
                                            const NamespaceId& namespace_id,
                                            const std::vector<Partition>& partitions,
+                                           IndexInfoPB* index_info,
                                            std::vector<TabletInfo*>* tablets,
                                            CreateTableResponsePB* resp,
                                            scoped_refptr<TableInfo>* table) {
@@ -1853,7 +1863,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   }
 
   // Add the new table in "preparing" state.
-  table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id));
+  table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id, index_info));
   table_ids_map_[(*table)->id()] = *table;
   table_names_map_[{namespace_id, req.name()}] = *table;
 
@@ -1917,7 +1927,8 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
-                                           const NamespaceId& namespace_id) {
+                                           const NamespaceId& namespace_id,
+                                           IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
   TableInfo* table = new TableInfo(GenerateId());
   table->mutable_metadata()->StartMutation();
@@ -1938,6 +1949,8 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
     metadata->set_is_unique_index(req.is_unique_index());
+    index_info->set_table_id(table->id());
+    metadata->mutable_index_info()->CopyFrom(*index_info);
   }
   return table;
 }
@@ -5773,6 +5786,16 @@ const Status TableInfo::GetSchema(Schema* schema) const {
 const std::string TableInfo::indexed_table_id() const {
   auto l = LockForRead();
   return l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
+}
+
+bool TableInfo::is_local_index() const {
+  auto l = LockForRead();
+  return l->data().pb.is_local_index();
+}
+
+bool TableInfo::is_unique_index() const {
+  auto l = LockForRead();
+  return l->data().pb.is_unique_index();
 }
 
 TableType TableInfo::GetTableType() const {
