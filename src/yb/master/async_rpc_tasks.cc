@@ -375,6 +375,9 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_schema()->CopyFrom(table_lock->data().pb.schema());
   req_.mutable_partition_schema()->CopyFrom(table_lock->data().pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
+  if (table_lock->data().pb.has_index_info()) {
+    req_.mutable_index_info()->CopyFrom(table_lock->data().pb.index_info());
+  }
 }
 
 void AsyncCreateReplica::HandleResponse(int attempt) {

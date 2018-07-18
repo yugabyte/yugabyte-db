@@ -181,8 +181,7 @@ public class TestReturnsClause extends BaseCQLTest {
     checkReturnStatus("INSERT INTO test_rs_trans(h, r, v1, v2) VALUES (2, 2, 2, 'c')",
                       columns,
                       false /* applied */,
-                      "Duplicate value disallowed by unique index " +
-                          DEFAULT_TEST_KEYSPACE + ".test_rs_idx",
+                      "Duplicate value disallowed by unique index test_rs_idx",
                       "NULL", "NULL", "NULL", "NULL");
 
     // Ensure main table write did not get applied due to the index failure.
@@ -243,8 +242,7 @@ public class TestReturnsClause extends BaseCQLTest {
     checkReturnStatus("INSERT INTO test_rs_trans_pk(h, r, v1, v2) VALUES (2, 1, 2, 'c')",
                       columns,
                       false /* applied */,
-                      "Duplicate value disallowed by unique index " +
-                          DEFAULT_TEST_KEYSPACE + ".test_rs_pk_idx",
+                      "Duplicate value disallowed by unique index test_rs_pk_idx",
                       "NULL", "NULL", "NULL", "NULL");
 
     // Ensure main table write did not get applied due to the index failure.

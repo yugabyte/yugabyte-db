@@ -98,6 +98,7 @@ class BootstrapTest : public LogTestBase {
         schema,
         partition.first,
         partition.second,
+        boost::none /* index_info */,
         TABLET_DATA_READY,
         meta));
     return (*meta)->Flush();

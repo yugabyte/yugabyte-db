@@ -369,6 +369,14 @@ Tablet::Tablet(
     metadata_cache_.emplace(client_future_.get());
   }
 
+  // If this is a unique index tablet, set up the index primary key schema.
+  if (metadata_->is_unique_index()) {
+    unique_index_key_schema_.emplace();
+    const auto ids = metadata_->index_key_column_ids();
+    CHECK_OK(metadata_->schema().CreateProjectionByIdsIgnoreMissing(ids,
+                                                                    &*unique_index_key_schema_));
+  }
+
   // TODO(dtxn) Create coordinator only for status tablets
   if (transaction_coordinator_context) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
@@ -856,6 +864,8 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
     } else {
       auto write_op = std::make_unique<QLWriteOperation>(metadata_->schema(),
                                                          metadata_->index_map(),
+                                                         unique_index_key_schema_ ?
+                                                         &*unique_index_key_schema_ : nullptr,
                                                          *txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(req, resp));
       doc_ops.emplace_back(std::move(write_op));
@@ -870,9 +880,16 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
-    // If the QL write op returns a rowblock, move the op to the transaction state to return the
-    // rows data as a sidecar after the transaction completes.
-    if (ql_write_op->rowblock() != nullptr) {
+    if (metadata_->is_unique_index() &&
+        ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
+        ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
+      // If this is an insert into a unique index and it fails to apply, report duplicate value err.
+      ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+      ql_write_op->response()->set_error_message(
+          Format("Duplicate value disallowed by unique index $0", metadata_->table_name()));
+    } else if (ql_write_op->rowblock() != nullptr) {
+      // If the QL write op returns a rowblock, move the op to the transaction state to return the
+      // rows data as a sidecar after the transaction completes.
       doc_ops[i].release();
       data.operation_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
@@ -933,21 +950,12 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     // Check the responses of the index write ops.
     auto* response = write_op->response();
     for (const auto& pair : index_ops) {
-      const IndexInfo* index_info = pair.first;
       shared_ptr<client::YBqlWriteOp> index_op = pair.second;
       auto* index_response = index_op->mutable_response();
 
       if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
         response->set_status(index_response->status());
         response->set_error_message(std::move(index_response->error_message()));
-        break;
-      }
-
-      // For unique index, return error if the update failed due to duplicate values.
-      if (index_info->is_unique() && index_response->has_applied() && !index_response->applied()) {
-        response->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
-        response->set_error_message(Format("Duplicate value disallowed by unique index $0",
-                                           index_op->table()->name().ToString()));
         break;
       }
     }

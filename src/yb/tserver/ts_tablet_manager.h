@@ -165,6 +165,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     TableType table_type,
     const Schema &schema,
     const PartitionSchema &partition_schema,
+    const boost::optional<IndexInfo>& index_info,
     consensus::RaftConfigPB config,
     std::shared_ptr<tablet::TabletPeer> *tablet_peer);
 

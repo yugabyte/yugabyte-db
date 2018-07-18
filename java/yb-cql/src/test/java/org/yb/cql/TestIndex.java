@@ -642,8 +642,8 @@ public class TestIndex extends BaseCQLTest {
       fail("InvalidQueryException not thrown for " + query);
     } catch (InvalidQueryException e) {
       assertTrue(e.getMessage().startsWith(
-          String.format("SQL error: Execution Error. Duplicate value disallowed by unique index " +
-                        "%s.%s", DEFAULT_TEST_KEYSPACE, indexName)));
+          String.format("SQL error: Execution Error. Duplicate value disallowed by unique index %s",
+                        indexName)));
     }
   }
 
@@ -688,6 +688,36 @@ public class TestIndex extends BaseCQLTest {
 
     // Test unique constraint with updating values with the same original values.
     session.execute("update test_unique set v1 = 7, v2 = 'e', v3 = 5 where k = 7;");
+  }
+
+  @Test
+  public void testUniquePrimaryKeyIndex() throws Exception {
+    // Test unique index on a primary key column.
+    session.execute("create table test_unique_pk (h1 int, h2 int, r int, v int, " +
+                    "primary key ((h1, h2), r)) with transactions = {'enabled' : true};");
+    session.execute("create unique index test_unique_pk_by_h2 on test_unique_pk (h2);");
+    session.execute("create unique index test_unique_pk_by_r on test_unique_pk (r);");
+
+    session.execute("insert into test_unique_pk (h1, h2, r, v) values (1, 1, 1, 1);");
+
+    // Test inserting duplicate h2 and r values.
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique_pk (h1, h2, r, v) values (1, 1, 2, 2);", "test_unique_pk_by_h2");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique_pk (h1, h2, r, v) values (1, 2, 1, 2);", "test_unique_pk_by_r");
+
+    // Restart the cluster
+    miniCluster.restart();
+    setUpCqlClient();
+
+    // Test inserting duplicate h2 and r values again.
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique_pk (h1, h2, r, v) values (1, 1, 2, 2);", "test_unique_pk_by_h2");
+    assertInvalidUniqueIndexDML(
+        "insert into test_unique_pk (h1, h2, r, v) values (1, 2, 1, 2);", "test_unique_pk_by_r");
+
+    // Test inserting non-duplicate h2 and r value.
+    session.execute("insert into test_unique_pk (h1, h2, r, v) values (1, 2, 2, 2);");
   }
 
   @Test

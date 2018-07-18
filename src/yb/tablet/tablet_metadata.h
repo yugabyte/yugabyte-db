@@ -88,6 +88,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                                   const Schema& schema,
                                   const PartitionSchema& partition_schema,
                                   const Partition& partition,
+                                  const boost::optional<IndexInfo>& index_info,
                                   const TabletDataState& initial_tablet_data_state,
                                   scoped_refptr<TabletMetadata>* metadata,
                                   const std::string& data_root_dir = std::string(),
@@ -111,6 +112,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
                                      const Partition& partition,
+                                     const boost::optional<IndexInfo>& index_info,
                                      const TabletDataState& initial_tablet_data_state,
                                      scoped_refptr<TabletMetadata>* metadata);
 
@@ -124,14 +126,38 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
     return partition_;
   }
 
-  std::string table_id() const {
+  const std::string& table_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     return table_id_;
   }
 
   std::string table_name() const;
 
-  TableType table_type() const;
+  TableType table_type() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return table_type_;
+  }
+
+  const std::string& indexed_tablet_id() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    static const std::string kEmptyString = "";
+    return index_info_ ? index_info_->indexed_table_id() : kEmptyString;
+  }
+
+  bool is_local_index() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return index_info_ && index_info_->is_local();
+  }
+
+  bool is_unique_index() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return index_info_ && index_info_->is_unique();
+  }
+
+  std::vector<ColumnId> index_key_column_ids() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return index_info_ ? index_info_->index_key_column_ids() : std::vector<ColumnId>();
+  }
 
   std::string rocksdb_dir() const { return rocksdb_dir_; }
 
@@ -268,6 +294,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                  const Schema& schema,
                  PartitionSchema partition_schema,
                  Partition partition,
+                 const boost::optional<IndexInfo>& index_info,
                  const TabletDataState& tablet_data_state);
 
   // Constructor for loading an existing tablet.
@@ -334,6 +361,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   uint32_t schema_version_;
   std::string table_name_;
   TableType table_type_;
+  boost::optional<IndexInfo> index_info_;
 
   // The directory where the RocksDB data for this tablet is stored.
   std::string rocksdb_dir_;

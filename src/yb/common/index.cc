@@ -18,7 +18,10 @@
 #include "yb/common/common.pb.h"
 
 using std::vector;
+using std::unordered_map;
+using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
+using google::protobuf::uint32;
 
 namespace yb {
 
@@ -44,16 +47,28 @@ vector<IndexInfo::IndexColumn> IndexColumnFromPB(
   return cols;
 }
 
+vector<ColumnId> ColumnIdsFromPB(const RepeatedField<uint32>& ids) {
+  vector<ColumnId> column_ids;
+  column_ids.reserve(ids.size());
+  for (const auto& id : ids) {
+    column_ids.emplace_back(id);
+  }
+  return column_ids;
+}
+
 } // namespace
 
 IndexInfo::IndexInfo(const IndexInfoPB& pb)
     : table_id_(pb.table_id()),
+      indexed_table_id_(pb.indexed_table_id()),
       schema_version_(pb.version()),
       is_local_(pb.is_local()),
       is_unique_(pb.is_unique()),
       columns_(IndexColumnFromPB(pb.columns())),
       hash_column_count_(pb.hash_column_count()),
-      range_column_count_(pb.range_column_count()) {
+      range_column_count_(pb.range_column_count()),
+      indexed_hash_column_ids_(ColumnIdsFromPB(pb.indexed_hash_column_ids())),
+      indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
     covered_column_ids_.insert(index_col.indexed_column_id);
   }
@@ -61,6 +76,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
 
 void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_table_id(table_id_);
+  pb->set_indexed_table_id(indexed_table_id_);
   pb->set_version(schema_version_);
   pb->set_is_local(is_local_);
   pb->set_is_unique(is_unique_);
@@ -69,6 +85,28 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   pb->set_hash_column_count(hash_column_count_);
   pb->set_range_column_count(range_column_count_);
+  for (const auto id : indexed_hash_column_ids_) {
+    pb->add_indexed_hash_column_ids(id);
+  }
+  for (const auto id : indexed_range_column_ids_) {
+    pb->add_indexed_range_column_ids(id);
+  }
+}
+
+vector<ColumnId> IndexInfo::index_key_column_ids() const {
+  unordered_map<ColumnId, ColumnId> map;
+  for (const auto column : columns_) {
+    map[column.indexed_column_id] = column.column_id;
+  }
+  vector<ColumnId> ids;
+  ids.reserve(indexed_hash_column_ids_.size() + indexed_range_column_ids_.size());
+  for (const auto id : indexed_hash_column_ids_) {
+    ids.push_back(map[id]);
+  }
+  for (const auto id : indexed_range_column_ids_) {
+    ids.push_back(map[id]);
+  }
+  return ids;
 }
 
 bool IndexInfo::PrimaryKeyColumnsOnly(const Schema& indexed_schema) const {

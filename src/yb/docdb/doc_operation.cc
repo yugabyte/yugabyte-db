@@ -1962,6 +1962,41 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
   return Status::OK();
 }
 
+// Check if a duplicate value is inserted into a unique index.
+Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  // If it is not an insert or it is not a unique index, this is not a duplicate insert.
+  if (request_.type() != QLWriteRequestPB::QL_STMT_INSERT || unique_index_key_schema_ == nullptr) {
+    return false;
+  }
+
+  // Set up the iterator to read the current primary key associated with the index key.
+  DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id());
+  DocRowwiseIterator iterator(*unique_index_key_schema_, schema_, txn_op_context_,
+                              data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+  RETURN_NOT_OK(iterator.Init(spec));
+
+  // It is a duplicate value if the index key exist already and the associated indexed primary key
+  // is not the same.
+  if (!iterator.HasNext()) {
+    return false;
+  }
+  QLTableRow table_row;
+  RETURN_NOT_OK(iterator.NextRow(&table_row));
+  std::unordered_set<ColumnId> key_column_ids(unique_index_key_schema_->column_ids().begin(),
+                                              unique_index_key_schema_->column_ids().end());
+  for (const auto& column_value : request_.column_values()) {
+    ColumnId column_id(column_value.column_id());
+    if (key_column_ids.count(column_id) > 0) {
+      auto value = table_row.GetValue(column_id);
+      if (value && *value != column_value.expr().value()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
                                                const DocOperationApplyData& data,
                                                const DocPath& sub_path, const MonoDelta& ttl,
@@ -2159,6 +2194,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     if (request_.returns_status()) {
       RETURN_NOT_OK(PopulateStatusRow(data, /* should_apply = */ true, existing_row, &rowblock_));
     }
+  }
+
+  if (VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
+    response_->set_applied(false);
+    response_->set_status(QLResponsePB::YQL_STATUS_OK);
+    return Status::OK();
   }
 
   const MonoDelta ttl =
@@ -2405,29 +2446,6 @@ QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, 
           : request->add_range_column_values());
 }
 
-// Set primary-key condition, i.e. "h1 = xx AND h2 = xx AND r1 = xx AND r2 = xx ...", and add the
-// referenced columns.
-void SetPrimaryKeyCondition(const IndexInfo* index,
-                            const Schema& indexed_schema,
-                            const QLTableRow& new_row,
-                            QLWriteRequestPB* index_request,
-                            QLConditionPB* condition) {
-  condition->set_op(QL_OP_AND);
-  for (size_t i = 0; i < index->columns().size(); i++) {
-    const IndexInfo::IndexColumn& index_column = index->column(i);
-    if (indexed_schema.is_key_column(index_column.indexed_column_id)) {
-      auto result = new_row.GetValue(index_column.indexed_column_id);
-      if (result) {
-        QLConditionPB* column_condition = condition->add_operands()->mutable_condition();
-        column_condition->set_op(QL_OP_EQUAL);
-        column_condition->add_operands()->set_column_id(index_column.column_id);
-        *column_condition->add_operands()->mutable_value() = *result;
-        index_request->mutable_column_refs()->add_ids(index_column.column_id);
-      }
-    }
-  }
-}
-
 } // namespace
 
 QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
@@ -2436,15 +2454,6 @@ QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
   index_requests_.emplace_back(index, QLWriteRequestPB());
   QLWriteRequestPB* request = &index_requests_.back().second;
   request->set_type(type);
-  // For insert statement with unique index, add an "IF NOT EXISTS OR (primary key of the indexed
-  // table is the same)" condition to detect duplicate values.
-  if (type == QLWriteRequestPB::QL_STMT_INSERT && index->is_unique()) {
-    auto* condition = request->mutable_if_expr()->mutable_condition();
-    condition->set_op(QL_OP_OR);
-    condition->add_operands()->mutable_condition()->set_op(QL_OP_NOT_EXISTS);
-    SetPrimaryKeyCondition(index, schema_, new_row, request,
-                           condition->add_operands()->mutable_condition());
-  }
   return request;
 }
 

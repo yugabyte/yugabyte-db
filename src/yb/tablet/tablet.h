@@ -644,6 +644,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   boost::optional<client::TransactionManager> transaction_manager_;
   boost::optional<client::YBMetaDataCache> metadata_cache_;
 
+  // Created only if it is a unique index tablet.
+  boost::optional<Schema> unique_index_key_schema_;
+
   std::atomic<int64_t> last_committed_write_index_{0};
 
   // Remembers he HybridTime of the oldest write that is still not scheduled to

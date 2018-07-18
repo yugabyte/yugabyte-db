@@ -135,6 +135,9 @@ message TabletSuperBlockPB {
 
   // Secondary indexes of the table.
   repeated IndexInfoPB indexes = 21;
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 22;
 }
 
 message FilePB {

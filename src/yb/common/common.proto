@@ -216,6 +216,7 @@ message SchemaPB {
 // columns to the index table columns.
 message IndexInfoPB {
   optional bytes table_id = 1; // Index table id.
+  optional bytes indexed_table_id = 8; // Indexed table id.
   optional uint32 version = 2; // Index table's schema version.
   optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
   optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
@@ -228,6 +229,9 @@ message IndexInfoPB {
   repeated IndexColumnPB columns = 4;  // Indexed and covering columns.
   optional uint32 hash_column_count = 5;   // Number of hash columns in the index.
   optional uint32 range_column_count = 6;  // Number of range columns in the index.
+
+  repeated uint32 indexed_hash_column_ids = 9;   // Hash column ids in the indexed table.
+  repeated uint32 indexed_range_column_ids = 10; // Range column ids in the indexed table.
 }
 
 message HostPortPB {

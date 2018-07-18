@@ -266,6 +266,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     TableType::YQL_TABLE_TYPE,
     schema, partition_schema,
     partitions[0],
+    boost::none /* index_info */,
     tablet::TABLET_DATA_READY,
     &metadata));
 
