@@ -554,6 +554,16 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testClusterRestart() throws Exception {
+    // Destroy existing cluster and recreate a new one before running this test. If the existing
+    // cluster is reused without recreating it, a large number of tables may have been created and
+    // dropped by other test cases already. In such a case, when a cluster is restarted below, the
+    // tservers will take a long time replaying the DeleteTablet ops from the log before getting
+    // fully initialized and starting the CQL service, causing the subsequent setUpCqlClient() to
+    // time out.
+    destroyMiniCluster();
+    createMiniCluster();
+    setUpCqlClient();
+
     // Create test table with index.
     session.execute("create table test_cluster_restart (k int primary key, v text) " +
                     "with transactions = {'enabled' : true};");
