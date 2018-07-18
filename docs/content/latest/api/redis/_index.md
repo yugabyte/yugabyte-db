@@ -36,8 +36,8 @@ Redis-cli or any Redis applications can access YugaByte DB using the YEDIS API. 
 Command | Description |
 --------|-------------|
 [`APPEND`](append/) | Append data to end of string |
-[`AUTH`](auth/) | Not supported. Accepted without processing |
-[`CONFIG`](config/) | Not supported. Accepted without processing |
+[`AUTH`](auth/) | Authenticates a client connection to  Yugabyte YEDIS API |
+[`CONFIG`](config/) | Not fully supported. Only used to set the required password(s) for Yugabyte YEDIS API |
 [`DEL`](del/) | Delete keys from a database |
 [`ECHO`](echo/) | Output messages |
 [`EXISTS`](exists/) | Check if the keys are present |
@@ -58,6 +58,7 @@ Command | Description |
 [`HSTRLEN`](hstrlen/) | Read the length of a specified entry in a hash |
 [`HVALS`](hvals/) | Read all values in a hash |
 [`INCR`](incr/) | Increment the value by one |
+[`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a Yugabyte YEDIS API server |
 [`MGET`](mget/) | Read multiple keys |
 [`MSET`](mset/) | Write multiple key values |
 [`ROLE`](role/) | Read role of a node |

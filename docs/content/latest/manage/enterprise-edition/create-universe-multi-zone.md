@@ -162,7 +162,7 @@ It is also possible to view the metrics at a per-node level as shown below.
 
 ![YCQL Load Metrics Per Node](/images/ee/multi-zone-universe-ycql-load-metrics-per-node.png)
 
-Let us stop the load tester and run a Yedis workload.
+Let us stop the load tester and run a yedis workload.
 
 ### Run the RedisKeyValue workload
 

@@ -10,24 +10,63 @@ aliases:
   - api/redis/auth
   - api/yedis/auth
 ---
-Not yet supported. All `AUTH` requests with any password would be accepted as valid.
+`AUTH` authenticates a client connection to YugaByte YEDIS API.
 
 ## SYNOPSIS
 <b>`AUTH password`</b><br>
 This command authenticates a client connection to YugaByte DB's YEDIS API.
-<li>YugaByte DB can be setup to require a password before allowing a client to execute Redis commands. The password verification can be enforced by setting the requirepass option in server configuration file.</li>
-<li>If the given `password` matches with the server configured password, server returns the status string "OK" and begins processing commands from the authenticated client.</li>
-<li>If the given `password` does not match with the server configured password, an error is raised</li>
+
+YugaByte DB can be setup to require a password for clients to authenticate themselves. The password verification can be enforced by using the `CONFIG` command to set the intended password (See `CONFIG`).
+
+YEDIS allows for multiple passwords (up to 2) to be accepted.
+<li>If the given `password` matches with any of the server configured password(s), server returns the status string "OK" and begins processing commands from the authenticated client.</li>
+<li>If the given `password` does not match with any of the server configured password(s), an error is raised</li>
 
 ## RETURN VALUE
-Returns a status string.
+Returns a status string if the password is accepted. Returns an error if the password is rejected.
 
 ## EXAMPLES
+```{.sh .copy .separator-dollar}
+$ CONFIG SET requirepass "yugapass"
+```
+```sh
+"OK"
+```
 ```{.sh .copy .separator-dollar}
 $ AUTH "yugapass"
 ```
 ```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
+$ AUTH "bad"
+```
+```sh
+"ERR: Bad Password."
+```
+```{.sh .copy .separator-dollar}
+$ CONFIG SET requirepass "yugapassA,yugapassB"
+```
+```sh
+"OK"
+```
+```{.sh .copy .separator-dollar}
+$ AUTH "yugapassA"
+```
+```sh
+"OK"
+```
+```{.sh .copy .separator-dollar}
+$ AUTH "yugapassB"
+```
+```sh
+"OK"
+```
+```{.sh .copy .separator-dollar}
+$ AUTH "yugapassC"
+```
+```sh
+"ERR: Bad Password."
 ```
 
 ## SEE ALSO
