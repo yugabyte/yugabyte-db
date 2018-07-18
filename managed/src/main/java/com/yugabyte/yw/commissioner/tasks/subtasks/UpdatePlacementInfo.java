@@ -9,7 +9,7 @@ import java.util.UUID;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.WireProtocol;
+import org.yb.Common;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
@@ -107,7 +107,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
           for (PlacementAZ placementAz : placementRegion.azList) {
             AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
             // Create the cloud info object.
-            WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
+            Common.CloudInfoPB.Builder ccb = Common.CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
                .setPlacementRegion(region.code)
                .setPlacementZone(az.code);
@@ -135,7 +135,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
           for (PlacementAZ placementAz : placementRegion.azList) {
             AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
             // Create the cloud info object.
-            WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
+            Common.CloudInfoPB.Builder ccb = Common.CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
                .setPlacementRegion(region.code)
                .setPlacementZone(az.code);
