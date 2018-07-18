@@ -69,6 +69,11 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
       continue;
     }
 
+    // Ignore any non-directories (folder check-sum files, for example).
+    if (!VERIFY_RESULT(Env::Default()->IsDirectory(snapshot_dir))) {
+      continue;
+    }
+
     RETURN_NOT_OK(AddDirToSnapshotFiles(
         snapshot_dir, "", dir_name, tablet_superblock_.mutable_snapshot_files()));
   }
