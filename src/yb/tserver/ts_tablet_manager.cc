@@ -484,6 +484,7 @@ Status TSTabletManager::CreateNewTablet(
     TableType table_type,
     const Schema &schema,
     const PartitionSchema &partition_schema,
+    const boost::optional<IndexInfo>& index_info,
     RaftConfigPB config,
     TabletPeerPtr *tablet_peer) {
   CHECK_EQ(state(), MANAGER_RUNNING);
@@ -529,6 +530,7 @@ Status TSTabletManager::CreateNewTablet(
                                                    schema,
                                                    partition_schema,
                                                    partition,
+                                                   index_info,
                                                    TABLET_DATA_READY,
                                                    &meta,
                                                    data_root_dir,

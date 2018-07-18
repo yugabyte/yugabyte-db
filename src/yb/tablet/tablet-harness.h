@@ -118,6 +118,7 @@ class TabletHarness {
                                                schema_,
                                                partition.first,
                                                partition.second,
+                                               boost::none /* index_info */,
                                                TABLET_DATA_READY,
                                                &metadata));
     if (options_.enable_metrics) {

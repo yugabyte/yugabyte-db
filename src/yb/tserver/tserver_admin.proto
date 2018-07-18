@@ -98,6 +98,9 @@ message CreateTabletRequestPB {
 
   // Initial consensus configuration for the tablet.
   required consensus.RaftConfigPB config = 7;
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 12;
 }
 
 message CreateTabletResponsePB {

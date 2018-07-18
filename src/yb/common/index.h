@@ -46,6 +46,7 @@ class IndexInfo {
   void ToPB(IndexInfoPB* pb) const;
 
   const TableId& table_id() const { return table_id_; }
+  const TableId& indexed_table_id() const { return indexed_table_id_; }
   uint32_t schema_version() const { return schema_version_; }
   bool is_local() const { return is_local_; }
   bool is_unique() const { return is_unique_; }
@@ -56,6 +57,16 @@ class IndexInfo {
   size_t range_column_count() const { return range_column_count_; }
   size_t key_column_count() const { return hash_column_count_ + range_column_count_; }
 
+  const std::vector<ColumnId>& indexed_hash_column_ids() const {
+    return indexed_hash_column_ids_;
+  }
+  const std::vector<ColumnId>& indexed_range_column_ids() const {
+    return indexed_range_column_ids_;
+  }
+
+  // Return column ids that are primary key columns of the indexed table.
+  std::vector<ColumnId> index_key_column_ids() const;
+
   // Index primary key columns of the indexed table only?
   bool PrimaryKeyColumnsOnly(const Schema& indexed_schema) const;
 
@@ -64,12 +75,15 @@ class IndexInfo {
 
  private:
   const TableId table_id_;            // Index table id.
+  const TableId indexed_table_id_;    // Indexed table id.
   const uint32_t schema_version_ = 0; // Index table's schema version.
   const bool is_local_ = false;       // Whether this is a local index.
   const bool is_unique_ = false;      // Whether this is a unique index.
   const std::vector<IndexColumn> columns_; // Index columns.
   const size_t hash_column_count_ = 0;     // Number of hash columns in the index.
   const size_t range_column_count_ = 0;    // Number of range columns in the index.
+  const std::vector<ColumnId> indexed_hash_column_ids_;  // Hash column ids in the indexed table.
+  const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId> covered_column_ids_;
