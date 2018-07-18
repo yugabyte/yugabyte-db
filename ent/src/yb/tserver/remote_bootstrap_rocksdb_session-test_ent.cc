@@ -29,6 +29,24 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
     tx_state.set_hybrid_time(tablet()->clock()->Now());
     tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
     ASSERT_OK(tablet()->CreateSnapshot(&tx_state));
+
+    // Create extra file to check that it will not break snapshot files collecting
+    // inside RemoteBootstrapSession::InitSession().
+    const string rocksdb_dir = tablet()->metadata()->rocksdb_dir();
+    const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
+    ASSERT_TRUE(env_->FileExists(snapshot_dir));
+
+    const string extra_file = snapshot_dir + ".sha256";
+    ASSERT_FALSE(env_->FileExists(extra_file));
+    {
+      gscoped_ptr<WritableFile> writer;
+      ASSERT_OK(env_->NewWritableFile(extra_file, &writer));
+      ASSERT_OK(writer->Append(Slice("012345")));
+      ASSERT_OK(writer->Flush(WritableFile::FLUSH_SYNC));
+      ASSERT_OK(writer->Close());
+    }
+    ASSERT_TRUE(env_->FileExists(extra_file));
   }
 };
 
