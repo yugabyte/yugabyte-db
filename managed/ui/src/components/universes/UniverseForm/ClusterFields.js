@@ -14,7 +14,6 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import {getPrimaryCluster, getClusterByType, getReadOnlyCluster} from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
@@ -38,8 +37,10 @@ const initialState = {
   gflags: {},
   ebsType: 'GP2',
   accessKeyCode: 'yugabyte-default',
-  maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
-  useSpotPrice: IN_DEVELOPMENT_MODE,
+  // Maximum Number of nodes currently in use OnPrem case
+  maxNumNodes: -1,
+  // Do not use spot price anywhere, by default.
+  useSpotPrice: false,
   spotPrice: normalizeToPositiveFloat('0.00'),
   assignPublicIP: true,
   useTimeSync: false,
