@@ -37,18 +37,24 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
     if (zone.second.size() <= 1) {
       continue;
     }
-    vector<double> load;
+
+    // Map from placement uuid to tserver load vector.
+    std::map<string, vector<double>> load;
     for (const auto &ts_desc : zone.second) {
-      load.push_back(ts_desc->num_live_replicas());
+      (load[ts_desc->placement_uuid()]).push_back(ts_desc->num_live_replicas());
     }
 
-    double std_dev = yb::standard_deviation(load);
-    LOG(INFO) << "Load standard deviation is " << std_dev << " for "
-              << zone.second.size() << " tservers in placement " << zone.first;
+    for (const auto& entry : load) {
+      double std_dev = yb::standard_deviation(entry.second);
+      LOG(INFO) << "Load standard deviation is " << std_dev << " for "
+                << entry.second.size() << " tservers in placement " << zone.first
+                << " for placement uuid " << entry.first;
 
-    if (std_dev >= FLAGS_balancer_load_max_standard_deviation) {
-      return STATUS(IllegalState, Substitute("Load not balanced: deviation=$0 in $1.",
-                                             std_dev, zone.first));
+      if (std_dev >= FLAGS_balancer_load_max_standard_deviation) {
+        return STATUS(IllegalState, Substitute("Load not balanced: deviation=$0 in $1 for "
+                                               "placement uuid $2.",
+                                               std_dev, zone.first, entry.first));
+      }
     }
   }
   return Status::OK();
