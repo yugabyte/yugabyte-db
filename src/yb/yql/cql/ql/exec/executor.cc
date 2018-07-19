@@ -930,6 +930,10 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
     req->set_returns_status(true);
   }
 
+  // Set whether write op writes to the static/primary row.
+  insert_op->set_writes_static_row(tnode->ModifiesStaticRow());
+  insert_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
+
   // Apply the operation.
   return ApplyOperation(tnode, insert_op);
 }
@@ -979,6 +983,10 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   if (tnode->returns_status()) {
     req->set_returns_status(true);
   }
+
+  // Set whether write op writes to the static/primary row.
+  delete_op->set_writes_static_row(tnode->ModifiesStaticRow());
+  delete_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
   // Apply the operation.
   return ApplyOperation(tnode, delete_op);
@@ -1037,6 +1045,10 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   if (tnode->returns_status()) {
     req->set_returns_status(true);
   }
+
+  // Set whether write op writes to the static/primary row.
+  update_op->set_writes_static_row(tnode->ModifiesStaticRow());
+  update_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
   // Apply the operation.
   return ApplyOperation(tnode, update_op);
@@ -1103,8 +1115,7 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 
 void Executor::FlushAsync() {
   exec_context().inc_num_flushes();
-  batched_writes_by_primary_key_.clear();
-  batched_writes_by_hash_key_.clear();
+  write_batch_.Clear();
   if (!ql_env_->FlushAsync(&flush_async_cb_)) {
     StatementExecuted(Status::OK());
   }
@@ -1138,8 +1149,7 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
         // If the operation has been deferred continue to the next operation, but if it can be
         // applied now, apply it first.
         if (tnode_context.IsDeferred()) {
-          if (!DeferOperation(static_cast<const PTDmlStmt *>(tnode),
-              std::static_pointer_cast<YBqlWriteOp>(main_op))) {
+          if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(main_op))) {
             RETURN_STMT_NOT_OK(tnode_context.Apply(ql_env_));
           }
           found_deferred_stmts = true;
@@ -1351,7 +1361,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     }
   }
 
-  if (!req->update_index_ids().empty() && tnode->RequireTransaction()) {
+  if (!req->update_index_ids().empty() && tnode->RequiresTransaction()) {
     RETURN_NOT_OK(ql_env_->PrepareChildTransaction(req->mutable_child_transaction_data()));
   }
   return Status::OK();
@@ -1383,6 +1393,7 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
     shared_ptr<YBqlWriteOp> index_op(
         is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
+    index_op->set_writes_primary_row(true);
     QLWriteRequestPB *index_req = index_op->mutable_request();
     index_req->set_request_id(req.request_id());
     index_req->set_query_id(req.query_id());
@@ -1402,7 +1413,7 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
       }
     }
     parent.AddTnode(tnode);
-    RETURN_NOT_OK(exec_context().Apply(index_op, DeferOperation(tnode, index_op)));
+    RETURN_NOT_OK(exec_context().Apply(index_op, !write_batch_.Add(index_op)));
   }
 
   return Status::OK();
@@ -1410,33 +1421,28 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
 
 //--------------------------------------------------------------------------------------------------
 
-bool Executor::DeferOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
-  // Defer the given write operation if 2 conditions are met:
-  // 1) It fails to be added to batched_writes_ because the primary / hash key collides with that
-  //    of a prior write operation in the current write batch, and
-  // 2) It requires a read. We need to defer this latter colliding write operation that requires
-  //    a read because currently we cannot read the results of a prior write operation to the same
-  //    primary / hash key until the prior write batch has been applied in tserver. We need to defer
-  //    the operation to the next batch.
-  // If the latter write operation collides with the prior one but does not require a read, it is
-  // okay to apply in the same batch. Our semantics allows the latter write operation to overwrite
-  // the prior one.
-  const bool has_usertimestamp = op->request().has_user_timestamp_usec();
-
-  const bool defer =
-      (tnode->ReadsPrimaryRow(has_usertimestamp) && batched_writes_by_primary_key_.count(op) > 0) ||
-      (tnode->ReadsStaticRow(has_usertimestamp) && batched_writes_by_hash_key_.count(op) > 0);
-
-  if (!defer) {
-    if (tnode->ModifiesPrimaryRow()) batched_writes_by_primary_key_.insert(op);
-    if (tnode->ModifiesStaticRow()) batched_writes_by_hash_key_.insert(op);
+bool Executor::WriteBatch::Add(const YBqlWriteOpPtr& op) {
+  // Checks if the write operation reads the primary/static row and if another operation that writes
+  // the primary/static row by the same primary/hash key already exists.
+  if ((op->ReadsPrimaryRow() && ops_by_primary_key_.count(op) > 0) ||
+      (op->ReadsStaticRow() && ops_by_hash_key_.count(op) > 0)) {
+    return false;
   }
 
-  return defer;
+  if (op->WritesPrimaryRow()) { ops_by_primary_key_.insert(op); }
+  if (op->WritesStaticRow()) { ops_by_hash_key_.insert(op); }
+  return true;
 }
 
+void Executor::WriteBatch::Clear() {
+  ops_by_primary_key_.clear();
+  ops_by_hash_key_.clear();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status Executor::ApplyOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
-  RETURN_NOT_OK(exec_context().Apply(op, DeferOperation(tnode, op)));
+  RETURN_NOT_OK(exec_context().Apply(op, !write_batch_.Add(op)));
 
   return UpdateIndexes(tnode, op->mutable_request());
 }
@@ -1475,8 +1481,8 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
   return s;
 }
 
-Status Executor::ProcessOpResponse(client::YBqlOp* op,
-                                   const TreeNode* tnode,
+Status Executor::ProcessOpResponse(const PTDmlStmt* stmt,
+                                   client::YBqlOp* op,
                                    ExecContext* exec_context) {
   const QLResponsePB &resp = op->response();
   CHECK(resp.has_status()) << "QLResponsePB status missing";
@@ -1485,36 +1491,31 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op,
       return STATUS(TryAgain, resp.error_message());
     }
 
-    if (tnode->opcode() == TreeNodeOpcode::kPTInsertStmt ||
-        tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
-        tnode->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
-      const auto* stmt = static_cast<const PTDmlStmt *>(tnode);
-      if (stmt->returns_status()) {
-        // If we got an error we need to manually produce a result.
-        auto columns = std::make_shared<std::vector<ColumnSchema>>();
-        columns->emplace_back("[applied]", DataType::BOOL);
-        columns->emplace_back("[message]", DataType::STRING);
+    if (stmt->IsWriteOp() && stmt->returns_status()) {
+      // If we got an error we need to manually produce a result.
+      auto columns = std::make_shared<std::vector<ColumnSchema>>();
+      columns->emplace_back("[applied]", DataType::BOOL);
+      columns->emplace_back("[message]", DataType::STRING);
+      columns->insert(columns->end(),
+                      stmt->table()->schema().columns().begin(),
+                      stmt->table()->schema().columns().end());
 
-        columns->insert(columns->end(), stmt->table()->schema().columns().begin(),
-            stmt->table()->schema().columns().end());
+      QLRowBlock result_row_block(Schema(*columns, 0));
+      QLRow& row = result_row_block.Extend();
+      row.mutable_column(0)->set_bool_value(false);
+      row.mutable_column(1)->set_string_value(resp.error_message());
+      // Leave the rest of the columns null in this case.
 
-        QLRowBlock result_row_block(Schema(*columns, 0));
-        QLRow& row = result_row_block.Extend();
-        row.mutable_column(0)->set_bool_value(false);
-        row.mutable_column(1)->set_string_value(resp.error_message());
-        // Leave the rest of the columns null in this case.
+      faststring buffer;
+      result_row_block.Serialize(YQL_CLIENT_CQL, &buffer);
+      shared_ptr<RowsResult> result =
+          std::make_shared<RowsResult>(stmt->table()->name(), columns, buffer.ToString());
 
-        faststring buffer;
-        result_row_block.Serialize(YQL_CLIENT_CQL, &buffer);
-        shared_ptr<RowsResult> result =
-            std::make_shared<RowsResult>(stmt->table()->name(), columns, buffer.ToString());
-
-        return AppendResult(result);
-      }
+      return AppendResult(result);
     }
 
     const ErrorCode errcode = QLStatusToErrorCode(resp.status());
-    return exec_context->Error(tnode, resp.error_message().c_str(), errcode);
+    return exec_context->Error(stmt, resp.error_message().c_str(), errcode);
   }
   return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
@@ -1531,12 +1532,12 @@ Status Executor::ProcessAsyncResults(const Status& s,
     Status ss = ql_env_->GetOpError(op.get());
     if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
       // YBOperation returns not-found error when the tablet is not found.
-      const auto
-          errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
+      const auto errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
       ss = exec_context->Error(tnode, ss, errcode);
     }
     if (ss.ok()) {
-      ss = ProcessOpResponse(op.get(), tnode, exec_context);
+      DCHECK(tnode->IsDml()) << "Only DML should produce an op response";
+      ss = ProcessOpResponse(static_cast<const PTDmlStmt *>(tnode), op.get(), exec_context);
     }
     RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), ss));
   }
@@ -1623,8 +1624,7 @@ void Executor::StatementExecuted(const Status& s) {
 
 void Executor::Reset() {
   exec_contexts_.clear();
-  batched_writes_by_primary_key_.clear();
-  batched_writes_by_hash_key_.clear();
+  write_batch_.Clear();
   result_ = nullptr;
   dml_batch_table_ = nullptr;
   returns_status_batch_opt_ = boost::none;
