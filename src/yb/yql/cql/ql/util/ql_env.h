@@ -71,6 +71,7 @@ class QLEnv {
   virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
                                           client::YBTableName* indexed_table_name);
 
+  //------------------------------------------------------------------------------------------------
   // Read/write related methods.
 
   // Set the consistent read point for the read/write operations.
@@ -113,13 +114,17 @@ class QLEnv {
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
   virtual void RemoveCachedTableDesc(const TableId& table_id);
 
+  //------------------------------------------------------------------------------------------------
   // Permission related methods.
+
   // Grant Permission with the given arguments.
   virtual CHECKED_STATUS GrantPermission(const PermissionType& permission,
                                          const ResourceType& resource_type,
                                          const std::string& canonical_resource,
                                          const char* resource_name, const char* namespace_name,
                                          const std::string& role_name);
+
+  //------------------------------------------------------------------------------------------------
   // Keyspace related methods.
 
   // Create a new keyspace with the given name.
@@ -133,16 +138,12 @@ class QLEnv {
 
   virtual std::string CurrentKeyspace() const {
     return (current_call_ != nullptr) ?
-        current_cql_call()->ql_session()->current_keyspace() :
-        current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
+           current_cql_call()->ql_session()->current_keyspace() :
+           current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
   }
 
+  //------------------------------------------------------------------------------------------------
   // Role related methods.
-
-  virtual std::string CurrentRoleName() const {
-    return (current_call_ != nullptr) ?
-        current_cql_call()->ql_session()->current_role_name() : kUndefinedRoleName;
-  }
 
   // Create role with the given arguments.
   CHECKED_STATUS CreateRole(const std::string& role_name,
@@ -161,6 +162,12 @@ class QLEnv {
   CHECKED_STATUS GrantRole(const std::string& granted_role_name,
                            const std::string& recipient_role_name);
 
+  virtual std::string CurrentRoleName() const {
+    return (current_call_ != nullptr) ?
+        current_cql_call()->ql_session()->current_role_name() : kUndefinedRoleName;
+  }
+
+  //------------------------------------------------------------------------------------------------
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments.
@@ -179,6 +186,8 @@ class QLEnv {
                                     bool *cache_used);
 
   virtual void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
+
+  //------------------------------------------------------------------------------------------------
 
   // Reset all env states or variables before executing the next statement or re-executing the
   // current one.

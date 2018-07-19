@@ -60,10 +60,9 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     case 1: {
       const TreeNode::SharedPtr tnode = lnode->node_list().front();
       RETURN_NOT_OK(tnode->Analyze(sem_context));
-      if ((tnode->opcode() == TreeNodeOpcode::kPTInsertStmt ||
-           tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
-           tnode->opcode() == TreeNodeOpcode::kPTDeleteStmt) &&
-          std::static_pointer_cast<PTDmlStmt>(tnode)->RequireTransaction()) {
+      // If the statement is a DML and requires a transaction, wrap it around with START TRANSACTION
+      // and COMMIT.
+      if (tnode->IsDml() && std::static_pointer_cast<PTDmlStmt>(tnode)->RequiresTransaction()) {
         lnode->Prepend(PTStartTransaction::MakeShared(sem_context->PTreeMem(), tnode->loc_ptr()));
         lnode->Append(PTCommit::MakeShared(sem_context->PTreeMem(), tnode->loc_ptr()));
       } else {

@@ -91,6 +91,11 @@ class TreeNode : public MCBase {
   // Run semantics analysis on this node.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
+  // Is this a DML statement?
+  virtual bool IsDml() const {
+    return false;
+  }
+
   // Access functions to this node location.
   const YBLocation& loc() const {
     return *loc_;

@@ -211,6 +211,30 @@ uint16_t YBqlWriteOp::GetHashCode() const {
   return ql_write_request_->hash_code();
 }
 
+bool YBqlWriteOp::ReadsStaticRow() const {
+  // A QL write op reads the static row if it reads a static column, or it writes to the static row
+  // and has a user-defined timestamp (which DocDB requires a read-modify-write by the timestamp).
+  return !ql_write_request_->column_refs().static_ids().empty() ||
+         (writes_static_row_ && ql_write_request_->has_user_timestamp_usec());
+}
+
+bool YBqlWriteOp::ReadsPrimaryRow() const {
+  // A QL write op reads the primary row reads a non-static column, it writes to the primary row
+  // and has a user-defined timestamp (which DocDB requires a read-modify-write by the timestamp),
+  // or if there is an IF clause.
+  return !ql_write_request_->column_refs().ids().empty() ||
+         (writes_primary_row_ && ql_write_request_->has_user_timestamp_usec()) ||
+         ql_write_request_->has_if_expr();
+}
+
+bool YBqlWriteOp::WritesStaticRow() const {
+  return writes_static_row_;
+}
+
+bool YBqlWriteOp::WritesPrimaryRow() const {
+  return writes_primary_row_;
+}
+
 // YBqlWriteOp::HashHash/Equal ---------------------------------------------------------------
 size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
   size_t hash = 0;
