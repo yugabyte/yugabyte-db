@@ -19,15 +19,17 @@ const mapStateToProps = (state) => {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    createKubernetesProvider: (providerName, providerConfig, regionData, zoneData, instanceTypeData) => {
+    createKubernetesProvider: (providerName, providerConfig, regionData, zoneData, instanceTypes) => {
       dispatch(createProvider("kubernetes", providerName, providerConfig)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           const providerUUID = response.payload.data.uuid;
-          dispatch(createInstanceType("kubernetes", providerUUID, instanceTypeData)).then((response) => {
-            dispatch(createInstanceTypeResponse(response.payload));
+          instanceTypes.forEach((instanceTypeData) => {
+            console.log(instanceTypeData);
+            dispatch(createInstanceType("kubernetes", providerUUID, instanceTypeData)).then((response) => {
+              dispatch(createInstanceTypeResponse(response.payload));
+            });
           });
-
           dispatch(createRegion(providerUUID, regionData)).then((response) => {
             dispatch(createRegionResponse(response.payload));
             if (response.payload.status === 200) {
