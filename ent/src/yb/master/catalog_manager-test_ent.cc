@@ -408,6 +408,30 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
   ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
 }
 
+TEST(TestCatalogManagerEnterprise, TestLoadBalancedReadOnlySameAz) {
+  ReplicationInfoPB replication_info;
+  SetupClusterConfigEnt({"a"} /* az list */, {"a"} /* read only */,
+                        {} /* affinitized leaders */, &replication_info);
+  std::shared_ptr<TSDescriptor> ts0 = SetupTSEnt("0000", "a", "");
+  std::shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "a", "");
+  std::shared_ptr<TSDescriptor> ts2 = SetupTSEnt("2222", "a", "read_only");
+  std::shared_ptr<TSDescriptor> ts3 = SetupTSEnt("3333", "a", "read_only");
+
+  TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3};
+
+  ts0->set_num_live_replicas(6);
+  ts1->set_num_live_replicas(6);
+  ts2->set_num_live_replicas(12);
+  ts3->set_num_live_replicas(12);
+  ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+
+  ts0->set_num_live_replicas(6);
+  ts1->set_num_live_replicas(6);
+  ts2->set_num_live_replicas(8);
+  ts3->set_num_live_replicas(4);
+  ASSERT_NOK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
 } // namespace enterprise
 } // namespace master
 } // namespace yb
