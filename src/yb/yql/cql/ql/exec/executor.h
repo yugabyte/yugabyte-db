@@ -159,8 +159,8 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
 
   // Process the read/write op response.
-  CHECKED_STATUS ProcessOpResponse(client::YBqlOp* op,
-                                   const TreeNode* tnode,
+  CHECKED_STATUS ProcessOpResponse(const PTDmlStmt* stmt,
+                                   client::YBqlOp* op,
                                    ExecContext* exec_context);
 
   // Process result of FlushAsyncDone.
@@ -304,7 +304,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
-  bool DeferOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
+  bool DeferOperation(const client::YBqlWriteOpPtr& op);
   CHECKED_STATUS ApplyOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
 
   //------------------------------------------------------------------------------------------------
@@ -315,6 +315,28 @@ class Executor : public QLExprExecutor {
   ExecContext& exec_context();
 
   //------------------------------------------------------------------------------------------------
+  // Helper class to separate inter-dependent write operations.
+  class WriteBatch {
+   public:
+    // Add a write operation. Returns true if it does not depend on another operation in the batch.
+    // Returns false if it does and is not added. In that case, the operation needs to be deferred
+    // until the dependent operation has been applied.
+    bool Add(const client::YBqlWriteOpPtr& op);
+
+    // Clear the batch.
+    void Clear();
+
+   private:
+    // Sets of write operations separated by their primary and keys.
+    std::unordered_set<client::YBqlWriteOpPtr,
+                       client::YBqlWriteOp::PrimaryKeyComparator,
+                       client::YBqlWriteOp::PrimaryKeyComparator> ops_by_primary_key_;
+    std::unordered_set<client::YBqlWriteOpPtr,
+                       client::YBqlWriteOp::HashKeyComparator,
+                       client::YBqlWriteOp::HashKeyComparator> ops_by_hash_key_;
+  };
+
+  //------------------------------------------------------------------------------------------------
   // Environment (YBClient) for executing statements.
   QLEnv *ql_env_;
 
@@ -322,16 +344,8 @@ class Executor : public QLExprExecutor {
   // execution.
   std::list<ExecContext> exec_contexts_;
 
-  // Set of write operations that have been applied (separated by their primary keys).
-  std::unordered_set<client::YBqlWriteOpPtr,
-                     client::YBqlWriteOp::PrimaryKeyComparator,
-                     client::YBqlWriteOp::PrimaryKeyComparator> batched_writes_by_primary_key_;
-
-  // Set of write operations referencing a static column that have been applied (separated by their
-  // hash keys).
-  std::unordered_set<client::YBqlWriteOpPtr,
-                     client::YBqlWriteOp::HashKeyComparator,
-                     client::YBqlWriteOp::HashKeyComparator> batched_writes_by_hash_key_;
+  // Batch of outstanding write operations that are being applied.
+  WriteBatch write_batch_;
 
   // Execution result.
   ExecutedResult::SharedPtr result_;

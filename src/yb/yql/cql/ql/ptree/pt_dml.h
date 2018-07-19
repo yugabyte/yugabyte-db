@@ -203,6 +203,10 @@ class PTDmlStmt : public PTCollection {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
+  virtual bool IsDml() const override {
+    return true;
+  }
+
   // Table name.
   virtual client::YBTableName table_name() const = 0;
 
@@ -357,7 +361,7 @@ class PTDmlStmt : public PTCollection {
            opcode() == TreeNodeOpcode::kPTDeleteStmt;
   }
 
-  bool RequireTransaction() const;
+  bool RequiresTransaction() const;
 
   const MCUnorderedSet<std::shared_ptr<client::YBTable>>& pk_only_indexes() const {
     return pk_only_indexes_;
@@ -367,8 +371,7 @@ class PTDmlStmt : public PTCollection {
     return non_pk_only_indexes_;
   }
 
-  // For inter-statement dependency analysis -
-  // Does this DML modify the hash or primary key?
+  // Does this DML modify the static or primary or multiple rows?
   bool ModifiesStaticRow() const {
     return modifies_static_row_;
   }
@@ -377,20 +380,6 @@ class PTDmlStmt : public PTCollection {
   }
   bool ModifiesMultipleRows() const {
     return modifies_multiple_rows_;
-  }
-  // Does this DML read from the hash or primary key?
-  bool ReadsStaticRow(const bool has_usertimestamp) const {
-    // A DML reads from the hash key if it reads a static column, or it modifies the hash key and
-    // has a user-defined timestamp (which DocDB will require a read-modify-write by the timestamp).
-    return !static_column_refs_.empty() || (modifies_static_row_ && has_usertimestamp);
-  }
-  bool ReadsPrimaryRow(const bool has_usertimestamp) const {
-    // A DML reads from the primary key if there is a IF clause (TODO differentiate the case where
-    // the IF clause references static columns only) or otherwise reads a non-static column (e.g.
-    // counter update), or it modifies the primary key and has a user-defined timestamp (which
-    // DocDB will require a read-modify-write by the timestamp).
-    return if_clause_ != nullptr || !column_refs_.empty() ||
-        (modifies_primary_row_ && has_usertimestamp);
   }
 
   bool HasPrimaryKeysSet() const {

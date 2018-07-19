@@ -225,7 +225,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   return Status::OK();
 }
 
-bool PTDmlStmt::RequireTransaction() const {
+bool PTDmlStmt::RequiresTransaction() const {
   return IsWriteOp() && !DCHECK_NOTNULL(table_.get())->index_map().empty() &&
       table_->InternalSchema().table_properties().is_transactional();
 }

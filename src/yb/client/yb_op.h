@@ -286,6 +286,15 @@ class YBqlWriteOp : public YBqlOp {
     bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const override;
   };
 
+  // Does this operation read/write the static or primary row?
+  bool ReadsStaticRow() const;
+  bool ReadsPrimaryRow() const;
+  bool WritesStaticRow() const;
+  bool WritesPrimaryRow() const;
+
+  void set_writes_static_row(const bool value) { writes_static_row_ = value; }
+  void set_writes_primary_row(const bool value) { writes_primary_row_ = value; }
+
  protected:
   virtual Type type() const override {
     return QL_WRITE;
@@ -297,6 +306,10 @@ class YBqlWriteOp : public YBqlOp {
   static YBqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLWriteRequestPB> ql_write_request_;
+
+  // Does this operation write to the static or primary row?
+  bool writes_static_row_ = false;
+  bool writes_primary_row_ = false;
 };
 
 class YBqlReadOp : public YBqlOp {
