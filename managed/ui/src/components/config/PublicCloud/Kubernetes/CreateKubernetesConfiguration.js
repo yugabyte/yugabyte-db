@@ -37,16 +37,18 @@ class CreateKubernetesConfiguration extends Component {
       };
       const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
       const zoneData = [vals.zoneLabel.replace(" ", "-")];
-      const instanceTypeData = {
-        "instanceTypeCode": "Large",
-        "numCores": 2,
-        "memSizeGB": 10,
-        "volumeDetailsList": [{
-          "volumeSizeGB": "100",
-          "volumeType": "SSD"
-        }]
-      };
-      self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypeData);
+      // TODO: we need to have this in YW backend.
+      const instanceTypes = [
+        {"instanceTypeCode": "small", "numCores": 4, "memSizeGB": 7.5,
+          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
+        {"instanceTypeCode": "medium", "numCores": 8, "memSizeGB": 15,
+          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
+        {"instanceTypeCode": "large", "numCores": 16, "memSizeGB": 30,
+          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
+        {"instanceTypeCode": "xlarge", "numCores": 32, "memSizeGB": 60,
+          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]}
+      ];
+      self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypes);
     };
     this.props.onSubmit();
   }
