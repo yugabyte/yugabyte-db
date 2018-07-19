@@ -93,7 +93,8 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       if (!taskParams().useHostPort) {
         throw new RuntimeException(msg);
       } else {
-        // TODO(bogdan): why don't we throw here???
+        // Do not throw error as host/port is only to be used when caller knows that this peer is
+        // already dead.
         response = null;
       }
     } finally {
