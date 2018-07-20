@@ -1457,7 +1457,7 @@ public class PlacementInfoUtil {
 
   private static void addPlacementZone(UUID zone, PlacementInfo placementInfo) {
     // Get the zone, region and cloud.
-    AvailabilityZone az = AvailabilityZone.find.byId(zone);
+    AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.region;
     Provider cloud = region.provider;
     LOG.debug("provider: {}", cloud);
