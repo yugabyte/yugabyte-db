@@ -402,4 +402,14 @@ public class TestYBJedis extends BaseJedisTest {
       LOG.info("Expected exception", e);
     }
   }
+
+  @Test
+  public void testMultipleDBs() throws Exception {
+    final String secondDBName = "second";
+    createRedisTableForDB(secondDBName);
+
+    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
+    // Do a read/writes to test everything is working correctly.
+    readAndWriteFromDBs(dbs, 10);
+  }
 }
