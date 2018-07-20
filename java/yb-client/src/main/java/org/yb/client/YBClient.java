@@ -116,6 +116,14 @@ public class YBClient implements AutoCloseable {
     return cto;
   }
 
+  public void createRedisNamespace() throws Exception {
+    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
+    if (resp.hasError()) {
+      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
+                                 ". Error :" + resp.errorMessage());
+    }
+  }
+
   /**
    * Create a redis table on the cluster with the specified name and tablet count.
    * @param name Tables name
@@ -123,11 +131,7 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name, int numTablets) throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
-    if (resp.hasError()) {
-      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
-                                 ". Error :" + resp.errorMessage());
-    }
+    createRedisNamespace();
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
                        getRedisTableOptions(numTablets));
   }
@@ -138,11 +142,11 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name) throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
-    if (resp.hasError()) {
-      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
-                                 ". Error :" + resp.errorMessage());
-    }
+    createRedisNamespace();
+    return createRedisTableOnly(name);
+  }
+
+  public YBTable createRedisTableOnly(String name) throws Exception {
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
                        new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
   }

@@ -13,17 +13,14 @@
 package com.yugabyte.jedis;
 
 import com.google.common.net.HostAndPort;
-import org.apache.commons.text.RandomStringGenerator;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBDaemon;
-import redis.clients.jedis.exceptions.JedisConnectionException;
-import redis.clients.jedis.exceptions.JedisClusterMaxRedirectionsException;
-
 import java.util.*;
+import redis.clients.jedis.JedisCommands;
 
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertTrue;
@@ -31,10 +28,6 @@ import static junit.framework.TestCase.assertTrue;
 @RunWith(Parameterized.class)
 public class TestYBJedisCluster extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
-  private static final int MIN_BACKOFF_TIME_MS = 1000;
-  private static final int MAX_BACKOFF_TIME_MS = 50000;
-  private static final int MAX_RETRIES = 20;
-  private static final int KEY_LENGTH = 20;
 
   public TestYBJedisCluster(JedisClientType jedisClientType) {
     super(jedisClientType);
@@ -59,54 +52,23 @@ public class TestYBJedisCluster extends BaseJedisTest {
     List<String> masterArgs = Arrays.asList("--enable_load_balancing=false");
 
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    tserverArgs.add(Arrays.asList("--assert_local_op=true"));
-    tserverArgs.add(Arrays.asList("--assert_local_op=true"));
-    tserverArgs.add(Arrays.asList("--assert_local_op=true"));
+    // Give more memory to support 2 databases.
+    final long MEMORY_LIMIT = 2 * 1024 * 1024 * 1024l;
+    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
+    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
+    tserverArgs.add(Arrays.asList("--assert_local_op=true",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
     createMiniCluster(3, masterArgs, tserverArgs);
 
     setUpJedis();
+    final String secondDBName = "1";
+    createRedisTableForDB(secondDBName);
 
-    RandomStringGenerator generator = new RandomStringGenerator.Builder()
-        .withinRange('a', 'z').build();
-
-    for (int i = 0; i < 1000; i++) {
-      String s = generator.generate(KEY_LENGTH);
-      assertEquals("OK", jedis_client.set(s, "v"));
-      assertEquals("v", jedis_client.get(s));
-    }
-  }
-
-  private void doWritesAndVerify(int nIterations) throws Exception {
-    RandomStringGenerator generator = new RandomStringGenerator.Builder()
-        .withinRange('a', 'z').build();
-
-    for (int i = 0; i < nIterations; i++) {
-      String s = generator.generate(KEY_LENGTH);
-      int retriesLeft = MAX_RETRIES;
-      int sleepTime = MIN_BACKOFF_TIME_MS;
-      while (retriesLeft > 0) {
-        try {
-          LOG.debug("Writing key {}", s);
-          assertEquals("OK", jedis_client.set(s, "v"));
-          LOG.debug("Reading key {}", s);
-          assertEquals("v", jedis_client.get(s));
-          break;
-        } catch (JedisConnectionException e) {
-          LOG.info("JedisConnectionException exception " + e.toString());
-        } catch (JedisClusterMaxRedirectionsException e) {
-          LOG.info("JedisClusterMaxRedirectionsException exception " + e.toString());
-        }
-        --retriesLeft;
-        Thread.sleep(sleepTime);
-        sleepTime = Math.min(sleepTime * 2, MAX_BACKOFF_TIME_MS);
-      }
-      if (retriesLeft < 1) {
-        assertTrue("Exceeded maximum number of retries", false);
-      }
-      if (retriesLeft < MAX_RETRIES) {
-        LOG.info("Operation on key {} took {} retries", s, MAX_RETRIES - retriesLeft);
-      }
-    }
+    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
+    // Do a few writes to test everything is working correctly.
+    readAndWriteFromDBs(dbs, 1000);
   }
 
   @Test
@@ -114,9 +76,14 @@ public class TestYBJedisCluster extends BaseJedisTest {
     destroyMiniCluster();
 
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false"));
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false"));
-    tserverArgs.add(Arrays.asList("--forward_redis_requests=false"));
+    // Give more memory to support 2 databases.
+    final long MEMORY_LIMIT = 2 * 1024 * 1024 * 1024l;
+    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
+    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
+    tserverArgs.add(Arrays.asList("--forward_redis_requests=false",
+                                  "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
     createMiniCluster(3, masterArgs, tserverArgs);
 
     waitForTServersAtMasterLeader();
@@ -124,17 +91,22 @@ public class TestYBJedisCluster extends BaseJedisTest {
     LOG.info("Created cluster");
 
     setUpJedis();
+    final String secondDBName = "1";
+    createRedisTableForDB(secondDBName);
 
+    Collection dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
     // Do a few writes to test everything is working correctly.
-    doWritesAndVerify(100);
+    readAndWriteFromDBs(dbs, 100);
 
     // Add a node and verify our commands succeed.
     LOG.info("Adding a new node ");
-    miniCluster.startTServer(Arrays.asList("--forward_redis_requests=false"));
+    miniCluster.startTServer(
+        Arrays.asList("--forward_redis_requests=false",
+                      "--memory_limit_hard_bytes=" + MEMORY_LIMIT));
 
     // Test that everything works correctly after adding a node. The load balancer will assign
     // tablets to the new node.
-    doWritesAndVerify(5000);
+    readAndWriteFromDBs(dbs, 5000);
 
     Map<HostAndPort, MiniYBDaemon> tabletServers = miniCluster.getTabletServers();
 
@@ -149,6 +121,6 @@ public class TestYBJedisCluster extends BaseJedisTest {
     // Verify that we can continue writing to the cluster after the node has been removed. Even if
     // we receive stale placement information, we should eventually get the new configuration and
     // finish all the operations without a failure.
-    doWritesAndVerify(5000);
+    readAndWriteFromDBs(dbs, 5000);
   }
 }
