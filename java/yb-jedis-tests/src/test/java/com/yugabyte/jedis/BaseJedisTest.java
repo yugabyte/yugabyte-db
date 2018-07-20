@@ -12,6 +12,7 @@
 //
 package com.yugabyte.jedis;
 
+import org.apache.commons.text.RandomStringGenerator;
 import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -24,28 +25,43 @@ import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.JedisCommands;
+import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.YBJedis;
+import redis.clients.jedis.exceptions.JedisConnectionException;
+import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.jedis.exceptions.JedisMovedDataException;
+import redis.clients.jedis.exceptions.JedisClusterMaxRedirectionsException;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import static junit.framework.TestCase.assertEquals;
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.fail;
 
 public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
   protected enum JedisClientType { JEDIS, JEDISCLUSTER, YBJEDIS };
 
+  protected static final String DEFAULT_DB_NAME = "0";
   protected static final int JEDIS_SOCKET_TIMEOUT_MS = 10000;
+  private static final int MIN_BACKOFF_TIME_MS = 1000;
+  private static final int MAX_BACKOFF_TIME_MS = 50000;
+  private static final int MAX_RETRIES = 20;
+  private static final int KEY_LENGTH = 20;
   protected JedisClientType jedisClientType;
   protected JedisCommands jedis_client;
+  protected JedisCommands jedis_client_1;
   private static final Logger LOG = LoggerFactory.getLogger(BaseJedisTest.class);
 
   class TSValuePairs {
@@ -165,47 +181,133 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
     private Random random;
   }
 
+  protected void createRedisTableForDB(String db) throws Exception {
+    String tableName = YBClient.REDIS_DEFAULT_TABLE_NAME +
+                          (db.equals(DEFAULT_DB_NAME) ? "" : "_" + db);
+    // Create the redis table.
+    miniCluster.getClient().createRedisTableOnly(tableName);
+
+    GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
+        YBClient.REDIS_KEYSPACE_NAME, tableName);
+
+    assertEquals(HashSchema.REDIS_HASH_SCHEMA, tableSchema.getPartitionSchema().getHashSchema());
+  }
 
   @Before
   public void setUpJedis() throws Exception {
     // Wait for all tserver heartbeats.
     waitForTServersAtMasterLeader();
 
-    // Create the redis table.
-    miniCluster.getClient().createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME);
+    miniCluster.getClient().createRedisNamespace();
 
-    GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
-        YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME);
+    createRedisTableForDB(DEFAULT_DB_NAME);
 
-    assertEquals(HashSchema.REDIS_HASH_SCHEMA, tableSchema.getPartitionSchema().getHashSchema());
-
-    // Setup the Jedis client.
-    List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
-    assertEquals(NUM_TABLET_SERVERS, redisContactPoints.size());
-
-    switch (jedisClientType) {
-      case JEDIS:
-        LOG.info("Connecting to: " + redisContactPoints.get(0).toString());
-        jedis_client = new Jedis(redisContactPoints.get(0).getHostName(),
-            redisContactPoints.get(0).getPort(), JEDIS_SOCKET_TIMEOUT_MS);
-        break;
-      case JEDISCLUSTER:
-        LOG.info("Connecting to: " + redisContactPoints.get(0).toString() + " using JedisCluster");
-        jedis_client = new JedisCluster(new HostAndPort(redisContactPoints.get(0).getHostName(),
-            redisContactPoints.get(0).getPort()), JEDIS_SOCKET_TIMEOUT_MS, 100);
-        break;
-      case YBJEDIS:
-        LOG.info("Connecting to: " + redisContactPoints.stream().map(InetSocketAddress::toString)
-            .collect(Collectors.joining(",")));
-        Set<HostAndPort> contactPoints = redisContactPoints.stream().map(inet ->
-            new HostAndPort(inet.getHostName(), inet.getPort())).collect(Collectors.toSet());
-        jedis_client = new YBJedis(contactPoints, JEDIS_SOCKET_TIMEOUT_MS);
-        break;
-    }
+    jedis_client = getClientForDB(DEFAULT_DB_NAME);
   }
 
   public BaseJedisTest(JedisClientType jedisClientType) {
     this.jedisClientType = jedisClientType;
+  }
+
+  protected JedisCommands getClientForDB(String db) {
+    // Setup the Jedis client.
+    List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
+    assertTrue(redisContactPoints.size() > 0);
+
+    switch (jedisClientType) {
+      case JEDIS:
+        Jedis jedis_client  = new Jedis(redisContactPoints.get(0).getHostName(),
+            redisContactPoints.get(0).getPort(), JEDIS_SOCKET_TIMEOUT_MS);
+        jedis_client.select(db);
+        return jedis_client;
+      case JEDISCLUSTER:
+        return new JedisCluster(new HostAndPort(redisContactPoints.get(0).getHostName(),
+            redisContactPoints.get(0).getPort()), JEDIS_SOCKET_TIMEOUT_MS, JEDIS_SOCKET_TIMEOUT_MS,
+            /* maxAttempts */ 100, /* password */ null, db, new JedisPoolConfig());
+      case YBJEDIS:
+        Set<HostAndPort> contactPoints = redisContactPoints.stream().map(inet ->
+            new HostAndPort(inet.getHostName(), inet.getPort())).collect(Collectors.toSet());
+        return new YBJedis(contactPoints, JEDIS_SOCKET_TIMEOUT_MS, db);
+    }
+    return null;
+  }
+
+  protected int doWithRetries(int maxRetries,
+                              int backoffTimeMin,
+                              int backoffTimeMax,
+                              Callable c) throws Exception {
+    int numRetries = 1;
+    int sleepTime = backoffTimeMin;
+    while (numRetries <= maxRetries) {
+      try {
+        c.call();
+        break;
+      } catch (JedisMovedDataException e) {
+        LOG.debug("JedisMovedDataException exception " + e.toString());
+      } catch (JedisConnectionException e) {
+        LOG.info("JedisConnectionException exception " + e.toString());
+      } catch (JedisClusterMaxRedirectionsException e) {
+        LOG.info("JedisClusterMaxRedirectionsException exception " + e.toString());
+      } catch (JedisDataException e) {
+        LOG.info("JedisDataException exception " + e.toString());
+      }
+        ++numRetries;
+        Thread.sleep(sleepTime);
+      sleepTime = Math.min(sleepTime * 2, backoffTimeMax);
+    }
+    return numRetries;
+  }
+
+  protected void readAndWriteFromDBs(Collection<String> dbs, int numKeys) throws Exception {
+    RandomStringGenerator generator = new RandomStringGenerator.Builder()
+        .withinRange('a', 'z').build();
+    ArrayList<String> keys = new ArrayList<String>(numKeys);
+    for (int i = 0; i < numKeys; i++) {
+      keys.add(generator.generate(KEY_LENGTH));
+    }
+
+    LOG.info("Writing and reading " + numKeys + " keys.");
+    for (String db : dbs) {
+      JedisCommands client = getClientForDB(db);
+      LOG.info("Writing to db " + db);
+      for (String key : keys) {
+        int retries =
+            doWithRetries(MAX_RETRIES, MIN_BACKOFF_TIME_MS, MAX_BACKOFF_TIME_MS,
+                          new Callable<Void>() {
+                            public Void call() throws Exception {
+                              assertEquals("OK", client.set(key, "v"));
+                              return null;
+                            }
+                          });
+        if (retries > MAX_RETRIES) {
+          fail("Exceeded maximum number of retries");
+        }
+        if (retries > 1 && retries <= MAX_RETRIES) {
+          LOG.info("Set Operation on key {} took {} retries", key, retries);
+        }
+      }
+    }
+    for (String db : dbs) {
+      JedisCommands client = getClientForDB(db);
+      LOG.info("Reading from db " + db);
+      for (String key : keys) {
+        int retries = doWithRetries(MAX_RETRIES, MIN_BACKOFF_TIME_MS,
+                                    MAX_BACKOFF_TIME_MS, new Callable<Void>() {
+                                      public Void call() throws Exception {
+                                        assertEquals("v", client.get(key));
+                                        return null;
+                                      }
+                                    });
+        if (retries > MAX_RETRIES) {
+          fail("Exceeded maximum number of retries");
+        }
+        if (retries > 1 && retries <= MAX_RETRIES) {
+          LOG.info("Get Operation on key {} took {} retries", key, retries);
+        }
+      }
+    }
+    LOG.info("Done writing and reading " + numKeys + " key/values to " +
+             dbs.size() + " databases.");
   }
 
   @After
