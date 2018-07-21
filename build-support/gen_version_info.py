@@ -52,6 +52,29 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python
 from yb.common_util import get_yb_src_root_from_build_root  # noqa
 
 
+def is_git_repo_clean(git_repo_dir):
+    return subprocess.call(
+        "cd {} && git diff --quiet && git diff --cached --quiet".format(
+            pipes.quote(git_repo_dir)),
+        shell=True) == 0
+
+
+def boolean_to_json_str(bool_flag):
+    return str(bool_flag).lower()
+
+
+def get_git_sha1(git_repo_dir):
+    try:
+        sha1 = subprocess.check_output(
+            'cd {} && git rev-parse HEAD'.format(pipes.quote(git_repo_dir)), shell=True).strip()
+        if re.match(r'^[0-9a-f]{40}$', sha1):
+            return sha1
+        logging.warning("Invalid git SHA1 in directory '%s': %s", git_repo_dir, sha1)
+
+    except Exception, e:
+        logging.warning("Failed to get git SHA1 in directory: %s", git_repo_dir)
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -69,33 +92,18 @@ def main():
     build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
     username = os.getenv("USER")
 
+    git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False, verbose=True)
+    clean_repo = bool(git_repo_dir) and is_git_repo_clean(git_repo_dir)
+
     if args.git_hash:
         # Git hash provided on the command line.
         git_hash = args.git_hash
-        clean_repo = "true"
+    elif 'YB_VERSION_INFO_GIT_SHA1' in os.environ:
+        git_hash = os.environ['YB_VERSION_INFO_GIT_SHA1']
+        logging.info("Git SHA1 provided using the YB_VERSION_INFO_GIT_SHA1 env var: %s", git_hash)
     else:
         # No command line git hash, find it in the local git repository.
-
-        # Handle the "external build" directory case, in which the code is located in e.g.
-        # ~/code/yugabyte, and the build directories are inside ~/code/yugabyte__build.
-        current_dir = os.getcwd()
-        git_repo_dir = get_yb_src_root_from_build_root(current_dir, verbose=True)
-
-        try:
-            git_work_dir_quoted = pipes.quote(git_repo_dir)
-            git_hash = subprocess.check_output('cd {} && git rev-parse HEAD'.format(
-                git_work_dir_quoted), shell=True).strip()
-            clean_repo = subprocess.call(
-                "cd {} && git diff --quiet && git diff --cached --quiet".format(
-                    git_work_dir_quoted),
-                shell=True) == 0
-            clean_repo = str(clean_repo).lower()
-        except Exception, e:
-            # If the git commands failed, we're probably building outside of a git repository.
-            logging.info("Build appears to be outside of a git repository... " +
-                         "continuing without repository information.")
-            git_hash = "non-git-build"
-            clean_repo = "true"
+        git_hash = get_git_sha1(git_repo_dir)
 
     path_to_version_file = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "..", "version.txt")
@@ -125,7 +133,8 @@ def main():
             "build_hostname": hostname,
             "build_timestamp": build_time,
             "build_username": username,
-            "build_clean_repo": clean_repo,
+            # In version_info.cc we expect build_clean_repo to be a "true"/"false" string.
+            "build_clean_repo": boolean_to_json_str(clean_repo),
             "build_id": build_id,
             "build_type": build_type,
             "version_number": version_number,
