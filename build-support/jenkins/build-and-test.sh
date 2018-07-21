@@ -381,7 +381,8 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
   if ! git diff-index --quiet HEAD --; then
     fatal "Uncommitted changes found in '$YB_SRC_ROOT', cannot proceed."
   fi
-  git_original_commit=$( git rev-parse --abbrev-ref HEAD )
+  get_current_git_sha1
+  git_original_commit=$current_git_sha1
 
   # Set up a separate directory that is one commit behind and launch a C++ build there in parallel
   # with the main C++ build.
@@ -475,7 +476,9 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   fi
   pushd "$YB_SRC_ROOT/java"
 
-  ( set -x; mvn clean )
+  # build_yb_java_code will provide some common options for Maven. This includes local Maven
+  # repository location and the local Maven settings file.
+  ( set -x; build_yb_java_code clean )
 
   if is_jenkins; then
     # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
@@ -486,6 +489,11 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
     yb_new_group_id=org.yb$random_id
     find . -name "pom.xml" \
            -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
+
+    # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
+    # being built, not our temporary commit to update pom.xml files.
+    get_current_git_sha1
+    export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
 
     commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
     commit_msg+="during testing"

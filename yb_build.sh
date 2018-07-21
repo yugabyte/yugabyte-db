@@ -1114,21 +1114,21 @@ if "$build_java"; then
   set_sanitizer_runtime_options
 
   cd "$YB_SRC_ROOT"/java
-  build_opts=( install )
+  java_build_opts=( install )
   if ! "$java_with_assembly"; then
-    build_opts+=( -DskipAssembly )
+    java_build_opts+=( -DskipAssembly )
   fi
   if "$run_java_tests"; then
-    build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
+    java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
   else
-    build_opts+=( -DskipTests )
+    java_build_opts+=( -DskipTests )
   fi
   java_build_start_time_sec=$(date +%s)
-  time ( build_yb_java_code $mvn_opts ${build_opts[@]} )
+  time ( build_yb_java_code $mvn_opts ${java_build_opts[@]} )
 
   if [[ $YB_EDITION == "enterprise" ]]; then
     cd "$YB_SRC_ROOT"/ent/java
-    time ( build_yb_java_code $mvn_opts ${build_opts[@]} )
+    time ( build_yb_java_code $mvn_opts ${java_build_opts[@]} )
   fi
 
   java_build_end_time_sec=$(date +%s)
