@@ -901,6 +901,7 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 
 	tm_round(tm, fmt, &redotz);
+	fsec = 0;
 
 	if (redotz)
 		tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
