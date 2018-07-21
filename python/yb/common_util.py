@@ -120,6 +120,8 @@ def get_yb_src_root_from_build_root(build_dir, verbose=False, must_succeed=False
     current_dir = build_dir
     while current_dir != '/':
         subdir_candidates = [current_dir]
+        # Handle the "external build" directory case, in which the code is located in e.g.
+        # ~/code/yugabyte, and the build directories are inside ~/code/yugabyte__build.
         if current_dir.endswith('__build'):
             subdir_candidates.append(current_dir[:-7])
             if subdir_candidates[-1].endswith('/'):
