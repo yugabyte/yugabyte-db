@@ -39,7 +39,7 @@ class Analyzer {
 
   // Run semantics analysis on the given parse tree and decorate it with semantics information such
   // as datatype or object-type of a database object.
-  CHECKED_STATUS Analyze(const std::string& ql_stmt, ParseTree::UniPtr ptree);
+  CHECKED_STATUS Analyze(ParseTree::UniPtr ptree);
 
   // Returns decorated parse tree from the semantic analysis and destroys the context.
   ParseTree::UniPtr Done();

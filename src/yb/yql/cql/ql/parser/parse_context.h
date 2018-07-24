@@ -35,10 +35,9 @@ class ParseContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  ParseContext(const char *stmt = "",
-               size_t stmt_len = 0,
+  ParseContext(const std::string& stmt,
                bool reparsed = false,
-               std::shared_ptr<MemTracker> mem_tracker = nullptr);
+               const MemTrackerPtr& mem_tracker = nullptr);
   virtual ~ParseContext();
 
   // Read a maximum of 'max_size' bytes from SQL statement of this parsing context into the
@@ -54,27 +53,27 @@ class ParseContext : public ProcessContext {
   void GetBindVariables(MCVector<PTBindVar*> *vars);
 
   // Handling parsing warning.
-  void Warn(const location& l, const char *m, ErrorCode error_code) {
-    ProcessContext::Warn(Location(l), m, error_code);
+  void Warn(const location& loc, const char *msg, ErrorCode error_code) {
+    ProcessContext::Warn(Location(loc), msg, error_code);
   }
 
   // Handling parsing error.
-  CHECKED_STATUS Error(const location& l,
-                       const char *m,
+  CHECKED_STATUS Error(const location& loc,
+                       const char *msg,
                        ErrorCode error_code,
                        const char* token = nullptr) {
-    return ProcessContext::Error(Location(l), m, error_code, token);
+    return ProcessContext::Error(Location(loc), msg, error_code, token);
   }
-  CHECKED_STATUS Error(const location& l, const char *m, const char* token = nullptr) {
-    return ProcessContext::Error(Location(l), m, token);
+  CHECKED_STATUS Error(const location& loc, const char *msg, const char* token = nullptr) {
+    return ProcessContext::Error(Location(loc), msg, token);
   }
-  CHECKED_STATUS Error(const location& l, ErrorCode error_code, const char* token = nullptr) {
-    return ProcessContext::Error(Location(l), error_code, token);
+  CHECKED_STATUS Error(const location& loc, ErrorCode error_code, const char* token = nullptr) {
+    return ProcessContext::Error(Location(loc), error_code, token);
   }
 
   // Access function for ql_file_.
   std::istream *ql_file() {
-    return ql_file_ == nullptr ? nullptr : ql_file_.get();
+    return ql_file_.get();
   }
 
   // Access function for trace_scanning_.

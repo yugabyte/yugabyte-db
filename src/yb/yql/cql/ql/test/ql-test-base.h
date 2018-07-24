@@ -27,53 +27,53 @@
 namespace yb {
 namespace ql {
 
-#define ANALYZE_VALID_STMT(ql_stmt, parse_tree)                      \
-do {                                                                  \
-  Status s = TestAnalyzer(ql_stmt, parse_tree);                      \
-  EXPECT_TRUE(s.ok());                                                \
-} while (false)
+#define ANALYZE_VALID_STMT(stmt, parse_tree)   \
+  do {                                         \
+    Status s = TestAnalyzer(stmt, parse_tree); \
+    EXPECT_TRUE(s.ok());                       \
+  } while (false)
 
-#define ANALYZE_INVALID_STMT(ql_stmt, parse_tree)                    \
-do {                                                                  \
-  Status s = TestAnalyzer(ql_stmt, parse_tree);                      \
-  EXPECT_FALSE(s.ok());                                               \
-} while (false)
+#define ANALYZE_INVALID_STMT(stmt, parse_tree) \
+  do {                                         \
+    Status s = TestAnalyzer(stmt, parse_tree); \
+    EXPECT_FALSE(s.ok());                      \
+  } while (false)
 
-#define PARSE_VALID_STMT(ql_stmt)             \
-do {                                           \
-  Status s = TestParser(ql_stmt);             \
-  EXPECT_TRUE(s.ok());                         \
-} while (false)
+#define PARSE_VALID_STMT(stmt)                 \
+  do {                                         \
+    Status s = TestParser(stmt);               \
+    EXPECT_TRUE(s.ok());                       \
+  } while (false)
 
-#define PARSE_INVALID_STMT(ql_stmt)           \
-do {                                           \
-  Status s = TestParser(ql_stmt);             \
-  EXPECT_FALSE(s.ok());                        \
-} while (false)
+#define PARSE_INVALID_STMT(stmt)               \
+  do {                                         \
+    Status s = TestParser(stmt);               \
+    EXPECT_FALSE(s.ok());                      \
+  } while (false)
 
-#define EXEC_VALID_STMT(ql_stmt)              \
-do {                                           \
-  Status s = processor->Run(ql_stmt);         \
-  EXPECT_TRUE(s.ok());                         \
-} while (false)
+#define EXEC_VALID_STMT(stmt)                  \
+  do {                                         \
+    Status s = processor->Run(stmt);           \
+    EXPECT_TRUE(s.ok());                       \
+  } while (false)
 
-#define EXEC_INVALID_STMT(ql_stmt)            \
-do {                                           \
-  Status s = processor->Run(ql_stmt);         \
-  EXPECT_FALSE(s.ok());                        \
-} while (false)
+#define EXEC_INVALID_STMT(stmt)                \
+  do {                                         \
+    Status s = processor->Run(stmt);           \
+    EXPECT_FALSE(s.ok());                      \
+  } while (false)
 
-#define CHECK_VALID_STMT(ql_stmt)              \
-do {                                            \
-  Status s = processor->Run(ql_stmt);          \
-  CHECK(s.ok()) << "Failure: " << s.ToString(); \
-} while (false)
+#define CHECK_VALID_STMT(stmt)                 \
+  do {                                         \
+    Status s = processor->Run(stmt);           \
+    CHECK(s.ok()) << "Failure: " << s;         \
+  } while (false)
 
-#define CHECK_INVALID_STMT(ql_stmt)            \
-do {                                            \
-  Status s = processor->Run(ql_stmt);          \
-  CHECK(!s.ok()) << "Expect failure";           \
-} while (false)
+#define CHECK_INVALID_STMT(stmt)               \
+  do {                                         \
+    Status s = processor->Run(stmt);           \
+    CHECK(!s.ok()) << "Expect failure";        \
+  } while (false)
 
 class ClockHolder {
  protected:
@@ -106,17 +106,17 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   }
 
   void RunAsync(
-      const string& ql_stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
+      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
     result_ = nullptr;
     QLProcessor::RunAsync(
-        ql_stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
+        stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
   }
 
   // Execute a QL statement.
   CHECKED_STATUS Run(
-      const std::string& ql_stmt, const StatementParameters& params = StatementParameters()) {
+      const std::string& stmt, const StatementParameters& params = StatementParameters()) {
     Synchronizer s;
-    RunAsync(ql_stmt, params, Bind(&Synchronizer::StatusCB, Unretained(&s)));
+    RunAsync(stmt, params, Bind(&Synchronizer::StatusCB, Unretained(&s)));
     return s.Wait();
   }
 
@@ -176,17 +176,17 @@ class QLTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
-  CHECKED_STATUS TestParser(const std::string& ql_stmt) {
+  CHECKED_STATUS TestParser(const std::string& stmt) {
     QLProcessor *processor = GetQLProcessor();
     ParseTree::UniPtr parse_tree;
-    return processor->Parse(ql_stmt, &parse_tree);
+    return processor->Parse(stmt, &parse_tree);
   }
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(const string& ql_stmt, ParseTree::UniPtr *parse_tree) {
+  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTree::UniPtr *parse_tree) {
     QLProcessor *processor = GetQLProcessor();
-    RETURN_NOT_OK(processor->Parse(ql_stmt, parse_tree));
-    RETURN_NOT_OK(processor->Analyze(ql_stmt, parse_tree));
+    RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
+    RETURN_NOT_OK(processor->Analyze(parse_tree));
     return Status::OK();
   }
 
