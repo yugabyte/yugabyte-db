@@ -69,7 +69,8 @@ Status Statement::Prepare(QLProcessor *processor, const MemTrackerPtr& mem_track
   return Status::OK();
 }
 
-Status Statement::Validate() const {
+Result<const ParseTree&> Statement::GetParseTree() const {
+  // Validate that the statement has been prepared and is not stale.
   if (!prepared_.load(std::memory_order_acquire)) {
     return ErrorStatus(ErrorCode::UNPREPARED_STATEMENT);
   }
@@ -77,19 +78,14 @@ Status Statement::Validate() const {
   if (parse_tree_->stale()) {
     return ErrorStatus(ErrorCode::STALE_METADATA);
   }
-  return Status::OK();
+  return static_cast<const ParseTree&>(*parse_tree_);
 }
 
 Status Statement::ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
                                StatementExecutedCallback cb) const {
-  RETURN_NOT_OK(Validate());
-  processor->ExecuteAsync(*parse_tree_, params, std::move(cb));
-  return Status::OK();
-}
-
-Status Statement::ExecuteBatch(QLProcessor* processor, const StatementParameters& params) const {
-  RETURN_NOT_OK(Validate());
-  processor->ExecuteBatch(*parse_tree_, params);
+  const Result<const ParseTree&> parse_tree = GetParseTree();
+  RETURN_NOT_OK(parse_tree);
+  processor->ExecuteAsync(*parse_tree, params, std::move(cb));
   return Status::OK();
 }
 

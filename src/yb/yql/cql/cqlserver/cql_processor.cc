@@ -86,7 +86,9 @@ using ql::RowsResult;
 using ql::SetKeyspaceResult;
 using ql::SchemaChangeResult;
 using ql::QLProcessor;
+using ql::ParseTree;
 using ql::Statement;
+using ql::StatementBatch;
 using ql::StatementExecutedCallback;
 using ql::ErrorCode;
 using ql::GetErrorCode;
@@ -156,7 +158,6 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   request_ = std::move(request);
   call_->SetRequest(request_, service_impl_);
   retry_count_ = 0;
-  unprepared_id_.clear();
   response.reset(ProcessRequest(*request_));
   if (response != nullptr) {
     SendResponse(*response);
@@ -277,7 +278,7 @@ CQLResponse* CQLProcessor::ProcessRequest(const PrepareRequest& req) {
   const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {
     service_impl_->DeletePreparedStatement(stmt);
-    return ProcessResult(s);
+    return ProcessError(s, stmt->query_id());
   }
 
   return (result != nullptr) ? new PreparedResultResponse(req, query_id, *result)
@@ -288,15 +289,10 @@ CQLResponse* CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(req.query_id());
   if (stmt == nullptr) {
-    unprepared_id_ = req.query_id();
-    StatementExecuted(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT));
-  } else {
-    Status s = stmt->ExecuteAsync(this, req.params(), statement_executed_cb_);
-    if (PREDICT_FALSE(!s.ok())) {
-      StatementExecuted(s);
-    }
+    return ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), req.query_id());
   }
-  return nullptr;
+  const Status s = stmt->ExecuteAsync(this, req.params(), statement_executed_cb_);
+  return s.ok() ? nullptr : ProcessError(s, stmt->query_id());
 }
 
 CQLResponse* CQLProcessor::ProcessRequest(const QueryRequest& req) {
@@ -308,46 +304,36 @@ CQLResponse* CQLProcessor::ProcessRequest(const QueryRequest& req) {
 CQLResponse* CQLProcessor::ProcessRequest(const BatchRequest& req) {
   VLOG(1) << "BATCH " << req.queries().size();
 
-  int retry_count = retry_count_; // Save current retry count.
+  StatementBatch batch;
+  batch.reserve(req.queries().size());
 
-  BeginBatch(statement_executed_cb_);
-
+  // For each query in the batch, look up the query id if it is a prepared statement, or prepare the
+  // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
-
     if (query.is_prepared) {
-
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(query.query_id);
       if (stmt == nullptr) {
-        unprepared_id_ = query.query_id;
-        StatementExecuted(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT));
-      } else {
-        Status s = stmt->ExecuteBatch(this, query.params);
-        if (PREDICT_FALSE(!s.ok())) {
-          StatementExecuted(s);
-        }
+        return ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), query.query_id);
       }
-
+      const Result<const ParseTree&> parse_tree = stmt->GetParseTree();
+      if (!parse_tree) {
+        return ProcessError(parse_tree.status(), query.query_id);
+      }
+      batch.emplace_back(*parse_tree, query.params);
     } else {
-
       VLOG(1) << "BATCH QUERY " << query.query;
-      ql::ParseTree::UniPtr parse_tree;
-      RunBatch(query.query, query.params, &parse_tree, retry_count > 0);
+      ParseTree::UniPtr parse_tree;
+      const Status s = Prepare(query.query, &parse_tree);
+      if (PREDICT_FALSE(!s.ok())) {
+        return ProcessError(s);
+      }
+      batch.emplace_back(*parse_tree, query.params);
       parse_trees_.insert(std::move(parse_tree));
-
-    }
-
-    // If an error occurs while a statement is queued in the batch above, our StatementExecuted
-    // callback will be called synchronously under us, which can either trigger a recursive retry
-    // or return an error response & end the call. If that has happened, just exit.
-    if (retry_count_ > retry_count || call_ == nullptr) {
-      return nullptr;
     }
   }
 
-  // Apply the batch that flushes the buffered operations. Our StatementExecuted callback will be
-  // called asynchronously to process the result when the operations complete.
-  ApplyBatch();
+  ExecuteAsync(batch, statement_executed_cb_);
 
   return nullptr;
 }
@@ -382,63 +368,62 @@ shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessa
   return stmt;
 }
 
-void CQLProcessor::StatementExecuted(const Status& s,
-                                     const ql::ExecutedResult::SharedPtr& result) {
-  unique_ptr<CQLResponse> response(ProcessResult(s, result));
-  if (response != nullptr) {
+void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::SharedPtr& result) {
+  unique_ptr<CQLResponse> response(s.ok() ? ProcessResult(result) : ProcessError(s));
+  if (response) {
     SendResponse(*response);
   }
 }
 
-CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedPtr& result) {
-  if (!s.ok()) {
-    // Abort batch if it is being executed.
-    if (request_->opcode() == CQLMessage::Opcode::BATCH) {
-      AbortBatch();
-    }
-    if (s.IsQLError()) {
-      ErrorCode ql_errcode = GetErrorCode(s);
-      if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
-          ql_errcode == ErrorCode::STALE_METADATA) {
-        // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
-        // unprepared query id to be returned, we will return just the last unprepared / stale one
-        // we found.
-        for (auto stmt : stmts_) {
-          if (stmt->stale()) {
-            service_impl_->DeletePreparedStatement(stmt);
-          }
-          if (stmt->unprepared() || stmt->stale()) {
-            unprepared_id_ = stmt->query_id();
-          }
+CQLResponse* CQLProcessor::ProcessError(const Status& s,
+                                        boost::optional<CQLMessage::QueryId> query_id) {
+  if (s.IsQLError()) {
+    ErrorCode ql_errcode = GetErrorCode(s);
+    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
+        ql_errcode == ErrorCode::STALE_METADATA) {
+      // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
+      // unprepared query id to be returned, we will return just the last unprepared / stale one
+      // we found.
+      for (auto stmt : stmts_) {
+        if (stmt->stale()) {
+          service_impl_->DeletePreparedStatement(stmt);
         }
-        if (!unprepared_id_.empty()) {
-          return new UnpreparedErrorResponse(*request_, unprepared_id_);
-        }
-        // When no unprepared_id is found, it means all statements we executed were queries
-        // (non-prepared statements). In that case, just retry the request (once only).
-        if (++retry_count_ == 1) {
-          return ProcessRequest(*request_);
-        }
-        return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
-                                 "Query failed to execute due to stale metadata cache");
-      } else if (ql_errcode < ErrorCode::SUCCESS) {
-        if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
-          // System errors, internal errors, or crashes.
-          return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
-        } else if (ql_errcode > ErrorCode::SEM_ERROR) {
-          // Limitation, lexical, or parsing errors.
-          return new ErrorResponse(*request_, ErrorResponse::Code::SYNTAX_ERROR, s.ToUserMessage());
-        } else {
-          // Semantic or execution errors.
-          return new ErrorResponse(*request_, ErrorResponse::Code::INVALID, s.ToUserMessage());
+        if (stmt->unprepared() || stmt->stale()) {
+          query_id = stmt->query_id();
         }
       }
-
-      LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
-      return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
+      if (query_id) {
+        return new UnpreparedErrorResponse(*request_, *query_id);
+      }
+      // When no unprepared query id is found, it means all statements we executed were queries
+      // (non-prepared statements). In that case, just retry the request (once only).
+      if (++retry_count_ == 1) {
+        stmts_.clear();
+        parse_trees_.clear();
+        return ProcessRequest(*request_);
+      }
+      return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
+                               "Query failed to execute due to stale metadata cache");
+    } else if (ql_errcode < ErrorCode::SUCCESS) {
+      if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
+        // System errors, internal errors, or crashes.
+        return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
+      } else if (ql_errcode > ErrorCode::SEM_ERROR) {
+        // Limitation, lexical, or parsing errors.
+        return new ErrorResponse(*request_, ErrorResponse::Code::SYNTAX_ERROR, s.ToUserMessage());
+      } else {
+        // Semantic or execution errors.
+        return new ErrorResponse(*request_, ErrorResponse::Code::INVALID, s.ToUserMessage());
+      }
     }
-    return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
+
+    LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
+    return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
   }
+  return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
+}
+
+CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result) {
   if (result == nullptr) {
     return new VoidResultResponse(*request_);
   }
@@ -460,34 +445,33 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
         case CQLMessage::Opcode::BATCH:
           return new RowsResultResponse(down_cast<const BatchRequest&>(*request_), rows_result);
 
-        case CQLMessage::Opcode::AUTH_RESPONSE:
-          {
-            const auto& req = down_cast<const AuthResponseRequest&>(*request_);
-            const auto& params = req.params();
-            const auto row_block = rows_result->GetRowBlock();
-            if (row_block->row_count() != 1) {
-              return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR,
-                  "Could not get data for " + params.username);
+        case CQLMessage::Opcode::AUTH_RESPONSE: {
+          const auto& req = down_cast<const AuthResponseRequest&>(*request_);
+          const auto& params = req.params();
+          const auto row_block = rows_result->GetRowBlock();
+          if (row_block->row_count() != 1) {
+            return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR,
+                                     "Could not get data for " + params.username);
+          } else {
+            const auto& row = row_block->row(0);
+            const auto& schema = row_block->schema();
+            const auto& saved_hash =
+                row.column(schema.find_column(kRoleColumnNameSaltedHash)).string_value();
+            const auto& can_login =
+                row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
+            if (!can_login) {
+              return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                  params.username + " is not permitted to log in");
+            } else if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+              return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                  "Provided username " + params.username + " and/or password are incorrect");
             } else {
-              const auto& row = row_block->row(0);
-              const auto& schema = row_block->schema();
-              const auto& saved_hash =
-                  row.column(schema.find_column(kRoleColumnNameSaltedHash)).string_value();
-              const auto& can_login =
-                  row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
-              if (!can_login) {
-                return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
-                    params.username + " is not permitted to log in");
-              } else if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
-                return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
-                    "Provided username " + params.username + " and/or password are incorrect");
-              } else {
-                call_->ql_session()->set_current_role_name(params.username);
-                return new AuthSuccessResponse(*request_, "" /* this does not matter" */);
-              }
+              call_->ql_session()->set_current_role_name(params.username);
+              return new AuthSuccessResponse(*request_, "" /* this does not matter */);
             }
           }
           break;
+        }
         case CQLMessage::Opcode::ERROR:   FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::STARTUP: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::READY:   FALLTHROUGH_INTENDED;

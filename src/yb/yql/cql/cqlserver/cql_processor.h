@@ -84,8 +84,10 @@ class CQLProcessor : public ql::QLProcessor {
   // Statement executed callback.
   void StatementExecuted(const Status& s, const ql::ExecutedResult::SharedPtr& result = nullptr);
 
-  // Process statement execution result.
-  CQLResponse* ProcessResult(Status s, const ql::ExecutedResult::SharedPtr& result = nullptr);
+  // Process statement execution result and error.
+  CQLResponse* ProcessResult(const ql::ExecutedResult::SharedPtr& result);
+  CQLResponse* ProcessError(const Status& s,
+                            boost::optional<CQLMessage::QueryId> query_id = boost::none);
 
   // Send response back to client.
   void SendResponse(const CQLResponse& response);
@@ -109,9 +111,6 @@ class CQLProcessor : public ql::QLProcessor {
 
   // Current retry count.
   int retry_count_ = 0;
-
-  // Unprepared query id being executed.
-  CQLMessage::QueryId unprepared_id_;
 
   // Parse and execute begin times.
   MonoTime parse_begin_;

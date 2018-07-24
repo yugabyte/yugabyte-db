@@ -53,8 +53,8 @@ class Statement {
   CHECKED_STATUS ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
                               StatementExecutedCallback cb) const;
 
-  // Execute the prepared statement in a batch
-  CHECKED_STATUS ExecuteBatch(QLProcessor* processor, const StatementParameters& params) const;
+  // Validate and return the parse tree.
+  Result<const ParseTree&> GetParseTree() const;
 
   // Is this statement unprepared?
   bool unprepared() const {
@@ -79,9 +79,6 @@ class Statement {
   const std::string text_;
 
  private:
-  // Validate that the statement has been prepared and is not stale.
-  CHECKED_STATUS Validate() const;
-
   // The parse tree.
   ParseTree::UniPtr parse_tree_;
 
