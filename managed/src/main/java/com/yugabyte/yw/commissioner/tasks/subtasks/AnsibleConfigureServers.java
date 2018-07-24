@@ -22,7 +22,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public Map<String, String> gflags = new HashMap<>();
-    public boolean changeNodeState = true;
+    public boolean updateMasterAddrsOnly = false;
   }
 
   @Override
@@ -38,7 +38,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     logShellResponse(response);
 
     if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything &&
-        taskParams().changeNodeState) {
+        !taskParams().updateMasterAddrsOnly) {
       // We set the node state to SoftwareInstalled when configuration type is Everything.
       // TODO: Why is upgrade task type used to map to node state update?
       setNodeState(NodeDetails.NodeState.SoftwareInstalled);

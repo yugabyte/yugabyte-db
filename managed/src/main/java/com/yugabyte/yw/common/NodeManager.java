@@ -240,7 +240,8 @@ public class NodeManager extends DevopsBase {
         break;
       case GFlags:
         {
-          if (taskParam.gflags == null || taskParam.gflags.isEmpty() ) {
+          if (!taskParam.updateMasterAddrsOnly &&
+              (taskParam.gflags == null || taskParam.gflags.isEmpty())) {
             throw new RuntimeException("Empty GFlags data provided");
           }
 
@@ -255,9 +256,13 @@ public class NodeManager extends DevopsBase {
 
           // Add in the nodeName during configure.
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-          gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
-          gflags.put("metric_node_name", taskParam.nodeName);
 
+          if (taskParam.updateMasterAddrsOnly) {
+            gflags.put("tserver_master_addrs", masterAddresses);
+          } else {
+            gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
+            gflags.put("metric_node_name", taskParam.nodeName);
+          }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
         }
