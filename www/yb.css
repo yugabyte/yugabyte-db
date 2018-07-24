@@ -117,9 +117,9 @@ body {
   height: 60px;
   background-color: #f5f5f5;
   /* Pin the footer to the bottom */
-  position: absolute;
-  bottom: 0;
-  margin-left: -35px;
+  position: relative;
+  bottom: -10px;
+  margin-left: 0px;
 }
 .footer pre {
   border: none;
