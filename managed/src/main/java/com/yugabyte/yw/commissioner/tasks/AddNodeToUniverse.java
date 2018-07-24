@@ -189,7 +189,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
                     node.cloudInfo.private_ip.equals(skipNode.cloudInfo.private_ip));
     // Configure all tservers to pick the new master node ip as well.
     createConfigureServerTasks(nodes, false /* isShell */, userIntent.deviceInfo,
-                               userIntent.ybSoftwareVersion, false /* changeNodeState */)
+                               userIntent.ybSoftwareVersion, true /* updateMasterAddr */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }
