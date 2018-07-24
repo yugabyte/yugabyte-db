@@ -47,6 +47,10 @@ namespace ql {
 
 class QLMetrics;
 
+// A batch of statement parse trees to execute with the parameters.
+typedef std::vector<std::pair<std::reference_wrapper<const ParseTree>,
+                              std::reference_wrapper<const StatementParameters>>> StatementBatch;
+
 class Executor : public QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------
@@ -59,21 +63,11 @@ class Executor : public QLExprExecutor {
   Executor(QLEnv *ql_env, const QLMetrics* ql_metrics);
   virtual ~Executor();
 
-  // Execute the given statement (parse tree). The parse tree and the parameters must not be
-  // destroyed until the statement is executed.
+  // Execute the given statement (parse tree) or batch. The parse trees and the parameters must not
+  // be destroyed until the statements have been executed.
   void ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
                     StatementExecutedCallback cb);
-
-  // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
-  // applied and execution is complete, or when an error occurs. The parse tree and the parameters
-  // must not be destroyed until the statement is executed.
-  void BeginBatch(StatementExecutedCallback cb);
-  void ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params);
-  void ApplyBatch();
-  void AbortBatch();
-
-  // Invoke statement executed callback.
-  void StatementExecuted(const Status& s);
+  void ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb);
 
  private:
   //------------------------------------------------------------------------------------------------
@@ -202,6 +196,9 @@ class Executor : public QLExprExecutor {
                          int column_index,
                          DataType data_type,
                          QLValue *ql_value);
+
+  // Invoke statement executed callback.
+  void StatementExecuted(const Status& s);
 
   // Reset execution state.
   void Reset();

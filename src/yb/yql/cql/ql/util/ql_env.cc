@@ -186,10 +186,6 @@ Status QLEnv::GetOpError(const client::YBqlOp* op) const {
   return itr != op_errors_.end() ? itr->second : Status::OK();
 }
 
-void QLEnv::AbortOps() {
-  session_->Abort();
-}
-
 void QLEnv::FlushAsyncDone(const Status &s) {
   TRACE("Flush Async Done");
   flush_status_ = s;

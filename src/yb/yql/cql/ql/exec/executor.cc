@@ -75,77 +75,71 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   FlushAsync();
 }
 
-//--------------------------------------------------------------------------------------------------
-
-void Executor::BeginBatch(StatementExecutedCallback cb) {
+void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   ql_env_->Reset();
   ql_env_->SetReadPoint();
-}
 
-void Executor::ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params) {
-  Status s;
+  for (const auto& pair : batch) {
+    const ParseTree& parse_tree = pair.first;
+    const StatementParameters& params = pair.second;
 
-  // Batch execution is supported for non-conditional DML statements only currently.
-  const TreeNode* tnode = parse_tree.root().get();
-  if (tnode != nullptr) {
-    switch (tnode->opcode()) {
-      case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
-      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
-      case TreeNodeOpcode::kPTDeleteStmt: {
-        const auto *stmt = static_cast<const PTDmlStmt *>(tnode);
-        if (stmt->if_clause() != nullptr && !stmt->returns_status()) {
-          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-              "batch execution of conditional DML statement without RETURNS STATUS AS ROW"
-              "clause is not supported yet");
-        }
-
-        if (stmt->ModifiesMultipleRows()) {
-          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-              "batch execution with DML statements modifying multiple rows is not supported yet");
-        }
-
-        if (!returns_status_batch_opt_) {
-          returns_status_batch_opt_ = stmt->returns_status();
-        } else if (stmt->returns_status() != *returns_status_batch_opt_) {
-          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-              "batch execution mixing statements with and without RETURNS STATUS AS ROW "
-              "is not supported");
-        }
-
-        if (*returns_status_batch_opt_) {
-          if (dml_batch_table_ == nullptr) {
-            dml_batch_table_ = stmt->table();
-          } else if (dml_batch_table_->id() != stmt->table()->id()) {
-            s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-                "batch execution with RETURNS STATUS statements cannot span multiple tables");
+    // Batch execution is supported for non-conditional DML statements only currently.
+    const TreeNode* tnode = parse_tree.root().get();
+    if (tnode != nullptr) {
+      switch (tnode->opcode()) {
+        case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+        case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+        case TreeNodeOpcode::kPTDeleteStmt: {
+          const auto *stmt = static_cast<const PTDmlStmt *>(tnode);
+          if (stmt->if_clause() != nullptr && !stmt->returns_status()) {
+            return StatementExecuted(
+                ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                            "batch execution of conditional DML statement without RETURNS STATUS "
+                            "AS ROW clause is not supported yet"));
           }
+
+          if (stmt->ModifiesMultipleRows()) {
+            return StatementExecuted(
+                ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                            "batch execution with DML statements modifying multiple rows is not "
+                            "supported yet"));
+          }
+
+          if (!returns_status_batch_opt_) {
+            returns_status_batch_opt_ = stmt->returns_status();
+          } else if (stmt->returns_status() != *returns_status_batch_opt_) {
+            return StatementExecuted(
+                ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                            "batch execution mixing statements with and without RETURNS STATUS "
+                            "AS ROW is not supported"));
+          }
+
+          if (*returns_status_batch_opt_) {
+            if (dml_batch_table_ == nullptr) {
+              dml_batch_table_ = stmt->table();
+            } else if (dml_batch_table_->id() != stmt->table()->id()) {
+              return StatementExecuted(
+                  ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                              "batch execution with RETURNS STATUS statements cannot span multiple "
+                              "tables"));
+            }
+          }
+
+          break;
         }
-
-        break;
+        default:
+          return StatementExecuted(
+              ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                          "batch execution of non-DML statement not supported yet"));
+          break;
       }
-      default:
-        s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-                        "batch execution of non-DML statement not supported yet");
-        break;
     }
+    RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   }
 
-  // Execute the statement and invoke statement-executed callback when there is an error.
-  if (s.ok()) {
-    s = Execute(parse_tree, params);
-  }
-  RETURN_STMT_NOT_OK(s);
-}
-
-void Executor::ApplyBatch() {
   FlushAsync();
-}
-
-void Executor::AbortBatch() {
-  ql_env_->AbortOps();
-  Reset();
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -75,24 +75,16 @@ class QLProcessor {
   CHECKED_STATUS Prepare(const std::string& stmt, ParseTree::UniPtr* parse_tree,
                          bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr);
 
-  // Execute a prepared statement (parse tree). The parse tree and the parameters must not be
-  // destroyed until the statement has been executed.
+  // Execute a prepared statement (parse tree) or batch. The parse trees and the parameters must not
+  // be destroyed until the statements have been executed.
   void ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
                     StatementExecutedCallback cb);
+  void ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb);
 
   // Run (parse, analyze and execute) a SQL statement. The statement string and the parameters must
   // not be destroyed until the statement has been executed.
   void RunAsync(const std::string& stmt, const StatementParameters& params,
                 StatementExecutedCallback cb, bool reparsed = false);
-
-  // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
-  // applied and execution is complete, or when an error occurs.
-  void BeginBatch(StatementExecutedCallback cb);
-  void ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params);
-  void RunBatch(const std::string& stmt, const StatementParameters& params,
-                ParseTree::UniPtr* parse_tree, bool reparsed = false);
-  void ApplyBatch();
-  void AbortBatch();
 
  protected:
   void SetCurrentCall(rpc::InboundCallPtr call);
