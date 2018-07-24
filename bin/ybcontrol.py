@@ -100,6 +100,8 @@ class ClusterManager(object):
 
     def remote_launch(self, host, command):
         command_args = ['ssh',
+                        '-o',
+                        'stricthostkeychecking=no',
                         '-i',
                         self.pem_file,
                         '-p',
@@ -109,7 +111,16 @@ class ClusterManager(object):
         return subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     def scp(self, source, destination):
-        command_args = ['scp', '-i', self.pem_file, '-P', str(self.port), source, destination]
+        command_args = [
+            'scp',
+            '-o',
+            'stricthostkeychecking=no',
+            '-i',
+            self.pem_file,
+            '-P',
+            str(self.port),
+            source,
+            destination]
         return subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     @staticmethod
