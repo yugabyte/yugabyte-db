@@ -31,11 +31,10 @@ using std::string;
 // ParseContext
 //--------------------------------------------------------------------------------------------------
 
-ParseContext::ParseContext(const char *stmt,
-                           size_t stmt_len,
+ParseContext::ParseContext(const string& stmt,
                            const bool reparsed,
-                           shared_ptr<MemTracker> mem_tracker)
-    : ProcessContext(stmt, stmt_len, ParseTree::UniPtr(new ParseTree(reparsed, mem_tracker))),
+                           const MemTrackerPtr& mem_tracker)
+    : ProcessContext(ParseTree::UniPtr(new ParseTree(stmt, reparsed, mem_tracker))),
       bind_variables_(PTreeMem()),
       stmt_offset_(0),
       trace_scanning_(false),
@@ -57,9 +56,9 @@ ParseContext::~ParseContext() {
 //--------------------------------------------------------------------------------------------------
 
 size_t ParseContext::Read(char* buf, size_t max_size) {
-  const size_t copy_size = min<size_t>(stmt_len_ - stmt_offset_, max_size);
+  const size_t copy_size = min<size_t>(stmt().length() - stmt_offset_, max_size);
   if (copy_size > 0) {
-    memcpy(buf, stmt_ + stmt_offset_, copy_size);
+    stmt().copy(buf, copy_size, stmt_offset_);
     stmt_offset_ += copy_size;
     return copy_size;
   }

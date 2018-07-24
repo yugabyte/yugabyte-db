@@ -72,10 +72,7 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  SemContext(const char *ql_stmt,
-             size_t stmt_len,
-             ParseTree::UniPtr parse_tree,
-             QLEnv *ql_env);
+  SemContext(ParseTree::UniPtr parse_tree, QLEnv *ql_env);
   virtual ~SemContext();
 
   // Memory pool for semantic analysis of the parse tree of a statement.

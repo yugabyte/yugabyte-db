@@ -33,11 +33,8 @@ using client::YBSchema;
 
 //--------------------------------------------------------------------------------------------------
 
-SemContext::SemContext(const char *ql_stmt,
-                       size_t stmt_len,
-                       ParseTree::UniPtr parse_tree,
-                       QLEnv *ql_env)
-    : ProcessContext(ql_stmt, stmt_len, std::move(parse_tree)),
+SemContext::SemContext(ParseTree::UniPtr parse_tree, QLEnv *ql_env)
+    : ProcessContext(std::move(parse_tree)),
       symtab_(PTempMem()),
       ql_env_(ql_env),
       cache_used_(false),

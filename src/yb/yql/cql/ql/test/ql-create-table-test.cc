@@ -24,19 +24,19 @@ class Master;
 }
 namespace ql {
 
-#define EXEC_DUPLICATE_TABLE_CREATE_STMT(ql_stmt)                                                 \
-do {                                                                                               \
-  Status s = processor->Run(ql_stmt);                                                             \
-  EXPECT_FALSE(s.ok());                                                                            \
-  EXPECT_FALSE(s.ToString().find("Duplicate Table. Already present") == string::npos);            \
-} while (false)
+#define EXEC_DUPLICATE_TABLE_CREATE_STMT(stmt)                          \
+  do {                                                                  \
+    Status s = processor->Run(stmt);                                    \
+    EXPECT_FALSE(s.ok());                                               \
+    EXPECT_FALSE(s.ToString().find("Duplicate Table. Already present") == string::npos); \
+  } while (false)
 
-#define EXEC_INVALID_TABLE_CREATE_STMT(ql_stmt, msg)                                              \
-do {                                                                                               \
-  Status s = processor->Run(ql_stmt);                                                             \
-  ASSERT_FALSE(s.ok());                                                                            \
-  ASSERT_FALSE(s.ToString().find(msg) == string::npos);                                            \
-} while (false)
+#define EXEC_INVALID_TABLE_CREATE_STMT(stmt, msg)                       \
+  do {                                                                  \
+    Status s = processor->Run(stmt);                                    \
+    ASSERT_FALSE(s.ok());                                               \
+    ASSERT_FALSE(s.ToString().find(msg) == string::npos);               \
+  } while (false)
 
 class TestQLCreateTable : public QLTestBase {
  public:

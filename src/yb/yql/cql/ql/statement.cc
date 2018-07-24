@@ -32,8 +32,8 @@ Statement::Statement(const string& keyspace, const string& text)
 Statement::~Statement() {
 }
 
-Status Statement::Prepare(
-    QLProcessor *processor, shared_ptr<MemTracker> mem_tracker, PreparedResult::UniPtr *result) {
+Status Statement::Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker,
+                          PreparedResult::UniPtr *result) {
   // Prepare the statement (parse and semantically analysis). Do so within an exclusive lock.
   if (!prepared_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> guard(parse_tree_mutex_);
@@ -80,17 +80,16 @@ Status Statement::Validate() const {
   return Status::OK();
 }
 
-Status Statement::ExecuteAsync(
-    QLProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
-    const {
+Status Statement::ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
+                               StatementExecutedCallback cb) const {
   RETURN_NOT_OK(Validate());
-  processor->ExecuteAsync(text_, *parse_tree_, params, std::move(cb));
+  processor->ExecuteAsync(*parse_tree_, params, std::move(cb));
   return Status::OK();
 }
 
 Status Statement::ExecuteBatch(QLProcessor* processor, const StatementParameters& params) const {
   RETURN_NOT_OK(Validate());
-  processor->ExecuteBatch(text_, *parse_tree_, params);
+  processor->ExecuteBatch(*parse_tree_, params);
   return Status::OK();
 }
 

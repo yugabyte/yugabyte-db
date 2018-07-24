@@ -20,13 +20,10 @@
 namespace yb {
 namespace ql {
 
-ExecContext::ExecContext(const char *ql_stmt,
-                         size_t stmt_len,
-                         const ParseTree *parse_tree,
-                         const StatementParameters *params,
+ExecContext::ExecContext(const ParseTree& parse_tree,
+                         const StatementParameters& params,
                          QLEnv *ql_env)
-    : ProcessContextBase(ql_stmt, stmt_len),
-      parse_tree_(parse_tree),
+    : parse_tree_(parse_tree),
       params_(params),
       ql_env_(ql_env) {
 }

@@ -35,19 +35,19 @@ using yb::util::bcrypt_checkpw;
 using strings::Substitute;
 using std::string;
 
-#define EXEC_DUPLICATE_CREATE_ROLE_STMT(ql_stmt)                                                 \
-do {                                                                                             \
-  Status s = processor->Run(ql_stmt);                                                            \
-  EXPECT_FALSE(s.ok());                                                                          \
-  EXPECT_FALSE(s.ToString().find("Duplicate Role. Already present") == string::npos);            \
-} while (false)
+#define EXEC_DUPLICATE_CREATE_ROLE_STMT(stmt)                           \
+  do {                                                                  \
+    Status s = processor->Run(stmt);                                    \
+    EXPECT_FALSE(s.ok());                                               \
+    EXPECT_FALSE(s.ToString().find("Duplicate Role. Already present") == string::npos); \
+  } while (false)
 
-#define EXEC_INVALID_STMT_MSG(ql_stmt, msg)                                                      \
-do {                                                                                             \
-  Status s = processor->Run(ql_stmt);                                                            \
-  ASSERT_FALSE(s.ok());                                                                          \
-  ASSERT_FALSE(s.ToString().find(msg) == string::npos);                                          \
-} while (false)
+#define EXEC_INVALID_STMT_MSG(stmt, msg)                                \
+  do {                                                                  \
+    Status s = processor->Run(stmt);                                    \
+    ASSERT_FALSE(s.ok());                                               \
+    ASSERT_FALSE(s.ToString().find(msg) == string::npos);               \
+  } while (false)
 
 class TestQLPermission : public QLTestBase {
  public:

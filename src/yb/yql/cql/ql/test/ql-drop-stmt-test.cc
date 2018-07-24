@@ -18,12 +18,12 @@
 namespace yb {
 namespace ql {
 
-#define EXEC_INVALID_DROP_STMT(ql_stmt, expected_error)                                           \
-do {                                                                                               \
-  Status s = processor->Run(ql_stmt);                                                             \
-  ASSERT_FALSE(s.ok());                                                                            \
-  ASSERT_FALSE(s.ToString().find(expected_error) == string::npos);                                 \
-} while (false);
+#define EXEC_INVALID_DROP_STMT(stmt, expected_error)                    \
+  do {                                                                  \
+    Status s = processor->Run(stmt);                                    \
+    ASSERT_FALSE(s.ok());                                               \
+    ASSERT_FALSE(s.ToString().find(expected_error) == string::npos);    \
+  } while (false);
 
 class TestQLDropStmt : public QLTestBase {
  public:
@@ -260,14 +260,14 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
       "TEXT SEARCH CONFIGURATION"
   };
   for (const auto& drop_type : drop_types) {
-    auto ql_stmt = "DROP " + drop_type + " test";
-    EXEC_INVALID_DROP_STMT(ql_stmt, CqlError(strlen("DROP ")));
+    auto stmt = "DROP " + drop_type + " test";
+    EXEC_INVALID_DROP_STMT(stmt, CqlError(strlen("DROP ")));
   }
 
   vector<string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
   for (const auto& opt_drop_behavior : opt_drop_behaviors) {
-    auto ql_stmt = "DROP TABLE test ";
-    EXEC_INVALID_DROP_STMT(ql_stmt + opt_drop_behavior, CqlError(strlen(ql_stmt)));
+    auto stmt = "DROP TABLE test ";
+    EXEC_INVALID_DROP_STMT(stmt + opt_drop_behavior, CqlError(strlen(stmt)));
   }
 }
 

@@ -28,9 +28,7 @@ using std::string;
 // ProcessContextBase
 //--------------------------------------------------------------------------------------------------
 
-ProcessContextBase::ProcessContextBase(const char *stmt, size_t stmt_len)
-    : stmt_(stmt),
-      stmt_len_(stmt_len) {
+ProcessContextBase::ProcessContextBase() {
 }
 
 ProcessContextBase::~ProcessContextBase() {
@@ -45,7 +43,7 @@ MCString* ProcessContextBase::error_msgs() {
   return error_msgs_.get();
 }
 
-CHECKED_STATUS ProcessContextBase::GetStatus() {
+Status ProcessContextBase::GetStatus() {
   // Erroneous index is negative while successful index is non-negative.
   if (error_code_ < ErrorCode::SUCCESS) {
     return STATUS(QLError, error_msgs()->c_str(), Slice(), static_cast<int64_t>(error_code_));
@@ -55,17 +53,18 @@ CHECKED_STATUS ProcessContextBase::GetStatus() {
 
 //--------------------------------------------------------------------------------------------------
 
-void ProcessContextBase::Warn(const YBLocation& l, const string& m, ErrorCode error_code) {
+void ProcessContextBase::Warn(const YBLocation& loc, const string& msg, ErrorCode error_code) {
   error_code_ = error_code;
-  LOG(WARNING) << kErrorFontStart << "SQL Warning (" << l << "): " << m << kErrorFontEnd << endl;
+  LOG(WARNING) << kErrorFontStart << "SQL Warning (" << loc << "): " << msg << kErrorFontEnd
+               << endl;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
-                                         const char *m,
-                                         ErrorCode error_code,
-                                         const char* token) {
+Status ProcessContextBase::Error(const YBLocation& loc,
+                                 const char *m,
+                                 ErrorCode error_code,
+                                 const char* token) {
   error_code_ = error_code;
 
   // Form an error message.
@@ -88,12 +87,12 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
     //   1. Bison reports a wrong/invalid error location (e.g. ENG-2052).
     //   2. Theoretically, if input statement is empty.
     bool wrote_token = false;
-    if (stmt_len_ > 0) {
+    if (!stmt().empty()) {
       // Bison-reported line/column numbers start from 1, we use 0-based numbering here.
-      const int err_begin_line = l.BeginLine() - 1;
-      const int err_begin_column = l.BeginColumn() - 1;
-      const int err_end_line = l.EndLine() - 1;
-      const int err_end_column = l.EndColumn() - 1;
+      const int err_begin_line = loc.BeginLine() - 1;
+      const int err_begin_column = loc.BeginColumn() - 1;
+      const int err_end_line = loc.EndLine() - 1;
+      const int err_end_column = loc.EndColumn() - 1;
 
       // Error location values should have sane lower bound.
       // The reported values may exceed upper bound (ENG-2052) so we handle that in code below.
@@ -104,10 +103,12 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
 
       int curr_line = 0;
       int curr_col = 0;
-      const char *curr_char = stmt_;
+      const char *stmt_begin = stmt().c_str();
+      const char *stmt_end = stmt_begin + stmt().length();
+      const char *curr_char = stmt_begin;
 
-      while (curr_char <= stmt_ + stmt_len_) {
-        if (curr_char == stmt_ + stmt_len_ || *curr_char == '\n') { // End of stmt/line char.
+      while (curr_char <= stmt_end) {
+        if (curr_char == stmt_end || *curr_char == '\n') { // End of stmt/line char.
           msg += '\n';
 
           // If in error-token range, try writing line marking error location with '^'.
@@ -116,10 +117,10 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
             const char *line_end = curr_char - 1; // Inclusive, last char of line.
 
             // Line start and end should be within statement bounds.
-            DCHECK_GE(line_start, stmt_);
-            DCHECK_LT(line_start, stmt_ + stmt_len_);
-            DCHECK_GE(line_end, stmt_);
-            DCHECK_LT(line_end, stmt_ + stmt_len_);
+            DCHECK_GE(line_start, stmt_begin);
+            DCHECK_LT(line_start, stmt_end);
+            DCHECK_GE(line_end, stmt_begin);
+            DCHECK_LT(line_end, stmt_end);
 
             // Finding error-token start, left-trim spaces if this is first line of the error token.
             const char *error_start = line_start; // Inclusive, first char of error token.
@@ -167,7 +168,7 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
     // If we couldn't mark the error token in the stmt we append the reported location directly.
     if (!wrote_token) {
       msg += "At location: (";
-      l.ToString<MCString>(&msg, false /* starting_location_only */);
+      loc.ToString<MCString>(&msg, false /* starting_location_only */);
       msg += ")\n";
     }
   } else {
@@ -180,47 +181,47 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   return STATUS(QLError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l, const char *m, const char* token) {
-  return Error(l, m, ErrorCode::SQL_STATEMENT_INVALID, token);
+Status ProcessContextBase::Error(const YBLocation& loc, const char *msg, const char* token) {
+  return Error(loc, msg, ErrorCode::SQL_STATEMENT_INVALID, token);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
-                                         ErrorCode error_code,
-                                         const char* token) {
-  return Error(l, "", error_code, token);
+Status ProcessContextBase::Error(const YBLocation& loc,
+                                 ErrorCode error_code,
+                                 const char* token) {
+  return Error(loc, "", error_code, token);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
-                                         const char *m,
-                                         ErrorCode error_code) {
-  return Error(tnode->loc(), m, error_code);
+Status ProcessContextBase::Error(const TreeNode *tnode,
+                                 const char *msg,
+                                 ErrorCode error_code) {
+  return Error(tnode->loc(), msg, error_code);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
-                                         ErrorCode error_code) {
+Status ProcessContextBase::Error(const TreeNode *tnode,
+                                 ErrorCode error_code) {
   return Error(tnode->loc(), error_code);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
-                                         const Status& s,
-                                         ErrorCode error_code) {
+Status ProcessContextBase::Error(const TreeNode *tnode,
+                                 const Status& s,
+                                 ErrorCode error_code) {
   return Error(tnode->loc(), s.ToUserMessage().c_str(), error_code);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
-                                         ErrorCode error_code) {
+Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                 ErrorCode error_code) {
   return Error(tnode->loc(), error_code);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
-                                         const char *m,
-                                         ErrorCode error_code) {
-  return Error(tnode->loc(), m, error_code);
+Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                 const char *msg,
+                                 ErrorCode error_code) {
+  return Error(tnode->loc(), msg, error_code);
 }
 
-CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
-                                         const Status& s,
-                                         ErrorCode error_code) {
+Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                 const Status& s,
+                                 ErrorCode error_code) {
   return Error(tnode->loc(), s.ToUserMessage().c_str(), error_code);
 }
 
@@ -230,11 +231,8 @@ CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
 // ProcessContext
 //--------------------------------------------------------------------------------------------------
 
-ProcessContext::ProcessContext(const char *stmt,
-                               size_t stmt_len,
-                               ParseTree::UniPtr parse_tree)
-    : ProcessContextBase(stmt, stmt_len),
-      parse_tree_(std::move(parse_tree)) {
+ProcessContext::ProcessContext(ParseTree::UniPtr parse_tree)
+    : parse_tree_(std::move(parse_tree)) {
 }
 
 ProcessContext::~ProcessContext() {

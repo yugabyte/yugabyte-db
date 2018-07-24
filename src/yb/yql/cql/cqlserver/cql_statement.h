@@ -41,7 +41,7 @@ using CQLStatementListPos = CQLStatementList::iterator;
 // A CQL statement that is prepared and cached.
 class CQLStatement : public ql::Statement {
  public:
-  CQLStatement(const std::string& keyspace, const std::string& ql_stmt, CQLStatementListPos pos);
+  CQLStatement(const std::string& keyspace, const std::string& query, CQLStatementListPos pos);
   ~CQLStatement();
 
   // Return the query id.
@@ -52,7 +52,7 @@ class CQLStatement : public ql::Statement {
   void set_pos(CQLStatementListPos pos) const { pos_ = pos; }
 
   // Return the query id of a statement.
-  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& ql_stmt);
+  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
  private:
   // Position of the statement in the LRU.

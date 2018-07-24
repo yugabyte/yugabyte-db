@@ -38,11 +38,26 @@ class ParseTree {
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
-  explicit ParseTree(bool reparsed = false, std::shared_ptr<MemTracker> mem_tracker = nullptr);
+
+  // Constructs a parse tree. The parse tree saves a reference to the statement string.
+  ParseTree(const std::string& stmt, bool reparsed, const MemTrackerPtr& mem_tracker = nullptr);
   ~ParseTree();
 
   // Run semantics analysis.
   CHECKED_STATUS Analyze(SemContext *sem_context);
+
+  // Access function for stmt_.
+  const std::string& stmt() const {
+    return stmt_;
+  }
+
+  // Access function to reparsed_.
+  bool reparsed() const {
+    return reparsed_;
+  }
+  void clear_reparsed() const {
+    reparsed_ = false;
+  }
 
   // Access functions to root_.
   void set_root(const TreeNode::SharedPtr& root) {
@@ -60,14 +75,6 @@ class ParseTree {
   // Access function to psem_mem_.
   MemoryContext *PSemMem() const {
     return &psem_mem_;
-  }
-
-  // Access function to reparsed_.
-  bool reparsed() const {
-    return reparsed_;
-  }
-  void clear_reparsed() const {
-    reparsed_ = false;
   }
 
   // Access function to stale_.
@@ -91,6 +98,12 @@ class ParseTree {
   void ClearAnalyzedUDTypeCache(QLEnv *ql_env) const;
 
  private:
+  // The SQL statement.
+  const std::string& stmt_;
+
+  // Has this statement been reparsed?
+  mutable bool reparsed_ = false;
+
   std::shared_ptr<BufferAllocator> buffer_allocator_;
 
   // Set of tables used during semantic analysis.
@@ -112,12 +125,8 @@ class ParseTree {
   // sem_context. Once the parse tree is destructed, it's also gone too.
   mutable Arena psem_mem_;
 
-  //------------------------------------------------------------------------------------------------
-  // Private data members.
+  // Root node of the parse tree.
   TreeNode::SharedPtr root_;
-
-  // Has this statement been reparsed?
-  mutable bool reparsed_;
 
   // Is this parse tree stale?
   mutable bool stale_ = false;

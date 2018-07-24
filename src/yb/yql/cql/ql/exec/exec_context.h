@@ -143,11 +143,10 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  ExecContext(const char *ql_stmt,
-              size_t stmt_len,
-              const ParseTree *parse_tree,
-              const StatementParameters *params,
-              QLEnv *ql_env);
+
+  // Constructs an execution context to execute a statement. The context saves references to the
+  // parse tree and parameters.
+  ExecContext(const ParseTree& parse_tree, const StatementParameters& params, QLEnv *ql_env);
   virtual ~ExecContext();
 
   // Add a statement tree node for execution.
@@ -158,13 +157,17 @@ class ExecContext : public ProcessContextBase {
     return &tnode_contexts_.back();
   }
 
+  const std::string& stmt() const override {
+    return parse_tree_.stmt();
+  }
+
   // Access function for parse_tree.
-  const ParseTree* parse_tree() const {
+  const ParseTree& parse_tree() const {
     return parse_tree_;
   }
 
   // Access function for params.
-  const StatementParameters* params() const {
+  const StatementParameters& params() const {
     return params_;
   }
 
@@ -202,10 +205,10 @@ class ExecContext : public ProcessContextBase {
 
  private:
   // Statement parse tree to execute.
-  const ParseTree *parse_tree_;
+  const ParseTree& parse_tree_;
 
   // Statement parameters to execute with.
-  const StatementParameters *params_;
+  const StatementParameters& params_;
 
   // SQL environment.
   QLEnv *ql_env_;

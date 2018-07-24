@@ -68,7 +68,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(
-      const CQLMessage::QueryId& id, const std::string& keyspace, const std::string& ql_stmt);
+      const CQLMessage::QueryId& id, const std::string& keyspace, const std::string& query);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
   std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
@@ -79,7 +79,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   void DeletePreparedStatement(const std::shared_ptr<const CQLStatement>& stmt);
 
   // Return the memory tracker for prepared statements.
-  std::shared_ptr<MemTracker> prepared_stmts_mem_tracker() const {
+  const MemTrackerPtr& prepared_stmts_mem_tracker() const {
     return prepared_stmts_mem_tracker_;
   }
 
@@ -156,7 +156,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::shared_ptr<ql::Statement> auth_prepared_stmt_;
 
   // Tracker to measure and limit memory usage of prepared statements.
-  std::shared_ptr<MemTracker> prepared_stmts_mem_tracker_;
+  MemTrackerPtr prepared_stmts_mem_tracker_;
 
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;
