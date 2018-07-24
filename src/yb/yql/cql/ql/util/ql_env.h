@@ -89,9 +89,6 @@ class QLEnv {
   // Get the status of an individual read/write op after it has been flushed and completed.
   virtual Status GetOpError(const client::YBqlOp* op) const;
 
-  // Abort the buffered ops.
-  virtual void AbortOps();
-
   // Start a distributed transaction.
   void StartTransaction(IsolationLevel isolation_level);
 

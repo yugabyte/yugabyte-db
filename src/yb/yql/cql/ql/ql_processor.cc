@@ -152,7 +152,7 @@ Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
     ql_metrics_->time_to_parse_ql_query_->Increment(elapsed_time.ToMicroseconds());
   }
   *parse_tree = parser_.Done();
-  DCHECK(parse_tree->get() != nullptr) << "Parse tree is null";
+  DCHECK(*parse_tree) << "Parse tree is null";
   return Status::OK();
 }
 
@@ -167,7 +167,7 @@ Status QLProcessor::Analyze(ParseTree::UniPtr* parse_tree) {
     ql_metrics_->num_rounds_to_analyze_ql_->Increment(1);
   }
   *parse_tree = analyzer_.Done();
-  CHECK(parse_tree->get() != nullptr) << "Parse tree is null";
+  DCHECK(*parse_tree) << "Parse tree is null";
   return s;
 }
 
@@ -186,6 +186,10 @@ Status QLProcessor::Prepare(const string& stmt, ParseTree::UniPtr* parse_tree,
 void QLProcessor::ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
                                StatementExecutedCallback cb) {
   executor_.ExecuteAsync(parse_tree, params, std::move(cb));
+}
+
+void QLProcessor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
+  executor_.ExecuteAsync(batch, std::move(cb));
 }
 
 void QLProcessor::RunAsync(const string& stmt, const StatementParameters& params,
@@ -212,31 +216,6 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
     return RunAsync(stmt, params, cb, true /* reparsed */);
   }
   cb.Run(s, result);
-}
-
-void QLProcessor::BeginBatch(StatementExecutedCallback cb) {
-  executor_.BeginBatch(std::move(cb));
-}
-
-void QLProcessor::ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params) {
-  executor_.ExecuteBatch(parse_tree, params);
-}
-
-void QLProcessor::RunBatch(const std::string& stmt, const StatementParameters& params,
-                           ParseTree::UniPtr* parse_tree, bool reparsed) {
-  const Status s = Prepare(stmt, parse_tree, reparsed);
-  if (PREDICT_FALSE(!s.ok())) {
-    return executor_.StatementExecuted(s);
-  }
-  ExecuteBatch(**parse_tree, params);
-}
-
-void QLProcessor::ApplyBatch() {
-  executor_.ApplyBatch();
-}
-
-void QLProcessor::AbortBatch() {
-  executor_.AbortBatch();
 }
 
 void QLProcessor::SetCurrentCall(rpc::InboundCallPtr call) {
