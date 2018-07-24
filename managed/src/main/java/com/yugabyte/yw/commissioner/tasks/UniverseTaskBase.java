@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -621,7 +622,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isMasterInShellMode : true if we are configuring a master node in shell mode
    * @param deviceInfo device info, if any, about disk volumes etc on the nodes
    * @param ybSoftwareVersion software version to install on the node
-   * @param changeNodeState true if should node state should be changed after configure.
+   * @param updateMasterAddrsOnly if true, only want to set master addresses gflags.
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
@@ -629,14 +630,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                                                  DeviceInfo deviceInfo,
                                                  String ybSoftwareVersion) {
     return createConfigureServerTasks(nodes, isMasterInShellMode, deviceInfo,
-                                      ybSoftwareVersion, true /* changeNodeState */);
+                                      ybSoftwareVersion, false /* updateMasterAddrs */);
   }
 
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode,
                                                  DeviceInfo deviceInfo,
                                                  String ybSoftwareVersion,
-                                                 boolean changeNodeState) {
+                                                 boolean updateMasterAddrsOnly) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -657,8 +658,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.ybSoftwareVersion = ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      // Set the node change state.
-      params.changeNodeState = changeNodeState;
+      // Set if updating master addresses only.
+      params.updateMasterAddrsOnly = updateMasterAddrsOnly;
+      if (updateMasterAddrsOnly) {
+        params.type = UpgradeTaskType.GFlags;
+        params.setProperty("processType", ServerType.TSERVER.toString());
+      }
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);

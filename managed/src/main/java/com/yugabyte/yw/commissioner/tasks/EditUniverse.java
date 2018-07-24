@@ -206,8 +206,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Change the master addresses in the conf file for all TServers.
-      createConfigureServerTasks(universe.getTServers(), false /* isShell */, userIntent.deviceInfo,
-                               userIntent.ybSoftwareVersion, false /* changeNodeState */);
+      createConfigureServerTasks(universe.getTServers(), false /*isShell */, userIntent.deviceInfo,
+                                 userIntent.ybSoftwareVersion, true /* updateMasterAddrs */);
 
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask()
