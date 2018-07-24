@@ -31,13 +31,10 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Analyzer::Analyze(const string& ql_stmt, ParseTree::UniPtr parse_tree) {
+CHECKED_STATUS Analyzer::Analyze(ParseTree::UniPtr parse_tree) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
-  sem_context_ = SemContext::UniPtr(new SemContext(ql_stmt.c_str(),
-                                                   ql_stmt.length(),
-                                                   std::move(parse_tree),
-                                                   ql_env_));
+  sem_context_ = SemContext::UniPtr(new SemContext(std::move(parse_tree), ql_env_));
   Status s = ptree->Analyze(sem_context_.get());
   if (PREDICT_FALSE(!s.ok())) {
     // When a statement is parsed for the first time, semantic analysis may fail because stale

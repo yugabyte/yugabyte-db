@@ -89,16 +89,16 @@ TEST_F(TestQLCmd, TestQLCmd) {
   const string exit_cmd = "exit";
   while (!cin.eof()) {
     // Read the statement.
-    string ql_stmt;
+    string stmt;
     while (!cin.eof()) {
       cout << endl << "\033[1;33mybcmd > \033[0m";
 
       string sub_stmt;
       getline(cin, sub_stmt);
-      ql_stmt += sub_stmt;
+      stmt += sub_stmt;
 
-      if (ql_stmt.substr(0, 4) == exit_cmd &&
-          (ql_stmt[4] == '\0' || isspace(ql_stmt[4]) || ql_stmt[4] == ';')) {
+      if (stmt.substr(0, 4) == exit_cmd &&
+          (stmt[4] == '\0' || isspace(stmt[4]) || stmt[4] == ';')) {
         return;
       }
 
@@ -106,20 +106,20 @@ TEST_F(TestQLCmd, TestQLCmd) {
         break;
       }
 
-      if (ql_stmt.size() != 0) {
-        ql_stmt += "\n";
+      if (stmt.size() != 0) {
+        stmt += "\n";
       }
     }
 
-    if (ql_stmt.empty()) {
+    if (stmt.empty()) {
       continue;
     }
 
     // Execute.
-    cout << "\033[1;34mExecute statement: " << ql_stmt << "\033[0m" << endl;
+    cout << "\033[1;34mExecute statement: " << stmt << "\033[0m" << endl;
     StatementParameters params;
     do {
-      Status s = processor->Run(ql_stmt, params);
+      Status s = processor->Run(stmt, params);
       if (!s.ok()) {
         cout << s.ToString(false);
       } else {

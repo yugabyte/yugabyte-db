@@ -23,28 +23,21 @@
 namespace yb {
 namespace ql {
 
+using std::string;
+
 //--------------------------------------------------------------------------------------------------
 // Parse Tree
 //--------------------------------------------------------------------------------------------------
 
-namespace {
-
-std::shared_ptr<BufferAllocator> MakeAllocator(std::shared_ptr<MemTracker> mem_tracker) {
-  if (mem_tracker) {
-    return std::make_shared<MemoryTrackingBufferAllocator>(HeapBufferAllocator::Get(),
-                                                           std::move(mem_tracker));
-  } else {
-    return nullptr;
-  }
-}
-
-} // namespace
-
-ParseTree::ParseTree(const bool reparsed, std::shared_ptr<MemTracker> mem_tracker)
-    : buffer_allocator_(MakeAllocator(std::move(mem_tracker))),
+ParseTree::ParseTree(const string& stmt, const bool reparsed, const MemTrackerPtr& mem_tracker)
+    : stmt_(stmt),
+      reparsed_(reparsed),
+      buffer_allocator_(mem_tracker ?
+                        std::make_shared<MemoryTrackingBufferAllocator>(HeapBufferAllocator::Get(),
+                                                                        mem_tracker) :
+                        nullptr),
       ptree_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()),
-      psem_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()),
-      reparsed_(reparsed) {
+      psem_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()) {
 }
 
 ParseTree::~ParseTree() {

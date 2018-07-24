@@ -70,24 +70,26 @@ class QLProcessor {
               cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~QLProcessor();
 
-  // Prepare a SQL statement (parse and analyze).
-  CHECKED_STATUS Prepare(const string& ql_stmt, ParseTree::UniPtr* parse_tree,
-                         bool reparsed = false, std::shared_ptr<MemTracker> mem_tracker = nullptr);
+  // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
+  // the parse tree.
+  CHECKED_STATUS Prepare(const std::string& stmt, ParseTree::UniPtr* parse_tree,
+                         bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr);
 
-  // Execute a prepared statement (parse tree).
-  void ExecuteAsync(const std::string& ql_stmt, const ParseTree& parse_tree,
-                    const StatementParameters& params, StatementExecutedCallback cb);
+  // Execute a prepared statement (parse tree). The parse tree and the parameters must not be
+  // destroyed until the statement has been executed.
+  void ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
+                    StatementExecutedCallback cb);
 
-  // Run (parse, analyze and execute) a SQL statement.
-  void RunAsync(const std::string& ql_stmt, const StatementParameters& params,
+  // Run (parse, analyze and execute) a SQL statement. The statement string and the parameters must
+  // not be destroyed until the statement has been executed.
+  void RunAsync(const std::string& stmt, const StatementParameters& params,
                 StatementExecutedCallback cb, bool reparsed = false);
 
   // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
   // applied and execution is complete, or when an error occurs.
   void BeginBatch(StatementExecutedCallback cb);
-  void ExecuteBatch(const std::string& ql_stmt, const ParseTree& parse_tree,
-                    const StatementParameters& params);
-  void RunBatch(const std::string& ql_stmt, const StatementParameters& params,
+  void ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params);
+  void RunBatch(const std::string& stmt, const StatementParameters& params,
                 ParseTree::UniPtr* parse_tree, bool reparsed = false);
   void ApplyBatch();
   void AbortBatch();
@@ -114,14 +116,14 @@ class QLProcessor {
   friend class QLTestBase;
 
   // Parse a SQL statement and generate a parse tree.
-  CHECKED_STATUS Parse(const string& ql_stmt, ParseTree::UniPtr* parse_tree, bool reparsed = false,
-                       std::shared_ptr<MemTracker> mem_tracker = nullptr);
+  CHECKED_STATUS Parse(const std::string& stmt, ParseTree::UniPtr* parse_tree,
+                       bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr);
 
   // Semantically analyze a parse tree.
-  CHECKED_STATUS Analyze(const string& ql_stmt, ParseTree::UniPtr* parse_tree);
+  CHECKED_STATUS Analyze(ParseTree::UniPtr* parse_tree);
 
-  void RunAsyncDone(const std::string& ql_stmt, const StatementParameters* params,
-                    const ParseTree *parse_tree, StatementExecutedCallback cb,
+  void RunAsyncDone(const std::string& stmt, const StatementParameters& params,
+                    const ParseTree* parse_tree, StatementExecutedCallback cb,
                     const Status& s, const ExecutedResult::SharedPtr& result);
 };
 

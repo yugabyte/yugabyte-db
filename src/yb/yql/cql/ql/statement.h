@@ -46,14 +46,12 @@ class Statement {
   const std::string& text() const { return text_; }
 
   // Prepare the statement for execution. Optionally return prepared result if requested.
-  CHECKED_STATUS Prepare(
-      QLProcessor *processor, std::shared_ptr<MemTracker> mem_tracker = nullptr,
-      PreparedResult::UniPtr *result = nullptr);
+  CHECKED_STATUS Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker = nullptr,
+                         PreparedResult::UniPtr *result = nullptr);
 
   // Execute the prepared statement.
-  CHECKED_STATUS ExecuteAsync(
-      QLProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
-      const;
+  CHECKED_STATUS ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
+                              StatementExecutedCallback cb) const;
 
   // Execute the prepared statement in a batch
   CHECKED_STATUS ExecuteBatch(QLProcessor* processor, const StatementParameters& params) const;

@@ -161,7 +161,7 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
 }
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
-    const CQLMessage::QueryId& query_id, const string& keyspace, const string& ql_stmt) {
+    const CQLMessage::QueryId& query_id, const string& keyspace, const string& query) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -173,7 +173,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     // wait for the results.
     stmt = prepared_stmts_map_.emplace(
         query_id, std::make_shared<CQLStatement>(
-            keyspace, ql_stmt, prepared_stmts_list_.end())).first->second;
+            keyspace, query, prepared_stmts_list_.end())).first->second;
     InsertLruPreparedStatementUnlocked(stmt);
   } else {
     // Return existing statement if found.

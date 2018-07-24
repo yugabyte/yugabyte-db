@@ -63,15 +63,15 @@ Executor::~Executor() {
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecuteAsync(const string &ql_stmt, const ParseTree &parse_tree,
-                            const StatementParameters* params, StatementExecutedCallback cb) {
+void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
+                            StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   ql_env_->Reset();
   ql_env_->SetReadPoint();
   // Execute the statement and invoke statement-executed callback either when there is an error or
   // no async operation is pending.
-  RETURN_STMT_NOT_OK(Execute(ql_stmt, parse_tree, params));
+  RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
 }
 
@@ -84,8 +84,7 @@ void Executor::BeginBatch(StatementExecutedCallback cb) {
   ql_env_->SetReadPoint();
 }
 
-void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_tree,
-                            const StatementParameters* params) {
+void Executor::ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params) {
   Status s;
 
   // Batch execution is supported for non-conditional DML statements only currently.
@@ -135,7 +134,7 @@ void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_t
 
   // Execute the statement and invoke statement-executed callback when there is an error.
   if (s.ok()) {
-    s = Execute(ql_stmt, parse_tree, params);
+    s = Execute(parse_tree, params);
   }
   RETURN_STMT_NOT_OK(s);
 }
@@ -151,18 +150,17 @@ void Executor::AbortBatch() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::Execute(const string &ql_stmt, const ParseTree &parse_tree,
-                         const StatementParameters* params) {
+Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters& params) {
   // Prepare execution context and execute the parse tree's root node.
-  exec_contexts_.emplace_back(ql_stmt.c_str(), ql_stmt.length(), &parse_tree, params, ql_env_);
+  exec_contexts_.emplace_back(parse_tree, params, ql_env_);
   return ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
 }
 
 void Executor::ReExecute() {
   ql_env_->SetReadPoint(ReExecute::kTrue);
   for (ExecContext& exec_context : exec_contexts_) {
-    const ParseTree* parse_tree = exec_context.parse_tree();
-    const Status s = ProcessStatementStatus(*parse_tree, ExecTreeNode(parse_tree->root().get()));
+    const ParseTree& parse_tree = exec_context.parse_tree();
+    const Status s = ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
     if (PREDICT_FALSE(!s.ok())) {
       return StatementExecuted(s);
     }
@@ -299,7 +297,7 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
 
 Status Executor::ExecPTNode(const PTListNode *tnode) {
   for (TreeNode::SharedPtr dml : tnode->node_list()) {
-    RETURN_NOT_OK(ProcessStatementStatus(*exec_context().parse_tree(), ExecTreeNode(dml.get())));
+    RETURN_NOT_OK(ProcessStatementStatus(exec_context().parse_tree(), ExecTreeNode(dml.get())));
   }
   return Status::OK();
 }
@@ -636,7 +634,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
                               : exec_context().Error(tnode, ErrorCode::TABLE_NOT_FOUND);
   }
 
-  const StatementParameters& params = *exec_context().params();
+  const StatementParameters& params = exec_context().params();
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !params.table_id().empty();
@@ -805,18 +803,18 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
                                         current_result->rows_data(),
                                         &current_fetch_row_count));
 
-  const size_t previous_fetches_row_count = exec_context->params()->total_num_rows_read();
+  const size_t previous_fetches_row_count = exec_context->params().total_num_rows_read();
   const size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
   // Statement (paging) parameters.
   StatementParameters current_params;
   RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
 
-  const size_t total_rows_skipped = exec_context->params()->total_rows_skipped() +
+  const size_t total_rows_skipped = exec_context->params().total_rows_skipped() +
                                     current_params.total_rows_skipped();
 
   // The limit for this select: min of page size and result limit (if set).
-  uint64_t fetch_limit = exec_context->params()->page_size(); // default;
+  uint64_t fetch_limit = exec_context->params().page_size(); // default;
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
@@ -1455,7 +1453,7 @@ void Executor::CommitDone(const Status &s) {
   StatementExecuted(s);
 }
 
-Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Status& s) {
+Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Status& s) {
   if (PREDICT_FALSE(!s.ok() && s.IsQLError() && !parse_tree.reparsed())) {
     // If execution fails because the statement was analyzed with stale metadata cache, the
     // statement needs to be reparsed and re-analyzed. Symptoms of stale metadata are as listed
@@ -1546,7 +1544,7 @@ Status Executor::ProcessAsyncResults(const Status& s,
     if (ss.ok()) {
       ss = ProcessOpResponse(op.get(), tnode, exec_context);
     }
-    RETURN_NOT_OK(ProcessStatementStatus(*exec_context->parse_tree(), ss));
+    RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), ss));
   }
   return Status::OK();
 }

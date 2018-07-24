@@ -59,15 +59,16 @@ class Executor : public QLExprExecutor {
   Executor(QLEnv *ql_env, const QLMetrics* ql_metrics);
   virtual ~Executor();
 
-  // Execute the given statement (parse tree).
-  void ExecuteAsync(const std::string &ql_stmt, const ParseTree &parse_tree,
-                    const StatementParameters* params, StatementExecutedCallback cb);
+  // Execute the given statement (parse tree). The parse tree and the parameters must not be
+  // destroyed until the statement is executed.
+  void ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
+                    StatementExecutedCallback cb);
 
   // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
-  // applied and execution is complete, or when an error occurs.
+  // applied and execution is complete, or when an error occurs. The parse tree and the parameters
+  // must not be destroyed until the statement is executed.
   void BeginBatch(StatementExecutedCallback cb);
-  void ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_tree,
-                    const StatementParameters* params);
+  void ExecuteBatch(const ParseTree& parse_tree, const StatementParameters& params);
   void ApplyBatch();
   void AbortBatch();
 
@@ -80,8 +81,7 @@ class Executor : public QLExprExecutor {
   // functions are operating directly on the parse tree.
 
   // Execute a parse tree.
-  CHECKED_STATUS Execute(const std::string &ql_stmt, const ParseTree &parse_tree,
-                         const StatementParameters* params);
+  CHECKED_STATUS Execute(const ParseTree& parse_tree, const StatementParameters& params);
 
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
