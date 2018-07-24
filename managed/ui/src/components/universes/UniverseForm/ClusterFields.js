@@ -14,6 +14,7 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
 import {getPrimaryCluster, getClusterByType, getReadOnlyCluster} from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
@@ -40,7 +41,7 @@ const initialState = {
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
   // Do not use spot price anywhere, by default.
-  useSpotPrice: false,
+  useSpotPrice: IN_DEVELOPMENT_MODE,
   spotPrice: normalizeToPositiveFloat('0.00'),
   assignPublicIP: true,
   useTimeSync: false,
@@ -302,6 +303,7 @@ export default class ClusterFields extends Component {
     const configureIntentValid = function() {
       return (!_.isEqual(self.state, prevState) || hasSpotPriceChanged()) &&
         isNonEmptyObject(currentProvider) &&
+        isNonEmptyArray(formValues[clusterType].regionList) &&
         (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem") &&
 
         (currentProvider.code !== "aws" || (!self.state.gettingSuggestedSpotPrice && (!self.state.useSpotPrice ||
@@ -524,26 +526,39 @@ export default class ClusterFields extends Component {
   };
 
   handleUniverseConfigure(universeTaskParams) {
-    const {universe: {currentUniverse}, formValues, clusterType} = this.props;
+    const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
     
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function() {
       return isNonEmptyArray(regionList) && isNonEmptyString(instanceType);
     };
-
+    
     if (verifyIntentConditions() ) {
-      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails) && isNonEmptyObject(getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType))) {
-        const prevCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
-        const nextCluster = getClusterByType(universeTaskParams.clusters, clusterType);
-        if (isNonEmptyObject(prevCluster) && isNonEmptyObject(nextCluster) &&
-          areIntentsEqual(prevCluster.userIntent, nextCluster.userIntent)) {
+      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails) && isDefinedNotNull(getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType))) {
+        // cluster set: main edit flow
+        const oldCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+        const newCluster = getClusterByType(universeTaskParams.clusters, clusterType);
+        if (isNonEmptyObject(oldCluster) && isNonEmptyObject(newCluster) &&
+          areIntentsEqual(oldCluster.userIntent, newCluster.userIntent)) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
           this.props.submitConfigureUniverse(universeTaskParams);
         }
       } else {
-        this.props.submitConfigureUniverse(universeTaskParams);
+        // Create flow  
+        if (isEmptyObject(universeConfigTemplate.data)) {
+          this.props.submitConfigureUniverse(universeTaskParams);
+        } else {
+          const currentClusterConfiguration = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
+          if(!isDefinedNotNull(currentClusterConfiguration)) {
+            this.props.submitConfigureUniverse(universeTaskParams);
+          } else if (!areIntentsEqual(
+                      getClusterByType(universeTaskParams.clusters, clusterType).userIntent, 
+                      currentClusterConfiguration.userIntent) ) {
+            this.props.submitConfigureUniverse(universeTaskParams);
+          }
+        }
       }
     }
   }
