@@ -96,11 +96,13 @@ build_cpp_code() {
     remote_opt="--remote"
   fi
 
-  # Delegate the actual C++ build to the yb_build.sh script.
+  # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
+  # flag so that the worker list refresh script can capture it from ps output and bump the number
+  # of workers to some minimum value.
   #
   # We're explicitly disabling third-party rebuilding here as we've already built third-party
   # dependencies (or downloaded them, or picked an existing third-party directory) above.
-  time "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+  time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
     --no-rebuild-thirdparty \
     --skip-java \
     "$BUILD_TYPE" 2>&1 | \
@@ -181,9 +183,7 @@ for python_command in python python2 python2.7 python3; do
 done
 set -e
 
-log "Running Python tests"
-time run_python_tests
-log "Finished running Python tests (see timing information above)"
+run_python_tests
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
@@ -192,12 +192,12 @@ YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 if is_jenkins && is_jenkins_phabricator_build && [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && \
    ! is_mac; then
   log "Enabling running affected tests only as this seems to be a Phabricator Jenkins build"
-  export YB_RUN_AFFECTED_TESTS_ONLY=1
+  YB_RUN_AFFECTED_TESTS_ONLY=1
   # Use Make as we can only parse Make's build files to recover the dependency graph.
-  export YB_USE_NINJA=0
+  YB_USE_NINJA=0
 elif [[ ${YB_RUN_AFFECTED_TESTS_ONLY:-0} == "0" ]]; then
   # OK to use Ninja if we don't care about the dependency graph.
-  export YB_USE_NINJA=1
+  YB_USE_NINJA=1
 fi
 
 export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
@@ -326,30 +326,10 @@ fi
 
 # We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
 declare -i -r MAX_CMAKE_RETRIES=3
-declare -i cmake_attempt_index=1
-cmake_succeeded=false
-while true; do
-  if [[ $cmake_attempt_index -eq $MAX_CMAKE_RETRIES ]]; then
-    log "This is the last attempt (attempt $MAX_CMAKE_RETRIES), trying to run CMake on the " \
-        "build master host."
-    cmake_cmd_prefix="run_centralized_build_cmd"
-  else
-    cmake_cmd_prefix=""
-  fi
-  # No quotes around $cmake_cmd_prefix below on purpose, because we just want to run the yb_build.sh
-  # script locally if it is empty.
-  #
-  # The --no-remote parameter tells the yb_build.sh command to always run any compiler commands
-  # (in this case, those that CMake runs internally to test compiler capabilities) locally, without
-  # ssh-ing to remote compilation worker nodes.
-  #
-  # The optional $cmake_cmd_prefix (a call to our run_centralized_build_cmd bash function) is
-  # something different: if present, it will ensure that CMake itself runs on the our "central
-  # build master" machine, which is also in most cases the NFS server. This is only done as the
-  # last attempt. We will probably get away from the concept of a "central build machine" at some
-  # point.
-  if ( set -x
-       $cmake_cmd_prefix "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote ); then
+declare -i cmake_attempt_index=0
+while [[ $cmake_attempt_index -lt $MAX_CMAKE_RETRIES ]]; do
+  let cmake_attempt_index+=1
+  if run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote; then
     log "CMake succeeded after attempt $cmake_attempt_index"
     break
   fi
@@ -358,7 +338,6 @@ while true; do
     exit 1
   fi
   heading "CMake failed at attempt $cmake_attempt_index, re-trying"
-  let cmake_attempt_index+=1
 done
 
 # Only enable test core dumps for certain build types.
@@ -416,7 +395,7 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
 
   if [[ -e $YB_SRC_ROOT_REGR ]]; then
     log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
-    time run_centralized_build_cmd rm -rf "$YB_SRC_ROOT_REGR"
+    time run_build_cmd rm -rf "$YB_SRC_ROOT_REGR"
     if [[ -e $YB_SRC_ROOT_REGR ]]; then
       log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
       sleep 0.5
@@ -427,7 +406,7 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
   fi
 
   log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
-  time run_centralized_build_cmd git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
+  time run_build_cmd git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
   if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
     log "Directory $YB_SRC_ROOT_REGR did not appear right away"
     sleep 0.5
@@ -499,7 +478,7 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   # build_yb_java_code will provide some common options for Maven. This includes local Maven
   # repository location and the local Maven settings file.
-  build_yb_java_code clean
+  ( set -x; build_yb_java_code clean )
 
   if is_jenkins; then
     # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
@@ -518,10 +497,9 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
     commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
     commit_msg+="during testing"
-
-    build_yb_java_code versions:set -DnewVersion="$yb_java_project_version"
     (
       set -x
+      mvn versions:set -DnewVersion="$yb_java_project_version"
       git add -A .
       git commit -m "$commit_msg"
     )
@@ -552,21 +530,19 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   package_path_file="$BUILD_ROOT/package_path.txt"
   rm -f "$package_path_file"
 
-  # We are passing --build_args="--skip-build" using the "=" syntax, because otherwise it would be
-  # interpreted as an argument to yb_release.py, causing an error.
+  # We are skipping the Java build here to avoid excessive output, but not skipping the C++ build,
+  # because it is invoked with a specific set of targets, which is different from how we build it in
+  # a non-packaging context (e.g. for testing).
   #
-  # Everything has already been built by this point, so there is no need to invoke compilation at
-  # all as part of building the release package.
-  (
-    set -x
-    time "$YB_SRC_ROOT/yb_release" \
-      --build "$build_type" \
-      --build_root "$BUILD_ROOT" \
-      --build_args="--skip-build" \
-      --save_release_path_to_file "$package_path_file" \
-      --commit "$current_git_commit" \
-      --force
-  )
+  # We are passing --build_args="--skip-java" using the "=" syntax, because otherwise "--skip-java"
+  # would be interpreted as an argument to yb_release.py, causing an error.
+  time "$YB_SRC_ROOT/yb_release" \
+    --build "$build_type" \
+    --build_root "$BUILD_ROOT" \
+    --build_args="--skip-java" \
+    --save_release_path_to_file "$package_path_file" \
+    --commit "$current_git_commit" \
+    --force
 
   YB_PACKAGE_PATH=$( cat "$package_path_file" )
   if [[ -z $YB_PACKAGE_PATH ]]; then
@@ -577,9 +553,8 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   fi
 
   # Upload the package, if we have the enterprise-only code in this tree (even if the current build
-  # is a community edition build). Therefore we are not checking the $YB_EDITION env variable here.
-  # We also don't attempt to upload any packages for Phabricator (pre-commit) builds.
-  if [[ -d $YB_SRC_ROOT/ent ]] && ! is_jenkins_phabricator_build; then
+  # is a community edition build).
+  if [[ -d $YB_SRC_ROOT/ent ]]; then
     . "$YB_SRC_ROOT/ent/build-support/upload_package.sh"
     if ! "$package_uploaded" && ! "$package_upload_skipped"; then
       FAILURES+=$'Package upload failed\n'
