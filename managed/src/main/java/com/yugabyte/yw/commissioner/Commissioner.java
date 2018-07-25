@@ -44,9 +44,6 @@ public class Commissioner {
   // The interval after which progress monitor wakes up and does work.
   private final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
 
-  // State variable which signals if the task manager is shutting down.
-  private static AtomicBoolean shuttingDown = new AtomicBoolean(false);
-
   // The background progress monitor for the tasks.
   static ProgressMonitor progressMonitor;
 
@@ -79,7 +76,6 @@ public class Commissioner {
     LOG.info("Started TaskProgressMonitor thread.");
 
     healthChecker = new HealthChecker();
-    healthChecker.setShutdownControl(shuttingDown);
     healthChecker.start();
     LOG.info("Started TaskProgressMonitor thread.");
   }
@@ -152,7 +148,7 @@ public class Commissioner {
 
     @Override
     public void run() {
-      while (!shuttingDown.get()) {
+      while (true) {
         // Loop through all the active tasks.
         Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
         while (iter.hasNext()) {
