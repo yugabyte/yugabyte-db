@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.HealthManager;
@@ -28,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.libs.Json;
 
+@Singleton
 public class HealthChecker extends Thread {
   public static final Logger LOG = LoggerFactory.getLogger(HealthChecker.class);
 
@@ -48,24 +50,14 @@ public class HealthChecker extends Thread {
   // What will run the health checking script.
   static HealthManager healthManager = null;
 
-  // Mark to stop execution of the checker thread.
-  private AtomicBoolean shuttingDown = null;
-
   public HealthChecker() {
     setName("HealthChecker");
-  }
-
-  public void setShutdownControl(AtomicBoolean shuttingDown) {
-    this.shuttingDown = shuttingDown;
   }
 
   @Override
   public void run() {
     LOG.info("Starting health checking");
-    if (shuttingDown == null) {
-      throw new RuntimeException("Class not fully initialized, missing shuttingDown control.");
-    }
-    while (!shuttingDown.get()) {
+    while (true) {
       try {
         if (healthManager == null) {
           initHealthManager();
@@ -101,7 +93,9 @@ public class HealthChecker extends Thread {
   private boolean checkForStatusUpdate() {
     long now = (new Date()).getTime();
     boolean shouldSendStatusUpdate = (now - STATUS_UPDATE_INTERVAL_MS) > lastStatusUpdateTime;
-    lastStatusUpdateTime = now;
+    if (shouldSendStatusUpdate) {
+      lastStatusUpdateTime = now;
+    }
     return shouldSendStatusUpdate;
   }
 
