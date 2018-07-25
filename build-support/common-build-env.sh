@@ -1270,9 +1270,10 @@ run_remote_cmd() {
 }
 
 # Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
-# However, in a remote build, we ensure we run this command on the "distributed build master host"
+# However, in a remote build (i.e. a build where we run the compiler on an auto-scaling group
+# of build workers), we ensure we run this command on the "distributed build master host"
 # machine, as there are some issues with running cmake or make over NFS (e.g. stale file handles).
-run_build_cmd() {
+run_centralized_build_cmd() {
   if is_remote_build && [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
     run_remote_cmd "$DISTRIBUTED_BUILD_MASTER_HOST" "$@"
   else
