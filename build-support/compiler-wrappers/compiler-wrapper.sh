@@ -156,16 +156,109 @@ remote_build_exit_handler() {
 }
 
 # -------------------------------------------------------------------------------------------------
-# Common setup for remote and local build
+# Common setup for remote and local build.
+# We parse command-line arguments in both cases.
 
 cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
+compiler_args=( "$@" )
+
+if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
+      ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
+  handle_build_root_from_current_dir
+fi
+
+set +u
+# The same as one string. We allow undefined variables for this line because an empty array is
+# treated as such.
+compiler_args_str="${compiler_args[*]}"
+set -u
+
+if [[ ${build_type:-} == "asan" && \
+      $PWD == */postgres_build/src/backend/utils/adt && \
+      $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ]]; then
+  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0:
+  # undefined reference to `__muloti4'
+  # (full log at http://bit.ly/2lYdYnp).
+  # Related to the problem reported at http://bit.ly/2NvS6MR.
+  compiler_args+=( -fno-sanitize=undefined )
+fi
+
+output_file=""
+input_files=()
+library_files=()
+compiling_pch=false
+
+# Determine if we're building the precompiled header (not whether we're using one).
+is_precompiled_header=false
+
+instrument_functions=false
+instrument_functions_rel_path_re=""
+is_pb_cc=false
+
+rpath_found=false
+num_output_files_found=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      if [[ $# -gt 1 ]]; then
+        output_file=${2:-}
+        let num_output_files_found+=1
+        shift
+      fi
+    ;;
+    -DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=*)
+      instrument_functions_rel_path_re=${1#*=}
+    ;;
+    *.c|*.cc|*.h|*.o|*.a|*.so|*.dylib)
+      # Do not include arguments that look like compiler options into the list of input files,
+      # even if they have plausible extensions.
+      if [[ ! $1 =~ ^[-] ]]; then
+        input_files+=( "$1" )
+        if [[ $1 == *.pb.cc ]]; then
+          is_pb_cc=true
+        fi
+        if [[ $1 =~ ^.*[.](c|cc|h)$ && -n $instrument_functions_rel_path_re ]]; then
+          rel_path=$( "$YB_BUILD_SUPPORT_DIR/get_source_rel_path.py" "$1" )
+          if [[ $rel_path =~ $instrument_functions_rel_path_re ]]; then
+            instrument_functions=true
+          fi
+        fi
+      fi
+    ;;
+    -Wl,-rpath,*)
+      rpath_found=true
+    ;;
+    c++-header)
+      compiling_pch=true
+    ;;
+    -DYB_COMPILER_TYPE=*)
+      compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
+      if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
+        if [[ $YB_COMPILER_TYPE != $compiler_type_from_cmd_line ]]; then
+          fatal "Compiler command line has '$1', but YB_COMPILER_TYPE is '${YB_COMPILER_TYPE}'"
+        fi
+      else
+        export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
+      fi
+    ;;
+    *)
+    ;;
+  esac
+  shift
+done
+
+if [[ ! $output_file = *.o && ${#library_files[@]} -gt 0 ]]; then
+  input_files+=( "${library_files[@]}" )
+  library_files=()
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Remote build
 
-output_file=""
 nonexistent_file_args=()
 local_build_only=false
 for arg in "$@"; do
@@ -203,7 +296,7 @@ if [[ $local_build_only == "false" &&
     fi
     build_host=$build_worker_name.c.yugabyte.internal
     set +e
-    run_remote_cmd "$build_host" "$0" "$@" 2>"$stderr_path"
+    run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
     exit_code=$?
     set -e
     # Exit code 254: "write: Connection reset by peer".
@@ -312,97 +405,20 @@ local_build_exit_handler() {
     ) >&2
   fi
   rm -f "${stderr_path:-}"
+  if [[ $exit_code -eq 0 && -n $output_file ]]; then
+    # Successful compilation. Update the output file timestamp locally to work around any clock
+    # skew issues between the node we're running this on and compilation worker nodes.
+    if [[ -e $output_file ]]; then
+      touch "$output_file"
+    else
+      log "Warning: was supposed to create an output file '$output_file', but it does not exist."
+    fi
+  fi
   exit "$exit_code"
 }
 
 # -------------------------------------------------------------------------------------------------
 # Local build
-
-compiler_args=( "$@" )
-
-YB_SRC="$YB_SRC_ROOT/src"
-if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
-      ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
-  handle_build_root_from_current_dir
-fi
-
-set +u
-# The same as one string. We allow undefined variables for this line because an empty array is
-# treated as such.
-compiler_args_str="${compiler_args[*]}"
-set -u
-
-if [[ ${build_type:-} == "asan" && \
-      $PWD == */postgres_build/src/backend/utils/adt && \
-      $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ]]; then
-  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0:
-  # undefined reference to `__muloti4'
-  # (full log at http://bit.ly/2lYdYnp).
-  # Related to the problem reported at http://bit.ly/2NvS6MR.
-  compiler_args+=( -fno-sanitize=undefined )
-fi
-
-output_file=""
-input_files=()
-library_files=()
-compiling_pch=false
-
-# Determine if we're building the precompiled header (not whether we're using one).
-is_precompiled_header=false
-
-instrument_functions=false
-instrument_functions_rel_path_re=""
-is_pb_cc=false
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -o)
-      output_file=${2:-}
-      if [[ $# -gt 1 ]]; then
-        shift
-      fi
-    ;;
-    -DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=*)
-      instrument_functions_rel_path_re=${1#*=}
-    ;;
-    *.c|*.cc|*.h|*.o|*.a|*.so|*.dylib)
-      # Do not include arguments that look like compiler options into the list of input files, even
-      # if they have plausible extensions.
-      if [[ ! $1 =~ ^[-] ]]; then
-        input_files+=( "$1" )
-        if [[ $1 == *.pb.cc ]]; then
-          is_pb_cc=true
-        fi
-        if [[ $1 =~ ^.*[.](c|cc|h)$ && -n $instrument_functions_rel_path_re ]]; then
-          rel_path=$( "$YB_BUILD_SUPPORT_DIR/get_source_rel_path.py" "$1" )
-          if [[ $rel_path =~ $instrument_functions_rel_path_re ]]; then
-            instrument_functions=true
-          fi
-        fi
-      fi
-    ;;
-    c++-header)
-      compiling_pch=true
-    ;;
-    -DYB_COMPILER_TYPE=*)
-      compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
-      if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
-        if [[ $YB_COMPILER_TYPE != $compiler_type_from_cmd_line ]]; then
-          fatal "Compiler command line has '$1', but YB_COMPILER_TYPE is '${YB_COMPILER_TYPE}'"
-        fi
-      else
-        export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
-      fi
-    ;;
-    *)
-    ;;
-  esac
-  shift
-done
-
-if [[ ! $output_file = *.o && ${#library_files[@]} -gt 0 ]]; then
-  input_files+=( "${library_files[@]}" )
-  library_files=()
-fi
 
 set_default_compiler_type
 find_compiler_by_type "$YB_COMPILER_TYPE"
@@ -470,9 +486,37 @@ fi
 
 set_build_env_vars
 
+if is_linux && "$rpath_found"; then
+  if [[ $num_output_files_found -ne 1 ]]; then
+    # Ideally this will only happen as part of running PostgreSQL's configure and will be hidden.
+    log "RPATH options found on the command line, but could not find exactly one output file " \
+        "to make RPATHs relative to. Found $num_output_files_found output files. Command args: " \
+        "$compiler_args_str"
+  else
+    new_cmd=()
+    for arg in "${cmd[@]}"; do
+      case $arg in
+        -Wl,-rpath,*)
+          new_rpath_arg=$(
+            "$YB_BUILD_SUPPORT_DIR/make_rpath_relative.py" "$output_file" "$arg"
+          )
+          new_cmd+=( "$new_rpath_arg" )
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+      esac
+    done
+    cmd=( "${new_cmd[@]}" )
+  fi
+fi
+
 compiler_exit_code=UNKNOWN
 trap local_build_exit_handler EXIT
 
+# Add a "tag" to the command line that will allow us to count the number of local compilation
+# commands we are running on the machine and decide whether to run compiler locally or remotely
+# based on that.
+cmd+=( -DYB_LOCAL_C_CXX_COMPILER_CMD )
 set +e
 
 ( set -x; "${cmd[@]}" ) 2>"$stderr_path"
