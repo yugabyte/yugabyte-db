@@ -12,7 +12,7 @@
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
      SELECT current_setting('server_version_num')::integer;
-@@ -6812,7 +6817,7 @@
+@@ -6814,7 +6819,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -21,7 +21,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6969,7 +6974,7 @@
+@@ -6971,7 +6976,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -30,7 +30,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -7178,13 +7183,7 @@
+@@ -7180,13 +7185,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
@@ -45,7 +45,7 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
-@@ -7660,7 +7659,7 @@
+@@ -7662,7 +7661,7 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;
