@@ -496,7 +496,6 @@ class DependencyGraphBuilder:
             os.environ['CMAKE_EXPORT_COMPILE_COMMANDS'] = '1'
             mkdir_p(self.conf.build_root_make)
 
-            os.environ['YB_USE_NINJA'] = '0'
             subprocess.check_call(
                     [os.path.join(self.conf.yb_src_root, 'yb_build.sh'),
                      self.conf.build_type,
