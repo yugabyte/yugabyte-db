@@ -83,3 +83,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- _hasc( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, NAME, CHAR )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c      ON c.relnamespace = n.oid
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+              JOIN pg_catalog.pg_index i      ON c.oid = i.indrelid
+             WHERE i.indisprimary = true
+               AND n.nspname = $1
+               AND c.relname = $2
+               AND x.contype = $3
+    );
+$$ LANGUAGE sql;
+
+-- _hasc( table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, CHAR )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+              JOIN pg_catalog.pg_index i      ON c.oid = i.indrelid
+             WHERE i.indisprimary = true
+               AND pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND x.contype = $2
+    );
+$$ LANGUAGE sql;
