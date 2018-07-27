@@ -4,7 +4,7 @@ TESTS        = $(wildcard test/sql/*.sql)
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test
 
-PG_CONFIG = pg_config
+PG_CONFIG ?= pg_config
 
 MODULE_big = hypopg
 
