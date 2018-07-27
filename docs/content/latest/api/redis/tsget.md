@@ -11,7 +11,7 @@ aliases:
   - api/yedis/tsget
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`TSGET key timestamp`</b><br>
 This command fetches the value for the given `timestamp` in the time series that is specified by the
 given `key`.
@@ -20,10 +20,10 @@ given `key`.
 <li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
 <li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns the value for the given `timestamp`
 
-## EXAMPLES
+## Examples
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
 ```{.sh .copy .separator-dollar}
@@ -86,6 +86,6 @@ $ TSGET cpu_usage xyz
 (error) Request was unable to be processed from server.
 ```
 
-## SEE ALSO
+## See Also
 [`tsadd`](../tsadd/), [`tsrem`](../tsrem/), [`tsrangebytime`](../tsrangebytime/),
 [`tsrevrangebytime`](../tsrevrangebytime/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

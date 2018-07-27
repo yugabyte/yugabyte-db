@@ -11,17 +11,17 @@ aliases:
   - api/yedis/get
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`GET key`</b><br>
 This command fetches the value that is associated with the given `key`.
 
 <li>If the `key` does not exist, null is returned.</li>
 <li>If the `key` is associated with a non-string value, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns string value of the given `key`.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ GET yugakey
 ```
@@ -39,5 +39,5 @@ $ GET yugakey
 "YugaByte"
 ```
 
-## SEE ALSO
+## See Also
 [`append`](../append/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

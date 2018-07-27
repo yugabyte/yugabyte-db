@@ -10,7 +10,7 @@ aliases:
   - api/redis/tsrevrangebytime
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`TSREVRANGEBYTIME key low_ts high_ts [LIMIT limit]`</b><br>
 This command fetches the values for the given `low_ts`, `high_ts` range in the time series that is
 specified by the given `key` ordered from newest to oldest. If `LIMIT` is specified, then at most
@@ -23,11 +23,11 @@ specified by the given `key` ordered from newest to oldest. If `LIMIT` is specif
 exclusive.</li>
 <li>Special bounds `-inf` and `+inf` are also supported to retrieve an entire range</li>
 
-## RETURN VALUE
+## Return Value
 Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`. If
 `LIMIT` is specified, at most `limit` pairs will be fetched.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
@@ -110,6 +110,6 @@ TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 6) "one"
 ```
 
-## SEE ALSO
+## See Also
 [`tsrangebytime`](../tsrangebytime/), [`tsadd`](../tsadd/), [`tsget`](../tsget/),
 [`tsrem`](../tsrem/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

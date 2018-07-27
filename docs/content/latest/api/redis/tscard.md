@@ -11,17 +11,17 @@ aliases:
   - api/yedis/tscard
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`TSCARD key`</b><br>
 This command returns the number of entires in the given time series.
 
 <li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
 <li>If the given `key` is not associated with any data, 0 is returned.</li>
 
-## RETURN VALUE
+## Return Value
 Returns the number of entries in the given time series.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
@@ -54,7 +54,7 @@ $ TSCARD ts_key2
 (integer) 0
 ```
 
-## SEE ALSO
+## See Also
 [`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/),
 [`tsrangebytime`](../tsrangebytime), [`tsrevrangebytime`](../tsrevrangebytime),
 [`tslastn`](../tslastn)

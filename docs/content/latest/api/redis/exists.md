@@ -12,14 +12,14 @@ aliases:
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 
-## SYNOPSIS
+## Synopsis
 <b>`EXISTS key [key ...]`</b><br>
 This command is a predicate to check whether or not the given `key` exists.
 
-## RETURN VALUE
+## Return Value
 Returns the number of existing keys.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ SET yuga1 "Africa"
 ```
@@ -45,5 +45,5 @@ $ EXISTS yuga1 yuga2 not_a_key
 2
 ```
 
-## SEE ALSO
+## See Also
 [`del`](../del/), [`get`](../get/), [`getrange`](../getrange/), [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`mget`](../mget/), [`mset`](../mset/), [`sadd`](../sadd/), [`set`](../set/)

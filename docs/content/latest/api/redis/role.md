@@ -12,7 +12,7 @@ aliases:
 ---
 YugaByte DB only has `master` role for the Redis API.
 
-## SYNOPSIS
+## Synopsis
 <b>`ROLE`</b><br>
 This command provides information of a Redis instance, such as its role, its state of replication, its slaves, or its master. Roles are either "master", "slave", or "sentinel".
 <li>Information of a master instance may include the following.
@@ -40,10 +40,10 @@ This command provides information of a Redis instance, such as its role, its sta
   </ol>
 </li>
 
-## RETURN VALUE
+## Return Value
 Returns an array of values.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ ROLE
 ```
@@ -58,5 +58,5 @@ $ ROLE
       3) "0"
 ```
 
-## SEE ALSO
+## See Also
 [`auth`](../auth/), [`config`](../config/)

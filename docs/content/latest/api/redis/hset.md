@@ -11,14 +11,14 @@ aliases:
   - api/yedis/hset
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HSET key field value`</b><br>
 This command sets the data for the given `field` of the hash that is associated with the given `key` with the given `value`. If the `field` already exists in the hash, it is overwritten.
 
 <li>If the given `key` does not exist, an associated hash is created, and the `field` and `value` are inserted.</li>
 <li>If the given `key` is not associated with a hash, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Depends on the configuration parameter `emulate_redis_responses`.
 <li>
 If `emulate_redis_responses` is true, returns
@@ -30,7 +30,7 @@ If `emulate_redis_responses` is false, returns
 </li>
 
 
-## EXAMPLES
+## Examples
 <li> `emulate_redis_responses` is `true`.
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "America"
@@ -73,5 +73,5 @@ $ HGET yugahash area1
 ```
 </li>
 
-## SEE ALSO
+## See Also
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hincrby`](../hincrby/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

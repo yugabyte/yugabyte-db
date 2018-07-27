@@ -11,16 +11,16 @@ aliases:
   - api/yedis/hlen
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HLEN key`</b><br>
 This command fetches the number of fields in the hash that is associated with the given `key`.
 <li>If the `key` does not exist, 0 is returned.</li>
 <li>If the `key` is associated with non-hash data, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns number of fields in the specified hash.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "Africa"
 ```
@@ -40,5 +40,5 @@ $ HLEN yugahash
 2
 ```
 
-## SEE ALSO
+## See Also
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

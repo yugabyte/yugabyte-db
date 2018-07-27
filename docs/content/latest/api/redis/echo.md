@@ -11,14 +11,14 @@ aliases:
   - api/yedis/del
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`ECHO message`</b><br>
 This command outputs the given `message`.
 
-## RETURN VALUE
+## Return Value
 Returns the message.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ ECHO "Yuga Yuga"
 ```

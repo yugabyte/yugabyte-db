@@ -12,13 +12,13 @@ aliases:
 ---
 `MONITOR` is a debugging tool to see all requests that are being processed by a YugaByte YEDIS API server.
 
-## SYNOPSIS
+## Synopsis
 `MONITOR` is a debugging tool to see all requests that are being processed by a YugaByte YEDIS API server. If there are multiple YEDIS API servers in the system, the command only captures the requests being processed by the server that the client is connected to. A client can issue the `MONITOR` command through the redis-cli. Once the command is issued the server will stream all requests (except `config` commands) that are processed at the server. 
 
-## RETURN VALUE
+## Return Value
 Returns a status string, followed by an unending stream of commands that are being executed by the YEDIS server. To exit, the client is expected to `Control-C` out.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ MONITOR
 ```
@@ -35,5 +35,5 @@ $ MONITOR
 15319400405.534111 [2 127.0.0.1:37106] "set" "k1"
 ```
 
-## SEE ALSO
+## See Also
 [`config`](../config/)

@@ -11,14 +11,14 @@ aliases:
   - api/yedis/flushall
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`FLUSHALL`</b><br>
 This command deletes all keys from all databases.
 
-## RETURN VALUE
+## Return Value
 Returns status string.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ SET yuga1 "America"
 ```
@@ -62,5 +62,5 @@ $ GET yuga2
 (null)
 ```
 
-## SEE ALSO
+## See Also
 [`del`](../del/), [`flushdb`](../flushdb/)

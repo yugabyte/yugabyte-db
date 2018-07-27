@@ -11,16 +11,16 @@ aliases:
   - api/yedis/mget
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`MGET key [key ...]`</b><br>
 This command collects string values of all given keys.
 <li>If a given `key` does not exist, an empty string is returned for that `key`.</li>
 <li>If a given `key` is associated with a non-string value, an empty string is returned for that `key`.</li>
 
-## RETURN VALUE
+## Return Value
 Returns an array of string values.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ MGET yuga_area1 yuga_area2 yuga_none
 ```
@@ -30,5 +30,5 @@ $ MGET yuga_area1 yuga_area2 yuga_none
 3) (null)
 ```
 
-## SEE ALSO
+## See Also
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

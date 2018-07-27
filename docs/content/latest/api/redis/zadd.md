@@ -11,7 +11,7 @@ aliases:
   - api/yedis/zadd
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`ZADD key [NX|XX] [CH] [INCR] score member [score member ...]`</b><br>
 This command sets all specified `members` with their respective `scores` in the sorted set
 specified by `key`, with multiple `score` `member` pairs possible. If a specified `member` is already in
@@ -19,7 +19,7 @@ the sorted set, this command updates that `member` with the new `score`. If the 
 is created, with the specified pairs as the only elements in the set. A `score` should be a double,
 while a `member` can be any string.
 
-## RETURN VALUE
+## Return Value
 The number of new `members` added to the sorted set, unless the `CH` option is specified (see below).
 
 ## ZADD Options
@@ -28,7 +28,7 @@ The number of new `members` added to the sorted set, unless the `CH` option is s
 <li> CH: Modify the return value from new `members` added to `members` added or updated.</li>
 <li> INCR: Increment the specified `member` by `score`. Only one `score` `member` pair can be specified.</li>
 
-## EXAMPLES
+## Examples
 
 Add two elements into the sorted set.
 ```{.sh .copy .separator-dollar}
@@ -113,5 +113,5 @@ $ ZRANGEBYSCORE z_key -inf +inf
 10) "6.0"
 ```
 
-## SEE ALSO
+## See Also
 [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

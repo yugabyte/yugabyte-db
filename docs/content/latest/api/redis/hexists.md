@@ -11,17 +11,17 @@ aliases:
   - api/yedis/hexists
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HEXISTS key field`</b><br>
 This is a predicate to check whether or not the given `field` exists in the hash that is specified by the given `key`.
 <li>If the given `key` and `field` exist, 1 is returned.</li>
 <li>If the given `key` or `field` does not exist, 0 is returned.</li>
 <li>If the given `key` is associated with non-hash data, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns existence status as integer, either 1 or 0.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "America"
 ```
@@ -41,5 +41,5 @@ $ HEXISTS yugahash area_none
 0
 ```
 
-## SEE ALSO
+## See Also
 [`hdel`](../hdel/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

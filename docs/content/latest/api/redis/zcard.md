@@ -11,16 +11,16 @@ aliases:
   - api/yedis/zcard
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`ZCARD key`</b><br>
 This command returns the number of `members` in the sorted set at `key`. If `key` does not exist, 0 is returned.
 If `key` is associated with non sorted-set data, an error is returned.
 
-## RETURN VALUE
+## Return Value
 
 The cardinality of the sorted set.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
@@ -45,5 +45,5 @@ $ ZCARD ts_key
 ```sh
 (integer) 0
 ```
-## SEE ALSO
+## See Also
 [`zadd`](../zadd/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

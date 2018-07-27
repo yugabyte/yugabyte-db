@@ -11,7 +11,7 @@ aliases:
   - api/yedis/tslastn
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`TSLASTN key N`</b><br>
 This command fetches the latest N entries in the time series that is specified by the given `key`.
 The elements are returned in ascending order of timestamps.
@@ -19,10 +19,10 @@ The elements are returned in ascending order of timestamps.
 <li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
 <li>If the given `N` is not a positive 32 bit integer, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns a list of timestamp, value pairs for the latest N entries in the time series.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
@@ -68,6 +68,6 @@ $ TSLASTN ts_key -1
 (error) ERR tslastn: limit field -1 is not within valid bounds
 ```
 
-## SEE ALSO
+## See Also
 [`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/),
 [`tsrangebytime`](../tsrangebytime), [`tsrangebytime`](../tsrangebytime), [`tscard`](../tscard)

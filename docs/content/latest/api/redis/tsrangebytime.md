@@ -11,7 +11,7 @@ aliases:
   - api/yedis/tsrangebytime
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`TSRANGEBYTIME key low_ts high_ts`</b><br>
 This command fetches the values for the given `low_ts`, `high_ts` range in the time series that is
 specified by the given `key`.
@@ -22,10 +22,10 @@ specified by the given `key`.
 exclusive.</li>
 <li>Special bounds `-inf` and `+inf` are also supported to retrieve an entire range</li>
 
-## RETURN VALUE
+## Return Value
 Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 TSADD ts 1 one 2 two 3 three 4 four 5 five 6 six
 ```
@@ -88,6 +88,6 @@ TSRANGEBYTIME ts_key 2 +inf
 10) "six"
 ```
 
-## SEE ALSO
+## See Also
 [`tsrevrangebytime`](../tsrevrangebytime/), [`tsadd`](../tsadd/), [`tsget`](../tsget/),
 [`tsrem`](../tsrem/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

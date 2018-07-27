@@ -11,16 +11,16 @@ aliases:
   - api/yedis/mset
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`MSET key value [key value ...]`</b><br>
 This command is an atomic write that sets the data for all given `keys` with their associated `values`.
 
 <li>If a `key` already exists, it is overwritten regardless of its datatype.</li>
 
-## RETURN VALUE
+## Return Value
 Returns status string.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ MSET yuga1 "Africa" yuga2 "America"
 ```
@@ -34,5 +34,5 @@ $ GET yuga1
 "Africa"
 ```
 
-## SEE ALSO
+## See Also
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`mget`](../mget/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

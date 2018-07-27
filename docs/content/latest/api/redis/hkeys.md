@@ -11,17 +11,17 @@ aliases:
   - api/yedis/hkeys
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HKEYS key`</b><br>
 This command fetches all fields of the hash that is associated with the given `key`.
 
 <li>If the `key` does not exist, an empty list is returned.</li>
 <li>If the `key` is associated with non-hash data, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns list of fields in the specified hash.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "Africa"
 ```
@@ -42,5 +42,5 @@ $ HKEYS yugahash
 2) "area2"
 ```
 
-## SEE ALSO
+## See Also
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

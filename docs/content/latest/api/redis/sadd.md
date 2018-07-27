@@ -10,14 +10,14 @@ aliases:
   - api/redis/sadd
   - api/yedis/sadd
 ---
-## SYNOPSIS
+## Synopsis
 <b>`SADD key value [value ...]`</b><br>
 This command adds one or more given values to the set that is associated with the given `key`.
 <li>If the `key` does not exist, a new set is created, and members are added with the given values.
 <li>If the `key` is associated with a value that is not a set, an error is raised.</li>
 <li>If a specified `value` already exists in the given set, that `value` is ignored and not counted toward the total of newly added members.</li>
 
-## RETURN VALUE
+## Return Value
 Depends on the configuration parameter `emulate_redis_responses`.
 <li>
 If `emulate_redis_responses` is `true`, returns
@@ -28,7 +28,7 @@ If `emulate_redis_responses` is `false`, returns OK.
 </li>
 
 
-## EXAMPLES
+## Examples
 <li> `emulate_redis_responses` is `true`.
 ```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Africa"
@@ -73,5 +73,5 @@ $ SMEMBERS yuga_world
 ```
 </li>
 
-## SEE ALSO
+## See Also
 [`scard`](../scard/), [`sismember`](../sismember/), [`smembers`](../smembers/), [`srem`](../srem/)

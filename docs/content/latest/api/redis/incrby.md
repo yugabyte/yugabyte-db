@@ -11,16 +11,16 @@ aliases:
   - api/yedis/incrby
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`INCR key`</b><br>
 This command adds 1 to the number that is associated with the given `key`. The numeric value must a 64-bit signed integer.
 <li>If the `key` does not exist, the associated string is set to "0".</li>
 <li>If the given `key` is associated with a non-string value, or if its associated string cannot be converted to an integer, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns the value after addition.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ SET yugakey 7
 ```
@@ -34,5 +34,5 @@ $ INCRBY yugakey 3
 10
 ```
 
-## SEE ALSO
+## See Also
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

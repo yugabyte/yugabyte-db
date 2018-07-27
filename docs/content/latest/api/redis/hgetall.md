@@ -11,17 +11,17 @@ aliases:
   - api/yedis/hgetall
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HGETALL key`</b><br>
 This command fetches the full content of all fields and all values of the hash that is associated with the given `key`.
 
 <li>If the given `key` does not exist, and empty list is returned.</li>
 <li>If the given `key` is associated with non-hash data, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns list of fields and values.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "Africa"
 ```
@@ -44,5 +44,5 @@ $ HGETALL yugahash
 4) "America"
 ```
 
-## SEE ALSO
+## See Also
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

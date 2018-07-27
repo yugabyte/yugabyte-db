@@ -10,7 +10,7 @@ aliases:
   - api/redis/setrange
   - api/yedis/setrange
 ---
-## SYNOPSIS
+## Synopsis
 <b>`SETRANGE key offset value`</b><br>
 This command overwrites the string that is associated with the given `key` with the given `value`, starting from the given `offset`.
 <li> The `offset` cannot exceed 536870911.</li>
@@ -18,10 +18,10 @@ This command overwrites the string that is associated with the given `key` with 
 <li>If the `key` does not exist, its associated string is an empty string. The resulted new string is constructed with zeros up to the given `offset` and then appended with the given `value`.</li>
 <li>If the `key` is associated with a non-string value, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Returns the length of the resulted string after overwriting.
 
-## EXAMPLES
+## Examples
 ```{.sh .copy .separator-dollar}
 $ SET yugakey "YugaKey"
 ```
@@ -43,5 +43,5 @@ $ GET yugakey
 "YugaByte"
 ```
 
-## SEE ALSO
+## See Also
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`strlen`](../strlen/)

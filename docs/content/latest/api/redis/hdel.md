@@ -11,14 +11,14 @@ aliases:
   - api/yedis/hdel
 ---
 
-## SYNOPSIS
+## Synopsis
 <b>`HDEL key field [field ...]`</b><br>
 This command removes the given `fields` from the hash that is associated with the given `key`.
 
 <li>If the given `key` does not exist, it is characterized as an empty hash, and 0 is returned for no elements are removed.</li>
 <li>If the given `key` is associated with non-hash data, an error is raised.</li>
 
-## RETURN VALUE
+## Return Value
 Depends on the configuration parameter `emulate_redis_responses`.
 <li>
 If `emulate_redis_responses` is `true`, returns
@@ -29,7 +29,7 @@ If `emulate_redis_responses` is `false`, returns OK.
 </li>
 
 
-## EXAMPLES
+## Examples
 <li> `emulate_redis_responses` is `true`.
 ```{.sh .copy .separator-dollar}
 $ HSET yugahash moon "Moon"
@@ -72,5 +72,5 @@ OK
 ```
 </li>
 
-## SEE ALSO
+## See Also
 [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

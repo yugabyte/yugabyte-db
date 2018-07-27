@@ -43,6 +43,10 @@ Command | Description |
 [`EXISTS`](exists/) | Check if the keys are present |
 [`FLUSHALL`](flushall/) | Delete all keys from all databases |
 [`FLUSHDB`](flushdb/) | Delete all keys from a database |
+[`CREATEDB`](createdb/) | Create a new yedis database |
+[`LISTDB`](listdb/) | List all the yedis databases present |
+[`DELETEDB`](deletedb/) | Delete a yedis database |
+[`SELECT`](select/) | Select the target database to communcate with |
 [`GET`](get/) | Read string value |
 [`GETRANGE`](getrange/) | Read substring |
 [`GETSET`](getset/) | Atomically read and write a string |
