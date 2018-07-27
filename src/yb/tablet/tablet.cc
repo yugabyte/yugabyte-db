@@ -906,7 +906,6 @@ Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
     }
     const YBClientPtr client = client_future_.get();
     auto session = std::make_shared<YBSession>(client);
-    RETURN_NOT_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
     client::YBTransactionPtr txn;
     if (write_op->request().has_child_transaction_data()) {
       if (!transaction_manager_) {

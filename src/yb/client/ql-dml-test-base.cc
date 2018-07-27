@@ -97,7 +97,7 @@ void KeyValueTableTest::CreateTable(Transactional transactional) {
 
 Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::WriteRow(
     const YBSessionPtr& session, int32_t key, int32_t value,
-    const WriteOpType op_type) {
+    const WriteOpType op_type, Flush flush) {
   VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
           << yb::ToString(op_type);
   const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
@@ -108,8 +108,11 @@ Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::WriteRow(
     table_.AddInt32ColumnValue(req, kValueColumn, value);
   }
   RETURN_NOT_OK(session->Apply(op));
-  if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-    return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
+  if (flush) {
+    RETURN_NOT_OK(session->Flush());
+    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
+      return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
+    }
   }
   return op;
 }
@@ -130,7 +133,7 @@ Result<int32_t> KeyValueTableTest::SelectRow(
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table_.AddColumns({column}, req);
-  auto status = session->Apply(op);
+  auto status = session->ApplyAndFlush(op);
   if (status.IsIOError()) {
     for (const auto& error : session->GetPendingErrors()) {
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();

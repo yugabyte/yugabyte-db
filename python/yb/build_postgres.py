@@ -305,6 +305,7 @@ class PostgresBuilder:
         make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
         if make_parallelism:
             make_cmd += ['-j', str(int(make_parallelism))]
+        os.environ['YB_COMPILER_TYPE'] = self.compiler_type
 
         # Create a script allowing to easily run "make" from the build directory with the right
         # environment.

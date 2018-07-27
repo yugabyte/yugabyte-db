@@ -687,7 +687,7 @@ void ReactorTask::Abort(const Status& abort_status) {
 // DelayedTask class members
 // ------------------------------------------------------------------------------------------------
 
-DelayedTask::DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
+DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
                          std::shared_ptr<Messenger> messenger)
     : func_(std::move(func)),
       when_(std::move(when)),

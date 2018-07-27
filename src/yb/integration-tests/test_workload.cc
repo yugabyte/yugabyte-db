@@ -146,7 +146,6 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
 
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(options.write_timeout);
-  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Wait for all of the workload threads to be ready to go. This maximizes the chance
   // that they all send a flood of requests at exactly the same time.

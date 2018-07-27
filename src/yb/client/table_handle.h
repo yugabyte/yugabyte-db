@@ -25,6 +25,7 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/read_hybrid_time.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -152,7 +153,7 @@ struct TableIteratorOptions {
   TableFilter filter;
   ReadHybridTime read_time;
   std::string tablet;
-  std::function<void(const Status&)> error_handler;
+  StatusFunctor error_handler;
 };
 
 class TableIterator : public std::iterator<
@@ -191,7 +192,7 @@ class TableIterator : public std::iterator<
   const QLPagingStatePB* paging_state_ = nullptr;
   size_t row_index_;
   YBSessionPtr session_;
-  std::function<void(const Status&)> error_handler_;
+  StatusFunctor error_handler_;
 };
 
 inline bool operator==(const TableIterator& lhs, const TableIterator& rhs) {

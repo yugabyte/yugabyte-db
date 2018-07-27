@@ -71,7 +71,6 @@ QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
       messenger_(messenger),
       resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))),
       cql_rpcserver_env_(cql_rpcserver_env) {
-  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
   CHECK(clock);
 }
 

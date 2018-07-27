@@ -208,8 +208,6 @@ class QLTransactionTest : public KeyValueTableTest {
                   size_t transaction = 0,
                   const WriteOpType op_type = WriteOpType::INSERT,
                   const std::string& column = kValueColumn) {
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-
     std::vector<client::YBqlReadOpPtr> ops;
     for (size_t r = 0; r != kNumRows; ++r) {
       ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
@@ -469,7 +467,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
       table_.SetInt32Condition(cond, kValueColumn, QLOperator::QL_OP_EQUAL, old_value);
       req->mutable_column_refs()->add_ids(table_.ColumnId(kValueColumn));
       LOG(INFO) << "Updating value";
-      auto status = session->Apply(op);
+      auto status = session->ApplyAndFlush(op);
       ASSERT_OK(status);
       if (!retry) {
         ASSERT_EQ(QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR, op->response().status());
@@ -673,9 +671,8 @@ TEST_F(QLTransactionTest, ConflictResolution) {
     transactions.push_back(CreateTransaction());
     auto session = CreateSession(transactions.back());
     sessions.push_back(session);
-    ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
     for (size_t r = 0; r != kNumRows; ++r) {
-      ASSERT_OK(WriteRow(sessions.back(), r, i));
+      ASSERT_OK(WriteRow(sessions.back(), r, i, WriteOpType::INSERT, Flush::kFalse));
     }
     session->FlushAsync([&latch](const Status& status) { latch.CountDown(); });
   }
@@ -752,7 +749,6 @@ TEST_F(QLTransactionTest, WriteConflicts) {
       ActiveTransaction active_txn;
       active_txn.transaction = CreateTransaction();
       active_txn.session = CreateSession(active_txn.transaction);
-      ASSERT_OK(active_txn.session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
       const auto op = table_.NewInsertOp();
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
@@ -1010,6 +1006,7 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
         while (!stop) {
           auto value_before_start = value.load();
           YBqlReadOpPtr op = ReadRow(session, key);
+          ASSERT_OK(session->Flush());
           ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK)
                         << op->response().ShortDebugString();
           auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
@@ -1234,7 +1231,6 @@ TEST_F(QLTransactionTest, WaitRead) {
     for (size_t j = 0; j != kConcurrentReads; ++j) {
       values[j].clear();
       auto session = CreateSession(CreateTransaction());
-      ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
       for (size_t key = 0; key != kWriteThreads; ++key) {
         reads[j].push_back(ReadRow(session, key));
       }

@@ -260,7 +260,6 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeout(60s);
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
     for (int i = 0; i < num_batches; i++) {
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);

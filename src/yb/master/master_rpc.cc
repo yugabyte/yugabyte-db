@@ -78,7 +78,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   // pointer for the lifetime of this object.
   //
   // Invokes 'user_cb' upon failure or success of the RPC call.
-  GetMasterRegistrationRpc(std::function<void(const Status&)> user_cb,
+  GetMasterRegistrationRpc(StatusFunctor user_cb,
                            const HostPort& addr,
                            const MonoTime& deadline,
                            const std::shared_ptr<rpc::Messenger>& messenger,
@@ -96,7 +96,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
  private:
   void Finished(const Status& status) override;
 
-  std::function<void(const Status&)> user_cb_;
+  StatusFunctor user_cb_;
   HostPort addr_;
 
   ServerEntryPB* out_;

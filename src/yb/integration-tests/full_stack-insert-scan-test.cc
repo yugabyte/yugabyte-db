@@ -176,7 +176,6 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     }
     std::shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeout(kSessionTimeout);
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     sessions_[id] = session;
   }
 

@@ -105,7 +105,6 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   shared_ptr<YBSession> session = client->NewSession();
   session->SetTimeout(5s); // Time out after 5 seconds.
-  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   Random random(GetRandomSeed32());
 

@@ -1483,10 +1483,6 @@ Status YBSession::Close() {
   return data_->Close(false);
 }
 
-Status YBSession::SetFlushMode(FlushMode m) {
-  return data_->SetFlushMode(m);
-}
-
 void YBSession::SetTimeout(MonoDelta timeout) {
   data_->SetTimeout(timeout);
 }
@@ -1495,7 +1491,7 @@ Status YBSession::Flush() {
   return data_->Flush();
 }
 
-void YBSession::FlushAsync(boost::function<void(const Status&)> callback) {
+void YBSession::FlushAsync(StatusFunctor callback) {
   data_->FlushAsync(std::move(callback));
 }
 
@@ -1513,8 +1509,7 @@ Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
   return s.Wait();
 }
 
-void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op,
-                          boost::function<void(const Status&)> callback) {
+void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, StatusFunctor callback) {
   CHECK(yb_op->read_only());
   CHECK_OK(Apply(std::move(yb_op)));
   FlushAsync(std::move(callback));
@@ -1524,8 +1519,17 @@ Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   return data_->Apply(std::move(yb_op));
 }
 
-Status YBSession::Apply(const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
-  return data_->Apply(ops, verify_response);
+Status YBSession::ApplyAndFlush(std::shared_ptr<YBOperation> yb_op) {
+  return data_->ApplyAndFlush(std::move(yb_op));
+}
+
+Status YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
+  return data_->Apply(ops);
+}
+
+Status YBSession::ApplyAndFlush(
+    const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
+  return data_->ApplyAndFlush(ops, verify_response);
 }
 
 int YBSession::CountBufferedOperations() const {

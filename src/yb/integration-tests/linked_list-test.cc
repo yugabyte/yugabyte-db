@@ -376,7 +376,6 @@ class ScopedRowUpdater {
   void RowUpdaterThread() {
     std::shared_ptr<client::YBSession> session(table_->client()->NewSession());
     session->SetTimeout(15s);
-    CHECK_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
 
     int64_t next_key;
     std::vector<client::YBqlOpPtr> ops;
@@ -565,8 +564,6 @@ Status LinkedListTester::LoadLinkedList(
 
   std::shared_ptr<client::YBSession> session = client_->NewSession();
   session->SetTimeout(30s);
-  RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::YBSession::MANUAL_FLUSH),
-                        "Couldn't set flush mode");
 
   ScopedRowUpdater updater(table);
   std::vector<std::unique_ptr<LinkedListChainGenerator>> chains;

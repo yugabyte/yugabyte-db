@@ -202,7 +202,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       client = client_.get();
     }
     std::shared_ptr<YBSession> session = client->NewSession();
-    EXPECT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeout(10s);
     return session;
   }
@@ -214,7 +213,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(BuildTestRow(table, i)));
     }
     FlushSessionOrDie(session);
-        ASSERT_NO_FATALS(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   // Inserts 'num_rows' using the default client.
@@ -228,7 +227,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(UpdateTestRow(table, i)));
     }
     FlushSessionOrDie(session);
-        ASSERT_NO_FATALS(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
@@ -237,7 +236,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(DeleteTestRow(table, i)));
     }
     FlushSessionOrDie(session);
-        ASSERT_NO_FATALS(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int index) {
@@ -313,8 +312,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddColumns({"key"}, req);
     auto session = client_->NewSession();
     session->SetTimeout(60s);
-    ASSERT_OK(session->Apply(op));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     for (const auto& row : rowblock->rows()) {
@@ -834,9 +832,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   // Try inserting without specifying a key: should fail.
   client_table_.AddInt32ColumnValue(insert->mutable_request(), "int_val", 54321);
   client_table_.AddStringColumnValue(insert->mutable_request(), "string_val", "hello world");
-  Status s = session->Apply(insert);
-  ASSERT_OK(s);
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->ApplyAndFlush(insert));
   ASSERT_EQ(QLResponsePB::YQL_STATUS_RUNTIME_ERROR, insert->response().status());
 
   // Retry
@@ -1711,7 +1707,6 @@ shared_ptr<YBSession> LoadedSession(const shared_ptr<YBClient>& client,
                                     bool fwd, int max, MonoDelta timeout) {
   shared_ptr<YBSession> session = client->NewSession();
   session->SetTimeout(timeout);
-  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
     CHECK_OK(ApplyUpdateToSession(session.get(), tbl, key, fwd));

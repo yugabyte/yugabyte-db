@@ -129,21 +129,11 @@ class RemoteYsckTest : public YBTest {
     }
     shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeout(10s);
-    status = session->SetFlushMode(YBSession::MANUAL_FLUSH);
-    if (!status.ok()) {
-      promise->Set(status);
-      return;
-    }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
-      status = session->Apply(insert);
-      if (!status.ok()) {
-        promise->Set(status);
-        return;
-      }
-      status = session->Flush();
+      status = session->ApplyAndFlush(insert);
       if (!status.ok()) {
         promise->Set(status);
         return;
@@ -160,7 +150,6 @@ class RemoteYsckTest : public YBTest {
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeout(10s);
-    RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());

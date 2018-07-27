@@ -28,6 +28,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -37,8 +38,8 @@ struct TransactionMetadata;
 
 namespace client {
 
-typedef std::function<void(const Status&)> Waiter;
-typedef std::function<void(const Status&)> CommitCallback;
+typedef StatusFunctor Waiter;
+typedef StatusFunctor CommitCallback;
 typedef std::function<void(const Result<ChildTransactionDataPB>&)> PrepareChildCallback;
 
 struct ChildTransactionData {
