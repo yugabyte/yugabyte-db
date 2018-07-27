@@ -944,37 +944,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   ~YBSession();
 
-  enum FlushMode {
-    // Every write will be sent to the server in-band with the Apply()
-    // call. No batching will occur. This is the default flush mode. In this
-    // mode, the Flush() call never has any effect, since each Apply() call
-    // has already flushed the buffer. This is the default flush mode.
-    AUTO_FLUSH_SYNC,
-
-    // Apply() calls will return immediately, but the writes will be sent in
-    // the background, potentially batched together with other writes from
-    // the same session. If there is not sufficient buffer space, then Apply()
-    // may block for buffer space to be available.
-    //
-    // Because writes are applied in the background, any errors will be stored
-    // in a session-local buffer. Call CountPendingErrors() or GetPendingErrors()
-    // to retrieve them.
-    // TODO: provide an API for the user to specify a callback to do their own
-    // error reporting.
-    // TODO: specify which threads the background activity runs on (probably the
-    // messenger IO threads?)
-    //
-    // NOTE: This is not implemented yet, see KUDU-456.
-    //
-    // The Flush() call can be used to block until the buffer is empty.
-    AUTO_FLUSH_BACKGROUND,
-
-    // Apply() calls will return immediately, and the writes will not be
-    // sent until the user calls Flush(). If the buffer runs past the
-    // configured space limit, then Apply() will return an error.
-    MANUAL_FLUSH
-  };
-
   // Set the consistent read point used by the non-transactional operations in this session. If
   // the operations are retries and last read point indicates the operations are to be restarted,
   // the read point will be updated to restart read-time. Otherwise, the read point will be set to
@@ -984,19 +953,12 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
-  // Set the flush mode.
-  // REQUIRES: there should be no pending writes -- call Flush() first to ensure.
-  CHECKED_STATUS SetFlushMode(FlushMode m) WARN_UNUSED_RESULT;
-
   // Set the amount of buffer space used by this session for outbound writes.
   // The effect of the buffer size varies based on the flush mode of the
   // session:
   //
   // AUTO_FLUSH_SYNC:
   //   since no buffering is done, this has no effect
-  // AUTO_FLUSH_BACKGROUND:
-  //   if the buffer space is exhausted, then write calls will block until there
-  //   is space available in the buffer.
   // MANUAL_FLUSH:
   //   if the buffer space is exhausted, then write calls will return an error.
   CHECKED_STATUS SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
@@ -1006,7 +968,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
-  void ReadAsync(std::shared_ptr<YBOperation> yb_op, boost::function<void(const Status&)> callback);
+  void ReadAsync(std::shared_ptr<YBOperation> yb_op, StatusFunctor callback);
 
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
@@ -1025,11 +987,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // This is thread safe.
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
+  CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
   // verify_response - supported only in auto flush mode. Checks that after flush operation
   // is succeeded. (i.e. op->succeeded() returns true).
-  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops,
-                       VerifyResponse verify_response = VerifyResponse::kFalse);
+  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
+  CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops,
+                               VerifyResponse verify_response = VerifyResponse::kFalse);
 
   // Flush any pending writes.
   //
@@ -1065,7 +1029,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // For FlushAsync, 'cb' must remain valid until it is invoked.
   CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
-  void FlushAsync(boost::function<void(const Status&)> callback);
+  void FlushAsync(StatusFunctor callback);
   std::future<Status> FlushFuture();
 
   // Abort the unflushed or in-flight operations in the session.
@@ -1094,8 +1058,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // so this will return 0.
   int CountBufferedOperations() const;
 
-  // Return the number of errors which are pending. Errors may accumulate when
-  // using the AUTO_FLUSH_BACKGROUND mode.
+  // Return the number of errors which are pending.
   int CountPendingErrors() const;
 
   // Return any errors from previous calls. If there were more errors

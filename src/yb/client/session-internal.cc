@@ -44,10 +44,6 @@
 
 DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
 
-MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
-                 yb::client::YBSession::AUTO_FLUSH_SYNC,
-                 yb::client::YBSession::MANUAL_FLUSH);
-
 namespace yb {
 
 namespace client {
@@ -112,9 +108,7 @@ Status YBSessionData::Close(bool force) {
   return Status::OK();
 }
 
-void YBSessionData::FlushAsync(boost::function<void(const Status&)> callback) {
-  CHECK_NE(flush_mode_, YBSession::AUTO_FLUSH_BACKGROUND) << "TODO: handle flush background mode";
-
+void YBSessionData::FlushAsync(StatusFunctor callback) {
   // Swap in a new batcher to start building the next batch.
   // Save off the old batcher.
   //
@@ -163,15 +157,16 @@ Status YBSessionData::Apply(YBOperationPtr yb_op) {
     return s;
   }
 
-  if (flush_mode_ == YBSession::AUTO_FLUSH_SYNC) {
-    return Flush();
-  }
-
   return Status::OK();
 }
 
-Status YBSessionData::Apply(
-    const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
+Status YBSessionData::ApplyAndFlush(YBOperationPtr yb_op) {
+  RETURN_NOT_OK(Apply(std::move(yb_op)));
+
+  return Flush();
+}
+
+Status YBSessionData::Apply(const std::vector<YBOperationPtr>& ops) {
   auto& batcher = Batcher();
   for (const auto& op : ops) {
     Status s = batcher.Add(op);
@@ -180,12 +175,13 @@ Status YBSessionData::Apply(
       return s;
     }
   }
+  return Status::OK();
+}
 
-  if (flush_mode_ == YBSession::AUTO_FLUSH_SYNC) {
-    return Flush();
-  } else if (verify_response) {
-    LOG(DFATAL) << "Verify response could be used only with sync flush mode.";
-  }
+Status YBSessionData::ApplyAndFlush(
+    const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
+  RETURN_NOT_OK(Apply(ops));
+  RETURN_NOT_OK(Flush());
 
   if (verify_response) {
     for (const auto& op : ops) {
@@ -204,24 +200,6 @@ Status YBSessionData::Flush() {
   return s.Wait();
 }
 
-Status YBSessionData::SetFlushMode(YBSession::FlushMode mode) {
-  if (mode == YBSession::AUTO_FLUSH_BACKGROUND) {
-    return STATUS(NotSupported, "AUTO_FLUSH_BACKGROUND has not been implemented in the"
-        " c++ client (see KUDU-456).");
-  }
-  if (batcher_ && batcher_->HasPendingOperations()) {
-    // TODO: there may be a more reasonable behavior here.
-    return STATUS(IllegalState, "Cannot change flush mode when writes are buffered");
-  }
-  if (!tight_enum_test<YBSession::FlushMode>(mode)) {
-    // Be paranoid in client code.
-    return STATUS(InvalidArgument, "Bad flush mode");
-  }
-
-  flush_mode_ = mode;
-  return Status::OK();
-}
-
 void YBSessionData::SetTimeout(MonoDelta timeout) {
   CHECK_GE(timeout, MonoDelta::kZero);
   timeout_ = timeout;
@@ -231,7 +209,6 @@ void YBSessionData::SetTimeout(MonoDelta timeout) {
 }
 
 int YBSessionData::CountBufferedOperations() const {
-  CHECK_EQ(flush_mode_, YBSession::MANUAL_FLUSH);
   return batcher_ ? batcher_->CountBufferedOperations() : 0;
 }
 

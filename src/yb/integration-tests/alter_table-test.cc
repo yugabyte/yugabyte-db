@@ -391,7 +391,6 @@ TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
 
 void AlterTableTest::InsertRows(int start_row, int num_rows) {
   shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeout(15s);
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -426,7 +425,6 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 void AlterTableTest::UpdateRow(int32_t row_key,
                                const map<string, int32_t>& updates) {
   shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeout(15s);
 
   client::TableHandle table;
@@ -680,7 +678,6 @@ std::pair<bool, int> AnalyzeResponse(const Ops& ops) {
 // updateable)
 void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
   shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeout(15s);
 
   client::TableHandle table;
@@ -824,7 +821,6 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   table.AddInt32ColumnValue(req, "c1", 1);
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeout(15s);
   ASSERT_OK(session->Apply(insert));
   Status s = session->Flush();

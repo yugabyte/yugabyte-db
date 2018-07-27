@@ -108,7 +108,6 @@ CHECKED_STATUS PgApiImpl::CreateSession(const PgEnv *pg_env,
                                         const string& database_name,
                                         PgSession **pg_session) {
   PgSession::SharedPtr session = std::make_shared<PgSession>(client(), database_name);
-  RETURN_NOT_OK(session->SetFlushMode(YBSession::AUTO_FLUSH_SYNC));
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }

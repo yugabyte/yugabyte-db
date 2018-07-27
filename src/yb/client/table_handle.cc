@@ -180,7 +180,6 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
   partition_key_ends_.reserve(tablets.size());
 
   session_ = client->NewSession();
-  REPORT_AND_RETURN_IF_NOT_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
   session_->SetTimeout(60s);
 
   for (const auto& tablet : tablets) {
@@ -253,8 +252,7 @@ void TableIterator::Move() {
       if (paging_state_) {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
-        REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(op));
-        REPORT_AND_RETURN_IF_NOT_OK(session_->Flush());
+        REPORT_AND_RETURN_IF_NOT_OK(session_->ApplyAndFlush(op));
         if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
           HandleError(STATUS_FORMAT(RuntimeError, "Error for $0: $1", *op, op->response()));
         }

@@ -91,13 +91,13 @@ class QLTabletTest : public QLDmlTestBase {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table->AddInt32ColumnValue(req, kValue, value);
-    ASSERT_OK(session->Apply(op));
+    ASSERT_OK(session->ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
 
   boost::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key, TableHandle* table) {
     const auto op = CreateReadOp(key, table);
-    EXPECT_OK(session->Apply(op));
+    EXPECT_OK(session->ApplyAndFlush(op));
     auto rowblock = RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
       return boost::none;
@@ -466,7 +466,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValue, 1);
-  auto status = session->Apply(op);
+  auto status = session->ApplyAndFlush(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
 
@@ -642,7 +642,7 @@ TEST_F(QLTabletTest, SkewedClocks) {
     rscol_desc->set_name(kValue);
     table.ColumnType(kValue)->ToQLTypePB(rscol_desc->mutable_ql_type());
     op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-    ASSERT_OK(session->Apply(op));
+    ASSERT_OK(session->ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
 

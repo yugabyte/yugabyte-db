@@ -45,8 +45,6 @@ PgSession::PgSession(const PgEnv::SharedPtr& pg_env,
                      ProtocolVersion protocol)
     : pg_env_(pg_env), session_(pg_env->NewSession()) {
   session_->SetTimeout(kSessionTimeout);
-  Status s = session_->SetFlushMode(YBSession::AUTO_FLUSH_SYNC);
-  CHECK(s.ok());
 
   // Test programs wouldn't have this packet.
   if (postgres_packet != nullptr && postgres_packet->size() > 0) {
@@ -68,7 +66,7 @@ PgSession::PgSession(const PgEnv::SharedPtr& pg_env,
 }
 
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return session_->Apply(std::move(op));
+  return session_->ApplyAndFlush(std::move(op));
 }
 
 }  // namespace pgsql

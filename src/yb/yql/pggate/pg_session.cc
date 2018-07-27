@@ -55,10 +55,6 @@ void PgSession::Reset() {
   status_ = Status::OK();
 }
 
-CHECKED_STATUS PgSession::SetFlushMode(YBSession::FlushMode m) {
-  return session_->SetFlushMode(m);
-}
-
 CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
   Result<bool> namespace_exists = client_->NamespaceExists(database_name, YQL_DATABASE_PGSQL);
   if (namespace_exists.ok() && namespace_exists.get()) {
@@ -156,7 +152,7 @@ Status PgSession::LoadTable(
 }
 
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return session_->Apply(std::move(op));
+  return session_->ApplyAndFlush(op);
 }
 
 }  // namespace pggate

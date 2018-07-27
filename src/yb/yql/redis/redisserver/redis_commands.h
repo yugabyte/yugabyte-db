@@ -30,8 +30,6 @@
 namespace yb {
 namespace redisserver {
 
-typedef boost::function<void(const Status&)> StatusFunctor;
-
 // Context for batch of Redis commands.
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
  public:

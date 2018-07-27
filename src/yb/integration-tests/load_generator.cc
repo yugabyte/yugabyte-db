@@ -88,7 +88,6 @@ DEFINE_int32(load_gen_wait_time_increment_step_ms,
 namespace {
 
 void ConfigureYBSession(YBSession* session) {
-  CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   session->SetTimeout(60s);
 }
 
@@ -582,10 +581,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     auto read_op = table_->NewReadOp();
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
-    auto status = session_->Apply(read_op);
-    if (status.ok()) {
-      status = session_->Flush();
-    }
+    auto status = session_->ApplyAndFlush(read_op);
     boost::optional<QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();

@@ -92,7 +92,7 @@ class QLListTest : public QLDmlTestBase {
       }
       ops.push_back(std::move(op));
     }
-    ASSERT_OK(session->Apply(ops));
+    ASSERT_OK(session->ApplyAndFlush(ops));
   }
 
   std::unique_ptr<QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
@@ -100,7 +100,7 @@ class QLListTest : public QLDmlTestBase {
     auto* const req = op->mutable_request();
     AddHash(hash_seed, req);
     table_.AddColumns(table_.AllColumnNames(), req);
-    EXPECT_OK(session->Apply(op));
+    EXPECT_OK(session->ApplyAndFlush(op));
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
 
     return ql::RowsResult(op.get()).GetRowBlock();

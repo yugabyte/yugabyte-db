@@ -61,9 +61,12 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   void operator=(const YBSessionData&) = delete;
 
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
-  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response);
+  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
+  CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
+  CHECKED_STATUS ApplyAndFlush(
+      const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response);
 
-  void FlushAsync(boost::function<void(const Status&)> callback);
+  void FlushAsync(StatusFunctor callback);
 
   CHECKED_STATUS Flush();
 
@@ -83,7 +86,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // operations.
   CHECKED_STATUS Close(bool force);
 
-  CHECKED_STATUS SetFlushMode(YBSession::FlushMode mode);
   void SetTimeout(MonoDelta timeout);
   bool HasPendingOperations() const;
   int CountBufferedOperations() const;
@@ -130,8 +132,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // pointers stay valid.
   std::unordered_set<
       internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
-
-  YBSession::FlushMode flush_mode_ = YBSession::AUTO_FLUSH_SYNC;
 
   // Timeout for the next batch.
   MonoDelta timeout_;
