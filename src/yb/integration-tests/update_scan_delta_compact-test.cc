@@ -132,7 +132,6 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
     shared_ptr<YBSession> session = client_->NewSession();
     // Bumped this up from 5 sec to 30 sec in hope to fix the flakiness in this test.
     session->SetTimeout(30s);
-    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     return session;
   }
 

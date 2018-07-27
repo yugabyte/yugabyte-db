@@ -63,6 +63,7 @@ class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
 
 YB_STRONGLY_TYPED_BOOL(Transactional);
 YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
+YB_STRONGLY_TYPED_BOOL(Flush);
 
 class KeyValueTableTest : public QLDmlTestBase {
  protected:
@@ -75,7 +76,8 @@ class KeyValueTableTest : public QLDmlTestBase {
   // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
   Result<shared_ptr<YBqlWriteOp>> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
-      const WriteOpType op_type = WriteOpType::INSERT);
+      const WriteOpType op_type = WriteOpType::INSERT,
+      Flush flush = Flush::kTrue);
 
   Result<shared_ptr<YBqlWriteOp>> DeleteRow(
       const YBSessionPtr& session, int32_t key);

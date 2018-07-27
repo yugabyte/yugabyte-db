@@ -215,7 +215,7 @@ class Messenger : public ProxyContext {
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  int64_t ScheduleOnReactor(const std::function<void(const Status&)>& func,
+  int64_t ScheduleOnReactor(const StatusFunctor& func,
                             MonoDelta when,
                             const std::shared_ptr<Messenger>& msgr = nullptr);
 

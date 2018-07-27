@@ -221,7 +221,7 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
   return ret;
 }
 
-void Batcher::FlushAsync(boost::function<void(const Status&)> callback) {
+void Batcher::FlushAsync(StatusFunctor callback) {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     CHECK_EQ(state_, kGatheringOps);

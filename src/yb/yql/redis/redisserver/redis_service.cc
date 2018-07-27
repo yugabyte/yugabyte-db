@@ -320,7 +320,6 @@ class SessionPool {
       auto session = client_->NewSession();
       session->SetTimeout(
           MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis));
-      CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
       sessions_.push_back(session);
       allocated_sessions_metric_->IncrementBy(1);
       return session;
@@ -370,7 +369,7 @@ class Block : public std::enable_shared_from_this<Block> {
     session_ = session_pool->Take();
     bool has_ok = false;
     // Supposed to be called only once.
-    boost::function<void(const Status&)> callback = BlockCallback(shared_from_this());
+    StatusFunctor callback = BlockCallback(shared_from_this());
     for (auto* op : ops_) {
       has_ok = op->Apply(session_.get(), callback) || has_ok;
     }

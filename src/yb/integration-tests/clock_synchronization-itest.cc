@@ -95,7 +95,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
       QLColumnValuePB *column = req->add_column_values();
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
-      EXPECT_OK(session->Apply(ql_write));
+      EXPECT_OK(session->ApplyAndFlush(ql_write));
       EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, ql_write->response().status());
     }
   }

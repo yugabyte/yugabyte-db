@@ -182,7 +182,6 @@ void YBTableTestBase::DeleteTable() {
 shared_ptr<YBSession> YBTableTestBase::NewSession() {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout_ms()));
-  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   return session;
 }
 
@@ -190,8 +189,7 @@ void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) 
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
-  ASSERT_OK(session->Apply(insert));
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->ApplyAndFlush(insert));
 }
 
 void YBTableTestBase::PutKeyValue(string key, string value) {

@@ -489,7 +489,7 @@ void Messenger::AbortOnReactor(int64_t task_id) {
   }
 }
 
-int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& func,
+int64_t Messenger::ScheduleOnReactor(const StatusFunctor& func,
                                      MonoDelta when,
                                      const shared_ptr<Messenger>& msgr) {
   DCHECK(!reactors_.empty());

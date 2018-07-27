@@ -41,8 +41,6 @@ class PgSession {
   // Reset.
   void Reset();
 
-  CHECKED_STATUS SetFlushMode(client::YBSession::FlushMode m);
-
   CHECKED_STATUS ConnectDatabase(const std::string& database_name);
 
   //------------------------------------------------------------------------------------------------

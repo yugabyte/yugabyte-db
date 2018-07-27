@@ -47,6 +47,8 @@
 
 namespace yb {
 
+typedef boost::function<void(const Status&)> StatusFunctor;
+
 // Simple class which can be used to make async methods synchronous.
 // For example:
 //   Synchronizer s;
@@ -73,7 +75,7 @@ class Synchronizer {
   // The callback holds a weak pointer to the synchronizer.
   static StatusCallback AsStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
 
-  boost::function<void(const Status&)> AsStatusFunctor() {
+  StatusFunctor AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
   }
 

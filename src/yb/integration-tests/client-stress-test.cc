@@ -361,7 +361,6 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     item.table = std::make_unique<client::TableHandle>();
     ASSERT_OK(item.table->Open(TestWorkloadOptions::kDefaultTableName, item.client.get()));
     item.session = std::make_shared<client::YBSession>(item.client);
-    ASSERT_OK(item.session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
     items.push_back(std::move(item));
   }
 

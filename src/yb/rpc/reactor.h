@@ -212,7 +212,7 @@ YB_DEFINE_ENUM(MarkAsDoneResult,
 //    argument.
 class DelayedTask : public ReactorTask {
  public:
-  DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
+  DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
               const std::shared_ptr<Messenger> messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
@@ -231,7 +231,7 @@ class DelayedTask : public ReactorTask {
   void TimerHandler(ev::timer& rwatcher, int revents); // NOLINT
 
   // User function to invoke when timer fires or when task is aborted.
-  const std::function<void(const Status&)> func_;
+  const StatusFunctor func_;
 
   // Delay to apply to this task.
   const MonoDelta when_;
