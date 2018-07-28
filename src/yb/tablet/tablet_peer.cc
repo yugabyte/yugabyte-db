@@ -416,36 +416,36 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-Status TabletPeer::SubmitWrite(
-    std::unique_ptr<WriteOperationState> state, MonoTime deadline) {
-  auto operation = std::make_unique<WriteOperation>(std::move(state), consensus::LEADER);
-  RETURN_NOT_OK(CheckRunning());
-
-  HybridTime restart_read_ht;
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(
-      deadline, operation->state(), &restart_read_ht));
-  // If a restart read is required, then we return this fact to caller and don't perform the write
-  // operation.
-  if (restart_read_ht.is_valid()) {
-    auto restart_time = operation->state()->response()->mutable_restart_read_time();
-    restart_time->set_read_ht(restart_read_ht.ToUint64());
-    restart_time->set_local_limit_ht(
-        tablet_->SafeTime(RequireLease::kTrue).ToUint64());
-    // Global limit is ignored by caller, so we don't set it.
-    operation->state()->completion_callback()->OperationCompleted();
-    tablet_->metrics()->restart_read_requests->Increment();
-    return Status::OK();
+void TabletPeer::WriteAsync(std::unique_ptr<WriteOperationState> state, MonoTime deadline) {
+  auto status = CheckRunning();
+  if (!status.ok()) {
+    state->completion_callback()->CompleteWithStatus(status);
   }
-  auto driver = VERIFY_RESULT(NewLeaderOperationDriver(std::move(operation)));
-  driver->ExecuteAsync();
-  return Status::OK();
+  auto operation = std::make_unique<WriteOperation>(
+      std::move(state), consensus::LEADER, deadline, this);
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+}
+
+void TabletPeer::StartExecution(std::unique_ptr<Operation> operation) {
+  auto driver = NewLeaderOperationDriver(&operation);
+  if (driver.ok()) {
+    (**driver).ExecuteAsync();
+  } else {
+    auto status = driver.status();
+    operation->state()->completion_callback()->CompleteWithStatus(status);
+  }
+}
+
+HybridTime TabletPeer::ReportReadRestart() {
+  tablet_->metrics()->restart_read_requests->Increment();
+  return tablet_->SafeTime(RequireLease::kTrue);
 }
 
 void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
   auto status = CheckRunning();
 
   if (status.ok()) {
-    auto driver = NewLeaderOperationDriver(std::move(operation));
+    auto driver = NewLeaderOperationDriver(&operation);
     if (driver.ok()) {
       (**driver).ExecuteAsync();
     } else {
@@ -673,7 +673,8 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       return std::make_unique<WriteOperation>(
-          std::make_unique<WriteOperationState>(tablet()), consensus::REPLICA);
+          std::make_unique<WriteOperationState>(tablet()), consensus::REPLICA, MonoTime::Max(),
+          this);
 
     case consensus::ALTER_SCHEMA_OP:
       DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
@@ -725,7 +726,7 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(std::move(operation)));
+  OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
@@ -776,19 +777,19 @@ shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
 }
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
-    std::unique_ptr<Operation> operation) {
-  return NewOperationDriver(std::move(operation), consensus::LEADER);
+    std::unique_ptr<Operation>* operation) {
+  return NewOperationDriver(operation, consensus::LEADER);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
-    std::unique_ptr<Operation> operation) {
-  return NewOperationDriver(std::move(operation), consensus::REPLICA);
+    std::unique_ptr<Operation>* operation) {
+  return NewOperationDriver(operation, consensus::REPLICA);
 }
 
-Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
+Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation>* operation,
                                                           consensus::DriverType type) {
   auto operation_driver = CreateOperationDriver();
-  RETURN_NOT_OK(operation_driver->Init(std::move(operation), type));
+  RETURN_NOT_OK(operation_driver->Init(operation, type));
   return operation_driver;
 }
 

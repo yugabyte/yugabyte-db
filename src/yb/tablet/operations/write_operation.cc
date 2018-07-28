@@ -70,9 +70,11 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using strings::Substitute;
 
-WriteOperation::WriteOperation(std::unique_ptr<WriteOperationState> state, DriverType type)
-  : Operation(std::move(state), type, OperationType::kWrite),
-    start_time_(MonoTime::Now()) {
+WriteOperation::WriteOperation(
+    std::unique_ptr<WriteOperationState> state, DriverType type,
+    MonoTime deadline, WriteOperationContext* context)
+    : Operation(std::move(state), type, OperationType::kWrite),
+      context_(*context), deadline_(deadline), start_time_(MonoTime::Now()) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -148,6 +150,28 @@ string WriteOperation::ToString() const {
   StringAppendStrftime(&abs_time_formatted, "%Y-%m-%d %H:%M:%S", (time_t)abs_time, true);
   return Substitute("WriteOperation [type=$0, start_time=$1, state=$2]",
                     DriverType_Name(type()), abs_time_formatted, state()->ToString());
+}
+
+void WriteOperation::DoStartSynchronization(const Status& status) {
+  std::unique_ptr<WriteOperation> self(this);
+  // If a restart read is required, then we return this fact to caller and don't perform the write
+  // operation.
+  if (restart_read_ht_.is_valid()) {
+    auto restart_time = state()->response()->mutable_restart_read_time();
+    restart_time->set_read_ht(restart_read_ht_.ToUint64());
+    auto local_limit = context_.ReportReadRestart();
+    restart_time->set_local_limit_ht(local_limit.ToUint64());
+    // Global limit is ignored by caller, so we don't set it.
+    state()->completion_callback()->OperationCompleted();
+    return;
+  }
+
+  if (!status.ok()) {
+    state()->completion_callback()->CompleteWithStatus(status);
+    return;
+  }
+
+  context_.StartExecution(std::move(self));
 }
 
 WriteOperationState::WriteOperationState(Tablet* tablet,

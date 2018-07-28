@@ -48,7 +48,7 @@ namespace tablet {
 //
 // This is useful for unit-testing the Tablet code paths with no consensus
 // implementation or thread pools.
-class LocalTabletWriter {
+class LocalTabletWriter : public WriteOperationContext {
  public:
   typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
 
@@ -58,11 +58,14 @@ class LocalTabletWriter {
   CHECKED_STATUS WriteBatch(Batch* batch);
 
  private:
+  void StartExecution(std::unique_ptr<Operation> operation) override;
+  HybridTime ReportReadRestart() override;
+
   Tablet* const tablet_;
 
   tserver::WriteRequestPB req_;
   tserver::WriteResponsePB resp_;
-  std::unique_ptr<WriteOperationState> tx_state_;
+  std::promise<Status> write_promise_;
 
   DISALLOW_COPY_AND_ASSIGN(LocalTabletWriter);
 };

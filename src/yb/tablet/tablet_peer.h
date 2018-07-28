@@ -53,6 +53,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
@@ -83,6 +84,8 @@ class ThreadPool;
 
 namespace tablet {
 
+class Operation;
+
 // A peer in a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -90,7 +93,8 @@ namespace tablet {
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public consensus::ReplicaOperationFactory,
                    public TransactionParticipantContext,
-                   public TransactionCoordinatorContext {
+                   public TransactionCoordinatorContext,
+                   public WriteOperationContext {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
@@ -136,8 +140,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  CHECKED_STATUS SubmitWrite(
-      std::unique_ptr<WriteOperationState> operation_state, MonoTime deadline);
+  void WriteAsync(std::unique_ptr<WriteOperationState> operation_state, MonoTime deadline);
 
   void Submit(std::unique_ptr<Operation> operation);
 
@@ -286,11 +289,11 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Convenience method to return the permanent_uuid of this peer.
   const std::string& permanent_uuid() const;
 
-  Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation> operation,
+  Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation>* operation,
                                                 consensus::DriverType type);
 
-  Result<OperationDriverPtr> NewLeaderOperationDriver(std::unique_ptr<Operation> operation);
-  Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation> operation);
+  Result<OperationDriverPtr> NewLeaderOperationDriver(std::unique_ptr<Operation>* operation);
+  Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
   CHECKED_STATUS RunLogGC();
@@ -402,6 +405,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   mutable std::string cached_permanent_uuid_;
 
  private:
+  void StartExecution(std::unique_ptr<Operation> operation) override;
+  HybridTime ReportReadRestart() override;
+
   std::shared_future<client::YBClientPtr> client_future_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
