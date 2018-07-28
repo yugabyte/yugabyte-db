@@ -219,7 +219,7 @@ class TabletPeerTest : public YBTabletTest,
     operation_state->set_completion_callback(
         std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    CHECK_OK(tablet_peer->SubmitWrite(std::move(operation_state), MonoTime::Max() /* deadline */));
+    tablet_peer->WriteAsync(std::move(operation_state), MonoTime::Max() /* deadline */);
     rpc_latch.Wait();
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
@@ -295,7 +295,7 @@ class DelayedApplyOperation : public WriteOperation {
   DelayedApplyOperation(CountDownLatch* apply_started,
                         CountDownLatch* apply_continue,
                         std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER),
+      : WriteOperation(std::move(state), consensus::LEADER, MonoTime::Max(), nullptr),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }

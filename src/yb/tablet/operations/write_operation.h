@@ -96,7 +96,7 @@ class WriteOperationState : public OperationState {
 
   // Returns the original client request for this transaction, if there was
   // one.
-  const tserver::WriteRequestPB *request() const override {
+  const tserver::WriteRequestPB* request() const override {
     return request_;
   }
 
@@ -182,10 +182,20 @@ class WriteOperationState : public OperationState {
   DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };
 
+class WriteOperationContext {
+ public:
+  // When operation completes, its callback is executed.
+  virtual void StartExecution(std::unique_ptr<Operation> operation) = 0;
+  virtual HybridTime ReportReadRestart() = 0;
+
+  virtual ~WriteOperationContext() {}
+};
+
 // Executes a write transaction.
 class WriteOperation : public Operation {
  public:
-  WriteOperation(std::unique_ptr<WriteOperationState> operation_state, consensus::DriverType type);
+  WriteOperation(std::unique_ptr<WriteOperationState> operation_state, consensus::DriverType type,
+                 MonoTime deadline, WriteOperationContext* context);
 
   WriteOperationState* state() override {
     return down_cast<WriteOperationState*>(Operation::state());
@@ -232,12 +242,54 @@ class WriteOperation : public Operation {
 
   std::string ToString() const override;
 
+  tserver::WriteRequestPB* request() {
+    return state()->mutable_request();
+  }
+
+  tserver::WriteResponsePB* response() {
+    return state()->response();
+  }
+
+  ReadHybridTime read_time() {
+    return ReadHybridTime::FromReadTimePB(*request());
+  }
+
+  HybridTime restart_read_ht() const {
+    return restart_read_ht_;
+  }
+
+  void SetRestartReadHt(HybridTime value) {
+    restart_read_ht_ = value;
+  }
+
+  const MonoTime deadline() const {
+    return deadline_;
+  }
+
+  docdb::DocOperations& doc_ops() {
+    return doc_ops_;
+  }
+
+  static void StartSynchronization(
+      std::unique_ptr<WriteOperation> operation, const Status& status) {
+    // We release here, because DoStartSynchronization takes ownership on this.
+    operation.release()->DoStartSynchronization(status);
+  }
+
  private:
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
   void DoStart() override;
+  void DoStartSynchronization(const Status& status);
+
+  WriteOperationContext& context_;
+  const MonoTime deadline_;
 
   // this transaction's start time
   MonoTime start_time_;
+
+  HybridTime restart_read_ht_;
+
+  docdb::DocOperations doc_ops_;
 
   Tablet* tablet() { return state()->tablet(); }
 
