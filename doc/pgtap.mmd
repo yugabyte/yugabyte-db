@@ -1636,11 +1636,16 @@ test fails.
 `:description`
 : A short description of the test.
 
-Compares the contents of a single row to a record. Due to the limitations of
-non-C functions in PostgreSQL, a bare `RECORD` value cannot be passed to the
-function. You must instead pass in a valid composite type value, and cast the
-record argument (the second argument) to the same type. Both explicitly
-created composite types and table types are supported. Thus, you can do this:
+Compares the contents of a single row to a record. On PostgreSQL 11 and later, a
+bare `RECORD` value may be passed:
+
+    SELECT row_eq( $$ SELECT 1, 'foo' $$, ROW(1, 'foo') );
+
+ue to the limitations of non-C functions in earlier versions of PostgreSQL, a
+bare `RECORD` value cannot be passed to the function. You must instead pass in a
+valid composite type value, and cast the record argument (the second argument)
+to the same type. Both explicitly created composite types and table types are
+supported. Thus, you can do this:
 
     CREATE TYPE sometype AS (
         id    INT,

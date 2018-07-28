@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(542);
+SELECT plan(545);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -2440,106 +2440,90 @@ CREATE FUNCTION test_row_eq() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
-    IF pg_version_num() < 80100 THEN
-        -- Can't do shit with records on 8.0
-        RETURN NEXT pass('row_eq(prepared, record, desc) should pass');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
-        RETURN NEXT pass('row_eq(sql, record, desc) should pass');
-        RETURN NEXT pass('row_eq(sql, record, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(sql, record, desc) should have the proper diagnostics');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should pass');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should fail');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
-        RETURN NEXT pass('row_eq(prepared, sometype, desc) should pass');
-        RETURN NEXT pass('row_eq(prepared, sometype, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(prepared, sometype, desc) should have the proper diagnostics');
-        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should pass');
-        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should have the proper description');
-        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should have the proper diagnostics');
-        RETURN NEXT pass('threw 0A000');
-    ELSE
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
-            true,
-            'row_eq(prepared, record, desc)',
-            'whatever',
-            ''
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
+        true,
+        'row_eq(prepared, record, desc)',
+        'whatever',
+        ''
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
-            true,
-            'row_eq(sql, record, desc)',
-            'whatever',
-            ''
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
+        true,
+        'row_eq(sql, record, desc)',
+        'whatever',
+        ''
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('arow', ROW(1, 'Jacob')::names),
-            true,
-            'row_eq(prepared, record, desc)',
-            '',
-            ''
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('arow', ROW(1, 'Jacob')::names),
+        true,
+        'row_eq(prepared, record, desc)',
+        '',
+        ''
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('arow', ROW(1, 'Larry')::names),
-            false,
-            'row_eq(prepared, record, desc)',
-            '',
-            '        have: (1,Jacob)
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('arow', ROW(1, 'Larry')::names),
+        false,
+        'row_eq(prepared, record, desc)',
+        '',
+        '        have: (1,Jacob)
         want: (1,Larry)'
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('arow', ROW(1, 'Jacob')::sometype),
-            true,
-            'row_eq(prepared, sometype, desc)',
-            '',
-            ''
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('arow', ROW(1, 'Jacob')::sometype),
+        true,
+        'row_eq(prepared, sometype, desc)',
+        '',
+        ''
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
-            true,
-            'row_eq(sqlrow, sometype, desc)',
-            '',
-            ''
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    FOR tap IN SELECT * FROM check_test(
+        row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
+        true,
+        'row_eq(sqlrow, sometype, desc)',
+        '',
+        ''
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        INSERT INTO someat (ts) values ('2009-12-04T07:22:52');
+    INSERT INTO someat (ts) values ('2009-12-04T07:22:52');
+    IF pg_version_num() < 110000 THEN
+        -- Prior to 11, one cannot pass a bare RECORD.
         RETURN NEXT throws_ok(
-            'SELECT row_eq( ''SELECT id, ts FROM someat'', ROW(1, ''2009-12-04T07:22:52'') )',
+            'SELECT row_eq( ''SELECT id, ts FROM someat'', ROW(1, ''2009-12-04T07:22:52''::timestamp) )',
             '0A000'
             --  'PL/pgSQL functions cannot accept type record'
         );
-
-        -- FOR tap IN SELECT * FROM check_test(
-        --     row_eq( 'SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52') ),
-        --     true,
-        --     'row_eq(sql, rec)',
-        --     '',
-        --     ''
-        -- ) AS a(b) LOOP
-        --     RETURN NEXT tap.b;
-        -- END LOOP;
-
+        RETURN NEXT pass('row_eq(qry, record) should pass');
+        RETURN NEXT pass('row_eq(qry, record) should have the proper description');
+        RETURN NEXT pass('row_eq(qry, record) should have the proper diagnostics');
+    ELSE
+        -- Postgres 11 supports record arguments!
+        RETURN NEXT pass('threw 0A000');
+        FOR tap IN SELECT * FROM check_test(
+            row_eq('SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52'::timestamp)),
+            true,
+            'row_eq(qry, record)',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
     END IF;
     RETURN;
 END;

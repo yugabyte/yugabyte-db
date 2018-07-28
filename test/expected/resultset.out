@@ -1,5 +1,5 @@
 \unset ECHO
-1..542
+1..545
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -542,3 +542,6 @@ ok 539 - row_eq(sqlrow, sometype, desc) should pass
 ok 540 - row_eq(sqlrow, sometype, desc) should have the proper description
 ok 541 - row_eq(sqlrow, sometype, desc) should have the proper diagnostics
 ok 542 - threw 0A000
+ok 543 - row_eq(qry, record) should pass
+ok 544 - row_eq(qry, record) should have the proper description
+ok 545 - row_eq(qry, record) should have the proper diagnostics

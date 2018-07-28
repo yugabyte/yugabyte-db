@@ -20,6 +20,8 @@ Revision history for pgTAP
 * Fixed an issue on PostgreSQL 11, where the `pg_proc.proisagg` column has
   been replaced with the more generically useful `pg_proc.prokind`. Thanks to
   Keith Fiske for the report (#174)!
+* Documented that a bar `RECORD` can be passed to `row_eq()` on PostgreSQL 11,
+  and fixed the tests to match this new functionality.
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------
