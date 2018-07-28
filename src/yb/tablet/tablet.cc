@@ -41,6 +41,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
 #include <boost/optional.hpp>
 #include <boost/scope_exit.hpp>
 
@@ -283,22 +284,6 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
 }
 
 } // namespace
-
-// Struct to pass data to WriteOperation related functions.
-struct WriteOperationData {
-  WriteOperationState* operation_state;
-  LockBatch *keys_locked;
-  MonoTime deadline;
-  HybridTime* restart_read_ht;
-
-  tserver::WriteRequestPB* write_request() const {
-    return operation_state->mutable_request();
-  }
-
-  ReadHybridTime read_time() const {
-    return ReadHybridTime::FromReadTimePB(*write_request());
-  }
-};
 
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
@@ -732,24 +717,24 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
 
 //--------------------------------------------------------------------------------------------------
 // Redis Request Processing.
-Status Tablet::KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data) {
+Status Tablet::KeyValueBatchFromRedisWriteBatch(WriteOperation* operation) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
-  docdb::DocOperations doc_ops;
+  docdb::DocOperations& doc_ops = operation->doc_ops();
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(data.write_request(), &batch_request);
+  SetupKeyValueBatch(operation->request(), &batch_request);
   auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
     doc_ops.emplace_back(new RedisWriteOperation(redis_write_batch->Mutable(i)));
   }
-  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
-  if (data.restart_read_ht->is_valid()) {
+  RETURN_NOT_OK(StartDocWriteOperation(operation));
+  if (operation->restart_read_ht().is_valid()) {
     return Status::OK();
   }
-  auto* response = data.operation_state->response();
+  auto* response = operation->response();
   for (size_t i = 0; i < doc_ops.size(); i++) {
     auto* redis_write_operation = down_cast<RedisWriteOperation*>(doc_ops[i].get());
     response->add_redis_response_batch()->Swap(&redis_write_operation->response());
@@ -842,41 +827,61 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
+void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-  RETURN_NOT_OK(scoped_read_operation);
+  if (!scoped_read_operation.ok()) {
+    WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
+    return;
+  }
 
-  docdb::DocOperations doc_ops;
+  docdb::DocOperations& doc_ops = operation->doc_ops();
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(data.write_request(), &batch_request);
+  SetupKeyValueBatch(operation->request(), &batch_request);
   auto* ql_write_batch = batch_request.mutable_ql_write_batch();
 
   doc_ops.reserve(ql_write_batch->size());
 
   Result<TransactionOperationContextOpt> txn_op_ctx =
-      CreateTransactionOperationContext(data.write_request()->write_batch().transaction());
-  RETURN_NOT_OK(txn_op_ctx);
+      CreateTransactionOperationContext(operation->request()->write_batch().transaction());
+  if (!txn_op_ctx.ok()) {
+    WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
+    return;
+  }
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
-    QLResponsePB* resp = data.operation_state->response()->add_ql_response_batch();
+    QLResponsePB* resp = operation->response()->add_ql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      auto write_op = std::make_unique<QLWriteOperation>(metadata_->schema(),
-                                                         metadata_->index_map(),
-                                                         unique_index_key_schema_ ?
-                                                         &*unique_index_key_schema_ : nullptr,
-                                                         *txn_op_ctx);
-      RETURN_NOT_OK(write_op->Init(req, resp));
+      auto write_op = std::make_unique<QLWriteOperation>(
+          metadata_->schema(), metadata_->index_map(), unique_index_key_schema_.get_ptr(),
+          *txn_op_ctx);
+      auto status = write_op->Init(req, resp);
+      if (!status.ok()) {
+        WriteOperation::StartSynchronization(std::move(operation), status);
+      }
       doc_ops.emplace_back(std::move(write_op));
     }
   }
-  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
-  if (data.restart_read_ht->is_valid()) {
-    return Status::OK();
+  auto status = StartDocWriteOperation(operation.get());
+  if (operation->restart_read_ht().is_valid()) {
+    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
+    return;
   }
 
-  RETURN_NOT_OK(UpdateQLIndexes(&doc_ops));
+  if (status.ok()) {
+    UpdateQLIndexes(std::move(operation));
+  } else {
+    CompleteQLWriteBatch(std::move(operation), status);
+  }
+}
+
+void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status) {
+  if (!status.ok()) {
+    WriteOperation::StartSynchronization(std::move(operation), status);
+    return;
+  }
+  auto& doc_ops = operation->doc_ops();
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
@@ -891,79 +896,135 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
       doc_ops[i].release();
-      data.operation_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
+      operation->state()->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
   }
 
-  return Status::OK();
+  WriteOperation::StartSynchronization(std::move(operation), Status::OK());
 }
 
-Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
-  for (auto& doc_op : *doc_ops) {
+void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
+  YBClientPtr client;
+  client::YBSessionPtr session;
+  client::YBTransactionPtr txn;
+  std::vector<std::pair<std::shared_ptr<client::YBqlWriteOp>, QLWriteOperation*>> index_ops;
+  const ChildTransactionDataPB* child_transaction_data = nullptr;
+  for (auto& doc_op : operation->doc_ops()) {
     auto* write_op = static_cast<QLWriteOperation*>(doc_op.get());
     if (write_op->index_requests()->empty()) {
       continue;
     }
-    const YBClientPtr client = client_future_.get();
-    auto session = std::make_shared<YBSession>(client);
-    client::YBTransactionPtr txn;
-    if (write_op->request().has_child_transaction_data()) {
-      if (!transaction_manager_) {
-        return STATUS(Corruption, "Transaction manager is not present for index update");
+    if (!client) {
+      client = client_future_.get();
+      session = std::make_shared<YBSession>(client);
+      if (write_op->request().has_child_transaction_data()) {
+        child_transaction_data = &write_op->request().child_transaction_data();
+        if (!transaction_manager_) {
+          auto status = STATUS(Corruption, "Transaction manager is not present for index update");
+          operation->state()->completion_callback()->CompleteWithStatus(status);
+          return;
+        }
+        auto child_data = ChildTransactionData::FromPB(
+            write_op->request().child_transaction_data());
+        if (!child_data.ok()) {
+          operation->state()->completion_callback()->CompleteWithStatus(child_data.status());
+          return;
+        }
+        txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
+        session->SetTransaction(txn);
+      } else {
+        child_transaction_data = nullptr;
       }
-      txn = std::make_shared<YBTransaction>(
-          &transaction_manager_.get(),
-          VERIFY_RESULT(ChildTransactionData::FromPB(
-              write_op->request().child_transaction_data())));
-      session->SetTransaction(txn);
+    } else if (write_op->request().has_child_transaction_data()) {
+      DCHECK_ONLY_NOTNULL(child_transaction_data);
+      DCHECK_EQ(child_transaction_data->ShortDebugString(),
+                write_op->request().child_transaction_data().ShortDebugString());
+    } else {
+      DCHECK(child_transaction_data == nullptr) <<
+          "Value: " << child_transaction_data->ShortDebugString();
     }
 
     // Apply the write ops to update the index
-    vector<std::pair<const IndexInfo*, shared_ptr<client::YBqlWriteOp>>> index_ops;
     for (auto& pair : *write_op->index_requests()) {
       client::YBTablePtr index_table;
       bool cache_used_ignored = false;
       if (!metadata_cache_) {
-        return STATUS(Corruption, "Table metadata cache is not present for index update");
+        auto status = STATUS(Corruption, "Table metadata cache is not present for index update");
+        operation->state()->completion_callback()->CompleteWithStatus(status);
+        return;
       }
-      RETURN_NOT_OK(metadata_cache_->GetTable(pair.first->table_id(), &index_table,
-                                              &cache_used_ignored));
+      // TODO create async version of GetTable.
+      // It is ok to have sync call here, because we use cache and it should not take too long.
+      auto status = metadata_cache_->GetTable(pair.first->table_id(), &index_table,
+                                              &cache_used_ignored);
+      if (!status.ok()) {
+        operation->state()->completion_callback()->CompleteWithStatus(status);
+        return;
+      }
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
       index_op->mutable_request()->Swap(&pair.second);
       index_op->mutable_request()->MergeFrom(pair.second);
-      RETURN_NOT_OK(session->Apply(index_op));
-      index_ops.emplace_back(pair.first, index_op);
+      status = session->Apply(index_op);
+      if (!status.ok()) {
+        operation->state()->completion_callback()->CompleteWithStatus(status);
+        return;
+      }
+      index_ops.emplace_back(std::move(index_op), write_op);
     }
-    const Status s = session->Flush();
-    if (PREDICT_FALSE(!s.ok())) {
+  }
+
+  if (!session) {
+    CompleteQLWriteBatch(std::move(operation), Status::OK());
+    return;
+  }
+
+  session->FlushAsync(
+      [this, op = operation.release(), session, txn, index_ops = std::move(index_ops)]
+          (const Status& status) {
+    std::unique_ptr<WriteOperation> operation(op);
+
+    if (PREDICT_FALSE(!status.ok())) {
       // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
       // returns IOError. When it happens, retrieves the errors and discard the IOError.
-      if (s.IsIOError()) {
+      if (status.IsIOError()) {
         for (const auto& error : session->GetPendingErrors()) {
-          return error->status(); // return just the first error seen.
+          // return just the first error seen.
+          operation->state()->completion_callback()->CompleteWithStatus(error->status());
+          return;
         }
       }
-      return s;
+      operation->state()->completion_callback()->CompleteWithStatus(status);
+      return;
+    }
+
+    ChildTransactionResultPB child_result;
+    if (txn) {
+      auto finish_result = txn->FinishChild();
+      if (!finish_result.ok()) {
+        operation->state()->completion_callback()->CompleteWithStatus(finish_result.status());
+        return;
+      }
+      child_result = std::move(*finish_result);
     }
 
     // Check the responses of the index write ops.
-    auto* response = write_op->response();
     for (const auto& pair : index_ops) {
-      shared_ptr<client::YBqlWriteOp> index_op = pair.second;
+      shared_ptr<client::YBqlWriteOp> index_op = pair.first;
+      auto* response = pair.second->response();
+      DCHECK_ONLY_NOTNULL(response);
       auto* index_response = index_op->mutable_response();
 
       if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
         response->set_status(index_response->status());
         response->set_error_message(std::move(index_response->error_message()));
-        break;
+      }
+      if (txn) {
+        *response->mutable_child_transaction_result() = child_result;
       }
     }
 
-    if (txn) {
-      *response->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
-    }
-  }
-  return Status::OK();
+    CompleteQLWriteBatch(std::move(operation), Status::OK());
+  });
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1018,23 +1079,23 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data) {
+Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
-  docdb::DocOperations doc_ops;
+  docdb::DocOperations& doc_ops = operation->doc_ops();
   WriteRequestPB batch_request;
 
-  SetupKeyValueBatch(data.write_request(), &batch_request);
+  SetupKeyValueBatch(operation->request(), &batch_request);
   auto* pgsql_write_batch = batch_request.mutable_pgsql_write_batch();
 
   doc_ops.reserve(pgsql_write_batch->size());
 
   Result<TransactionOperationContextOpt> txn_op_ctx =
-      CreateTransactionOperationContext(data.write_request()->write_batch().transaction());
+      CreateTransactionOperationContext(operation->request()->write_batch().transaction());
   RETURN_NOT_OK(txn_op_ctx);
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
-    PgsqlResponsePB* resp = data.operation_state->response()->add_pgsql_response_batch();
+    PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
@@ -1044,16 +1105,16 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data) 
       doc_ops.emplace_back(std::move(write_op));
     }
   }
-  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
-  if (data.restart_read_ht->is_valid()) {
+  RETURN_NOT_OK(StartDocWriteOperation(operation));
+  if (operation->restart_read_ht().is_valid()) {
     return Status::OK();
   }
   for (size_t i = 0; i < doc_ops.size(); i++) {
     PgsqlWriteOperation* pgsql_write_op = down_cast<PgsqlWriteOperation*>(doc_ops[i].get());
     // We'll need to return the number of updated, deleted, or inserted rows by each operations.
     doc_ops[i].release();
-    data.operation_state->pgsql_write_ops()
-                        ->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
+    operation->state()->pgsql_write_ops()
+                      ->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
   }
 
   return Status::OK();
@@ -1061,58 +1122,28 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data) 
 
 //--------------------------------------------------------------------------------------------------
 
-Status Tablet::AcquireLocksAndPerformDocOperations(
-    MonoTime deadline, WriteOperationState *state, HybridTime* restart_read_ht) {
-  LockBatch locks_held;
-  WriteRequestPB* key_value_write_request = state->mutable_request();
+void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
+  WriteRequestPB* key_value_write_request = operation->state()->mutable_request();
 
-  bool invalid_table_type = true;
-  WriteOperationData data = {
-    state,
-    &locks_held,
-    deadline,
-    restart_read_ht
-  };
   switch (table_type_) {
     case TableType::REDIS_TABLE_TYPE: {
-      RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(data));
-      invalid_table_type = false;
-      break;
+      auto status = KeyValueBatchFromRedisWriteBatch(operation.get());
+      WriteOperation::StartSynchronization(std::move(operation), status);
+      return;
     }
     case TableType::YQL_TABLE_TYPE: {
       CHECK_GT(key_value_write_request->ql_write_batch_size(), 0);
-      RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
-      if (restart_read_ht->is_valid()) {
-        return Status::OK();
-      }
-      invalid_table_type = false;
-      break;
+      KeyValueBatchFromQLWriteBatch(std::move(operation));
+      return;
     }
     case TableType::PGSQL_TABLE_TYPE: {
-      RETURN_NOT_OK(KeyValueBatchFromPgsqlWriteBatch(data));
-      if (restart_read_ht->is_valid()) {
-        return Status::OK();
-      }
-      invalid_table_type = false;
-      break;
+      auto status = KeyValueBatchFromPgsqlWriteBatch(operation.get());
+      WriteOperation::StartSynchronization(std::move(operation), status);
+      return;
     }
   }
-  if (invalid_table_type) {
-    FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
-  }
-  // If there is a non-zero number of operations, we expect to be holding locks. The reverse is
-  // not always true, because we could decide to avoid writing based on results of reading.
-  DCHECK(!locks_held.empty() ||
-         key_value_write_request->write_batch().kv_pairs_size() == 0)
-      << "Expect to be holding locks for a non-zero number of write operations: "
-      << key_value_write_request->write_batch().DebugString();
-  state->ReplaceDocDBLocks(std::move(locks_held));
 
-  DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0)
-      << "Redis write batch not empty in key-value batch";
-  DCHECK_EQ(key_value_write_request->ql_write_batch_size(), 0)
-      << "QL write batch not empty in key-value batch";
-  return Status::OK();
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
@@ -1425,22 +1456,22 @@ Status Tablet::TEST_SwitchMemtable() {
   return Status::OK();
 }
 
-Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
-                                      const WriteOperationData& data) {
-  auto write_batch = data.write_request()->mutable_write_batch();
+Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
+  auto write_batch = operation->request()->mutable_write_batch();
   auto isolation_level = GetIsolationLevel(*write_batch, transaction_participant_.get());
   RETURN_NOT_OK(isolation_level);
+  LockBatch keys_locked;
   bool need_read_snapshot = false;
   docdb::PrepareDocWriteOperation(
-      doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
-      data.keys_locked, &need_read_snapshot);
+      operation->doc_ops(), metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
+      &keys_locked, &need_read_snapshot);
 
   RequestScope request_scope;
   if (transaction_participant_) {
     request_scope = RequestScope(transaction_participant_.get());
   }
   auto read_op = need_read_snapshot
-      ? ScopedReadOperation(this, RequireLease::kTrue, data.read_time())
+      ? ScopedReadOperation(this, RequireLease::kTrue, operation->read_time())
       : ScopedReadOperation();
   auto real_read_time = need_read_snapshot ? read_op.read_time()
                                            : ReadHybridTime::SingleTime(clock_->Now());
@@ -1449,7 +1480,8 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       metadata_->schema().table_properties().is_transactional()) {
     auto now = clock_->Now();
     auto result = docdb::ResolveOperationConflicts(
-        doc_ops, now, {regular_db_.get(), intents_db_.get()}, transaction_participant_.get());
+        operation->doc_ops(), now, {regular_db_.get(), intents_db_.get()},
+        transaction_participant_.get());
     RETURN_NOT_OK(result);
     if (now != *result) {
       clock_->Update(*result);
@@ -1458,28 +1490,27 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
 
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
+  HybridTime restart_read_ht;
   RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
-      doc_ops, data.deadline, real_read_time, {regular_db_.get(), intents_db_.get()}, write_batch,
+      operation->doc_ops(), operation->deadline(), real_read_time,
+      {regular_db_.get(), intents_db_.get()}, write_batch,
       table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
                                                  : InitMarkerBehavior::kOptional,
       &monotonic_counter_,
-      data.restart_read_ht));
+      &restart_read_ht));
 
-  if (data.restart_read_ht->is_valid()) {
+  operation->SetRestartReadHt(restart_read_ht);
+
+  if (operation->restart_read_ht().is_valid()) {
     return Status::OK();
   }
 
   if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
-    auto result = docdb::ResolveTransactionConflicts(*write_batch,
-                                                     clock_->Now(),
-                                                     {regular_db_.get(), intents_db_.get()},
-                                                     transaction_participant_.get(),
-                                                     metrics_->transaction_conflicts.get());
-    if (!result.ok()) {
-      *data.keys_locked = LockBatch();  // Unlock the keys.
-      return result;
-    }
+    RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
+        *write_batch, clock_->Now(), {regular_db_.get(), intents_db_.get()},
+        transaction_participant_.get(), metrics_->transaction_conflicts.get()));
   }
+  operation->state()->ReplaceDocDBLocks(std::move(keys_locked));
 
   return Status::OK();
 }

@@ -50,32 +50,44 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
   }
   req_.mutable_ql_write_batch()->Swap(batch);
 
-  tx_state_.reset(new WriteOperationState(tablet_, &req_, &resp_));
-  HybridTime read_ht;
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(
-      MonoTime::Max() /* deadline */, tx_state_.get(), &read_ht));
-  tablet_->StartOperation(tx_state_.get());
+  auto state = std::make_unique<WriteOperationState>(tablet_, &req_, &resp_);
+  auto operation = std::make_unique<WriteOperation>(
+      std::move(state), consensus::DriverType::LEADER, MonoTime::Max() /* deadline */, this);
+  write_promise_ = std::promise<Status>();
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+
+  return write_promise_.get_future().get();
+}
+
+void LocalTabletWriter::StartExecution(std::unique_ptr<Operation> operation) {
+  auto state = down_cast<WriteOperationState*>(operation->state());
+  tablet_->StartOperation(state);
 
   // Create a "fake" OpId and set it in the OperationState for anchoring.
-  tx_state_->mutable_op_id()->set_term(0);
-  tx_state_->mutable_op_id()->set_index(
-      Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
+  state->mutable_op_id()->set_term(0);
+  state->mutable_op_id()->set_index(Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
-  tablet_->ApplyRowOperations(tx_state_.get());
+  tablet_->ApplyRowOperations(state);
 
-  tx_state_->Commit();
-  tx_state_->ReleaseDocDbLocks(tablet_);
+  state->Commit();
+  state->ReleaseDocDbLocks(tablet_);
 
   // Return the status of first failed op.
   int op_idx = 0;
   for (const auto& result : resp_.ql_response_batch()) {
     if (result.status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS_FORMAT(RuntimeError, "Op $0 failed: $1 ($2)", op_idx, result.error_message(),
-                           QLResponsePB_QLStatus_Name(result.status()));
+      write_promise_.set_value(STATUS_FORMAT(
+          RuntimeError, "Op $0 failed: $1 ($2)", op_idx, result.error_message(),
+          QLResponsePB_QLStatus_Name(result.status())));
     }
     op_idx++;
   }
-  return Status::OK();
+
+  write_promise_.set_value(Status::OK());
+}
+
+HybridTime LocalTabletWriter::ReportReadRestart() {
+  return HybridTime();
 }
 
 }  // namespace tablet

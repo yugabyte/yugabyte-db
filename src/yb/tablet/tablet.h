@@ -174,7 +174,7 @@ inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
   return (lhs & rhs) != FlushFlags::kNone;
 }
 
-struct WriteOperationData;
+class WriteOperation;
 
 struct DocDbOpIds {
   OpId regular;
@@ -285,7 +285,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data);
+  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(WriteOperation* operation);
 
   CHECKED_STATUS HandleRedisReadRequest(
       MonoTime deadline,
@@ -307,7 +307,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       QLResponsePB* response) const override;
 
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  CHECKED_STATUS KeyValueBatchFromQLWriteBatch(const WriteOperationData& data);
+  void KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation);
 
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
@@ -322,7 +322,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
 
-  CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(const WriteOperationData& data);
+  CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation);
 
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
@@ -407,8 +407,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
-  CHECKED_STATUS AcquireLocksAndPerformDocOperations(
-      MonoTime deadline, WriteOperationState *state, HybridTime* restart_read_ht);
+  void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation);
 
   static const char* kDMSMemTrackerId;
 
@@ -480,9 +479,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   friend class ScopedReadOperation;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  CHECKED_STATUS StartDocWriteOperation(
-      const docdb::DocOperations &doc_ops,
-      const WriteOperationData& data);
+  CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
 
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
@@ -659,7 +656,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
 
-  CHECKED_STATUS UpdateQLIndexes(docdb::DocOperations* doc_ops);
+  void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
+  void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 

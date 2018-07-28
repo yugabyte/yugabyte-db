@@ -763,11 +763,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   operation_state->set_completion_callback(
       std::make_unique<WriteOperationCompletionCallback>(
           context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
-  auto status = tablet_peer->SubmitWrite(
-      std::move(operation_state), context_ptr->GetClientDeadline());
-
-  // Check that we could submit the write
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(status, resp, context_ptr.get());
+  tablet_peer->WriteAsync(std::move(operation_state), context_ptr->GetClientDeadline());
 }
 
 Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,

@@ -44,6 +44,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -85,8 +86,10 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
   }
 }
 
-Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType type) {
-  operation_ = std::move(operation);
+Status OperationDriver::Init(std::unique_ptr<Operation>* operation, DriverType type) {
+  if (operation) {
+    operation_ = std::move(*operation);
+  }
 
   if (type == consensus::REPLICA) {
     std::lock_guard<simple_spinlock> lock(opid_lock_);
@@ -108,9 +111,12 @@ Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType ty
     }
   }
 
-  RETURN_NOT_OK(operation_tracker_->Add(this));
+  auto result = operation_tracker_->Add(this);
+  if (!result.ok() && operation) {
+    *operation = std::move(operation_);
+  }
 
-  return Status::OK();
+  return result;
 }
 
 consensus::OpId OperationDriver::GetOpId() {
@@ -155,7 +161,10 @@ void OperationDriver::ExecuteAsync() {
   if (replication_state_ == NOT_REPLICATING) {
     // We're a leader operation. Before submitting, check that we are the leader and
     // determine the current term.
+    // CheckLeadershipAndBindTerm could rarely acquire lock, so we should allow wait here.
+    const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
     s = consensus_->CheckLeadershipAndBindTerm(mutable_state()->consensus_round());
+    ThreadRestrictions::SetWaitAllowed(allowed);
   }
 
   if (s.ok()) {

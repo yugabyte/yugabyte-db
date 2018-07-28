@@ -125,7 +125,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // Perform any non-constructor initialization. Sets the operation
   // that will be executed.
-  CHECKED_STATUS Init(std::unique_ptr<Operation> operation, consensus::DriverType driver);
+  CHECKED_STATUS Init(std::unique_ptr<Operation>* operation, consensus::DriverType driver);
 
   // Returns the OpId of the operation being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not

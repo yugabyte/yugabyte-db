@@ -190,7 +190,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
       typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
       state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
-      ASSERT_OK(tablet_peer_->SubmitWrite(std::move(state), MonoTime::Max() /* deadline */));
+      tablet_peer_->WriteAsync(std::move(state), MonoTime::Max() /* deadline */);
       latch.Wait();
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
       ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<
