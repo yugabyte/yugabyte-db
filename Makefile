@@ -113,7 +113,10 @@ OSNAME := $(shell $(SHELL) ./getos.sh)
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "[98][.]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "([98]|10)[.]" && echo yes || echo no),yes)
+	patch -p0 < compat/install-10.patch
+endif
+ifeq ($(shell echo $(VERSION) | grep -qE "[98][012345][.]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.6.patch
 endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
@@ -173,6 +176,7 @@ sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
 
 sql/pgtap-static.sql: sql/pgtap.sql.in
 	cp $< $@
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-10.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.6.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.4.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.2.patch | patch -p0

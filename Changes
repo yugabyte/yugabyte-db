@@ -17,6 +17,9 @@ Revision history for pgTAP
   been removed. The primary key testing functions now refer to
   `pg_index.indisprimary`, instead. Thanks to Keith Fiske for the report
   (#174)!
+* Fixed an issue on PostgreSQL 11, where the `pg_proc.proisagg` column has
+  been replaced with the more generically useful `pg_proc.prokind`. Thanks to
+  Keith Fiske for the report (#174)!
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------

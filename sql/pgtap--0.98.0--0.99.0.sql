@@ -113,3 +113,50 @@ RETURNS BOOLEAN AS $$
                AND x.contype = $2
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE VIEW tap_funky
+ AS SELECT p.oid         AS oid,
+           n.nspname     AS schema,
+           p.proname     AS name,
+           pg_catalog.pg_get_userbyid(p.proowner) AS owner,
+           array_to_string(p.proargtypes::regtype[], ',') AS args,
+           CASE p.proretset WHEN TRUE THEN 'setof ' ELSE '' END
+             || p.prorettype::regtype AS returns,
+           p.prolang     AS langoid,
+           p.proisstrict AS is_strict,
+           p.prokind     AS kind,
+           p.prosecdef   AS is_definer,
+           p.proretset   AS returns_set,
+           p.provolatile::char AS volatility,
+           pg_catalog.pg_function_is_visible(p.oid) AS is_visible
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = 'a'
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT kind = 'a' FROM tap_funky WHERE schema = $1 AND name = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = 'a'
+      FROM tap_funky
+     WHERE name = $1
+       AND args = array_to_string($2, ',')
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT kind = 'a' FROM tap_funky WHERE name = $1 AND is_visible;
+$$ LANGUAGE SQL;

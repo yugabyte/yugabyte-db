@@ -2487,7 +2487,7 @@ CREATE OR REPLACE VIEW tap_funky
              || p.prorettype::regtype AS returns,
            p.prolang     AS langoid,
            p.proisstrict AS is_strict,
-           p.proisagg    AS is_agg,
+           p.prokind     AS kind,
            p.prosecdef   AS is_definer,
            p.proretset   AS returns_set,
            p.provolatile::char AS volatility,
@@ -5651,7 +5651,7 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _agg ( NAME, NAME, NAME[] )
 RETURNS BOOLEAN AS $$
-    SELECT is_agg
+    SELECT kind = 'a'
       FROM tap_funky
      WHERE schema = $1
        AND name   = $2
@@ -5660,12 +5660,12 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _agg ( NAME, NAME )
 RETURNS BOOLEAN AS $$
-    SELECT is_agg FROM tap_funky WHERE schema = $1 AND name = $2
+    SELECT kind = 'a' FROM tap_funky WHERE schema = $1 AND name = $2
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _agg ( NAME, NAME[] )
 RETURNS BOOLEAN AS $$
-    SELECT is_agg
+    SELECT kind = 'a'
       FROM tap_funky
      WHERE name = $1
        AND args = array_to_string($2, ',')
@@ -5674,7 +5674,7 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _agg ( NAME )
 RETURNS BOOLEAN AS $$
-    SELECT is_agg FROM tap_funky WHERE name = $1 AND is_visible;
+    SELECT kind = 'a' FROM tap_funky WHERE name = $1 AND is_visible;
 $$ LANGUAGE SQL;
 
 -- is_aggregate( schema, function, args[], description )
