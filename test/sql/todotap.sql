@@ -172,16 +172,13 @@ not ok 34 - Another todo test # TODO just because
    'Should be able to revers the arguments to todo()'
 );
 
--- Test the exception when throws_ok() is available.
-SELECT CASE WHEN pg_version_num() < 80100
-     THEN pass('Should get an exception when todo_end() is called without todo_start()')
-     ELSE throws_ok(
-        'SELECT todo_end()',
-        'P0001',
-        'todo_end() called without todo_start()',
-        'Should get an exception when todo_end() is called without todo_start()'
-     )
-     END;
+-- Test the exception.
+SELECT throws_ok(
+    'SELECT todo_end()',
+    'P0001',
+    'todo_end() called without todo_start()',
+    'Should get an exception when todo_end() is called without todo_start()'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.

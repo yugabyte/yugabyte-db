@@ -65,19 +65,7 @@ CREATE FUNCTION test_records() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
-    IF pg_version_num() < 80100 THEN
-        -- Can't do shit with records on 8.0
-        RETURN NEXT pass('with records!');
-        RETURN NEXT pass( 'is(mumble, row) fail should fail');
-        RETURN NEXT pass( 'is(mumble, row) fail should have the proper description');
-        RETURN NEXT pass( 'is(mumble, row) fail should have the proper diagnostics');
-        RETURN NEXT pass( 'is(mumble, row) fail with NULL should fail');
-        RETURN NEXT pass( 'is(mumble, row) fail with NULL should have the proper description');
-        RETURN NEXT pass( 'is(mumble, row) fail with NULL should have the proper diagnostics');
-        RETURN NEXT pass( 'is(mumble, NULL) should fail');
-        RETURN NEXT pass( 'is(mumble, NULL) should have the proper description');
-        RETURN NEXT pass( 'is(mumble, NULL) should have the proper diagnostics');
-    ELSIF pg_version_num() >= 80400 THEN
+    IF pg_version_num() >= 80400 THEN
         RETURN NEXT is( mumble.*, ROW(1, 'hey')::mumble, 'with records!' )
           FROM mumble;
 

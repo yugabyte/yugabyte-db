@@ -22,6 +22,8 @@ Revision history for pgTAP
   Keith Fiske for the report (#174)!
 * Documented that a bar `RECORD` can be passed to `row_eq()` on PostgreSQL 11,
   and fixed the tests to match this new functionality.
+* Removed tests that only ran on 8.0, support for which was discontinued in
+  v0.90.0.
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------
@@ -234,7 +236,7 @@ Revision history for pgTAP
 0.90.0 2011-12-03T20:18:16Z
 ---------------------------
 * Removed the "Supported Versions" section of the documentation. Suffice it to
-  say that pgTAP supports PostgreSQL 8.0 or higher.
+  say that pgTAP supports PostgreSQL 8.1 or higher.
 * Added a build target to create a portable copy of pgTAP that can be included
   in any distribution and should just work for tesing on PostgreSQL 8.3+. The
   new files are `pgtap-core.sql`, which contains the core functionality, and

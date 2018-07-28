@@ -2321,41 +2321,31 @@ CREATE FUNCTION test_empty_fail() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
-    IF pg_version_num() < 80100 THEN
-        -- Can't do shit with records on 8.0
-        RETURN NEXT pass('is_empty(prepared, desc) fail should fail');
-        RETURN NEXT pass('is_empty(prepared, desc) fail should have the proper description');
-        RETURN NEXT pass('is_empty(prepared, desc) fail should have the proper diagnostics');
-        RETURN NEXT pass('is_empty(prepared) fail should fail');
-        RETURN NEXT pass('is_empty(prepared) fail should have the proper description');
-        RETURN NEXT pass('is_empty(prepared) fail should have the proper diagnostics');
-    ELSE
-        PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily')
-          ORDER BY ID;
-        FOR tap IN SELECT * FROM check_test(
-            is_empty( 'notempty', 'whatever' ),
-            false,
-            'is_empty(prepared, desc) fail',
-            'whatever',
-            '    Unexpected records:
+    PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily')
+        ORDER BY ID;
+    FOR tap IN SELECT * FROM check_test(
+        is_empty( 'notempty', 'whatever' ),
+        false,
+        'is_empty(prepared, desc) fail',
+        'whatever',
+        '    Unexpected records:
         (1,Jacob)
         (2,Emily)'
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
 
-        FOR tap IN SELECT * FROM check_test(
-            is_empty( 'notempty' ),
-            false,
-            'is_empty(prepared) fail',
-            '',
-            '    Unexpected records:
+    FOR tap IN SELECT * FROM check_test(
+        is_empty( 'notempty' ),
+        false,
+        'is_empty(prepared) fail',
+        '',
+        '    Unexpected records:
         (1,Jacob)
         (2,Emily)'
-        ) AS a(b) LOOP
-            RETURN NEXT tap.b;
-        END LOOP;
-    END IF;
+    ) AS a(b) LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
     RETURN;
 END;
 $$ LANGUAGE PLPGSQL;

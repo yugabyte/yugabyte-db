@@ -7429,7 +7429,7 @@ pgTAP was compiled. This function is useful for determining whether or not
 certain tests should be run or skipped (using `skip()`) depending on the
 version of PostgreSQL. For example:
 
-    SELECT CASE WHEN pg_version_num() < 80100
+    SELECT CASE WHEN pg_version_num() < 80300
         THEN skip('has_enum() not supported before 8.3' )
         ELSE has_enum( 'bug_status', 'mydesc' )
         END;
