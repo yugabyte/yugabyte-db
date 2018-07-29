@@ -66,8 +66,12 @@ class RpathRelativizer:
 
         if os.path.isdir(entry):
             abs_entry = os.path.abspath(entry)
-            if num_common_path_entries(abs_entry, self.output_dir_abspath) >= 2:
-                # E.g. both paths are under /some_volume/jenkins.
+            if (num_common_path_entries(abs_entry, self.output_dir_abspath) >= 2 and
+                    '/.linuxbrew-yb-build/' not in abs_entry):
+                # E.g. both paths are under /home/some_user, and not related to Linuxbrew.
+                # Making Linuxbrew RPATHs relative sometimes breaks linking of some targets because
+                # a library like libresolv gets picked up from the system location instead of
+                # Linuxbrew.
                 return os.path.join(
                     '$ORIGIN',
                     os.path.relpath(abs_entry, self.output_dir_abspath))

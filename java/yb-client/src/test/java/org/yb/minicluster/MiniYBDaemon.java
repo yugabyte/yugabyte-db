@@ -10,7 +10,6 @@
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
- *
  */
 package org.yb.minicluster;
 
@@ -21,9 +20,11 @@ import org.yb.client.TestUtils;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
 import static org.yb.client.TestUtils.CommandResult;
 
 public class MiniYBDaemon {
@@ -181,41 +182,12 @@ public class MiniYBDaemon {
     }
   }
 
-  /**
-   * Helper runnable that can log what the processes are sending on their stdout and stderr that
-   * we'd otherwise miss.
-   */
-  private class ProcessInputStreamLogPrinterRunnable implements Runnable {
-
-    private final String logPrefix;
-
-    public ProcessInputStreamLogPrinterRunnable() {
-      logPrefix = type.shortStr() + indexForLog + LOG_PREFIX_SEPARATOR + PID_PREFIX +
-                  getPidStr() + LOG_PREFIX_SEPARATOR + ":" + rpcPort +
-                  (TestUtils.isJenkins() ? "" // No need for a clickable web UI link on Jenkins.
-                                         : LOG_PREFIX_SEPARATOR + "http://" + getWebHostAndPort()) +
-                  " ";
-    }
-
-    public String getLogPrefix() {
-      return logPrefix;
-    }
-
-    @Override
-    public void run() {
-      try {
-        String line;
-        BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        while ((line = in.readLine()) != null) {
-          System.out.println(logPrefix + line);
-        }
-        in.close();
-      } catch (Exception e) {
-        if (!e.getMessage().contains("Stream closed")) {
-          LOG.error("Caught error while reading a process' output", e);
-        }
-      }
-    }
+  private String getLogPrefix() {
+    return type.shortStr() + indexForLog + LOG_PREFIX_SEPARATOR + PID_PREFIX +
+        getPidStr() + LOG_PREFIX_SEPARATOR + ":" + rpcPort +
+        (TestUtils.isJenkins() ? "" // No need for a clickable web UI link on Jenkins.
+            : LOG_PREFIX_SEPARATOR + "http://" + getWebHostAndPort()) +
+        " ";
   }
 
   /**
@@ -238,12 +210,15 @@ public class MiniYBDaemon {
     this.redisWebPort = redisWebPort;
     this.pgsqlWebPort = pgsqlWebPort;
     this.dataDirPath = dataDirPath;
-    ProcessInputStreamLogPrinterRunnable printer = new ProcessInputStreamLogPrinterRunnable();
-    logPrinterThread = new Thread(printer);
-    logPrinterThread.setDaemon(true);
-    logPrinterThread.setName("Log printer for " + printer.getLogPrefix().trim());
-    logPrinterThread.start();
+    final String logPrefix = getLogPrefix();
+    this.stdoutPrinter = new LogPrinter("stdout", process.getInputStream(), logPrefix);
+    this.stderrPrinter = new LogPrinter("stderr", process.getErrorStream(), logPrefix);
+    LOG.info("Started stdout/stderr threads for mini YB daemon: " + this);
     new TerminationHandler().startInBackground();
+  }
+
+  public List<LogPrinter> getLogPrinters() {
+    return Arrays.asList(new LogPrinter[] { stdoutPrinter, stderrPrinter });
   }
 
   public MiniYBDaemonType getType() {
@@ -268,10 +243,6 @@ public class MiniYBDaemon {
     } catch (NoSuchFieldException | IllegalAccessException ex) {
       return INVALID_PID_STR;
     }
-  }
-
-  public Thread getLogPrinterThread() {
-    return logPrinterThread;
   }
 
   /**
@@ -303,7 +274,8 @@ public class MiniYBDaemon {
   private final int pgsqlWebPort;
   private final String dataDirPath;
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
-  private final Thread logPrinterThread;
+  private final LogPrinter stdoutPrinter;
+  private final LogPrinter stderrPrinter;
 
   public HostAndPort getWebHostAndPort() {
     return HostAndPort.fromParts(bindIp, webPort);
