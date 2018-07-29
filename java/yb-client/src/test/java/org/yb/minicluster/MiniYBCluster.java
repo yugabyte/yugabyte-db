@@ -91,8 +91,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC = 120;
 
-  // List of threads that print
-  private final List<Thread> processInputPrinters = new ArrayList<>();
+  // List of threads that print log messages.
+  private final List<LogPrinter> logPrinters = new ArrayList<>();
 
   // Map of host/port pairs to master servers.
   private final Map<HostAndPort, MiniYBDaemon> masterProcesses = new ConcurrentHashMap<>();
@@ -169,7 +169,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
+        // Ensure that logging goes to the test output and doesn't get buffered.
         "--logtostderr",
+        "--logbuflevel=-1",
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
     final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
     if (extraFlagsFromEnv != null) {
@@ -402,7 +404,7 @@ public class MiniYBCluster implements AutoCloseable {
   private List<String> getCommonMasterCmdLine(String flagsPath, String dataDirPath,
                                               String masterBindAddress, int masterRpcPort,
                                               int masterWebPort) throws Exception {
-    return Lists.newArrayList(
+    List<String> masterCmdLine = Lists.newArrayList(
       TestUtils.findBinary("yb-master"),
       "--flagfile=" + flagsPath,
       "--fs_wal_dirs=" + dataDirPath,
@@ -415,6 +417,8 @@ public class MiniYBCluster implements AutoCloseable {
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false");
+    masterCmdLine.addAll(getCommonDaemonFlags());
+    return masterCmdLine;
   }
 
   /**
@@ -436,7 +440,6 @@ public class MiniYBCluster implements AutoCloseable {
     final String flagsPath = TestUtils.getFlagsPath();
     List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
       masterBindAddress, rpcPort, webPort);
-    masterCmdLine.addAll(getCommonDaemonFlags());
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
@@ -575,7 +578,7 @@ public class MiniYBCluster implements AutoCloseable {
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
                          redisWebPort, pgsqlWebPort, dataDirPath);
-    processInputPrinters.add(daemon.getLogPrinterThread());
+    logPrinters.addAll(daemon.getLogPrinters());
 
     Thread.sleep(300);
     try {
@@ -595,7 +598,7 @@ public class MiniYBCluster implements AutoCloseable {
     String[] command = daemon.getCommandLine();
     LOG.info("Restarting process: {}", Joiner.on(" ").join(command));
     daemon = daemon.restart();
-    processInputPrinters.add(daemon.getLogPrinterThread());
+    logPrinters.addAll(daemon.getLogPrinters());
 
     Process proc = daemon.getProcess();
     Thread.sleep(300);
@@ -766,10 +769,10 @@ public class MiniYBCluster implements AutoCloseable {
     for (Process process : processes) {
       process.waitFor();
     }
-    for (Thread thread : processInputPrinters) {
-      thread.interrupt();
+    for (LogPrinter logPrinter : logPrinters) {
+      logPrinter.stop();
     }
-    processInputPrinters.clear();
+    logPrinters.clear();
     for (MiniYBDaemon daemon : allDaemons) {
       daemon.waitForShutdown();
     }
