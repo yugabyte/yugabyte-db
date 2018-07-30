@@ -1,4 +1,4 @@
-<img src="https://www.yugabyte.com/images/yblogo_whitebg.3fea4ef9.png" align="center" height="56" alt="YugaByte DB"/>
+<img src="https://www.yugabyte.com/images/logo/yb-db-logo.png" align="center" height="56" alt="YugaByte DB"/>
 
 ---------------------------------------
 
@@ -8,8 +8,7 @@
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
-A cloud-native database for building mission-critical applications. This repository contains the
-Community Edition of the YugaByte Database.
+YugaByte Database is a transactional, high-performance database for planet-scale cloud applications.  This repository contains the Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
@@ -32,7 +31,7 @@ Community Edition of the YugaByte Database.
 
 ## About YugaByte
 
-YugaByte offers **both** SQL and NoSQL in a single, unified db. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte offers **both** NoSQL and SQL in a single, unified database. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
 * See how YugaByte [compares with other databases](https://docs.yugabyte.com/comparisons/).
 * Read more about YugaByte in our [docs](https://docs.yugabyte.com/introduction/overview/).
@@ -40,7 +39,7 @@ YugaByte offers **both** SQL and NoSQL in a single, unified db. It is meant to b
 ## Supported APIs
 
 In terms of data model and APIs, YugaByte supports the following on top of a common core data platform: 
-* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with enhancements to support ACID transactions in the works
+* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with strong consistency, distributed ACID transactions, low latency secondary indexes and a native JSONB data type 
 * [Redis](https://docs.yugabyte.com/api/redis/) - as a full database with automatic sharding, clustering, elasticity
 * PostgreSQL (in progress) - with linear scalability, high availability and fault tolerance
 
