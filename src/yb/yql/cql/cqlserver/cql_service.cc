@@ -65,8 +65,6 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
           server->tserver() ? server->tserver()->messenger() : nullptr),
       next_available_processor_(processors_.end()),
       messenger_(server->messenger()),
-      cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
-                                             opts.broadcast_rpc_address)),
       local_tablet_filter_(std::move(local_tablet_filter)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());

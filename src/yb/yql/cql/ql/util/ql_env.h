@@ -30,7 +30,6 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
-#include "yb/yql/cql/cqlserver/cql_rpcserver_env.h"
 #include "yb/yql/cql/ql/ql_session.h"
 
 #include "yb/util/enums.h"
@@ -56,8 +55,7 @@ class QLEnv {
   QLEnv(std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
         std::shared_ptr<client::YBMetaDataCache> cache,
         const server::ClockPtr& clock,
-        TransactionManagerProvider transaction_manager_provider,
-        cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+        TransactionManagerProvider transaction_manager_provider);
   virtual ~QLEnv();
 
   virtual client::YBTableCreator *NewTableCreator();
@@ -198,8 +196,6 @@ class QLEnv {
   // Reschedule the current call to be resumed at the given callback.
   void RescheduleCurrentCall(Callback<void(void)>* callback);
 
-  cqlserver::CQLRpcServerEnv* cql_rpcserver_env() { return cql_rpcserver_env_; }
-
  private:
   // Helpers to process the asynchronously received response from ybclient.
   void FlushAsyncDone(const Status &s);
@@ -248,8 +244,6 @@ class QLEnv {
 
   // The current keyspace. Used only in test environment when there is no current call.
   std::unique_ptr<std::string> current_keyspace_;
-
-  cqlserver::CQLRpcServerEnv* cql_rpcserver_env_;
 };
 
 }  // namespace ql
