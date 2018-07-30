@@ -156,7 +156,9 @@ Options:
     Skip PostgreSQL build
   --gen-compilation-db, --gcdb
     Generate the "compilation database" file, compile_commands.json, that can be used by editors
-    to proive better code assistance.
+    to provide better code assistance.
+  --make-ninja-extra-args <extra_args>
+    Extra arguments for the build tool such as Unix Make or Ninja.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -327,7 +329,8 @@ run_cxx_build() {
   time (
     set -x
 
-    "$make_program" "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
+    "$make_program" "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" $make_ninja_extra_args \
+      "${make_targets[@]}"
   )
 
   local exit_code=$?
@@ -587,6 +590,7 @@ show_report=true
 running_any_tests=false
 clean_postgres=false
 export_compile_commands=false
+make_ninja_extra_args=""
 
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -828,6 +832,13 @@ while [[ $# -gt 0 ]]; do
         cmake_extra_args+=" "
       fi
       cmake_extra_args+=$2
+      shift
+    ;;
+    --make-ninja-extra-args)
+      if [[ -n $make_ninja_extra_args ]]; then
+        make_ninja_extra_args+=" "
+      fi
+      make_ninja_extra_args+=$2
       shift
     ;;
     --host-for-tests)
