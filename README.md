@@ -12,7 +12,7 @@ YugaByte Database is a transactional, high-performance database for planet-scale
 
 ## Table of Contents
 
-- [About YugaByte](#about-yugabyte)
+- [About YugaByte DB](#about-yugabyte)
 - [Supported APIs](#supported-apis)
 - [Getting Started](#getting-started)
 - [Developing Apps](#developing-apps)
@@ -29,16 +29,16 @@ YugaByte Database is a transactional, high-performance database for planet-scale
 - [Contributing](#contributing)
 - [License](#license)
 
-## About YugaByte
+## About YugaByte DB
 
-YugaByte offers **both** NoSQL and SQL in a single, unified database. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte DB offers **both** NoSQL and SQL in a single, unified database. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
-* See how YugaByte [compares with other databases](https://docs.yugabyte.com/comparisons/).
-* Read more about YugaByte in our [docs](https://docs.yugabyte.com/introduction/overview/).
+* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/comparisons/).
+* Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
 
 ## Supported APIs
 
-In terms of data model and APIs, YugaByte supports the following on top of a common core data platform: 
+In terms of data model and APIs, YugaByte DB supports the following on top of a common core data platform: 
 * [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with strong consistency, distributed ACID transactions, low latency secondary indexes and a native JSONB data type 
 * [Redis](https://docs.yugabyte.com/api/redis/) - as a full database with automatic sharding, clustering, elasticity
 * PostgreSQL (in progress) - with linear scalability, high availability and fault tolerance
@@ -55,9 +55,9 @@ forum](https://forum.yugabyte.com/).
 
 ## Getting Started
 
-Here are a few resources for getting started with YugaByte:
+Here are a few resources for getting started with YugaByte DB:
 
-* [Quick start guide](http://docs.yugabyte.com/quick-start/) - install, create a local cluster and read/write from YugaByte.
+* [Quick start guide](http://docs.yugabyte.com/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
 * [Explore core features](https://docs.yugabyte.com/explore/) - automatic sharding & rebalancing, linear scalability, fault tolerance, tunable reads etc.
 * [Real world apps](https://docs.yugabyte.com/develop/realworld-apps/) - how real-world, end-to-end applications can be built using YugaByte DB.
 * [Architecture docs](https://docs.yugabyte.com/architecture/) - to understand how YugaByte was designed and how it works
@@ -66,8 +66,7 @@ Cannot find what you are looking for? Have a question? We love to hear from you 
 
 ## Developing Apps
 
-Here is a tutorial on implementing a simple Hello World application for YugaByte CQL and Redis in
-different languages:
+Here is a tutorial on implementing a simple Hello World application for YugaByte DB's Cassandra-compatible YCQL and Redis-compatible YEDIS APIs in different languages:
 * [Java](https://docs.yugabyte.com/develop/client-drivers/java/) using Maven
 * [NodeJS](https://docs.yugabyte.com/develop/client-drivers/nodejs/)
 * [Python](https://docs.yugabyte.com/develop/client-drivers/python/)
@@ -133,13 +132,13 @@ brew install autoconf automake bash bison ccache cmake coreutils flex gnu-tar li
              pkg-config pstree wget zlib maven
 ```
 
-Also YugaByte build scripts rely on Bash 4. Make sure that `which bash` outputs
+Also YugaByte DB build scripts rely on Bash 4. Make sure that `which bash` outputs
 `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory
 on PATH in your `~/.bashrc` to achieve that.
 
 ### Prerequisites for drivers and sample apps
 
-YugaByte core is written in C++, but the repository contains Java code needed to run sample
+YugaByte DB core is written in C++, but the repository contains Java code needed to run sample
 applications. To build the Java part, you need:
 * JDK 8
 * [Apache Maven](https://maven.apache.org/).
@@ -150,11 +149,11 @@ export PATH=$HOME/tools/apache-maven-3.5.0/bin:$PATH
 ```
 if you've installed Maven into `~/tools/apache-maven-3.5.0`.
 
-For building YugaByte Java code, you'll need to install Java and Apache Maven.
+For building YugaByte DB Java code, you'll need to install Java and Apache Maven.
 
 **Java driver**
 
-YugaByte and Apache Cassandra use different approaches to split data between nodes. In order to
+YugaByte DB and Apache Cassandra use different approaches to split data between nodes. In order to
 route client requests to the right server without extra hops, we provide a [custom
 load balancing policy](https://goo.gl/At7kvu) in [our modified version
 ](https://github.com/yugabyte/cassandra-java-driver) of Datastax's Apache Cassandra Java driver.
@@ -263,6 +262,6 @@ We accept contributions as GitHub pull requests. Our code style is available
 
 ## License
 
-YugaByte Community Edition is distributed under an Apache 2.0 license. See the
+YugaByte DB Community Edition is distributed under an Apache 2.0 license. See the
 [LICENSE.txt](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt) file for
 details.
