@@ -100,16 +100,26 @@ build_cpp_code() {
   #
   # We're explicitly disabling third-party rebuilding here as we've already built third-party
   # dependencies (or downloaded them, or picked an existing third-party directory) above.
-  time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-    --no-rebuild-thirdparty \
-    --skip-java \
-    "$BUILD_TYPE" 2>&1 | \
-    filter_boring_cpp_build_output
-  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-    log "C++ build failed!"
-    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
-    EXIT_STATUS=1
+
+  local yb_build_args=(
+    --no-rebuild-thirdparty
+    --skip-java
+    "$BUILD_TYPE"
+  )
+
+  if using_ninja; then
+    # TODO: remove this code when it becomes clear why CMake sometimes gets re-run.
+    log "Building a dummy target to check if Ninja re-runs CMake (it should not)."
+    # The "-d explain" option will make Ninja explain why it is building a particular target.
+    time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+      --make-ninja-extra-args "-d explain" \
+      --target dummy_target \
+      "${yb_build_args[@]}"
   fi
+
+  time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+    "${yb_build_args[@]}" 2>&1 | \
+    filter_boring_cpp_build_output
 
   log "Finished building C++ code (see timing information above)"
 
@@ -157,10 +167,11 @@ readonly build_type
 BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 
-set_cmake_build_type_and_compiler_type
-
 export YB_USE_NINJA=1
 log "YB_USE_NINJA=$YB_USE_NINJA"
+
+set_cmake_build_type_and_compiler_type
+log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
 set_build_root --no-readonly
 
@@ -192,6 +203,11 @@ log "Finished running Python tests (see timing information above)"
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
+if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; then
+  log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins phabricator test." \
+      "Setting YB_RUN_AFFECTED_TESTS_ONLY=1 automatically."
+  export YB_RUN_AFFECTED_TESTS_ONLY=1
+fi
 export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
 log "YB_RUN_AFFECTED_TESTS_ONLY=$YB_RUN_AFFECTED_TESTS_ONLY"
 
@@ -319,35 +335,15 @@ fi
 # We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
 declare -i -r MAX_CMAKE_RETRIES=3
 declare -i cmake_attempt_index=1
-cmake_succeeded=false
 while true; do
-  if [[ $cmake_attempt_index -eq $MAX_CMAKE_RETRIES ]]; then
-    log "This is the last attempt (attempt $MAX_CMAKE_RETRIES), trying to run CMake on the " \
-        "build master host."
-    cmake_cmd_prefix="run_centralized_build_cmd"
-  else
-    cmake_cmd_prefix=""
-  fi
-  # No quotes around $cmake_cmd_prefix below on purpose, because we just want to run the yb_build.sh
-  # script locally if it is empty.
-  #
-  # The --no-remote parameter tells the yb_build.sh command to always run any compiler commands
-  # (in this case, those that CMake runs internally to test compiler capabilities) locally, without
-  # ssh-ing to remote compilation worker nodes.
-  #
-  # The optional $cmake_cmd_prefix (a call to our run_centralized_build_cmd bash function) is
-  # something different: if present, it will ensure that CMake itself runs on the our "central
-  # build master" machine, which is also in most cases the NFS server. This is only done as the
-  # last attempt. We will probably get away from the concept of a "central build machine" at some
-  # point.
-  if ( set -x
-       $cmake_cmd_prefix "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote ); then
+  # We run CMake on the "central build master" in case of a distributed build.
+  if run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote
+  then
     log "CMake succeeded after attempt $cmake_attempt_index"
     break
   fi
   if [[ $cmake_attempt_index -eq $MAX_CMAKE_RETRIES ]]; then
-    log "CMake failed after $MAX_CMAKE_RETRIES attempts, giving up."
-    exit 1
+    fatal "CMake failed after $MAX_CMAKE_RETRIES attempts, giving up."
   fi
   heading "CMake failed at attempt $cmake_attempt_index, re-trying"
   let cmake_attempt_index+=1
@@ -445,6 +441,8 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
 
   cd "$YB_SRC_ROOT"
 fi
+# End of special logic for the regression tracking mode.
+
 build_cpp_code "$YB_SRC_ROOT"
 
 if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then

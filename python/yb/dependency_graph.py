@@ -17,14 +17,17 @@ import re
 import subprocess
 import sys
 import unittest
+import pipes
+import platform
 from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from yb.common_util import \
         group_by, make_set, get_build_type_from_build_root, get_yb_src_root_from_build_root, \
-        convert_to_non_ninja_build_root, get_bool_env_var  # nopep8
+        convert_to_non_ninja_build_root, get_bool_env_var, is_ninja_build_root  # nopep8
 from yb.command_util import mkdir_p  # nopep8
+from yugabyte_pycommon import WorkDirContext  # nopep8
 
 
 def make_extensions(exts_without_dot):
@@ -71,6 +74,8 @@ CATEGORY_DOES_NOT_AFFECT_TESTS = 'does_not_affect_tests'
 # remove "python" from this whitelist in the future.
 CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS = set(
         ['java', 'c++', 'python', CATEGORY_DOES_NOT_AFFECT_TESTS])
+
+DYLIB_SUFFIX = '.dylib' if platform.system() == 'Darwin' else '.so'
 
 
 def is_object_file(path):
@@ -236,14 +241,8 @@ class Configuration:
         self.args = args
         self.verbose = args.verbose
         self.build_root = os.path.realpath(args.build_root)
+        self.is_ninja = is_ninja_build_root(self.build_root)
 
-        # We can't use Ninja build files for dependency tracking. We will need to also create a
-        # build directory with Make-compatible files. In practice, even this turns out not to be
-        # sufficient, as we still need depend.make files that only get generated when we perform
-        # the Make-based build, so in practice we just switch to using Make for Phabricator builds.
-        # However, keeping this logic as we might find a way to use Ninja builds for dependency
-        # tracking in the future.
-        self.build_root_make = convert_to_non_ninja_build_root(self.build_root)
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.yb_src_root = get_yb_src_root_from_build_root(self.build_root, must_succeed=True)
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
@@ -308,14 +307,14 @@ class DependencyGraphBuilder:
         logging.info("Found {} CMake targets in '{}'".format(
             len(self.cmake_targets), cmake_deps_path))
 
-    def parse_link_and_depend_files(self):
+    def parse_link_and_depend_files_for_make(self):
         logging.info(
                 "Parsing link.txt and depend.make files from the build tree at '{}'".format(
-                    self.conf.build_root_make))
+                    self.conf.build_root))
         start_time = datetime.now()
 
         num_parsed = 0
-        for root, dirs, files in os.walk(self.conf.build_root_make):
+        for root, dirs, files in os.walk(self.conf.build_root):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 if file_name == 'depend.make':
@@ -417,22 +416,64 @@ class DependencyGraphBuilder:
             "Don't know how to resolve relative path of a 'dependent': {}".format(
                 rel_path))
 
+    def parse_ninja_metadata(self):
+        with WorkDirContext(self.conf.build_root):
+            ninja_path = os.environ.get('YB_NINJA_PATH', 'ninja')
+            logging.info("Ninja executable path: %s", ninja_path)
+            logging.info("Running 'ninja -t commands'")
+            subprocess.check_call('{} -t commands >ninja_commands.txt'.format(
+                pipes.quote(ninja_path)), shell=True)
+            logging.info("Parsing the output of 'ninja -t commands' for linker commands")
+            self.parse_link_txt_file('ninja_commands.txt')
+
+            logging.info("Running 'ninja -t deps'")
+            subprocess.check_call('{} -t deps >ninja_deps.txt'.format(
+                pipes.quote(ninja_path)), shell=True)
+            logging.info("Parsing the output of 'ninja -t deps' to infer dependencies")
+            self.parse_depend_file('ninja_deps.txt')
+
+    def register_dependency(self, dependent, dependency, dependency_came_from):
+        dependent = self.resolve_dependent_rel_path(dependent.strip())
+        dependency = dependency.strip()
+        dependency = self.resolve_rel_path(dependency)
+        if dependency:
+            dependent_node = self.dep_graph.find_or_create_node(
+                    dependent, source_str=dependency_came_from)
+            dependency_node = self.dep_graph.find_or_create_node(
+                    dependency, source_str=dependency_came_from)
+            dependent_node.add_dependency(dependency_node)
+
     def parse_depend_file(self, depend_make_path):
+        """
+        Parse either a depend.make file from a CMake-generated Unix Makefile project (fully built)
+        or the output of "ninja -t deps" in a Ninja project.
+        """
         with open(depend_make_path) as depend_file:
+            dependent = None
             for line in depend_file:
+                line_orig = line
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
-                dependent, dependency = line.split(':')
-                dependent = self.resolve_dependent_rel_path(dependent.strip())
-                dependency = dependency.strip()
-                dependency = self.resolve_rel_path(dependency)
-                if dependency:
-                    dependent_node = self.dep_graph.find_or_create_node(
-                            dependent, source_str=depend_make_path)
-                    dependency_node = self.dep_graph.find_or_create_node(
-                            dependency, source_str=depend_make_path)
-                    dependent_node.add_dependency(dependency_node)
+
+                if ': #' in line:
+                    # This is a top-level line from "ninja -t deps".
+                    dependent = line.split(': #')[0]
+                elif line_orig.startswith(' ' * 4) and not line_orig.startswith(' ' * 5):
+                    # This is a line listing a particular dependency from "ninja -t deps".
+                    dependency = line
+                    if not dependent:
+                        raise ValueError("Error parsing %s: no dependent found for dependency %s" %
+                                         (depend_make_path, dependency))
+                    self.register_dependency(dependent, dependency, depend_make_path)
+                elif ': ' in line:
+                    # This is a line from depend.make. It has exactly one dependency on the right
+                    # side.
+                    dependent, dependency = line.split(':')
+                    self.register_dependency(dependent, dependency, depend_make_path)
+                else:
+                    raise ValueError("Could not parse this line from %s:\n%s" %
+                                     (depend_make_path, line_orig))
 
     def find_node_by_rel_path(self, rel_path):
         if is_abs_path(rel_path):
@@ -448,14 +489,22 @@ class DependencyGraphBuilder:
         return candidates[0]
 
     def parse_link_txt_file(self, link_txt_path):
-        assert link_txt_path.startswith(self.conf.build_root_make + '/')
         with open(link_txt_path) as link_txt_file:
-            link_command = link_txt_file.read().strip()
+            for line in link_txt_file:
+                line = line.strip()
+                if line:
+                    self.parse_link_command(line, link_txt_path)
+
+    def parse_link_command(self, link_command, link_txt_path):
         link_args = link_command.split()
         output_path = None
         inputs = []
-        base_dir = os.path.join(os.path.dirname(link_txt_path), '..', '..')
+        if self.conf.is_ninja:
+            base_dir = self.conf.build_root
+        else:
+            base_dir = os.path.join(os.path.dirname(link_txt_path), '..', '..')
         i = 0
+        compilation = False
         while i < len(link_args):
             arg = link_args[i]
             if arg == '-o':
@@ -465,8 +514,10 @@ class DependencyGraphBuilder:
                         "Multiple output paths for a link command ('{}' and '{}'): {}".format(
                             output_path, new_output_path, link_command))
                 output_path = new_output_path
+                if self.conf.is_ninja and is_object_file(output_path):
+                    compilation = True
                 i += 1
-            else:
+            elif not arg.startswith('@rpath/'):
                 if is_object_file(arg):
                     node = self.dep_graph.find_or_create_node(
                             os.path.abspath(os.path.join(base_dir, arg)))
@@ -480,28 +531,42 @@ class DependencyGraphBuilder:
 
             i += 1
 
+        if self.conf.is_ninja and compilation:
+            # Ignore compilation commands. We are interested in linking commands only at this point.
+            return
+
+        if not output_path:
+            if self.conf.is_ninja:
+                return
+            raise RuntimeError("Could not find output path for link command: %s" % link_command)
+
         if not is_abs_path(output_path):
             output_path = os.path.abspath(os.path.join(base_dir, output_path))
         output_node = self.dep_graph.find_or_create_node(output_path, source_str=link_txt_path)
         output_node.validate_existence()
         for input_node in inputs:
-            output_node.add_dependency(self.dep_graph.find_or_create_node(input_node))
+            dependency_node = self.dep_graph.find_or_create_node(input_node)
+            if output_node is dependency_node:
+                raise RuntimeError(
+                    ("Cannot add a dependency from a node to itself: %s. "
+                     "Parsed from command: %s") % (output_node, link_command))
+            output_node.add_dependency(dependency_node)
 
     def build(self):
-        compile_commands_path = os.path.join(self.conf.build_root_make, 'compile_commands.json')
+        compile_commands_path = os.path.join(self.conf.build_root, 'compile_commands.json')
         if not os.path.exists(compile_commands_path):
 
             # This is mostly useful during testing. We don't want to generate the list of compile
             # commands by default because it takes a while, so only generate it on demand.
             os.environ['CMAKE_EXPORT_COMPILE_COMMANDS'] = '1'
-            mkdir_p(self.conf.build_root_make)
+            mkdir_p(self.conf.build_root)
 
             subprocess.check_call(
                     [os.path.join(self.conf.yb_src_root, 'yb_build.sh'),
                      self.conf.build_type,
                      '--cmake-only',
                      '--no-rebuild-thirdparty',
-                     '--build-root', self.conf.build_root_make])
+                     '--build-root', self.conf.build_root])
 
         logging.info("Loading compile commands from '{}'".format(compile_commands_path))
         with open(compile_commands_path) as commands_file:
@@ -510,7 +575,10 @@ class DependencyGraphBuilder:
         for entry in self.compile_commands:
             self.compile_dirs.add(entry['directory'])
 
-        self.parse_link_and_depend_files()
+        if self.conf.is_ninja:
+            self.parse_ninja_metadata()
+        else:
+            self.parse_link_and_depend_files_for_make()
         self.find_proto_files()
         self.dep_graph.validate_node_existence()
 
@@ -557,9 +625,9 @@ class DependencyGraph:
         canonical_path = self.canonicalization_cache.get(path)
         if not canonical_path:
             canonical_path = os.path.realpath(path)
-            if canonical_path.startswith(self.conf.build_root_make + '/'):
+            if canonical_path.startswith(self.conf.build_root + '/'):
                 canonical_path = self.conf.build_root + '/' + \
-                                 canonical_path[len(self.conf.build_root_make) + 1:]
+                                 canonical_path[len(self.conf.build_root) + 1:]
             self.canonicalization_cache[path] = canonical_path
 
         return self.find_node(canonical_path, must_exist=False, source_str=source_str)
@@ -726,13 +794,13 @@ class DependencyGraphTest(unittest.TestCase):
 
     def test_master_main(self):
         self.assert_affected_by([
-                'libintegration-tests.so',
+                'libintegration-tests' + DYLIB_SUFFIX,
                 'yb-master'
             ], 'master_main.cc')
 
     def test_tablet_server_main(self):
         self.assert_affected_by([
-                'libintegration-tests.so',
+                'libintegration-tests' + DYLIB_SUFFIX,
                 'linked_list-test'
             ], 'tablet_server_main.cc')
 
@@ -895,26 +963,24 @@ def main():
     file_changes = []
     if args.git_diff:
         old_working_dir = os.getcwd()
-        os.chdir(conf.yb_src_root)
-        git_diff_output = subprocess.check_output(
-                ['git', 'diff', args.git_diff, '--name-only'])
+        with WorkDirContext(conf.yb_src_root):
+            git_diff_output = subprocess.check_output(
+                    ['git', 'diff', args.git_diff, '--name-only'])
 
-        initial_nodes = set()
-        file_paths = set()
-        for file_path in git_diff_output.split("\n"):
-            file_path = file_path.strip()
-            if not file_path:
-                continue
-            file_changes.append(file_path)
-            # It is important that we invoke os.path.realpath with the current directory set to
-            # the git repository root.
-            file_path = os.path.realpath(file_path)
-            file_paths.add(file_path)
-            node = dep_graph.node_by_path.get(file_path)
-            if node:
-                initial_nodes.add(node)
-
-        os.chdir(old_working_dir)
+            initial_nodes = set()
+            file_paths = set()
+            for file_path in git_diff_output.split("\n"):
+                file_path = file_path.strip()
+                if not file_path:
+                    continue
+                file_changes.append(file_path)
+                # It is important that we invoke os.path.realpath with the current directory set to
+                # the git repository root.
+                file_path = os.path.realpath(file_path)
+                file_paths.add(file_path)
+                node = dep_graph.node_by_path.get(file_path)
+                if node:
+                    initial_nodes.add(node)
 
         if not initial_nodes:
             logging.warning("Did not find any graph nodes for this set of files: {}".format(

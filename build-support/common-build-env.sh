@@ -690,7 +690,8 @@ set_cmake_build_type_and_compiler_type() {
     make_program=ninja
     if ! which ninja &>/dev/null; then
       if using_linuxbrew; then
-        make_program=$YB_LINUXBREW_DIR/bin/ninja
+        export YB_NINJA_PATH=$YB_LINUXBREW_DIR/bin/ninja
+        make_program=$YB_NINJA_PATH
       elif is_mac; then
         log "Did not find the 'ninja' executable, auto-installing ninja using Homebrew"
         brew install ninja
@@ -1055,8 +1056,9 @@ detect_linuxbrew() {
         candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
       fi
     elif is_jenkins; then
-      log "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
-          "exist: '$preferred_linuxbrew_dir', will attempt to use other location."
+      fail "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
+           "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent non-deterministic " \
+           "builds."
     fi
   elif is_jenkins; then
     log "Warning: '$version_for_jenkins_file' does not exist"
