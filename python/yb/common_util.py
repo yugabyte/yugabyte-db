@@ -97,6 +97,10 @@ def convert_to_non_ninja_build_root(build_root):
     return os.path.join(directory, NINJA_BUILD_ROOT_PART_RE.sub('', basename))
 
 
+def is_ninja_build_root(build_root):
+    return build_root != convert_to_non_ninja_build_root(build_root)
+
+
 def get_bool_env_var(env_var_name):
     value = os.environ.get(env_var_name, None)
     if value is None:

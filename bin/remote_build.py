@@ -215,7 +215,7 @@ def main():
     for arg in ybd_args:
         remote_command += " {0}".format(shlex.quote(arg))
     print("Remote command: {0}".format(remote_command))
-    ssh_args = ['ssh', args.host, remote_command]
+    ssh_args = ['ssh', args.host, '-o', 'ControlMaster=no', remote_command]
     proc = subprocess.Popen(ssh_args, shell=False)
     proc.communicate()
     if proc.returncode != 0:
