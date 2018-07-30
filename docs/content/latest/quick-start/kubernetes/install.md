@@ -44,7 +44,5 @@ Download `yugabyte-statefulset.yaml`. This will create a local YugaByte DB clust
 $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/kubernetes/yugabyte-statefulset.yaml
+$ wget https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
-
-
