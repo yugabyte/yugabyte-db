@@ -21,7 +21,6 @@
 
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
-#include "yb/yql/cql/cqlserver/cql_rpcserver_env.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 #include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
@@ -95,9 +94,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return the messenger.
   std::weak_ptr<rpc::Messenger> messenger() { return messenger_; }
 
-  // Return the CQL RPC environment.
-  CQLRpcServerEnv* cql_rpc_env() { return cql_rpcserver_env_.get(); }
-
   client::TransactionManager* GetTransactionManager();
 
   server::Clock* clock();
@@ -164,9 +160,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::shared_ptr<CQLMetrics> cql_metrics_;
   // Used to requeue the cql_inbound call to handle the response callback(s).
   std::weak_ptr<rpc::Messenger> messenger_;
-
-  // RPC environment for CQL proxy.
-  std::unique_ptr<CQLRpcServerEnv> cql_rpcserver_env_;
 
   client::LocalTabletFilter local_tablet_filter_;
 

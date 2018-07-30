@@ -21,8 +21,6 @@
 
 #include "yb/client/callbacks.h"
 
-#include "yb/yql/cql/cqlserver/cql_rpcserver_env.h"
-
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/yql/cql/ql/sem/analyzer.h"
@@ -66,8 +64,7 @@ class QLProcessor {
               std::shared_ptr<client::YBMetaDataCache> cache,
               QLMetrics* ql_metrics,
               const server::ClockPtr& clock,
-              TransactionManagerProvider transaction_manager_provider,
-              cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+              TransactionManagerProvider transaction_manager_provider);
   virtual ~QLProcessor();
 
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in

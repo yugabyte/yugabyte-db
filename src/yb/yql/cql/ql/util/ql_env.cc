@@ -62,15 +62,13 @@ using client::YBqlWriteOp;
 QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
              shared_ptr<YBMetaDataCache> cache,
              const server::ClockPtr& clock,
-             TransactionManagerProvider transaction_manager_provider,
-             cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
+             TransactionManagerProvider transaction_manager_provider)
     : client_(std::move(client)),
       metadata_cache_(std::move(cache)),
       session_(std::make_shared<YBSession>(client_, clock)),
       transaction_manager_provider_(std::move(transaction_manager_provider)),
       messenger_(messenger),
-      resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))),
-      cql_rpcserver_env_(cql_rpcserver_env) {
+      resume_execution_(Bind(&QLEnv::ResumeCQLCall, Unretained(this))) {
   CHECK(clock);
 }
 
