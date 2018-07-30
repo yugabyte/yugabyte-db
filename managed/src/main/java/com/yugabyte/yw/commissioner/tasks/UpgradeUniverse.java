@@ -101,22 +101,28 @@ public class UpgradeUniverse extends UniverseTaskBase {
           if (!taskParams().masterGFlags.isEmpty()) {
             LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
                 taskParams().masterGFlags, masterNodes.size(), universe.name);
+            if (!taskParams().rollingUpgrade) {
+              createServerConfFileUpdateTasks(masterNodes, ServerType.MASTER);
+            }
             createAllUpgradeTasks(masterNodes, ServerType.MASTER);
             didUpgradeUniverse = true;
           }
           if (!taskParams().tserverGFlags.isEmpty()) {
             LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
-                taskParams().tserverGFlags,  tServerNodes.size(), universe.name);
-            // Disable the load balancer for rolling upgrade.
+                taskParams().tserverGFlags, tServerNodes.size(), universe.name);
             if (taskParams().rollingUpgrade) {
+              // Disable the load balancer for rolling upgrade.
               createLoadBalancerStateChangeTask(false /*enable*/)
                   .setSubTaskGroupType(getTaskSubGroupType());
+            } else {
+              // Update conf files only when doing non-rolling upgrade.
+              createServerConfFileUpdateTasks(tServerNodes, ServerType.TSERVER);
             }
             createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
             // Enable the load balancer for rolling upgrade only.
             if (taskParams().rollingUpgrade) {
               createLoadBalancerStateChangeTask(true /*enable*/)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             }
             didUpgradeUniverse = true;
           }
@@ -150,13 +156,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   private void createAllUpgradeTasks(List<NodeDetails> nodes,
                                      ServerType processType) {
-
     if (taskParams().rollingUpgrade) {
       for (NodeDetails node : nodes) {
-        createNodeUpgradeTask(node, processType);
+        createSingleNodeUpgradeTasks(node, processType);
       }
     } else {
-      createNodeUpgradeTasks(nodes, processType);
+      createMultipleNodeUpgradeTasks(nodes, processType);
     }
 
     createWaitForServersTasks(nodes, processType)
@@ -175,13 +180,26 @@ public class UpgradeUniverse extends UniverseTaskBase {
     subTaskGroupQueue.add(downloadTaskGroup);
   }
 
-  private void createNodeUpgradeTask(NodeDetails node, ServerType processType) {
+  private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
+    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+        SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      taskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags,
+                                         UpgradeTaskSubType.None));
+    }
+    taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    subTaskGroupQueue.add(taskGroup);
+  }
+
+  // This is used for rolling upgrade, which is done per node in the universe.
+  private void createSingleNodeUpgradeTasks(NodeDetails node, ServerType processType) {
     NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software
         ? UpgradeSoftware : UpdateGFlags;
     createSetNodeStateTask(node, nodeState).setSubTaskGroupType(getTaskSubGroupType());
-    createServerControlTask(node, processType, "stop", 0)
-        .setSubTaskGroupType(getTaskSubGroupType());
     if (taskParams().taskType == UpgradeTaskType.Software) {
+      createServerControlTask(node, processType, "stop", 0)
+          .setSubTaskGroupType(getTaskSubGroupType());
       SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Software) for: " +
                                                    node.nodeName, executor);
       subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software,
@@ -189,12 +207,16 @@ public class UpgradeUniverse extends UniverseTaskBase {
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       subTaskGroupQueue.add(subTaskGroup);
     } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-      String subTaskGroupName = "AnsibleConfigureServers (GFlags) for :" + node.nodeName;
-      SubTaskGroup subTaskGroup = new SubTaskGroup(subTaskGroupName, executor);
+      SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (GFlags) for :" +
+                                                   node.nodeName, executor);
       subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags,
                                             UpgradeTaskSubType.None));
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
       subTaskGroupQueue.add(subTaskGroup);
+
+      // Stop is done after conf file update to reduce unavailability.
+      createServerControlTask(node, processType, "stop", 0)
+          .setSubTaskGroupType(getTaskSubGroupType());
     }
 
     createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType))
@@ -203,15 +225,17 @@ public class UpgradeUniverse extends UniverseTaskBase {
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 
-  private void createNodeUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
+  // This is used for non-rolling upgrade, where each operation is done in parallel across all
+  // the provided nodes per given process type.
+  private void createMultipleNodeUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
     NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software ?
         UpgradeSoftware : UpdateGFlags;
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(getTaskSubGroupType());
-    String subGroupDescription = null;
+    createServerControlTasks(nodes, processType, "stop", 0)
+        .setSubTaskGroupType(getTaskSubGroupType());
+
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      createServerControlTasks(nodes, processType, "stop", 0)
-          .setSubTaskGroupType(getTaskSubGroupType());
-      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+      String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
           SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
       SubTaskGroup installTaskGroup =  new SubTaskGroup(subGroupDescription, executor);
       for (NodeDetails node : nodes) {
@@ -220,18 +244,6 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
       installTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       subTaskGroupQueue.add(installTaskGroup);
-    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-      createServerControlTasks(nodes, processType, "stop", 0)
-          .setSubTaskGroupType(getTaskSubGroupType());
-      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-          SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-      SubTaskGroup gFlagsTaskGroup = new SubTaskGroup(subGroupDescription, executor);
-      for (NodeDetails node : nodes) {
-        gFlagsTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags,
-                                                 UpgradeTaskSubType.None));
-      }
-      gFlagsTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-      subTaskGroupQueue.add(gFlagsTaskGroup);
     }
 
     createServerControlTasks(nodes, processType, "start", 0)

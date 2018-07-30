@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -107,9 +108,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.UniverseUpdateSucceeded);
 
   List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
+      TaskType.AnsibleConfigureServers,
       TaskType.SetNodeState,
       TaskType.AnsibleClusterServerCtl,
-      TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
       TaskType.SetNodeState,
       TaskType.WaitForServer
@@ -117,8 +118,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
       TaskType.SetNodeState,
-      TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleConfigureServers,
+      TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleClusterServerCtl,
       TaskType.SetNodeState
   );
@@ -251,7 +252,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             JsonNode gflagValue = serverType.equals(MASTER) ?
                 Json.parse("{\"master-flag\":\"m1\"}"):
                 Json.parse("{\"tserver-flag\":\"t1\"}");
-            assertValues.putAll(ImmutableMap.of("gflags",  gflagValue, "processType", serverType.toString()));
+            assertValues.putAll(ImmutableMap.of("gflags",  gflagValue, "processType",
+                                                 serverType.toString()));
           }
           assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
@@ -341,7 +343,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
         List<Object> values = subTaskDetails.stream()
             .map(t -> {
-              JsonNode data = PROPERTY_KEYS.contains(expectedKey) ? t.get("properties").get(expectedKey): t.get(expectedKey);
+              JsonNode data = PROPERTY_KEYS.contains(expectedKey) ?
+                  t.get("properties").get(expectedKey) : t.get(expectedKey);
               return data.isObject() ? data : data.textValue();
             })
             .collect(Collectors.toList());
@@ -467,7 +470,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int position = 0;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, false);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
-        UpgradeType.FULL_UPGRADE_MASTER_ONLY, true);
+                                       UpgradeType.FULL_UPGRADE_MASTER_ONLY, true);
     assertEquals(8, position);
   }
 
@@ -486,7 +489,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     int position = 0;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, false);
-    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE_TSERVER_ONLY, true);
+    position = assertGFlagsCommonTasks(subTasksByPosition, position,
+                                       UpgradeType.FULL_UPGRADE_TSERVER_ONLY, true);
 
     assertEquals(8, position);
   }
@@ -504,7 +508,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     int position = 0;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true);
-    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
+    position = assertGFlagsCommonTasks(subTasksByPosition, position,
+                                       UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
     assertEquals(18, position);
   }
 
@@ -526,7 +531,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     int position = 1;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
-    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
+    position = assertGFlagsCommonTasks(subTasksByPosition, position,
+                                       UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
     assertEquals(20, position);
   }
 
@@ -543,9 +549,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     int position = 0;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true);
-    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE,
+                                       false);
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
-    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
+    position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE,
+                                       true);
     assertEquals(36, position);
   }
 
