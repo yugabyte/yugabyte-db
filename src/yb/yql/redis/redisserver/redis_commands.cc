@@ -143,6 +143,14 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
+YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_name) {
+  if (db_name == "0") {
+    return YBTableName(common::kRedisKeyspaceName, common::kRedisTableName);
+  } else {
+    return YBTableName(common::kRedisKeyspaceName, StrCat(common::kRedisTableName, "_", db_name));
+  }
+}
+
 namespace {
 
 template<class Op>
@@ -156,7 +164,13 @@ void Command(
     BatchContext* context) {
   VLOG(1) << "Processing " << info.name << ".";
 
-  auto op = std::make_shared<Op>(context->table());
+  auto table = context->table();
+  if (!table) {
+    RespondWithFailure(context->call(), idx, "Could not open YBTable");
+    return;
+  }
+
+  auto op = std::make_shared<Op>(table);
   const auto& command = context->command(idx);
   Status s = parser(op.get(), command);
   if (!s.ok()) {
@@ -251,20 +265,11 @@ class LocalCommandData {
   BatchContextPtr context_;
 };
 
-string GetYBTableNameForRedisDatabase(const string& db_name) {
-  if (db_name == "0") {
-    return common::kRedisTableName;
-  } else {
-    return StrCat(common::kRedisTableName, "_", db_name);
-  }
-}
-
 void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
   vector<string> tablets, partitions;
   vector<master::TabletLocationsPB> locations;
-  const auto redis_table_name =
-      GetYBTableNameForRedisDatabase(data.call()->connection_context().redis_db_to_use());
-  const YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
+  const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(
+                              data.call()->connection_context().redis_db_to_use());
   auto s = data.client()->GetTablets(table_name, 0, &tablets, &partitions, &locations,
                                      true /* update tablets cache */);
   if (!s.ok()) {
@@ -515,15 +520,24 @@ void HandleFlushAll(LocalCommandData data) {
 
 void HandleCreateDB(LocalCommandData data) {
   RedisResponsePB resp;
+  // Ensure that the rediskeyspace exists. If not create it.
+  Status s = data.client()->CreateNamespaceIfNotExists(common::kRedisKeyspaceName);
+  if (!s.ok()) {
+    VLOG(1) << "Namespace '" << common::kRedisKeyspaceName << "' could not be created.";
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+    data.Respond(&resp);
+    return;
+  }
+
   // Figure out the redis table name that we should be using.
   const string db_name = data.arg(1).ToBuffer();
-  const string redis_table_name = GetYBTableNameForRedisDatabase(db_name);
-  YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
-
+  const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(db_name);
   gscoped_ptr<yb::client::YBTableCreator> table_creator(data.client()->NewTableCreator());
-  Status s = table_creator->table_name(table_name)
-                 .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
-                 .Create();
+  s = table_creator->table_name(table_name)
+          .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+          .Create();
   if (s.ok()) {
     resp.set_code(RedisResponsePB_RedisStatusCode_OK);
   } else if (s.IsAlreadyPresent()) {
@@ -577,8 +591,7 @@ void HandleDeleteDB(LocalCommandData data) {
   RedisResponsePB resp;
   // Figure out the redis table name that we should be using.
   const string db_name = data.arg(1).ToBuffer();
-  const string redis_table_name = GetYBTableNameForRedisDatabase(db_name);
-  YBTableName table_name(common::kRedisKeyspaceName, redis_table_name);
+  const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(db_name);
 
   Status s = data.client()->DeleteTable(table_name, /* wait */ true);
   if (s.ok()) {
@@ -598,14 +611,14 @@ void HandleSelect(LocalCommandData data) {
   RedisResponsePB resp;
   const string db_name = data.arg(1).ToBuffer();
   RedisServiceData* sd = data.context()->service_data();
-  auto s = sd->OpenYBTableForDB(db_name);
+  auto s = sd->GetYBTableForDB(db_name);
   if (s.ok()) {
     // Update RedisConnectionContext to use the specified table.
     RedisConnectionContext& context = data.call()->connection_context();
     context.use_redis_db(db_name);
     resp.set_code(RedisResponsePB_RedisStatusCode_OK);
   } else {
-    const Slice message = s.message();
+    const Slice message = s.status().message();
     VLOG(1) << " Could not open Redis Table for db " << db_name << " : " << message.ToString();
     resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     resp.set_error_message(message.data(), message.size());

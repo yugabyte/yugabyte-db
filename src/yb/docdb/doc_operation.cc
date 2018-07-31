@@ -1153,7 +1153,7 @@ Status RedisReadOperation::Execute() {
       return ExecuteCollectionGetRange();
     default:
       return STATUS(Corruption,
-          Substitute("Unsupported redis write operation: $0", request_.request_case()));
+          Substitute("Unsupported redis read operation: $0", request_.request_case()));
   }
 }
 

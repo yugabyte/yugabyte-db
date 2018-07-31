@@ -391,20 +391,49 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void WriteRpc::ProcessResponseFromTserver(const Status& status) {
-  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
-  }
-  batcher_->ProcessWriteResponse(*this, status);
-  if (!CommonResponseCheck(status)) {
-    return;
-  }
-
+void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
   size_t redis_idx = 0;
   size_t ql_idx = 0;
   size_t pgsql_idx = 0;
+
+  for (auto& op : ops_) {
+    YBOperation* yb_op = op->yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::REDIS_WRITE: {
+        // Restore Redis write request PB.
+        auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
+        redis_op->mutable_request()->Swap(req_.mutable_redis_write_batch(redis_idx));
+        redis_idx++;
+        break;
+      }
+      case YBOperation::Type::QL_WRITE: {
+        // Restore QL write request PB.
+        auto* ql_op = down_cast<YBqlWriteOp*>(yb_op);
+        ql_op->mutable_request()->Swap(req_.mutable_ql_write_batch(ql_idx));
+        ql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_WRITE: {
+        // Restore QL write request PB.
+        auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(yb_op);
+        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_write_batch(pgsql_idx));
+        pgsql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::QL_READ:
+        LOG(FATAL) << "Not a write operation " << op->yb_op->type();
+        break;
+    }
+  }
+
+  if (skip_responses) return;
+
   // Retrieve Redis and QL responses and make sure we received all the responses back.
+  redis_idx = 0;
+  ql_idx = 0;
+  pgsql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -415,7 +444,6 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore Redis write request PB and extract response.
         auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
-        redis_op->mutable_request()->Swap(req_.mutable_redis_write_batch(redis_idx));
         redis_op->mutable_response()->Swap(resp_.mutable_redis_response_batch(redis_idx));
         redis_idx++;
         break;
@@ -427,7 +455,6 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore QL write request PB and extract response.
         auto* ql_op = down_cast<YBqlWriteOp*>(yb_op);
-        ql_op->mutable_request()->Swap(req_.mutable_ql_write_batch(ql_idx));
         ql_op->mutable_response()->Swap(resp_.mutable_ql_response_batch(ql_idx));
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
@@ -446,7 +473,6 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore QL write request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(yb_op);
-        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_write_batch(pgsql_idx));
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
@@ -480,6 +506,20 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Write response count mismatch"));
   }
+}
+
+void WriteRpc::ProcessResponseFromTserver(const Status& status) {
+  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
+  if (resp_.has_trace_buffer()) {
+    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+  }
+  batcher_->ProcessWriteResponse(*this, status);
+  if (!CommonResponseCheck(status)) {
+    SwapRequestsAndResponses(true);
+    return;
+  }
+
+  SwapRequestsAndResponses(false);
 }
 
 ReadRpc::ReadRpc(
@@ -563,20 +603,47 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void ReadRpc::ProcessResponseFromTserver(const Status& status) {
-  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
-  }
-  batcher_->ProcessReadResponse(*this, status);
-  if (!CommonResponseCheck(status)) {
-    return;
-  }
-
-  // Retrieve Redis and QL responses and make sure we received all the responses back.
+void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
   size_t redis_idx = 0;
   size_t ql_idx = 0;
   size_t pgsql_idx = 0;
+  for (auto& op : ops_) {
+    YBOperation* yb_op = op->yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::REDIS_READ: {
+        auto* redis_op = down_cast<YBRedisReadOp*>(yb_op);
+        redis_op->mutable_request()->Swap(req_.mutable_redis_batch(redis_idx));
+        redis_idx++;
+        break;
+      }
+      case YBOperation::Type::QL_READ: {
+        // Restore QL read request PB and extract response.
+        auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
+        ql_op->mutable_request()->Swap(req_.mutable_ql_batch(ql_idx));
+        ql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_READ: {
+        // Restore PGSQL read request PB and extract response.
+        auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
+        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_batch(pgsql_idx));
+        pgsql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::QL_WRITE:
+        LOG(FATAL) << "Not a read operation " << op->yb_op->type();
+        break;
+    }
+  }
+
+  if (skip_responses) return;
+
+  // Retrieve Redis and QL responses and make sure we received all the responses back.
+  redis_idx = 0;
+  ql_idx = 0;
+  pgsql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -587,7 +654,6 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore Redis read request PB and extract response.
         auto* redis_op = down_cast<YBRedisReadOp*>(yb_op);
-        redis_op->mutable_request()->Swap(req_.mutable_redis_batch(redis_idx));
         redis_op->mutable_response()->Swap(resp_.mutable_redis_batch(redis_idx));
         redis_idx++;
         break;
@@ -599,7 +665,6 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore QL read request PB and extract response.
         auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
-        ql_op->mutable_request()->Swap(req_.mutable_ql_batch(ql_idx));
         ql_op->mutable_response()->Swap(resp_.mutable_ql_batch(ql_idx));
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
@@ -618,7 +683,6 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
-        pgsql_op->mutable_request()->Swap(req_.mutable_pgsql_batch(pgsql_idx));
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
@@ -652,6 +716,20 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Read response count mismatch"));
   }
+
+}
+
+void ReadRpc::ProcessResponseFromTserver(const Status& status) {
+  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
+  if (resp_.has_trace_buffer()) {
+    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+  }
+  batcher_->ProcessReadResponse(*this, status);
+  if (!CommonResponseCheck(status)) {
+    SwapRequestsAndResponses(true);
+    return;
+  }
+  SwapRequestsAndResponses(false);
 }
 
 }  // namespace internal

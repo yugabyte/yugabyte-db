@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/rpc/service_if.h"
+#include "yb/util/result.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
@@ -45,7 +46,9 @@ class RedisServiceData {
   virtual CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) = 0;
 
   // Used for Select.
-  virtual CHECKED_STATUS OpenYBTableForDB(const string& db_name) = 0;
+  virtual yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name) = 0;
+
+  static client::YBTableName GetYBTableNameForRedisDatabase(const string& db_name);
 
   virtual ~RedisServiceData() {}
 };
@@ -53,12 +56,13 @@ class RedisServiceData {
 // Context for batch of Redis commands.
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
  public:
-  virtual const std::shared_ptr<client::YBTable>& table() const = 0;
+  virtual std::shared_ptr<client::YBTable> table() = 0;
   virtual const RedisClientCommand& command(size_t idx) const = 0;
   virtual const std::shared_ptr<RedisInboundCall>& call() const = 0;
   virtual const std::shared_ptr<client::YBClient>& client() const = 0;
   virtual const RedisServer* server() = 0;
   virtual RedisServiceData* service_data() = 0;
+  virtual void CleanYBTableFromCache() = 0;
 
   virtual void Apply(
       size_t index,
