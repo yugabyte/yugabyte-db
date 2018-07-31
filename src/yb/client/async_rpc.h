@@ -142,6 +142,7 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   virtual ~WriteRpc();
 
  private:
+  void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;
 };
@@ -156,6 +157,7 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   virtual ~ReadRpc();
 
  private:
+  void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;
 };

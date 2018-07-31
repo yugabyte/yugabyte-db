@@ -1391,6 +1391,81 @@ TEST_F(TestRedisService, TestTruncate) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestDeleteDB) {
+  const string default_db("0");
+  const string second_db("2");
+
+  DoRedisTestOk(__LINE__, {"SET", "key", "v1"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v1");
+  SyncClient();
+
+  // Create DB.
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  // Select should now go through.
+  DoRedisTestOk(__LINE__, {"SELECT", second_db.c_str()});
+  SyncClient();
+
+  // Set a diffferent value
+  DoRedisTestOk(__LINE__, {"SET", "key", "v2"});
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+
+  // Delete and recreate the DB.
+  // List DB.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"DELETEDB", second_db.c_str()});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+  // With retries we should succeed immediately.
+  DoRedisTestNull(__LINE__, {"GET", "key"});
+  SyncClient();
+  // Set a diffferent value
+  DoRedisTestOk(__LINE__, {"SET", "key", "v2"});
+  SyncClient();
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v2");
+  SyncClient();
+
+  // Delete and recreate the DB. Followed by a write.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"DELETEDB", second_db.c_str()});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  SyncClient();
+  // Set a value
+  DoRedisTestOk(__LINE__, {"SET", "key", "v3"});
+  SyncClient();
+  // Get that value
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "v3");
+  SyncClient();
+
+  // Delete and recreate the DB. Followed by a local op.
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db, second_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"DELETEDB", second_db.c_str()});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"LISTDB"}, {default_db});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"CREATEDB", second_db.c_str()});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
+  SyncClient();
+
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestMonitor) {
   constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
   expected_no_sessions_ = true;

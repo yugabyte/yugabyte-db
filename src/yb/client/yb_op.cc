@@ -63,6 +63,13 @@ void YBOperation::SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet)
   tablet_ = tablet;
 }
 
+void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
+  table_.reset();
+  table_ = new_table;
+  // tablet_ can no longer be valid.
+  tablet_.reset();
+}
+
 //--------------------------------------------------------------------------------------------------
 // YBRedisOp
 //--------------------------------------------------------------------------------------------------

@@ -59,6 +59,8 @@
 using yb::operator"" _MB;
 using namespace std::literals;
 using namespace std::placeholders;
+using yb::client::YBMetaDataCache;
+using strings::Substitute;
 
 DEFINE_REDIS_histogram_EX(error,
                           "yb.redisserver.RedisServerService.AnyMethod RPC Time",
@@ -236,6 +238,13 @@ class Operation {
       operation_->SetTablet(tablet);
     }
     tablet_ = tablet;
+  }
+
+  void ResetTable(std::shared_ptr<client::YBTable> table) {
+    if (operation_) {
+      operation_->ResetTable(table);
+    }
+    tablet_.reset();
   }
 
   const client::internal::RemoteTabletPtr& tablet() const {
@@ -430,9 +439,13 @@ class Block : public std::enable_shared_from_this<Block> {
     VLOG(3) << "Received status from call " << status.ToString(true);
 
     std::unordered_map<const client::YBOperation*, Status> op_errors;
+    bool tablet_not_found = false;
     if (!status.ok()) {
       if (session_ != nullptr) {
         for (const auto& error : session_->GetPendingErrors()) {
+          if (error->status().IsNotFound()) {
+            tablet_not_found = true;
+          }
           op_errors[&error->failed_op()] = std::move(error->status());
           YB_LOG_EVERY_N_SECS(WARNING, 1) << "Explicit error while inserting: "
                                           << error->status().ToString();
@@ -440,9 +453,16 @@ class Block : public std::enable_shared_from_this<Block> {
       }
     }
 
+    if (tablet_not_found && Retrying()) {
+        // We will retry and not mark the ops as failed.
+        return;
+    }
+
     for (auto* op : ops_) {
       if (op->has_operation() && op_errors.find(&op->operation()) != op_errors.end()) {
-        op->Respond(op_errors[&op->operation()]);
+        // Could check here for NotFound either.
+        auto s = op_errors[&op->operation()];
+        op->Respond(s);
       } else {
         op->Respond(Status::OK());
       }
@@ -454,7 +474,7 @@ class Block : public std::enable_shared_from_this<Block> {
   void Processed() {
     auto allow_local_calls_in_curr_thread = false;
     if (session_) {
-      session_->allow_local_calls_in_curr_thread();
+      allow_local_calls_in_curr_thread = session_->allow_local_calls_in_curr_thread();
       session_pool_->Release(session_);
       session_.reset();
     }
@@ -462,6 +482,41 @@ class Block : public std::enable_shared_from_this<Block> {
       next_->Launch(session_pool_, allow_local_calls_in_curr_thread);
     }
     context_.reset();
+  }
+
+  bool Retrying() {
+    auto old_table = context_->table();
+    context_->CleanYBTableFromCache();
+
+    const int kMaxRetries = 2;
+    if (num_retries_ >= kMaxRetries) {
+      VLOG(3) << "Not retrying because we are past kMaxRetries. num_retries_ = " << num_retries_
+              << " kMaxRetries = " << kMaxRetries;
+      return false;
+    }
+    num_retries_++;
+
+    auto allow_local_calls_in_curr_thread = false;
+    if (session_) {
+      allow_local_calls_in_curr_thread = session_->allow_local_calls_in_curr_thread();
+      session_pool_->Release(session_);
+      session_.reset();
+    }
+
+    auto table = context_->table();
+    if (!table || table->id() == old_table->id()) {
+      VLOG(3) << "Not retrying because new table is : " << (table ? table->id() : "nullptr")
+              << " old table was " << old_table->id();
+      return false;
+    }
+
+    // Swap out ops with the newer version of the ops referring to the newly created table.
+    for (auto* op : ops_) {
+      op->ResetTable(context_->table());
+    }
+    Launch(session_pool_, allow_local_calls_in_curr_thread);
+    VLOG(3) << " Retrying with table : " << table->id() << " old table was " << old_table->id();
+    return true;
   }
 
  private:
@@ -472,6 +527,7 @@ class Block : public std::enable_shared_from_this<Block> {
   SessionPool* session_pool_;
   std::shared_ptr<client::YBSession> session_;
   BlockPtr next_;
+  int num_retries_ = 1;
 };
 
 typedef std::array<rpc::RpcMethodMetrics, kOperationTypeMapSize> InternalMetrics;
@@ -665,14 +721,6 @@ class TabletOperations {
   OperationType last_conflict_type_ = OperationType::kNone;
 };
 
-string GetYBTableNameForRedisDatabase(const string& db_name) {
-  if (db_name == "0") {
-    return common::kRedisTableName;
-  } else {
-    return StrCat(common::kRedisTableName, "_", db_name);
-  }
-}
-
 struct RedisServiceImplData : public RedisServiceData {
   RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses);
 
@@ -680,13 +728,15 @@ struct RedisServiceImplData : public RedisServiceData {
 
   void AppendToMonitors(ConnectionPtr conn) override;
   void LogToMonitors(const string& end, const string& db, const RedisClientCommand& cmd) override;
-  CHECKED_STATUS OpenYBTableForDB(const string& db_name) override;
+  yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name) override;
 
-  std::shared_ptr<client::YBTable> GetYBTableCached(const string& db_name);
+  void CleanYBTableFromCacheForDB(const string& table);
+
   CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
   CHECKED_STATUS Initialize();
+  bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
 
-  bool initialized() const { return yb_client_initialized_.load(std::memory_order_relaxed); }
+  // yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name);
 
   std::string yb_tier_master_addresses_;
 
@@ -694,11 +744,12 @@ struct RedisServiceImplData : public RedisServiceData {
   InternalMetrics metrics_internal_;
 
   // Mutex that protects the creation of client_ and populating db_to_opened_table_.
-  rw_spinlock yb_mutex_;
-  std::atomic<bool> yb_client_initialized_;
+  std::mutex yb_mutex_;
+  std::atomic<bool> initialized_;
   std::shared_ptr<client::YBClient> client_;
   SessionPool session_pool_;
   std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
+  std::shared_ptr<client::YBMetaDataCache> tables_cache_;
 
   std::vector<ConnectionWeakPtr> monitoring_clients_;
   scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
@@ -715,22 +766,15 @@ struct RedisServiceImplData : public RedisServiceData {
 class BatchContextImpl : public BatchContext {
  public:
   BatchContextImpl(
-      const std::shared_ptr<client::YBClient>& client,
-      RedisServiceImplData* impl_data,
-      const std::shared_ptr<client::YBTable>& table,
-      SessionPool* session_pool,
-      const std::shared_ptr<RedisInboundCall>& call,
-      const InternalMetrics& metrics_internal,
-      const MemTrackerPtr& mem_tracker)
-      : client_(client),
-        impl_data_(impl_data),
-        table_(table),
-        session_pool_(session_pool),
+      const string& dbname, const std::shared_ptr<RedisInboundCall>& call,
+      RedisServiceImplData* impl_data)
+      : impl_data_(impl_data),
+        db_name_(dbname),
         call_(call),
-        metrics_internal_(metrics_internal),
-        consumption_(mem_tracker, 0),
+        consumption_(impl_data->server_->mem_tracker(), 0),
         operations_(&arena_),
-        tablets_(&arena_) {}
+        tablets_(&arena_) {
+  }
 
   virtual ~BatchContextImpl() {}
 
@@ -743,7 +787,7 @@ class BatchContextImpl : public BatchContext {
   }
 
   const std::shared_ptr<client::YBClient>& client() const override {
-    return client_;
+    return impl_data_->client_;
   }
 
   RedisServiceImplData* service_data() override {
@@ -754,25 +798,43 @@ class BatchContextImpl : public BatchContext {
     return impl_data_->server_;
   }
 
-  const std::shared_ptr<client::YBTable>& table() const override {
-    return table_;
+  void CleanYBTableFromCache() override {
+    impl_data_->CleanYBTableFromCacheForDB(db_name_);
+  }
+
+  std::shared_ptr<client::YBTable> table() override {
+    auto table = impl_data_->GetYBTableForDB(db_name_);
+    if (!table.ok()) {
+      return nullptr;
+    }
+    return *table;
   }
 
   void Commit() {
+    Commit(1);
+  }
+
+  void Commit(int retries) {
     if (operations_.empty()) {
       return;
     }
 
+    auto table = impl_data_->GetYBTableForDB(db_name_);
+    if (!table.ok()) {
+      for (auto& operation : operations_) {
+        operation.Respond(table.status());
+      }
+    }
     MonoTime deadline = MonoTime::Now() +
                         MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis);
     lookups_left_.store(operations_.size(), std::memory_order_release);
+    retry_lookups_.store(false, std::memory_order_release);
     for (auto& operation : operations_) {
-      client_->LookupTabletByKey(
-          table_.get(),
-          operation.partition_key(),
-          deadline,
-          std::bind(&BatchContextImpl::LookupDone, scoped_refptr<BatchContextImpl>(this),
-                    &operation, _1));
+      impl_data_->client_->LookupTabletByKey(
+          table->get(), operation.partition_key(), deadline,
+          std::bind(
+              &BatchContextImpl::LookupDone, scoped_refptr<BatchContextImpl>(this), &operation,
+              retries, _1));
     }
   }
 
@@ -813,13 +875,26 @@ class BatchContextImpl : public BatchContext {
     }
   }
 
-  void LookupDone(Operation* operation, const Result<client::internal::RemoteTabletPtr>& result) {
+  void LookupDone(
+      Operation* operation, int retries, const Result<client::internal::RemoteTabletPtr>& result) {
+    const int kMaxRetries = 2;
     if (!result.ok()) {
-      operation->Respond(result.status());
+      auto status = result.status();
+      if (status.IsNotFound() && retries < kMaxRetries) {
+        retry_lookups_.store(false, std::memory_order_release);
+      } else {
+        operation->Respond(status);
+      }
     } else {
       operation->SetTablet(*result);
     }
     if (lookups_left_.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+      return;
+    }
+
+    if (retries < kMaxRetries && retry_lookups_.load(std::memory_order_acquire)) {
+      CleanYBTableFromCache();
+      Commit(retries + 1);
       return;
     }
 
@@ -830,27 +905,26 @@ class BatchContextImpl : public BatchContext {
         if (it == tablets_.end()) {
           it = tablets_.emplace(operation.tablet()->tablet_id(), TabletOperations(&arena_)).first;
         }
-        it->second.Process(self, &arena_, &operation, metrics_internal_);
+        it->second.Process(self, &arena_, &operation, impl_data_->metrics_internal_);
       }
     }
 
     int idx = 0;
     for (auto& tablet : tablets_) {
-      tablet.second.Done(session_pool_, ++idx == tablets_.size());
+      tablet.second.Done(&impl_data_->session_pool_, ++idx == tablets_.size());
     }
     tablets_.clear();
   }
 
-  std::shared_ptr<client::YBClient> client_;
   RedisServiceImplData* impl_data_ = nullptr;
-  std::shared_ptr<client::YBTable> table_;
-  SessionPool* session_pool_;
+
+  const string db_name_;
   std::shared_ptr<RedisInboundCall> call_;
-  const InternalMetrics& metrics_internal_;
   ScopedTrackedConsumption consumption_;
 
   Arena arena_;
   MCDeque<Operation> operations_;
+  std::atomic<bool> retry_lookups_;
   std::atomic<size_t> lookups_left_;
   MCUnorderedMap<Slice, TabletOperations, Slice::Hash> tablets_;
 };
@@ -916,30 +990,17 @@ class RedisServiceImpl::Impl {
 
 RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses)
     : yb_tier_master_addresses_(std::move(yb_tier_master_addresses)),
-      yb_client_initialized_(false),
+      initialized_(false),
       server_(server) {}
 
-Status RedisServiceImplData::OpenYBTableForDB(const string& db_name) {
-  {
-    boost::shared_lock<rw_spinlock> rguard(yb_mutex_);
-    if (db_to_opened_table_.find(db_name) != db_to_opened_table_.end()) {
-      return Status::OK();
-    }
-  }
-
+yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableForDB(
+    const string& db_name) {
   std::shared_ptr<client::YBTable> table;
-  YBTableName table_name(common::kRedisKeyspaceName, GetYBTableNameForRedisDatabase(db_name));
-  RETURN_NOT_OK(client_->OpenTable(table_name, &table));
-  {
-    boost::lock_guard<rw_spinlock> guard(yb_mutex_);
-    db_to_opened_table_[db_name] = table;
-  }
-  return Status::OK();
-}
-
-std::shared_ptr<client::YBTable> RedisServiceImplData::GetYBTableCached(const string& db_name) {
-  boost::shared_lock<rw_spinlock> rguard(yb_mutex_);
-  return db_to_opened_table_[db_name];
+  YBTableName table_name = GetYBTableNameForRedisDatabase(db_name);
+  bool was_cached = false;
+  auto res = tables_cache_->GetTable(table_name, &table, &was_cached);
+  if (!res.ok()) return res;
+  return table;
 }
 
 void RedisServiceImplData::AppendToMonitors(ConnectionPtr conn) {
@@ -996,7 +1057,7 @@ void RedisServiceImplData::LogToMonitors(
 }
 
 Status RedisServiceImplData::Initialize() {
-  boost::lock_guard<rw_spinlock> guard(yb_mutex_);
+  boost::lock_guard<std::mutex> guard(yb_mutex_);
   if (!initialized()) {
     YBClientBuilder client_builder;
     client_builder.set_client_name("redis_ybclient");
@@ -1026,16 +1087,16 @@ Status RedisServiceImplData::Initialize() {
           server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
     }
 
-    std::shared_ptr<client::YBTable> table;
-    YBTableName table_name(common::kRedisKeyspaceName, GetYBTableNameForRedisDatabase("0"));
-    RETURN_NOT_OK(client_->OpenTable(table_name, &table));
-    db_to_opened_table_["0"] = table;
-
+    tables_cache_ = std::make_shared<YBMetaDataCache>(client_);
     session_pool_.Init(client_, server_->metric_entity());
 
-    yb_client_initialized_.store(true, std::memory_order_release);
+    initialized_.store(true, std::memory_order_release);
   }
   return Status::OK();
+}
+
+void RedisServiceImplData::CleanYBTableFromCacheForDB(const string& db) {
+  tables_cache_->RemoveCachedTable(GetYBTableNameForRedisDatabase(db));
 }
 
 Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
@@ -1127,10 +1188,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   const string remote = yb::ToString(conn->remote());
   RedisConnectionContext* conn_context = &(call->connection_context());
   string db_name = conn_context->redis_db_to_use();
-  auto yb_table = data_.GetYBTableCached(db_name);
-  auto context = make_scoped_refptr<BatchContextImpl>(
-      data_.client_, &data_, yb_table, &data_.session_pool_, call, data_.metrics_internal_,
-      data_.server_->mem_tracker());
+  auto context = make_scoped_refptr<BatchContextImpl>(db_name, call, &data_);
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
 
@@ -1173,10 +1231,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
         // update context.
         context->Commit();
         db_name = conn_context->redis_db_to_use();
-        yb_table = data_.GetYBTableCached(db_name);
-        context = make_scoped_refptr<BatchContextImpl>(
-            data_.client_, &data_, yb_table, &data_.session_pool_, call, data_.metrics_internal_,
-            data_.server_->mem_tracker());
+        context = make_scoped_refptr<BatchContextImpl>(db_name, call, &data_);
       }
     }
   }
