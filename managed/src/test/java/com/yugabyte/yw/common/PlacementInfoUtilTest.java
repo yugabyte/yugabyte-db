@@ -264,6 +264,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
   }
 
+  private UserIntent getReadReplicaUserIntent(TestData t, int rf) {
+    UserIntent userIntent = new UserIntent();
+    Region region = Region.create(t.provider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    userIntent.numNodes = rf;
+    userIntent.replicationFactor = rf;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.universeName = t.univName;
+    return userIntent;
+  }
+
   void setPerAZCounts(PlacementInfo placementInfo, Collection<NodeDetails> nodeDetailsSet) {
     Map<UUID, Integer> azUuidToNumNodes = PlacementInfoUtil.getAzUuidToNumNodes(nodeDetailsSet);
     for (PlacementCloud cloud : placementInfo.cloudList) {
@@ -486,6 +499,20 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       testData.add(new TestData(Common.CloudType.aws, 4, 10));
     } catch (UnsupportedOperationException e) {
       assertTrue(e.getMessage().contains("Replication factor 4 not allowed"));
+    }
+  }
+
+  @Test
+  public void testReplicationFactorAllowedForReadOnly() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      UUID clusterUUID = UUID.randomUUID();
+      udtp.universeUUID = t.univUuid;
+      UserIntent userIntent = getReadReplicaUserIntent(t, 4);
+      udtp.upsertCluster(userIntent, null, clusterUUID);
+      universe.setUniverseDetails(udtp);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
     }
   }
 
@@ -906,15 +933,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
       UUID clusterUUID = UUID.randomUUID();
       udtp.universeUUID = t.univUuid;
-      UserIntent userIntent = new UserIntent();
-      Region region = Region.create(t.provider, "region-2", "Region 2", "yb-image-1");
-      AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
-      userIntent.numNodes = 1;
-      userIntent.replicationFactor = 1;
-      userIntent.ybSoftwareVersion = "yb-version";
-      userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = ImmutableList.of(region.uuid);
-      userIntent.universeName = t.univName;
+      UserIntent userIntent = getReadReplicaUserIntent(t, 1);
       udtp.upsertCluster(userIntent, null, clusterUUID);
       universe.setUniverseDetails(udtp);
       PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);

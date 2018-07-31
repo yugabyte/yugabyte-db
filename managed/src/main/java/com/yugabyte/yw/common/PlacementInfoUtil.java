@@ -59,8 +59,11 @@ public class PlacementInfoUtil {
   // odd number for consensus to work.
   private static final int maxMasterSubnets = 3;
 
-  // List of replication factors supported currently.
+  // List of replication factors supported currently for primary cluster.
   private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
+
+  // List of replication factors supported currently for read only clusters.
+  private static final List<Integer> supportedReadOnlyRFs = ImmutableList.of(1, 2, 3, 4, 5, 6, 7);
 
   // Constants used to determine tserver, master, and node liveness.
   public static final String UNIVERSE_ALIVE_METRIC = "node_up";
@@ -226,14 +229,14 @@ public class PlacementInfoUtil {
             .filter(n -> n.isInPlacement(placementUuid))
             .findFirst()
             .orElse(null);
-    return (node == null) ? null : AvailabilityZone.find.byId(node.azUuid).region.provider.uuid;
+    return (node == null) ? null : AvailabilityZone.get(node.azUuid).region.provider.uuid;
   }
 
   private static Set<UUID> getAllRegionUUIDs(Collection<NodeDetails> nodes, UUID placementUuid) {
     Set<UUID> nodeRegionSet = new HashSet<>();
     nodes.stream()
             .filter(n -> n.isInPlacement(placementUuid))
-            .forEach(n -> nodeRegionSet.add(AvailabilityZone.find.byId(n.azUuid).region.uuid));
+            .forEach(n -> nodeRegionSet.add(AvailabilityZone.get(n.azUuid).region.uuid));
     return nodeRegionSet;
   }
 
@@ -360,7 +363,7 @@ public class PlacementInfoUtil {
     // choose a new placement.
     if (cluster.placementInfo == null && (!isPrimaryClusterEdit || readOnlyClusterCreate)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
-      cluster.placementInfo = getPlacementInfo(cluster.userIntent);
+      cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
       LOG.info("Placement created={}.", cluster.placementInfo);
       configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
       return;
@@ -378,12 +381,21 @@ public class PlacementInfoUtil {
       return;
     }
 
+    Cluster oldCluster = null;
+    if (isPrimaryClusterEdit) {
+      oldCluster = universe.getUniverseDetails().getPrimaryCluster();
+    } else if (readOnlyClusterEdit) {
+      oldCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    }
+    if (oldCluster != null) {
+      verifyEditParams(oldCluster, cluster);
+    }
+
     // For primary cluster edit only there is possiblity of leader changes.
     if (isPrimaryClusterEdit) {
-      Cluster oldCluster = universe.getUniverseDetails().getPrimaryCluster();
-      verifyEditParams(oldCluster, cluster);
-
-      if (didAffinitizedLeadersChange(oldCluster.placementInfo, cluster.placementInfo)) {
+      assert oldCluster != null;
+      if (didAffinitizedLeadersChange(oldCluster.placementInfo,
+                                      cluster.placementInfo)) {
         mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
       } else {
         mode = getPureExpandOrShrinkMode(universe.getUniverseDetails(), taskParams, cluster);
@@ -403,7 +415,7 @@ public class PlacementInfoUtil {
               (isPrimaryClusterEdit || readOnlyClusterEdit) ?
                   universe.getNodes() : taskParams.nodeDetailsSet)) {
         LOG.info("Provider or region changed, getting new placement info.");
-        cluster.placementInfo = getPlacementInfo(cluster.userIntent);
+        cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
       } else {
         LOG.info("Performing full move with existing placement info.");
       }
@@ -605,10 +617,16 @@ public class PlacementInfoUtil {
         isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
-              "modified for editing the universe.");
+                                         "modified for editing the universe.");
     }
 
     // Rule out some of the universe changes that we do not allow (they can be enabled as needed).
+    if (oldCluster.clusterType != newCluster.clusterType) {
+      LOG.error("Cluster type cannot be changed from {} to {}",
+                oldCluster.clusterType, newCluster.clusterType);
+      throw new UnsupportedOperationException("Cluster type cannot be modified.");
+    }
+
     if (existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error("Replication factor cannot be changed from {} to {}",
               existingIntent.replicationFactor, userIntent.replicationFactor);
@@ -623,25 +641,30 @@ public class PlacementInfoUtil {
 
     if (!existingIntent.provider.equals(userIntent.provider)) {
       LOG.error("Provider cannot be changed from {} to {}",
-              existingIntent.provider, userIntent.provider);
+                existingIntent.provider, userIntent.provider);
       throw new UnsupportedOperationException("Provider cannot be modified.");
     }
 
     if (existingIntent.providerType != userIntent.providerType) {
       LOG.error("Provider type cannot be changed from {} to {}",
-              existingIntent.providerType, userIntent.providerType);
+                existingIntent.providerType, userIntent.providerType);
       throw new UnsupportedOperationException("providerType cannot be modified.");
     }
 
-    verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
+    verifyNodesAndRF(oldCluster.clusterType,
+                     userIntent.numNodes, userIntent.replicationFactor);
   }
 
   // Helper API to verify number of nodes and replication factor requirements.
-  public static void verifyNodesAndRF(int numNodes, int replicationFactor) {
-    // We only support a replication factor of 1,3,5,7.
-    if (!supportedRFs.contains(replicationFactor)) {
+  public static void verifyNodesAndRF(ClusterType clusterType, int numNodes, int replicationFactor) {
+    // We only support a replication factor of 1,3,5,7 for primary cluster.
+    // And any value from 1 to 7 for read only cluster.
+    if ((clusterType == ClusterType.PRIMARY && !supportedRFs.contains(replicationFactor)) ||
+        (clusterType == ClusterType.ASYNC && !supportedReadOnlyRFs.contains(replicationFactor))) {
       String errMsg = String.format("Replication factor %d not allowed, must be one of %s.",
-          replicationFactor, Joiner.on(',').join(supportedRFs));
+                                    replicationFactor,
+                                    Joiner.on(',').join(clusterType == ClusterType.PRIMARY ?
+                                                        supportedRFs : supportedReadOnlyRFs));
       LOG.error(errMsg);
       throw new UnsupportedOperationException(errMsg);
     }
@@ -922,10 +945,10 @@ public class PlacementInfoUtil {
       taskParams.nodeDetailsSet.removeIf((NodeDetails nd) -> {
         return (nd.placementUuid.equals(primaryCluster.uuid));
       });
-
-      taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(taskParams.getPrimaryCluster().userIntent);
-      configureDefaultNodeStates(taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet,
-              taskParams.nodePrefix, universe);
+      Cluster cluster = taskParams.getPrimaryCluster();
+      taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
+      configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet,
+                                 taskParams.nodePrefix, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
       Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.getPrimaryCluster().placementInfo);
@@ -933,7 +956,8 @@ public class PlacementInfoUtil {
 
       boolean isSimpleExpand = true;
       for (UUID requiredAZUUID: requiredAZToNodeMap.keySet()) {
-        if (!existingAZToNodeMap.containsKey(requiredAZUUID) || requiredAZToNodeMap.get(requiredAZUUID) < existingAZToNodeMap.get(requiredAZUUID)) {
+        if (!existingAZToNodeMap.containsKey(requiredAZUUID) ||
+            requiredAZToNodeMap.get(requiredAZUUID) < existingAZToNodeMap.get(requiredAZUUID)) {
           isSimpleExpand = false;
           break;
         } else {
@@ -1346,12 +1370,12 @@ public class PlacementInfoUtil {
     return false;
   }
 
-  public static PlacementInfo getPlacementInfo(UserIntent userIntent) {
+  public static PlacementInfo getPlacementInfo(ClusterType clusterType, UserIntent userIntent) {
     if (userIntent == null || userIntent.regionList == null || userIntent.regionList.isEmpty()) {
       LOG.info("No placement due to userIntent={} or regions={}.", userIntent, userIntent.regionList);
       return null;
     }
-    verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
+    verifyNodesAndRF(clusterType, userIntent.numNodes, userIntent.replicationFactor);
 
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
