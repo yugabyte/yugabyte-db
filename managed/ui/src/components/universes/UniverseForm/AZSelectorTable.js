@@ -309,8 +309,9 @@ export default class AZSelectorTable extends Component {
   }
 
   render() {
-    const {universe: {universeConfigTemplate}, cloud: {regions}, isReadOnly, clusterType} = this.props;
+    const {universe: {universeConfigTemplate}, cloud: {regions}, clusterType} = this.props;
     const self = this;
+    const isReadOnlyTab = clusterType === "async";
     let azListForSelectedRegions = [];
 
     let currentCluster = null;
@@ -337,18 +338,18 @@ export default class AZSelectorTable extends Component {
           <FlexGrow power={1}>
             <Row>
               <Col xs={8}>
-                <Field name={`select${idx}`} isReadOnly={isReadOnly} component={YBControlledSelect}
+                <Field name={`select${idx}`} component={YBControlledSelect}
                     options={azListOptions} selectVal={azGroupItem.value}
                     onInputChanged={self.handleAZChange.bind(self, idx)}/>
               </Col>
               <Col xs={4}>
-                <Field name={`nodes${idx}`} readOnly={isReadOnly} component={YBControlledNumericInput}
+                <Field name={`nodes${idx}`} component={YBControlledNumericInput}
                 val={azGroupItem.count}
                 onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
               </Col>
             </Row>
           </FlexGrow>
-          {!isReadOnly && <FlexShrink power={0} key={idx} className="form-right-control">
+          {!isReadOnlyTab && <FlexShrink power={0} key={idx} className="form-right-control">
             <Field name={`affinitized${idx}`} component={YBCheckBox} checkState={azGroupItem.isAffinitized}
                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
           </FlexShrink>}
@@ -357,7 +358,7 @@ export default class AZSelectorTable extends Component {
       return (
         <div className={"az-table-container form-field-grid"}>
           <div className="az-selector-label">
-            {!isReadOnly && <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>}
+            <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>
             <h4>Availability Zones</h4>
           </div>
           <FlexContainer>
@@ -371,7 +372,7 @@ export default class AZSelectorTable extends Component {
                 </Col>
               </Row>
             </FlexGrow>
-            {!isReadOnly && <FlexShrink power={0} className="form-right-control">
+            {!isReadOnlyTab && <FlexShrink power={0} className="form-right-control">
               <label>Preferred</label>
             </FlexShrink>}
           </FlexContainer>
