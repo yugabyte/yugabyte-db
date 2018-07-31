@@ -371,8 +371,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
     for (Cluster cluster : taskParams().clusters) {
-      PlacementInfoUtil.verifyNodesAndRF(cluster.userIntent.numNodes,
-              cluster.userIntent.replicationFactor);
+      PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
+                                         cluster.userIntent.replicationFactor);
     }
   }
 }
