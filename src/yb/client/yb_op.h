@@ -92,6 +92,8 @@ class YBOperation {
 
   const YBTable* table() const { return table_.get(); }
 
+  void ResetTable(std::shared_ptr<YBTable> new_table);
+
   virtual std::string ToString() const = 0;
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
@@ -112,7 +114,7 @@ class YBOperation {
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
-  std::shared_ptr<YBTable> const table_;
+  std::shared_ptr<YBTable> table_;
 
  private:
   friend class internal::AsyncRpc;
