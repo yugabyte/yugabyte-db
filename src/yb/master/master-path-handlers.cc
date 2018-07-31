@@ -170,6 +170,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
           << "      <th>Time since heartbeat</th>\n"
           << "      <th>Status</th>\n"
           << "      <th>Load (Num Tablets)</th>\n"
+          << "      <th>Leader Count (Num Tablets)</th>\n"
           << "      <th>RAM Used</th>\n"
           << "      <th>Total SST File Sizes</th>\n"
           << "      <th>Read ops/sec</th>\n"
@@ -196,6 +197,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     }
 
     *output << "    <td>" << desc->num_live_replicas() << "</td>";
+    *output << "    <td>" << desc->leader_count() << "</td>";
     *output << "    <td>" << BytesToHumanReadable
                              (desc->total_memory_usage()) << "</td>";
     *output << "    <td>" << BytesToHumanReadable
