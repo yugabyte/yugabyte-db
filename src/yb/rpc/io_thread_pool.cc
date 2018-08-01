@@ -22,15 +22,23 @@
 
 #include <glog/logging.h>
 
+#include "yb/util/format.h"
+#include "yb/util/thread.h"
+
 namespace yb {
 namespace rpc {
 
 class IoThreadPool::Impl {
  public:
-  explicit Impl(size_t num_threads) {
+  Impl(const std::string& name, size_t num_threads) : name_(name) {
     threads_.reserve(num_threads);
+    size_t index = 0;
     while (threads_.size() != num_threads) {
-      threads_.emplace_back([this] { Execute(); });
+      threads_.emplace_back([this, index] {
+        yb::SetThreadName(Format("iotp_$0_$1", name_, index));
+        Execute();
+      });
+      ++index;
     }
   }
 
@@ -62,12 +70,15 @@ class IoThreadPool::Impl {
     LOG_IF(ERROR, ec) << "Failed to run io service: " << ec;
   }
 
+  std::string name_;
   std::vector<std::thread> threads_;
   IoService io_service_;
   boost::optional<IoService::work> work_{io_service_};
 };
 
-IoThreadPool::IoThreadPool(size_t num_threads) : impl_(new Impl(num_threads)) {}
+IoThreadPool::IoThreadPool(const std::string& name, size_t num_threads)
+    : impl_(new Impl(name, num_threads)) {}
+
 IoThreadPool::~IoThreadPool() {}
 
 IoService& IoThreadPool::io_service() {

@@ -336,7 +336,7 @@ class GFlagsCollector : public CollectorBase {
 };
 
 CallHome::CallHome(server::RpcAndWebServerBase* server, ServerType server_type) :
-    server_(server), pool_(1), server_type_(server_type) {
+    server_(server), pool_("call_home", 1), server_type_(server_type) {
 
   scheduler_ = std::make_unique<yb::rpc::Scheduler>(&pool_.io_service());
 

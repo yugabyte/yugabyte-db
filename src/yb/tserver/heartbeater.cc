@@ -103,11 +103,10 @@ class Heartbeater::Thread {
   Status Stop();
   void TriggerASAP();
 
-  void set_master_addresses(shared_ptr<const vector<HostPort>> master_addresses) {
+  void set_master_addresses(server::MasterAddressesPtr master_addresses) {
     std::lock_guard<std::mutex> l(master_addresses_mtx_);
     master_addresses_ = std::move(master_addresses);
-    VLOG(1) << "Setting master addresses to "
-            << HostPort::ToCommaSeparatedString(*master_addresses_);
+    VLOG(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
  private:
@@ -123,7 +122,7 @@ class Heartbeater::Thread {
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 
-  shared_ptr<const vector<HostPort>> get_master_addresses() {
+  server::MasterAddressesPtr get_master_addresses() {
     std::lock_guard<std::mutex> l(master_addresses_mtx_);
     CHECK_NOTNULL(master_addresses_.get());
     return master_addresses_;
@@ -137,7 +136,7 @@ class Heartbeater::Thread {
   // We keep the HostPort around rather than a Sockaddr because the
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
-  shared_ptr<const vector<HostPort>> master_addresses_;
+  server::MasterAddressesPtr master_addresses_;
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.
@@ -200,8 +199,9 @@ Heartbeater::~Heartbeater() {
 Status Heartbeater::Start() { return thread_->Start(); }
 Status Heartbeater::Stop() { return thread_->Stop(); }
 void Heartbeater::TriggerASAP() { thread_->TriggerASAP(); }
-void Heartbeater::set_master_addresses(shared_ptr<const vector<HostPort>> master_addresses) {
-  thread_->set_master_addresses(master_addresses);
+
+void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_addresses) {
+  thread_->set_master_addresses(std::move(master_addresses));
 }
 
 ////////////////////////////////////////////////////////////
@@ -224,7 +224,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
   CHECK_NOTNULL(master_addresses_.get());
   CHECK(!master_addresses_->empty());
   VLOG(1) << "Initializing heartbeater thread with master addresses: "
-          << HostPort::ToCommaSeparatedString(*master_addresses_);
+          << yb::ToString(master_addresses_);
 }
 
 namespace {
@@ -245,12 +245,12 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
                                              HostPort* leader_hostport) {
   Status s = Status::OK();
   const auto master_addresses = get_master_addresses();
-  if (master_addresses->size() == 1) {
+  if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
     // "Shortcut" the process when a single master is specified.
-    *leader_hostport = (*master_addresses)[0];
+    *leader_hostport = (*master_addresses)[0][0];
     return Status::OK();
   }
-  std::vector<HostPort> master_sock_addrs = *master_addresses;
+  auto master_sock_addrs = *master_addresses;
   if (master_sock_addrs.empty()) {
     return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
@@ -539,10 +539,10 @@ void Heartbeater::Thread::RunThread() {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString() << " tries=" << consecutive_failed_heartbeats_
                    << ", num=" << master_addresses->size()
-                   << ", masters=" << HostPort::ToCommaSeparatedString(*master_addresses)
+                   << ", masters=" << yb::ToString(master_addresses)
                    << ", code=" << s.CodeAsString();
       consecutive_failed_heartbeats_++;
-      if (master_addresses->size() > 1) {
+      if (master_addresses->size() > 1 || (*master_addresses)[0].size() > 1) {
         // If we encountered a network error (e.g., connection
         // refused) or timed out and there's more than one master available, try
         // determining the leader master again.

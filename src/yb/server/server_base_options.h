@@ -48,13 +48,14 @@ class Env;
 
 namespace server {
 
+typedef std::vector<std::vector<HostPort>> MasterAddresses;
+typedef std::shared_ptr<const MasterAddresses> MasterAddressesPtr;
+
 // Options common to both types of servers.
 // The subclass constructor should fill these in with defaults from
 // server-specific flags.
 class ServerBaseOptions {
  public:
-  typedef std::shared_ptr<const std::vector<HostPort>> addresses_shared_ptr;
-
   Env* env;
 
   // This field is to be used as a path component for all the fs roots by FsManager. For now, we
@@ -83,19 +84,14 @@ class ServerBaseOptions {
 
   std::vector<HostPort> broadcast_addresses;
 
-  static Status DetermineMasterAddresses(
-      const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
-      uint64_t master_replication_factor, std::vector<HostPort>* master_addresses,
-      std::string* master_addresses_resolved_str);
-
   // This can crash the process if you pass in an invalid list of master addresses!
-  void SetMasterAddresses(addresses_shared_ptr master_addresses) {
+  void SetMasterAddresses(MasterAddressesPtr master_addresses) {
     CHECK_NOTNULL(master_addresses.get());
 
-    SetMasterAddressesNoValidation(master_addresses);
+    SetMasterAddressesNoValidation(std::move(master_addresses));
   }
 
-  addresses_shared_ptr GetMasterAddresses() const;
+  MasterAddressesPtr GetMasterAddresses() const;
 
   CloudInfoPB MakeCloudInfoPB() const;
 
@@ -105,13 +101,13 @@ class ServerBaseOptions {
   ServerBaseOptions();
 
  private:
-  void SetMasterAddressesNoValidation(addresses_shared_ptr master_addresses);
+  void SetMasterAddressesNoValidation(MasterAddressesPtr master_addresses);
 
   // List of masters this server is aware of. This will get recreated on a master config change.
   // We should ensure that the vector elements are not individually updated. And the shared pointer
   // will guarantee inconsistent in-transit views of the vector are never seen during/across
   // config changes.
-  addresses_shared_ptr master_addresses_;
+  MasterAddressesPtr master_addresses_;
 
   std::string placement_cloud_;
   std::string placement_region_;
@@ -121,6 +117,14 @@ class ServerBaseOptions {
   mutable std::mutex master_addresses_mtx_;
 };
 
+CHECKED_STATUS DetermineMasterAddresses(
+    const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
+    uint64_t master_replication_factor, MasterAddresses* master_addresses,
+    std::string* master_addresses_resolved_str);
+
+std::string MasterAddressesToString(const MasterAddresses& addresses);
+
 } // namespace server
 } // namespace yb
+
 #endif /* YB_SERVER_SERVER_BASE_OPTIONS_H */

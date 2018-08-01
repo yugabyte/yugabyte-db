@@ -13,6 +13,8 @@
 
 #include "yb/master/master_util.h"
 
+#include <boost/container/stable_vector.hpp>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/master/master.proxy.h"
@@ -27,23 +29,55 @@ using master::GetMasterRegistrationRequestPB;
 using master::GetMasterRegistrationResponsePB;
 using master::MasterServiceProxy;
 
-Status GetMasterEntryForHost(rpc::ProxyCache* proxy_cache,
-                             const HostPort& hostport,
-                             int timeout,
-                             ServerEntryPB* e) {
-  MasterServiceProxy proxy(proxy_cache, hostport);
+namespace {
+
+struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;
   rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromMilliseconds(timeout));
-  RETURN_NOT_OK(proxy.GetMasterRegistration(req, &resp, &controller));
-  e->mutable_instance_id()->CopyFrom(resp.instance_id());
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  MasterServiceProxy proxy;
+
+  GetMasterRegistrationData(rpc::ProxyCache* proxy_cache, const HostPort& hp)
+      : proxy(proxy_cache, hp) {}
+};
+
+} // namespace
+
+Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
+                              const std::vector<HostPort>& hostports,
+                              MonoDelta timeout,
+                              ServerEntryPB* e) {
+  CHECK(!hostports.empty());
+
+  boost::container::stable_vector<GetMasterRegistrationData> datas;
+  datas.reserve(hostports.size());
+  std::atomic<GetMasterRegistrationData*> last_data{nullptr};
+  CountDownLatch latch(hostports.size());
+  for (size_t i = 0; i != hostports.size(); ++i) {
+    datas.emplace_back(proxy_cache, hostports[i]);
+    auto& data = datas.back();
+    data.controller.set_timeout(timeout);
+    data.proxy.GetMasterRegistrationAsync(
+        data.req, &data.resp, &data.controller,
+        [&data, &latch, &last_data] {
+      last_data.store(&data, std::memory_order_release);
+      latch.CountDown();
+    });
   }
-  e->mutable_registration()->CopyFrom(resp.registration());
-  e->set_role(resp.role());
-  return Status::OK();
+
+  latch.Wait();
+
+  for (const auto& data : datas) {
+    if (data.resp.has_error()) {
+      continue;
+    }
+    e->mutable_instance_id()->CopyFrom(data.resp.instance_id());
+    e->mutable_registration()->CopyFrom(data.resp.registration());
+    e->set_role(data.resp.role());
+    return Status::OK();
+  }
+
+  return StatusFromPB(last_data.load(std::memory_order_acquire)->resp.error().status());
 }
 
 const HostPortPB& DesiredHostPort(const TSInfoPB& ts_info, const CloudInfoPB& from) {

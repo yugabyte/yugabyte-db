@@ -74,13 +74,13 @@ void TestCQLService::SetUp() {
 
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
-  vector<HostPort> master_addresses;
+  auto master_addresses = std::make_shared<server::MasterAddresses>();
   for (const auto& hp_str : master_rpc_addrs) {
     HostPort hp;
     CHECK_OK(hp.ParseString(hp_str, cql_server_port_));
-    master_addresses.push_back(std::move(hp));
+    master_addresses->push_back({std::move(hp)});
   }
-  opts.SetMasterAddresses(std::make_shared<std::vector<HostPort>>(std::move(master_addresses)));
+  opts.SetMasterAddresses(master_addresses);
 
   io_.reset(new boost::asio::io_service());
   server_.reset(new CQLServer(opts, io_.get(), nullptr, client::LocalTabletFilter()));

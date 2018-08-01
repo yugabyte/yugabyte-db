@@ -150,7 +150,7 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
 ////////////////////////////////////////////////////////////
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
-                                       std::vector<HostPort> addrs,
+                                       const server::MasterAddresses& addrs,
                                        MonoTime deadline,
                                        const shared_ptr<Messenger>& messenger,
                                        rpc::ProxyCache* proxy_cache,
@@ -158,13 +158,14 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        bool should_timeout_to_follower)
     : Rpc(deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
-      addrs_(std::move(addrs)),
       rpcs_(*rpcs),
       should_timeout_to_follower_(should_timeout_to_follower) {
   DCHECK(deadline.Initialized());
 
-  // Using resize instead of reserve to explicitly initialized the
-  // values.
+  for (const auto& list : addrs) {
+    addrs_.insert(addrs_.end(), list.begin(), list.end());
+  }
+  // Using resize instead of reserve to explicitly initialized the values.
   responses_.resize(addrs_.size());
 }
 
@@ -178,19 +179,32 @@ string GetLeaderMasterRpc::ToString() const {
 void GetLeaderMasterRpc::SendRpc() {
   auto self = shared_from_this();
 
-  std::lock_guard<simple_spinlock> l(lock_);
-  for (int i = 0; i < addrs_.size(); i++) {
-    auto handle = rpcs_.Prepare();
-    *handle = std::make_shared<GetMasterRegistrationRpc>(
-        std::bind(
-            &GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode, this, i, _1, self, handle),
-        addrs_[i],
-        retrier().deadline(),
-        retrier().messenger(),
-        &retrier().proxy_cache(),
-        &responses_[i]);
+  size_t size = addrs_.size();
+  std::vector<rpc::Rpcs::Handle> handles;
+  handles.reserve(size);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    pending_responses_ = size;
+    for (int i = 0; i < size; i++) {
+      auto handle = rpcs_.Prepare();
+      if (handle == rpcs_.InvalidHandle()) {
+        GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
+        continue;
+      }
+      *handle = std::make_shared<GetMasterRegistrationRpc>(
+          std::bind(
+              &GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode, this, i, _1, self, handle),
+          addrs_[i],
+          retrier().deadline(),
+          retrier().messenger(),
+          &retrier().proxy_cache(),
+          &responses_[i]);
+      handles.push_back(handle);
+    }
+  }
+
+  for (const auto& handle : handles) {
     (**handle).SendRpc();
-    ++pending_responses_;
   }
 }
 

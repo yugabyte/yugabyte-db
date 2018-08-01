@@ -44,29 +44,28 @@ namespace tserver {
 const char* TabletServerOptions::kServerType = "tserver";
 
 Result<TabletServerOptions> TabletServerOptions::CreateTabletServerOptions() {
-  std::vector<HostPort> master_addresses;
+  server::MasterAddresses master_addresses;
   std::string master_addresses_resolved_str;
-  RETURN_NOT_OK(DetermineMasterAddresses(
+  RETURN_NOT_OK(server::DetermineMasterAddresses(
       "tserver_master_addrs", FLAGS_tserver_master_addrs,
       FLAGS_tserver_master_replication_factor, &master_addresses, &master_addresses_resolved_str));
 
-  TabletServerOptions opts(std::make_shared<vector<HostPort>>(std::move(master_addresses)));
+  TabletServerOptions opts(std::make_shared<server::MasterAddresses>(std::move(master_addresses)));
   opts.master_addresses_flag = master_addresses_resolved_str;
   return opts;
 }
 
-TabletServerOptions::TabletServerOptions(
-    server::ServerBaseOptions::addresses_shared_ptr master_addresses) {
+TabletServerOptions::TabletServerOptions(server::MasterAddressesPtr master_addresses) {
   server_type = kServerType;
   rpc_opts.default_port = TabletServer::kDefaultPort;
 
-  SetMasterAddresses(master_addresses);
+  SetMasterAddresses(std::move(master_addresses));
   ValidateMasterAddresses();
 }
 
 
 void TabletServerOptions::ValidateMasterAddresses() const {
-  addresses_shared_ptr master_addresses = GetMasterAddresses();
+  auto master_addresses = GetMasterAddresses();
   if (master_addresses->empty()) {
     LOG(FATAL) << "No masters were specified in the master addresses flag '"
                << master_addresses_flag << "', but a minimum of one is required.";

@@ -183,9 +183,9 @@ void LeaderMasterCallback(Synchronizer* sync,
 }
 
 void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
-  std::vector<HostPort> master_addrs;
+  server::MasterAddresses master_addrs;
   for (auto i = 0; i != cluster->num_masters(); ++i) {
-    master_addrs.push_back(cluster->master(i)->bound_rpc_addr());
+    master_addrs.push_back({cluster->master(i)->bound_rpc_addr()});
   }
   auto stop_time = std::chrono::steady_clock::now() + 60s;
   std::vector<std::thread> threads;

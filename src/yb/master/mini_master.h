@@ -107,6 +107,7 @@ class MiniMaster {
 
   gscoped_ptr<Master> master_;
   int index_;
+  std::unique_ptr<Tunnel> tunnel_;
 };
 
 } // namespace master

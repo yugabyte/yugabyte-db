@@ -1207,23 +1207,25 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
   const auto kResolveSleepInterval = 1s;
   const auto kResolveMaxIterations = 5;
 
-  for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
-    std::vector<Endpoint> addresses;
-    // Ignore resolve errors for this check.
-    int numIters = 0;
-    Status s = peer_addr.ResolveAddresses(&addresses);
-    while (!s.ok()) {
-      numIters++;
-      if (numIters > kResolveMaxIterations) {
-        return STATUS_FORMAT(ConfigurationError, "Could not resolve address of $0",
-                             peer_addr.ToString());
+  for (const auto& list : *master_addresses_shared_ptr) {
+    for (const HostPort& peer_addr : list) {
+      std::vector<Endpoint> addresses;
+      // Ignore resolve errors for this check.
+      int numIters = 0;
+      Status s = peer_addr.ResolveAddresses(&addresses);
+      while (!s.ok()) {
+        numIters++;
+        if (numIters > kResolveMaxIterations) {
+          return STATUS_FORMAT(ConfigurationError, "Could not resolve address of $0",
+              peer_addr.ToString());
+        }
+        std::this_thread::sleep_for(kResolveSleepInterval);
+        s = peer_addr.ResolveAddresses(&addresses);
       }
-      std::this_thread::sleep_for(kResolveSleepInterval);
-      s = peer_addr.ResolveAddresses(&addresses);
-    }
-    for (auto const& address : addresses) {
-      if (local_hostport == address) {
-        return Status::OK();
+      for (auto const& address : addresses) {
+        if (local_hostport == address) {
+          return Status::OK();
+        }
       }
     }
   }
@@ -4153,6 +4155,10 @@ Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
 
 const NodeInstancePB& CatalogManager::NodeInstance() const {
   return master_->instance_pb();
+}
+
+Status CatalogManager::GetRegistration(ServerRegistrationPB* reg) const {
+  return master_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
 Status CatalogManager::UpdateMastersListInMemoryAndDisk() {

@@ -23,6 +23,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(TEST_check_broadcast_address);
+
 namespace yb {
 namespace client {
 
@@ -36,6 +38,8 @@ class PlacementInfoTest : public YBTest {
 
  protected:
   void SetUp() override {
+    FLAGS_TEST_check_broadcast_address = false;
+
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = 1;

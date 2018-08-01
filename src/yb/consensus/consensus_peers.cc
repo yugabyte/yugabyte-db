@@ -464,47 +464,86 @@ RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
 
 std::shared_ptr<rpc::Messenger> RpcPeerProxyFactory::messenger() const { return messenger_; }
 
-Status SetPermanentUuidForRemotePeer(
-    rpc::ProxyCache* proxy_cache,
-    std::chrono::steady_clock::duration timeout,
-    const CloudInfoPB& from,
-    RaftPeerPB* remote_peer) {
-
-  DCHECK(!remote_peer->has_permanent_uuid());
-  HostPort hostport = HostPortFromPB(DesiredHostPort(*remote_peer, from));
-  auto deadline = std::chrono::steady_clock::now() + timeout;
-
-  auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache, hostport);
-
+struct GetNodeInstanceRequest {
   GetNodeInstanceRequestPB req;
   GetNodeInstanceResponsePB resp;
   rpc::RpcController controller;
+  ConsensusServiceProxy proxy;
 
+  GetNodeInstanceRequest(rpc::ProxyCache* proxy_cache, const HostPort& hostport)
+      : proxy(proxy_cache, hostport) {}
+};
+
+Status SetPermanentUuidForRemotePeer(
+    rpc::ProxyCache* proxy_cache,
+    std::chrono::steady_clock::duration timeout,
+    const std::vector<HostPort>& endpoints,
+    RaftPeerPB* remote_peer) {
+
+  DCHECK(!remote_peer->has_permanent_uuid());
+  auto deadline = std::chrono::steady_clock::now() + timeout;
+
+  std::vector<GetNodeInstanceRequest> requests;
+  requests.reserve(endpoints.size());
+  for (const auto& hp : endpoints) {
+    requests.emplace_back(proxy_cache, hp);
+  }
+
+  CountDownLatch latch(requests.size());
   const auto kMaxWait = 10s;
   BackoffWaiter waiter(deadline, kMaxWait);
   for (;;) {
-    VLOG(2) << "Getting uuid from remote peer. Request: " << req.ShortDebugString();
+    latch.Reset(requests.size());
+    std::atomic<GetNodeInstanceRequest*> last_reply{nullptr};
+    for (auto& request : requests) {
+      request.controller.Reset();
+      request.controller.set_timeout(kMaxWait);
+      VLOG(2) << "Getting uuid from remote peer. Request: " << request.req.ShortDebugString();
 
-    controller.Reset();
-    Status s = proxy->GetNodeInstance(req, &resp, &controller);
-    if (s.ok()) {
-      if (controller.status().ok()) {
-        break;
-      }
-      s = controller.status();
+      request.proxy.GetNodeInstanceAsync(
+          request.req, &request.resp, &request.controller,
+          [&latch, &request, &last_reply] {
+        if (!request.controller.status().IsTimedOut()) {
+          last_reply.store(&request, std::memory_order_release);
+        }
+        latch.CountDown();
+      });
     }
 
-    LOG(WARNING) << "Error getting permanent uuid from config peer " << hostport << ": " << s;
+    latch.Wait();
+
+    for (auto& request : requests) {
+      auto status = request.controller.status();
+      if (status.ok()) {
+        remote_peer->set_permanent_uuid(request.resp.node_instance().permanent_uuid());
+        remote_peer->set_member_type(RaftPeerPB::VOTER);
+        if (request.resp.has_registration()) {
+          CopyRegistration(request.resp.registration(), remote_peer);
+        } else {
+          // Required for backward compatibility.
+          HostPortsToPBs(endpoints, remote_peer->mutable_last_known_private_addr());
+        }
+        return Status::OK();
+      }
+    }
+
+    auto* last_reply_value = last_reply.load(std::memory_order_acquire);
+    if (last_reply_value == nullptr) {
+      last_reply_value = &requests.front();
+    }
+
+    LOG(WARNING) << "Error getting permanent uuid from config peer " << yb::ToString(endpoints)
+                 << ": " << last_reply_value->controller.status();
+
     if (!waiter.Wait()) {
-      return STATUS_FORMAT(TimedOut, "Getting permanent uuid from $0 timed out after $1: $2",
-                           hostport, timeout, s);
+      return STATUS_FORMAT(
+          TimedOut, "Getting permanent uuid from $0 timed out after $1: $2",
+          endpoints, timeout, last_reply_value->controller.status());
     }
 
     LOG(INFO) << "Retrying to get permanent uuid for remote peer: "
-        << remote_peer->ShortDebugString() << " attempt: " << waiter.attempt();
+              << yb::ToString(endpoints) << " attempt: " << waiter.attempt();
   }
-  remote_peer->set_permanent_uuid(resp.node_instance().permanent_uuid());
-  return Status::OK();
 }
 
 }  // namespace consensus

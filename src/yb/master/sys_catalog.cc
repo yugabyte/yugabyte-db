@@ -149,19 +149,23 @@ void SysCatalogTable::Shutdown() {
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
     const RaftConfigPB& config,
     bool check_missing_uuids) {
-  std::shared_ptr<std::vector<HostPort>> loaded_master_addresses =
-    std::make_shared<std::vector<HostPort>>();
+  auto loaded_master_addresses = std::make_shared<server::MasterAddresses>();
   bool has_missing_uuids = false;
-  auto cloud_info = master_->MakeCloudInfoPB();
   for (const auto& peer : config.peers()) {
-    HostPort hp = HostPortFromPB(DesiredHostPort(peer, cloud_info));
     if (check_missing_uuids && !peer.has_permanent_uuid()) {
-      LOG(WARNING) << "No uuid for master peer at " << hp.ToString();
+      LOG(WARNING) << "No uuid for master peer: " << peer.ShortDebugString();
       has_missing_uuids = true;
       break;
     }
 
-    loaded_master_addresses->push_back(hp);
+    loaded_master_addresses->push_back({});
+    auto& list = loaded_master_addresses->back();
+    for (const auto& hp : peer.last_known_private_addr()) {
+      list.push_back(HostPortFromPB(hp));
+    }
+    for (const auto& hp : peer.last_known_broadcast_addr()) {
+      list.push_back(HostPortFromPB(hp));
+    }
   }
 
   if (has_missing_uuids) {
@@ -281,46 +285,31 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
 
 Status SysCatalogTable::SetupConfig(const MasterOptions& options,
                                     RaftConfigPB* committed_config) {
-  RaftConfigPB new_config;
-  new_config.set_opid_index(consensus::kInvalidOpIdIndex);
-
   // Build the set of followers from our server options.
   auto master_addresses = options.GetMasterAddresses();  // ENG-285
-  for (const HostPort& host_port : *master_addresses) {
-    RaftPeerPB peer;
-    // TODO(public_ip)
-    RETURN_NOT_OK(HostPortToPB(host_port, peer.mutable_last_known_private_addr()->Add()));
-    peer.set_member_type(RaftPeerPB::VOTER);
-    new_config.add_peers()->CopyFrom(peer);
-  }
 
   // Now resolve UUIDs.
   // By the time a SysCatalogTable is created and initted, the masters should be
   // starting up, so this should be fine to do.
   DCHECK(master_->messenger());
-  RaftConfigPB resolved_config = new_config;
-  resolved_config.clear_peers();
+  RaftConfigPB resolved_config;
+  resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
   ScopedDnsTracker dns_tracker(setup_config_dns_histogram_);
-  for (const RaftPeerPB& peer : new_config.peers()) {
-    if (peer.has_permanent_uuid()) {
-      resolved_config.add_peers()->CopyFrom(peer);
-    } else {
-      LOG(INFO) << peer.ShortDebugString()
-                << " has no permanent_uuid. Determining permanent_uuid...";
-      RaftPeerPB new_peer = peer;
-      // TODO: Use ConsensusMetadata to cache the results of these lookups so
-      // we only require RPC access to the full consensus configuration on first startup.
-      // See KUDU-526.
-      RETURN_NOT_OK_PREPEND(
-        consensus::SetPermanentUuidForRemotePeer(
-          &master_->proxy_cache(),
-          std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
-          master_->MakeCloudInfoPB(),
-          &new_peer),
-        Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
-      resolved_config.add_peers()->CopyFrom(new_peer);
-    }
+  for (const auto& list : *options.GetMasterAddresses()) {
+    LOG(INFO) << "Determining permanent_uuid for " + yb::ToString(list);
+    RaftPeerPB new_peer;
+    // TODO: Use ConsensusMetadata to cache the results of these lookups so
+    // we only require RPC access to the full consensus configuration on first startup.
+    // See KUDU-526.
+    RETURN_NOT_OK_PREPEND(
+      consensus::SetPermanentUuidForRemotePeer(
+        &master_->proxy_cache(),
+        std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
+        list,
+        &new_peer),
+      Format("Unable to resolve UUID for $0", yb::ToString(list)));
+    resolved_config.add_peers()->Swap(&new_peer);
   }
 
   LOG(INFO) << "Setting up raft configuration: " << resolved_config.ShortDebugString();

@@ -68,13 +68,13 @@ PggateOptions::PggateOptions() {
     master_addresses_flag = master_addresses_env_var_value;
   }
 
-  std::vector<HostPort> master_addresses;
+  server::MasterAddresses master_addresses;
   // TODO: we might have to allow setting master_replication_factor similarly to how it is done
   // in tserver to support master auto-discovery on Kubernetes.
-  CHECK_OK(ServerBaseOptions::DetermineMasterAddresses(
+  CHECK_OK(server::DetermineMasterAddresses(
       "YB_MASTER_ADDRESSES_FOR_PG", master_addresses_flag, /* master_replication_factor */ 0,
       &master_addresses, &master_addresses_flag));
-  SetMasterAddresses(make_shared<std::vector<HostPort>>(master_addresses));
+  SetMasterAddresses(std::make_shared<server::MasterAddresses>(std::move(master_addresses)));
 }
 
 //--------------------------------------------------------------------------------------------------

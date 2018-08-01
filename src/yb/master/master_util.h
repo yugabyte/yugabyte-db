@@ -18,6 +18,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/master/master.pb.h"
+
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
@@ -35,10 +37,10 @@ namespace master {
 
 // Given a hostport, return the master server information protobuf.
 // Does not apply to tablet server.
-CHECKED_STATUS GetMasterEntryForHost(
+CHECKED_STATUS GetMasterEntryForHosts(
     rpc::ProxyCache* proxy_cache,
-    const HostPort& hostport,
-    int timeout,
+    const std::vector<HostPort>& hostports,
+    MonoDelta timeout,
     ServerEntryPB* e);
 
 const HostPortPB& DesiredHostPort(const TSInfoPB& ts_info, const CloudInfoPB& from);

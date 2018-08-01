@@ -57,6 +57,12 @@ class HostPort {
   // If there is no port specified in the string, then 'default_port' is used.
   CHECKED_STATUS ParseString(const std::string& str, uint16_t default_port);
 
+  static Result<HostPort> FromString(const std::string& str, uint16_t default_port) {
+    HostPort result;
+    RETURN_NOT_OK(result.ParseString(str, default_port));
+    return std::move(result);
+  }
+
   // Resolve any addresses corresponding to this host:port pair.
   // Note that a host may resolve to more than one IP address.
   //
@@ -79,7 +85,16 @@ class HostPort {
   static CHECKED_STATUS ParseStrings(
       const std::string& comma_sep_addrs,
       uint16_t default_port,
-      std::vector<HostPort>* res);
+      std::vector<HostPort>* res,
+      const char* separator = ",");
+
+  static Result<std::vector<HostPort>> ParseStrings(
+      const std::string& comma_sep_addrs, uint16_t default_port,
+      const char* separator = ",") {
+    std::vector<HostPort> result;
+    RETURN_NOT_OK(ParseStrings(comma_sep_addrs, default_port, &result, separator));
+    return std::move(result);
+  }
 
   // Takes a vector of HostPort objects and returns a comma separated
   // string containing of "host:port" pairs. This method is the
@@ -99,6 +114,11 @@ class HostPort {
 
   bool operator==(const HostPort& other) const {
     return host() == other.host() && port() == other.port();
+  }
+
+  friend bool operator<(const HostPort& lhs, const HostPort& rhs) {
+    auto cmp_hosts = lhs.host_.compare(rhs.host_);
+    return cmp_hosts < 0 || (cmp_hosts == 0 && lhs.port_ < rhs.port_);
   }
 
  private:

@@ -27,7 +27,7 @@ namespace rpc {
 // Runs io service in specified number of threads.
 class IoThreadPool {
  public:
-  explicit IoThreadPool(size_t num_threads);
+  IoThreadPool(const std::string& name, size_t num_threads);
   ~IoThreadPool();
 
   void Shutdown();

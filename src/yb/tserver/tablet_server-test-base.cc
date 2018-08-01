@@ -92,8 +92,8 @@ void TabletServerTestBase::StartTabletServer() {
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
-  auto addr = std::make_shared<vector<HostPort>>();
-  addr->push_back(HostPort("255.255.255.255", 1));
+  auto addr = std::make_shared<server::MasterAddresses>();
+  addr->push_back({HostPort("255.255.255.255", 1)});
   mini_server_->options()->SetMasterAddresses(addr);
   CHECK_OK(mini_server_->Start());
 
@@ -292,8 +292,8 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
-  auto addr = std::make_shared<vector<HostPort>>();
-  addr->push_back(HostPort("255.255.255.255", 1));
+  auto addr = std::make_shared<server::MasterAddresses>();
+  addr->push_back({HostPort("255.255.255.255", 1)});
   mini_server_->options()->SetMasterAddresses(addr);
   // this should open the tablet created on StartTabletServer()
   RETURN_NOT_OK(mini_server_->Start());

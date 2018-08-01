@@ -52,7 +52,7 @@ class TabletServerOptions : public yb::server::ServerBaseOptions {
   static const char* kServerType;
 
  private:
-  explicit TabletServerOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses);
+  explicit TabletServerOptions(server::MasterAddressesPtr master_addresses);
 
   void ValidateMasterAddresses() const;
 };
