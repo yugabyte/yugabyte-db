@@ -1150,7 +1150,7 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -P '^\[INFO\] BUILD FAILURE$' "$log_path"; then
+  if egrep -q '^\[INFO\] BUILD FAILURE$' "$log_path"; then
     log "Java build or tests failed"
     return 1
   fi

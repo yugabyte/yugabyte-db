@@ -215,7 +215,7 @@ class Messenger : public ProxyContext {
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  int64_t ScheduleOnReactor(const StatusFunctor& func,
+  int64_t ScheduleOnReactor(StatusFunctor func,
                             MonoDelta when,
                             const std::shared_ptr<Messenger>& msgr = nullptr);
 
@@ -332,7 +332,7 @@ class Messenger : public ProxyContext {
   std::shared_ptr<Messenger> retain_self_;
 
   // Id that will be assigned to the next task that is scheduled on the reactor.
-  std::atomic<uint64_t> next_task_id_ = {0};
+  std::atomic<uint64_t> next_task_id_ = {1};
   std::atomic<uint64_t> num_connections_accepted_ = {0};
 
   std::mutex mutex_scheduled_tasks_;

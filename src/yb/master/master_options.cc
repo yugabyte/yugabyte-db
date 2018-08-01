@@ -65,7 +65,7 @@ TAG_FLAG(create_cluster, hidden);
 
 const char* MasterOptions::kServerType = "master";
 
-MasterOptions::MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses) {
+MasterOptions::MasterOptions(server::MasterAddressesPtr master_addresses) {
   server_type = kServerType;
   rpc_opts.default_port = kMasterDefaultPort;
 
@@ -73,13 +73,13 @@ MasterOptions::MasterOptions(server::ServerBaseOptions::addresses_shared_ptr mas
 }
 
 Result<MasterOptions> MasterOptions::CreateMasterOptions() {
-  std::vector<HostPort> master_addresses;
+  server::MasterAddresses master_addresses;
   std::string master_addresses_resolved_str;
-  RETURN_NOT_OK(DetermineMasterAddresses(
+  RETURN_NOT_OK(server::DetermineMasterAddresses(
       "master_addresses", FLAGS_master_addresses, FLAGS_master_replication_factor,
       &master_addresses, &master_addresses_resolved_str));
 
-  MasterOptions opts(make_shared<vector<HostPort>>(std::move(master_addresses)));
+  MasterOptions opts(std::make_shared<server::MasterAddresses>(std::move(master_addresses)));
   opts.master_addresses_flag = master_addresses_resolved_str;
   return opts;
 }

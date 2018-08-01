@@ -35,7 +35,7 @@ using namespace std::literals;
 class SchedulerTest : public RpcTestBase {
  public:
   void SetUp() override {
-    pool_.emplace(1);
+    pool_.emplace("test", 1);
     scheduler_.emplace(&pool_->io_service());
   }
 

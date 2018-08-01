@@ -34,6 +34,8 @@
 
 #include <memory>
 
+#include "yb/server/server_base_options.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -59,7 +61,7 @@ class Heartbeater {
   // heartbeat interval has not expired.
   void TriggerASAP();
 
-  void set_master_addresses(std::shared_ptr<const std::vector<HostPort>> master_addresses);
+  void set_master_addresses(server::MasterAddressesPtr master_addresses);
 
   ~Heartbeater();
 

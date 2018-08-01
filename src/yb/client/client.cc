@@ -892,9 +892,8 @@ Status YBClient::GetMasterUUID(const string& host,
                                string* uuid) {
   HostPort hp(host, port);
   ServerEntryPB server;
-  MonoDelta rpc_timeout = default_rpc_timeout();
-  int timeout_ms = static_cast<int>(rpc_timeout.ToMilliseconds());
-  RETURN_NOT_OK(master::GetMasterEntryForHost(data_->proxy_cache_.get(), hp, timeout_ms, &server));
+  RETURN_NOT_OK(master::GetMasterEntryForHosts(
+      data_->proxy_cache_.get(), {hp}, default_rpc_timeout(), &server));
 
   if (server.has_error()) {
     return STATUS(RuntimeError,

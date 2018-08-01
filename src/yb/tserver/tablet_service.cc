@@ -1255,7 +1255,12 @@ void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
                                            rpc::RpcContext context) {
   DVLOG(3) << "Received Get Node Instance RPC: " << req->DebugString();
   resp->mutable_node_instance()->CopyFrom(tablet_manager_->NodeInstance());
-  context.RespondSuccess();
+  auto status = tablet_manager_->GetRegistration(resp->mutable_registration());
+  if (!status.ok()) {
+    context.RespondFailure(status);
+  } else {
+    context.RespondSuccess();
+  }
 }
 
 namespace {
@@ -1451,15 +1456,8 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
 void TabletServiceImpl::GetMasterAddresses(const GetMasterAddressesRequestPB* req,
                                            GetMasterAddressesResponsePB* resp,
                                            rpc::RpcContext context) {
-  string addrs_response = "";
-  for (const auto& addr : *server_->tablet_manager()->server()->options().GetMasterAddresses()) {
-    addrs_response += (addr.ToString() + ",");
-  }
-  // Remove the last ','.
-  if (!addrs_response.empty()) {
-    addrs_response.pop_back();
-  }
-  resp->set_master_addresses(addrs_response);
+  resp->set_master_addresses(server::MasterAddressesToString(
+      *server_->tablet_manager()->server()->options().GetMasterAddresses()));
   context.RespondSuccess();
 }
 

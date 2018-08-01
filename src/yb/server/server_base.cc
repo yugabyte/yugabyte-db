@@ -89,6 +89,9 @@ TAG_FLAG(generic_svc_queue_length, advanced);
 DEFINE_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
+DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
+            "check broadcast address.");
+
 using namespace std::literals;
 using std::shared_ptr;
 using std::string;
@@ -415,12 +418,11 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
     RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_private_rpc_addresses()),
                           "Failed to add RPC endpoints to registration");
   } else {
-    RETURN_NOT_OK_PREPEND(HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses()),
-                          "Failed to add RPC addresses to registration");
+    HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses());
     LOG(INFO) << "Using private ip address " << reg->private_rpc_addresses(0).host();
   }
 
-  RETURN_NOT_OK(HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses()));
+  HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
 
   if (!rpc_only) {
     std::vector<Endpoint> web_addrs;
@@ -521,7 +523,10 @@ std::string TEST_RpcBindEndpoint(int index, uint16_t port) {
 }
 
 void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
-  const int kMaxServers = 10;
+  if (!FLAGS_TEST_check_broadcast_address) {
+    return;
+  }
+  const int kMaxServers = 20;
   for (int i = 1; i <= kMaxServers; ++i) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.

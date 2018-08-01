@@ -688,11 +688,12 @@ void ReactorTask::Abort(const Status& abort_status) {
 // ------------------------------------------------------------------------------------------------
 
 DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
-                         std::shared_ptr<Messenger> messenger)
+                         const std::shared_ptr<Messenger>& messenger)
     : func_(std::move(func)),
-      when_(std::move(when)),
+      when_(when),
       id_(id),
-      messenger_(std::move(messenger)) {}
+      messenger_(messenger) {
+}
 
 void DelayedTask::Run(Reactor* reactor) {
   DCHECK(reactor_ == nullptr) << "Task has already been scheduled";
@@ -758,6 +759,11 @@ void DelayedTask::AbortTask(const Status& abort_status) {
 }
 
 void DelayedTask::DoAbort(const Status& abort_status) {
+  auto messenger = messenger_.lock();
+  if (messenger != nullptr) {
+    messenger->RemoveScheduledTask(id_);
+  }
+
   AbortTask(abort_status);
 }
 
@@ -775,8 +781,9 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   auto holder = shared_from_this();
 
   reactor_->scheduled_tasks_.erase(shared_from(this));
-  if (messenger_ != nullptr) {
-    messenger_->RemoveScheduledTask(id_);
+  auto messenger = messenger_.lock();
+  if (messenger != nullptr) {
+    messenger->RemoveScheduledTask(id_);
   }
 
   if (EV_ERROR & revents) {
@@ -813,7 +820,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
   });
 }
 
-void Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
+bool Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
   bool was_empty;
   {
     // Even though state_ is atomic, we still need to take the lock to make sure state_
@@ -827,7 +834,7 @@ void Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
       pending_lock.unlock();
       std::lock_guard<std::recursive_mutex> final_abort_serializer(final_abort_mutex_);
       task->Abort(ServiceUnavailableError());
-      return;
+      return false;
     }
     was_empty = pending_tasks_.empty();
     pending_tasks_.emplace_back(std::move(task));
@@ -835,6 +842,8 @@ void Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
   if (was_empty) {
     WakeThread();
   }
+
+  return true;
 }
 
 bool Reactor::DrainTaskQueueAndCheckIfClosing() {

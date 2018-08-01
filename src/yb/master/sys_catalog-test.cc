@@ -157,7 +157,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   // Verify that the cluster uuid was set in the config.
   ASSERT_EQ(FLAGS_cluster_uuid, config.cluster_uuid());
 
-  master->Shutdown();
+  mini_master->Shutdown();
 
   // Test that config.cluster_uuid gets set to a valid uuid when cluster_uuid flag is empty.
   dir = GetTestPath("Master") + "empty_cluster_uuid_test";
@@ -178,7 +178,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   Uuid uuid;
   ASSERT_OK(uuid.FromString(config.cluster_uuid()));
 
-  master->Shutdown();
+  mini_master->Shutdown();
 }
 
 // Test the sys-catalog tables basic operations (add, update, delete,

@@ -1105,6 +1105,10 @@ const NodeInstancePB& TSTabletManager::NodeInstance() const {
   return server_->instance_pb();
 }
 
+Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
+  return server_->GetRegistration(reg, server::RpcOnly::kTrue);
+}
+
 void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
   boost::shared_lock<RWMutex> shared_lock(lock_);
   GetTabletPeersUnlocked(tablet_peers);

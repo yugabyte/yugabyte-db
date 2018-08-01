@@ -227,8 +227,10 @@ Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
 
 Status HostPort::ParseStrings(const string& comma_sep_addrs,
                               uint16_t default_port,
-                              std::vector<HostPort>* res) {
-  std::vector<string> addr_strings = strings::Split(comma_sep_addrs, ",", strings::SkipEmpty());
+                              std::vector<HostPort>* res,
+                              const char* separator) {
+  std::vector<string> addr_strings = strings::Split(
+      comma_sep_addrs, separator, strings::SkipEmpty());
   std::vector<HostPort> host_ports;
   for (const string& addr_string : addr_strings) {
     HostPort host_port;

@@ -377,9 +377,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
 }
 
 bool RaftConsensus::IsRunning() const {
-  ReplicaState::UniqueLock lock;
-  Status s = state_->LockForRead(&lock);
-  if (PREDICT_FALSE(!s.ok())) return false;
+  auto lock = state_->LockForRead();
   return state_->state() == ReplicaState::kRunning;
 }
 
@@ -1030,13 +1028,7 @@ void RaftConsensus::NotifyFailedFollower(const string& uuid,
 
   RaftConfigPB committed_config;
   {
-    ReplicaState::UniqueLock lock;
-    Status s = state_->LockForRead(&lock);
-    if (PREDICT_FALSE(!s.ok())) {
-      LOG(WARNING) << state_->LogPrefixThreadSafe() << fail_msg
-                   << "Unable to lock ReplicaState for read: " << s.ToString();
-      return;
-    }
+    auto lock = state_->LockForRead();
 
     int64_t current_term = state_->GetCurrentTermUnlocked();
     if (current_term != term) {
@@ -2123,6 +2115,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 }
 
 void RaftConsensus::Shutdown() {
+  LOG_WITH_PREFIX(INFO) << "Shutdown.";
+
   // Avoid taking locks if already shut down so we don't violate
   // ThreadRestrictions assertions in the case where the RaftConsensus
   // destructor runs on the reactor thread due to an election callback being
@@ -2164,8 +2158,7 @@ void RaftConsensus::Shutdown() {
 }
 
 RaftPeerPB::Role RaftConsensus::GetActiveRole() const {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
   return state_->GetActiveRoleUnlocked();
 }
 
@@ -2217,8 +2210,7 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
     MonoDelta remaining_old_leader_lease;
     LeaderLeaseStatus leader_lease_status;
     {
-      ReplicaState::UniqueLock lock;
-      RETURN_NOT_OK(state_->LockForRead(&lock));
+      auto lock = state_->LockForRead();
       if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
         return STATUS_FORMAT(IllegalState, "Not the leader: $0", state_->GetActiveRoleUnlocked());
       }
@@ -2395,14 +2387,12 @@ RaftPeerPB::Role RaftConsensus::GetRoleUnlocked() const {
 }
 
 RaftPeerPB::Role RaftConsensus::role() const {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
   return GetRoleUnlocked();
 }
 
 Consensus::LeaderStatus RaftConsensus::leader_status() const {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
 
   if (GetRoleUnlocked() != RaftPeerPB::LEADER) {
     return LeaderStatus::NOT_LEADER;
@@ -2509,8 +2499,7 @@ string RaftConsensus::tablet_id() const {
 ConsensusStatePB RaftConsensus::ConsensusState(
     ConsensusConfigType type,
     LeaderLeaseStatus* leader_lease_status) const {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
   return ConsensusStateUnlocked(type, leader_lease_status);
 }
 
@@ -2530,8 +2519,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
 }
 
 RaftConfigPB RaftConsensus::CommittedConfig() const {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
   return state_->GetCommittedConfigUnlocked();
 }
 
@@ -2544,8 +2532,7 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
   // Dump the queues on a leader.
   RaftPeerPB::Role role;
   {
-    ReplicaState::UniqueLock lock;
-    CHECK_OK(state_->LockForRead(&lock));
+    auto lock = state_->LockForRead();
     role = state_->GetActiveRoleUnlocked();
   }
   if (role == RaftPeerPB::LEADER) {
@@ -2619,8 +2606,7 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
                                        const ElectionResult& result) {
   // Snooze to avoid the election timer firing again as much as possible.
   {
-    ReplicaState::UniqueLock lock;
-    CHECK_OK(state_->LockForRead(&lock));
+    auto lock = state_->LockForRead();
     // We need to snooze when we win and when we lose:
     // - When we win because we're about to disable the timer and become leader.
     // - When we loose or otherwise we can fall into a cycle, where everyone keeps
@@ -2693,8 +2679,7 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
 }
 
 Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
-  ReplicaState::UniqueLock lock;
-  RETURN_NOT_OK(state_->LockForRead(&lock));
+  auto lock = state_->LockForRead();
   if (type == RECEIVED_OPID) {
     *DCHECK_NOTNULL(id) = state_->GetLastReceivedOpIdUnlocked();
   } else if (type == COMMITTED_OPID) {

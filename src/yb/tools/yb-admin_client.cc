@@ -253,7 +253,7 @@ Status ClusterAdminClient::ChangeConfig(
   // Look up RPC address of peer if adding as a new server.
   if (cc_type == consensus::ADD_SERVER) {
     HostPort host_port = VERIFY_RESULT(GetFirstRpcAddressForTS(peer_uuid));
-    RETURN_NOT_OK(HostPortToPB(host_port, peer_pb.mutable_last_known_private_addr()->Add()));
+    HostPortToPB(host_port, peer_pb.mutable_last_known_private_addr()->Add());
   }
 
   // Look up the location of the tablet leader from the Master.

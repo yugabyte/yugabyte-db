@@ -150,7 +150,7 @@ class ReplicaState {
   CHECKED_STATUS LockForConfigChange(UniqueLock* lock) const WARN_UNUSED_RESULT;
 
   // Obtains the lock for a state read, does not check state.
-  CHECKED_STATUS LockForRead(UniqueLock* lock) const WARN_UNUSED_RESULT;
+  UniqueLock LockForRead() const;
 
   // Obtains the lock so that we can advance the majority replicated
   // index and possibly the committed index.

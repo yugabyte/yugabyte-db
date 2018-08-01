@@ -279,8 +279,7 @@ class RaftConsensusQuorumTest : public YBTest {
     ReplicaState* state = peer->GetReplicaStateForTests();
     while (true) {
       {
-        ReplicaState::UniqueLock lock;
-        ASSERT_OK(state->LockForRead(&lock));
+        auto lock = state->LockForRead();
         if (OpIdCompare(state->GetLastReceivedOpIdUnlocked(), to_wait_for) >= 0) {
           return;
         }
@@ -306,8 +305,7 @@ class RaftConsensusQuorumTest : public YBTest {
     OpId committed_op_id;
     while (true) {
       {
-        ReplicaState::UniqueLock lock;
-        ASSERT_OK(state->LockForRead(&lock));
+        auto lock = state->LockForRead();
         committed_op_id = state->GetCommittedOpIdUnlocked();
         if (OpIdCompare(committed_op_id, to_wait_for) >= 0) {
           return;
@@ -571,8 +569,7 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {
     ASSERT_OK(peers_->GetPeerByIdx(kFollower0Idx, &follower0));
 
     ReplicaState* follower0_rs = follower0->GetReplicaStateForTests();
-    ReplicaState::UniqueLock lock;
-    ASSERT_OK(follower0_rs->LockForRead(&lock));
+    auto lock = follower0_rs->LockForRead();
 
     // If the locked replica would stop consensus we would hang here
     // as we wait for operations to be replicated to a majority.
@@ -615,14 +612,12 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusStopsIfAMajorityFallsBehind) {
     shared_ptr<RaftConsensus> follower0;
     ASSERT_OK(peers_->GetPeerByIdx(kFollower0Idx, &follower0));
     ReplicaState* follower0_rs = follower0->GetReplicaStateForTests();
-    ReplicaState::UniqueLock lock0;
-    ASSERT_OK(follower0_rs->LockForRead(&lock0));
+    auto lock0 = follower0_rs->LockForRead();
 
     shared_ptr<RaftConsensus> follower1;
     ASSERT_OK(peers_->GetPeerByIdx(kFollower1Idx, &follower1));
     ReplicaState* follower1_rs = follower1->GetReplicaStateForTests();
-    ReplicaState::UniqueLock lock1;
-    ASSERT_OK(follower1_rs->LockForRead(&lock1));
+    auto lock1 = follower1_rs->LockForRead();
 
     // Append a single message to the queue
     ASSERT_OK(AppendDummyMessage(kLeaderIdx, &round));

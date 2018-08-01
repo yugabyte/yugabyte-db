@@ -103,8 +103,8 @@ class Master : public server::RpcAndWebServerBase {
 
   scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
 
-  void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses) {
-    opts_.SetMasterAddresses(master_addresses);
+  void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) {
+    opts_.SetMasterAddresses(std::move(master_addresses));
   }
 
   const MasterOptions& opts() { return opts_; }

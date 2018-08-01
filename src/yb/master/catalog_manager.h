@@ -985,11 +985,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // table specified by 'tablet_id'.
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
-  virtual CHECKED_STATUS GetTabletPeer(
+  CHECKED_STATUS GetTabletPeer(
       const TabletId& tablet_id,
       std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
-  virtual const NodeInstancePB& NodeInstance() const override;
+  const NodeInstancePB& NodeInstance() const override;
+
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;
 
   bool IsInitialized() const;
 

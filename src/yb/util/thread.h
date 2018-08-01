@@ -355,6 +355,8 @@ Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metr
 // This initializes the thread manager and warms up libunwind's state (see ENG-1402).
 void InitThreading();
 
+void SetThreadName(const std::string& name);
+
 } // namespace yb
 
 #endif /* YB_UTIL_THREAD_H */

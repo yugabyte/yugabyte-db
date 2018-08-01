@@ -133,8 +133,11 @@ Status RpcRetrier::DelayedRetry(
       return result;
     }
   }
+
+  auto retain_rpc = rpc->shared_from_this();
   task_id_ = messenger_->ScheduleOnReactor(
-      std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
+      std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms),
+      messenger_);
   return Status::OK();
 }
 

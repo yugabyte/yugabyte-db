@@ -138,11 +138,9 @@ bool ReplicaState::IsLocked() const {
   return true;
 }
 
-Status ReplicaState::LockForRead(UniqueLock* lock) const {
+ReplicaState::UniqueLock ReplicaState::LockForRead() const {
   ThreadRestrictions::AssertWaitAllowed();
-  UniqueLock l(update_lock_);
-  lock->swap(l);
-  return Status::OK();
+  return UniqueLock(update_lock_);
 }
 
 Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const {
@@ -931,9 +929,12 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
 }
 
 string ReplicaState::LogPrefix() {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(LockForRead(&lock));
-  return LogPrefixUnlocked();
+  if (ThreadRestrictions::IsWaitAllowed()) {
+    auto lock = LockForRead();
+    return LogPrefixUnlocked();
+  } else {
+    return LogPrefixThreadSafe();
+  }
 }
 
 string ReplicaState::LogPrefixUnlocked() const {
