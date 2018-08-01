@@ -36,6 +36,7 @@
 #include <functional>
 #include <map>
 #include <iomanip>
+#include <unordered_set>
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -154,16 +155,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   *output << buf.ToString();
 }
 
-void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
-                                             stringstream* output) {
-  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
-
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
-  *output << std::setprecision(output_precision_);
-  *output << "<h2>Tablet Servers</h2>\n";
-
+  inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
   *output << "<table class='table table-striped'>\n";
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
@@ -180,37 +172,86 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
           << "      <th>Zone</th>\n"
           << "      <th>UUID</th>\n"
           << "    </tr>\n";
-  for (const std::shared_ptr<TSDescriptor>& desc : descs) {
-    const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
-    TSRegistrationPB reg;
-    desc->GetRegistration(&reg);
-    string host_port = Substitute("$0:$1",
-                                  reg.common().http_addresses(0).host(),
-                                  reg.common().http_addresses(0).port());
-    *output << "  <tr>\n";
-    *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
-    *output << "    <td>" << time_since_hb << "</td>";
-    if (ts_manager->IsTSLive(desc)) {
-      *output << "    <td style=\"color:Green\">" << kTserverAlive << "</td>";
-    } else {
-      *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
-    }
+}
 
-    *output << "    <td>" << desc->num_live_replicas() << "</td>";
-    *output << "    <td>" << desc->leader_count() << "</td>";
-    *output << "    <td>" << BytesToHumanReadable
-                             (desc->total_memory_usage()) << "</td>";
-    *output << "    <td>" << BytesToHumanReadable
-                             (desc->total_sst_file_size()) << "</td>";
-    *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
-    *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
-    *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
-    *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
-    *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
-    *output << "    <td>" << desc->permanent_uuid() << "</td>";
-    *output << "  </tr>\n";
+void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
+                                        std::vector<std::shared_ptr<TSDescriptor>>* descs,
+                                        std::stringstream* output) {
+  for (auto desc : *descs) {
+    if (desc->placement_uuid() == current_uuid) {
+      const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
+      TSRegistrationPB reg;
+      desc->GetRegistration(&reg);
+      string host_port = Substitute("$0:$1",
+                                    reg.common().http_addresses(0).host(),
+                                    reg.common().http_addresses(0).port());
+      *output << "  <tr>\n";
+      *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
+      *output << "    <td>" << time_since_hb << "</td>";
+      if (master_->ts_manager()->IsTSLive(desc)) {
+        *output << "    <td style=\"color:Green\">" << kTserverAlive << "</td>";
+      } else {
+        *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
+      }
+
+      *output << "    <td>" << desc->num_live_replicas() << "</td>";
+      *output << "    <td>" << desc->leader_count() << "</td>";
+      *output << "    <td>" << BytesToHumanReadable
+                               (desc->total_memory_usage()) << "</td>";
+      *output << "    <td>" << BytesToHumanReadable
+                               (desc->total_sst_file_size()) << "</td>";
+      *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
+      *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
+      *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
+      *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
+      *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
+      *output << "    <td>" << desc->permanent_uuid() << "</td>";
+      *output << "  </tr>\n";
+    }
   }
   *output << "</table>\n";
+}
+
+void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
+                                             stringstream* output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    return;
+  }
+
+  auto live_id = config.replication_info().live_replicas().placement_uuid();
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  const auto& ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  unordered_set<string> read_replica_uuids;
+  for (auto desc : descs) {
+    if (!read_replica_uuids.count(desc->placement_uuid()) && desc->placement_uuid() != live_id) {
+      read_replica_uuids.insert(desc->placement_uuid());
+    }
+  }
+
+  *output << std::setprecision(output_precision_);
+  *output << "<h2>Tablet Servers</h2>\n";
+
+
+  *output << "<h3 style=\"color:" << kYBOrange << "\">Placement UUID (Live): "
+          << (live_id.empty() ? kNoPlacementUUID : live_id) << "</h3>\n";
+
+  TServerTable(output);
+  TServerDisplay(live_id, &descs, output);
+
+  for (const auto& read_replica_uuid : read_replica_uuids) {
+    *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Placement UUID (Read Replica): "
+            << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
+    TServerTable(output);
+    TServerDisplay(read_replica_uuid, &descs, output);
+  }
 }
 
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,

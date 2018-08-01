@@ -162,7 +162,7 @@ message TableIdentifierPB {
   optional NamespaceIdentifierPB namespace = 3;
 }
 
-// This reprensents one instance of a placement constraint for a table. It is
+// This represents one instance of a placement constraint for a table. It is
 // used to dictate what is the minimum number of expected replicas in a certain
 // cloud/region/zone combo.
 message PlacementBlockPB {
