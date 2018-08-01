@@ -469,10 +469,8 @@ void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags
 TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
-  RaftPeerPB peer;
   TServerDetails* leader = nullptr;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
-  *peer.mutable_last_known_private_addr() = leader->registration.common().private_rpc_addresses();
   const string expected_uuid = leader->instance_id.permanent_uuid();
 
   rpc::MessengerBuilder builder("test builder");
@@ -482,7 +480,12 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 
   // Set a decent timeout for allowing the masters to find eachother.
   const auto kTimeout = 30s;
-  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(&proxy_cache, kTimeout, CloudInfoPB(), &peer));
+  std::vector<HostPort> endpoints;
+  for (const auto& hp : leader->registration.common().private_rpc_addresses()) {
+    endpoints.push_back(HostPortFromPB(hp));
+  }
+  RaftPeerPB peer;
+  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(&proxy_cache, kTimeout, endpoints, &peer));
   ASSERT_EQ(expected_uuid, peer.permanent_uuid());
 }
 

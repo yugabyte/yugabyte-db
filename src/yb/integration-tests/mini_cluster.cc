@@ -254,20 +254,15 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
     new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts, new_idx));
 
   // set the master addresses
-  auto master_addr = std::make_shared<vector<HostPort>>();
+  auto master_addr = std::make_shared<server::MasterAddresses>();
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
-    master_addr->push_back(HostPort(master->bound_rpc_addr()));
+    master_addr->push_back({HostPort(master->bound_rpc_addr())});
     for (const auto& hp : master->master()->opts().broadcast_addresses) {
-      master_addr->push_back(hp);
+      master_addr->back().push_back(hp);
     }
   }
 
-  std::vector<std::string> master_addr_strings;
-  for (const auto& hp : *master_addr) {
-    master_addr_strings.push_back(hp.ToString());
-  }
-
-  tablet_server->options()->master_addresses_flag = JoinStrings(master_addr_strings, ",");
+  tablet_server->options()->master_addresses_flag = server::MasterAddressesToString(*master_addr);
   tablet_server->options()->SetMasterAddresses(master_addr);
   tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];
   RETURN_NOT_OK(tablet_server->Start());

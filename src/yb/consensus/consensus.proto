@@ -419,7 +419,8 @@ message GetNodeInstanceRequestPB {
 }
 
 message GetNodeInstanceResponsePB {
-  required NodeInstancePB node_instance = 1;
+  optional NodeInstancePB node_instance = 1;
+  optional ServerRegistrationPB registration = 2;
 }
 
 // Message that makes the local peer run leader election to be elected leader.

@@ -67,6 +67,8 @@ class TabletPeerLookupIf {
 
   virtual const NodeInstancePB& NodeInstance() const = 0;
 
+  virtual CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const = 0;
+
   virtual CHECKED_STATUS StartRemoteBootstrap(
       const consensus::StartRemoteBootstrapRequestPB& req) = 0;
 };

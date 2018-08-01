@@ -191,11 +191,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   bool LookupTabletUnlocked(const std::string& tablet_id,
                             std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
-  virtual CHECKED_STATUS GetTabletPeer(
+  CHECKED_STATUS GetTabletPeer(
       const std::string& tablet_id,
       std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
-  virtual const NodeInstancePB& NodeInstance() const override;
+  const NodeInstancePB& NodeInstance() const override;
+
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;
 
   // Initiate remote bootstrap of the specified tablet.
   // See the StartRemoteBootstrap() RPC declaration in consensus.proto for details.

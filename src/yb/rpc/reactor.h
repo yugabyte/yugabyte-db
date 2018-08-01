@@ -213,10 +213,10 @@ YB_DEFINE_ENUM(MarkAsDoneResult,
 class DelayedTask : public ReactorTask {
  public:
   DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
-              const std::shared_ptr<Messenger> messenger);
+              const std::shared_ptr<Messenger>& messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
-  virtual void Run(Reactor* reactor) override;
+  void Run(Reactor* reactor) override;
 
   // Could be called from non-reactor thread even before reactor thread shutdown.
   void AbortTask(const Status& abort_status);
@@ -231,7 +231,7 @@ class DelayedTask : public ReactorTask {
   void TimerHandler(ev::timer& rwatcher, int revents); // NOLINT
 
   // User function to invoke when timer fires or when task is aborted.
-  const StatusFunctor func_;
+  StatusFunctor func_;
 
   // Delay to apply to this task.
   const MonoDelta when_;
@@ -245,7 +245,7 @@ class DelayedTask : public ReactorTask {
   // This task's id.
   const int64_t id_;
 
-  std::shared_ptr<Messenger> messenger_;
+  std::weak_ptr<Messenger> messenger_;
 
   // Set to true whenever a Run or Abort methods are called.
   // Guarded by lock_.
@@ -341,11 +341,12 @@ class Reactor {
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
-  void ScheduleReactorTask(ReactorTaskPtr task);
+  // Returns true if task was scheduled.
+  bool ScheduleReactorTask(ReactorTaskPtr task);
 
   template<class F>
-  void ScheduleReactorFunctor(const F& f) {
-    ScheduleReactorTask(MakeFunctorReactorTask(f));
+  bool ScheduleReactorFunctor(const F& f) {
+    return ScheduleReactorTask(MakeFunctorReactorTask(f));
   }
 
  private:

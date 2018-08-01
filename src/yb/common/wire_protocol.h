@@ -60,7 +60,7 @@ void StatusToPB(const Status& status, AppStatusPB* pb);
 Status StatusFromPB(const AppStatusPB& pb);
 
 // Convert the specified HostPort to protobuf.
-Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
+void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 
 // Returns the HostPort created from the specified protobuf.
 HostPort HostPortFromPB(const HostPortPB& host_port_pb);
@@ -77,8 +77,8 @@ CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,
                               google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 // Simply convert the list of host ports into a repeated list of corresponding PB's.
-CHECKED_STATUS HostPortsToPBs(const std::vector<HostPort>& addrs,
-                              google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
+void HostPortsToPBs(const std::vector<HostPort>& addrs,
+                    google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 enum SchemaPBConversionFlags {
   SCHEMA_PB_WITHOUT_IDS = 1 << 0,

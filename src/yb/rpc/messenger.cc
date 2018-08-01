@@ -213,6 +213,11 @@ void Messenger::Shutdown() {
   }
 
   io_thread_pool_.Join();
+
+  {
+    std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+    DCHECK(scheduled_tasks_.empty());
+  }
 }
 
 Status Messenger::ListenAddress(
@@ -337,16 +342,30 @@ Status Messenger::UnregisterService(const string& service_name) {
   }
 }
 
+class NotifyDisconnectedReactorTask : public ReactorTask {
+ public:
+  explicit NotifyDisconnectedReactorTask(OutboundCallPtr call) : call_(std::move(call)) {}
+
+  void Run(Reactor* reactor) override  {
+    call_->Transferred(STATUS_FORMAT(
+        NetworkError, "TEST: Connectivity is broken with $0",
+        call_->conn_id().remote().address()), nullptr);
+  }
+ private:
+  void DoAbort(const Status &abort_status) override {
+    call_->Transferred(abort_status, nullptr);
+  }
+
+  OutboundCallPtr call_;
+};
+
 void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   const auto& remote = call->conn_id().remote();
   Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
 
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
-    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call, remote](Reactor*) {
-      call->Transferred(STATUS_FORMAT(
-          NetworkError, "TEST: Connectivity is broken with $0", remote.address()), nullptr);
-    }));
+    reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(std::move(call)));
     return;
   }
 
@@ -405,7 +424,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       listen_protocol_(bld.listen_protocol_),
       metric_entity_(bld.metric_entity_),
       retain_self_(this),
-      io_thread_pool_(FLAGS_io_thread_pool_size),
+      io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
@@ -471,27 +490,31 @@ Status Messenger::QueueEventOnAllReactors(ServerEventListPtr server_event) {
 }
 
 void Messenger::RemoveScheduledTask(int64_t id) {
-  CHECK_NE(id, -1);
+  CHECK_GT(id, 0);
   std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
   scheduled_tasks_.erase(id);
 }
 
 void Messenger::AbortOnReactor(int64_t task_id) {
   DCHECK(!reactors_.empty());
-  CHECK_NE(task_id, -1);
+  CHECK_GT(task_id, 0);
 
-  std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
-  auto iter = scheduled_tasks_.find(task_id);
-  if (iter != scheduled_tasks_.end()) {
-    const auto& task = iter->second;
+  std::shared_ptr<DelayedTask> task;
+  {
+    std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+    auto iter = scheduled_tasks_.find(task_id);
+    if (iter != scheduled_tasks_.end()) {
+      task = iter->second;
+      scheduled_tasks_.erase(iter);
+    }
+  }
+  if (task) {
     task->AbortTask(STATUS(Aborted, "Task aborted by messenger"));
-    scheduled_tasks_.erase(iter);
   }
 }
 
-int64_t Messenger::ScheduleOnReactor(const StatusFunctor& func,
-                                     MonoDelta when,
-                                     const shared_ptr<Messenger>& msgr) {
+int64_t Messenger::ScheduleOnReactor(
+    StatusFunctor func, MonoDelta when, const shared_ptr<Messenger>& msgr) {
   DCHECK(!reactors_.empty());
 
   // If we're already running on a reactor thread, reuse it.
@@ -510,13 +533,22 @@ int64_t Messenger::ScheduleOnReactor(const StatusFunctor& func,
   if (msgr != nullptr) {
     task_id = next_task_id_.fetch_add(1);
   }
-  auto task = std::make_shared<DelayedTask>(func, when, task_id, msgr);
+  auto task = std::make_shared<DelayedTask>(std::move(func), when, task_id, msgr);
   if (msgr != nullptr) {
     std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
-    scheduled_tasks_[task_id] = task;
+    scheduled_tasks_.emplace(task_id, task);
   }
-  chosen->ScheduleReactorTask(task);
-  return task_id;
+
+  if (chosen->ScheduleReactorTask(task)) {
+    return task_id;
+  }
+
+  {
+    std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+    scheduled_tasks_.erase(task_id);
+  }
+
+  return -1;
 }
 
 void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {

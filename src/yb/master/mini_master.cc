@@ -55,10 +55,6 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 namespace yb {
 namespace master {
 
-std::string MasterBindEndpoint(int index, uint16_t port) {
-  return Format("127.0.0.$0:$1", 20 + index * 2, port);
-}
-
 MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port, int index)
     : running_(false),
       env_(env),
@@ -88,9 +84,13 @@ Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
 }
 
 void MiniMaster::Shutdown() {
+  if (tunnel_) {
+    tunnel_->Shutdown();
+  }
   if (running_) {
     master_->Shutdown();
   }
+  tunnel_.reset();
   running_ = false;
   master_.reset();
 }
@@ -100,9 +100,10 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!master_);
 
   HostPort local_host_port;
-  RETURN_NOT_OK(local_host_port.ParseString(MasterBindEndpoint(index_, rpc_port), rpc_port));
-  auto master_addresses = std::make_shared<std::vector<HostPort>>();
-  master_addresses->push_back(local_host_port);
+  RETURN_NOT_OK(local_host_port.ParseString(
+      server::TEST_RpcBindEndpoint(index_, rpc_port), rpc_port));
+  auto master_addresses = std::make_shared<server::MasterAddresses>();
+  master_addresses->push_back({local_host_port});
   MasterOptions opts(master_addresses);
 
   Status start_status = StartOnPorts(rpc_port, web_port, &opts);
@@ -116,16 +117,30 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                                 MasterOptions* opts) {
-  opts->rpc_opts.rpc_bind_addresses = MasterBindEndpoint(index_, rpc_port);
+  opts->rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
   opts->webserver_opts.port = web_port;
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
+  opts->broadcast_addresses.push_back(VERIFY_RESULT(HostPort::FromString(server::TEST_RpcAddress(
+      index_, server::Private::kFalse), rpc_port)));
+
+  if (!opts->has_placement_cloud()) {
+    opts->SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
+  }
 
   gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
   RETURN_NOT_OK(server->Init());
   RETURN_NOT_OK(server->StartAsync());
 
   master_.swap(server);
+
+  server::TEST_BreakConnectivity(master_->messenger().get(), index_);
+
+  tunnel_ = std::make_unique<Tunnel>(&master_->messenger()->io_service());
+  std::vector<Endpoint> local;
+  RETURN_NOT_OK(opts->broadcast_addresses[0].ResolveAddresses(&local));
+  Endpoint remote = VERIFY_RESULT(ParseEndpoint(opts->rpc_opts.rpc_bind_addresses, 0));
+  RETURN_NOT_OK(tunnel_->Start(local.front(), remote));
 
   running_ = true;
 
@@ -137,14 +152,17 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
   CHECK(!running_);
   CHECK(!master_);
 
-  auto peer_addresses = std::make_shared<std::vector<HostPort>>();
+  auto peer_addresses = std::make_shared<server::MasterAddresses>();
+  peer_addresses->resize(peer_ports.size());
 
   int index = 0;
   for (uint16_t peer_port : peer_ports) {
+    auto& addresses = (*peer_addresses)[index];
     ++index;
-    HostPort hp;
-    RETURN_NOT_OK(hp.ParseString(MasterBindEndpoint(index, peer_port), peer_port));
-    peer_addresses->push_back(std::move(hp));
+    addresses.push_back(VERIFY_RESULT(HostPort::FromString(
+        server::TEST_RpcBindEndpoint(index, peer_port), peer_port)));
+    addresses.push_back(VERIFY_RESULT(HostPort::FromString(
+        server::TEST_RpcAddress(index, server::Private::kFalse), peer_port)));
   }
   MasterOptions opts(peer_addresses);
 
@@ -158,7 +176,7 @@ Status MiniMaster::Restart() {
   Endpoint prev_http = bound_http_addr();
   Shutdown();
 
-  MasterOptions opts(std::make_shared<std::vector<HostPort>>());
+  MasterOptions opts(std::make_shared<server::MasterAddresses>());
   RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
   return WaitForCatalogManagerInit();

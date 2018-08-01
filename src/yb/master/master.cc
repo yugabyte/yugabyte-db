@@ -296,26 +296,34 @@ Status Master::InitMasterRegistration() {
 Status Master::ResetMemoryState(const RaftConfigPB& config) {
   LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
 
-  auto master_addr = std::make_shared<std::vector<HostPort>>();
+  auto master_addr = std::make_shared<server::MasterAddresses>();
   for (const RaftPeerPB& peer : config.peers()) {
-    master_addr->push_back(HostPortFromPB(DesiredHostPort(peer, opts_.MakeCloudInfoPB())));
+    master_addr->push_back({HostPortFromPB(DesiredHostPort(peer, opts_.MakeCloudInfoPB()))});
   }
 
-  SetMasterAddresses(master_addr);
+  SetMasterAddresses(std::move(master_addr));
 
   return Status::OK();
 }
 
 void Master::DumpMasterOptionsInfo(std::ostream* out) {
   *out << "Master options : ";
-  bool need_comma = false;
   auto master_addresses_shared_ptr = opts_.GetMasterAddresses();  // ENG-285
-  for (const HostPort& hp : *master_addresses_shared_ptr) {
-    if (need_comma) {
+  bool first = true;
+  for (const auto& list : *master_addresses_shared_ptr) {
+    if (first) {
+      first = false;
+    } else {
       *out << ", ";
     }
-    need_comma = true;
-    *out << hp.ToString();
+    bool need_comma = false;
+    for (const HostPort& hp : list) {
+      if (need_comma) {
+        *out << "/ ";
+      }
+      need_comma = true;
+      *out << hp.ToString();
+    }
   }
   *out << "\n";
 }
@@ -348,15 +356,15 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
   // vector would sometimes get deallocated by another thread in the middle of that iteration.
   auto master_addresses_shared_ptr = opts_.GetMasterAddresses();
 
-  for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
+  for (const auto& peer_addr : *master_addresses_shared_ptr) {
     ServerEntryPB peer_entry;
-    Status s = GetMasterEntryForHost(
-        proxy_cache_.get(), peer_addr, FLAGS_master_rpc_timeout_ms, &peer_entry);
+    Status s = GetMasterEntryForHosts(
+        proxy_cache_.get(), peer_addr, MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms),
+        &peer_entry);
     if (!s.ok()) {
       s = s.CloneAndPrepend(
-        Substitute("Unable to get registration information for peer ($0)",
-          peer_addr.ToString()));
-      LOG(WARNING) << s.ToString();
+        Format("Unable to get registration information for peer ($0)", peer_addr));
+      LOG(WARNING) << s;
       StatusToPB(s, peer_entry.mutable_error());
     }
     masters->push_back(peer_entry);

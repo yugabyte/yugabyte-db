@@ -48,7 +48,7 @@ class MasterOptions : public server::ServerBaseOptions {
  public:
   static Result<MasterOptions> CreateMasterOptions();
 
-  explicit MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses);
+  explicit MasterOptions(server::MasterAddressesPtr master_addresses);
 
   // Need copy constructor as AtomicBool doesnt allow default copy.
   MasterOptions(const MasterOptions& other)

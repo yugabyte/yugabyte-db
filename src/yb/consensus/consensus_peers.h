@@ -368,7 +368,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
 Status SetPermanentUuidForRemotePeer(
     rpc::ProxyCache* proxy_cache,
     std::chrono::steady_clock::duration timeout,
-    const CloudInfoPB& from,
+    const std::vector<HostPort>& endpoints,
     RaftPeerPB* remote_peer);
 
 }  // namespace consensus

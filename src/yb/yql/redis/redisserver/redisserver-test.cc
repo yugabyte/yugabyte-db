@@ -379,7 +379,7 @@ class TestRedisService : public RedisTableTestBase {
 
   RedisClient& client() {
     if (!test_client_) {
-      io_thread_pool_.emplace(1);
+      io_thread_pool_.emplace("test", 1);
       test_client_ = std::make_shared<RedisClient>("127.0.0.1", server_port());
     }
     return *test_client_;

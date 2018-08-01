@@ -211,10 +211,9 @@ Status StatusFromPB(const AppStatusPB& pb) {
   }
 }
 
-Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
+void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
   host_port_pb->set_host(host_port.host());
   host_port_pb->set_port(host_port.port());
-  return Status::OK();
 }
 
 HostPort HostPortFromPB(const HostPortPB& host_port_pb) {
@@ -239,12 +238,10 @@ Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint)
   return EndpointFromHostPort(host_port, endpoint);
 }
 
-Status HostPortsToPBs(const std::vector<HostPort>& addrs,
-                      RepeatedPtrField<HostPortPB>* pbs) {
+void HostPortsToPBs(const std::vector<HostPort>& addrs, RepeatedPtrField<HostPortPB>* pbs) {
   for (const auto& addr : addrs) {
-    RETURN_NOT_OK(HostPortToPB(addr, pbs->Add()));
+    HostPortToPB(addr, pbs->Add());
   }
-  return Status::OK();
 }
 
 Status AddHostPortPBs(const std::vector<Endpoint>& addrs,

@@ -144,34 +144,49 @@ std::string TabletServer::ToString() const {
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  for (const HostPort& master_addr : *opts_.GetMasterAddresses().get()) {
-    RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(NULL),
-                          strings::Substitute(
-                              "Couldn't resolve master service address '$0'",
-                              master_addr.ToString()));
+  for (const auto& list : *opts_.GetMasterAddresses()) {
+    for (const auto& master_addr : list) {
+      RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(nullptr),
+                            Format("Couldn't resolve master service address '$0'", master_addr));
+    }
   }
   return Status::OK();
 }
 
 Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config) {
-  shared_ptr<vector<HostPort>> new_master_addresses =
-      make_shared<vector<HostPort>>(*(opts_.GetMasterAddresses().get()));
+  auto new_master_addresses = make_shared<server::MasterAddresses>(*opts_.GetMasterAddresses());
 
   SetCurrentMasterIndex(new_config.opid_index());
 
-  CloudInfoPB cloud_info = opts_.MakeCloudInfoPB();
+  for (auto& list : *new_master_addresses) {
+    std::sort(list.begin(), list.end());
+  }
+
   for (const auto& peer : new_config.peers()) {
-     HostPort hp = HostPortFromPB(DesiredHostPort(peer, cloud_info));
-    if (std::find(new_master_addresses->begin(), new_master_addresses->end(), hp) ==
-       new_master_addresses->end()) {
-      new_master_addresses->push_back(std::move(hp));
+    std::vector<HostPort> list;
+    for (const auto& hp : peer.last_known_private_addr()) {
+      list.push_back(HostPortFromPB(hp));
+    }
+    for (const auto& hp : peer.last_known_broadcast_addr()) {
+      list.push_back(HostPortFromPB(hp));
+    }
+    std::sort(list.begin(), list.end());
+    bool found = false;
+    for (const auto& existing : *new_master_addresses) {
+      if (existing == list) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      new_master_addresses->push_back(std::move(list));
     }
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
             << new_config.opid_index() << " old masters="
-            << HostPort::ToCommaSeparatedString(*(opts_.GetMasterAddresses().get()))
-            << " new masters=" << HostPort::ToCommaSeparatedString(*new_master_addresses.get());
+            << yb::ToString(opts_.GetMasterAddresses())
+            << " new masters=" << yb::ToString(new_master_addresses);
 
   opts_.SetMasterAddresses(new_master_addresses);
 

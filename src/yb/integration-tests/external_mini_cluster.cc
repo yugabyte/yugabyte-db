@@ -548,8 +548,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   if (type == consensus::ADD_SERVER) {
     peer_pb.set_member_type(member_type);
   }
-  RETURN_NOT_OK(HostPortToPB(
-      master->bound_rpc_hostport(), peer_pb.mutable_last_known_private_addr()->Add()));
+  HostPortToPB(master->bound_rpc_hostport(), peer_pb.mutable_last_known_private_addr()->Add());
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(type);
   req.set_use_host(use_hostport);
@@ -1012,7 +1011,7 @@ Status ExternalMiniCluster::GetLeaderMasterIndex(int* idx) {
 
 Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   Synchronizer sync;
-  std::vector<HostPort> addrs;
+  server::MasterAddresses addrs;
   HostPort leader_master_hp;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(5));
@@ -1020,7 +1019,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   *idx = 0;  // default to 0'th index, even in case of errors.
 
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
-    addrs.push_back(master->bound_rpc_addr());
+    addrs.push_back({master->bound_rpc_addr()});
   }
   rpc::Rpcs rpcs;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(

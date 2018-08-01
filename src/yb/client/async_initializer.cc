@@ -14,6 +14,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/strings/join.h"
+
 using namespace std::literals;
 
 namespace yb {
@@ -28,10 +30,16 @@ AsyncClientInitialiser::AsyncClientInitialiser(
     : client_future_(client_promise_.get_future()) {
   client_builder_.set_client_name(client_name);
   client_builder_.default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
-  client_builder_.add_master_server_addr(opts->master_addresses_flag);
-  auto master_addresses = opts->GetMasterAddresses();
-  CHECK_NOTNULL(master_addresses.get());
-  client_builder_.set_skip_master_leader_resolution(master_addresses->size() == 1);
+  // Client does not care about master replication factor, it only needs endpoint of master leader.
+  // So we put all known master addresses to speed up leader resolution.
+  std::vector<std::string> master_addresses;
+  for (const auto& list : *opts->GetMasterAddresses()) {
+    for (const auto& hp : list) {
+      master_addresses.push_back(hp.ToString());
+    }
+  }
+  client_builder_.add_master_server_addr(JoinStrings(master_addresses, ","));
+  client_builder_.set_skip_master_leader_resolution(master_addresses.size() == 1);
   client_builder_.set_metric_entity(metric_entity);
   if (num_reactors > 0) {
     client_builder_.set_num_reactors(num_reactors);

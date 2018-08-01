@@ -1060,7 +1060,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
                                                const StatusCallback& cb) {
   DCHECK(deadline.Initialized());
 
-  std::vector<HostPort> master_addrs;
+  server::MasterAddresses master_addrs;
   // Refresh the value of 'master_server_addrs_' if needed.
   Status s = ReinitializeMasterAddresses();
   {
@@ -1085,7 +1085,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
         return;
       }
 
-      master_addrs.insert(master_addrs.end(), addrs.begin(), addrs.end());
+      master_addrs.push_back(std::move(addrs));
     }
   }
 
@@ -1103,9 +1103,9 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   // callback to leader_master_callbacks_.
   std::unique_lock<simple_spinlock> l(leader_master_lock_);
   leader_master_callbacks_.push_back(cb);
-  if (skip_resolution && !master_addrs.empty()) {
+  if (skip_resolution && !master_addrs.empty() && !master_addrs.front().empty()) {
     l.unlock();
-    LeaderMasterDetermined(Status::OK(), master_addrs.front());
+    LeaderMasterDetermined(Status::OK(), master_addrs.front().front());
     return;
   }
   if (leader_master_rpc_ == rpcs_.InvalidHandle()) {
