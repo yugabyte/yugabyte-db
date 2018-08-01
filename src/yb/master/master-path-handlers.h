@@ -65,6 +65,11 @@ class MasterPathHandlers {
 
   ~MasterPathHandlers();
 
+  const string kYBOrange = "#f75821";
+  const string kYBDarkBlue = "#202951";
+  const string kYBLightBlue = "#3eb1cc";
+  const string kYBGray = "#5e647a";
+
   CHECKED_STATUS Register(Webserver* server);
 
   string BytesToHumanReadable (uint64_t bytes);
@@ -78,6 +83,14 @@ class MasterPathHandlers {
   };
 
   const string table_type_[3] = {"User", "Index", "System"};
+
+  const string kNoPlacementUUID = "NONE";
+
+  static inline void TServerTable(std::stringstream* output);
+
+  void TServerDisplay(const std::string& current_uuid,
+                      std::vector<std::shared_ptr<TSDescriptor>>* descs,
+                      std::stringstream* output);
 
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
                                    const Webserver::PathHandlerCallback& callback);
