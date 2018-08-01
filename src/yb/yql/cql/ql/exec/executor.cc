@@ -812,6 +812,13 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
+
+    // If the LIMIT clause has been reached, we are done.
+    if (total_row_count >= limit_pb.value().int32_value()) {
+      current_result->clear_paging_state();
+      return false;
+    }
+
     int64_t limit = limit_pb.value().int32_value() - previous_fetches_row_count;
     if (limit < fetch_limit) {
       fetch_limit = limit;
@@ -819,7 +826,7 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   }
 
   //------------------------------------------------------------------------------------------------
-  // Check if we should fetch more rows (return with 'done=true' otherwise).
+  // Check if we should fetch more rows.
 
   // If there is no paging state the current scan has exhausted its results. The paging state
   // might be non-empty, but just contain num_rows_skipped, in this case the
