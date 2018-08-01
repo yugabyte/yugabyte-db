@@ -35,6 +35,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 
 public class TestSelect extends BaseCQLTest {
   @Test
@@ -481,6 +482,18 @@ public class TestSelect extends BaseCQLTest {
     for (int i = 0; i <= totalShards; i++) {
       testScansWithOffset(i);
     }
+
+    // Test select with offset and limit. Fetch the exact number of rows. Verify that the query
+    // ends explicitly with an empty paging state.
+    for (int i = 0; i < 10; i++) {
+      session.execute(String.format("INSERT INTO test_offset (h1, r1, c1) VALUES (%d, %d, %d)",
+          100, i, i));
+    }
+    ResultSet rs = session.execute("SELECT * FROM test_offset WHERE h1 = 100 OFFSET 3 LIMIT 4");
+    for (int i = 3; i < 3 + 4; i++) {
+      assertEquals(String.format("Row[100, %d, %d]", i, i), rs.one().toString());
+    }
+    assertNull(rs.getExecutionInfo().getPagingState());
 
     // Test Invalid offsets.
     runInvalidStmt("SELECT * FROM test_offset OFFSET -1");
