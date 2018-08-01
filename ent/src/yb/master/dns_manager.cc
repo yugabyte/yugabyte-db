@@ -38,7 +38,7 @@ namespace enterprise {
 
 const MonoDelta DnsManager::kDnsSyncPeriod = MonoDelta::FromSeconds(5);
 
-DnsManager::DnsManager() : pool_(1) {
+DnsManager::DnsManager() : pool_("dns_manager", 1) {
   Aws::InitAPI(aws_options_);
   route53_client_ = Aws::Route53::Route53Client();
 }
