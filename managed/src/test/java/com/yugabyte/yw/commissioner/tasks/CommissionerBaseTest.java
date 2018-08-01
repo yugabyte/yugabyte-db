@@ -32,6 +32,7 @@ import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
+  private int maxRetryCount = 60;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
@@ -89,13 +90,16 @@ public abstract class CommissionerBaseTest extends WithApplication {
   }
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    while(true) {
+    int numRetries = 0;
+    while(numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
       if (taskInfo.getTaskState() == TaskInfo.State.Success ||
           taskInfo.getTaskState() == TaskInfo.State.Failure) {
         return taskInfo;
       }
       Thread.sleep(1000);
+      numRetries++;
     }
+    throw new RuntimeException("WaitFor task exceeded maxRetries!");
   }
 }
