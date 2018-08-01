@@ -930,7 +930,7 @@ ParallelHintCreate(const char *hint_str, const char *keyword,
 {
 	ParallelHint *hint;
 
-	hint = palloc(sizeof(ScanMethodHint));
+	hint = palloc(sizeof(ParallelHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
 	hint->base.hint_keyword = hint_keyword;
