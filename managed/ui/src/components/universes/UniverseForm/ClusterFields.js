@@ -1017,7 +1017,7 @@ export default class ClusterFields extends Component {
                            minVal={Number(this.state.replicationFactor)}/>
                   </Col>
                   <Col lg={7} className="button-group-row">
-                    <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
+                    <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={clusterType === "async" ? [1, 2, 3, 4, 5, 6, 7] : [1, 3, 5, 7] }
                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
                   </Col>
                 </div>
