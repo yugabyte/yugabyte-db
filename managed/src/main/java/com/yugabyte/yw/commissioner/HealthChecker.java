@@ -5,8 +5,10 @@ package com.yugabyte.yw.commissioner;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.google.inject.Inject;
@@ -35,17 +37,22 @@ public class HealthChecker extends Thread {
 
   play.Configuration appConfig;
 
-  // The interval after which progress monitor wakes up and does work.
-  private long HEALTH_CHECK_SLEEP_INTERVAL_MS = 0;
-
-  // Email address from YugaByte to which to send emails, if configured.
+  // Email address from YugaByte to which to send emails, if enabled.
   private String YB_ALERT_EMAIL = null;
 
+  // The interval at which the checker will run.
+  // Can be overridden per customer.
+  private long HEALTH_CHECK_SLEEP_INTERVAL_MS = 0;
+
   // The interval at which to send a status update of all the current universes.
+  // Can be overridden per customer.
   private long STATUS_UPDATE_INTERVAL_MS = 0;
 
-  // Last time we send a status update email, in ms.
-  private long lastStatusUpdateTime = 0;
+  // Last time we sent a status update email per customer.
+  private Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
+
+  // Last time we actually ran the health check script per customer.
+  private Map<UUID, Long> lastCheckTimeMap = new HashMap<>();
 
   // What will run the health checking script.
   static HealthManager healthManager = null;
@@ -67,7 +74,35 @@ public class HealthChecker extends Thread {
         healthManager = null;
       }
       if (healthManager != null) {
-        checkAllUniverses();
+        // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
+        for (Customer c : Customer.getAll()) {
+          CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
+          if (config == null) {
+            // LOG.debug("Skipping customer " + c.uuid + " due to missing alerting config...");
+            continue;
+          }
+          AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+          long now = (new Date()).getTime();
+          long checkIntervalMs = alertingData.checkIntervalMs <= 0
+            ? HEALTH_CHECK_SLEEP_INTERVAL_MS
+            : alertingData.checkIntervalMs;
+          boolean shouldRunCheck = (now - checkIntervalMs) >
+              lastCheckTimeMap.getOrDefault(c.uuid, 0l);
+          long statusUpdateIntervalMs = alertingData.statusUpdateIntervalMs <= 0
+            ? STATUS_UPDATE_INTERVAL_MS
+            : alertingData.statusUpdateIntervalMs;
+          boolean shouldSendStatusUpdate = (now - statusUpdateIntervalMs) >
+              lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0l);
+          // Always do a check if it's time for a status update OR if it's time for a check.
+          if (shouldSendStatusUpdate || shouldRunCheck) {
+            // Since we'll do a check, update this all the time.
+            lastCheckTimeMap.put(c.uuid, now);
+            if (shouldSendStatusUpdate) {
+              lastStatusUpdateTimeMap.put(c.uuid, now);
+            }
+            checkAllUniverses(c, config, shouldSendStatusUpdate);
+          }
+        }
       }
       sleep();
     }
@@ -86,88 +121,67 @@ public class HealthChecker extends Thread {
     YB_ALERT_EMAIL = appConfig.getString("yb.health.default_email");
   }
 
-  /*
-   * Check if we need to send a status update email. Also update the internal tracking of last time
-   * we checked to now.
-   */
-  private boolean checkForStatusUpdate() {
-    long now = (new Date()).getTime();
-    boolean shouldSendStatusUpdate = (now - STATUS_UPDATE_INTERVAL_MS) > lastStatusUpdateTime;
-    if (shouldSendStatusUpdate) {
-      lastStatusUpdateTime = now;
-    }
-    return shouldSendStatusUpdate;
-  }
-
-  private void checkAllUniverses() {
-    boolean shouldSendStatusUpdate = checkForStatusUpdate();
-
-    for (Customer c : Customer.getAll()) {
-      CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
-      if (config == null) {
-        // LOG.debug("Skipping customer " + c.uuid + " due to missing alerting config...");
+  private void checkAllUniverses(Customer c, CustomerConfig config,
+      boolean shouldSendStatusUpdate) {
+    for (Universe u : c.getUniverses()) {
+      UniverseDefinitionTaskParams details = u.getUniverseDetails();
+      if (details == null) {
+        LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
         continue;
       }
-      for (Universe u : c.getUniverses()) {
-        UniverseDefinitionTaskParams details = u.getUniverseDetails();
-        if (details == null) {
-          LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
-          continue;
+      if (details.updateInProgress) {
+        LOG.warn("Skipping universe " + u.name + " due to task in progress...");
+        continue;
+      }
+      LOG.info("Doing health check for universe: " + u.name);
+      // TODO: this should ignore Stopped nodes?
+      String masterNodes = details.nodeDetailsSet.stream()
+          .filter(nd -> nd.isMaster)
+          .map(nd -> nd.cloudInfo.private_ip)
+          .collect(Collectors.joining(","));
+      String tserverNodes = details.nodeDetailsSet.stream()
+          .filter(nd -> nd.isTserver)
+          .map(nd -> nd.cloudInfo.private_ip)
+          .collect(Collectors.joining(","));
+      UniverseDefinitionTaskParams.Cluster primaryCluster = details.getPrimaryCluster();
+      AccessKey accessKey = AccessKey.get(
+          UUID.fromString(primaryCluster.userIntent.provider),
+          primaryCluster.userIntent.accessKeyCode);
+      if (accessKey == null || accessKey.getProviderUUID() == null) {
+        LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+        continue;
+      }
+      String providerCode = Provider.get(accessKey.getProviderUUID()).code;
+      // TODO: we do not really have the ssh ports at this layer..
+      String sshPort = providerCode.equals(Common.CloudType.onprem) ? "22" : "54422";
+      List<String> destinations = new ArrayList<String>();
+      if (config != null) {
+        AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+        if (alertingData.sendAlertsToYb) {
+          destinations.add(YB_ALERT_EMAIL);
         }
-        if (details.updateInProgress) {
-          LOG.warn("Skipping universe " + u.name + " due to task in progress...");
-          continue;
+        if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
+          destinations.add(alertingData.alertingEmail);
         }
-        LOG.info("Doing health check for universe: " + u.name);
-        // TODO: this should ignore Stopped nodes?
-        String masterNodes = details.nodeDetailsSet.stream()
-            .filter(nd -> nd.isMaster)
-            .map(nd -> nd.cloudInfo.private_ip)
-            .collect(Collectors.joining(","));
-        String tserverNodes = details.nodeDetailsSet.stream()
-            .filter(nd -> nd.isTserver)
-            .map(nd -> nd.cloudInfo.private_ip)
-            .collect(Collectors.joining(","));
-        UniverseDefinitionTaskParams.Cluster primaryCluster = details.getPrimaryCluster();
-        AccessKey accessKey = AccessKey.get(
-            UUID.fromString(primaryCluster.userIntent.provider),
-            primaryCluster.userIntent.accessKeyCode);
-        if (accessKey == null || accessKey.getProviderUUID() == null) {
-          LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
-          continue;
-        }
-        String providerCode = Provider.get(accessKey.getProviderUUID()).code;
-        // TODO: we do not really have the ssh ports at this layer..
-        String sshPort = providerCode.equals(Common.CloudType.onprem) ? "22" : "54422";
-        List<String> destinations = new ArrayList<String>();
-        if (config != null) {
-          AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
-          if (alertingData.sendAlertsToYb) {
-            destinations.add(YB_ALERT_EMAIL);
-          }
-          if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
-            destinations.add(alertingData.alertingEmail);
-          }
-        }
-        ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-            masterNodes, tserverNodes, sshPort, u.name, accessKey.getKeyInfo().privateKey,
-            (destinations.size() == 0 ? null : String.join(",", destinations)),
-            shouldSendStatusUpdate);
-        if (response.code == 0) {
-          HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
-        } else {
-          LOG.error(String.format(
-              "Health check script got error: code (%s), msg: ", response.code, response.message));
-        }
+      }
+      String customerTag = String.format("[%s][%s]", c.email, c.code);
+      ShellProcessHandler.ShellResponse response = healthManager.runCommand(
+          masterNodes, tserverNodes, sshPort, u.name, accessKey.getKeyInfo().privateKey,
+          customerTag, (destinations.size() == 0 ? null : String.join(",", destinations)),
+          shouldSendStatusUpdate);
+      if (response.code == 0) {
+        HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
+      } else {
+        LOG.error(String.format(
+            "Health check script got error: code (%s), msg: ", response.code, response.message));
       }
     }
   }
 
   private void sleep() {
-    // Sleep for the required interval.
+    // Sleep for 5 seconds and check if it is time to run the script.
     try {
-      // If the fields have not yet been initialized from the appConfig, then take a short sleep.
-      Thread.sleep(HEALTH_CHECK_SLEEP_INTERVAL_MS > 0 ? HEALTH_CHECK_SLEEP_INTERVAL_MS : 1000);
+      Thread.sleep(5000);
     } catch (InterruptedException e) {
     }
   }

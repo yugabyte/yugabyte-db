@@ -17,7 +17,7 @@ public class HealthManager extends DevopsBase {
 
   public ShellProcessHandler.ShellResponse runCommand(
       String mastersCsv, String tserversCsv, String sshPort, String universeName,
-      String privateKey, String destination, boolean shouldSendStatusUpdate) {
+      String privateKey, String customerTag, String destination, boolean shouldSendStatusUpdate) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -32,6 +32,8 @@ public class HealthManager extends DevopsBase {
     commandArgs.add(universeName);
     commandArgs.add("--identity_file");
     commandArgs.add(privateKey);
+    commandArgs.add("--customer_tag");
+    commandArgs.add(customerTag);
     if (destination != null) {
       commandArgs.add("--destination");
       commandArgs.add(destination);

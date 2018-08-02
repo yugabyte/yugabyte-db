@@ -26,7 +26,7 @@ public class HealthManagerTest extends FakeDBApplication {
 
   private List<String> healthCheckCommand(
       String mastersCsv, String tserversCsv, String sshPort, String universeName, String privateKey,
-      String destination, boolean shouldSendStatusUpdate) {
+      String customerTag, String destination, boolean shouldSendStatusUpdate) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
@@ -41,6 +41,8 @@ public class HealthManagerTest extends FakeDBApplication {
     expectedCommand.add(universeName);
     expectedCommand.add("--identity_file");
     expectedCommand.add(privateKey);
+    expectedCommand.add("--customer_tag");
+    expectedCommand.add(customerTag);
     if (destination != null) {
       expectedCommand.add("--destination");
       expectedCommand.add(destination);
@@ -58,6 +60,7 @@ public class HealthManagerTest extends FakeDBApplication {
     String sshPort = "22";
     String universeName = "universe1";
     String privateKey = "key.pem";
+    String customerTag = "customer.env";
     List<String> destinationOptions = new ArrayList<>();
     destinationOptions.add("test@example.com");
     destinationOptions.add(null);
@@ -65,9 +68,9 @@ public class HealthManagerTest extends FakeDBApplication {
     for (String d : destinationOptions) {
       for (Boolean sendStatus : statusOptions) {
         List<String> expectedCommand = healthCheckCommand(
-            mastersCsv, tserversCsv, sshPort, universeName, privateKey, d, sendStatus);
+            mastersCsv, tserversCsv, sshPort, universeName, privateKey, customerTag, d, sendStatus);
         healthManager.runCommand(
-            mastersCsv, tserversCsv, sshPort, universeName, privateKey, d, sendStatus);
+            mastersCsv, tserversCsv, sshPort, universeName, privateKey, customerTag, d, sendStatus);
         verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
       }
     }
