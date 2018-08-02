@@ -7,14 +7,15 @@ import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
          getNodeInstancesForProvider, getNodesInstancesForProviderResponse, getSuggestedSpotPrice,
          getSuggestedSpotPriceResponse, resetSuggestedSpotPrice } from '../../../actions/cloud';
-import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
+import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
-         fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, deleteUniverseReadReplica, addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, deleteUniverseReadReplicaResponse } from '../../../actions/universe';
+         fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, 
+         addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, openDialog, closeDialog, closeDialogClean } from '../../../actions/universe';
 import { isNonEmptyArray, isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat, isEmptyObject }
-  from 'utils/ObjectUtils';
+  from '../../../utils/ObjectUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 
@@ -57,12 +58,6 @@ const mapDispatchToProps = (dispatch) => {
     submitEditUniverseReadReplica: (values, universeUUID) => {
       dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
         dispatch(editUniverseReadReplicaResponse(response.payload));
-      });
-    },
-
-    submitDeleteUniverseReadReplica: (cluster_uuid, universeUUID) => {
-      dispatch(deleteUniverseReadReplica(cluster_uuid, universeUUID)).then((response) => {
-        dispatch(deleteUniverseReadReplicaResponse(response.payload));
       });
     },
 
@@ -127,6 +122,14 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {
         dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
+    },
+
+    closeModal: () => {
+      dispatch(closeDialogClean());
+    },
+
+    showDeleteReadReplicaModal: () => {
+      dispatch(openDialog("deleteReadReplicaModal"));
     },
 
     fetchNodeInstanceList: (providerUUID) => {

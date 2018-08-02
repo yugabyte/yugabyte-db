@@ -51,6 +51,7 @@ export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 // Universe Modal Tasks
 export const OPEN_DIALOG = 'OPEN_DIALOG';
 export const CLOSE_DIALOG = 'CLOSE_DIALOG';
+export const CLOSE_DIALOG_CLEAN = 'CLOSE_DIALOG_CLEAN';
 
 // Submit G-Flag Tasks
 export const ROLLING_UPGRADE = 'ROLLING_UPGRADE';
@@ -249,9 +250,10 @@ export function editUniverseReadReplicaResponse(response) {
   };
 }
 
-export function deleteUniverseReadReplica(cluster_uuid, universeUUID) {
+export function deleteUniverseReadReplica(clusterUUID, universeUUID, isForceDelete) {
   const cUUID = localStorage.getItem("customer_id");
-  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster/${cluster_uuid}`);
+  const deleteRequestPayload = {isForceDelete: isForceDelete};
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster/${clusterUUID}`, {params: deleteRequestPayload});
   return {
     type: DELETE_READ_REPLICA,
     payload: request
@@ -297,6 +299,12 @@ export function openDialog(data) {
 export function closeDialog() {
   return {
     type: CLOSE_DIALOG
+  };
+}
+
+export function closeDialogClean() {
+  return {
+    type: CLOSE_DIALOG_CLEAN
   };
 }
 

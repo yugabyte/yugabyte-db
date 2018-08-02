@@ -1,11 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Modal, Checkbox } from 'react-bootstrap';
 import { getPromiseState } from 'utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
-import { YBButton } from '../../common/forms/fields';
+import { YBModal, YBCheckBox } from '../../common/forms/fields';
+import { isEmptyObject } from 'utils/ObjectUtils';
+import { getReadOnlyCluster } from "../../../utils/UniverseUtils";
+
 export default class DeleteUniverse extends Component {
   constructor(props) {
     super(props);
@@ -21,8 +23,15 @@ export default class DeleteUniverse extends Component {
   };
 
   confirmDelete = () => {
+    const { type, universe: {currentUniverse: {data}}} = this.props;
     this.props.onHide();
-    this.props.deleteUniverse(this.props.universe.currentUniverse.data.universeUUID, this.state.isForceDelete);
+    if (type === "primary") {
+      this.props.submitDeleteUniverse(data.universeUUID, this.state.isForceDelete);
+    } else {  
+      const cluster = getReadOnlyCluster(data.universeDetails.clusters);
+      if (isEmptyObject(cluster)) return;
+      this.props.submitDeleteReadReplica(cluster.uuid, data.universeUUID, this.state.isForceDelete);
+    }
   };
 
   componentWillReceiveProps(nextProps) {
@@ -33,25 +42,13 @@ export default class DeleteUniverse extends Component {
   }
 
   render() {
-    const { visible, onHide, universe: {currentUniverse: {data: {name}}}} = this.props;
+    const { visible, title, body, onHide, universe: {currentUniverse: { data: { name }}}} = this.props;
     return (
-      <Modal show={visible} onHide={onHide}>
-        <Modal.Header>
-          <Modal.Title>
-            Delete Universe: { name }
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          Are you sure you want to delete the universe. You will lose all your data!
-        </Modal.Body>
-        <Modal.Footer>
-          <Checkbox inline className="delete-universe-check-container" checked={this.state.isForceDelete} onChange={this.toggleForceDelete}>
-            &nbsp;Ignore Errors and Force Delete
-          </Checkbox>
-          <YBButton onClick={this.closeDeleteModal} btnText="No"/>
-          <YBButton btnStyle="primary" onClick={this.confirmDelete} btnText="Yes"/>
-        </Modal.Footer>
-      </Modal>
+      <YBModal visible={ visible }
+                onHide={ onHide } submitLabel={'Yes'} cancelLabel={'No'} showCancelButton={true} title={ title + name } onFormSubmit={ this.confirmDelete }
+                footerAccessory={ <YBCheckBox label={"Ignore Errors and Force Delete"} className="footer-accessory" input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }} />} >
+        { body }
+      </YBModal>
     );
   }
 }
