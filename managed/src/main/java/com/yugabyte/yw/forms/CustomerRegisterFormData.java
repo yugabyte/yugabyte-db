@@ -36,6 +36,10 @@ public class CustomerRegisterFormData {
     public String alertingEmail;
 
     public boolean sendAlertsToYb = false;
+
+    public long checkIntervalMs = 0;
+
+    public long statusUpdateIntervalMs = 0;
   }
 
   public AlertingData alertingData;
