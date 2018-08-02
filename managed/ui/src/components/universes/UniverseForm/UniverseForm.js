@@ -6,14 +6,15 @@ import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isNonEmptyObject, isEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import {YBButton } from 'components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import ClusterFields from './ClusterFields';
-import {getPrimaryCluster, getReadOnlyCluster} from "../../../utils/UniverseUtils";
+import { getPrimaryCluster, getReadOnlyCluster } from "../../../utils/UniverseUtils";
+import { DeleteUniverseContainer } from '../../universes';
 
 const initialState = {
   instanceTypeSelected: '',
@@ -39,12 +40,10 @@ class UniverseForm extends Component {
     this.getFormPayload = this.getFormPayload.bind(this);
     this.configureReadOnlyCluster = this.configureReadOnlyCluster.bind(this);
     this.configurePrimaryCluster = this.configurePrimaryCluster.bind(this);
-    this.deleteReadReplica = this.deleteReadReplica.bind(this);
     this.editReadReplica = this.editReadReplica.bind(this);
     this.addReadReplica = this.addReadReplica.bind(this);
     this.updateFormField = this.updateFormField.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
-    this.handleDeleteReadReplicaClick = this.handleDeleteReadReplicaClick.bind(this);
     this.state = {
       ...initialState,
       currentView: props.type === "Async" ? 'Async' : 'Primary'
@@ -83,16 +82,6 @@ class UniverseForm extends Component {
     }
   }
 
-  handleDeleteReadReplicaClick = () => {
-    if (this.props.type === "Async") {
-      const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
-      const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
-      if (isNonEmptyObject(readOnlyCluster)) {
-        this.deleteReadReplica();
-      }
-    }
-  }
-
   handleSubmitButtonClick = () => {
     const {type } = this.props;
     if (type === "Create") {
@@ -127,13 +116,6 @@ class UniverseForm extends Component {
   editReadReplica = () => {
     const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
     this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
-  }
-
-  deleteReadReplica = () => {
-    const {universe: {currentUniverse: {data}}} = this.props;
-    const cluster = getReadOnlyCluster(data.universeDetails.clusters);
-    if (isEmptyObject(cluster)) return;
-    this.props.submitDeleteUniverseReadReplica(cluster.uuid, data.universeUUID);
   }
 
   componentWillMount() {
@@ -261,7 +243,7 @@ class UniverseForm extends Component {
   render() {
     const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
       getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, fetchNodeInstanceList,
-      resetSuggestedSpotPrice} = this.props;
+      resetSuggestedSpotPrice, showDeleteReadReplicaModal, closeModal} = this.props;
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>
@@ -278,8 +260,8 @@ class UniverseForm extends Component {
       </h2>);
 
     let primaryUniverseName = "";
-    if (this.props.formValues && this.props.formValues.primary) {
-      primaryUniverseName = this.props.formValues.primary.universeName;
+    if (universe && isDefinedNotNull(universe.currentUniverse.data.universeDetails)) {
+      primaryUniverseName = getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters).userIntent.universeName;
     }
 
     const pageTitle = (({type}) => {
@@ -311,7 +293,7 @@ class UniverseForm extends Component {
 
     if (type === "Async") {
       if(readOnlyCluster) {
-        asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Delete this configuration"} onClick={this.handleDeleteReadReplicaClick}/>;
+        asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Delete this configuration"} onClick={showDeleteReadReplicaModal}/>;
       } else {
         //asyncReplicaBtn = <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={"Add Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
       }
@@ -352,7 +334,9 @@ class UniverseForm extends Component {
 
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
-        {pageTitle}
+        <DeleteUniverseContainer visible={universe.showModal && universe.visibleModal==="deleteReadReplicaModal"}
+                               onHide={closeModal} title="Delete Read Replica of " body="Are you sure you want to delete this read replica cluster?" type="async"/>
+        {pageTitle} 
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
           {clusterForm}
           <div className="form-action-button-container">

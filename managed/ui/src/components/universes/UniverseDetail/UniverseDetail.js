@@ -225,7 +225,7 @@ class UniverseDetail extends Component {
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
                                        onHide={closeModal} />
           <DeleteUniverseContainer visible={showModal && visibleModal==="deleteUniverseModal"}
-                                   onHide={closeModal} title="Delete Universe"/>
+                                   onHide={closeModal} title="Delete Universe: " body="Are you sure you want to delete the universe? You will lose all your data!" type="primary"/>
         </Row>
 
         <Measure onMeasure={this.onResize.bind(this)}>
