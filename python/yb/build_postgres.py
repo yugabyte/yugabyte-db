@@ -215,7 +215,8 @@ class PostgresBuilder:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
-        os.environ['YB_NO_REMOTE_BUILD'] = '1'
+        if step == 'configure':
+            os.environ['YB_NO_REMOTE_BUILD'] = '1'
 
         os.environ['YB_BUILD_TYPE'] = self.build_type
 
