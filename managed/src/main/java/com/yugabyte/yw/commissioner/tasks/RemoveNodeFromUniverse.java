@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -89,20 +88,10 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           }
         }
 
-        // Mark the tserver as blacklisted on the master leader.
-        UserIntent userIntent = universe.getUniverseDetails()
-                                        .getClusterByUuid(currentNode.placementUuid)
-                                        .userIntent;
-        createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
-        // Wait for data move and stop the tserver process only if it is reachable.
+        // Stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
         LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
-        // TODO: ENG-3243 we should figure out what to do here for going to nodes < RF
         if (tserverReachable) {
-          createWaitForDataMoveTask()
-              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
@@ -113,6 +102,14 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
         }
       }
+
+      // Mark the tserver as blacklisted on the master leader.
+      createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+      // Wait for tablet quorums to remove the blacklisted tserver.
+      createWaitForDataMoveTask()
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
       // Remove master status (even when it does not exists or is not reachable).
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
