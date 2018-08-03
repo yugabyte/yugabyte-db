@@ -348,6 +348,53 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
                                               log_index, passed.ToString()));
 }
 
+Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
+                                           MasterServiceProxy* master_proxy,
+                                           const MonoDelta& timeout) {
+
+  master::ListTabletServersRequestPB req;
+  master::ListTabletServersResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(timeout);
+
+  // The field primary_only means only tservers that are alive (tservers that have sent at least on
+  // heartbeat in the last FLAG_tserver_unresponsive_timeout_ms milliseconds.)
+  req.set_primary_only(true);
+
+  MonoTime start = MonoTime::Now();
+  MonoDelta passed = MonoDelta::FromMilliseconds(0);
+  while (true) {
+    Status s = master_proxy->ListTabletServers(req, &resp, &controller);
+
+    if (s.ok() &&
+        controller.status().ok() &&
+        !resp.has_error()) {
+      if (resp.servers_size() == n_tservers) {
+        passed = MonoTime::Now().GetDeltaSince(start);
+        return Status::OK();
+      }
+    } else {
+      string error;
+      if (!s.ok()) {
+        error = s.ToString();
+      } else if (!controller.status().ok()) {
+        error = controller.status().ToString();
+      } else {
+        error = resp.error().ShortDebugString();
+      }
+      LOG(WARNING) << "Got error getting list of tablet servers: " << error;
+    }
+    passed = MonoTime::Now().GetDeltaSince(start);
+    if (passed.MoreThan(timeout)) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(50));
+    controller.Reset();
+  }
+  return STATUS(TimedOut, Substitute("Number of alive tservers not equal to $0 after $1 ms. ",
+                                     n_tservers, timeout.ToMilliseconds()));
+}
+
 Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
                              rpc::ProxyCache* proxy_cache,
                              TabletServerMap* ts_map) {
