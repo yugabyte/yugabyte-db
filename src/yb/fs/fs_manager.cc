@@ -77,6 +77,11 @@ DEFINE_string(fs_wal_dirs, "",
                   "also and that's a reasonable default for most use cases.");
 TAG_FLAG(fs_wal_dirs, stable);
 
+DEFINE_string(instance_uuid_override, "",
+              "When creating local instance metadata (for master or tserver) in an empty data "
+              "directory, use this UUID instead of randomly-generated one. Can be used to replace "
+              "a node that had its disk wiped in some scenarios.");
+
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
 using yb::fs::BlockManagerOptions;
@@ -381,7 +386,11 @@ Status FsManager::CreateInitialFileSystemLayout() {
 
 void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
   ObjectIdGenerator oid_generator;
-  metadata->set_uuid(oid_generator.Next());
+  if (!FLAGS_instance_uuid_override.empty()) {
+    metadata->set_uuid(FLAGS_instance_uuid_override);
+  } else {
+    metadata->set_uuid(oid_generator.Next());
+  }
 
   string time_str;
   StringAppendStrftime(&time_str, "%Y-%m-%d %H:%M:%S", time(nullptr), false);
