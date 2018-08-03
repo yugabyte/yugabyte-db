@@ -13,7 +13,7 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import ClusterFields from './ClusterFields';
-import {getReadOnlyCluster} from "../../../utils/UniverseUtils";
+import {getPrimaryCluster, getReadOnlyCluster} from "../../../utils/UniverseUtils";
 
 const initialState = {
   instanceTypeSelected: '',
@@ -46,8 +46,8 @@ class UniverseForm extends Component {
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.handleDeleteReadReplicaClick = this.handleDeleteReadReplicaClick.bind(this);
     this.state = {
-      ...initialState, 
-      currentView: props.type==="Async"?'Async':'Primary'
+      ...initialState,
+      currentView: props.type === "Async" ? 'Async' : 'Primary'
     };
   }
 
@@ -139,13 +139,30 @@ class UniverseForm extends Component {
   componentWillMount() {
     this.props.resetConfig();
     this.setState({editNotAllowed: true});
-
   }
 
   componentWillUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
       this.props.reset();
     }
+  }
+
+  // For Async clusters, we need to fetch the universe name from the
+  // primary cluster metadata
+  getUniverseName = () => {
+    const {formValues, universe} = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].universeName;
+    }
+
+    const {currentUniverse: {data: {universeDetails}}} = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.universeName;
+    }
+    // We shouldn't get here!!!
+    return null;
   }
 
   getFormPayload = () => {
@@ -155,13 +172,17 @@ class UniverseForm extends Component {
     const submitPayload = _.clone(universeConfigTemplate.data, true);
     const self = this;
     const getIntentValues = function (clusterType) {
-      if (!isNonEmptyString(formValues[clusterType].provider) || !isNonEmptyArray(formValues[clusterType].regionList)) {
+      if (!isNonEmptyObject(formValues[clusterType]) ||
+          !isNonEmptyString(formValues[clusterType].provider) ||
+          !isNonEmptyArray(formValues[clusterType].regionList)) {
         return null;
       }
       const clusterIntent = {
         regionList: formValues[clusterType].regionList.map(function (item) {
           return item.value;
         }),
+        // We only have universe name field captured at primary form
+        universeName: self.getUniverseName(),
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
@@ -181,7 +202,6 @@ class UniverseForm extends Component {
         spotPrice: normalizeToPositiveFloat(formValues[clusterType].spotPrice)
       };
       if (clusterType === "primary") {
-        clusterIntent.universeName = formValues[clusterType].universeName;
         clusterIntent.masterGFlags = formValues.primary.masterGFlags.filter((masterFlag) => {
           return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
         }).map((masterFlag) => {
@@ -228,7 +248,7 @@ class UniverseForm extends Component {
       ];
     }
     submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.userIntent !== null));
-    // filter clusters array if configuring(adding only) Read Replica due to server side validation 
+    // filter clusters array if configuring(adding only) Read Replica due to server side validation
     if (type === "Async") {
       submitPayload.clusters = submitPayload.clusters.filter((c)=>(c.clusterType !== "PRIMARY"));
       if (!isDefinedNotNull(getReadOnlyCluster(universeDetails.clusters))) {
@@ -320,7 +340,7 @@ class UniverseForm extends Component {
       fetchNodeInstanceList: fetchNodeInstanceList,
       resetSuggestedSpotPrice: resetSuggestedSpotPrice, reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
-      fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location, 
+      fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,
     };
 
     if (this.state.currentView === "Primary") {
@@ -332,7 +352,7 @@ class UniverseForm extends Component {
 
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
-        {pageTitle} 
+        {pageTitle}
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
           {clusterForm}
           <div className="form-action-button-container">

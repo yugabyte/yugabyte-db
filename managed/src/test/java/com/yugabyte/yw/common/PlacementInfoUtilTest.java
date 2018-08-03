@@ -20,6 +20,8 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -309,7 +311,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
       primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES + 2;
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
@@ -333,7 +336,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       primaryCluster.userIntent.regionList.add(r3.uuid);
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
@@ -354,7 +358,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
       primaryCluster.userIntent.instanceType = "m4.medium";
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
@@ -376,7 +381,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       reduceEachAZsNodesByOne(primaryCluster.placementInfo);
       primaryCluster.userIntent.numNodes = PlacementInfoUtil.getNodeCountInPlacement(primaryCluster.placementInfo);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
@@ -399,7 +405,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       increaseEachAZsNodesByOne(primaryCluster.placementInfo);
       primaryCluster.userIntent.numNodes = PlacementInfoUtil.getNodeCountInPlacement(primaryCluster.placementInfo);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
@@ -423,7 +430,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
@@ -434,7 +442,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       udtp = universe.getUniverseDetails();
       primaryCluster = udtp.getPrimaryCluster();
       primaryCluster.userIntent.numNodes -= 2;
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          primaryCluster.uuid, EDIT);
       nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
@@ -484,7 +493,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UUID univUuid = t.univUuid;
     Universe.saveDetails(univUuid, t.setAzUUIDs());
     t.setAzUUIDs(ud);
-    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(), ud.getPrimaryCluster().uuid);
+    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(),
+        ud.getPrimaryCluster().uuid, CREATE);
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(1, t.universe.getMasters().size());
@@ -512,7 +522,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UserIntent userIntent = getReadReplicaUserIntent(t, 4);
       udtp.upsertCluster(userIntent, null, clusterUUID);
       universe.setUniverseDetails(udtp);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+          clusterUUID, CREATE);
     }
   }
 
@@ -536,7 +547,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
     t.setAzUUIDs(ud);
     Cluster primaryCluster = ud.getPrimaryCluster();
-    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(), primaryCluster.uuid);
+    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(),
+        primaryCluster.uuid, CREATE);
     Set<NodeDetails> nodes = ud.getNodesInCluster(ud.getPrimaryCluster().uuid);
     for (NodeDetails node : nodes) {
       assertEquals("m3.medium", node.cloudInfo.instance_type);
@@ -545,7 +557,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(0, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(3, nodes.size());
     primaryCluster.userIntent.instanceType = newType;
-    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(), primaryCluster.uuid);
+    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(),
+        primaryCluster.uuid, CREATE);
     nodes = ud.getNodesInCluster(primaryCluster.uuid);
     assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
     assertEquals(numTservers, PlacementInfoUtil.getTserversToProvision(nodes).size());
@@ -774,8 +787,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.providerType = onprem;
     utd.upsertPrimaryCluster(userIntent, null);
 
-    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(), utd.getPrimaryCluster().uuid);
-    Set<UUID> azUUIDSet = utd.nodeDetailsSet.stream().map(node -> node.azUuid).collect(Collectors.toSet());
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(),
+        utd.getPrimaryCluster().uuid, CREATE);
+    Set<UUID> azUUIDSet = utd.nodeDetailsSet.stream()
+        .map(node -> node.azUuid).collect(Collectors.toSet());
     assertTrue(azUUIDSet.contains(az1.uuid));
     assertFalse(azUUIDSet.contains(az2.uuid));
     assertFalse(azUUIDSet.contains(az3.uuid));
@@ -803,15 +818,29 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
     UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getTestUserIntent(r, p, i, 3);
+    utd.universeUUID = universe.universeUUID;
+    userIntent.universeName = universe.name;
     userIntent.providerType = CloudType.onprem;
+    userIntent.preferredRegion = userIntent.regionList.get(0);
+    userIntent.ybSoftwareVersion = "1.1";
+
     utd.upsertPrimaryCluster(userIntent, null);
-    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(), utd.getPrimaryCluster().uuid);
-    universe.setUniverseDetails(utd);
-    universe.save();
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId(),
+        utd.getPrimaryCluster().uuid, CREATE);
+
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        universe.setUniverseDetails(utd);
+      }
+    };
+    Universe.saveDetails(universe.universeUUID, updater);
+    universe = Universe.get(universe.universeUUID);
+
     UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
     editTestUTD.getPrimaryCluster().userIntent.numNodes = 4;
-
-    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId(), utd.getPrimaryCluster().uuid);
+    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId(),
+        editTestUTD.getPrimaryCluster().uuid, EDIT);
     Set<UUID> azUUIDSet = editTestUTD.nodeDetailsSet.stream().map(node -> node.azUuid).collect(Collectors.toSet());
     assertTrue(azUUIDSet.contains(az1.uuid));
     assertFalse(azUUIDSet.contains(az2.uuid));
@@ -871,7 +900,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         }
       }
 
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       // Should not change process counts or node distribution.
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
@@ -888,38 +917,38 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     for (TestData t : testData) {
       Universe universe = t.universe;
       UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
-      
+
       UUID readOnlyUuid0 = UUID.randomUUID();
       UUID readOnlyUuid1 = UUID.randomUUID();
       UUID readOnlyUuid2 = UUID.randomUUID();
       UUID readOnlyUuid3 = UUID.randomUUID();
-      
+
       udtp.upsertCluster(null, null, readOnlyUuid0);
       udtp.upsertCluster(null, null, readOnlyUuid1);
-      
+
       PlacementInfoUtil.populateClusterIndices(udtp);
-      
+
       List<Cluster> readOnlyClusters = udtp.getReadOnlyClusters();
       assertEquals(2, readOnlyClusters.size());
       assertEquals(1, readOnlyClusters.get(0).index);
       assertEquals(2, readOnlyClusters.get(1).index);
-      
+
       udtp.upsertCluster(null, null, readOnlyUuid2);
-      
+
       PlacementInfoUtil.populateClusterIndices(udtp);
-      
+
       readOnlyClusters = udtp.getReadOnlyClusters();
       assertEquals(3, readOnlyClusters.size());
       assertEquals(1, readOnlyClusters.get(0).index);
       assertEquals(2, readOnlyClusters.get(1).index);
       assertEquals(3, readOnlyClusters.get(2).index);
-      
+
       udtp.clusters.clear();
-      
+
       udtp.upsertCluster(null, null, readOnlyUuid3);
-      
+
       PlacementInfoUtil.populateClusterIndices(udtp);
-      
+
       readOnlyClusters = udtp.getReadOnlyClusters();
       assertEquals(1, readOnlyClusters.size());
       assertEquals(4, readOnlyClusters.get(0).index);
@@ -936,11 +965,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UserIntent userIntent = getReadReplicaUserIntent(t, 1);
       udtp.upsertCluster(userIntent, null, clusterUUID);
       universe.setUniverseDetails(udtp);
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID, CREATE);
       Cluster readOnlyCluster = udtp.getReadOnlyClusters().get(0);
       assertEquals(readOnlyCluster.uuid, clusterUUID);
       readOnlyCluster.userIntent.numNodes = userIntent.numNodes + 2;
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), clusterUUID, CREATE);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       Set<NodeDetails> readOnlyTservers = PlacementInfoUtil.getTserversToProvision(nodes);

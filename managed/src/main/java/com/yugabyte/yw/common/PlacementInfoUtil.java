@@ -50,6 +50,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import play.libs.Json;
 
 import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 
 
 public class PlacementInfoUtil {
@@ -318,11 +320,12 @@ public class PlacementInfoUtil {
    * @param taskParams : Universe task params.
    * @param customerId : Current customer's id.
    * @param placementUuid : uuid of the cluster user is working on.
+   * @param clusterOpType : Cluster Operation Type (CREATE/EDIT)
    */
   public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
                                               Long customerId,
-                                              UUID placementUuid) {
-
+                                              UUID placementUuid,
+                                              UniverseDefinitionTaskParams.ClusterOperationType clusterOpType) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
 
     // Create node details set if needed.
@@ -342,13 +345,6 @@ public class PlacementInfoUtil {
       }
     }
 
-    int numRO = taskParams.getReadOnlyClusters().size();
-    int numExistingROs =
-        universe == null ? 0 : universe.getUniverseDetails().getReadOnlyClusters().size();
-    boolean readOnlyClusterCreate = numRO == 1 && numExistingROs == 0;
-    boolean readOnlyClusterEdit = numRO == 1 && numExistingROs >= 1;
-    LOG.info("newRO={}, existingRO={}, rocc={}, roce={}.", numRO, numExistingROs,
-             readOnlyClusterCreate, readOnlyClusterEdit);
     String universeName = universe == null ?
         taskParams.getPrimaryCluster().userIntent.universeName :
         universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
@@ -357,11 +353,10 @@ public class PlacementInfoUtil {
     taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
     ConfigureNodesMode mode;
-    boolean isPrimaryClusterEdit = (universe != null) && !readOnlyClusterEdit &&
-                                   !readOnlyClusterCreate;
     // If no placement info, and if this is the first primary or readonly cluster create attempt,
     // choose a new placement.
-    if (cluster.placementInfo == null && (!isPrimaryClusterEdit || readOnlyClusterCreate)) {
+    if (cluster.placementInfo == null &&
+        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.CREATE)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
       LOG.info("Placement created={}.", cluster.placementInfo);
@@ -382,17 +377,20 @@ public class PlacementInfoUtil {
     }
 
     Cluster oldCluster = null;
-    if (isPrimaryClusterEdit) {
-      oldCluster = universe.getUniverseDetails().getPrimaryCluster();
-    } else if (readOnlyClusterEdit) {
-      oldCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
-    }
-    if (oldCluster != null) {
+    if (clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT)) {
+      oldCluster = cluster.clusterType.equals(PRIMARY) ?
+          universe.getUniverseDetails().getPrimaryCluster() :
+          universe.getUniverseDetails().getReadOnlyClusters().get(0);
       verifyEditParams(oldCluster, cluster);
     }
 
-    // For primary cluster edit only there is possiblity of leader changes.
-    if (isPrimaryClusterEdit) {
+    boolean primaryClusterEdit = cluster.clusterType.equals(PRIMARY) &&
+        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT);
+    boolean readOnlyClusterEdit = cluster.clusterType.equals(ASYNC) &&
+        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT);
+
+    // For primary cluster edit only there is possibility of leader changes.
+    if (primaryClusterEdit) {
       assert oldCluster != null;
       if (didAffinitizedLeadersChange(oldCluster.placementInfo,
                                       cluster.placementInfo)) {
@@ -403,6 +401,9 @@ public class PlacementInfoUtil {
         taskParams.nodeDetailsSet.addAll(universe.getNodes());
       }
     } else {
+      if (readOnlyClusterEdit) {
+        assert oldCluster != null;
+      }
       mode = getPureExpandOrShrinkMode(readOnlyClusterEdit ? universe.getUniverseDetails() : null,
                                        taskParams, cluster);
     }
@@ -412,7 +413,7 @@ public class PlacementInfoUtil {
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
       if (isProviderOrRegionChange(
               cluster,
-              (isPrimaryClusterEdit || readOnlyClusterEdit) ?
+              (primaryClusterEdit || readOnlyClusterEdit) ?
                   universe.getNodes() : taskParams.nodeDetailsSet)) {
         LOG.info("Provider or region changed, getting new placement info.");
         cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
@@ -659,11 +660,11 @@ public class PlacementInfoUtil {
   public static void verifyNodesAndRF(ClusterType clusterType, int numNodes, int replicationFactor) {
     // We only support a replication factor of 1,3,5,7 for primary cluster.
     // And any value from 1 to 7 for read only cluster.
-    if ((clusterType == ClusterType.PRIMARY && !supportedRFs.contains(replicationFactor)) ||
-        (clusterType == ClusterType.ASYNC && !supportedReadOnlyRFs.contains(replicationFactor))) {
+    if ((clusterType == PRIMARY && !supportedRFs.contains(replicationFactor)) ||
+        (clusterType == ASYNC && !supportedReadOnlyRFs.contains(replicationFactor))) {
       String errMsg = String.format("Replication factor %d not allowed, must be one of %s.",
                                     replicationFactor,
-                                    Joiner.on(',').join(clusterType == ClusterType.PRIMARY ?
+                                    Joiner.on(',').join(clusterType == PRIMARY ?
                                                         supportedRFs : supportedReadOnlyRFs));
       LOG.error(errMsg);
       throw new UnsupportedOperationException(errMsg);
@@ -1115,7 +1116,7 @@ public class PlacementInfoUtil {
       }
 
       // Select the masters for this cluster based on subnets.
-      if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+      if (cluster.clusterType.equals(PRIMARY)) {
         selectMasters(deltaNodesMap, numMastersToChoose);
       }
     }
@@ -1157,7 +1158,7 @@ public class PlacementInfoUtil {
     }
 
     // Choose new Masters if this is the Primary cluster and we need more Masters.
-    if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+    if (cluster.clusterType.equals(PRIMARY)) {
       Set<NodeDetails> primaryNodes = taskParams.getNodesInCluster(cluster.uuid);
       int numMastersToChoose = cluster.userIntent.replicationFactor - getNumMasters(primaryNodes);
       if (numMastersToChoose > 0 && universe != null) {

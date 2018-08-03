@@ -13,10 +13,10 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
          fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, deleteUniverseReadReplica, addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, deleteUniverseReadReplicaResponse } from '../../../actions/universe';
-import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat }
-  from '../../../utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat, isEmptyObject }
+  from 'utils/ObjectUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
+import { getClusterByType } from '../../../utils/UniverseUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -142,13 +142,49 @@ const formFieldNames =
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync',
-    'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
+    'async.universeName', 'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
     'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
 
+
+function getFormData(currentUniverse, formType, clusterType) {
+  const cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+  const data = {};
+  if (isDefinedNotNull(cluster)) {
+    const userIntent = cluster.userIntent;
+    data[clusterType] = {};
+    data[clusterType].universeName = currentUniverse.data.name;
+    data.formType = formType;
+    data[clusterType].assignPublicIP = userIntent.assignPublicIP;
+    data[clusterType].provider = userIntent.provider;
+    data[clusterType].numNodes = userIntent.numNodes;
+    data[clusterType].replicationFactor = userIntent.replicationFactor;
+    data[clusterType].instanceType = userIntent.instanceType;
+    data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].accessKeyCode = userIntent.accessKeyCode;
+    data[clusterType].spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
+    data[clusterType].useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
+    data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
+    data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
+    data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
+    data[clusterType].ebsType = userIntent.deviceInfo.ebsType;
+
+    data[clusterType].regionList = cluster.regions.map((item) => {
+      return {value: item.uuid, name: item.name, label: item.name};
+    });
+    data[clusterType].masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
+      return {name: key, value: userIntent.masterGFlags[key]};
+    });
+    data[clusterType].tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
+      return {name: key, value: userIntent.tserverGFlags[key]};
+    });
+  }
+  return data;
+}
+
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
-  const data = {
+  let data = {
     "formType": "Create",
     "primary": {
       "universeName": "",
@@ -174,63 +210,10 @@ function mapStateToProps(state, ownProps) {
   };
 
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type !== "Create") {
-    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-    if (isDefinedNotNull(primaryCluster)) {
-      const userIntent = primaryCluster.userIntent;
-      data.primary = {};
-      data.primary.universeName = currentUniverse.data.name;
-      data.formType = "Edit";
-      data.primary.assignPublicIP = userIntent.assignPublicIP;
-      data.primary.provider = userIntent.provider;
-      data.primary.numNodes = userIntent.numNodes;
-      data.primary.replicationFactor = userIntent.replicationFactor;
-      data.primary.instanceType = userIntent.instanceType;
-      data.primary.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-      data.primary.accessKeyCode = userIntent.accessKeyCode;
-      data.primary.spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
-      data.primary.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
-      data.primary.diskIops = userIntent.deviceInfo.diskIops;
-      data.primary.numVolumes = userIntent.deviceInfo.numVolumes;
-      data.primary.volumeSize = userIntent.deviceInfo.volumeSize;
-      data.primary.ebsType = userIntent.deviceInfo.ebsType;
-
-      data.primary.regionList = primaryCluster.regions.map((item) => {
-        return {value: item.uuid, name: item.name, label: item.name};
-      });
-      data.primary.masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
-        return {name: key, value: userIntent.masterGFlags[key]};
-      });
-      data.primary.tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
-        return {name: key, value: userIntent.tserverGFlags[key]};
-      });
-    }
-  
-    if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Async") {
-      const readOnlyCluster = getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
-      data.formType = "Async";
-      if (isDefinedNotNull(readOnlyCluster)) {
-        const userIntent = readOnlyCluster.userIntent;
-        data.async = {};
-        data.async.universeName = currentUniverse.data.name;
-        data.async.assignPublicIP = userIntent.assignPublicIP;
-        data.async.provider = userIntent.provider;
-        data.async.numNodes = userIntent.numNodes;
-        data.async.replicationFactor = userIntent.replicationFactor;
-        data.async.instanceType = userIntent.instanceType;
-        data.async.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-        data.async.accessKeyCode = userIntent.accessKeyCode;
-        data.async.spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
-        data.async.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
-        data.async.diskIops = userIntent.deviceInfo.diskIops;
-        data.async.numVolumes = userIntent.deviceInfo.numVolumes;
-        data.async.volumeSize = userIntent.deviceInfo.volumeSize;
-        data.async.ebsType = userIntent.deviceInfo.ebsType;
-  
-        data.async.regionList = readOnlyCluster.regions.map((item) => {
-          return {value: item.uuid, name: item.name, label: item.name};
-        });
-      }
-    }
+    // TODO (vit.pankin): don't like this type having Async in it,
+    // it should be clusterType or currentView
+    data = getFormData(currentUniverse, ownProps.type,
+      ownProps.type === "Async" ? "async": "primary");
   }
 
   const selector = formValueSelector('UniverseForm');
@@ -270,38 +253,55 @@ const asyncValidate = (values, dispatch ) => {
   });
 };
 
-
-const validate = (values, props) => {
+const validateProviderFields = (values, props, clusterType) => {
+  const errors = {};
+  if (isEmptyObject(values[clusterType])) {
+    return errors;
+  }
   const cloud = props.cloud;
-  let currentProvider = null;
-  const errors = {primary: {}};
-  if (!isNonEmptyObject(values.primary)) {
-    return;
+  let currentProvider;
+  if (isNonEmptyObject(values[clusterType]) && isNonEmptyString(values[clusterType].provider)) {
+    currentProvider = cloud.providers.data.find((provider) => provider.uuid === values[clusterType].provider);
   }
-  if (isNonEmptyObject(values.primary) && isNonEmptyString(values.primary.provider)) {
-    currentProvider = cloud.providers.data.find((provider) => provider.uuid === values.primary.provider);
-  }
-  if (!isNonEmptyString(values.primary.universeName)) {
-    errors.universeName = 'Universe Name is Required';
-  }
-  if (currentProvider && currentProvider.code === "gcp") {
-    const specialCharsRegex = /^[a-z0-9-]*$/;
-    if(!specialCharsRegex.test(values.primary.universeName)) {
-      errors.primary.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
+
+  if (clusterType === "primary") {
+    if (!isNonEmptyString(values[clusterType].universeName)) {
+      errors.universeName = 'Universe Name is Required';
+    }
+    if (currentProvider && currentProvider.code === "gcp") {
+      const specialCharsRegex = /^[a-z0-9-]*$/;
+      if(!specialCharsRegex.test(values[clusterType].universeName)) {
+        errors.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
+      }
     }
   }
-  if (!isDefinedNotNull(values.primary.provider)) {
-    errors.primary.provider = 'Provider Value is Required';
+
+  if (isEmptyObject(currentProvider)) {
+    errors.provider = 'Provider Value is Required';
   }
-  if (!isDefinedNotNull(values.primary.regionList)) {
-    errors.primary.regionList = 'Region Value is Required';
+  if (!isNonEmptyArray(values[clusterType].regionList)) {
+    errors.regionList = 'Region Value is Required';
   }
-  if (!isDefinedNotNull(values.primary.instanceType)) {
-    errors.primary.instanceType = 'Instance Type is Required';
+  if (!isDefinedNotNull(values[clusterType].instanceType)) {
+    errors.instanceType = 'Instance Type is Required';
   }
-  if (values.useSpotPrice && values.primary.spotPrice === '0.00') {
-    errors.primary.spotPrice = 'Spot Price must be greater than $0.00';
+  if (values.useSpotPrice && values[clusterType].spotPrice === '0.00') {
+    errors.spotPrice = 'Spot Price must be greater than $0.00';
   }
+  return errors;
+};
+
+const validate = (values, props) => {
+  const errors = {};
+  const { type } = props;
+  // TODO: once we have the currentView property properly set, we should use that
+  // to do appropriate validation.
+  if (type === "Create" || type === "Edit") {
+    errors.primary = validateProviderFields(values, props, "primary");
+  } else if (type === "Async") {
+    errors.async = validateProviderFields(values, props, "async");
+  }
+
   return errors;
 };
 

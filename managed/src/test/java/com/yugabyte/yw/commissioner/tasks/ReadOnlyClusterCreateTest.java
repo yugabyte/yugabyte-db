@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
@@ -136,7 +135,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   public void testClusterCreateSuccess() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.currentClusterType = "async";
+    taskParams.currentClusterType = ClusterType.ASYNC;
     UserIntent userIntent = new UserIntent();
     Region region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
@@ -148,7 +147,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     userIntent.universeName = defaultUniverse.name;
     taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
     PlacementInfoUtil.updateUniverseDefinition(taskParams, defaultCustomer.getCustomerId(),
-        taskParams.clusters.get(0).uuid);
+        taskParams.clusters.get(0).uuid, UniverseDefinitionTaskParams.ClusterOperationType.CREATE);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
