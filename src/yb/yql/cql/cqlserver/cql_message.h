@@ -622,12 +622,12 @@ class ResultResponse : public CQLResponse {
         TIME      = 0x0012, // Since V4
         SMALLINT  = 0x0013, // Since V4
         TINYINT   = 0x0014, // Since V4
-        JSONB     = 0x0019,
         LIST      = 0x0020,
         MAP       = 0x0021,
         SET       = 0x0022,
         UDT       = 0x0030,
-        TUPLE     = 0x0031
+        TUPLE     = 0x0031,
+        JSONB     = 0x0080  // Yugabyte specific types start here
       };
 
       Id id = Id::CUSTOM;
