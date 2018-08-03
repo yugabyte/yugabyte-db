@@ -22,6 +22,8 @@ namespace rpc {
 
 void RpcCall::Transferred(const Status& status, Connection* conn) {
   if (state_ != TransferState::PENDING) {
+    LOG(DFATAL) << "Transferred for " << ToString() << " executed twice, state: "
+                << yb::ToString(state_) << ", status: " << status;
     return;
   }
   state_ = status.ok() ? TransferState::FINISHED : TransferState::ABORTED;
