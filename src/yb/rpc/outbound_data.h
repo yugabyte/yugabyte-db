@@ -40,9 +40,7 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
   // Serializes the data to be sent out via the RPC framework.
   virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
 
-  virtual std::string ToString() const {
-    return "<ToStringNotImplemented>";
-  }
+  virtual std::string ToString() const = 0;
 
   virtual bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 

@@ -129,14 +129,16 @@ Trace* InboundCall::trace() {
 
 void InboundCall::RecordCallReceived() {
   TRACE_EVENT_ASYNC_BEGIN0("rpc", "InboundCall", this);
-  DCHECK(!timing_.time_received.Initialized());  // Protect against multiple calls.
+  // Protect against multiple calls.
+  LOG_IF_WITH_PREFIX(DFATAL, timing_.time_received.Initialized()) << "Already marked as received";
   VLOG(4) << "Received call " << ToString();
   timing_.time_received = MonoTime::Now();
 }
 
 void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
-  DCHECK(!timing_.time_handled.Initialized());  // Protect against multiple calls.
+  // Protect against multiple calls.
+  LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
   timing_.time_handled = MonoTime::Now();
   VLOG(4) << "Handling call " << ToString();
   incoming_queue_time->Increment(
@@ -148,7 +150,8 @@ MonoDelta InboundCall::GetTimeInQueue() const {
 }
 
 void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
-  DCHECK(!timing_.time_completed.Initialized());  // Protect against multiple calls.
+  // Protect against multiple calls.
+  LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";
   timing_.time_completed = MonoTime::Now();
   VLOG(4) << "Completed handling call " << ToString();
   if (handler_run_time) {
@@ -169,7 +172,12 @@ bool InboundCall::ClientTimedOut() const {
 void InboundCall::QueueResponse(bool is_success) {
   TRACE_TO(trace_, is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
-  connection()->context().QueueResponse(connection(), shared_from(this));
+  bool expected = false;
+  if (responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    connection()->context().QueueResponse(connection(), shared_from(this));
+  } else {
+    LOG_WITH_PREFIX(DFATAL) << "Response already queued";
+  }
 }
 
 std::string InboundCall::LogPrefix() const {

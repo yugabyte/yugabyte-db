@@ -163,6 +163,8 @@ class InboundCall : public RpcCall {
   // Timing information related to this RPC call.
   InboundCallTiming timing_;
 
+  std::atomic<bool> responded_{false};
+
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
