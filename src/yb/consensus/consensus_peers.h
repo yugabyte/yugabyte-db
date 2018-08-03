@@ -114,9 +114,9 @@ namespace consensus {
 //  SignalRequest()                    return
 //
 class Peer;
-typedef std::unique_ptr<Peer> PeerPtr;
+typedef std::shared_ptr<Peer> PeerPtr;
 
-class Peer {
+class Peer : public std::enable_shared_from_this<Peer> {
  public:
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
@@ -193,6 +193,9 @@ class Peer {
   // Signals there was an error sending the request to the peer.
   void ProcessResponseError(const Status& status);
 
+  // Returns true if the peer is closed and the calling function should return.
+  bool IsClosedOnResponse();
+
   std::string LogPrefixUnlocked() const;
 
   const std::string& tablet_id() const { return tablet_id_; }
@@ -246,6 +249,14 @@ class Peer {
   mutable simple_spinlock peer_lock_;
   std::atomic<State> state_;
   Consensus* consensus_ = nullptr;
+
+  // Used to keep object alive when we are waiting for a response after closing the peer.
+  PeerPtr shared_from_this_ = nullptr;
+
+  // True if we sent a request and are waiting for a response. Peer::Close() uses this value to
+  // determine whether it should wait for sem_ to get unlocked, or take ownership while
+  // we are waiting for a response.
+  bool waiting_for_response_ = false;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for

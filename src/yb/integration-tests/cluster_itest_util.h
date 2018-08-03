@@ -182,6 +182,13 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
                                   const std::vector<TServerDetails*>& replicas,
                                   const MonoDelta& timeout);
 
+// Wait until the number of alive tservers is equal to n_tservers. An alive tserver is a tserver
+// that has heartbeated the master at least once in the last FLAGS_raft_heartbeat_interval_ms
+// milliseconds.
+Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
+                                           master::MasterServiceProxy* master_proxy,
+                                           const MonoDelta& timeout);
+
 // Get the consensus state from the given replica.
 Status GetConsensusState(const TServerDetails* replica,
                          const TabletId& tablet_id,
