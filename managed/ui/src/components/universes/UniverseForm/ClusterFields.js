@@ -15,7 +15,7 @@ import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import {getPrimaryCluster, getClusterByType, getReadOnlyCluster} from "../../../utils/UniverseUtils";
+import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -25,6 +25,7 @@ const DEFAULT_INSTANCE_TYPE_MAP = {
 
 
 const initialState = {
+  universeName: '',
   instanceTypeSelected: '',
   azCheckState: true,
   providerSelected: '',
@@ -95,13 +96,19 @@ export default class ClusterFields extends Component {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
       updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
     }
+
+    if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
+      this.setState({universeName: formValues['primary'].universeName});
+      updateFormField(`${clusterType}.universeName`, formValues['primary'].universeName);
+    }
+
     // This flag will prevent configure from being fired on component load
     if (formValues && isNonEmptyObject(formValues[clusterType])) {
       this.setState({nodeSetViaAZList: true});
     }
 
-    const isEditReadOnlyFlow = this.props.type === "Async" && this.state.isReadOnlyExists;
-    if (this.props.type === "Edit" || isEditReadOnlyFlow) {
+    const isEditReadOnlyFlow = type === "Async" && this.state.isReadOnlyExists;
+    if (type === "Edit" || isEditReadOnlyFlow) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
       const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
@@ -386,10 +393,11 @@ export default class ClusterFields extends Component {
   }
 
   getCurrentUserIntent = () => {
-    const {formValues, clusterType} = this.props;
+    const {formValues, clusterType, universe: { currentUniverse } } = this.props;
+    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
     if (formValues[clusterType]) {
       return {
-        universeName: formValues['primary'].universeName,
+        universeName: primaryCluster.userIntent.universeName,
         numNodes: formValues[clusterType].numNodes,
         provider: formValues[clusterType].provider,
         providerType: this.getCurrentProvider(formValues[clusterType].provider).code,
@@ -527,13 +535,13 @@ export default class ClusterFields extends Component {
 
   handleUniverseConfigure(universeTaskParams) {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
-    
+
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function() {
       return isNonEmptyArray(regionList) && isNonEmptyString(instanceType);
     };
-    
+
     if (verifyIntentConditions() ) {
       if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails) && isDefinedNotNull(getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType))) {
         // cluster set: main edit flow
@@ -546,7 +554,7 @@ export default class ClusterFields extends Component {
           this.props.submitConfigureUniverse(universeTaskParams);
         }
       } else {
-        // Create flow  
+        // Create flow
         if (isEmptyObject(universeConfigTemplate.data)) {
           this.props.submitConfigureUniverse(universeTaskParams);
         } else {
@@ -554,13 +562,33 @@ export default class ClusterFields extends Component {
           if(!isDefinedNotNull(currentClusterConfiguration)) {
             this.props.submitConfigureUniverse(universeTaskParams);
           } else if (!areIntentsEqual(
-                      getClusterByType(universeTaskParams.clusters, clusterType).userIntent, 
+                      getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
                       currentClusterConfiguration.userIntent) ) {
             this.props.submitConfigureUniverse(universeTaskParams);
           }
         }
       }
     }
+  }
+
+  updateTaskParams = (universeTaskParams, userIntent, clusterType) => {
+    const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
+    universeTaskParams.currentClusterType = clusterType.toUpperCase();
+    const isEdit = this.props.type === "Edit" ||
+      (this.props.type === "Async" && this.state.isReadOnlyExists);
+
+    if (isDefinedNotNull(cluster)) {
+      cluster.userIntent = userIntent;
+    } else {
+      if (isEmptyObject(universeTaskParams.clusters)) {
+        universeTaskParams.clusters = [];
+      }
+      universeTaskParams.clusters.push({
+        clusterType: clusterType.toUpperCase(),
+        userIntent: userIntent
+      });
+    }
+    universeTaskParams.clusterOperation = isEdit ? "EDIT": "CREATE";
   }
 
   configureUniverseNodeList() {
@@ -570,8 +598,6 @@ export default class ClusterFields extends Component {
     if (isNonEmptyObject(universeConfigTemplate.data)) {
       universeTaskParams = _.clone(universeConfigTemplate.data, true);
     }
-
-
     if (this.props.type === "Async" && !isDefinedNotNull(getReadOnlyCluster(currentUniverse.data.universeDetails.clusters))) {
       universeTaskParams = _.clone(currentUniverse.data.universeDetails, true);
     }
@@ -579,7 +605,7 @@ export default class ClusterFields extends Component {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
-    
+
     const userIntent = {
       universeName: formValues[clusterType].universeName,
       provider: formValues[clusterType].provider,
@@ -616,32 +642,7 @@ export default class ClusterFields extends Component {
       }
     });
 
-    if (clusterType === "primary") {
-      const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-      universeTaskParams.currentClusterType = "PRIMARY";
-      if (isDefinedNotNull(primaryCluster)) {
-        primaryCluster.userIntent = userIntent;
-      } else {
-        if (isNonEmptyArray(universeTaskParams.clusters)) {
-          universeTaskParams.clusters.push({clusterType: 'PRIMARY', userIntent: userIntent});
-        } else {
-          universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
-        }
-      }
-    } else {
-      const asyncCluster = getReadOnlyCluster(universeTaskParams.clusters);
-      universeTaskParams.currentClusterType = "ASYNC";
-      if (isDefinedNotNull(asyncCluster)) {
-        asyncCluster.userIntent = userIntent;
-      } else {
-        if (isNonEmptyArray(universeTaskParams.clusters)) {
-          universeTaskParams.clusters.push({clusterType: 'ASYNC', userIntent: userIntent});
-        } else {
-          universeTaskParams.clusters = [{clusterType: 'ASYNC', userIntent: userIntent}];
-        }
-      }
-    }
-    universeTaskParams.currentClusterType = clusterType;
+    this.updateTaskParams(universeTaskParams, userIntent, clusterType);
     universeTaskParams.userAZSelected = false;
     this.handleUniverseConfigure(universeTaskParams);
   }

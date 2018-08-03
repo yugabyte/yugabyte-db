@@ -98,6 +98,9 @@ public class UniverseController extends AuthenticatedController {
   public Result configure(UUID customerUUID) {
     try {
       ObjectNode formData = (ObjectNode)request().body().asJson();
+      ClusterType currentClusterType = ClusterType.valueOf(formData.get("currentClusterType").asText());
+      UniverseDefinitionTaskParams.ClusterOperationType clusterOpType =
+          UniverseDefinitionTaskParams.ClusterOperationType.valueOf(formData.get("clusterOperation").asText());
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
       // Verify the customer with this universe is present.
       Customer customer = Customer.get(customerUUID);
@@ -106,10 +109,10 @@ public class UniverseController extends AuthenticatedController {
       }
 
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
-      Cluster c = taskParams.currentClusterType.equals("primary") ? 
+      Cluster c = currentClusterType.equals(ClusterType.PRIMARY) ?
           taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);         
       if (checkIfNodeParamsValid(taskParams, c)) {
-        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid, clusterOpType);
       } else {
         return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + 
             c.userIntent.instanceType);
