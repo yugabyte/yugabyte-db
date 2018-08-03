@@ -138,8 +138,8 @@ Status Peer::Init() {
 Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   // If the peer is currently sending, return Status::OK().
   // If there are new requests in the queue we'll get them on ProcessResponse().
-  std::unique_lock<Semaphore> lock(sem_, std::try_to_lock);
-  if (!lock.owns_lock()) {
+  std::unique_lock<Semaphore> sem_lock(sem_, std::try_to_lock);
+  if (!sem_lock.owns_lock()) {
     return Status::OK();
   }
 
@@ -174,15 +174,16 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   auto status = raft_pool_token_->SubmitClosure(
       Bind(&Peer::SendNextRequest, Unretained(this), trigger_mode));
   if (status.ok()) {
-    lock.release();
+    sem_lock.release();
   }
   return status;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
+  PeerPtr this_peer;
   DCHECK_EQ(sem_.GetValue(), 0) << "Cannot send request";
 
-  std::unique_lock<Semaphore> lock(sem_, std::adopt_lock);
+  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
 
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
@@ -202,12 +203,42 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   }
 
   if (PREDICT_FALSE(needs_remote_bootstrap)) {
-    Status s = SendRemoteBootstrapRequest();
-    if (!s.ok()) {
+    Status status;
+    if (!FLAGS_enable_remote_bootstrap) {
+      failed_attempts_++;
+      status = STATUS(NotSupported, "remote bootstrap is disabled");
+    } else {
+      status = queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_);
+    }
+    if (!status.ok()) {
       LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to generate remote bootstrap request for peer: "
                                         << s.ToString();
-    } else {
-      lock.release();
+      return;
+    }
+
+    {
+      std::lock_guard<simple_spinlock> l(peer_lock_);
+      if (state_.load(std::memory_order_acquire) != kPeerClosed) {
+        waiting_for_response_ = true;
+        s = SendRemoteBootstrapRequest();
+        if (s.ok()) {
+          // If we successfully sent the request, release ownership of sem_lock so the semaphore
+          // won't be unlocked when we exits this method.
+          sem_lock.release();
+        } else {
+          // Semaphore will be unlocked when we exit this method since sem_lock wasn't released.
+          waiting_for_response_ = false;
+        }
+      } else {
+        // We don't release ownership sem_lock here so when we exit the method the semaphore will
+        // be unlocked.
+        LOG_WITH_PREFIX_UNLOCKED(INFO)
+            << "Didn't send remote bootstrap request because peer is closed";
+        // Keep this object alive until the spinlock has been unlocked (this_peer was the first
+        // variable declared, so it should be the last one to be released).
+        this_peer = shared_from_this();
+        shared_from_this_ = nullptr;
+      }
     }
     return;
   }
@@ -218,7 +249,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
     if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
-      lock.unlock();
+      sem_lock.unlock();
       consensus::ChangeConfigRequestPB req;
       consensus::ChangeConfigResponsePB resp;
 
@@ -233,7 +264,9 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       LOG(INFO) << "Sending ChangeConfig request";
       auto status = consensus_->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       if (PREDICT_FALSE(!status.ok())) {
-        LOG(WARNING) << "Unable to change role for peer " << uuid << ": " << status.ToString(false);
+        LOG(WARNING) << "Unable to change role for peer "
+                     << uuid << ": "
+                     << status.ToString(false);
         // Since we released the semaphore, we need to call SignalRequest again to send a message
         status = SignalRequest(RequestTriggerMode::kAlwaysSend);
         if (PREDICT_FALSE(!status.ok())) {
@@ -265,17 +298,59 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
   controller_.Reset();
 
-  lock.release();
-  proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
-                      std::bind(&Peer::ProcessResponse, this));
+  {
+    std::lock_guard<simple_spinlock> l(peer_lock_);
+    if (state_.load(std::memory_order_acquire) != kPeerClosed) {
+      waiting_for_response_ = true;
+      auto s = raft_pool_token_->SubmitFunc([this, trigger_mode]() {
+          this->proxy_->UpdateAsync(&this->request_, trigger_mode, &this->response_,
+                                    &this->controller_, std::bind(&Peer::ProcessResponse, this));
+        });
+      if (s.ok()) {
+        // If we successfully sent the request, release ownership of sem_lock so the semaphore
+        // won't be unlocked when we exits this method.
+        sem_lock.release();
+      } else {
+        // Semaphore will be unlocked when we exit this method since sem_lock wasn't released.
+        LOG(ERROR) << "Unable to send request " << request_.ShortDebugString();
+      }
+    } else {
+      // We don't release ownership of sem_lock here so when we exit the method the semaphore will
+      // be unlocked.
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Didn't send request because peer is closed";
+      // Keep this object alive until the spinlock has been unlocked (this_peer was the first
+      // variable declared, so it should be the last one to be released).
+      this_peer = shared_from_this();
+      shared_from_this_ = nullptr;
+    }
+  }
+}
+
+bool Peer::IsClosedOnResponse() {
+  PeerPtr this_peer;
+  std::lock_guard<simple_spinlock> l(peer_lock_);
+  if (state_.load(std::memory_order_acquire) == kPeerClosed) {
+    // Keep this object alive until the spinlock has been unlocked (this_peer was the first
+    // variable declared, so it should be the last one to be released).
+    this_peer = shared_from_this();
+    shared_from_this_ = nullptr;
+    return true;
+  } else {
+    waiting_for_response_ = false;
+  }
+  return false;
 }
 
 void Peer::ProcessResponse() {
+  if (IsClosedOnResponse()) {
+    return;
+  }
+
   // Note: This method runs on the reactor thread.
 
   DCHECK_EQ(sem_.GetValue(), 0) << "Got a response when nothing was pending";
 
-  std::unique_lock<Semaphore> lock(sem_, std::adopt_lock);
+  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
 
   if (!controller_.status().ok()) {
     if (controller_.status().IsRemoteError()) {
@@ -323,41 +398,46 @@ void Peer::ProcessResponse() {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to process peer response: " << s.ToString()
         << ": " << response_.ShortDebugString();
   } else {
-    lock.release();
+    sem_lock.release();
   }
 }
 
 void Peer::DoProcessResponse() {
+  PeerPtr this_peer;
   DCHECK_EQ(0, sem_.GetValue());
-  std::unique_lock<Semaphore> lock(sem_, std::adopt_lock);
+  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
 
   failed_attempts_ = 0;
   bool more_pending = false;
   queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);
 
-  if (more_pending && state_.load(std::memory_order_acquire) != kPeerClosed) {
-    lock.release();
+  if (state_.load(std::memory_order_acquire) == kPeerClosed) {
+    // Keep this object alive until the spinlock has been unlocked (this_peer was the first
+    // variable declared, so it should be the last one to be released).
+    this_peer = shared_from_this();
+    std::lock_guard<simple_spinlock> l(peer_lock_);
+    shared_from_this_ = nullptr;
+  } else if (more_pending) {
+    sem_lock.release();
     SendNextRequest(RequestTriggerMode::kAlwaysSend);
   }
 }
 
 Status Peer::SendRemoteBootstrapRequest() {
-  if (!FLAGS_enable_remote_bootstrap) {
-    failed_attempts_++;
-    return STATUS(NotSupported, "remote bootstrap is disabled");
-  }
-
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Sending request to remotely bootstrap";
-  RETURN_NOT_OK(queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_));
   controller_.Reset();
-  proxy_->StartRemoteBootstrap(
-      &rb_request_, &rb_response_, &controller_,
-      std::bind(&Peer::ProcessRemoteBootstrapResponse, this));
-  return Status::OK();
+  return raft_pool_token_->SubmitFunc([this]() {
+    proxy_->StartRemoteBootstrap(&rb_request_, &rb_response_, &controller_,
+                                 std::bind(&Peer::ProcessRemoteBootstrapResponse, this));
+  });
 }
 
 void Peer::ProcessRemoteBootstrapResponse() {
-  std::unique_lock<Semaphore> lock(sem_, std::adopt_lock);
+  if (IsClosedOnResponse()) {
+    return;
+  }
+
+  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
 
   // We treat remote bootstrap as fire-and-forget.
   if (rb_response_.has_error()) {
@@ -385,25 +465,40 @@ void Peer::Close() {
 
   // If the peer is already closed return.
   {
-    std::lock_guard<simple_spinlock> lock(peer_lock_);
+    std::lock_guard<simple_spinlock> l(peer_lock_);
     if (state_ == kPeerClosed) return;
     DCHECK(state_ == kPeerRunning || state_ == kPeerStarted) << "Unexpected state: " << state_;
+    shared_from_this_ = shared_from_this();
     state_ = kPeerClosed;
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Closing peer: " << peer_pb_.permanent_uuid();
   }
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Closing peer: " << peer_pb_.permanent_uuid();
 
   // Acquire the semaphore to wait for any concurrent request to finish.  They will see the state_
   // == kPeerClosed and not start any new requests, but we can't currently cancel the already-sent
   // ones. (see KUDU-699)
-  std::lock_guard<Semaphore> l(sem_);
+  std::unique_lock<Semaphore> sem_lock(sem_, std::defer_lock);
+
+  // If we are not waiting for a response, wait until the semaphore has been unlocked. This is safe
+  // because as soon as any of the methods see that this peer has been closed, it will stop sending
+  // any request, and unlock the semaphore.
+  if (!waiting_for_response_) {
+    sem_lock.lock();
+    std::lock_guard<simple_spinlock> l(peer_lock_);
+    shared_from_this_ = nullptr;
+  }
+
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
-  // We don't own the ops (the queue does).
-  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);
   replicate_msg_refs_.clear();
+  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Closed peer: " << peer_pb_.permanent_uuid()
+                                 << " Pending response: " << waiting_for_response_;
 }
 
 Peer::~Peer() {
-  Close();
+  CHECK_EQ(state_.load(std::memory_order_acquire), kPeerClosed)
+      << "Peer cannot be implicitly closed";
+
+  // We don't own the ops (the queue does).
+  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);
 }
 
 RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
