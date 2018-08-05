@@ -21,6 +21,10 @@
 
 .universe-detail-btn-group .dropdown {
   padding: 0;
+  
+  .dropdown-menu-right {
+    min-width: 235px;
+  }
 }
 
 .universe-detail-status-container {

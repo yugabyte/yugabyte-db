@@ -171,6 +171,23 @@
   }
 }
 
+.btn-marked {
+  position: relative;
+  &:after {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: $YB_FAIL_COLOR;
+    top: -4px;
+    right: -4px;
+    content: '';
+  }
+  &[aria-expanded="true"]:after {
+    content: none;
+  }
+}
+
 .btn-group {
   &.open {
     .btn-default, .btn-default:hover, .btn-default:focus {
@@ -262,6 +279,10 @@
       margin-right: 10px;
     }
   }
+  .badge {
+    background-color: $YB_FAIL_COLOR;
+    margin-top: 2px;
+  }
 }
 
 .pagination{
@@ -284,6 +305,8 @@
 .yb-input-checkbox {
   width: 30px;
   height: 30px;
+  vertical-align: middle;
+  margin-top: 0;
 }
 
 .yb-add-button {
