@@ -830,19 +830,22 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+         Matchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+        new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
     taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
-    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), taskParams.getPrimaryCluster().uuid,
-        CREATE);
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(),
+        taskParams.getPrimaryCluster().uuid, CREATE);
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     // Needed for the universe_resources call.
     DeviceInfo di = new DeviceInfo();
@@ -850,12 +853,13 @@ public class UniverseControllerTest extends WithApplication {
     di.numVolumes = 2;
     primaryCluster.userIntent.deviceInfo = di;
 
-    List<PlacementInfo.PlacementAZ> azList = primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
-    assertEquals(azList.size(), 2);
+    List<PlacementInfo.PlacementAZ> azList =
+        primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    assertEquals(azList.size(), 3);
+
     PlacementInfo.PlacementAZ paz = azList.get(0);
     paz.numNodesInAZ += 2;
     primaryCluster.userIntent.numNodes += 2;
-    Map<UUID, Integer> azUUIDToNumNodeMap = getAzUuidToNumNodes(primaryCluster.placementInfo);
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     topJson.put("currentClusterType", "PRIMARY");
     topJson.put("clusterOperation", "CREATE");
@@ -868,13 +872,11 @@ public class UniverseControllerTest extends WithApplication {
     assertTrue(json.get("nodeDetailsSet").isArray());
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(7, nodeDetailJson.size());
-    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
     // Now test the resource endpoint also works.
     // TODO: put this in its own test once we refactor the provider+region+az creation and payload
     // generation...
     url = "/api/customers/" + customer.uuid + "/universe_resources";
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
-    System.out.println(Json.stringify(topJson));
     assertOk(result);
   }
 

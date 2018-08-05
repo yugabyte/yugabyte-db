@@ -493,8 +493,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UUID univUuid = t.univUuid;
     Universe.saveDetails(univUuid, t.setAzUUIDs());
     t.setAzUUIDs(ud);
-    PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId(),
-        ud.getPrimaryCluster().uuid, CREATE);
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(1, t.universe.getMasters().size());
