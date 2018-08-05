@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -52,6 +53,8 @@ import play.libs.Json;
 import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.DELETE;
 
 
 public class PlacementInfoUtil {
@@ -69,6 +72,10 @@ public class PlacementInfoUtil {
 
   // Constants used to determine tserver, master, and node liveness.
   public static final String UNIVERSE_ALIVE_METRIC = "node_up";
+
+  // Maximum number of zones that are used for placement, for display with UI. Independent of
+  // replication factor for now.
+  private static final int MAX_ZONES = 3;
 
   // Mode of node distribution across the given AZ configuration.
   enum ConfigureNodesMode {
@@ -315,6 +322,17 @@ public class PlacementInfoUtil {
     }
   }
 
+  // Calculate the number of zones covered by the given placement info.
+  private static int getNumZones(PlacementInfo placementInfo) {
+   int numZones = 0;
+   for (PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementRegion region : cloud.regionList) {
+        numZones += region.azList.size();
+      }
+    }
+    return numZones;
+  }
+
   /**
    * Helper API to set some of the non user supplied information in task params.
    * @param taskParams : Universe task params.
@@ -325,7 +343,7 @@ public class PlacementInfoUtil {
   public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
                                               Long customerId,
                                               UUID placementUuid,
-                                              UniverseDefinitionTaskParams.ClusterOperationType clusterOpType) {
+                                              ClusterOperationType clusterOpType) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
 
     // Create node details set if needed.
@@ -356,7 +374,7 @@ public class PlacementInfoUtil {
     // If no placement info, and if this is the first primary or readonly cluster create attempt,
     // choose a new placement.
     if (cluster.placementInfo == null &&
-        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.CREATE)) {
+        clusterOpType.equals(ClusterOperationType.CREATE)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
       LOG.info("Placement created={}.", cluster.placementInfo);
@@ -377,17 +395,32 @@ public class PlacementInfoUtil {
     }
 
     Cluster oldCluster = null;
-    if (clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT)) {
+    if (clusterOpType.equals(ClusterOperationType.EDIT)) {
+      if (universe == null) {
+        throw new IllegalArgumentException("Cannot perform edit operation on " +
+            cluster.clusterType + " without universe.");
+      }
+
       oldCluster = cluster.clusterType.equals(PRIMARY) ?
           universe.getUniverseDetails().getPrimaryCluster() :
           universe.getUniverseDetails().getReadOnlyClusters().get(0);
+
+      if (!oldCluster.uuid.equals(placementUuid)) {
+        throw new IllegalArgumentException("Mismatched uuid between existing cluster " +
+            oldCluster.uuid + " and requested " + placementUuid + " for " + cluster.clusterType +
+            " cluster in universe " + universe.universeUUID);
+       }
+
       verifyEditParams(oldCluster, cluster);
     }
 
     boolean primaryClusterEdit = cluster.clusterType.equals(PRIMARY) &&
-        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT);
+        clusterOpType.equals(ClusterOperationType.EDIT);
     boolean readOnlyClusterEdit = cluster.clusterType.equals(ASYNC) &&
-        clusterOpType.equals(UniverseDefinitionTaskParams.ClusterOperationType.EDIT);
+        clusterOpType.equals(ClusterOperationType.EDIT);
+
+    LOG.info("Update mode info: primEdit={}, roEdit={}, opType={}, cluster={}.",
+             primaryClusterEdit, readOnlyClusterEdit, clusterOpType, cluster.clusterType);
 
     // For primary cluster edit only there is possibility of leader changes.
     if (primaryClusterEdit) {
@@ -408,9 +441,27 @@ public class PlacementInfoUtil {
                                        taskParams, cluster);
     }
 
+    // If RF is not compatible with number of placement zones, reset the placement during create.
+    // For ex., when RF goes from 3/5/7 to 1, we want to show only one zone. When RF goes from 1
+    // to 5, we will show MAX zones.
+    boolean mode_changed = false;
+    if (clusterOpType.equals(ClusterOperationType.CREATE)) {
+      int numZones = getAzUuidToNumNodes(taskParams.getNodesInCluster(cluster.uuid)).size();
+      int rf = cluster.userIntent.replicationFactor;
+      LOG.info("Replication factor={} while zones={}.", rf, numZones);
+      if ((rf < numZones) || (rf >= MAX_ZONES && numZones < MAX_ZONES)) {
+        cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
+        int numNewZones = getNumZones(cluster.placementInfo);
+        LOG.info("New placement has {} zones.", numNewZones);
+        taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
+        mode = ConfigureNodesMode.NEW_CONFIG;
+        mode_changed = true;
+      }
+    }
+
     // If not a pure expand/shrink, we will pick a new set of nodes. If the provider or region list
     // changed, we will pick a new placement (i.e full move, create primary/RO cluster).
-    if (mode == ConfigureNodesMode.NEW_CONFIG) {
+    if (!mode_changed && (mode == ConfigureNodesMode.NEW_CONFIG)) {
       if (isProviderOrRegionChange(
               cluster,
               (primaryClusterEdit || readOnlyClusterEdit) ?
@@ -552,9 +603,9 @@ public class PlacementInfoUtil {
     Set<NodeDetails> nodesToProvision = new HashSet<NodeDetails>();
     for (NodeDetails node : nodeDetailsSet) {
       if (node.state == NodeDetails.NodeState.ToBeAdded &&
-              (serverType == ServerType.EITHER ||
-                      serverType == ServerType.MASTER && node.isMaster ||
-                      serverType == ServerType.TSERVER && node.isTserver)) {
+          (serverType == ServerType.EITHER ||
+           serverType == ServerType.MASTER && node.isMaster ||
+           serverType == ServerType.TSERVER && node.isTserver)) {
         nodesToProvision.add(node);
       }
     }
@@ -1371,12 +1422,19 @@ public class PlacementInfoUtil {
     return false;
   }
 
+  // Returns the AZ placement info for the node in the user intent. It chooses a maximum of
+  // `MAX_ZONES` zones for the placement.
   public static PlacementInfo getPlacementInfo(ClusterType clusterType, UserIntent userIntent) {
     if (userIntent == null || userIntent.regionList == null || userIntent.regionList.isEmpty()) {
       LOG.info("No placement due to userIntent={} or regions={}.", userIntent, userIntent.regionList);
       return null;
     }
     verifyNodesAndRF(clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    // TODO: Make MAX_ZONES match the RF. This will cover other rf's which are not MAX_ZONES.
+    int num_zones = MAX_ZONES;
+    if (userIntent.replicationFactor < MAX_ZONES) {
+      num_zones = userIntent.replicationFactor;
+    }
 
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
@@ -1388,7 +1446,8 @@ public class PlacementInfoUtil {
     PlacementInfo placementInfo = new PlacementInfo();
     boolean useSingleAZ = !isRegionListMultiAZ(userIntent);
     // Handle the single AZ deployment case or RF=1 case.
-    if (useSingleAZ) {
+    // We use single AZ for RF=1 to workaround pending YB issue ENG-3652.
+    if (useSingleAZ || (userIntent.replicationFactor == 1)) {
       // Select an AZ in the required region.
       List<AvailabilityZone> azList =
           AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
@@ -1408,7 +1467,12 @@ public class PlacementInfoUtil {
       for (int idx = 0; idx < userIntent.regionList.size(); idx++) {
         totalAzsInRegions.addAll(AvailabilityZone.getAZsForRegion(userIntent.regionList.get(idx)));
       }
-      if (totalAzsInRegions.size() <= 2) {
+      if (totalAzsInRegions.isEmpty()) {
+        throw new RuntimeException("No AZ found across regions: " + userIntent.regionList);
+      }
+      LOG.info("numRegions={}, numAzsInRegion={}", userIntent.regionList.size(),
+               totalAzsInRegions.size());
+      if (totalAzsInRegions.size() <= (num_zones - 1)) {
         for (int idx = 0; idx < userIntent.numNodes; idx++) {
           addPlacementZone(totalAzsInRegions.get(idx % totalAzsInRegions.size()).uuid,
                            placementInfo);
@@ -1416,35 +1480,31 @@ public class PlacementInfoUtil {
       } else {
         // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
         if (userIntent.regionList.size() == 1) {
-          selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
-        } else if (userIntent.regionList.size() == 2) {
+          selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, num_zones);
+        } else if (userIntent.regionList.size() == (num_zones - 1)) {
           // Pick two AZs from one of the regions (preferred region if specified).
           UUID preferredRegionUUID = userIntent.preferredRegion;
-          // If preferred region was not specified, then pick the region that has at least 2 zones as
-          // the preferred region.
+          // If preferred region was not specified, then pick the region that has at least 2 zones
+          // as the preferred region.
           if (preferredRegionUUID == null) {
-            if (AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0)).size() >= 2) {
+            if (AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0)).size() >=
+                (num_zones - 1)) {
               preferredRegionUUID = userIntent.regionList.get(0);
             } else {
               preferredRegionUUID = userIntent.regionList.get(1);
             }
           }
-          selectAndAddPlacementZones(preferredRegionUUID, placementInfo, 2);
+          selectAndAddPlacementZones(preferredRegionUUID, placementInfo, num_zones - 1);
 
           // Pick one AZ from the other region.
           UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
-                  userIntent.regionList.get(1) :
-                  userIntent.regionList.get(0);
+              userIntent.regionList.get(1) : userIntent.regionList.get(0);
           selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
-        } else if (userIntent.regionList.size() == 3) {
-          // If the user has specified three regions, pick one AZ from each region.
-          for (int idx = 0; idx < 3; idx++) {
+        } else if (userIntent.regionList.size() >= num_zones) {
+          // If user specified more than three regions, pick one AZ each from first three regions.
+          for (int idx = 0; idx < num_zones; idx++) {
             selectAndAddPlacementZones(userIntent.regionList.get(idx), placementInfo, 1);
           }
-        } else {
-          throw new RuntimeException("Unsupported placement, num regions " +
-                  userIntent.regionList.size() + " is more than replication factor of " +
-                  userIntent.replicationFactor);
         }
       }
     }
@@ -1485,7 +1545,7 @@ public class PlacementInfoUtil {
     AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.region;
     Provider cloud = region.provider;
-    LOG.debug("provider: {}", cloud);
+    LOG.debug("provider: {}", cloud.uuid);
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud = null;
     for (PlacementCloud pCloud : placementInfo.cloudList) {
