@@ -3,12 +3,12 @@
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
-import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle } from '../fields';
+import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
 import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
-import { isDefinedNotNull } from "../../../../utils/ObjectUtils";
+import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
 
 class FlagInput extends Component {
   render() {
@@ -59,14 +59,41 @@ class FlagItems extends Component {
 
 
 export default class RollingUpgradeForm extends Component {
+  constructor(props) {
+    super(props);
+    this.toggleConfirmValidation = this.toggleConfirmValidation.bind(this);
+    this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
+    this.state = {
+      formConfirmed: false,
+      pickedVersion: null
+    };
+  }
+
+  softwareVersionChanged(value) {
+    this.setState({
+      pickedVersion: value
+    });
+  }
+
+  toggleConfirmValidation = () => {
+    this.setState({
+      formConfirmed: !this.state.formConfirmed
+    });
+  }
+
   componentWillReceiveProps(nextProps) {
-    const {universe: {rollingUpgrade, currentUniverse: {data: {universeUUID}}}} = nextProps;
+    const { universe: { rollingUpgrade, currentUniverse: { data: { universeUUID }}}} = nextProps;
     if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(this.props.universe.rollingUpgrade).isLoading()) {
       this.props.fetchCurrentUniverse(universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
       this.props.fetchUniverseTasks(universeUUID);
     }
+  }
+
+  componentDidMount = () => {
+    const { softwareVersions } = this.props;
+    this.softwareVersionChanged(softwareVersions[0]);
   }
 
   setRollingUpgradeProperties = values => {
@@ -131,16 +158,28 @@ export default class RollingUpgradeForm extends Component {
     const self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
       error}, resetRollingUpgrade, softwareVersions} = this.props;
+    const { universe } = this.props;
+
+    let currentVersion = null;
+    if(isDefinedNotNull(universe.currentUniverse.data) && isNonEmptyObject(universe.currentUniverse.data)) {
+      const primaryCluster = getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters);
+      currentVersion = primaryCluster && (primaryCluster.userIntent.ybSoftwareVersion || undefined);
+    }
 
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     let title = "";
     let formBody = <span/>;
     const softwareVersionOptions = softwareVersions.map(function(item, idx){
-      return <option key={idx} value={item}>{item}</option>;
+      return <option key={idx} disabled={ item===currentVersion ? true : false } value={item}>{item}</option>;
     });
+
     const formCloseAction = function() {
       onHide();
       self.props.reset();
+      self.setState({
+        formConfirmed: false,
+        formValidated: false,
+      });
     };
     if (visibleModal === "softwareUpgradesModal") {
       title="Upgrade Software";
@@ -180,10 +219,18 @@ export default class RollingUpgradeForm extends Component {
       );
     }
     return (
-      <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
-               onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
-        {formBody}
-      </YBModal>
+      visibleModal === "softwareUpgradesModal" ?
+        <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
+                onHide={formCloseAction} submitLabel={'Upgrade'} showCancelButton={true} title={title} onFormSubmit={submitAction} error={error}
+                footerAccessory={ this.state.pickedVersion !== currentVersion
+                                    ? <YBCheckBox label={"Confirm software upgrade"} className="footer-accessory" input={{onChange: this.toggleConfirmValidation}} />
+                                    : <span>{"Latest software is installed"}</span>} asyncValidating={!this.state.formConfirmed}>
+          {formBody}
+        </YBModal> :
+        <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
+                  onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
+          {formBody}
+        </YBModal>
     );
   }
 }

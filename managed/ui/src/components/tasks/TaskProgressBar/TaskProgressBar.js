@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import {  ProgressBar } from 'react-bootstrap';
+import { ProgressBar } from 'react-bootstrap';
 
 export default class TaskProgressBar extends Component {
   static propTypes = {

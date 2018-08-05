@@ -39,8 +39,8 @@ export default class YBModal extends Component {
                 {onFormSubmit && <YBButton btnClass="btn btn-orange pull-right" disabled={btnDisabled}
                   btnText={submitLabel} onClick={onFormSubmit} />}
                 {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
+                {footerAccessory && <div className="pull-left modal-accessory">{footerAccessory}</div>}
               </div>
-              {footerAccessory && <div className="pull-left modal-accessory">{footerAccessory}</div>}
             </Modal.Footer>
           }
         </form>

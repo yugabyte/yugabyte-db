@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Modal, Checkbox} from 'react-bootstrap';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { Modal, Checkbox } from 'react-bootstrap';
+import { getPromiseState } from 'utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
 import { YBButton } from '../../common/forms/fields';
