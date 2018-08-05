@@ -57,8 +57,7 @@ public class WaitForDataMove extends AbstractTaskBase {
     try {
       client = ybService.getClient(masterAddresses);
 
-      LOG.info("Leader Master UUID={}, HostPort={}.",
-               client.getLeaderMasterUUID(), client.getLeaderMasterHostAndPort().toString());
+      LOG.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       // TODO: Have a mechanism to send this percent to the parent task completion.
       while (percent < (double)100) {
