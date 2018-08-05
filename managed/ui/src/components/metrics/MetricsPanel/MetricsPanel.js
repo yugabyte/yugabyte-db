@@ -33,6 +33,7 @@ export default class MetricsPanel extends Component {
         }
       }
 
+      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
