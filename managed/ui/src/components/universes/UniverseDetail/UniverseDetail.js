@@ -28,6 +28,7 @@ class UniverseDetail extends Component {
   constructor(props) {
     super(props);
     this.onEditReadReplicaButtonClick = this.onEditReadReplicaButtonClick.bind(this);
+    this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.state = {
       dimensions: {},
     };
@@ -87,9 +88,21 @@ class UniverseDetail extends Component {
     this.props.getUniverseInfo(universeUUID);
   };
 
+  showUpgradeMarker = () => {
+    const { updateAvailable, universe: { rollingUpgrade, showModal, visibleModal }} = this.props;
+
+    if (!getPromiseState(rollingUpgrade).isLoading() &&
+        updateAvailable &&
+        !(showModal && visibleModal ==="softwareUpgradesModal")) {
+      return true;
+    }
+    return false;
+  };
+
   render() {
     const {
       uuid,
+      updateAvailable,
       universe,
       universe: { currentUniverse, showModal, visibleModal },
       location: { query, pathname },
@@ -182,12 +195,13 @@ class UniverseDetail extends Component {
                         btnText="Edit Universe" btnIcon="fa fa-pencil" onClick={this.onEditUniverseButtonClick} />
 
               <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
-              <DropdownButton title="More" id="bg-nested-dropdown" pullRight>
-                <MenuItem eventKey="1" onClick={showSoftwareUpgradesModal}>
+              <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
+                <MenuItem eventKey="1" onClick={showSoftwareUpgradesModal} >
 
                   <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                     Upgrade Software
                   </YBLabelWithIcon>
+                  { this.showUpgradeMarker() ? <span className="badge badge-pill pull-right">{updateAvailable}</span> : ""} 
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={this.onEditReadReplicaButtonClick} >
                   <YBLabelWithIcon icon="fa fa-copy fa-fw">

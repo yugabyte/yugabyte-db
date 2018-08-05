@@ -35,6 +35,16 @@
   position: relative;
   float: left;
   top: -2px;
+  line-height: 40px;
+
+  label {
+    margin-bottom: 0;
+
+    input[type="checkbox"] {
+      vertical-align: middle;
+      margin: 0;
+    }
+  }
 }
 
 .modal-action-buttons {

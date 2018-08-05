@@ -9,6 +9,9 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchU
 
 import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
   resetTablesList } from '../../../actions/tables';
+import { getPrimaryCluster } from "../../../utils/UniverseUtils";
+import { isDefinedNotNull, isNonEmptyObject }
+  from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -69,9 +72,33 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state, ownProps) {
+  // detect if software update is available for this universe  
+  const isUpdateAvailable = (state) => {
+    try {
+      if(isDefinedNotNull(state.universe.currentUniverse.data) && isNonEmptyObject(state.universe.currentUniverse.data)) {
+        const primaryCluster = getPrimaryCluster(state.universe.currentUniverse.data.universeDetails.clusters);
+        const currentversion = primaryCluster && (primaryCluster.userIntent.ybSoftwareVersion || undefined);
+        if (currentversion) {
+          for (let idx = 0; idx < state.customer.softwareVersions.length; idx++) {
+            const current = currentversion.split("-");
+            const iterator = state.customer.softwareVersions[idx].split("-");
+            // return number of versions avail to upgrade
+            if ( iterator[0] < current[0] //compare version and release codes separately because "b9" > "b13"
+              || (iterator[0] === current[0] && parseInt(iterator[1].substr(1), 10) <= parseInt(current[1].substr(1), 10))) return idx;
+          };
+        }
+      }
+      return false;
+    } catch (err) {
+      console.log("Versions comparison failed with: "+err);
+      return false;
+    }
+  };
+
   return {
     universe: state.universe,
-    providers: state.cloud.providers
+    providers: state.cloud.providers,
+    updateAvailable: isUpdateAvailable(state)
   };
 }
 
