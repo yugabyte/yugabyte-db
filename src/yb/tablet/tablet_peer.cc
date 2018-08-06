@@ -159,7 +159,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const scoped_refptr<Log> &log,
                                   const scoped_refptr<MetricEntity> &metric_entity,
                                   ThreadPool* raft_pool,
-                                  ThreadPool* tablet_prepare_pool) {
+                                  ThreadPool* tablet_prepare_pool,
+                                  rpc::ThreadPool* service_thread_pool) {
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -174,6 +175,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
+    service_thread_pool_ = service_thread_pool;
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;

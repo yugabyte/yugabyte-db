@@ -114,7 +114,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
                                 ThreadPool* raft_pool,
-                                ThreadPool* tablet_prepare_pool);
+                                ThreadPool* tablet_prepare_pool,
+                                rpc::ThreadPool* service_thread_pool);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -269,6 +270,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return clock_;
   }
 
+  rpc::ThreadPool& thread_pool() override {
+    return *service_thread_pool_;
+  }
+
   const std::shared_future<client::YBClientPtr>& client_future() const override {
     return client_future_;
   }
@@ -404,9 +409,15 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   mutable std::atomic<bool> cached_permanent_uuid_initialized_ { false };
   mutable std::string cached_permanent_uuid_;
 
+  rpc::ThreadPool* service_thread_pool_;
+
  private:
   void StartExecution(std::unique_ptr<Operation> operation) override;
   HybridTime ReportReadRestart() override;
+
+  bool IsLeader() override {
+    return LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY;
+  }
 
   std::shared_future<client::YBClientPtr> client_future_;
 

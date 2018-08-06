@@ -35,7 +35,9 @@
 #include "yb/docdb/docdb.h"
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/locks.h"
@@ -123,8 +125,9 @@ typedef std::shared_ptr<RunningTransaction> RunningTransactionPtr;
 
 class RunningTransactionContext {
  public:
-  explicit RunningTransactionContext(TransactionParticipantContext* participant_context)
-      : participant_context_(*participant_context) {
+  RunningTransactionContext(TransactionParticipantContext* participant_context,
+                            TransactionIntentApplier* applier)
+      : participant_context_(*participant_context), applier_(*applier) {
   }
 
   virtual ~RunningTransactionContext() {}
@@ -135,13 +138,54 @@ class RunningTransactionContext {
     return ++request_serial_;
   }
 
+  virtual const std::string& LogPrefix() const = 0;
+
  protected:
   friend class RunningTransaction;
 
   rpc::Rpcs rpcs_;
   TransactionParticipantContext& participant_context_;
+  TransactionIntentApplier& applier_;
   int64_t request_serial_ = 0;
   std::mutex mutex_;
+};
+
+class RemoveIntentsTask : public rpc::ThreadPoolTask {
+ public:
+  RemoveIntentsTask(TransactionIntentApplier* applier, TransactionParticipantContext* context,
+                    const TransactionId& id)
+      : applier_(*applier), context_(*context), id_(id) {}
+
+  bool Prepare(RunningTransactionPtr transaction) {
+    bool expected = false;
+    if (!used_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+      return false;
+    }
+
+    transaction_ = std::move(transaction);
+    return true;
+  }
+
+  void Run() override {
+    if (context_.IsLeader()) {
+      auto status = applier_.RemoveIntents(id_);
+      LOG_IF(WARNING, !status.ok()) << "Failed to remove intents of aborted transaction " << id_
+                                    << ": " << status;
+    }
+  }
+
+  void Done(const Status& status) override {
+    transaction_.reset();
+  }
+
+  virtual ~RemoveIntentsTask() {}
+
+ private:
+  TransactionIntentApplier& applier_;
+  TransactionParticipantContext& context_;
+  TransactionId id_;
+  std::atomic<bool> used_{false};
+  RunningTransactionPtr transaction_;
 };
 
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -152,6 +196,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       : metadata_(std::move(metadata)),
         last_write_id_(last_write_id),
         context_(*context),
+        remove_intents_task_(&context->applier_, &context->participant_context_,
+                             metadata_.transaction_id),
         get_status_handle_(context->rpcs_.InvalidHandle()),
         abort_handle_(context->rpcs_.InvalidHandle()) {
   }
@@ -320,6 +366,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         last_known_status_hybrid_time_ = time_of_status;
         last_known_status_ = response.status();
         if (response.status() == TransactionStatus::ABORTED) {
+          if (!local_commit_time_ && remove_intents_task_.Prepare(shared_self)) {
+            context_.participant_context_.thread_pool().Enqueue(&remove_intents_task_);
+            VLOG_WITH_PREFIX(1) << "Transaction should be aborted: " << id();
+          }
           context_.RemoveUnlocked(id());
         }
       }
@@ -424,9 +474,14 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     }
   }
 
+  const std::string& LogPrefix() const {
+    return context_.LogPrefix();
+  }
+
   TransactionMetadata metadata_;
   IntraTxnWriteId last_write_id_ = 0;
   RunningTransactionContext& context_;
+  RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
 
   TransactionStatus last_known_status_;
@@ -444,8 +499,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
-  explicit Impl(TransactionParticipantContext* context)
-      : RunningTransactionContext(context), log_prefix_(context->tablet_id() + ": ") {
+  explicit Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier)
+      : RunningTransactionContext(context, applier), log_prefix_(context->tablet_id() + ": ") {
     LOG_WITH_PREFIX(INFO) << "Start";
   }
 
@@ -489,9 +544,23 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return (**it).local_commit_time();
   }
 
+  size_t TEST_CountIntents() {
+    size_t count = 0;
+    auto iter = docdb::CreateRocksDBIterator(db_,
+                                             docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                             boost::none,
+                                             rocksdb::kDefaultQueryId);
+    while (iter->Valid()) {
+      count++;
+      iter->Next();
+    }
+
+    return count;
+  }
+
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id);
+    auto it = FindOrLoad(id, "metadata"s);
     if (it == transactions_.end()) {
       return boost::none;
     }
@@ -501,7 +570,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
       const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id);
+    auto it = FindOrLoad(id, "metadata with write id"s);
     if (it == transactions_.end()) {
       return boost::none;
     }
@@ -520,7 +589,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void RequestStatusAt(const StatusRequest& request) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(*request.id);
+    auto it = FindOrLoad(*request.id, "status"s);
     if (it == transactions_.end()) {
       lock.unlock();
       request.callback(
@@ -570,7 +639,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id);
+    auto it = FindOrLoad(id, "abort"s);
     if (it == transactions_.end()) {
       lock.unlock();
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
@@ -584,14 +653,14 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       std::lock_guard<std::mutex> lock(mutex_);
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
-      FindOrLoad(data.transaction_id);
+      FindOrLoad(data.transaction_id, "pre apply"s);
     }
 
-    CHECK_OK(data.applier->ApplyIntents(data));
+    CHECK_OK(applier_.ApplyIntents(data));
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto it = FindOrLoad(data.transaction_id);
+      auto it = FindOrLoad(data.transaction_id, "apply"s);
       if (it == transactions_.end()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -623,6 +692,36 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
                 LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
               });
           (**handle).SendRpc();
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      // It is our last chance to load transaction metadata, if missing.
+      // Because it will be deleted when intents are applied.
+      FindOrLoad(data.transaction_id, "pre cleanup"s);
+    }
+
+    auto status = applier_.RemoveIntents(data.transaction_id);
+    LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to remove intents for "
+                                             << data.transaction_id << ": " << status;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = FindOrLoad(data.transaction_id, "cleanup"s);
+      if (it == transactions_.end()) {
+        // This situation is normal and could be caused by 2 scenarios:
+        // 1) Write batch failed, but originator doesn't know that.
+        // 2) Failed to notify client that we cleaned up transaction.
+        LOG_WITH_PREFIX(WARNING) << "Cleanup of unknown transaction: " << data.transaction_id;
+      } else {
+        if (!RemoveUnlocked(it)) {
+          VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
+                              << data.transaction_id;
         }
       }
     }
@@ -684,13 +783,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   // TODO(dtxn) unlock during load
-  Transactions::const_iterator FindOrLoad(const TransactionId& id) {
+  Transactions::const_iterator FindOrLoad(const TransactionId& id, const std::string& reason) {
     auto it = transactions_.find(id);
     if (it != transactions_.end()) {
       return it;
     }
 
-    LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id;
+    LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id << ", for: " << reason;
 
     docdb::KeyBytes key;
     AppendTransactionKeyPrefix(id, &key);
@@ -735,8 +834,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       if (status.ok() && docdb::IsStrongIntent(intent_type)) {
         iter->Seek(iter->value());
         if (iter->Valid()) {
-          VLOG(1) << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
-                  << " => " << iter->value().ToDebugHexString();
+          VLOG_WITH_PREFIX(1)
+              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
+              << " => " << iter->value().ToDebugHexString();
           status = docdb::DecodeIntentValue(
               iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
@@ -757,7 +857,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return participant_context_.client_future().get().get();
   }
 
-  const std::string& LogPrefix() const {
+  const std::string& LogPrefix() const override {
     return log_prefix_;
   }
 
@@ -781,8 +881,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::deque<CleanupQueueEntry> cleanup_queue_;
 };
 
-TransactionParticipant::TransactionParticipant(TransactionParticipantContext* context)
-    : impl_(new Impl(context)) {
+TransactionParticipant::TransactionParticipant(
+    TransactionParticipantContext* context, TransactionIntentApplier* applier)
+    : impl_(new Impl(context, applier)) {
 }
 
 TransactionParticipant::~TransactionParticipant() {
@@ -811,6 +912,10 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
+size_t TransactionParticipant::TEST_CountIntents() const {
+  return impl_->TEST_CountIntents();
+}
+
 void TransactionParticipant::RequestStatusAt(const StatusRequest& request) {
   return impl_->RequestStatusAt(request);
 }
@@ -830,6 +935,10 @@ void TransactionParticipant::Abort(const TransactionId& id,
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
   return impl_->ProcessApply(data);
+}
+
+CHECKED_STATUS TransactionParticipant::ProcessCleanup(const TransactionApplyData& data) {
+  return impl_->ProcessCleanup(data);
 }
 
 void TransactionParticipant::SetDB(rocksdb::DB* db) {

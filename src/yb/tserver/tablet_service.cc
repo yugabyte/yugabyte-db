@@ -461,7 +461,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString();
 
   TabletServerErrorPB::Code error_code;
-  auto status = CheckPeerIsLeader(*tablet_peer, &error_code);
+  auto status = req->state().status() == CLEANUP
+      ? Status::OK() : CheckPeerIsLeader(*tablet_peer, &error_code);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
     return;

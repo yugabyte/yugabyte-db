@@ -259,6 +259,21 @@ class QLTransactionTest : public KeyValueTableTest {
     return result;
   }
 
+  size_t CountIntents() {
+    size_t result = 0;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
+      auto peers = tablet_manager->GetTabletPeers();
+      for (const auto &peer : peers) {
+        auto participant = peer->tablet()->transaction_participant();
+        if (participant) {
+          result += participant->TEST_CountIntents();
+        }
+      }
+    }
+    return result;
+  }
+
   void CheckNoRunningTransactions() {
     MonoTime deadline = MonoTime::Now() + 5s;
     bool has_bad = false;
@@ -848,6 +863,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     VERIFY_ROW(session, 1, 1);
     VERIFY_ROW(session, 2, 2);
   }
+
+  ASSERT_EQ(CountIntents(), 0);
 
   ASSERT_OK(cluster_->RestartSync());
 }
