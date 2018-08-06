@@ -395,8 +395,13 @@ Status TSTabletManager::Init() {
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
   if (max_bootstrap_threads == 0) {
-    // Default to the number of disks.
-    max_bootstrap_threads = fs_manager_->GetDataRootDirs().size();
+    size_t num_cpus = std::thread::hardware_concurrency();
+    if (num_cpus <= 2) {
+      max_bootstrap_threads = 2;
+    } else {
+      max_bootstrap_threads = min(num_cpus - 1, fs_manager_->GetDataRootDirs().size() * 8);
+    }
+    LOG(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
