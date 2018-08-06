@@ -747,6 +747,9 @@ struct RedisServiceImplData : public RedisServiceData {
 
   void CleanYBTableFromCacheForDB(const string& table);
 
+  void AppendToChannelSubscribers(const string& channel, ConnectionPtr conn) override;
+  int PublishToChannel(const string& channel, const string& message) override;
+
   CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
   CHECKED_STATUS Initialize();
   bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
@@ -766,9 +769,10 @@ struct RedisServiceImplData : public RedisServiceData {
   std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
   std::shared_ptr<client::YBMetaDataCache> tables_cache_;
 
-  std::vector<ConnectionWeakPtr> monitoring_clients_;
-  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
+  const string kMonitoringChannel = "_redis_monitoring";
   rw_spinlock monitoring_clients_mutex_;
+  std::unordered_map<std::string, std::vector<ConnectionWeakPtr>> channels_to_clients_;
+  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
 
   std::mutex redis_password_mutex_;
   MonoTime redis_cached_password_validity_expiry_;
@@ -1020,16 +1024,21 @@ yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableFor
 }
 
 void RedisServiceImplData::AppendToMonitors(ConnectionPtr conn) {
-  boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
-  monitoring_clients_.emplace_back(conn);
+  AppendToChannelSubscribers(kMonitoringChannel, conn);
   num_clients_monitoring_->IncrementBy(1);
+}
+
+void RedisServiceImplData::AppendToChannelSubscribers(const string& channel, ConnectionPtr conn) {
+  boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
+  channels_to_clients_[channel].emplace_back(conn);
 }
 
 void RedisServiceImplData::LogToMonitors(
     const string& end, const string& db, const RedisClientCommand& cmd) {
-  boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
-
-  if (monitoring_clients_.empty()) return;
+  {
+    boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
+    if (channels_to_clients_[kMonitoringChannel].empty()) return;
+  }
 
   // Prepare the string to be sent to all the monitoring clients.
   // TODO: Use timestamp that works with converter.
@@ -1044,14 +1053,23 @@ void RedisServiceImplData::LogToMonitors(
   }
   ss << "\r\n";
 
+  PublishToChannel(kMonitoringChannel, ss.str());
+}
+
+int RedisServiceImplData::PublishToChannel(const string& channel, const string& message) {
+  boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
+
+  int num_pushed_to = 0;
   // Send the message to all the monitoring clients.
   OutboundDataPtr out =
-      std::make_shared<yb::rpc::StringOutboundData>(ss.str(), "Redis Monitor Data");
+      std::make_shared<yb::rpc::StringOutboundData>(message, "Publishing to Channel");
+  auto& subscribing_clients = channels_to_clients_[channel];
   bool should_cleanup = false;
-  for (auto iter = monitoring_clients_.begin(); iter != monitoring_clients_.end(); iter++) {
+  for (auto iter = subscribing_clients.begin(); iter != subscribing_clients.end(); iter++) {
     ConnectionPtr connection = iter->lock();
     if (connection) {
       connection->QueueOutboundData(out);
+      num_pushed_to++;
     } else {
       should_cleanup = true;
     }
@@ -1062,14 +1080,16 @@ void RedisServiceImplData::LogToMonitors(
     rlock.unlock();
     boost::lock_guard<rw_spinlock> wlock(monitoring_clients_mutex_);
 
-    auto old_size = monitoring_clients_.size();
-    monitoring_clients_.erase(std::remove_if(monitoring_clients_.begin(), monitoring_clients_.end(),
+    subscribing_clients.erase(std::remove_if(subscribing_clients.begin(), subscribing_clients.end(),
                                              [] (const ConnectionWeakPtr& e) -> bool {
                                                return e.lock() == nullptr;
                                              }),
-                              monitoring_clients_.end());
-    num_clients_monitoring_->DecrementBy(old_size - monitoring_clients_.size());
+                              subscribing_clients.end());
+    if (channel == kMonitoringChannel) {
+      num_clients_monitoring_->set_value(subscribing_clients.size());
+    }
   }
+  return num_pushed_to;
 }
 
 Status RedisServiceImplData::Initialize() {

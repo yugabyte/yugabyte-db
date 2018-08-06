@@ -199,10 +199,8 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
-  // Note: expected empty string will check for null instead
-  void DoRedisTestArray(int line,
-      const std::vector<std::string>& command,
-      const std::vector<std::string>& expected) {
+  void DoRedisTestResultsArray(
+      int line, const std::vector<std::string>& command, const std::vector<RedisReply>& expected) {
     DoRedisTest(line, command, RedisReplyType::kArray,
         [line, expected](const RedisReply& reply) {
           const auto& replies = reply.as_array();
@@ -211,16 +209,25 @@ class TestRedisService : public RedisTableTestBase {
               << "Expected: " << yb::ToString(expected) << std::endl
               << " Replies: " << reply.ToString();
           for (size_t i = 0; i < expected.size(); i++) {
-            if (expected[i] == "") {
-              ASSERT_TRUE(replies[i].is_null())
-                            << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
-            } else {
-              ASSERT_EQ(expected[i], replies[i].as_string())
-                            << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
-            }
+            ASSERT_EQ(expected[i], replies[i]) << "Originator: " << __FILE__ << ":" << line
+                                               << ", i: " << i;
           }
         }
     );
+  }
+
+  // Note: expected empty string will check for null instead.
+  void DoRedisTestArray(
+      int line, const std::vector<std::string>& command, const std::vector<std::string>& expected) {
+    std::vector<RedisReply> redis_replies;
+    for (size_t i = 0; i < expected.size(); i++) {
+      if (expected[i] == "") {
+        redis_replies.push_back(RedisReply());
+      } else {
+        redis_replies.push_back(RedisReply(RedisReplyType::kString, expected[i]));
+      }
+    }
+    DoRedisTestResultsArray(line, command, redis_replies);
   }
 
   void DoRedisTestDouble(int line, const std::vector<std::string>& command, double expected) {
@@ -1843,6 +1850,69 @@ TEST_F(TestRedisService, TestMonitor) {
   std::this_thread::sleep_for(std::chrono::milliseconds(kDelayMs));
 
   ASSERT_EQ(0, CountSessions(METRIC_redis_monitoring_clients));
+
+  UseClient(nullptr);
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestSubscribe) {
+  expected_no_sessions_ = true;
+  shared_ptr<RedisClient> sc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> sc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> sc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> pc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  shared_ptr<RedisClient> pc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2";
+
+  // TODO: Fix the expected number of channels subscribed to. (1, 2, 1, 2)
+  UseClient(sc1);
+  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
+                              {RedisReply(RedisReplyType::kString, "subscribe"),
+                               RedisReply(RedisReplyType::kString, topic1),
+                               RedisReply(0)});
+  SyncClient();
+
+  UseClient(sc2);
+  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
+                              {RedisReply(RedisReplyType::kString, "subscribe"),
+                               RedisReply(RedisReplyType::kString, topic2),
+                               RedisReply(0)});
+  SyncClient();
+
+  UseClient(sc3);
+  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
+                              {RedisReply(RedisReplyType::kString, "subscribe"),
+                               RedisReply(RedisReplyType::kString, topic1),
+                               RedisReply(0)});
+  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
+                              {RedisReply(RedisReplyType::kString, "subscribe"),
+                               RedisReply(RedisReplyType::kString, topic2),
+                               RedisReply(0)});
+  SyncClient();
+
+  UseClient(pc1);
+  DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
+  SyncClient();
+
+  UseClient(pc2);
+  DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  SyncClient();
+
+  // Verify the received messages.
+  UseClient(sc1);
+  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
+  SyncClient();
+
+  UseClient(sc2);
+  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  SyncClient();
+
+  UseClient(sc3);
+  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
+  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  SyncClient();
 
   UseClient(nullptr);
   VerifyCallbacks();
