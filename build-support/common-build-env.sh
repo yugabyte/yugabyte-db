@@ -1285,16 +1285,17 @@ run_centralized_build_cmd() {
 
 configure_remote_build() {
   # Automatically set YB_REMOTE_BUILD in an NFS GCP environment.
-  if [[ -z ${YB_NO_REMOTE_BUILD:-} ]] && is_running_on_gcp && is_src_root_on_nfs; then
+  if [[ ${YB_NO_REMOTE_BUILD:-0} != "1" ]] && is_running_on_gcp && is_src_root_on_nfs; then
     if [[ -z ${YB_REMOTE_BUILD:-} ]]; then
       log "Automatically enabling distributed build (running in an NFS GCP environment). " \
           "Use YB_NO_REMOTE_BUILD (or the --no-remote ybd option) to disable this behavior."
-      export YB_REMOTE_BUILD=1
+      YB_REMOTE_BUILD=1
     else
       log "YB_REMOTE_BUILD already defined: '$YB_REMOTE_BUILD', not enabling it automatically," \
           "even though we would in this case."
     fi
   elif is_jenkins; then
+    YB_REMOTE_BUILD=0
     # Make it easier to diagnose why we're not using the distributed build. Only enable this on
     # Jenkins to avoid confusing output during development.
     log "Not using remote / distributed build:" \
@@ -1304,6 +1305,7 @@ configure_remote_build() {
       log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed build setup."
     fi
   fi
+  export YB_REMOTE_BUILD
 }
 
 yb_edition_detected=false
