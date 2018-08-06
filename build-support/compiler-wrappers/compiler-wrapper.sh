@@ -274,7 +274,7 @@ fi
 
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_BUILD:-} == "1" &&
-      -z ${YB_NO_REMOTE_BUILD:-} &&
+      ${YB_NO_REMOTE_BUILD:-0} != "1" &&
       $is_build_worker == "false" ]]; then
 
   trap remote_build_exit_handler EXIT
@@ -301,7 +301,11 @@ if [[ $local_build_only == "false" &&
     set -e
     # Exit code 254: "write: Connection reset by peer".
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
-    if [[ $exit_code -eq 255 || $exit_code -eq 254 || $exit_code -eq 126 ]] || \
+    # Exit code 127: "remote_cmd.sh: No such file or directory"
+    if [[ $exit_code -eq 255 || \
+          $exit_code -eq 254 || \
+          $exit_code -eq 126 || \
+          $exit_code -eq 127 ]] || \
         egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
 Fatal error: can't create .*: Stale file handle|\
