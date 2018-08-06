@@ -936,7 +936,7 @@ if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
 
-if [[ ${YB_REMOTE_BUILD:-} == "1" && ${YB_NO_REMOTE_BUILD:-} == "1" ]]; then
+if [[ ${YB_REMOTE_BUILD:-0} == "1" && ${YB_NO_REMOTE_BUILD:-0} == "1" ]]; then
   fatal "YB_REMOTE_BUILD (--remote) and YB_NO_REMOTE_BUILD (--no-remote) cannot be set" \
         "at the same time."
 fi
