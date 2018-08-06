@@ -81,6 +81,12 @@ public class TestUtils {
 
   private static final boolean DEFAULT_USE_PER_TEST_LOG_FILES = true;
 
+  public static final String DELETE_SUCCESSFUL_LOGS_ENV_VAR =
+      "YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS";
+
+  public static final String GZIP_PER_TEST_METHOD_LOGS_ENV_VAR =
+      "YB_GZIP_PER_TEST_METHOD_LOGS";
+
   static {
     long seed = System.nanoTime();
     if (new File(NONBLOCKING_RANDOM_DEVICE).exists()) {
@@ -652,6 +658,14 @@ public class TestUtils {
           "YB_JAVA_PER_TEST_LOG_FILES", DEFAULT_USE_PER_TEST_LOG_FILES);
     }
     return usePerTestLogFiles.booleanValue();
+  }
+
+  public static boolean gzipPerTestMethodLogs() {
+    return isEnvVarTrue(GZIP_PER_TEST_METHOD_LOGS_ENV_VAR, false);
+  }
+
+  public static boolean deleteSuccessfulPerTestMethodLogs() {
+    return isEnvVarTrue(DELETE_SUCCESSFUL_LOGS_ENV_VAR, false);
   }
 
 }
