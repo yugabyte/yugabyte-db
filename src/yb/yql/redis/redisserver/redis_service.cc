@@ -231,7 +231,14 @@ class Operation {
     return partition_key_;
   }
 
-  scoped_refptr<client::internal::RemoteTablet>& tablet() {
+  void SetTablet(const client::internal::RemoteTabletPtr& tablet) {
+    if (operation_) {
+      operation_->SetTablet(tablet);
+    }
+    tablet_ = tablet;
+  }
+
+  const client::internal::RemoteTabletPtr& tablet() const {
     return tablet_;
   }
 
@@ -259,10 +266,6 @@ class Operation {
     // Used for DebugSleep
     if (functor) {
       return functor(callback);
-    }
-
-    if (tablet_) {
-      operation_->SetTablet(tablet_);
     }
 
     auto status = session->Apply(operation_);
@@ -302,7 +305,7 @@ class Operation {
   std::function<bool(const StatusFunctor&)> functor_;
   std::string partition_key_;
   rpc::RpcMethodMetrics metrics_;
-  scoped_refptr<client::internal::RemoteTablet> tablet_;
+  client::internal::RemoteTabletPtr tablet_;
   std::atomic<bool> responded_{false};
 };
 
@@ -768,8 +771,8 @@ class BatchContextImpl : public BatchContext {
           table_.get(),
           operation.partition_key(),
           deadline,
-          &operation.tablet(),
-          Bind(&BatchContextImpl::LookupDone, this, &operation));
+          std::bind(&BatchContextImpl::LookupDone, scoped_refptr<BatchContextImpl>(this),
+                    &operation, _1));
     }
   }
 
@@ -810,9 +813,11 @@ class BatchContextImpl : public BatchContext {
     }
   }
 
-  void LookupDone(Operation* operation, const Status& status) {
-    if (!status.ok()) {
-      operation->Respond(status);
+  void LookupDone(Operation* operation, const Result<client::internal::RemoteTabletPtr>& result) {
+    if (!result.ok()) {
+      operation->Respond(result.status());
+    } else {
+      operation->SetTablet(*result);
     }
     if (lookups_left_.fetch_sub(1, std::memory_order_acq_rel) != 1) {
       return;

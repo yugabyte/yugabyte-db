@@ -340,7 +340,7 @@ Tablet::Tablet(
 
   if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        transaction_participant_context);
+        transaction_participant_context, this);
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
       transaction_manager_.emplace(client_future_.get(),
@@ -1206,6 +1206,17 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   return Status::OK();
 }
 
+CHECKED_STATUS Tablet::RemoveIntents(const TransactionId& id) {
+  rocksdb::WriteBatch intents_write_batch;
+  RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
+      id, HybridTime() /* commit_ht */, nullptr /* regular_write_batch */,
+      intents_db_.get(), &intents_write_batch));
+
+  rocksdb::WriteOptions write_options;
+  InitRocksDBWriteOptions(&write_options);
+  return intents_db_->Write(write_options, &intents_write_batch);
+}
+
 Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
                                          const Schema* schema) {
   if (!key_schema_.KeyEquals(*schema)) {
@@ -1566,20 +1577,30 @@ void Tablet::UnregisterReader(HybridTime timestamp) {
   }
 }
 
-void Tablet::ForceRocksDBCompactInTest() {
-  regular_db_->CompactRange(rocksdb::CompactRangeOptions(),
-      /* begin = */ nullptr,
-      /* end = */ nullptr);
+namespace {
+
+void ForceRocksDBCompact(rocksdb::DB* db) {
+  db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
   uint64_t compaction_pending, running_compactions;
 
   while (true) {
-    regular_db_->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-    regular_db_->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+    db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+    db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
     if (!compaction_pending && !running_compactions) {
       return;
     }
 
     SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+}
+
+} // namespace
+
+void Tablet::ForceRocksDBCompactInTest() {
+  ForceRocksDBCompact(regular_db_.get());
+  if (intents_db_) {
+    intents_db_->Flush(rocksdb::FlushOptions());
+    ForceRocksDBCompact(intents_db_.get());
   }
 }
 

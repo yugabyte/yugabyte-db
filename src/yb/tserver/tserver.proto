@@ -300,6 +300,7 @@ message TransactionStatePB {
   // COMMITTED - list of involved tablets
   // APPLYING - single entry, status tablet of this transaction
   // APPLIED - single entry, tablet that applied this transaction
+  // Not used is other cases.
   repeated bytes tablets = 3;
 
   // Relevant only in APPLYING state.

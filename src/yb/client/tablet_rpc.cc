@@ -30,6 +30,8 @@ DEFINE_int32(force_lookup_cache_refresh_secs, 0, "If greater than 0, the lookup 
              "placement zone and it hasn't been updated for at least the specified number of "
              "seconds");
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace client {
 namespace internal {
@@ -131,9 +133,9 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   if (!tablet_) {
-    client_->LookupTabletById(tablet_id_, retrier_->deadline(), &tablet_,
-                              Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)),
-                              true /* use fast path first */);
+    client_->LookupTabletById(tablet_id_, retrier_->deadline(),
+                              std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
+                              UseCache::kTrue);
     return;
   }
 
@@ -160,9 +162,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (!current_ts_) {
     client_->LookupTabletById(tablet_id_,
                               retrier_->deadline(),
-                              nullptr /* remote_tablet */,
-                              Bind(&TabletInvoker::LookupTabletCb, Unretained(this)),
-                              true /* use fast path first */);
+                              std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                              UseCache::kTrue);
     return;
   } else if (FLAGS_force_lookup_cache_refresh_secs > 0 &&
              last_tablet_refresh_time_ != MonoTime::kUninitialized &&
@@ -170,9 +171,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
                  FLAGS_force_lookup_cache_refresh_secs) {
     client_->LookupTabletById(tablet_id_,
                               retrier_->deadline(),
-                              nullptr /* remote_tablet */,
-                              Bind(&TabletInvoker::LookupTabletCb, Unretained(this)),
-                              false /* do not use fast path. Reload the cache from the master */ );
+                              std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                              UseCache::kFalse);
   }
 
   // Make sure we have a working proxy before sending out the RPC.
@@ -308,14 +308,15 @@ bool TabletInvoker::Done(Status* status) {
   return true;
 }
 
-void TabletInvoker::InitialLookupTabletDone(const Status& status) {
-  VLOG(1) << "InitialLookupTabletDone(" << status << ")";
+void TabletInvoker::InitialLookupTabletDone(const Result<RemoteTabletPtr>& result) {
+  VLOG(1) << "InitialLookupTabletDone(" << result << ")";
 
-  if (status.ok()) {
+  if (result.ok()) {
+    tablet_ = *result;
     last_tablet_refresh_time_ = MonoTime::Now();
     Execute(std::string());
   } else {
-    command_->Finished(status);
+    command_->Finished(result.status());
   }
 }
 
@@ -327,17 +328,21 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
   return current_ts_->proxy();
 }
 
-void TabletInvoker::LookupTabletCb(const Status& status) {
-  VLOG(1) << "LookupTabletCb(" << status << ")";
+void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
+  VLOG(1) << "LookupTabletCb(" << result << ")";
 
-  TRACE_TO(trace_, "LookupTabletCb($0)", status.ToString(false));
+  if (result.ok()) {
+    TRACE_TO(trace_, "LookupTabletCb(OK)");
+  } else {
+    TRACE_TO(trace_, "LookupTabletCb($0)", result.status().ToString(false));
+  }
 
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
   // For instance if tablet was deleted, we would always receive "Not found".
-  if (status.IsNotFound()) {
-    command_->Finished(status);
+  if (!result.ok() && result.status().IsNotFound()) {
+    command_->Finished(result.status());
     return;
   }
 
@@ -346,9 +351,10 @@ void TabletInvoker::LookupTabletCb(const Status& status) {
   // rare, perhaps this doesn't matter.
   followers_.clear();
   last_tablet_refresh_time_ = MonoTime::Now();
-  auto retry_status = retrier_->DelayedRetry(command_, status);
+  auto retry_status = retrier_->DelayedRetry(
+      command_, result.ok() ? Status::OK() : result.status());
   if (!retry_status.ok()) {
-    command_->Finished(status);
+    command_->Finished(result.status());
   }
 }
 

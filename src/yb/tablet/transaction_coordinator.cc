@@ -40,6 +40,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
@@ -357,6 +358,11 @@ class TransactionState {
         FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
       case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
         return AppliedInAllInvolvedTabletsReplicationFinished(data);
+      case TransactionStatus::CLEANUP:
+        // CLEANUP is handled separately, because it is received for transactions not managed by
+        // this tablet as a transaction status tablet, but tablets that are involved in the data
+        // path (receive write intents) for this transactions
+        FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
     }
     FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
   }
@@ -638,7 +644,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       DCHECK(transaction_participant_);
       HybridTime commit_time(data.state.commit_hybrid_time());
       return transaction_participant_->ProcessApply(
-          { data.mode, data.applier, *id, data.op_id, commit_time, data.hybrid_time,
+          { data.mode, *id, data.op_id, commit_time, data.hybrid_time,
             data.state.tablets(0) });
     }
 
@@ -717,6 +723,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         return;
       }
       context_.SubmitUpdateTransaction(std::move(request));
+      return;
+    }
+
+    if (state.status() == TransactionStatus::CLEANUP) {
+      HybridTime commit_time(state.commit_hybrid_time());
+      TransactionApplyData data = {
+          ProcessingMode::LEADER, *id, request->op_id(), commit_time, commit_time, std::string()};
+      Status status = transaction_participant_->ProcessCleanup(data);
+      request->completion_callback()->CompleteWithStatus(Status::OK());
       return;
     }
 

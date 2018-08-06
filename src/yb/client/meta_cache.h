@@ -272,14 +272,21 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
-                         RemoteTabletPtr* remote_tablet,
-                         const StatusCallback& callback);
+                         LookupTabletCallback callback);
+
+  std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
+      const YBTable* table,
+      const std::string& partition_key,
+      const MonoTime& deadline) {
+    return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
+      this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
+    });
+  }
 
   void LookupTabletById(const TabletId& tablet_id,
                         const MonoTime& deadline,
-                        RemoteTabletPtr* remote_tablet,
-                        const StatusCallback& callback,
-                        bool use_fast_path_first);
+                        LookupTabletCallback callback,
+                        UseCache use_cache);
 
   // Return the local tablet server if available.
   RemoteTabletServer* local_tserver() const {
@@ -334,8 +341,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool FastLookupTabletByKeyUnlocked(
       const YBTable* table,
       const std::string& partition_start,
-      RemoteTabletPtr* remote_tablet,
-      const StatusCallback& callback,
+      const LookupTabletCallback& callback,
       Lock* lock);
 
   YBClient* client_;
@@ -358,13 +364,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // Protected by mutex_.
   struct LookupData {
-    StatusCallback callback;
-    RemoteTabletPtr* remote_tablet;
+    LookupTabletCallback callback;
     MonoTime deadline;
 
     std::string ToString() const {
-      return Format("{ remote_tablet: $0 deadline: $1 }",
-                    static_cast<void*>(remote_tablet), deadline);
+      return Format("{ deadline: $1 }", deadline);
     }
   };
 

@@ -287,15 +287,14 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   VLOG(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
 
   if (yb_op->tablet()) {
-    in_flight_op->tablet = yb_op->tablet();
-    TabletLookupFinished(std::move(in_flight_op), Status::OK());
+    TabletLookupFinished(std::move(in_flight_op), yb_op->tablet());
   } else {
     // deadline_ is set in FlushAsync(), after all Add() calls are done, so
     // here we're forced to create a new deadline.
     MonoTime deadline = ComputeDeadlineUnlocked();
     client_->data_->meta_cache_->LookupTabletByKey(
-        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline, &in_flight_op->tablet,
-        Bind(&Batcher::TabletLookupFinished, this, in_flight_op));
+        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline,
+        std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
   }
   return Status::OK();
 }
@@ -332,11 +331,16 @@ void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, co
   had_errors_ = true;
 }
 
-void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
+void Batcher::TabletLookupFinished(
+    InFlightOpPtr op, const Result<internal::RemoteTabletPtr>& lookup_result) {
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
   std::unique_lock<simple_spinlock> l(lock_);
+  if (lookup_result.ok()) {
+    op->tablet = *lookup_result;
+  }
+
   --outstanding_lookups_;
 
   if (IsAbortedUnlocked()) {
@@ -346,15 +350,10 @@ void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
     return;
   }
 
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << s.ToString();
-    if (s.ok()) {
-      VLOG(3) << "Result: tablet_id = " << op->tablet->tablet_id();
-    }
-  }
+  VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result;
 
-  if (!s.ok()) {
-    MarkInFlightOpFailedUnlocked(op, s);
+  if (!lookup_result.ok()) {
+    MarkInFlightOpFailedUnlocked(op, lookup_result.status());
     l.unlock();
     CheckForFinishedFlush();
 
@@ -368,7 +367,7 @@ void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
   {
     std::lock_guard<simple_spinlock> l2(op->lock_);
     CHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
-    CHECK(op->tablet != NULL);
+    CHECK(*lookup_result);
 
     op->state = InFlightOpState::kBufferedToTabletServer;
 

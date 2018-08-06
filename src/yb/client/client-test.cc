@@ -672,10 +672,8 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   // We have to loop since some replicas may have been created slowly.
   scoped_refptr<internal::RemoteTablet> rt;
   while (true) {
-    Synchronizer sync;
-    client_->data_->meta_cache_->LookupTabletByKey(table.get(), "", MonoTime::Max(), &rt,
-                                                  sync.AsStatusCallback());
-    ASSERT_OK(sync.Wait());
+    rt = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
+        table.get(), "" /* partition_key */, MonoTime::Max()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
     rt->GetRemoteTabletServers(&tservers, internal::UpdateLocalTsState::kFalse);
@@ -1403,16 +1401,12 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   ASSERT_NO_FATALS(InsertTestRows(table, kNumRowsToWrite));
 
   // Find the leader of the first tablet.
-  Synchronizer sync;
-  scoped_refptr<internal::RemoteTablet> rt;
-  client_->data_->meta_cache_->LookupTabletByKey(table.get(), "",
-                                                 MonoTime::Max(),
-                                                 &rt, sync.AsStatusCallback());
-  ASSERT_OK(sync.Wait());
-  internal::RemoteTabletServer *rts = rt->LeaderTServer();
+  auto remote_tablet = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
+      table.get(), "" /* partition_key */, MonoTime::Max()).get());
+  internal::RemoteTabletServer *remote_tablet_server = remote_tablet->LeaderTServer();
 
   // Kill the leader of the first tablet.
-  ASSERT_OK(KillTServer(rts->permanent_uuid()));
+  ASSERT_OK(KillTServer(remote_tablet_server->permanent_uuid()));
 
   // We wait until we fail over to the new leader(s).
   int tries = 0;
@@ -1456,23 +1450,19 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   SleepFor(MonoDelta::FromMilliseconds(1500));
 
   // Find the leader replica
-  Synchronizer sync;
-  scoped_refptr<internal::RemoteTablet> rt;
-  client_->data_->meta_cache_->LookupTabletByKey(table.get(), "",
-                                                 MonoTime::Max(),
-                                                 &rt, sync.AsStatusCallback());
-  ASSERT_OK(sync.Wait());
-  internal::RemoteTabletServer *rts;
+  auto remote_tablet = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
+      table.get(), "" /* partition_key */, MonoTime::Max()).get());
+  internal::RemoteTabletServer *remote_tablet_server;
   set<string> blacklist;
   vector<internal::RemoteTabletServer*> candidates;
   ASSERT_OK(client_->data_->GetTabletServer(client_.get(),
-                                            rt,
+                                            remote_tablet,
                                             YBClient::LEADER_ONLY,
                                             blacklist,
                                             &candidates,
-                                            &rts));
+                                            &remote_tablet_server));
 
-  string killed_uuid = rts->permanent_uuid();
+  string killed_uuid = remote_tablet_server->permanent_uuid();
   // Kill the tserver that is serving the leader tablet.
   ASSERT_OK(KillTServer(killed_uuid));
 
@@ -1508,7 +1498,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   LOG(INFO) << "Promoting server at index " << new_leader_idx << " listening at "
             << new_leader->bound_rpc_addr() << " ...";
   req.set_dest_uuid(new_leader->server()->fs_manager()->uuid());
-  req.set_tablet_id(rt->tablet_id());
+  req.set_tablet_id(remote_tablet->tablet_id());
   ASSERT_OK(new_leader_proxy.RunLeaderElection(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << "Got error. Response: " << resp.ShortDebugString();
 
