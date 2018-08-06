@@ -28,9 +28,11 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/server/server_fwd.h"
-
 #include "yb/consensus/opid_util.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/util/opid.pb.h"
 #include "yb/util/result.h"
@@ -53,8 +55,6 @@ class TransactionIntentApplier;
 
 struct TransactionApplyData {
   ProcessingMode mode;
-  // Applier should be alive until ProcessApply returns.
-  TransactionIntentApplier* applier;
   TransactionId transaction_id;
   consensus::OpId op_id;
   HybridTime commit_ht;
@@ -66,6 +66,7 @@ struct TransactionApplyData {
 class TransactionIntentApplier {
  public:
   virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
+  virtual CHECKED_STATUS RemoveIntents(const TransactionId& transaction_id) = 0;
 
  protected:
   ~TransactionIntentApplier() {}
@@ -76,8 +77,10 @@ class TransactionParticipantContext {
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+  virtual rpc::ThreadPool& thread_pool() = 0;
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
+  virtual bool IsLeader() = 0;
 
  protected:
   ~TransactionParticipantContext() {}
@@ -88,7 +91,7 @@ class TransactionParticipantContext {
 // instance per tablet.
 class TransactionParticipant : public TransactionStatusManager {
  public:
-  explicit TransactionParticipant(TransactionParticipantContext* context);
+  TransactionParticipant(TransactionParticipantContext* context, TransactionIntentApplier* applier);
   virtual ~TransactionParticipant();
 
   // Adds new running transaction.
@@ -109,11 +112,15 @@ class TransactionParticipant : public TransactionStatusManager {
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 
+  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data);
+
   void SetDB(rocksdb::DB* db);
 
   TransactionParticipantContext* context() const;
 
   size_t TEST_GetNumRunningTransactions() const;
+
+  size_t TEST_CountIntents() const;
 
  private:
   int64_t RegisterRequest() override;

@@ -823,18 +823,16 @@ const std::string& YBClient::proxy_uuid() const {
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
                                  const MonoTime& deadline,
-                                 internal::RemoteTabletPtr* remote_tablet,
-                                 const StatusCallback& callback) {
-  data_->meta_cache_->LookupTabletByKey(table, partition_key, deadline, remote_tablet, callback);
+                                 LookupTabletCallback callback) {
+  data_->meta_cache_->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
 }
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const MonoTime& deadline,
-                                internal::RemoteTabletPtr* remote_tablet,
-                                const StatusCallback& callback,
-                                bool use_fast_path_first) {
-  data_->meta_cache_->LookupTabletById(tablet_id, deadline, remote_tablet, callback,
-                                       use_fast_path_first);
+                                LookupTabletCallback callback,
+                                UseCache use_cache) {
+  data_->meta_cache_->LookupTabletById(
+      tablet_id, deadline, std::move(callback), use_cache);
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {
@@ -1637,13 +1635,8 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
 
   for (int attempt = 1; attempt < 11; attempt++) {
     Synchronizer sync;
-    scoped_refptr<internal::RemoteTablet> remote_;
-    table_->client()->data_->meta_cache_->LookupTabletByKey(table_,
-                                                            encoded_key,
-                                                            deadline,
-                                                            &remote_,
-                                                            sync.AsStatusCallback());
-    RETURN_NOT_OK(sync.Wait());
+    auto remote_ = VERIFY_RESULT(table_->client()->data_->meta_cache_->LookupTabletByKeyFuture(
+        table_, encoded_key, deadline).get());
 
     RemoteTabletServer *ts = nullptr;
     vector<RemoteTabletServer*> candidates;

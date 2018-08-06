@@ -22,6 +22,9 @@
 
 #include "yb/common/entity_ids.h"
 
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
 template <class T>
 class scoped_refptr;
 
@@ -70,6 +73,8 @@ class YBTableName;
 
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 
+YB_STRONGLY_TYPED_BOOL(UseCache);
+
 namespace internal {
 
 struct InFlightOp;
@@ -85,6 +90,8 @@ class Batcher;
 typedef scoped_refptr<Batcher> BatcherPtr;
 
 } // namespace internal
+
+typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
 
 } // namespace client
 } // namespace yb

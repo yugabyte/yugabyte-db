@@ -88,6 +88,10 @@ class RpcServer {
 
   const rpc::ServicePool* service_pool(const std::string& service_name) const;
 
+  rpc::ThreadPool& thread_pool() const {
+    return *normal_thread_pool_;
+  }
+
  private:
   enum ServerState {
     // Default state when the rpc server is constructed.

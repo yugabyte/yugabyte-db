@@ -417,6 +417,70 @@ class YBTransaction::Impl final {
             &req,
             std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
         &abort_handle_);
+
+    DoAbortCleanup(transaction);
+  }
+
+  void DoAbortCleanup(const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Cleaning up intents for " << metadata_.transaction_id;
+
+    std::vector<std::string> tablet_ids;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      tablet_ids.reserve(tablets_.size());
+      for (const auto& tablet : tablets_) {
+        tablet_ids.push_back(tablet.first);
+      }
+    }
+
+    for (const auto& tablet_id : tablet_ids) {
+      manager_->client()->LookupTabletById(
+          tablet_id,
+          TransactionRpcDeadline(),
+          std::bind(&Impl::LookupTabletForCleanupDone, this, _1, transaction),
+          client::UseCache::kTrue);
+    }
+  }
+
+  void LookupTabletForCleanupDone(const Result<internal::RemoteTabletPtr>& remote_tablet,
+                                const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Lookup tablet for cleanup done: " << remote_tablet;
+    if (!remote_tablet.ok()) {
+      // Intents will be cleaned up later in this case.
+      LOG(WARNING) << "Tablet lookup failed: " << remote_tablet.status();
+      return;
+    }
+    std::vector<internal::RemoteTabletServer*> remote_tablet_servers;
+    (**remote_tablet).GetRemoteTabletServers(
+        &remote_tablet_servers, internal::UpdateLocalTsState::kTrue);
+    tserver::UpdateTransactionRequestPB req;
+    req.set_tablet_id((**remote_tablet).tablet_id());
+    req.set_propagated_hybrid_time(manager_->Now().ToUint64());
+    auto& state = *req.mutable_state();
+    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    state.set_status(TransactionStatus::CLEANUP);
+    tserver::UpdateTransactionResponsePB response;
+    rpc::RpcController controller;
+
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      abort_requests_.reserve(abort_requests_.size() + remote_tablet_servers.size());
+      for (auto* server : remote_tablet_servers) {
+        auto status = server->InitProxy(manager_->client().get());
+        if (!status.ok()) {
+          LOG(WARNING) << "Failed to init proxy to " << server->ToString() << ": " << status;
+          continue;
+        }
+        abort_requests_.emplace_back();
+        server->proxy()->UpdateTransactionAsync(
+            req, &abort_requests_.back().response, &abort_requests_.back().controller,
+            std::bind(&Impl::ProcessResponse, this, transaction));
+      }
+    }
+  }
+
+  void ProcessResponse(const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "cleanup intents for Abort done";
   }
 
   void CommitDone(const Status& status,
@@ -458,19 +522,22 @@ class YBTransaction::Impl final {
       manager_->client()->LookupTabletById(
           *tablet,
           TransactionRpcDeadline(),
-          &status_tablet_holder_,
-          Bind(&Impl::LookupTabletDone, Unretained(this), transaction), true /* use fast path */);
+          std::bind(&Impl::LookupTabletDone, this, _1, transaction),
+          client::UseCache::kTrue);
     } else {
       SetError(tablet.status());
     }
   }
 
-  void LookupTabletDone(const YBTransactionPtr& transaction, const Status& status) {
-    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << status;
+  void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
+                        const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << result;
 
+    // TODO(dtxn) Handle failure here.
+    CHECK_OK(result);
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      status_tablet_ = std::move(status_tablet_holder_);
+      status_tablet_ = std::move(*result);
       metadata_.status_tablet = status_tablet_->tablet_id();
     }
     SendHeartbeat(TransactionStatus::CREATED, transaction_->shared_from_this());
@@ -534,6 +601,11 @@ class YBTransaction::Impl final {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
       if (status.IsExpired()) {
         SetError(status);
+        // If state is aborted, then we already requested this cleanup.
+        // If state is committed, then we should not cleanup.
+        if (state_.load(std::memory_order_acquire) == TransactionState::kRunning) {
+          DoAbortCleanup(transaction);
+        }
         return;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
@@ -581,7 +653,6 @@ class YBTransaction::Impl final {
   std::string log_prefix_;
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_;
-  internal::RemoteTabletPtr status_tablet_holder_;
   std::atomic<TransactionState> state_{TransactionState::kRunning};
   // Transaction is successfully initialized and ready to process intents.
   const bool child_;
@@ -591,6 +662,14 @@ class YBTransaction::Impl final {
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
   rpc::Rpcs::Handle abort_handle_;
+
+  // RPC data for abort requests.
+  struct AbortRequest {
+    tserver::UpdateTransactionResponsePB response;
+    rpc::RpcController controller;
+  };
+
+  boost::container::stable_vector<AbortRequest> abort_requests_;
 
   struct TabletState {
     bool has_parameters = false;

@@ -232,6 +232,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
 
+  CHECKED_STATUS RemoveIntents(const TransactionId& id) override;
+
   // Finish the Prepare phase of a write transaction.
   //
   // Starts an MVCC transaction and assigns a timestamp for the transaction.

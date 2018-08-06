@@ -91,9 +91,9 @@ class TabletInvoker {
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
-  void LookupTabletCb(const Status& status);
+  void LookupTabletCb(const Result<RemoteTabletPtr>& result);
 
-  void InitialLookupTabletDone(const Status& status);
+  void InitialLookupTabletDone(const Result<RemoteTabletPtr>& result);
 
   // If we receive TABLET_NOT_FOUND and current_ts_ is set, that means we contacted a tserver
   // with a tablet_id, but the tserver no longer has that tablet.

@@ -630,7 +630,7 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
 
   RemoteTabletPtr result;
   bool first = true;
-  std::vector<StatusCallback> to_notify;
+  std::vector<std::pair<LookupTabletCallback, internal::RemoteTabletPtr>> to_notify;
 
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
@@ -675,10 +675,7 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
           auto lookups_iter = lookups_by_partition_key.find(loc.partition().partition_key_start());
           if (lookups_iter != lookups_by_partition_key.end()) {
             for (auto& lookup : lookups_iter->second) {
-              if (lookup.remote_tablet) {
-                *lookup.remote_tablet = remote;
-              }
-              to_notify.push_back(std::move(lookup.callback));
+              to_notify.emplace_back(std::move(lookup.callback), remote);
             }
             lookups_by_partition_key.erase(lookups_iter);
           }
@@ -690,8 +687,8 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
     }
   }
 
-  for (const auto& callback : to_notify) {
-    callback.Run(Status::OK());
+  for (const auto& callback_and_remote_tablet : to_notify) {
+    callback_and_remote_tablet.first(callback_and_remote_tablet.second);
   }
 
   CHECK_NOTNULL(result.get());
@@ -703,7 +700,7 @@ void MetaCache::LookupFailed(
   VLOG(1) << "Lookup for table " << table->id() << " and partition "
           << Slice(partition_group_start).ToDebugHexString() << ", failed with: " << status;
 
-  std::vector<StatusCallback> to_notify;
+  std::vector<LookupTabletCallback> to_notify;
   MonoTime max_deadline;
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
@@ -754,7 +751,7 @@ void MetaCache::LookupFailed(
   }
 
   for (const auto& callback : to_notify) {
-    callback.Run(status);
+    callback(status);
   }
 
   if (max_deadline) {
@@ -767,16 +764,14 @@ void MetaCache::LookupFailed(
 class LookupByIdRpc : public LookupRpc {
  public:
   LookupByIdRpc(const scoped_refptr<MetaCache>& meta_cache,
-                StatusCallback user_cb,
+                LookupTabletCallback user_cb,
                 TabletId tablet_id,
-                scoped_refptr<RemoteTablet>* remote_tablet,
                 const MonoTime& deadline,
                 const shared_ptr<Messenger>& messenger,
                 rpc::ProxyCache* proxy_cache)
       : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
         user_cb_(std::move(user_cb)),
-        tablet_id_(std::move(tablet_id)),
-        remote_tablet_(remote_tablet) {}
+        tablet_id_(std::move(tablet_id)) {}
 
   std::string ToString() const override {
     return Format("LookupByIdRpc($0, $1)", tablet_id_, num_attempts());
@@ -796,25 +791,22 @@ class LookupByIdRpc : public LookupRpc {
     DoFinished(status, resp_, nullptr /* partition_group_start */);
   }
 
-  void Notify(const Status& status, const RemoteTabletPtr& result) override {
-    if (remote_tablet_ && result) {
-      *remote_tablet_ = result;
+  void Notify(const Status& status, const RemoteTabletPtr& remote_tablet) override {
+    if (status.ok()) {
+      user_cb_(remote_tablet);
+    } else {
+      user_cb_(status);
     }
-    user_cb_.Run(status);
   }
 
 
   // User-specified callback to invoke when the lookup finishes.
   //
   // Always invoked, regardless of success or failure.
-  StatusCallback user_cb_;
+  LookupTabletCallback user_cb_;
 
   // Tablet to lookup.
   TabletId tablet_id_;
-
-  // When lookup finishes successfully, the selected tablet is
-  // written here prior to invoking 'user_cb_'.
-  scoped_refptr<RemoteTablet>* remote_tablet_;
 
   // Request body.
   master::GetTabletLocationsRequestPB req_;
@@ -921,18 +913,14 @@ template <class Lock>
 bool MetaCache::FastLookupTabletByKeyUnlocked(
     const YBTable* table,
     const std::string& partition_start,
-    RemoteTabletPtr* remote_tablet,
-    const StatusCallback& callback,
+    const LookupTabletCallback& callback,
     Lock* lock) {
   // Fast path: lookup in the cache.
   auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
   if (result && result->HasLeader()) {
     lock->unlock();
     VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
-    if (remote_tablet) {
-      *remote_tablet = result;
-    }
-    callback.Run(Status::OK());
+    callback(result);
     return true;
   }
 
@@ -942,14 +930,13 @@ bool MetaCache::FastLookupTabletByKeyUnlocked(
 void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const string& partition_key,
                                   const MonoTime& deadline,
-                                  RemoteTabletPtr* remote_tablet,
-                                  const StatusCallback& callback) {
+                                  LookupTabletCallback callback) {
   const auto& partition_start = table->FindPartitionStart(partition_key);
 
   rpc::Rpcs::Handle rpc;
   {
     boost::shared_lock<boost::shared_mutex> lock(mutex_);
-    if (FastLookupTabletByKeyUnlocked(table, partition_start, remote_tablet, callback, &lock)) {
+    if (FastLookupTabletByKeyUnlocked(table, partition_start, callback, &lock)) {
       return;
     }
   }
@@ -958,14 +945,14 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
       table->FindPartitionStart(partition_start, kPartitionGroupSize);
   {
     std::unique_lock<boost::shared_mutex> lock(mutex_);
-    if (FastLookupTabletByKeyUnlocked(table, partition_start, remote_tablet, callback, &lock)) {
+    if (FastLookupTabletByKeyUnlocked(table, partition_start, callback, &lock)) {
       return;
     }
 
     auto& table_data = tables_[table->id()];
     auto& lookup = table_data.tablet_lookups_by_group[partition_group_start];
     bool was_empty = lookup.empty();
-    lookup[partition_start].push_back({callback, remote_tablet, deadline});
+    lookup[partition_start].push_back({std::move(callback), deadline});
     if (!was_empty) {
       return;
     }
@@ -987,24 +974,20 @@ RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
 
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const MonoTime& deadline,
-                                 RemoteTabletPtr* remote_tablet,
-                                 const StatusCallback& callback,
-                                 bool use_fast_path_first) {
-  if (use_fast_path_first) {
+                                 LookupTabletCallback callback,
+                                 UseCache use_cache) {
+  if (use_cache) {
     // Fast path: lookup in the cache.
     scoped_refptr<RemoteTablet> result = LookupTabletByIdFastPath(tablet_id);
     if (result && result->HasLeader()) {
       VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
-      if (remote_tablet) {
-        *remote_tablet = result;
-      }
-      callback.Run(Status::OK());
+      callback(result);
       return;
     }
   }
 
   rpc::StartRpc<LookupByIdRpc>(
-      this, callback, tablet_id, remote_tablet, deadline, client_->data_->messenger_,
+      this, std::move(callback), tablet_id, deadline, client_->data_->messenger_,
       client_->data_->proxy_cache_.get());
 }
 

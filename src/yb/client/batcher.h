@@ -203,7 +203,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void ProcessRpcStatus(const AsyncRpc &rpc, const Status &s);
 
   // Async Callbacks.
-  void TabletLookupFinished(InFlightOpPtr op, const Status& s);
+  void TabletLookupFinished(InFlightOpPtr op, const Result<internal::RemoteTabletPtr>& result);
 
   // Compute a new deadline based on timeout_. If no timeout_ has been set,
   // uses a hard-coded default and issues periodic warnings.

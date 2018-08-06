@@ -931,17 +931,66 @@ Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
   return Slice(buffer_.data(), end);
 }
 
-Status PrepareApplyIntentsBatch(
-    const TransactionId& transaction_id, HybridTime commit_ht,
+CHECKED_STATUS IntentToWriteRequest(
+    const Slice& transaction_id_slice,
+    HybridTime commit_ht,
+    rocksdb::Iterator* reverse_index_iter,
+    rocksdb::Iterator* intent_iter,
     rocksdb::WriteBatch* regular_batch,
-    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
+    IntraTxnWriteId* write_id) {
+  DocHybridTimeBuffer doc_ht_buffer;
+  intent_iter->Seek(reverse_index_iter->value());
+  if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
+    LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
+                << " for " << reverse_index_iter->key().ToDebugString();
+    return Status::OK();
+  }
+  auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
+
+  if (IsStrongIntent(intent.type)) {
+    IntraTxnWriteId stored_write_id;
+    Slice intent_value;
+    RETURN_NOT_OK(DecodeIntentValue(
+        intent_iter->value(), transaction_id_slice, &stored_write_id, &intent_value));
+
+    // Write id should match to one that were calculated during append of intents.
+    // Doing it just for sanity check.
+    DCHECK_EQ(stored_write_id, *write_id)
+      << "Value: " << intent_iter->value().ToDebugHexString();
+
+    // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
+    // Time will be added when writing batch to RocksDB.
+    std::array<Slice, 2> key_parts = {{
+        intent.doc_path,
+        doc_ht_buffer.EncodeWithValueType(commit_ht, *write_id),
+    }};
+    std::array<Slice, 2> value_parts = {{
+        intent.doc_ht,
+        intent_value,
+    }};
+    regular_batch->Put(key_parts, value_parts);
+    ++*write_id;
+  }
+
+  return Status::OK();
+}
+
+Status PrepareApplyIntentsBatch(
+    const TransactionId &transaction_id, HybridTime commit_ht,
+    rocksdb::WriteBatch *regular_batch,
+    rocksdb::DB *intents_db, rocksdb::WriteBatch *intents_batch) {
   Slice reverse_index_upperbound;
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId,
       nullptr /* read_filter */, &reverse_index_upperbound);
 
-  auto intent_iter = CreateRocksDBIterator(
-      intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+  std::unique_ptr<rocksdb::Iterator> intent_iter;
+  // If we don't have regular_batch, it means that we just removing intents.
+  // We don't need intent iterator, since reverse index iterator is enough in this case.
+  if (regular_batch) {
+    intent_iter = CreateRocksDBIterator(
+        intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+  }
 
   KeyBytes txn_reverse_index_prefix;
   Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
@@ -970,40 +1019,13 @@ Status PrepareApplyIntentsBatch(
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       // Value of reverse index is a key of original intent record, so seek it and check match.
-      intent_iter->Seek(reverse_index_iter->value());
-      if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
-        LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
-                    << " for " << reverse_index_iter->key().ToDebugString();
-        continue;
-      }
-      auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
-
-      if (IsStrongIntent(intent.type)) {
-        IntraTxnWriteId stored_write_id;
-        Slice intent_value;
-        RETURN_NOT_OK(DecodeIntentValue(
-            intent_iter->value(), transaction_id_slice, &stored_write_id, &intent_value));
-
-        // Write id should match to one that were calculated during append of intents.
-        // Doing it just for sanity check.
-        DCHECK_EQ(stored_write_id, write_id)
-            << "Value: " << intent_iter->value().ToDebugHexString();
-
-        // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
-        // Time will be added when writing batch to rocks db.
-        std::array<Slice, 2> key_parts = {{
-            intent.doc_path,
-            doc_ht_buffer.EncodeWithValueType(commit_ht, write_id),
-        }};
-        std::array<Slice, 2> value_parts = {{
-            intent.doc_ht,
-            intent_value,
-        }};
-        regular_batch->Put(key_parts, value_parts);
-        ++write_id;
+      if (regular_batch) {
+        RETURN_NOT_OK(IntentToWriteRequest(
+            transaction_id_slice, commit_ht, reverse_index_iter.get(), intent_iter.get(),
+            regular_batch, &write_id));
       }
 
-      intents_batch->Delete(intent_iter->key());
+      intents_batch->Delete(reverse_index_iter->value());
     }
 
     intents_batch->Delete(reverse_index_iter->key());

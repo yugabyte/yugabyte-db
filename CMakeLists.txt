@@ -198,6 +198,8 @@ function(VALIDATE_COMPILER_TYPE)
   if ("${COMPILER_FAMILY}" STREQUAL "gcc")
     set(IS_GCC TRUE PARENT_SCOPE)
   endif()
+
+  message("YB_COMPILER_TYPE env var: $ENV{YB_COMPILER_TYPE}")
 endfunction()
 
 # Functions for adding compiler/linker flags ------------------------------------------------------

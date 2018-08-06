@@ -488,14 +488,12 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
-                         internal::RemoteTabletPtr* remote_tablet,
-                         const StatusCallback& callback);
+                         LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,
                         const MonoTime& deadline,
-                        internal::RemoteTabletPtr* remote_tablet,
-                        const StatusCallback& callback,
-                        bool use_fast_path_first);
+                        LookupTabletCallback callback,
+                        UseCache use_cache);
 
   const std::shared_ptr<rpc::Messenger>& messenger() const;
 
