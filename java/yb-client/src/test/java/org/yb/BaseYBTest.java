@@ -26,12 +26,18 @@ import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
+import org.yb.util.FileUtil;
+import org.yb.util.GzipHelpers;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Base class for all YB Java tests.
@@ -46,10 +52,51 @@ public class BaseYBTest {
   private static String currentTestClassName;
   private static String currentTestMethodName;
 
-  private static final int UNDEFINED_TEST_METHOD_INDEX = -1;
+  /**
+   * A facility for deleting successful per-test-method log files in case no test failures happened.
+   */
+  static class LogDeleter {
+    AtomicBoolean seenTestFailures = new AtomicBoolean(false);
+    List<String> logsToDelete = new ArrayList<>();
 
-  // We put "001", "002", etc. in per-test log files.
-  private static int testMethodIndex = UNDEFINED_TEST_METHOD_INDEX;
+    public void doCleanup() {
+      if (TestUtils.deleteSuccessfulPerTestMethodLogs()) {
+        if (seenTestFailures.get()) {
+          if (!logsToDelete.isEmpty()) {
+            LOG.info("Not deleting these test logs, seen test failures: " + logsToDelete);
+          }
+        } else {
+          LOG.info("Deleting test logs (" + TestUtils.DELETE_SUCCESSFUL_LOGS_ENV_VAR +
+              " is specified, and no test failures seen): " + logsToDelete);
+          for (String filePath : logsToDelete) {
+            if (new File(filePath).exists() && !new File(filePath).delete()) {
+              LOG.warn("Failed to delete: " + filePath);
+            }
+          }
+        }
+      }
+    }
+
+    public void onTestFailure() {
+      seenTestFailures.set(true);
+    }
+
+    public void addLogToDelete(String logPath) {
+      if (new File(logPath).exists()) {
+        logsToDelete.add(logPath);
+      }
+    }
+
+    public void registerHook() {
+      Runtime.getRuntime().addShutdownHook(new Thread(() -> doCleanup()));
+    }
+  }
+
+  private static LogDeleter logDeleter = new LogDeleter();
+
+  static {
+    logDeleter.registerHook();
+  }
 
   @Rule
   public final Timeout METHOD_TIMEOUT = new Timeout(
@@ -59,48 +106,46 @@ public class BaseYBTest {
   @Rule
   public final ExpectedException thrown = ExpectedException.none();
 
+  /**
+   * Describes actions to be taken when we start/finish running a test within a test class.
+   */
+  private interface LogSwitcher {
+    /**
+     * Switches stdout/stderr to a new file if we're in a mode where we want every test within the
+     * same test class to use a separate file.
+     */
+    void switchStandardStreams();
+
+    /**
+     * Does common logging. This logging is only done once if we're putting all test output in one
+     * file (default mode), and is done twice (to the custom per-test file and to the top-level
+     * output file) if we're in the mode where we want every test to use a separate file. This way
+     * the information about test success/failure and the time it takes to run a test is present
+     * in both the top-level log file and per-test log files.
+     */
+    void logEventDetails(boolean streamsSwitched);
+  }
+
   @Rule
   public final TestRule watcher = new TestWatcher() {
 
     boolean succeeded;
     long startTimeMs;
     Throwable failureException;
+    String perTestStdoutPath;
+    String perTestStderrPath;
 
     private final String descriptionToStr(Description description) {
       return TestUtils.getClassAndMethodStr(description);
     }
 
-    private void switchLogging(Runnable doLogging, Runnable doSwitching) {
-      doLogging.run();
+    private void switchLogging(LogSwitcher switcher) {
+      switcher.logEventDetails(false);
 
       if (TestUtils.usePerTestLogFiles()) {
-        doSwitching.run();
-
-        // Re-create the "out" appender.
-        org.apache.log4j.Logger rootLogger = LogManager.getRootLogger();
-        Enumeration<Appender> appenders = rootLogger.getAllAppenders();
-        int numAppenders = 0;
-        while (appenders.hasMoreElements()) {
-          Appender appender = appenders.nextElement();
-          if (!appender.getName().equals("out")) {
-            throw new RuntimeException(
-                "Expected to have one appender named 'out' to exist, got " + appender.getName());
-          }
-          numAppenders++;
-        }
-        if (numAppenders != 1) {
-          throw new RuntimeException(
-              "Expected to have one appender named 'out' to exist, got " + numAppenders +
-                  " appenders");
-        }
-        Appender oldOutAppender = LogManager.getRootLogger().getAppender("out");
-        rootLogger.removeAllAppenders();
-
-        Appender appender = new ConsoleAppender(oldOutAppender.getLayout());
-        appender.setName(oldOutAppender.getName());
-        rootLogger.addAppender(appender);
-
-        doLogging.run();
+        switcher.switchStandardStreams();
+        recreateOutAppender();
+        switcher.logEventDetails(true);
       }
     }
 
@@ -112,9 +157,6 @@ public class BaseYBTest {
 
     @Override
     protected void starting(Description description) {
-      if (testMethodIndex == UNDEFINED_TEST_METHOD_INDEX) {
-        testMethodIndex = 1;
-      }
       resetState();
       startTimeMs = System.currentTimeMillis();
 
@@ -123,34 +165,42 @@ public class BaseYBTest {
 
       String descStr = descriptionToStr(description);
 
-      switchLogging(
-          () -> {
-            // The format of the heading below is important as it is parsed by external test
-            // dashboarding tools.
-            TestUtils.printHeading(System.out, "Starting YB Java test: " + descStr);
-          },
-          () -> {
-            // Use a separate output file for each test method.
-            String outputPrefix;
-            try {
-              outputPrefix = TestUtils.getTestReportFilePrefix();
-            } catch (Exception ex) {
-              LOG.info("Error when looking up report file prefix for test " + descStr, ex);
-              throw ex;
-            }
-            String stdoutPath = outputPrefix + "stdout.txt";
-            String stderrPath = outputPrefix + "stderr.txt";
-            LOG.info("Writing stdout for test " + descStr + " to " + stdoutPath);
+      switchLogging(new LogSwitcher() {
+        @Override
+        public void logEventDetails(boolean streamsSwitched) {
+          // The format of the heading below is important as it is parsed by external test
+          // dashboarding tools.
+          TestUtils.printHeading(System.out, "Starting YB Java test: " + descStr);
+        }
 
-            System.out.flush();
-            System.err.flush();
-            try {
-              System.setOut(new PrintStream(new FileOutputStream(stdoutPath)));
-              System.setErr(new PrintStream(new FileOutputStream(stderrPath)));
-            } catch (IOException ex) {
-              throw new RuntimeException(ex);
-            }
-          });
+        @Override
+        public void switchStandardStreams() {
+          // Use a separate output file for each test method.
+          String outputPrefix;
+          try {
+            outputPrefix = TestUtils.getTestReportFilePrefix();
+          } catch (Exception ex) {
+            LOG.info("Error when looking up report file prefix for test " + descStr, ex);
+            throw ex;
+          }
+          String stdoutPath = outputPrefix + "stdout.txt";
+          String stderrPath = outputPrefix + "stderr.txt";
+
+          perTestStdoutPath = stdoutPath;
+          perTestStderrPath = stderrPath;
+
+          LOG.info("Writing stdout for test " + descStr + " to " + stdoutPath);
+
+          System.out.flush();
+          System.err.flush();
+          try {
+            System.setOut(new PrintStream(new FileOutputStream(stdoutPath)));
+            System.setErr(new PrintStream(new FileOutputStream(stderrPath)));
+          } catch (IOException ex) {
+            throw new RuntimeException(ex);
+          }
+        }
+      });
     }
 
     @Override
@@ -163,6 +213,7 @@ public class BaseYBTest {
     protected void failed(Throwable e, Description description) {
       failureException = e;
       super.failed(e, description);
+      logDeleter.onTestFailure();
     }
 
     /**
@@ -174,30 +225,78 @@ public class BaseYBTest {
       // tools.
       final String descStr = descriptionToStr(description);
       switchLogging(
-          () -> {
-            if (succeeded) {
-              LOG.info("YB Java test succeeded: " + descStr);
+          new LogSwitcher() {
+            @Override
+            public void logEventDetails(boolean streamsSwitched) {
+              if (succeeded) {
+                LOG.info("YB Java test succeeded: " + descStr);
+              }
+              if (failureException != null) {
+                LOG.error("YB Java test failed: " + descStr, failureException);
+              }
+              if (startTimeMs == 0) {
+                LOG.error("Could not identify start time for test " + descStr + " to compute its " +
+                    "duration");
+              } else {
+                double elapsedTimeSec = (System.currentTimeMillis() - startTimeMs) / 1000.0;
+                LOG.info("YB Java test " + descStr +
+                    String.format(" took %.2f seconds", elapsedTimeSec));
+              }
+              TestUtils.printHeading(System.out, "Finished YB Java test: " + descStr);
+              if (streamsSwitched) {
+                FileUtil.bestEffortDeleteIfEmpty(perTestStdoutPath);
+                FileUtil.bestEffortDeleteIfEmpty(perTestStderrPath);
+
+                if (TestUtils.gzipPerTestMethodLogs()) {
+                  LOG.info(
+                      "Gzipping test logs (" + TestUtils.GZIP_PER_TEST_METHOD_LOGS_ENV_VAR +
+                          " is set): " + perTestStdoutPath + ", " + perTestStderrPath);
+                  perTestStdoutPath = GzipHelpers.bestEffortGzipFile(perTestStdoutPath);
+                  perTestStderrPath = GzipHelpers.bestEffortGzipFile(perTestStderrPath);
+                }
+
+                if (succeeded && TestUtils.deleteSuccessfulPerTestMethodLogs()) {
+                  logDeleter.addLogToDelete(perTestStdoutPath);
+                  logDeleter.addLogToDelete(perTestStderrPath);
+                }
+              }
             }
-            if (failureException != null) {
-              LOG.error("YB Java test failed: " + descStr, failureException);
+
+            @Override
+            public void switchStandardStreams() {
+              TestUtils.resetDefaultStdOutAndErr();
             }
-            if (startTimeMs == 0) {
-              LOG.error("Could not identify start time for test " + descStr + " to compute its " +
-                  "duration");
-            } else {
-              double elapsedTimeSec = (System.currentTimeMillis() - startTimeMs) / 1000.0;
-              LOG.info("YB Java test " + descStr +
-                  String.format(" took %.2f seconds", elapsedTimeSec));
-            }
-            TestUtils.printHeading(System.out, "Finished YB Java test: " + descStr);
-          },
-          () -> {
-            TestUtils.resetDefaultStdOutAndErr();
           });
       resetState();
-      testMethodIndex++;
     }
+
   };
+
+  private void recreateOutAppender() {
+    // Re-create the "out" appender.
+    org.apache.log4j.Logger rootLogger = LogManager.getRootLogger();
+    Enumeration<Appender> appenders = rootLogger.getAllAppenders();
+    int numAppenders = 0;
+    while (appenders.hasMoreElements()) {
+      Appender appender = appenders.nextElement();
+      if (!appender.getName().equals("out")) {
+        throw new RuntimeException(
+            "Expected to have one appender named 'out' to exist, got " + appender.getName());
+      }
+      numAppenders++;
+    }
+    if (numAppenders != 1) {
+      throw new RuntimeException(
+          "Expected to have one appender named 'out' to exist, got " + numAppenders +
+              " appenders");
+    }
+    Appender oldOutAppender = LogManager.getRootLogger().getAppender("out");
+    rootLogger.removeAllAppenders();
+
+    Appender appender = new ConsoleAppender(oldOutAppender.getLayout());
+    appender.setName(oldOutAppender.getName());
+    rootLogger.addAppender(appender);
+  }
 
   /**
    * This can be used for subclasses to override each test method's timeout in milliseconds. This is
@@ -219,13 +318,6 @@ public class BaseYBTest {
       throw new RuntimeException("Current test method name not known");
     }
     return currentTestMethodName;
-  }
-
-  public static int getTestMethodIndex() {
-    if (testMethodIndex == UNDEFINED_TEST_METHOD_INDEX) {
-      throw new RuntimeException("Test method index within the test class not known");
-    }
-    return testMethodIndex;
   }
 
 }
