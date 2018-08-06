@@ -42,6 +42,11 @@ class RedisServiceData {
   virtual void LogToMonitors(
       const string& end, const string& db, const RedisClientCommand& cmd) = 0;
 
+  // Used for PubSub.
+  virtual void AppendToChannelSubscribers(
+      const string& channel, std::shared_ptr<rpc::Connection> conn) = 0;
+  virtual int PublishToChannel(const string& channel, const string& message) = 0;
+
   // Used for Auth.
   virtual CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) = 0;
 

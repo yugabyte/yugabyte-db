@@ -25,6 +25,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
@@ -121,6 +122,8 @@ namespace redisserver {
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((monitor, Monitor, 1, LOCAL)) \
+    ((publish, Publish, 3, LOCAL)) \
+    ((subscribe, Subscribe, -2, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
@@ -388,6 +391,54 @@ void HandleMonitor(LocalCommandData data) {
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
   auto conn = data.call()->connection();
   data.context()->service_data()->AppendToMonitors(conn);
+}
+
+void HandlePublish(LocalCommandData data) {
+  const string& channel = data.arg(1).ToBuffer();
+  const string& published_message = data.arg(2).ToBuffer();
+
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+
+  vector<string> parts;
+  parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
+  parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
+  parts.push_back(redisserver::EncodeAsBulkString(published_message).ToBuffer());
+  string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
+  response.set_int_response(data.context()->service_data()->PublishToChannel(channel, encoded_msg));
+  data.Respond(&response);
+}
+
+void HandleSubscribe(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+
+  // Add to the appenders after the call has been handled (i.e. reponded with "OK").
+  auto conn = data.call()->connection();
+  for (int idx = 1; idx < data.arg_size(); idx++) {
+    string channel = data.arg(idx).ToBuffer();
+
+    data.context()->service_data()->AppendToChannelSubscribers(channel, conn);
+
+    vector<string> parts;
+    parts.push_back(redisserver::EncodeAsBulkString("subscribe").ToBuffer());
+    parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
+    // TODO: Should be returning the number of channels that the client is subscribed to.
+    parts.push_back(redisserver::EncodeAsInteger(0).ToBuffer());
+    if (idx < data.arg_size() - 1) {
+      string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
+      conn->QueueOutboundData(
+          std::make_shared<yb::rpc::StringOutboundData>(encoded_msg, "Subscribe Response"));
+    } else {
+      auto array_response = response.mutable_array_response();
+      array_response->set_encoded(true);
+      for (auto& part : parts) {
+        array_response->add_elements(part);
+      }
+    }
+  }
+
+  data.Respond(&response);
 }
 
 void HandleRole(LocalCommandData data) {

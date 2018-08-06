@@ -65,6 +65,10 @@ class RedisReply {
     return array_;
   }
 
+  bool operator==(const RedisReply& rhs) const {
+    return type_ == rhs.type_ && string_ == rhs.string_ && int_ == rhs.int_ && array_ == array_;
+  }
+
  private:
   RedisReplyType type_;
   std::string string_;
