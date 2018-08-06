@@ -587,6 +587,11 @@ fi
 
 set_sanitizer_runtime_options
 
+# To reduce Jenkins archive size, let's gzip Java logs and delete per-test-method logs in case
+# of no test failures.
+export YB_GZIP_PER_TEST_METHOD_LOGS=1
+export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
+
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
     if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
