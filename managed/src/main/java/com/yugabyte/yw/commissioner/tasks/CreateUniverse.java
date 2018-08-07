@@ -15,7 +15,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class CreateUniverse extends UniverseDefinitionTaskBase {
@@ -41,7 +41,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
-      UserIntent userIntent = primaryCluster.userIntent;
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       PlacementInfoUtil.selectMasters(primaryNodes, primaryCluster.userIntent.replicationFactor);
 
@@ -53,21 +52,20 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       updateNodeNames();
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet, userIntent.deviceInfo)
+      createSetupServerTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(taskParams().nodeDetailsSet, userIntent.deviceInfo)
+      createServerInfoTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */,
-                                 userIntent.deviceInfo, userIntent.ybSoftwareVersion)
+      createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-      // Override master flags and tserver flags as necessary.
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.MASTER);
+      // Override master flags (on primary cluster) and tserver flags as necessary.
+      createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
@@ -101,7 +99,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for a master leader to hear from atleast replication factor number of tservers.
+      // Wait for a master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
@@ -112,10 +110,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, userIntent.providerType,
-                                userIntent.provider, userIntent.universeName)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Update the DNS entry for all the clusters in this universe.
+      for (Cluster cluster : taskParams().clusters) {
+        createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
+                                  cluster.userIntent.providerType,
+                                  cluster.userIntent.provider, cluster.userIntent.universeName)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

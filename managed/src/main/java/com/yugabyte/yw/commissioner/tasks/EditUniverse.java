@@ -106,21 +106,22 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (!nodesToProvision.isEmpty()) {
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision, userIntent.deviceInfo)
+      createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(nodesToProvision, userIntent.deviceInfo)
+      createServerInfoTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(nodesToProvision, true /* isShell */,
-                                 userIntent.deviceInfo, userIntent.ybSoftwareVersion)
+      createConfigureServerTasks(nodesToProvision, true /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-      // Override master and tserver flags as necessary.
-      createGFlagsOverrideTasks(nodesToProvision, ServerType.MASTER);
+      // Override master (on primary cluster only) and tserver flags as necessary.
+      if (cluster.clusterType == ClusterType.PRIMARY) {
+        createGFlagsOverrideTasks(nodesToProvision, ServerType.MASTER);
+      }
       createGFlagsOverrideTasks(nodesToProvision, ServerType.TSERVER);
     }
 
@@ -229,8 +230,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
 
       // Change the master addresses in the conf file for the new tservers.
-      createConfigureServerTasks(newTservers, false /*isShell */, userIntent.deviceInfo,
-                                 userIntent.ybSoftwareVersion, true /* updateMasterAddrs */);
+      createConfigureServerTasks(newTservers, false /* isShell */, true /* updateMasterAddrs */);
 
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask()

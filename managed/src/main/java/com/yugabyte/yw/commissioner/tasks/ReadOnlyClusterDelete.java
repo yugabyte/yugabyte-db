@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -38,15 +39,20 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(params().expectedUniverseVersion);
+      Universe universe = null;
+      if (params().isForceDelete) {
+        universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      } else {
+        universe = lockUniverseForUpdate(params().expectedUniverseVersion);
+      }
+
+      Cluster cluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
 
       // Delete all the read-only cluster nodes.
-      createDestroyServerTasks(
-          universe.getNodesInCluster(
-              universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid),
-          params().isForceDelete,
-          true /* deleteNodeFromDB */)
-        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createDestroyServerTasks(universe.getNodesInCluster(cluster.uuid),
+                               params().isForceDelete,
+                               true /* deleteNodeFromDB */)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
       createDeleteClusterFromUniverseTask(params().clusterUUID);
@@ -54,6 +60,12 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Remove the DNS entry for this cluster.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
+                                cluster.userIntent.providerType, cluster.userIntent.provider,
+                                cluster.userIntent.universeName)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

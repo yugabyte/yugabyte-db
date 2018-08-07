@@ -130,6 +130,11 @@ public class Universe extends Model {
   public static final Find<UUID, Universe> find = new Find<UUID, Universe>() {
   };
 
+  // Prefix added to read only node.
+  public static final String READONLY = "-readonly";
+
+  // Prefix added to node Index of each read replica node.
+  public static final String NODEIDX_PREFIX = "-n";
 
   /**
    * Creates an empty universe.
@@ -511,5 +516,26 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodesInCluster(UUID placementUuid) {
     return getUniverseDetails().getNodesInCluster(placementUuid);
+  }
+
+  /**
+   * Returns the cluster to which this node belongs.
+   *
+   * @param nodeName name of the node.
+   * @param universe universe which can contain the node.
+   * @return cluster info from the universe which contains this node.
+   */
+  public static Cluster getCluster(Universe universe, String nodeName) {
+    if (!nodeName.contains(READONLY)) {
+      return universe.getUniverseDetails().getPrimaryCluster();
+    }
+
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      if (nodeName.contains(Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX)) {
+        return cluster;
+      }
+    }
+
+    return null;
   }
 }

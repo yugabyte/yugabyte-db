@@ -242,7 +242,9 @@ public class NodeManager extends DevopsBase {
         {
           if (!taskParam.updateMasterAddrsOnly &&
               (taskParam.gflags == null || taskParam.gflags.isEmpty())) {
-            throw new RuntimeException("Empty GFlags data provided");
+            throw new RuntimeException(taskParam.gflags + " GFlags data provided for " +
+                                       taskParam.nodeName + "'s " +
+                                       taskParam.getProperty("processType") + " process.");
           }
 
           String processType = taskParam.getProperty("processType");

@@ -32,9 +32,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
@@ -579,101 +576,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-
-  /**
-   * Creates a task list for fetching information about the nodes provisioned (such as the ip
-   * address) and adds it to the task queue. This is specific to the cloud.
-   *
-   * @param nodes : a collection of nodes that need to be provisioned
-   * @param deviceInfo device info, if any, about disk volumes etc on the nodes
-   * @return subtask group
-   */
-  public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes,
-                                            DeviceInfo deviceInfo) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
-
-    for (NodeDetails node : nodes) {
-      NodeTaskParams params = new NodeTaskParams();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = deviceInfo;
-      // Set the region name to the proper provider code so we can use it in the cloud API calls.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Create the Ansible task to get the server info.
-      AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
-      ansibleFindCloudHost.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(ansibleFindCloudHost);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list to configure the newly provisioned nodes and adds it to the task queue.
-   * Includes tasks such as setting up the 'yugabyte' user and installing the passed in software
-   * package.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   * @param isMasterInShellMode : true if we are configuring a master node in shell mode
-   * @param deviceInfo device info, if any, about disk volumes etc on the nodes
-   * @param ybSoftwareVersion software version to install on the node
-   * @param updateMasterAddrsOnly if true, only want to set master addresses gflags.
-   * @return subtask group
-   */
-  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
-                                                 boolean isMasterInShellMode,
-                                                 DeviceInfo deviceInfo,
-                                                 String ybSoftwareVersion) {
-    return createConfigureServerTasks(nodes, isMasterInShellMode, deviceInfo,
-                                      ybSoftwareVersion, false /* updateMasterAddrs */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
-                                                 boolean isMasterInShellMode,
-                                                 DeviceInfo deviceInfo,
-                                                 String ybSoftwareVersion,
-                                                 boolean updateMasterAddrsOnly) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
-    for (NodeDetails node : nodes) {
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = deviceInfo;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Sets the isMaster field
-      params.isMaster = node.isMaster;
-      // Set if this node is a master in shell mode.
-      params.isMasterInShellMode = isMasterInShellMode;
-      // The software package to install for this cluster.
-      params.ybSoftwareVersion = ybSoftwareVersion;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      // Set if updating master addresses only.
-      params.updateMasterAddrsOnly = updateMasterAddrsOnly;
-      if (updateMasterAddrsOnly) {
-        params.type = UpgradeTaskType.GFlags;
-        params.setProperty("processType", ServerType.TSERVER.toString());
-      }
-      // Create the Ansible task to get the server info.
-      AnsibleConfigureServers task = new AnsibleConfigureServers();
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(task);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
   /**
    * Wait for Master Leader Election
    * @return subtask group
@@ -847,45 +749,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     // Add it to the task list.
     subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   */
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, DeviceInfo deviceInfo) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
-
-    for (NodeDetails node : nodes) {
-      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      CloudSpecificInfo cloudInfo = node.cloudInfo;
-      params.deviceInfo = deviceInfo;
-      // Set the region code.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Pick one of the subnets in a round robin fashion.
-      params.subnetId = cloudInfo.subnet_id;
-      // Set the instance type.
-      params.instanceType = cloudInfo.instance_type;
-      // Set the spot price.
-      params.spotPrice = cloudInfo.spotPrice;
-      // Set the assign public ip param.
-      params.assignPublicIP = cloudInfo.assignPublicIP;
-      params.useTimeSync = cloudInfo.useTimeSync;
-      // Create the Ansible task to setup the server.
-      AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
-      ansibleSetupServer.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(ansibleSetupServer);
-    }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
