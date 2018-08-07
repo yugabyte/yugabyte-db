@@ -1356,6 +1356,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Start the background task to send the TruncateTable() RPC to the leader for this tablet.
   void SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& tablet);
 
+  // Truncate the specified table/index.
+  CHECKED_STATUS TruncateTable(const TableId& table_id,
+                               bool is_index,
+                               TruncateTableResponsePB* resp,
+                               rpc::RpcContext* rpc);
+
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
   // table are appended to the lists. The caller will be responsible for committing the change and
   // deleting the actual table and tablets.

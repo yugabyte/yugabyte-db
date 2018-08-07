@@ -2100,29 +2100,49 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   RETURN_NOT_OK(CheckOnline());
 
   for (int i = 0; i < req->table_ids_size(); i++) {
-    const auto& table_id = req->table_ids(i);
-    // Lookup the table and verify if it exists.
-    TRACE("Looking up table");
-    scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, table_id);
-    if (table == nullptr) {
-      Status s = STATUS(NotFound, Substitute("The table for table_id $0 does not exist", table_id));
-      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
-    }
-
-    TRACE("Locking table");
-    auto l = table->LockForRead();
-    if (l->data().started_deleting() || l->data().is_deleted()) {
-      Status s = STATUS(NotFound, Substitute("The table $0 does not exist", table->ToString()));
-      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
-    }
-
-    // Send a Truncate() request to each tablet in the table.
-    SendTruncateTableRequest(table);
-
-    LOG(INFO) << "Successfully initiated TRUNCATE for " << table->ToString() << " per request from "
-              << RequestorString(rpc);
-    background_tasks_->Wake();
+    RETURN_NOT_OK(TruncateTable(req->table_ids(i), false /* is_index */, resp, rpc));
   }
+
+  return Status::OK();
+}
+
+Status CatalogManager::TruncateTable(const TableId& table_id,
+                                     const bool is_index,
+                                     TruncateTableResponsePB* resp,
+                                     rpc::RpcContext* rpc) {
+  const char* table_type = is_index ? "index" : "table";
+
+  // Lookup the table and verify if it exists.
+  TRACE(Substitute("Looking up $0", table_type));
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, table_id);
+  if (table == nullptr) {
+    Status s = STATUS(NotFound, Substitute("The table for $0 id $1 does not exist",
+                                           table_type, table_id));
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  TRACE(Substitute("Locking $0", table_type));
+  auto l = table->LockForRead();
+  DCHECK(is_index == !l->data().pb.indexed_table_id().empty());
+  if (l->data().started_deleting() || l->data().is_deleted()) {
+    Status s = STATUS(NotFound, Substitute("The $0 $1 does not exist",
+                                           table_type, table->ToString()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  // Send a Truncate() request to each tablet in the table.
+  SendTruncateTableRequest(table);
+
+  LOG(INFO) << "Successfully initiated TRUNCATE for " << table->ToString() << " per request from "
+            << RequestorString(rpc);
+  background_tasks_->Wake();
+
+  // Truncate indexes also.
+  DCHECK(!is_index || l->data().pb.indexes().empty()) << "indexes should be empty for index table";
+  for (const auto& index_info : l->data().pb.indexes()) {
+    RETURN_NOT_OK(TruncateTable(index_info.table_id(), true /* is_index */, resp, rpc));
+  }
+
   return Status::OK();
 }
 
