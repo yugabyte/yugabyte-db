@@ -34,7 +34,7 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
 // and/or master and ensures the task waits for the right set of load balance primitives.
-public class AddNodeToUniverse extends UniverseTaskBase {
+public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverse.class);
 
   @Override
@@ -74,18 +74,15 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Adding)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      UserIntent userIntent = universe.getUniverseDetails()
-                                      .getClusterByUuid(currentNode.placementUuid)
-                                      .userIntent;
       Collection<NodeDetails> node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
 
       // First spawn an instance for Decommissioned node.
       boolean wasDecommissioned = currentNode.state == NodeDetails.NodeState.Decommissioned;
       if (wasDecommissioned) {
-        createSetupServerTasks(node, userIntent.deviceInfo)
+        createSetupServerTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-        createServerInfoTasks(node, userIntent.deviceInfo)
+        createServerInfoTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
         // Reset the current node info since it was respawned.
@@ -98,8 +95,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       if (areMastersUnderReplicated(currentNode, universe)) {
         // Configures the master to start in shell mode.
         // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-        createConfigureServerTasks(node, true /* isShell */, userIntent.deviceInfo,
-                                   userIntent.ybSoftwareVersion)
+        createConfigureServerTasks(node, true /* isShell */)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
         // Start a shell master process.
@@ -122,8 +118,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
       }
 
       // Configure so that this tserver picks all the master nodes.
-      createConfigureServerTasks(node, false /* isShell */, userIntent.deviceInfo,
-                                 userIntent.ybSoftwareVersion)
+      createConfigureServerTasks(node, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Add the tserver process start task.
@@ -144,7 +139,7 @@ public class AddNodeToUniverse extends UniverseTaskBase {
 
       // Update all tserver conf files with new master information.
       if (masterAdded) {
-        createMasterInfoUpdateTask(universe, userIntent, currentNode);
+        createMasterInfoUpdateTask(universe, currentNode);
       }
 
       // Update node state to live.
@@ -152,6 +147,10 @@ public class AddNodeToUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       if (wasDecommissioned) {
+        UserIntent userIntent = universe.getUniverseDetails()
+                                        .getClusterByUuid(currentNode.placementUuid)
+                                        .userIntent;
+
         // Update the DNS entry for this universe.
         createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
                                   userIntent.provider, userIntent.universeName)
@@ -182,15 +181,12 @@ public class AddNodeToUniverse extends UniverseTaskBase {
 
   // Setup a configure task to update the new master list in the conf files of all tservers.
   // Skip the newly added node as it would have gotten the new master list after provisioing.
-  private void createMasterInfoUpdateTask(Universe universe, UserIntent userIntent,
-                                          NodeDetails skipNode) {
+  private void createMasterInfoUpdateTask(Universe universe, NodeDetails skipNode) {
     List<NodeDetails> nodes = universe.getTServers();
     nodes.removeIf((NodeDetails node) ->
                     node.cloudInfo.private_ip.equals(skipNode.cloudInfo.private_ip));
     // Configure all tservers to pick the new master node ip as well.
-    createConfigureServerTasks(nodes, false /* isShell */, userIntent.deviceInfo,
-                               userIntent.ybSoftwareVersion, true /* updateMasterAddr */)
+    createConfigureServerTasks(nodes, false /* isShell */, true /* updateMasterAddr */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }
-

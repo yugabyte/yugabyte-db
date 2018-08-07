@@ -795,7 +795,7 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(), is("Empty GFlags data provided")));
+        assertThat(re.getMessage(), allOf(notNullValue(), containsString("GFlags data provided")));
       }
     }
   }

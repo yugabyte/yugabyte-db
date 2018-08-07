@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -63,19 +62,16 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         throw new IllegalArgumentException(errMsg);
       }
 
-      UserIntent userIntent = cluster.userIntent;
-
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision, userIntent.deviceInfo)
+      createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. for ex., private ip address.
-      createServerInfoTasks(nodesToProvision, userIntent.deviceInfo)
+      createServerInfoTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(nodesToProvision, true /* isShell */,
-                                 userIntent.deviceInfo, userIntent.ybSoftwareVersion)
+      createConfigureServerTasks(nodesToProvision, true /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
