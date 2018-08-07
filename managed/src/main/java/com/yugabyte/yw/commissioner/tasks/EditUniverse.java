@@ -35,6 +35,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   // Get the new masters from the node list.
   Set<NodeDetails> newMasters = new HashSet<NodeDetails>();
 
+  // Masters that need to be removed, if any.
+  Set<NodeDetails> removeMasters = new HashSet<NodeDetails>();
+
   @Override
   public void run() {
     LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
@@ -122,6 +125,22 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     newMasters = PlacementInfoUtil.getMastersToProvision(nodes);
+    removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
+
+    // Ensure all masters are covered in nodes to be removed.
+    if (!removeMasters.isEmpty()) {
+      if (nodesToBeRemoved.isEmpty()) {
+        String errMsg = "If masters are being removed, corresponding nodes need removal too.";
+        LOG.error(errMsg + " masters: " + nodeNames(removeMasters));
+        throw new IllegalStateException(errMsg);
+      }
+      if (!nodesToBeRemoved.containsAll(removeMasters)) {
+        String errMsg = "If masters are being removed, all those nodes need removal too.";
+        LOG.error(errMsg + " masters: " + nodeNames(removeMasters) + " , but removing only " +
+                  nodeNames(nodesToBeRemoved));
+        throw new IllegalStateException(errMsg);
+      }
+    }
 
     // Creates the primary cluster by first starting the masters.
     if (!newMasters.isEmpty()) {
@@ -205,8 +224,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createWaitForMasterLeaderTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Change the master addresses in the conf file for all TServers.
-      createConfigureServerTasks(universe.getTServers(), false /*isShell */, userIntent.deviceInfo,
+      // Update these older ones to be not masters anymore so tserver info can be updated with the
+      // final master list and other future cluster client operations.
+      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+
+      // Change the master addresses in the conf file for the new tservers.
+      createConfigureServerTasks(newTservers, false /*isShell */, userIntent.deviceInfo,
                                  userIntent.ybSoftwareVersion, true /* updateMasterAddrs */);
 
       // Wait for the master leader to hear from all tservers.
@@ -216,7 +239,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
-      createDestroyServerTasks(nodesToBeRemoved, false, true)
+      createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 
@@ -227,8 +250,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Fills in the series of steps needed to move the masters using the tag names of the nodes. The
-   * actual node details (such as their ip addresses) are found at runtime by querying the database.
+   * Fills in the series of steps needed to move the masters using the node names. The
+   * actual node details (such as ip addresses) are found at runtime by querying the database.
    */
   private void createMoveMastersTasks(SubTaskGroupType subTask) {
     // Get the list of node names to add as masters.
@@ -236,9 +259,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     for (NodeDetails node : newMasters) {
       mastersToAdd.add(node);
     }
-
-    Collection<NodeDetails> removeMasters =
-      PlacementInfoUtil.getMastersToBeRemoved(taskParams().nodeDetailsSet);
 
     // Get the list of node names to remove as masters.
     List<NodeDetails> mastersToRemove = new ArrayList<>();

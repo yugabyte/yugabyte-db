@@ -689,17 +689,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Update the node process in Yugaware DB,
-   * @param nodeName    : name of the node where the process task is to be updated.
-   * @param processType : process type: master or tserver.
-   * @param isAdd       : boolean signifying if the process is being added or removed.
-   * @return The subtask group.
-   */
-  public SubTaskGroup createUpdateNodeProcessTask(String nodeName, ServerType processType,
-                                                  Boolean isAdd) {
-    String subtaskGroupName = "Update Node Process";
-    SubTaskGroup subTaskGroup = new SubTaskGroup(subtaskGroupName, executor);
+  // Helper function to create a process update object.
+  private UpdateNodeProcess getUpdateTaskProcess(String nodeName, ServerType processType,
+      Boolean isAdd) {
     // Create the task params.
     UpdateNodeProcess.Params params = new UpdateNodeProcess.Params();
     params.processType = processType;
@@ -708,6 +700,40 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.nodeName = nodeName;
     UpdateNodeProcess updateNodeProcess = new UpdateNodeProcess();
     updateNodeProcess.initialize(params);
+    return updateNodeProcess;
+  }
+
+  /**
+   * Update the process state across all the given servers in Yugaware DB.
+   * @param servers     : Set of nodes whose process state is to be updated.
+   * @param processType : process type: master or tserver.
+   * @param isAdd       : true if the process is being added, false otherwise.
+   */
+  public void createUpdateNodeProcessTasks(Set<NodeDetails> servers,
+                                           ServerType processType,
+                                           Boolean isAdd) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeProcess", executor);
+    for (NodeDetails server : servers) {
+      UpdateNodeProcess updateNodeProcess = getUpdateTaskProcess(
+          server.nodeName, processType, isAdd);
+      // Add it to the task list.
+      subTaskGroup.addTask(updateNodeProcess);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    subTaskGroupQueue.add(subTaskGroup);
+  }
+
+  /**
+   * Update the given node's process state in Yugaware DB,
+   * @param nodeName    : name of the node where the process state is to be updated.
+   * @param processType : process type: master or tserver.
+   * @param isAdd       : boolean signifying if the process is being added or removed.
+   * @return The subtask group.
+   */
+  public SubTaskGroup createUpdateNodeProcessTask(String nodeName, ServerType processType,
+                                                  Boolean isAdd) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeProcess", executor);
+    UpdateNodeProcess updateNodeProcess = getUpdateTaskProcess(nodeName, processType, isAdd);
     // Add it to the task list.
     subTaskGroup.addTask(updateNodeProcess);
     // Add the task list to the task queue.
@@ -1021,5 +1047,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Persist the desired node information into the DB.
     UniverseUpdater updater = nodeStateUpdater(taskParams().universeUUID, nodeName, state);
     Universe.saveDetails(taskParams().universeUUID, updater);
+  }
+
+  // Return list of nodeNames from the given set of node details.
+  public String nodeNames(Collection<NodeDetails> nodes) {
+    String nodeNames = "";
+    for (NodeDetails node : nodes) {
+      nodeNames += node.nodeName + ",";
+    }
+    return nodeNames.substring(0, nodeNames.length() -1);
   }
 }
