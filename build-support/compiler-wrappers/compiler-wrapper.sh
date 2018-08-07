@@ -332,6 +332,11 @@ Fatal error: can't create .*: Stale file handle|\
     log_empty_line
     # Not using the log function here, because as of 07/23/2017 it does not correctly handle
     # multi-line log messages (it concatenates them into one line).
+    old_ps4=$PS4
+    PS4=""
+    compiler_args_escaped_str=$(
+      ( set -x; echo -- "${compiler_args[@]}" >/dev/null ) 2>&1 | sed 's/^echo -- //'
+    )
     echo >&2 "
 ---------------------------------------------------------------------------------------------------
 REMOTE COMPILER INVOCATION FAILED
@@ -339,11 +344,12 @@ REMOTE COMPILER INVOCATION FAILED
 Build host: $build_host
 Directory:  $PWD
 PATH:       $PATH
-Command:    $0 $*
+Command:    $0 $compiler_args_escaped_str
 Exit code:  $exit_code
 ---------------------------------------------------------------------------------------------------
 
 "
+    PS4=$old_ps4
   fi
   exit $exit_code
 elif [[ ${YB_DEBUG_REMOTE_BUILD:-} == "1" ]] && ! $is_build_worker; then
@@ -490,7 +496,7 @@ fi
 
 set_build_env_vars
 
-if is_linux && "$rpath_found"; then
+if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] && is_linux && "$rpath_found"; then
   if [[ $num_output_files_found -ne 1 ]]; then
     # Ideally this will only happen as part of running PostgreSQL's configure and will be hidden.
     log "RPATH options found on the command line, but could not find exactly one output file " \

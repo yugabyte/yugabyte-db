@@ -10,6 +10,7 @@ import logging
 import argparse
 import re
 import sys
+import multiprocessing
 
 from subprocess import check_call
 
@@ -22,7 +23,6 @@ from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root, get_bool
 
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
 
-# TODO: re-enable this when we fix issues with PostgreSQL build and running the compiler remotely.
 ALLOW_REMOTE_COMPILATION = False
 
 
@@ -87,7 +87,7 @@ class PostgresBuilder:
         self.build_type = None
         self.postgres_src_dir = None
         self.compiler_type = None
-        self.no_remote_build = os.environ.get('YB_NO_REMOTE_BUILD') == '1'
+        self.user_disabled_remote_compilation = os.environ.get('YB_NO_REMOTE_BUILD') == '1'
 
     def parse_args(self):
         parser = argparse.ArgumentParser(
@@ -219,12 +219,17 @@ class PostgresBuilder:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
-        if ALLOW_REMOTE_COMPILATION and (step == 'configure' or self.no_remote_build):
-            os.environ['YB_NO_REMOTE_BUILD'] = '1'
-        else:
-            os.environ['YB_NO_REMOTE_BUILD'] = '0'
+        self.remote_compilation_allowed = (
+            ALLOW_REMOTE_COMPILATION and
+            step == 'make' and
+            not self.user_disabled_remote_compilation
+        )
+        os.environ['YB_NO_REMOTE_BUILD'] = '0' if self.remote_compilation_allowed else '1'
 
         os.environ['YB_BUILD_TYPE'] = self.build_type
+
+        # Do not try to make rpaths relative during the configure step, as that may slow it down.
+        os.environ['YB_DISABLE_RELATIVE_RPATH'] = '1' if step == 'configure' else '0'
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
@@ -311,7 +316,20 @@ class PostgresBuilder:
 
         make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
         if make_parallelism:
+            make_parallelism = int(make_parallelism)
+        if os.environ.get('YB_REMOTE_BUILD') == '1' and not self.remote_compilation_allowed:
+            # Since we're building everything locally in this case, and YB_MAKE_PARALLELISM is
+            # likely specified for a distributed build, cap it at some factor times the number of
+            # CPU cores.
+            parallelism_cap = multiprocessing.cpu_count() * 2
+            if make_parallelism:
+                make_parallelism = min(parallelism_cap, make_parallelism)
+            else:
+                make_parallelism = cpu_count
+
+        if make_parallelism:
             make_cmd += ['-j', str(int(make_parallelism))]
+
         os.environ['YB_COMPILER_TYPE'] = self.compiler_type
 
         # Create a script allowing to easily run "make" from the build directory with the right
