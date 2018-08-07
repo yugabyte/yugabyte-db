@@ -111,10 +111,13 @@ build_cpp_code() {
     # TODO: remove this code when it becomes clear why CMake sometimes gets re-run.
     log "Building a dummy target to check if Ninja re-runs CMake (it should not)."
     # The "-d explain" option will make Ninja explain why it is building a particular target.
-    time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-      --make-ninja-extra-args "-d explain" \
-      --target dummy_target \
-      "${yb_build_args[@]}"
+    (
+      set -x
+      time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+        --make-ninja-extra-args "-d explain" \
+        --target dummy_target \
+        "${yb_build_args[@]}"
+    )
   fi
 
   time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \

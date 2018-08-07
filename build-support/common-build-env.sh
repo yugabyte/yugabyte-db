@@ -1243,12 +1243,32 @@ is_remote_build() {
   return 1  # "false" return value
 }
 
+# This is used for escaping command lines for remote execution.
+# From StackOverflow: https://goo.gl/sTKReB
+# Using this approach: "Put the whole string in single quotes. This works for all chars except
+# single quote itself. To escape the single quote, close the quoting before it, insert the single
+# quote, and re-open the quoting."
+#
+escape_cmd_line() {
+  escape_cmd_line_rv=""
+  for arg in "$@"; do
+    escape_cmd_line_rv+=" '"${arg/\'/\'\\\'\'}"'"
+    # This should be equivalent to the sed command below.  The quadruple backslash encodes one
+    # backslash in the replacement string. We don't need that in the pure-bash implementation above.
+    # sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
+  done
+  # Remove the leading space if necessary.
+  escape_cmd_line_rv=${escape_cmd_line_rv# }
+}
+
 run_remote_cmd() {
   local build_host=$1
   local executable=$2
   shift 2
+  local escape_cmd_line_rv
+  escape_cmd_line "$@"
   ssh "$build_host" \
-      "$YB_BUILD_SUPPORT_DIR/remote_cmd.sh" "$PWD" "$PATH" "$executable" "$@"
+      "'$YB_BUILD_SUPPORT_DIR/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
 }
 
 # Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
