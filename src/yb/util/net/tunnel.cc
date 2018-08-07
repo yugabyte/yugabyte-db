@@ -53,7 +53,7 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
   }
 
   void Shutdown() {
-    strand_.dispatch([this] {
+    strand_.dispatch([this, shared_self = shared_from_this()] {
       boost::system::error_code ec;
       inbound_socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_type::shutdown_both, ec);
       LOG_IF_WITH_PREFIX(WARNING, ec) << "Shutdown failed: " << ec.message();
