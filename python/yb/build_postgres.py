@@ -22,6 +22,9 @@ from yb.common_util import YB_SRC_ROOT, get_build_type_from_build_root, get_bool
 
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
 
+# TODO: re-enable this when we fix issues with PostgreSQL build and running the compiler remotely.
+ALLOW_REMOTE_COMPILATION = False
+
 
 def adjust_error_on_warning_flag(flag, allow_error_on_warning):
     """
@@ -216,7 +219,7 @@ class PostgresBuilder:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
-        if step == 'configure' or self.no_remote_build:
+        if ALLOW_REMOTE_COMPILATION and (step == 'configure' or self.no_remote_build):
             os.environ['YB_NO_REMOTE_BUILD'] = '1'
         else:
             os.environ['YB_NO_REMOTE_BUILD'] = '0'
