@@ -18,6 +18,8 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
+import java.util.*;
+
 public class TestTruncate extends BaseCQLTest {
 
   @Test
@@ -46,6 +48,34 @@ public class TestTruncate extends BaseCQLTest {
     setupTable("test_empty_truncate", 0);
     session.execute("truncate test_empty_truncate;");
     assertNull(session.execute("select * from test_empty_truncate;").one());
+  }
+
+  @Test
+  public void testTruncateWithIndex() throws Exception {
+    // Create table with index.
+    session.execute("create table test_truncate_index (k int primary key, v int) " +
+                    "with transactions = { 'enabled' : true };");
+    session.execute("create index test_truncate_index_idx on test_truncate_index (v);");
+
+    // Insert rows and verify.
+    final int ROW_COUNT = 100;
+    HashSet<String> results = new HashSet<>();
+    for (int i = 0; i < ROW_COUNT; i++) {
+      session.execute("insert into test_truncate_index (k, v) values (?, ?);",
+                      Integer.valueOf(i), Integer.valueOf(1000 + i));
+      results.add(String.format("Row[%d, %d]", i, 1000 + i));
+    }
+    assertQuery("select * from test_truncate_index;", results);
+
+    // Truncate rows, insert new ones and verify.
+    session.execute("truncate table test_truncate_index;");
+    results.clear();
+    for (int i = ROW_COUNT; i < ROW_COUNT * 2; i++) {
+      session.execute("insert into test_truncate_index (k, v) values (?, ?);",
+                      Integer.valueOf(i), Integer.valueOf(1000 + i));
+      results.add(String.format("Row[%d, %d]", i, 1000 + i));
+    }
+    assertQuery("select * from test_truncate_index;", results);
   }
 
   @Test
