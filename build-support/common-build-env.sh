@@ -1243,32 +1243,12 @@ is_remote_build() {
   return 1  # "false" return value
 }
 
-# This is used for escaping command lines for remote execution.
-# From StackOverflow: https://goo.gl/sTKReB
-# Using this approach: "Put the whole string in single quotes. This works for all chars except
-# single quote itself. To escape the single quote, close the quoting before it, insert the single
-# quote, and re-open the quoting."
-#
-escape_cmd_line() {
-  escape_cmd_line_rv=""
-  for arg in "$@"; do
-    escape_cmd_line_rv+=" '"${arg/\'/\'\\\'\'}"'"
-    # This should be equivalent to the sed command below.  The quadruple backslash encodes one
-    # backslash in the replacement string. We don't need that in the pure-bash implementation above.
-    # sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
-  done
-  # Remove the leading space if necessary.
-  escape_cmd_line_rv=${escape_cmd_line_rv# }
-}
-
 run_remote_cmd() {
   local build_host=$1
   local executable=$2
   shift 2
-  local escape_cmd_line_rv
-  escape_cmd_line "$@"
   ssh "$build_host" \
-      "'$YB_BUILD_SUPPORT_DIR/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
+      "$YB_BUILD_SUPPORT_DIR/remote_cmd.sh" "$PWD" "$PATH" "$executable" "$@"
 }
 
 # Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
@@ -1294,15 +1274,17 @@ configure_remote_build() {
       log "YB_REMOTE_BUILD already defined: '$YB_REMOTE_BUILD', not enabling it automatically," \
           "even though we would in this case."
     fi
-  elif is_jenkins; then
-    YB_REMOTE_BUILD=0
-    # Make it easier to diagnose why we're not using the distributed build. Only enable this on
-    # Jenkins to avoid confusing output during development.
-    log "Not using remote / distributed build:" \
-        "YB_NO_REMOTE_BUILD=${YB_NO_REMOTE_BUILD:-undefined}. See additional diagnostics below."
-    is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
-    if is_src_root_on_nfs; then
-      log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed build setup."
+  else
+    YB_REMOTE_BUILD=${YB_REMOTE_BUILD:-0}
+    if [[ $YB_REMOTE_BUILD != "1" ]] && is_jenkins; then
+      # Make it easier to diagnose why we're not using the distributed build. Only enable this on
+      # Jenkins to avoid confusing output during development.
+      log "Not using remote / distributed build:" \
+          "YB_NO_REMOTE_BUILD=${YB_NO_REMOTE_BUILD:-undefined}. See additional diagnostics below."
+      is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
+      if is_src_root_on_nfs; then
+        log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed build setup."
+      fi
     fi
   fi
   export YB_REMOTE_BUILD
