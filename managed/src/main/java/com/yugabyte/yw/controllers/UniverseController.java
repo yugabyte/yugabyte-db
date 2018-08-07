@@ -110,14 +110,14 @@ public class UniverseController extends AuthenticatedController {
 
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
       Cluster c = currentClusterType.equals(ClusterType.PRIMARY) ?
-          taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);         
+          taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid, clusterOpType);
       } else {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + 
+        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " +
             c.userIntent.instanceType);
       }
-      
+
       return ApiResponse.success(taskParams);
     } catch (Exception e) {
       LOG.error("Unable to Configure Universe for Customer with ID {} Failed with message: {}.",
@@ -138,7 +138,7 @@ public class UniverseController extends AuthenticatedController {
 
       Set<NodeDetails> nodesInCluster = null;
 
-      if (taskParams.currentClusterType.equals("primary")) {
+      if (taskParams.currentClusterType.equals(ClusterType.PRIMARY)) {
         nodesInCluster = taskParams.nodeDetailsSet.stream()
                 .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
                 .collect(Collectors.toSet());
@@ -150,6 +150,7 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.success(UniverseResourceDetails.create(nodesInCluster,
           taskParams));
     } catch (Throwable t) {
+      t.printStackTrace();
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }

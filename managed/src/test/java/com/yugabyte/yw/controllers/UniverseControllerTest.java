@@ -51,6 +51,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
@@ -843,6 +844,12 @@ public class UniverseControllerTest extends WithApplication {
     PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), taskParams.getPrimaryCluster().uuid,
         CREATE);
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    // Needed for the universe_resources call.
+    DeviceInfo di = new DeviceInfo();
+    di.volumeSize = 100;
+    di.numVolumes = 2;
+    primaryCluster.userIntent.deviceInfo = di;
+
     List<PlacementInfo.PlacementAZ> azList = primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
     assertEquals(azList.size(), 2);
     PlacementInfo.PlacementAZ paz = azList.get(0);
@@ -862,6 +869,13 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
     assertEquals(7, nodeDetailJson.size());
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
+    // Now test the resource endpoint also works.
+    // TODO: put this in its own test once we refactor the provider+region+az creation and payload
+    // generation...
+    url = "/api/customers/" + customer.uuid + "/universe_resources";
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    System.out.println(Json.stringify(topJson));
+    assertOk(result);
   }
 
   @Test
