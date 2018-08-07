@@ -23,6 +23,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -165,9 +166,14 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.expectedUniverseVersion = universe.version;
       taskParams.nodeName = nodeName;
       NodeActionType nodeAction = formData.get().nodeAction;
-      LOG.info("{} Node {} in  universe {} : name={} at version={}.",
-              nodeAction.toString(false), nodeName,
-              universe.universeUUID, universe.name, universe.version);
+      Cluster cluster = null;
+      if (nodeAction == NodeActionType.ADD) {
+        cluster = Universe.getCluster(universe, nodeName);
+        taskParams.clusters.add(cluster);
+      }
+      LOG.info("{} Node {} in universe={}/cluster={} : name={} at version={}.",
+               nodeAction.toString(false), nodeName, universe.universeUUID,
+               cluster != null ? cluster.uuid : "null", universe.name, universe.version);
 
       UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
       CustomerTask.create(customer, universe.universeUUID,
