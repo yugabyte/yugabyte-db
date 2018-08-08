@@ -155,8 +155,9 @@ class CatalogManager : public yb::master::CatalogManager {
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
   struct ExternalTableSnapshotData {
+    ExternalTableSnapshotData() : num_tablets(0), tablet_id_map(nullptr), table_meta(nullptr) {}
+
     NamespaceId old_namespace_id;
-    NamespaceId new_namespace_id;
     TableId old_table_id;
     TableId new_table_id;
     int num_tablets;
@@ -165,11 +166,21 @@ class CatalogManager : public yb::master::CatalogManager {
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
     google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map;
+
+    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta;
   };
 
-  CHECKED_STATUS ImportNamespaceEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
-  CHECKED_STATUS ImportTableEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
-  CHECKED_STATUS ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
+  // Map: old_namespace_id (key) -> new_namespace_id (value).
+  typedef std::map<NamespaceId, NamespaceId> NamespaceMap;
+  typedef std::map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
+
+  CHECKED_STATUS ImportNamespaceEntry(const SysRowEntry& entry, NamespaceMap* ns_map);
+  CHECKED_STATUS ImportTableEntry(
+      const SysRowEntry& entry, const NamespaceMap& ns_map, ExternalTableSnapshotData* s_data);
+  CHECKED_STATUS PreprocessTabletEntry(
+      const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
+  CHECKED_STATUS ImportTabletEntry(
+      const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id);

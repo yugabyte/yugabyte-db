@@ -450,43 +450,34 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
   const SnapshotInfoPB& snapshot_info_pb = req->snapshot();
   const SysSnapshotEntryPB& snapshot_pb = snapshot_info_pb.entry();
-  ExternalTableSnapshotData data;
-
-  // Check this snapshot.
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
-    if (entry.type() == SysRowEntry::TABLE) {
-      if (data.old_table_id.empty()) {
-        data.old_table_id = entry.id();
-      } else {
-        return SetupError(resp->mutable_error(),
-                          MasterErrorPB::UNKNOWN_ERROR,
-                          STATUS_SUBSTITUTE(NotSupported,
-                                            "Currently supported snapshots with one table only. "
-                                            "First table id is $0, second table id is $1",
-                                            data.old_table_id,
-                                            entry.id()));
-      }
-    }
-  }
-
-  DCHECK(!data.old_table_id.empty());
-
-  data.num_tablets = snapshot_pb.tablet_snapshots_size();
-  ImportSnapshotMetaResponsePB_TableMetaPB* const table_meta = resp->mutable_tables_meta()->Add();
-  data.tablet_id_map = table_meta->mutable_tablets_ids();
+  ExternalTableSnapshotDataMap tables_data;
+  NamespaceMap namespace_map;
   Status s;
 
-  // Restore all entries.
+  // PHASE 1: Recreate namespaces, create table's meta data.
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: // Recreate NAMESPACE.
-        s = ImportNamespaceEntry(entry, &data);
+        s = ImportNamespaceEntry(entry, &namespace_map);
         break;
-      case SysRowEntry::TABLE: // Recreate TABLE.
-        s = ImportTableEntry(entry, &data);
+      case SysRowEntry::TABLE: { // Create TABLE metadata.
+          DCHECK(!entry.id().empty());
+          ExternalTableSnapshotData& data = tables_data[entry.id()];
+
+          if (data.old_table_id.empty()) {
+            data.old_table_id = entry.id();
+            data.table_meta = resp->mutable_tables_meta()->Add();
+            data.tablet_id_map = data.table_meta->mutable_tablets_ids();
+          } else {
+            LOG(WARNING) << "Ignoring duplicate table with id " << entry.id()
+                         << " in snapshot " << snapshot_info_pb.id() << ".";
+          }
+
+          DCHECK(!data.old_table_id.empty());
+        }
         break;
-      case SysRowEntry::TABLET: // Create tablets IDs map.
-        s = ImportTabletEntry(entry, &data);
+      case SysRowEntry::TABLET: // Preprocess original tablets.
+        s = PreprocessTabletEntry(entry, &tables_data);
         break;
       case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
@@ -498,22 +489,44 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
     }
 
     if (!s.ok()) {
+      LOG(ERROR) << "Failed to preprocess entry type " << entry.type() << ": "
+                 << s.ToString();
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
     }
   }
 
-  table_meta->mutable_namespace_ids()->set_old_id(std::move(data.old_namespace_id));
-  table_meta->mutable_namespace_ids()->set_new_id(std::move(data.new_namespace_id));
-  table_meta->mutable_table_ids()->set_old_id(std::move(data.old_table_id));
-  table_meta->mutable_table_ids()->set_new_id(std::move(data.new_table_id));
+  // PHASE 2: Recreate tables.
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    if (entry.type() == SysRowEntry::TABLE) {
+      ExternalTableSnapshotData& data = tables_data[entry.id()];
+      s = ImportTableEntry(entry, namespace_map, &data);
+
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to recreate table: " << s.ToString();
+        return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+      }
+    }
+  }
+
+  // PHASE 3: Restore tablets.
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    if (entry.type() == SysRowEntry::TABLET) {
+      // Create tablets IDs map.
+      s = ImportTabletEntry(entry, &tables_data);
+
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to recreate tablet: " << s.ToString();
+        return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+      }
+    }
+  }
+
   return Status::OK();
 }
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
-                                            ExternalTableSnapshotData* s_data) {
+                                            NamespaceMap* ns_map) {
   DCHECK_EQ(entry.type(), SysRowEntry::NAMESPACE);
-  // Recreate NAMESPACE.
-  s_data->old_namespace_id = entry.id();
 
   // Parse namespace PB.
   SysNamespaceEntryPB meta;
@@ -524,7 +537,7 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   scoped_refptr<NamespaceInfo> ns = LockAndFindPtrOrNull(namespace_ids_map_, entry.id());
 
   if (ns != nullptr && ns->name() == meta.name()) {
-    s_data->new_namespace_id = s_data->old_namespace_id;
+    (*ns_map)[entry.id()] = entry.id();
     return Status::OK();
   }
 
@@ -541,27 +554,32 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
     LOG(INFO) << "Using existing namespace " << meta.name() << ": " << resp.id();
   }
 
-  s_data->new_namespace_id = resp.id();
+  (*ns_map)[entry.id()] = resp.id();
   return Status::OK();
 }
 
 Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
-                                        ExternalTableSnapshotData* s_data) {
+                                        const NamespaceMap& ns_map,
+                                        ExternalTableSnapshotData* table_data) {
   DCHECK_EQ(entry.type(), SysRowEntry::TABLE);
-  // Recreate TABLE.
-  s_data->old_table_id = entry.id();
+  DCHECK_EQ(table_data->old_table_id, entry.id());
 
   // Parse table PB.
   SysTablesEntryPB meta;
   const string& data = entry.data();
   RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
 
-  DCHECK(!s_data->new_namespace_id.empty());
-  DCHECK(!s_data->old_namespace_id.empty());
+  table_data->old_namespace_id = meta.namespace_id();
+  DCHECK(!table_data->old_namespace_id.empty());
+
+  DCHECK(ns_map.find(table_data->old_namespace_id) != ns_map.end());
+  const NamespaceId new_namespace_id = ns_map.find(table_data->old_namespace_id)->second;
+  DCHECK(!new_namespace_id.empty());
+
   scoped_refptr<TableInfo> table;
 
   // Create new table if namespace was changed.
-  if (s_data->new_namespace_id == s_data->old_namespace_id) {
+  if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
     table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
 
@@ -576,12 +594,10 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
     CreateTableResponsePB resp;
     req.set_name(meta.name());
     req.set_table_type(meta.table_type());
-    req.set_num_tablets(s_data->num_tablets);
+    req.set_num_tablets(table_data->num_tablets);
+    req.mutable_namespace_()->set_id(new_namespace_id);
     *req.mutable_partition_schema() = meta.partition_schema();
     *req.mutable_replication_info() = meta.replication_info();
-
-    // Supporting now 1 table & 1 namespace in snapshot.
-    req.mutable_namespace_()->set_id(s_data->new_namespace_id);
 
     // Clear column IDs.
     SchemaPB* const schema = req.mutable_schema();
@@ -591,19 +607,19 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
     }
 
     RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr));
-    s_data->new_table_id = resp.table_id();
+    table_data->new_table_id = resp.table_id();
 
     TRACE("Looking up new table");
     {
-      table = LockAndFindPtrOrNull(table_ids_map_, s_data->new_table_id);
+      table = LockAndFindPtrOrNull(table_ids_map_, table_data->new_table_id);
 
       if (table == nullptr) {
         return STATUS_SUBSTITUTE(
-            InternalError, "Created table not found: $0", s_data->new_table_id);
+            InternalError, "Created table not found: $0", table_data->new_table_id);
       }
     }
   } else {
-    s_data->new_table_id = s_data->old_table_id;
+    table_data->new_table_id = table_data->old_table_id;
   }
 
   TRACE("Locking table");
@@ -616,47 +632,71 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
         partition_pb.partition_key_start(), partition_pb.partition_key_end());
-    s_data->new_tablets_map[key] = tablet->id();
+    table_data->new_tablets_map[key] = tablet->id();
   }
+
+  IdPairPB* const namespace_ids = table_data->table_meta->mutable_namespace_ids();
+  namespace_ids->set_new_id(new_namespace_id);
+  namespace_ids->set_old_id(table_data->old_namespace_id);
+
+  IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
+  table_ids->set_new_id(table_data->new_table_id);
+  table_ids->set_old_id(table_data->old_table_id);
 
   return Status::OK();
 }
 
-Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
-                                         ExternalTableSnapshotData* s_data) {
+Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
+                                             ExternalTableSnapshotDataMap* table_map) {
   DCHECK_EQ(entry.type(), SysRowEntry::TABLET);
 
-  if (s_data->new_table_id == s_data->old_table_id) {
+  SysTabletsEntryPB meta;
+  const string& data = entry.data();
+  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+  ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
+  ++table_data.num_tablets;
+  return Status::OK();
+}
+
+Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
+                                         ExternalTableSnapshotDataMap* table_map) {
+  DCHECK_EQ(entry.type(), SysRowEntry::TABLET);
+
+  SysTabletsEntryPB meta;
+  const string& data = entry.data();
+  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+  DCHECK(table_map->find(meta.table_id()) != table_map->end());
+  ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
+
+  // Update tablets IDs map.
+  if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
     scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
 
     if (tablet != nullptr) {
-      IdPairPB* const pair = s_data->tablet_id_map->Add();
+      IdPairPB* const pair = table_data.tablet_id_map->Add();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
       return Status::OK();
     }
   }
 
-  // Update tablets IDs map.
-  SysTabletsEntryPB meta;
-  const string& data = entry.data();
-  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
-
   const PartitionPB& partition_pb = meta.partition();
   const ExternalTableSnapshotData::PartitionKeys key(
       partition_pb.partition_key_start(), partition_pb.partition_key_end());
   const ExternalTableSnapshotData::PartitionToIdMap::const_iterator it =
-      s_data->new_tablets_map.find(key);
+      table_data.new_tablets_map.find(key);
 
-  if (it == s_data->new_tablets_map.end()) {
+  if (it == table_data.new_tablets_map.end()) {
     return STATUS_SUBSTITUTE(NotFound,
                              "Not found new tablet with expected partition keys: $0 - $1",
                              partition_pb.partition_key_start(),
                              partition_pb.partition_key_end());
   }
 
-  IdPairPB* const pair = s_data->tablet_id_map->Add();
+  IdPairPB* const pair = table_data.tablet_id_map->Add();
   pair->set_old_id(entry.id());
   pair->set_new_id(it->second);
   return Status::OK();
