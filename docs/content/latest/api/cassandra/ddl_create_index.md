@@ -14,7 +14,7 @@ aliases:
 ---
 
 ## Synopsis
-The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and covering columns.
+The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and additional columns to include.
 
 ## Syntax
 
@@ -22,7 +22,7 @@ The `CREATE INDEX` statement is used to create a new index on a table. It define
 
 #### create_index
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="800" height="100" viewbox="0 0 800 100"><path class="connector" d="M0 22h5m67 0h10m59 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m94 0h10m38 0h10m91 0h10m25 0h10m110 0h10m25 0h5m-800 50h25m216 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h30m128 0h20m-163 0q5 0 5 5v8q0 5 5 5h138q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">CREATE</text><rect class="literal" x="82" y="5" width="59" height="25" rx="7"/><text class="text" x="92" y="22">INDEX</text><rect class="literal" x="171" y="5" width="32" height="25" rx="7"/><text class="text" x="181" y="22">IF</text><rect class="literal" x="213" y="5" width="45" height="25" rx="7"/><text class="text" x="223" y="22">NOT</text><rect class="literal" x="268" y="5" width="64" height="25" rx="7"/><text class="text" x="278" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="362" y="5" width="94" height="25"/><text class="text" x="372" y="22">index_name</text></a><rect class="literal" x="466" y="5" width="38" height="25" rx="7"/><text class="text" x="476" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="514" y="5" width="91" height="25"/><text class="text" x="524" y="22">table_name</text></a><rect class="literal" x="615" y="5" width="25" height="25" rx="7"/><text class="text" x="625" y="22">(</text><a xlink:href="../grammar_diagrams#index-columns"><rect class="rule" x="650" y="5" width="110" height="25"/><text class="text" x="660" y="22">index_columns</text></a><rect class="literal" x="770" y="5" width="25" height="25" rx="7"/><text class="text" x="780" y="22">)</text><a xlink:href="../grammar_diagrams#clustering-key-column-ordering"><rect class="rule" x="25" y="55" width="216" height="25"/><text class="text" x="35" y="72">clustering_key_column_ordering</text></a><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="291" y="55" width="128" height="25"/><text class="text" x="301" y="72">covering_columns</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="919" height="100" viewbox="0 0 919 100"><path class="connector" d="M0 22h5m67 0h30m69 0h20m-104 0q5 0 5 5v8q0 5 5 5h79q5 0 5-5v-8q0-5 5-5m5 0h10m59 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m94 0h10m38 0h10m91 0h10m25 0h10m110 0h10m25 0h5m-919 50h25m216 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h30m127 0h20m-162 0q5 0 5 5v8q0 5 5 5h137q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">CREATE</text><rect class="literal" x="102" y="5" width="69" height="25" rx="7"/><text class="text" x="112" y="22">UNIQUE</text><rect class="literal" x="201" y="5" width="59" height="25" rx="7"/><text class="text" x="211" y="22">INDEX</text><rect class="literal" x="290" y="5" width="32" height="25" rx="7"/><text class="text" x="300" y="22">IF</text><rect class="literal" x="332" y="5" width="45" height="25" rx="7"/><text class="text" x="342" y="22">NOT</text><rect class="literal" x="387" y="5" width="64" height="25" rx="7"/><text class="text" x="397" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="481" y="5" width="94" height="25"/><text class="text" x="491" y="22">index_name</text></a><rect class="literal" x="585" y="5" width="38" height="25" rx="7"/><text class="text" x="595" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="633" y="5" width="91" height="25"/><text class="text" x="643" y="22">table_name</text></a><rect class="literal" x="734" y="5" width="25" height="25" rx="7"/><text class="text" x="744" y="22">(</text><a xlink:href="../grammar_diagrams#index-columns"><rect class="rule" x="769" y="5" width="110" height="25"/><text class="text" x="779" y="22">index_columns</text></a><rect class="literal" x="889" y="5" width="25" height="25" rx="7"/><text class="text" x="899" y="22">)</text><a xlink:href="../grammar_diagrams#clustering-key-column-ordering"><rect class="rule" x="25" y="55" width="216" height="25"/><text class="text" x="35" y="72">clustering_key_column_ordering</text></a><a xlink:href="../grammar_diagrams#included-columns"><rect class="rule" x="291" y="55" width="127" height="25"/><text class="text" x="301" y="72">included_columns</text></a></svg>
 
 #### index_columns
 
@@ -40,14 +40,14 @@ The `CREATE INDEX` statement is used to create a new index on a table. It define
 
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="617" height="100" viewbox="0 0 617 100"><path class="connector" d="M0 52h5m53 0h10m98 0h10m62 0h10m35 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h97m24 0h98q5 0 5 5v20q0 5-5 5m-108 0h30m44 0h29m-83 25q0 5 5 5h5m53 0h5q5 0 5-5m-78-25q5 0 5 5v33q0 5 5 5h63q5 0 5-5v-33q0-5 5-5m5 0h30m25 0h5"/><rect class="literal" x="5" y="35" width="53" height="25" rx="7"/><text class="text" x="15" y="52">WITH</text><rect class="literal" x="68" y="35" width="98" height="25" rx="7"/><text class="text" x="78" y="52">CLUSTERING</text><rect class="literal" x="176" y="35" width="62" height="25" rx="7"/><text class="text" x="186" y="52">ORDER</text><rect class="literal" x="248" y="35" width="35" height="25" rx="7"/><text class="text" x="258" y="52">BY</text><rect class="literal" x="293" y="35" width="25" height="25" rx="7"/><text class="text" x="303" y="52">(</text><rect class="literal" x="440" y="5" width="24" height="25" rx="7"/><text class="text" x="450" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="348" y="35" width="106" height="25"/><text class="text" x="358" y="52">column_name</text></a><rect class="literal" x="484" y="35" width="44" height="25" rx="7"/><text class="text" x="494" y="52">ASC</text><rect class="literal" x="484" y="65" width="53" height="25" rx="7"/><text class="text" x="494" y="82">DESC</text><rect class="literal" x="587" y="35" width="25" height="25" rx="7"/><text class="text" x="597" y="52">)</text></svg>
 
-#### covering_columns
+#### included_columns
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="320" height="65" viewbox="0 0 320 65"><path class="connector" d="M0 52h5m84 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h5"/><rect class="literal" x="5" y="35" width="84" height="25" rx="7"/><text class="text" x="15" y="52">COVERING</text><rect class="literal" x="99" y="35" width="25" height="25" rx="7"/><text class="text" x="109" y="52">(</text><rect class="literal" x="195" y="5" width="24" height="25" rx="7"/><text class="text" x="205" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="154" y="35" width="106" height="25"/><text class="text" x="164" y="52">column_name</text></a><rect class="literal" x="290" y="35" width="25" height="25" rx="7"/><text class="text" x="300" y="52">)</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="311" height="65" viewbox="0 0 311 65"><path class="connector" d="M0 52h5m75 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h5"/><rect class="literal" x="5" y="35" width="75" height="25" rx="7"/><text class="text" x="15" y="52">INCLUDE</text><rect class="literal" x="90" y="35" width="25" height="25" rx="7"/><text class="text" x="100" y="52">(</text><rect class="literal" x="186" y="5" width="24" height="25" rx="7"/><text class="text" x="196" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="145" y="35" width="106" height="25"/><text class="text" x="155" y="52">column_name</text></a><rect class="literal" x="281" y="35" width="25" height="25" rx="7"/><text class="text" x="291" y="52">)</text></svg>
 
 ### Grammar
 ```
-create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name ON table_name '(' index_columns ')'
-                     [ clustering_key_column_ordering ] [ covering_columns ];
+create_index ::= CREATE [ UNIQUE ] INDEX [ IF NOT EXISTS ] index_name ON table_name '(' index_columns ')'
+                     [ clustering_key_column_ordering ] [ included_columns ];
 
 index_columns ::= partition_key_columns [ clustering_key_columns ]
 
@@ -57,7 +57,7 @@ clustering_key_columns ::= column_name [ ',' column_name ...]
 
 clustering_key_column_ordering ::= WITH CLUSTERING ORDER BY '(' column_name [ ASC | DESC ] [ ',' column_name [ ASC | DESC ] ...] ')'
 
-covering_columns ::= COVERING '(' column_name { ',' column_name } ')'
+included_columns ::= INCLUDE '(' column_name { ',' column_name } ')'
 ```
 
 Where
@@ -78,9 +78,12 @@ Where
  - Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` property.
  - Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
 
-### COVERING COLUMNS
- - Covering columns are optional table columns whose values are additionally replicated by the index in order to respond to queries directly from the index without querying the table.
- - Currently, an index is used to execute a query only when the index covers all columns selected by the query.
+### INCLUDED COLUMNS
+ - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. This is done in order to respond to queries directly from the index without querying the table.
+ - Currently, an index is used to execute a query only when all columns selected by the query are included by the index, either as index columns or additional included columns. This limitation will be removed in future versions.
+
+### UNIQUE INDEX
+ - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
 
 ## Examples
 ### Create a table to be indexed
@@ -97,13 +100,13 @@ cqlsh:example> CREATE TABLE orders (customer_id INT,
 ### Create an index for query by the `order_date` column
 
 ```{.sql .copy .separator-gt}
-cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) COVERING (amount);
+cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
 ```
 
 ### Create an index for query by the `warehouse_id` column
 
 ```{.sql .copy .separator-gt}
-cqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) COVERING (amount);
+cqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
 
 ### Insert some data
@@ -150,6 +153,42 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order
 -------------
         70.7
 ```
+
+### Create a table with a unique index
+```{.sql .copy .separator-gt}
+cqlsh:example> CREATE TABLE emp (enum INT primary key,
+                                 lastname VARCHAR,
+                                 firstname VARCHAR,
+                                 userid VARCHAR)
+               WITH transactions = { 'enabled' : true };
+cqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
+```
+
+### Insert values into the table and verify no duplicate `userid` is inserted
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+               VALUES (1001, 'Smith', 'John', 'jsmith');
+cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+               VALUES (1002, 'Smith', 'Jason', 'jsmith');
+InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index emp_by_userid
+INSERT INTO emp (enum, lastname, firstname, userid)
+       ^^^^
+VALUES (1002, 'Smith', 'Jason', 'jsmith');
+ (error -300)"
+cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+               VALUES (1002, 'Smith', 'Jason', 'jasmith');
+```
+```
+cqlsh:example> SELECT * FROM emp;
+```
+```
+ enum | lastname | firstname | userid
+------+----------+-----------+---------
+ 1002 |    Smith |     Jason | jasmith
+ 1001 |    Smith |      John |  jsmith
+```
+
+
 
 ## See Also
 

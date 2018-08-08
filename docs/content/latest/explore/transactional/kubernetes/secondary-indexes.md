@@ -60,10 +60,10 @@ cqlsh> CREATE TABLE store.orders (
 ) with transactions = { 'enabled' : true };
 ```
 
-Now create a secondary index on the `order_date` column. Note that we add the `amount` column as a covering column in the secondary index in order to respond to queries selecting the `amount` column directly from the secondary index table with just one read.
+Now create a secondary index on the `order_date` column. Note that we include the `amount` column in the secondary index in order to respond to queries selecting the `amount` column directly from the secondary index table with just one read.
 
 ```{.sql .copy .separator-gt}
-cqlsh> create index orders_by_date on store.orders (order_date, customer_id) covering (amount);
+cqlsh> create index orders_by_date on store.orders (order_date, customer_id) include (amount);
 ```
 
 
