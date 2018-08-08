@@ -21,14 +21,15 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   // Snapshot operations.
   CHECKED_STATUS ListSnapshots();
-  CHECKED_STATUS CreateSnapshot(const client::YBTableName& table_name, int flush_timeout_secs);
+  CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
+                                int flush_timeout_secs);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
                                         const std::string& file_name);
   CHECKED_STATUS ImportSnapshotMetaFile(const std::string& file_name,
-                                        const client::YBTableName& table_name);
+                                        const std::vector<client::YBTableName>& tables);
   CHECKED_STATUS ListReplicaTypeCounts(const client::YBTableName& table_name);
 
  private:
