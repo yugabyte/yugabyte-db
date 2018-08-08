@@ -22,6 +22,7 @@ namespace enterprise {
 using std::cout;
 using std::endl;
 using std::string;
+using std::vector;
 
 using google::protobuf::RepeatedPtrField;
 
@@ -91,19 +92,21 @@ Status ClusterAdminClient::ListSnapshots() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateSnapshot(const YBTableName& table_name,
+Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables,
                                           int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
-    // Flush table before the snapshot creation.
-    const Status s = FlushTable(table_name, flush_timeout_secs);
-    // Expected statuses:
-    //   OK - table was successfully flushed
-    //   NotFound - flush request was finished & deleted
-    //   TimedOut - flush request failed by timeout
-    if (s.IsTimedOut()) {
-      cout << s.ToString(false) << " (ignored)" << endl;
-    } else if (!s.ok() && !s.IsNotFound()) {
-      return s;
+    for (const YBTableName& table_name : tables) {
+      // Flush table before the snapshot creation.
+      const Status s = FlushTable(table_name, flush_timeout_secs);
+      // Expected statuses:
+      //   OK - table was successfully flushed
+      //   NotFound - flush request was finished & deleted
+      //   TimedOut - flush request failed by timeout
+      if (s.IsTimedOut()) {
+        cout << s.ToString(false) << " (ignored)" << endl;
+      } else if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
     }
   }
 
@@ -111,7 +114,11 @@ Status ClusterAdminClient::CreateSnapshot(const YBTableName& table_name,
   rpc.set_timeout(timeout_);
   CreateSnapshotRequestPB req;
   CreateSnapshotResponsePB resp;
-  table_name.SetIntoTableIdentifierPB(req.add_tables());
+
+  for (const YBTableName& table_name : tables) {
+    table_name.SetIntoTableIdentifierPB(req.add_tables());
+  }
+
   RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(req, &resp, &rpc));
 
   if (resp.has_error()) {
@@ -198,7 +205,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
 }
 
 Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
-                                                  const YBTableName& table_name) {
+                                                  const vector<YBTableName>& tables) {
   cout << "Read snapshot meta file " << file_name << endl;
 
   ImportSnapshotMetaRequestPB req;
@@ -212,14 +219,12 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << "Importing snapshot " << snapshot_info->id()
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
-  if (!table_name.empty()) {
-    DCHECK(table_name.has_namespace());
-    DCHECK(table_name.has_table());
-    cout << "Target imported table name: " << table_name.ToString() << endl;
-  }
-
   YBTableName orig_table_name;
+  int table_index = 0;
   for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
+    const YBTableName table_name = table_index < tables.size()
+        ? tables[table_index] : YBTableName();
+
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: {
         SysNamespaceEntryPB meta;
@@ -244,19 +249,27 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
           meta.set_name(table_name.table_name());
           entry.set_data(meta.SerializeAsString());
         }
+
+        if (!orig_table_name.has_namespace() || !orig_table_name.has_table()) {
+          return STATUS(IllegalState,
+                        "Could not find table name or keyspace name from snapshot metadata");
+        }
+
+        if (!table_name.empty()) {
+          DCHECK(table_name.has_namespace());
+          DCHECK(table_name.has_table());
+          cout << "Target imported table name: " << table_name.ToString() << endl;
+        }
+
+        cout << "Table being imported: " << orig_table_name.ToString() << endl;
+        ++table_index;
+        orig_table_name = YBTableName();
         break;
       }
       default:
         break;
     }
   }
-
-  if (!orig_table_name.has_namespace() || !orig_table_name.has_table()) {
-    return STATUS(IllegalState,
-                  "Could not find table name or keyspace name from snapshot metadata");
-  }
-
-  cout << "Table being imported: " << orig_table_name.ToString() << endl;
 
   RpcController rpc;
   rpc.set_timeout(timeout_);

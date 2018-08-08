@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tools {
@@ -13,6 +14,7 @@ namespace enterprise {
 using std::cerr;
 using std::endl;
 using std::string;
+using std::vector;
 
 using client::YBTableName;
 using strings::Substitute;
@@ -30,20 +32,29 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "create_snapshot",
-      " <keyspace> <table_name> [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
+      " <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]"
+      " (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
+        if (args.size() < 4) {
           UsageAndExit(args[0]);
         }
-        const YBTableName table_name(args[2], args[3]);
-        int timeout_secs = 60;
-        if (args.size() > 4) {
-          timeout_secs = std::stoi(args[4].c_str());
+
+        const int num_tables = (args.size() - 2)/2;
+        vector<YBTableName> tables(num_tables);
+
+        for (int i = 0; i < num_tables; ++i) {
+          tables[i].set_namespace_name(args[2 + i*2]);
+          tables[i].set_table_name(args[3 + i*2]);
         }
 
-        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(table_name, timeout_secs),
-                              Substitute("Unable to create snapshot of table $0",
-                                         table_name.ToString()));
+        int timeout_secs = 60;
+        if (args.size() % 2 == 1) {
+          timeout_secs = std::stoi(args[args.size() - 1].c_str());
+        }
+
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, timeout_secs),
+                              Substitute("Unable to create snapshot of tables: $0",
+                                         yb::ToString(tables)));
         return Status::OK();
       });
 
@@ -77,20 +88,27 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "import_snapshot", " <file_name> [<keyspace> <table_name>]",
+      "import_snapshot", " <file_name> [<keyspace> <table_name> [<keyspace> <table_name>]...]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3 && args.size() != 5) {
+        if (args.size() < 3 || args.size() % 2 != 1) {
           UsageAndExit(args[0]);
         }
 
         const string file_name = args[2];
-        YBTableName table_name;
-        if (args.size() >= 5) {
-          table_name.set_namespace_name(args[3]);
-          table_name.set_table_name(args[4]);
+        const int num_tables = (args.size() - 3)/2;
+        vector<YBTableName> tables(num_tables);
+
+        for (int i = 0; i < num_tables; ++i) {
+          tables[i].set_namespace_name(args[3 + i*2]);
+          tables[i].set_table_name(args[4 + i*2]);
         }
-        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, table_name),
-                              Substitute("Unable to import snapshot meta file $0", file_name));
+
+        string msg = num_tables > 0 ?
+            Substitute("Unable to import tables $0 from snapshot meta file $1",
+                       yb::ToString(tables), file_name) :
+            Substitute("Unable to import snapshot meta file $0", file_name);
+
+        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, tables), msg);
         return Status::OK();
       });
 
