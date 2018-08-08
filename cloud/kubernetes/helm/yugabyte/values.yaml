@@ -14,13 +14,17 @@ persistentVolume:
 
 resource:
   master:
-    replicas: 3
-    cpu: 4
-    memory: 7.5Gi
+    requests:
+      cpu: 4
+      memory: 7.5Gi
   tserver:
-    replicas: 3
-    cpu: 8
-    memory: 15Gi
+    requests:
+      cpu: 8
+      memory: 15Gi
+
+replicas:
+  master: 3
+  tserver: 3
 
 PodManagementPolicy: Parallel
 

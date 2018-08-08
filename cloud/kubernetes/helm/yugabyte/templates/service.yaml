@@ -60,9 +60,9 @@ spec:
   serviceName: "{{ .name }}"
   podManagementPolicy: {{ $root.Values.PodManagementPolicy }}
   {{ if eq .name "yb-masters" }}
-  replicas: {{ $root.Values.resource.master.replicas }}
+  replicas: {{ $root.Values.replicas.master }}
   {{ else }}
-  replicas: {{ $root.Values.resource.tserver.replicas  }}
+  replicas: {{ $root.Values.replicas.tserver  }}
   {{ end }}
   volumeClaimTemplates:
     {{- range $index := until (int ($root.Values.persistentVolume.count )) }}
@@ -125,14 +125,11 @@ spec:
             fieldRef:
               fieldPath: status.podIP
         resources:
-          requests:
-            {{ if eq .name "yb-masters" }}
-            cpu: {{ $root.Values.resource.master.cpu }}
-            memory: {{ $root.Values.resource.master.memory }}
-            {{ else }}
-            cpu: {{ $root.Values.resource.tserver.cpu }}
-            memory: {{ $root.Values.resource.tserver.memory }}
-            {{ end }}
+        {{ if eq .name "yb-masters" }}
+{{ toYaml $root.Values.resource.master | indent 10 }}
+        {{ else }}
+{{ toYaml $root.Values.resource.tserver | indent 10 }}
+        {{ end }}
         metadata:
           labels:
             heritage: {{ $root.Release.Service | quote }}
@@ -145,12 +142,12 @@ spec:
           - "--fs_data_dirs={{range $index := until (int ($root.Values.persistentVolume.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
           - "--rpc_bind_addresses=$(POD_IP)"
           - "--master_addresses=yb-masters:7100"
-          - "--master_replication_factor={{ $root.Values.resource.master.replicas }}"
+          - "--master_replication_factor={{ $root.Values.replicas.master }}"
         {{ else }}
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs={{range $index := until (int ($root.Values.persistentVolume.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
           - "--tserver_master_addrs=yb-masters:7100"
-          - "--tserver_master_replication_factor={{ $root.Values.resource.master.replicas }}"
+          - "--tserver_master_replication_factor={{ $root.Values.replicas.master }}"
         {{ end }}
         ports:
           {{- range $label, $port := .ports }}
