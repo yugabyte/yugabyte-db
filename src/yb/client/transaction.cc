@@ -37,6 +37,7 @@
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
+using namespace std::literals;
 using namespace std::placeholders;
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
@@ -443,7 +444,7 @@ class YBTransaction::Impl final {
   }
 
   void LookupTabletForCleanupDone(const Result<internal::RemoteTabletPtr>& remote_tablet,
-                                const YBTransactionPtr& transaction) {
+                                  const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << "Lookup tablet for cleanup done: " << remote_tablet;
     if (!remote_tablet.ok()) {
       // Intents will be cleaned up later in this case.
@@ -453,14 +454,9 @@ class YBTransaction::Impl final {
     std::vector<internal::RemoteTabletServer*> remote_tablet_servers;
     (**remote_tablet).GetRemoteTabletServers(
         &remote_tablet_servers, internal::UpdateLocalTsState::kTrue);
-    tserver::UpdateTransactionRequestPB req;
-    req.set_tablet_id((**remote_tablet).tablet_id());
-    req.set_propagated_hybrid_time(manager_->Now().ToUint64());
-    auto& state = *req.mutable_state();
-    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
-    state.set_status(TransactionStatus::CLEANUP);
-    tserver::UpdateTransactionResponsePB response;
-    rpc::RpcController controller;
+
+    constexpr auto kCallTimeout = 15s;
+    auto now = manager_->Now().ToUint64();
 
     {
       std::unique_lock<std::mutex> lock(mutex_);
@@ -472,8 +468,19 @@ class YBTransaction::Impl final {
           continue;
         }
         abort_requests_.emplace_back();
+        auto& abort_request = abort_requests_.back();
+
+        auto& request = abort_request.request;
+        request.set_tablet_id((**remote_tablet).tablet_id());
+        request.set_propagated_hybrid_time(now);
+        auto& state = *request.mutable_state();
+        state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+        state.set_status(TransactionStatus::CLEANUP);
+
+        abort_request.controller.set_timeout(kCallTimeout);
+
         server->proxy()->UpdateTransactionAsync(
-            req, &abort_requests_.back().response, &abort_requests_.back().controller,
+            request, &abort_request.response, &abort_request.controller,
             std::bind(&Impl::ProcessResponse, this, transaction));
       }
     }
@@ -665,6 +672,7 @@ class YBTransaction::Impl final {
 
   // RPC data for abort requests.
   struct AbortRequest {
+    tserver::UpdateTransactionRequestPB request;
     tserver::UpdateTransactionResponsePB response;
     rpc::RpcController controller;
   };

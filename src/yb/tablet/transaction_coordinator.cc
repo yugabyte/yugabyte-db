@@ -714,7 +714,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
-    CHECK_OK(id);
+    if (!id.ok()) {
+      LOG(WARNING) << "Failed to decode id from " << state.ShortDebugString() << ": " << id;
+      request->completion_callback()->CompleteWithStatus(id.status());
+      return;
+    }
 
     if (state.status() == TransactionStatus::APPLYING) {
       if (RandomActWithProbability(GetAtomicFlag(
