@@ -640,6 +640,7 @@ void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
+  RequestScope request_scope(transaction_participant_.get());
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
@@ -647,7 +648,13 @@ void Tablet::PrepareTransactionWriteBatch(
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
   auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
-  CHECK(metadata_with_write_id) << "Transaction metadata missing: " << transaction_id;
+  if (!metadata_with_write_id) {
+    // If metadata is missing it could be caused by aborted and removed transaction.
+    // In this case we should not add new intents for it.
+    LOG(INFO) << "Transaction metadata missing: " << transaction_id
+              << ", looks like it was just aborted";
+    return;
+  }
 
   auto isolation_level = metadata_with_write_id->first.isolation;
   auto write_id = metadata_with_write_id->second;
