@@ -15,11 +15,11 @@ persistentVolume:
 resource:
   master:
     requests:
-      cpu: 4
+      cpu: 2
       memory: 7.5Gi
   tserver:
     requests:
-      cpu: 8
+      cpu: 4
       memory: 15Gi
 
 replicas:
