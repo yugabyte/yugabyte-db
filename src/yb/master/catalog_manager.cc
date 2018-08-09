@@ -2195,7 +2195,9 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
   TRACE("Looking up indexed table");
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
-    return STATUS(NotFound, "The indexed table does not exist");
+    LOG(WARNING) << Substitute("Indexed table $0 for index $1 not found",
+                               indexed_table_id, index_table_id);
+    return Status::OK();
   }
 
   NamespaceIdentifierPB nsId;
@@ -2226,8 +2228,9 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
     }
   }
 
-  return STATUS_SUBSTITUTE(NotFound, "Index $0 not found in indexed table $1",
-                           index_table_id, indexed_table_id);
+  LOG(WARNING) << Substitute("Index $0 not found in indexed table $1",
+                             index_table_id, indexed_table_id);
+  return Status::OK();
 }
 
 // Delete a Table
@@ -2281,19 +2284,25 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
                                            DeleteTableResponsePB* resp,
                                            rpc::RpcContext* rpc) {
   const char* const object_type = is_index_table ? "index" : "table";
+  const bool cascade_delete_index = is_index_table && !update_indexed_table;
 
   scoped_refptr<TableInfo> table;
 
   // Lookup the table and verify if it exists.
-  TRACE("Looking up table");
+  TRACE(Substitute("Looking up $0", object_type));
   RETURN_NOT_OK(FindTable(table_identifier, &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, Substitute("The $0 does not exist", object_type),
-                      table_identifier.DebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    if (cascade_delete_index) {
+      LOG(WARNING) << Substitute("Index $0 not found", table_identifier.DebugString());
+      return Status::OK();
+    } else {
+      Status s = STATUS(NotFound, Substitute("The $0 does not exist", object_type),
+                        table_identifier.DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    }
   }
 
-  TRACE("Locking table");
+  TRACE(Substitute("Locking $0", object_type));
   auto l = table->LockForWrite();
   resp->set_table_id(table->id());
 
@@ -2303,9 +2312,14 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   }
 
   if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, Substitute("The $0 was deleted", object_type),
-                      l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    if (cascade_delete_index) {
+      LOG(WARNING) << Substitute("Index $0 was deleted", table_identifier.DebugString());
+      return Status::OK();
+    } else {
+      Status s = STATUS(NotFound, Substitute("The $0 was deleted", object_type),
+                        l->data().pb.state_msg());
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    }
   }
 
   TRACE("Updating metadata on disk");
