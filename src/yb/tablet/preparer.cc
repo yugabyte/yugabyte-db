@@ -291,7 +291,7 @@ void PreparerImpl::ReplicateSubBatch(
     // Treat all the operations in the batch as failed.
     for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
       (*batch_iter)->SetReplicationFailed(s);
-      (*batch_iter)->HandleFailure(s);
+      (*batch_iter)->HandleFailure();
     }
   }
 }

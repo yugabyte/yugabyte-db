@@ -422,6 +422,7 @@ void TabletPeer::WriteAsync(std::unique_ptr<WriteOperationState> state, MonoTime
   auto status = CheckRunning();
   if (!status.ok()) {
     state->completion_callback()->CompleteWithStatus(status);
+    return;
   }
   auto operation = std::make_unique<WriteOperation>(
       std::move(state), consensus::LEADER, deadline, this);
