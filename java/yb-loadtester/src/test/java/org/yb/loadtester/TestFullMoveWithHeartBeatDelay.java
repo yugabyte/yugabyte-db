@@ -12,6 +12,10 @@
 //
 package org.yb.loadtester;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
 import com.google.common.net.HostAndPort;
 
 import org.junit.Test;
@@ -33,7 +37,8 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     Set<HostAndPort> oldMasters = new HashSet<>(miniCluster.getMasters().keySet());
     Iterator<HostAndPort> oldMasterIter = oldMasters.iterator();
-    Iterator<HostAndPort> newMasterIter = startNewMasters(3).iterator();
+    Set<HostAndPort> newMasters = startNewMasters(3);
+    Iterator<HostAndPort> newMasterIter = newMasters.iterator();
 
     // Now perform a full tserver move.
     performTServerExpandShrink(true);
@@ -45,12 +50,12 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     // Prevent this master from becoming leader.
     boolean status = client.setFlag(newMaster, "do_not_start_election_test_only", "true");
-    assert(status);
+    assertTrue(status);
 
     // Disable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
       status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "true");
-      assert(status);
+      assertTrue(status);
     }
     removeMaster(oldMaster);
 
@@ -59,7 +64,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
     // Enable heartbeats for old masters again.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
       status = client.setFlag(hp, "tserver_disable_heartbeat_test_only", "false");
-      assert(status);
+      assertTrue(status);
     }
 
     // Wait for tservers to get heartbeat from new master.
@@ -67,8 +72,15 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
       String masters = client.getMasterAddresses(hp);
-      // Assert each tserver knows about the full list of all 6 masters.
-      assert(masters.split(",").length == 6);
+      // Assert each tserver knows about the final list of 3 masters.
+      assertEquals(3, masters.split(",").length);
+      // Ensure old masters not present and new masters are present.
+      for (HostAndPort master : newMasters) {
+        assertTrue(masters.contains(master.getHostText()));
+      }
+      for (HostAndPort master : oldMasters) {
+        assertFalse(masters.contains(master.getHostText()));
+      }
     }
 
     // Wait for some ops and verify no failures in load tester.

@@ -115,21 +115,6 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
   SetMasterAddressesNoValidation(options.GetMasterAddresses());
 }
 
-// This implementation is better but it needs support of
-//    atomic_load( shared_ptr<> ), atomic_store( shared_ptr<> )
-//
-// #include <atomic>
-//
-// void ServerBaseOptions::SetMasterAddresses(
-//     MasterAddressesPtr master_addresses) {
-//   std::atomic_store(&master_addresses_, master_addresses);
-// }
-//
-// MasterAddressesPtr ServerBaseOptions::GetMasterAddresses() const {
-//   auto local = std::atomic_load(&master_addresses_);
-//   return local;
-// }
-
 void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master_addresses) {
   std::lock_guard<std::mutex> l(master_addresses_mtx_);
   master_addresses_ = master_addresses;
@@ -191,7 +176,7 @@ Status DetermineMasterAddresses(
   *master_addresses = VERIFY_RESULT_PREPEND(
       ParseMasterAddresses(master_addresses_flag),
       Format("Couldn't parse the $0 flag ('$1')",
-             master_addresses_flag_name, master_addresses_flag_name));
+             master_addresses_flag_name, master_addresses_flag));
 
   if (master_replication_factor <= 0) {
     *master_addresses_resolved_str = master_addresses_flag;

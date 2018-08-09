@@ -113,7 +113,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   void SetCurrentMasterIndex(int index) { master_config_index_ = index; }
 
   // Update in-memory list of master addresses that this tablet server pings to.
-  CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
+  // If the update is from master leader, we use that list directly. If not, we
+  // merge the existing in-memory master list with the provided config list.
+  CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+                                       bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
 
