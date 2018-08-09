@@ -64,6 +64,9 @@ class CQLProcessor : public ql::QLProcessor {
   // Processing an inbound call.
   void ProcessCall(rpc::InboundCallPtr call);
 
+ protected:
+  void RescheduleCurrentCall(std::function<void()> resume_from) override;
+
  private:
   // Process a CQL request.
   CQLResponse* ProcessRequest(const CQLRequest& req);

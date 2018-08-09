@@ -59,8 +59,7 @@ class QLProcessor {
   typedef std::unique_ptr<const QLProcessor> UniPtrConst;
 
   // Constructors.
-  QLProcessor(std::weak_ptr<rpc::Messenger> messenger,
-              std::shared_ptr<client::YBClient> client,
+  QLProcessor(std::shared_ptr<client::YBClient> client,
               std::shared_ptr<client::YBMetaDataCache> cache,
               QLMetrics* ql_metrics,
               const server::ClockPtr& clock,
@@ -84,7 +83,12 @@ class QLProcessor {
                 StatementExecutedCallback cb, bool reparsed = false);
 
  protected:
-  void SetCurrentCall(rpc::InboundCallPtr call);
+  void SetCurrentSession(const QLSession::SharedPtr& ql_session) {
+    ql_env_.set_ql_session(ql_session);
+  }
+
+  virtual void RescheduleCurrentCall(std::function<void()> resume_from);
+
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) that processor uses to execute statement.
   QLEnv ql_env_;

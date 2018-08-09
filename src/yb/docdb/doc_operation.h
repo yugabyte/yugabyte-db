@@ -299,6 +299,9 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   // Any indexes that may need update?
   bool update_indexes_ = false;
 
+  // Is this an insert into a unique index?
+  bool insert_into_unique_index_ = false;
+
   // Does the liveness column exist before the write operation?
   bool liveness_column_exists_ = false;
 };

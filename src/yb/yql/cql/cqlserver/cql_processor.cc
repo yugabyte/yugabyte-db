@@ -18,6 +18,7 @@
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/crypt.h"
@@ -118,11 +119,10 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 
 //------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos)
-    : QLProcessor(
-          service_impl->messenger(), service_impl->client(), service_impl->metadata_cache(),
-          service_impl->cql_metrics().get(),
-          service_impl->clock(),
-          std::bind(&CQLServiceImpl::GetTransactionManager, service_impl)),
+    : QLProcessor(service_impl->client(), service_impl->metadata_cache(),
+                  service_impl->cql_metrics().get(),
+                  service_impl->clock(),
+                  std::bind(&CQLServiceImpl::GetTransactionManager, service_impl)),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),
@@ -153,7 +153,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
       execute_begin_.GetDeltaSince(parse_begin_).ToMicroseconds());
 
   // Execute the request (perhaps asynchronously).
-  SetCurrentCall(call_);
+  SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
   call_->SetRequest(request_, service_impl_);
   retry_count_ = 0;
@@ -188,7 +188,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   request_ = nullptr;
   stmts_.clear();
   parse_trees_.clear();
-  SetCurrentCall(nullptr);
+  SetCurrentSession(nullptr);
   service_impl_->ReturnProcessor(pos_);
 }
 
@@ -395,11 +395,19 @@ CQLResponse* CQLProcessor::ProcessError(const Status& s,
         return new UnpreparedErrorResponse(*request_, *query_id);
       }
       // When no unprepared query id is found, it means all statements we executed were queries
-      // (non-prepared statements). In that case, just retry the request (once only).
+      // (non-prepared statements). In that case, just retry the request (once only). The retry
+      // needs to be rescheduled in because this callback may not be executed in the RPC worker
+      // thread. Also, rescheduling gives other calls a chance to execute first before we do.
       if (++retry_count_ == 1) {
         stmts_.clear();
         parse_trees_.clear();
-        return ProcessRequest(*request_);
+        RescheduleCurrentCall([this]() {
+            unique_ptr<CQLResponse> response(ProcessRequest(*request_));
+            if (response != nullptr) {
+              SendResponse(*response);
+            }
+          });
+        return nullptr;
       }
       return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
                                "Query failed to execute due to stale metadata cache");
@@ -500,6 +508,13 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
   LOG(ERROR) << "Internal error: unknown result type " << static_cast<int>(result->type());
   return new ErrorResponse(
       *request_, ErrorResponse::Code::SERVER_ERROR, "Internal error: unknown result type");
+}
+
+void CQLProcessor::RescheduleCurrentCall(std::function<void()> resume_from) {
+  call_->SetResumeFrom(std::move(resume_from));
+  auto messenger = service_impl_->messenger().lock();
+  DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
+  messenger->QueueInboundCall(call_);
 }
 
 }  // namespace cqlserver

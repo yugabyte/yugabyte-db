@@ -298,17 +298,17 @@ MonoTime CQLInboundCall::GetClientDeadline() const {
 }
 
 void CQLInboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
-  if (resume_from_ == nullptr) {
+  if (!resume_from_) {
     InboundCall::RecordHandlingStarted(incoming_queue_time);
   }
 }
 
 bool CQLInboundCall::TryResume() {
-  if (resume_from_ == nullptr) {
+  if (!resume_from_) {
     return false;
   }
   VLOG(2) << "Resuming " << ToString();
-  resume_from_->Run();
+  resume_from_();
   return true;
 }
 

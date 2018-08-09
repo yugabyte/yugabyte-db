@@ -1758,7 +1758,9 @@ bool JoinNonStaticRow(
 Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
   request_.Swap(request);
   response_ = response;
-  require_read_ = RequireRead(request_, schema_);
+  insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
+                              unique_index_key_schema_ != nullptr;
+  require_read_ = RequireRead(request_, schema_) || insert_into_unique_index_;
   update_indexes_ = !request_.update_index_ids().empty();
 
   // Determine if static / non-static columns are being written.
@@ -1964,11 +1966,6 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  // If it is not an insert or it is not a unique index, this is not a duplicate insert.
-  if (request_.type() != QLWriteRequestPB::QL_STMT_INSERT || unique_index_key_schema_ == nullptr) {
-    return false;
-  }
-
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id());
   DocRowwiseIterator iterator(*unique_index_key_schema_, schema_, txn_op_context_,
@@ -2196,7 +2193,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     }
   }
 
-  if (VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
+  if (insert_into_unique_index_ && VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
     response_->set_applied(false);
     response_->set_status(QLResponsePB::YQL_STATUS_OK);
     return Status::OK();

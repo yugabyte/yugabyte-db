@@ -78,11 +78,10 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
   ASSERT_OK(builder.Build(&client));
 
   auto metadata_cache = std::make_shared<client::YBMetaDataCache>(client);
-  std::weak_ptr<rpc::Messenger> messenger;
   server::ClockPtr clock(new server::HybridClock());
   ASSERT_OK(clock->Init());
-  auto processor = std::make_unique<ql::QLProcessor>(
-      messenger, client, metadata_cache, nullptr, clock, ql::TransactionManagerProvider());
+  auto processor = std::make_unique<ql::QLProcessor>(client, metadata_cache, nullptr, clock,
+                                                     ql::TransactionManagerProvider());
   Synchronizer s;
   ql::StatementParameters statement_parameters;
   processor->RunAsync("SELECT * from system.peers", statement_parameters,
