@@ -292,31 +292,32 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
   void OperationCompleted() override {
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
-    } else {
-      // Retrieve the rowblocks returned from the QL write operations and return them as RPC
-      // sidecars. Populate the row schema also.
-      for (const auto& ql_write_op : *state_->ql_write_ops()) {
-        const auto& ql_write_req = ql_write_op->request();
-        auto* ql_write_resp = ql_write_op->response();
-        const QLRowBlock* rowblock = ql_write_op->rowblock();
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas()),
-            response_, context_.get());
-        faststring rows_data;
-        rowblock->Serialize(ql_write_req.client(), &rows_data);
-        int rows_data_sidecar_idx = 0;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-            response_,
-            context_.get());
-        ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
-      }
-      if (include_trace_ && Trace::CurrentTrace() != nullptr) {
-        response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
-      }
-      response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
-      context_->RespondSuccess();
+      return;
     }
+
+    // Retrieve the rowblocks returned from the QL write operations and return them as RPC
+    // sidecars. Populate the row schema also.
+    for (const auto& ql_write_op : *state_->ql_write_ops()) {
+      const auto& ql_write_req = ql_write_op->request();
+      auto* ql_write_resp = ql_write_op->response();
+      const QLRowBlock* rowblock = ql_write_op->rowblock();
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+          SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas()),
+          response_, context_.get());
+      faststring rows_data;
+      rowblock->Serialize(ql_write_req.client(), &rows_data);
+      int rows_data_sidecar_idx = 0;
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+          context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
+          response_,
+          context_.get());
+      ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+    }
+    if (include_trace_ && Trace::CurrentTrace() != nullptr) {
+      response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+    }
+    response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
+    context_->RespondSuccess();
   }
 
  private:
