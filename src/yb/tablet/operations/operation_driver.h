@@ -192,7 +192,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Handle a failure in any of the stages of the operation.
   // In some cases, this will end the operation and call its callback.
   // In others, where we can't recover, this will FATAL.
-  void HandleFailure(const Status& s);
+  void HandleFailure(Status status = Status::OK());
 
   consensus::Consensus* consensus() { return consensus_; }
 

@@ -294,29 +294,36 @@ void OperationDriver::SetReplicationFailed(const Status& replication_status) {
   replication_state_ = REPLICATION_FAILED;
 }
 
-void OperationDriver::HandleFailure(const Status& s) {
-  VLOG_WITH_PREFIX(2) << "Failed operation: " << s.ToString();
-  CHECK(!s.ok());
-  ADOPT_TRACE(trace());
-  TRACE("HandleFailure($0)", s.ToString());
-
+void OperationDriver::HandleFailure(Status status) {
   ReplicationState repl_state_copy;
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    operation_status_ = s;
+    if (!status.ok()) {
+      if (!operation_status_.ok()) {
+        LOG(DFATAL) << "Operation already failed with: " << operation_status_ << ", new status: "
+                    << status << ", state: " << replication_state_;
+      }
+      operation_status_ = status;
+    } else {
+      status = operation_status_;
+    }
     repl_state_copy = replication_state_;
   }
 
+  VLOG_WITH_PREFIX(2) << "Failed operation: " << status;
+  CHECK(!status.ok());
+  ADOPT_TRACE(trace());
+  TRACE("HandleFailure($0)", status.ToString());
 
   switch (repl_state_copy) {
     case NOT_REPLICATING:
     case REPLICATION_FAILED:
     {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
-          "replication success: " << s.ToString();
+          "replication success: " << status;
       operation_->Finish(Operation::ABORTED);
-      mutable_state()->completion_callback()->CompleteWithStatus(operation_status_);
+      mutable_state()->completion_callback()->CompleteWithStatus(status);
       operation_tracker_->Release(this);
       return;
     }
@@ -325,8 +332,7 @@ void OperationDriver::HandleFailure(const Status& s) {
     case REPLICATED:
     {
       LOG_WITH_PREFIX(FATAL) << "Cannot cancel operations that have already replicated"
-          << ": " << operation_status_.ToString()
-          << " operation:" << ToString();
+                             << ": " << status << " operation:" << ToString();
     }
   }
 }
@@ -387,7 +393,7 @@ void OperationDriver::Abort(const Status& status) {
   // Apply hasn't started yet this prevents it from starting, but if it has then
   // the operation runs to completion.
   if (repl_state_copy == NOT_REPLICATING) {
-    HandleFailure(status);
+    HandleFailure();
   }
 }
 
@@ -403,7 +409,7 @@ Status OperationDriver::ApplyAsync() {
       DCHECK_EQ(replication_state_, REPLICATION_FAILED);
       DCHECK(!operation_status_.ok());
       lock.unlock();
-      HandleFailure(operation_status_);
+      HandleFailure();
       return Status::OK();
     }
   }
