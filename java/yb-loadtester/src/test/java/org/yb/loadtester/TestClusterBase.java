@@ -264,10 +264,13 @@ public class TestClusterBase extends BaseCQLTest {
     }, EXPECTED_TSERVERS_TIMEOUT_MS);
   }
 
-  protected void createAndAddNewMasters(int numMasters) throws Exception {
+  protected Set<HostAndPort> createAndAddNewMasters(int numMasters) throws Exception {
+    Set<HostAndPort> newMasters = new HashSet<>();
     for (int i = 0; i < numMasters; i++) {
       // Add new master.
       HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+
+      newMasters.add(masterRpcHostPort);
 
       // Wait for new master to be online.
       assertTrue(client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS));
@@ -289,6 +292,7 @@ public class TestClusterBase extends BaseCQLTest {
       // Verify no load tester errors.
       loadTesterRunnable.verifyNumExceptions();
     }
+    return newMasters;
   }
 
   public void performFullMasterMove() throws Exception {

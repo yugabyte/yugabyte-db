@@ -441,7 +441,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   if (resp.has_master_config()) {
     LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
 
-    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config()));
+    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
   }
 
   if (!resp.leader_master()) {
