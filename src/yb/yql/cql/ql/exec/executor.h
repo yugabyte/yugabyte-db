@@ -58,9 +58,12 @@ class Executor : public QLExprExecutor {
   typedef std::unique_ptr<Executor> UniPtr;
   typedef std::unique_ptr<const Executor> UniPtrConst;
 
+  // Function to reschedule the current call.
+  using Rescheduler = std::function<void(std::function<void()>)>;
+
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  Executor(QLEnv *ql_env, const QLMetrics* ql_metrics);
+  Executor(QLEnv *ql_env, Rescheduler rescheduler, const QLMetrics* ql_metrics);
   virtual ~Executor();
 
   // Execute the given statement (parse tree) or batch. The parse trees and the parameters must not
@@ -140,42 +143,41 @@ class Executor : public QLExprExecutor {
   // Use a keyspace.
   CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
 
-  // Re-execute the current statement.
-  void ReExecute();
-
   //------------------------------------------------------------------------------------------------
   // Result processing.
 
-  // Flush operations that have been applied. If there is none, finish the statement execution.
+  // Flush operations that have been applied and commit. If there is none, finish the statement
+  // execution.
   void FlushAsync();
 
   // Callback for FlushAsync.
-  void FlushAsyncDone(const Status& s, bool rescheduled_call);
+  void FlushAsyncDone(Status s, ExecContext* exec_context = nullptr);
 
   // Callback for Commit.
-  void CommitDone(const Status& s);
+  void CommitDone(Status s, ExecContext* exec_context);
+
+  void ProcessAsyncResults(bool rescheduled = false);
 
   // Process the status of executing a statement.
   CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
 
-  // Process the read/write op response.
-  CHECKED_STATUS ProcessOpResponse(const PTDmlStmt* stmt,
-                                   client::YBqlOp* op,
-                                   ExecContext* exec_context);
+  // Process the read/write op status.
+  CHECKED_STATUS ProcessOpStatus(const PTDmlStmt* stmt,
+                                 const client::YBqlOpPtr& op,
+                                 ExecContext* exec_context);
 
-  // Process result of FlushAsyncDone.
-  CHECKED_STATUS ProcessAsyncResults(const Status& s,
-                                     ExecContext* exec_context,
-                                     const TnodeContext& tnode_context);
+  // Process status of FlushAsyncDone.
+  using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
+  CHECKED_STATUS ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context);
 
   // Append execution result.
   CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
-  Result<bool> FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
-                                     const std::shared_ptr<client::YBqlReadOp>& op,
-                                     ExecContext* exec_context,
-                                     TnodeContext* tnode_context);
+  Result<bool> FetchMoreRows(const PTSelectStmt* tnode,
+                             const client::YBqlReadOpPtr& op,
+                             TnodeContext* tnode_context,
+                             ExecContext* exec_context);
 
   // Aggregate all result sets from all tablet servers to form the requested resultset.
   CHECKED_STATUS AggregateResultSets(const PTSelectStmt* pt_select);
@@ -304,15 +306,20 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
-  bool DeferOperation(const client::YBqlWriteOpPtr& op);
-  CHECKED_STATUS ApplyOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
+  // Add a read/write operation for the current statement and apply it. For write operation, check
+  // for inter-dependency before applying. If it is a write operation to a table with secondary
+  // indexes, update them as needed.
+  CHECKED_STATUS AddOperation(const client::YBqlReadOpPtr& op);
+  CHECKED_STATUS AddOperation(const client::YBqlWriteOpPtr& op);
+
+  // Is this a batch returning status?
+  bool IsReturnsStatusBatch() const {
+    return returns_status_batch_opt_ && *returns_status_batch_opt_;
+  }
 
   //------------------------------------------------------------------------------------------------
   CHECKED_STATUS UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req);
-  CHECKED_STATUS ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req);
-
-  //------------------------------------------------------------------------------------------------
-  ExecContext& exec_context();
+  CHECKED_STATUS AddIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req);
 
   //------------------------------------------------------------------------------------------------
   // Helper class to separate inter-dependent write operations.
@@ -325,6 +332,9 @@ class Executor : public QLExprExecutor {
 
     // Clear the batch.
     void Clear();
+
+    // Check if the batch is empty.
+    bool Empty() const;
 
    private:
     // Sets of write operations separated by their primary and keys.
@@ -340,12 +350,29 @@ class Executor : public QLExprExecutor {
   // Environment (YBClient) for executing statements.
   QLEnv *ql_env_;
 
-  // Execution contexts of the statements being executed. They are created and destroyed for each
-  // execution.
+  // A rescheduler to reschedule the current call.
+  const Rescheduler rescheduler_;
+
+  // Execution context of the statement currently being executed, and the contexts for all
+  // statements in execution. The contexts are created and destroyed for each execution.
+  ExecContext* exec_context_ = nullptr;
   std::list<ExecContext> exec_contexts_;
 
   // Batch of outstanding write operations that are being applied.
   WriteBatch write_batch_;
+
+  // Session to apply non-transactional read/write operations. Transactional read/write operations
+  // are applied using the corresponding transactional session in ExecContext.
+  const client::YBSessionPtr session_;
+
+  // The number of outstanding async calls pending, the async error status and the mutex to protect
+  // its update.
+  std::atomic<int64_t> num_async_calls_ = {0};
+  std::mutex status_mutex_;
+  Status async_status_;
+
+  // The number of FlushAsync called to execute the statements.
+  int64_t num_flushes_ = 0;
 
   // Execution result.
   ExecutedResult::SharedPtr result_;
@@ -355,18 +382,6 @@ class Executor : public QLExprExecutor {
 
   // QLMetrics to keep track of node parsing etc.
   const QLMetrics* ql_metrics_;
-
-  // Rescheduled ReExecute callback.
-  Callback<void(void)> rescheduled_reexecute_cb_;
-
-  // Rescheduled FlushAsync callback.
-  Callback<void(void)> rescheduled_flush_async_cb_;
-
-  // FlushAsync callback.
-  Callback<void(const Status&, bool)> flush_async_cb_;
-
-  // Table for DML batches, where all statements must modify the same table.
-  std::shared_ptr<client::YBTable> dml_batch_table_;
 
   // Whether this is a batch with statements that returns status.
   boost::optional<bool> returns_status_batch_opt_;

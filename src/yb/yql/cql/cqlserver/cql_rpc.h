@@ -107,10 +107,12 @@ class CQLInboundCall : public rpc::InboundCall {
     return ql_session_;
   }
 
-  void SetResumeFrom(Callback<void(void)>* resume_from) {
-    resume_from_ = resume_from;
+  // Set the callback to resume this call when this call is rescheduled.
+  void SetResumeFrom(std::function<void()> resume_from) {
+    resume_from_ = std::move(resume_from);
   }
 
+  // Try and see if there is a callback to resume this call and invoke it if there is.
   bool TryResume();
 
   uint16_t stream_id() const { return stream_id_; }
@@ -132,9 +134,11 @@ class CQLInboundCall : public rpc::InboundCall {
  private:
   void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
 
-  Callback<void(void)>* resume_from_ = nullptr;
+  // Callback to resume this call if it is rescheduled.
+  std::function<void()> resume_from_;
+
   RefCntBuffer response_msg_buf_;
-  ql::QLSession::SharedPtr ql_session_;
+  const ql::QLSession::SharedPtr ql_session_;
   uint16_t stream_id_;
   std::shared_ptr<const CQLRequest> request_;
   // Pointer to the containing CQL service implementation.

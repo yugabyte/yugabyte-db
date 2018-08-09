@@ -76,7 +76,7 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // Abort the unflushed or in-flight operations.
   void Abort();
 
-  void SetReadPoint(Retry retry);
+  void SetReadPoint(Restart restart);
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);

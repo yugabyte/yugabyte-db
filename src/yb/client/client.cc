@@ -1449,8 +1449,8 @@ YBSession::YBSession(const shared_ptr<YBClient>& client, const scoped_refptr<Clo
     : data_(std::make_shared<YBSessionData>(client, clock)) {
 }
 
-void YBSession::SetReadPoint(const Retry retry) {
-  data_->SetReadPoint(retry);
+void YBSession::SetReadPoint(const Restart restart) {
+  data_->SetReadPoint(restart);
 }
 
 void YBSession::SetTransaction(YBTransactionPtr transaction) {

@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "yb/yql/cql/ql/statement.h"
+#include "yb/util/thread_restrictions.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
@@ -79,18 +80,7 @@ namespace ql {
 using std::shared_ptr;
 using std::string;
 using client::YBClient;
-using client::YBSession;
 using client::YBMetaDataCache;
-
-// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
-#define CB_RETURN_NOT_OK(cb, s)                 \
-  do {                                          \
-    ::yb::Status _s = (s);                      \
-    if (PREDICT_FALSE(!_s.ok())) {              \
-      (cb).Run(_s, nullptr);                    \
-      return;                                   \
-    }                                           \
-  } while (0)
 
 QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   time_to_parse_ql_query_ =
@@ -126,13 +116,15 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ResponseSize.Instantiate(metric_entity);
 }
 
-QLProcessor::QLProcessor(std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
+QLProcessor::QLProcessor(shared_ptr<YBClient> client,
                          shared_ptr<YBMetaDataCache> cache, QLMetrics* ql_metrics,
                          const server::ClockPtr& clock,
                          TransactionManagerProvider transaction_manager_provider)
-    : ql_env_(messenger, client, cache, clock, std::move(transaction_manager_provider)),
+    : ql_env_(client, cache, clock, std::move(transaction_manager_provider)),
       analyzer_(&ql_env_),
-      executor_(&ql_env_, ql_metrics),
+      executor_(&ql_env_,
+                [this](std::function<void()> resume_from) { RescheduleCurrentCall(resume_from); },
+                ql_metrics),
       ql_metrics_(ql_metrics) {
 }
 
@@ -205,19 +197,27 @@ void QLProcessor::RunAsync(const string& stmt, const StatementParameters& params
                                     ConstRef(params), Owned(ptree), cb));
 }
 
-// RunAsync callback added to keep the parse tree in-scope while it is being run asynchronously.
-// When called, just forward the status and result to the actual callback cb.
 void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& params,
                                const ParseTree* parse_tree, StatementExecutedCallback cb,
                                const Status& s, const ExecutedResult::SharedPtr& result) {
+  // If execution fails due to stale metadata and the statement has not been reparsed, rerun this
+  // statement with stale metadata flushed. The rerun needs to be rescheduled in because this
+  // callback may not be executed in the RPC worker thread. Also, rescheduling gives other calls a
+  // chance to execute first before we do.
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
-    return RunAsync(stmt, params, cb, true /* reparsed */);
+    return RescheduleCurrentCall([this, &stmt, &params, cb]() {
+        RunAsync(stmt, params, cb, true /* reparsed */);
+      });
   }
   cb.Run(s, result);
 }
 
-void QLProcessor::SetCurrentCall(rpc::InboundCallPtr call) {
-  ql_env_.SetCurrentCall(std::move(call));
+void QLProcessor::RescheduleCurrentCall(std::function<void()> resume_from) {
+  // Some unit tests are not executed in CQL proxy. In those cases, just execute the callback
+  // directly while disabling thread restrictions.
+  const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
+  resume_from();
+  ThreadRestrictions::SetWaitAllowed(allowed);
 }
 
 }  // namespace ql

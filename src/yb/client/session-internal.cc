@@ -88,9 +88,9 @@ void YBSessionData::Abort() {
   }
 }
 
-void YBSessionData::SetReadPoint(const Retry retry) {
+void YBSessionData::SetReadPoint(const Restart restart) {
   DCHECK_NOTNULL(read_point_.get());
-  if (retry && read_point_->IsRestartRequired()) {
+  if (restart && read_point_->IsRestartRequired()) {
     read_point_->Restart();
   } else {
     read_point_->SetCurrentReadTime();

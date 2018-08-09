@@ -38,12 +38,10 @@ class YBTransaction;
 typedef std::shared_ptr<YBTransaction> YBTransactionPtr;
 
 class YBqlOp;
-typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
-
 class YBqlReadOp;
-typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
-
 class YBqlWriteOp;
+typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
+typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
 typedef std::shared_ptr<YBqlWriteOp> YBqlWriteOpPtr;
 
 class YBPgsqlOp;

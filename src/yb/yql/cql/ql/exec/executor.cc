@@ -14,14 +14,18 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/yb_op.h"
-#include "yb/common/ql_protocol_util.h"
-#include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/util/decimal.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/util/decimal.h"
+#include "yb/util/logging.h"
+#include "yb/util/thread_restrictions.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace ql {
@@ -38,8 +42,13 @@ using client::YBTableCreator;
 using client::YBTableAlterer;
 using client::YBTableType;
 using client::YBTableName;
+using client::YBSessionPtr;
+using client::YBOperation;
+using client::YBqlOp;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
+using client::YBqlOpPtr;
+using client::YBqlReadOpPtr;
 using client::YBqlWriteOpPtr;
 using strings::Substitute;
 
@@ -50,12 +59,11 @@ using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
-Executor::Executor(QLEnv *ql_env, const QLMetrics* ql_metrics)
+Executor::Executor(QLEnv *ql_env, Rescheduler rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
-      ql_metrics_(ql_metrics),
-      rescheduled_reexecute_cb_(Bind(&Executor::ReExecute, Unretained(this))),
-      rescheduled_flush_async_cb_(Bind(&Executor::FlushAsync, Unretained(this))),
-      flush_async_cb_(Bind(&Executor::FlushAsyncDone, Unretained(this))) {
+      rescheduler_(std::move(rescheduler)),
+      session_(ql_env_->NewSession()),
+      ql_metrics_(ql_metrics) {
 }
 
 Executor::~Executor() {
@@ -67,10 +75,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
                             StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
-  ql_env_->Reset();
-  ql_env_->SetReadPoint();
-  // Execute the statement and invoke statement-executed callback either when there is an error or
-  // no async operation is pending.
+  session_->SetReadPoint(client::Restart::kFalse);
   RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
 }
@@ -78,14 +83,14 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
-  ql_env_->Reset();
-  ql_env_->SetReadPoint();
+  session_->SetReadPoint(client::Restart::kFalse);
 
+  // Table for DML batches, where all statements must modify the same table.
+  client::YBTablePtr dml_batch_table;
+
+  // Verify the statements in the batch.
   for (const auto& pair : batch) {
     const ParseTree& parse_tree = pair.first;
-    const StatementParameters& params = pair.second;
-
-    // Batch execution is supported for non-conditional DML statements only currently.
     const TreeNode* tnode = parse_tree.root().get();
     if (tnode != nullptr) {
       switch (tnode->opcode()) {
@@ -117,9 +122,9 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
           }
 
           if (*returns_status_batch_opt_) {
-            if (dml_batch_table_ == nullptr) {
-              dml_batch_table_ = stmt->table();
-            } else if (dml_batch_table_->id() != stmt->table()->id()) {
+            if (dml_batch_table == nullptr) {
+              dml_batch_table = stmt->table();
+            } else if (dml_batch_table->id() != stmt->table()->id()) {
               return StatementExecuted(
                   ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
                               "batch execution with RETURNS STATUS statements cannot span multiple "
@@ -132,10 +137,16 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
         default:
           return StatementExecuted(
               ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
-                          "batch execution of non-DML statement not supported yet"));
+                          "batch execution supports INSERT, UPDATE and DELETE statements only "
+                          "currently"));
           break;
       }
     }
+  }
+
+  for (const auto& pair : batch) {
+    const ParseTree& parse_tree = pair.first;
+    const StatementParameters& params = pair.second;
     RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   }
 
@@ -146,25 +157,9 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
 
 Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters& params) {
   // Prepare execution context and execute the parse tree's root node.
-  exec_contexts_.emplace_back(parse_tree, params, ql_env_);
+  exec_contexts_.emplace_back(parse_tree, params);
+  exec_context_ = &exec_contexts_.back();
   return ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
-}
-
-void Executor::ReExecute() {
-  ql_env_->SetReadPoint(ReExecute::kTrue);
-  for (ExecContext& exec_context : exec_contexts_) {
-    const ParseTree& parse_tree = exec_context.parse_tree();
-    const Status s = ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
-    if (PREDICT_FALSE(!s.ok())) {
-      return StatementExecuted(s);
-    }
-  }
-  FlushAsync();
-}
-
-ExecContext& Executor::exec_context() {
-  CHECK(!exec_contexts_.empty());
-  return exec_contexts_.back();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -174,7 +169,10 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     return Status::OK();
   }
   if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
-    exec_context().AddTnode(tnode);
+    exec_context_->AddTnode(tnode);
+    if (tnode->IsDml() && static_cast<const PTDmlStmt *>(tnode)->RequiresTransaction()) {
+      exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_);
+    }
   }
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:
@@ -233,7 +231,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
       return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
 
     default:
-      return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 }
 
@@ -250,7 +248,7 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
       return Status::OK();
     }
     // TODO (Bristy) : Set result_ properly.
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
 
   return Status::OK();
@@ -263,7 +261,7 @@ Status Executor::ExecPTNode(const PTAlterRole *tnode) {
                                       tnode->superuser());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::ROLE_NOT_FOUND;
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
 
   return Status::OK();
@@ -282,7 +280,7 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
       error_code = ErrorCode::ROLE_NOT_FOUND;
     }
     // TODO (Bristy) : Set result_ properly.
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
   return Status::OK();
 }
@@ -291,7 +289,7 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
 
 Status Executor::ExecPTNode(const PTListNode *tnode) {
   for (TreeNode::SharedPtr dml : tnode->node_list()) {
-    RETURN_NOT_OK(ProcessStatementStatus(exec_context().parse_tree(), ExecTreeNode(dml.get())));
+    RETURN_NOT_OK(ExecTreeNode(dml.get()));
   }
   return Status::OK();
 }
@@ -325,7 +323,7 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
       return Status::OK();
     }
 
-    return exec_context().Error(tnode->type_name(), s, error_code);
+    return exec_context_->Error(tnode->type_name(), s, error_code);
   }
 
   result_ = std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name);
@@ -338,7 +336,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
   if (table_name.is_system() && client::FLAGS_yb_system_namespace_readonly) {
-    return exec_context().Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
+    return exec_context_->Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
   }
 
   // Setting up columns.
@@ -349,7 +347,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     b.AddColumn(column->yb_name())->Type(column->ql_type())
         ->HashPrimaryKey()
@@ -365,7 +363,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
                                 ->Nullable()
@@ -381,13 +379,13 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   TableProperties table_properties;
   s = tnode->ToTableProperties(&table_properties);
   if (!s.ok()) {
-    return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
   b.SetTableProperties(table_properties);
 
   s = b.Build(&schema);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Create table.
@@ -418,7 +416,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
       return Status::OK();
     }
 
-    return exec_context().Error(tnode->table_name(), s, error_code);
+    return exec_context_->Error(tnode->table_name(), s, error_code);
   }
 
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
@@ -456,7 +454,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
         break;
       case ALTER_TYPE:
         // Not yet supported by AlterTableRequestPB.
-        return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }
   }
 
@@ -464,7 +462,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
     TableProperties table_properties;
     Status s = tnode->ToTableProperties(&table_properties);
     if(PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
     }
 
     table_alterer->SetTableProperties(table_properties);
@@ -472,7 +470,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   Status s = table_alterer->Alter();
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::EXEC_ERROR);
+    return exec_context_->Error(tnode, s, ErrorCode::EXEC_ERROR);
   }
 
   result_ = std::make_shared<SchemaChangeResult>(
@@ -541,7 +539,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     }
 
     default:
-      return exec_context().Error(tnode->name(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context_->Error(tnode->name(), ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -556,7 +554,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_code = error_not_found;
     }
 
-    return exec_context().Error(tnode->name(), s, error_code);
+    return exec_context_->Error(tnode->name(), s, error_code);
   }
 
   return Status::OK();
@@ -581,7 +579,7 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
     if (s.IsNotFound()) {
       error_code = ErrorCode::RESOURCE_NOT_FOUND;
     }
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
   // TODO (Bristy) : Return proper result.
   return Status::OK();
@@ -595,11 +593,11 @@ Status Executor::GetOffsetOrLimit(
   QLExpressionPB expr_pb;
   Status s = (PTExprToPB(get_val(tnode), &expr_pb));
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(get_val(tnode), s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(get_val(tnode), s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   if (expr_pb.has_value() && IsNull(expr_pb.value())) {
-    return exec_context().Error(get_val(tnode),
+    return exec_context_->Error(get_val(tnode),
                                 Substitute("$0 value cannot be null.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
@@ -609,7 +607,7 @@ Status Executor::GetOffsetOrLimit(
       << "Integer constant expected for " + clause_type + " clause";
 
   if (expr_pb.value().int32_value() < 0) {
-    return exec_context().Error(get_val(tnode),
+    return exec_context_->Error(get_val(tnode),
                                 Substitute("$0 value cannot be negative.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
@@ -625,19 +623,19 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
     return tnode->is_system() ? Status::OK()
-                              : exec_context().Error(tnode, ErrorCode::TABLE_NOT_FOUND);
+                              : exec_context_->Error(tnode, ErrorCode::TABLE_NOT_FOUND);
   }
 
-  const StatementParameters& params = exec_context().params();
+  const StatementParameters& params = exec_context_->params();
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !params.table_id().empty();
   if (continue_select && params.table_id() != table->id()) {
-    return exec_context().Error(tnode, "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
+    return exec_context_->Error(tnode, "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
   }
 
   // Create the read request.
-  shared_ptr<YBqlReadOp> select_op(table->NewQLSelect());
+  YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
   // Where clause - Hash, range, and regular columns.
 
@@ -649,7 +647,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
                              tnode->partition_key_ops(), tnode->func_ops(),
                              &no_results, &max_selected_rows_estimate);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   if (!tnode->HasPrimaryKeysSet()) {
@@ -677,7 +675,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     } else {
       s = PTExprToPB(expr, req->add_selected_exprs());
       if (PREDICT_FALSE(!s.ok())) {
-        return exec_context().Error(expr, s, ErrorCode::INVALID_ARGUMENTS);
+        return exec_context_->Error(expr, s, ErrorCode::INVALID_ARGUMENTS);
       }
 
       // Add the expression metadata (rsrow descriptor).
@@ -690,7 +688,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
@@ -757,35 +755,35 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
   // start partition here, and then iteratively scan the rest in FetchMoreRowsIfNeeded.
   // Otherwise, the request will already have the right hashed column values set.
-  TnodeContext* tnode_context = exec_context().tnode_context();
-  if (tnode_context->UnreadPartitionsRemaining() > 0) {
-    tnode_context->InitializePartition(select_op->mutable_request(),
-                                       continue_select ? params.next_partition_index() : 0);
+  TnodeContext& tnode_context = exec_context_->tnode_context();
+  if (tnode_context.UnreadPartitionsRemaining() > 0) {
+    tnode_context.InitializePartition(select_op->mutable_request(),
+                                      continue_select ? params.next_partition_index() : 0);
 
     // We can optimize to run the ops in parallel (rather than serially) if:
     //   - the estimated max number of rows is less than req limit (min of page size and CQL limit).
     //   - there is no offset (which requires passing skipped rows from one request to the next).
     if (max_selected_rows_estimate <= req->limit() && !req->has_offset()) {
-      tnode_context->AddOperation(select_op);
-      while (tnode_context->UnreadPartitionsRemaining() > 1) {
-        shared_ptr<YBqlReadOp> op(table->NewQLSelect());
+      RETURN_NOT_OK(AddOperation(select_op));
+      while (tnode_context.UnreadPartitionsRemaining() > 1) {
+        YBqlReadOpPtr op(table->NewQLSelect());
         op->mutable_request()->CopyFrom(select_op->request());
-        tnode_context->AdvanceToNextPartition(op->mutable_request());
-        tnode_context->AddOperation(op);
+        tnode_context.AdvanceToNextPartition(op->mutable_request());
+        RETURN_NOT_OK(AddOperation(op));
         select_op = op; // Use new op as base for the next one, if any.
       }
-      return exec_context().ApplyAll();
+      return Status::OK();
     }
   }
 
-  // Apply the operator.
-  return exec_context().Apply(select_op);
+  // Add the operation.
+  return AddOperation(select_op);
 }
 
-Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
-                                             const std::shared_ptr<YBqlReadOp>& op,
-                                             ExecContext* exec_context,
-                                             TnodeContext* tnode_context) {
+Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
+                                     const YBqlReadOpPtr& op,
+                                     TnodeContext* tnode_context,
+                                     ExecContext* exec_context) {
   if (result_ == nullptr) {
     return false;
   }
@@ -885,9 +883,6 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
   paging_state->set_next_row_key(current_params.next_row_key());
   paging_state->set_total_num_rows_read(total_row_count);
   paging_state->set_total_rows_skipped(total_rows_skipped);
-
-  // Apply the request.
-  RETURN_NOT_OK(tnode_context->Apply(op, ql_env_));
   return true;
 }
 
@@ -896,38 +891,38 @@ Result<bool> Executor::FetchMoreRowsIfNeeded(const PTSelectStmt* tnode,
 Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBqlWriteOp> insert_op(table->NewQLInsert());
+  YBqlWriteOpPtr insert_op(table->NewQLInsert());
   QLWriteRequestPB *req = insert_op->mutable_request();
 
   // Set the ttl.
   Status s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the values for columns.
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_else_error(tnode->else_error());
   }
@@ -941,8 +936,8 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   insert_op->set_writes_static_row(tnode->ModifiesStaticRow());
   insert_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
-  // Apply the operation.
-  return ApplyOperation(tnode, insert_op);
+  // Add the operation.
+  return AddOperation(insert_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -950,13 +945,13 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
 Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBqlWriteOp> delete_op(table->NewQLDelete());
+  YBqlWriteOpPtr delete_op(table->NewQLDelete());
   QLWriteRequestPB *req = delete_op->mutable_request();
 
   // Set the timestamp.
   Status s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Where clause - Hash, range, and regular columns.
@@ -964,24 +959,24 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                       tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_else_error(tnode->else_error());
   }
@@ -995,8 +990,8 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   delete_op->set_writes_static_row(tnode->ModifiesStaticRow());
   delete_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
-  // Apply the operation.
-  return ApplyOperation(tnode, delete_op);
+  // Add the operation.
+  return AddOperation(delete_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1004,7 +999,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
 Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBqlWriteOp> update_op(table->NewQLUpdate());
+  YBqlWriteOpPtr update_op(table->NewQLUpdate());
   QLWriteRequestPB *req = update_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
@@ -1012,38 +1007,38 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                              tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the ttl.
   s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(tnode, update_op->mutable_request());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context().Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context().Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_else_error(tnode->else_error());
   }
@@ -1057,14 +1052,14 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   update_op->set_writes_static_row(tnode->ModifiesStaticRow());
   update_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
-  // Apply the operation.
-  return ApplyOperation(tnode, update_op);
+  // Add the operation.
+  return AddOperation(update_op);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTStartTransaction *tnode) {
-  ql_env_->StartTransaction(tnode->isolation_level());
+  exec_context_->StartTransaction(tnode->isolation_level(), ql_env_);
   return Status::OK();
 }
 
@@ -1098,7 +1093,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
 
   result_ = std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name());
@@ -1111,7 +1106,7 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   const Status s = ql_env_->UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
-    return exec_context().Error(tnode, s, error_code);
+    return exec_context_->Error(tnode, s, error_code);
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
@@ -1120,93 +1115,327 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 
 //--------------------------------------------------------------------------------------------------
 
+namespace {
+
+// When executing a DML in a transaction or a SELECT statement on a transaction-enabled table, the
+// following transient errors may happen for which the YCQL service will restart the transaction.
+// - TryAgain: when the transaction has a write conflict with another transaction or read-
+//             restart is required.
+// - Expired:  when the transaction expires due to missed heartbeat
+// - TimedOut: when a tablet times out while contacting the transaction status tablet
+bool NeedsRestart(const Status& s) {
+  return s.IsTryAgain() || s.IsExpired() || s.IsTimedOut();
+}
+
+} // namespace
+
 void Executor::FlushAsync() {
-  exec_context().inc_num_flushes();
+  // Buffered read/write operations are flushed in rounds. In each round, FlushAsync() is called to
+  // flush buffered operations in the non-transactional session in the Executor or the transactional
+  // session in each ExecContext if any. Also, transactions in any ExecContext ready to commit with
+  // no more pending operation are also be committed. If there is no session to flush nor
+  // transaction to commit, the statement is executed.
+  //
+  // As flushes and commits happen, multiple FlushAsyncDone() and CommitDone() callbacks can be
+  // invoked concurrently. To avoid race condition among them, the async-call count before calling
+  // FlushAsync() and CommitTransaction(). This is necessary so that only the last callback will
+  // correctly detect that all async calls are done invoked before processing the async results
+  // exclusively.
   write_batch_.Clear();
-  if (!ql_env_->FlushAsync(&flush_async_cb_)) {
-    StatementExecuted(Status::OK());
+  std::vector<std::pair<YBSessionPtr, ExecContext*>> flush_sessions;
+  std::vector<ExecContext*> commit_contexts;
+  if (session_->CountBufferedOperations() > 0) {
+    flush_sessions.push_back({session_, nullptr});
+  }
+  for (ExecContext& exec_context : exec_contexts_) {
+    if (exec_context.HasTransaction()) {
+      if (exec_context.transactional_session()->CountBufferedOperations() > 0) {
+        flush_sessions.push_back({exec_context.transactional_session(), &exec_context});
+      } else if (!exec_context.HasPendingOperations()) {
+        commit_contexts.push_back(&exec_context);
+      }
+    }
+  }
+
+  // Commit transactions first before flushing operations in case some operations are blocked by
+  // prior operations in the uncommitted transactions. num_flushes_ is updated before FlushAsync()
+  // and CommitTransaction() are called to avoid race condition of recursive FlushAsync() called
+  // from FlushAsyncDone() and CommitDone().
+  DCHECK_EQ(num_async_calls_, 0);
+  num_async_calls_ = flush_sessions.size() + commit_contexts.size();
+  num_flushes_ += flush_sessions.size();
+  async_status_ = Status::OK();
+  for (auto* exec_context : commit_contexts) {
+    exec_context->CommitTransaction([this, exec_context](const Status& s) {
+        CommitDone(s, exec_context);
+      });
+  }
+  for (const auto& pair : flush_sessions) {
+    auto session = pair.first;
+    auto exec_context = pair.second;
+    TRACE("Flush Async");
+    session->FlushAsync([this, exec_context](const Status& s) {
+        FlushAsyncDone(s, exec_context);
+      });
+  }
+
+  if (flush_sessions.empty() && commit_contexts.empty()) {
+    // If this is a batch returning status, append the rows in the user-given order before
+    // returning result.
+    if (IsReturnsStatusBatch()) {
+      for (ExecContext& exec_context : exec_contexts_) {
+        int64_t row_count = 0;
+        for (TnodeContext& tnode_context : exec_context.tnode_contexts()) {
+          for (client::YBqlOpPtr& op : tnode_context.ops()) {
+            if (!op->rows_data().empty()) {
+              DCHECK_EQ(++row_count, 1) << exec_context.stmt() << " returns multiple status row";
+              RETURN_STMT_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
+            }
+          }
+        }
+      }
+    }
+    return StatementExecuted(Status::OK());
   }
 }
 
-void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
-  bool found_deferred_stmts = false;
-  const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
-  for (ExecContext& exec_context : exec_contexts_) {
-    auto* tnode_contexts = exec_context.tnode_contexts();
-    for (std::list<TnodeContext>::iterator curr = tnode_contexts->begin(), next;
-         curr != tnode_contexts->end(); curr = next) {
-      next = std::next(curr);
-      TnodeContext& tnode_context = *curr;
+// As multiple FlushAsyncDone() and CommitDone() can be invoked concurrently for different
+// ExecContexts, care must be taken so that the callbacks only update the individual ExecContexts.
+// Any update on data structures shared in Executor should either be protected by a mutex or
+// deferred to ProcessAsyncResults() that will be invoked exclusively.
+void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
+  TRACE("Flush Async Done");
+  // Process FlushAsync status for either transactional session in an ExecContext, or the
+  // non-transactional session in the Executor for other ExecContexts with no transactional session.
+  const int64_t num_async_calls = --num_async_calls_;
+  const client::YBSessionPtr& session = exec_context ? exec_context->transactional_session()
+                                                     : session_;
 
-      if (tnode_context.ops().empty()) {
-        continue;
+  // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+  // returns IOError. When it happens, retrieves the errors and discard the IOError.
+  OpErrors op_errors;
+  if (s.IsIOError()) {
+    for (const auto& error : session->GetPendingErrors()) {
+      op_errors[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
+    }
+    s = Status::OK();
+  }
+
+  if (s.ok()) {
+    if (exec_context != nullptr) {
+      s = ProcessAsyncStatus(op_errors, exec_context);
+      if (!s.ok()) {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        async_status_ = s;
       }
-
-      const TreeNode *tnode = tnode_context.tnode();
-      const auto& main_op = tnode_context.ops().front();
-
-      if (tnode_context.ops().size() > 1) {
-        // This should be a parallel SELECT (i.e. with IN condition) which guarantees that the tnode
-        // is not deferred and that there are no more rows to fetch.
-        // So we just need to process the results.
-        DCHECK_EQ(tnode_context.tnode()->opcode(), TreeNodeOpcode::kPTSelectStmt);
-        RETURN_STMT_NOT_OK(ProcessAsyncResults(s, &exec_context, tnode_context));
-      } else { // Exactly one operation (main_op).
-
-        // If the operation has been deferred continue to the next operation, but if it can be
-        // applied now, apply it first.
-        if (tnode_context.IsDeferred()) {
-          if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(main_op))) {
-            RETURN_STMT_NOT_OK(tnode_context.Apply(ql_env_));
+    } else {
+      for (auto& exec_context : exec_contexts_) {
+        if (!exec_context.HasTransaction()) {
+          s = ProcessAsyncStatus(op_errors, &exec_context);
+          if (!s.ok()) {
+            std::lock_guard<std::mutex> lock(status_mutex_);
+            async_status_ = s;
           }
-          found_deferred_stmts = true;
+        }
+      }
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    async_status_ = s;
+  }
+
+  // Process async results exclusively if this is the last callback of the last FlushAsync() and
+  // there is no more outstanding async call.
+  if (num_async_calls == 0) {
+    ProcessAsyncResults();
+  }
+}
+
+void Executor::CommitDone(Status s, ExecContext* exec_context) {
+  TRACE("Commit Transaction Done");
+  const int64_t num_async_calls = --num_async_calls_;
+  if (s.ok()) {
+    if (ql_metrics_ != nullptr) {
+      const MonoTime now = MonoTime::Now();
+      const auto delta_usec = (now - exec_context->transaction_start_time()).ToMicroseconds();
+      ql_metrics_->ql_transaction_->Increment(delta_usec);
+    }
+  } else {
+    if (NeedsRestart(s)) {
+      exec_context->Reset(client::Restart::kTrue);
+    } else {
+      std::lock_guard<std::mutex> lock(status_mutex_);
+      async_status_ = s;
+    }
+  }
+
+  // Process async results exclusively if this is the last callback of the last FlushAsync() and
+  // there is no more outstanding async call.
+  if (num_async_calls == 0) {
+    ProcessAsyncResults();
+  }
+}
+
+void Executor::ProcessAsyncResults(const bool rescheduled) {
+  // If the current thread is not the RPC worker thread, call the callback directly. Otherwise,
+  // reschedule the call to resume in the RPC worker thread.
+  if (!rescheduled && !rpc::ThreadPool::IsCurrentThreadRpcWorker()) {
+    return rescheduler_([this]() { ProcessAsyncResults(true /* rescheduled */); });
+  }
+
+  // Return error immediately when async call failed.
+  RETURN_STMT_NOT_OK(async_status_);
+
+  // Go through each ExecContext and process async results.
+  bool has_buffered_ops = false;
+  const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
+  for (auto exec_itr = exec_contexts_.begin(); exec_itr != exec_contexts_.end(); ) {
+
+    // Set current ExecContext.
+    exec_context_ = &*exec_itr;
+
+    // Restart a statement if necessary
+    if (exec_context_->restart()) {
+      const TreeNode *root = exec_context_->parse_tree().root().get();
+      // Clear partial rows accumulated from the SELECT statement.
+      if (root->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+        result_ = nullptr;
+      }
+      YBSessionPtr session = exec_context_->HasTransaction()
+                             ? exec_context_->transactional_session()
+                             : session_;
+      session->SetReadPoint(client::Restart::kTrue);
+      RETURN_STMT_NOT_OK(ExecTreeNode(root));
+      if (session->CountBufferedOperations() > 0) {
+        has_buffered_ops = true;
+      }
+      exec_itr++;
+      continue;
+    }
+
+    bool commit_transaction = exec_context_->HasTransaction() &&
+                              !exec_context_->HasPendingOperations();
+
+    // Go through each TnodeContext in an ExecContext and process async results.
+    auto& tnode_contexts = exec_context_->tnode_contexts();
+    for (auto tnode_itr = tnode_contexts.begin(); tnode_itr != tnode_contexts.end(); ) {
+      TnodeContext& tnode_context = *tnode_itr;
+      const TreeNode *tnode = tnode_context.tnode();
+
+      // Go through each op in a TnodeContext and process async results.
+      auto& ops = tnode_context.ops();
+      for (auto op_itr = ops.begin(); op_itr != ops.end(); ) {
+        client::YBqlOpPtr& op = *op_itr;
+
+        // Apply any op that has not been applied and executed.
+        if (!op->response().has_status()) {
+          DCHECK_EQ(op->type(), YBOperation::Type::QL_WRITE);
+          if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(op))) {
+            YBSessionPtr session = exec_context_->HasTransaction()
+                                   ? exec_context_->transactional_session()
+                                   : session_;
+            TRACE("Apply");
+            RETURN_STMT_NOT_OK(session->Apply(op));
+            has_buffered_ops = true;
+          }
+          op_itr++;
           continue;
         }
 
-        if (returns_status_batch_opt_ && *returns_status_batch_opt_ && found_deferred_stmts) {
-          continue; // If returning status we make sure we process results in user-given order.
+        // If the statement is in a transaction, check the status of the current operation. If it
+        // failed to apply (either because of an execution error or unsatisfied IF condition), quit
+        // the execution and abort the transaction. Also, if this is a batch returning status,
+        // mark all other ops in this statement as done and clear the rows data to make sure only
+        // one status row is returned from this statement.
+        //
+        // Note: For an error response, we only get to this point if using 'RETURNS STATUS AS ROW'.
+        // Otherwise, ProcessAsyncResults() should have failed so we would have returned above
+        // already.
+        if (exec_context_->HasTransaction() &&
+            (op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
+             (op->response().has_applied() && !op->response().applied()))) {
+          exec_context_->AbortTransaction();
+          commit_transaction = false;
+          if (IsReturnsStatusBatch()) {
+            for (auto& tnode_context2 : tnode_contexts) {
+              for (auto& op2 : tnode_context2.ops()) {
+                if (op2 != op) {
+                  op2->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
+                  op2->rows_data().clear();
+                }
+              }
+            }
+          }
         }
 
-        RETURN_STMT_NOT_OK(ProcessAsyncResults(s, &exec_context, tnode_context));
-
-        // If we are within a transaction, check the status of the current operation:
-        // If it failed to apply (either because of an execution error or false IF condition) quit
-        // the execution and do not commit the transaction.
-        // Any transaction that is not committed will be aborted at the end.
-        // Note: For an error response we only get to this point if using 'RETURNS STATUS',
-        //       otherwise ProcessAsyncResults should fail so we would return already above.
-        if (ql_env_->HasTransaction() &&
-            (main_op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
-            (main_op->response().has_applied() && !main_op->response().applied()))) {
-          return StatementExecuted(Status::OK());
+        // If the transaction is ready to commit, apply child transaction results if any.
+        if (commit_transaction) {
+          const QLResponsePB& response = op->response();
+          if (response.has_child_transaction_result()) {
+            const auto& result = response.child_transaction_result();
+            const Status s = exec_context_->ApplyChildTransactionResult(result);
+            if (NeedsRestart(s)) {
+              exec_context_->Reset(client::Restart::kTrue);
+              break;
+            }
+            RETURN_STMT_NOT_OK(s);
+          }
         }
 
-        // For SELECT statement, check if there are more rows to fetch.
+        // If this is a batch returning status, defer appending the row because we need to return
+        // the results in the user-given order when all statements in the batch finish.
+        if (IsReturnsStatusBatch()) {
+          op_itr++;
+          continue;
+        }
+
+        // Append the row if present.
+        if (!op->rows_data().empty()) {
+          RETURN_STMT_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
+        }
+
+        // For SELECT statement, check if there are more rows to fetch and apply the op as needed.
         if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-          const auto *select_stmt = static_cast<const PTSelectStmt *>(tnode);
-          const auto &read_op = std::static_pointer_cast<YBqlReadOp>(main_op);
-          const auto more_rows = FetchMoreRowsIfNeeded(select_stmt, read_op,
-              &exec_context, &tnode_context);
+          DCHECK_EQ(op->type(), YBOperation::Type::QL_READ);
+          const auto more_rows = FetchMoreRows(static_cast<const PTSelectStmt *>(tnode),
+                                               std::static_pointer_cast<YBqlReadOp>(op),
+                                               &tnode_context, exec_context_);
           RETURN_STMT_NOT_OK(more_rows);
           if (*more_rows) {
+            op->mutable_response()->Clear();
+            TRACE("Apply");
+            RETURN_STMT_NOT_OK(session_->Apply(op));
+            has_buffered_ops = true;
+            op_itr++;
             continue;
           }
         }
+
+        // Remove the op that has completed.
+        op_itr = ops.erase(op_itr);
+      }
+
+      // If this statement is restarted, stop traversing the rest of the statement tnodes.
+      if (exec_context_->restart()) {
+        break;
+      }
+
+      // If there are pending ops, we are not done with this statement tnode yet.
+      if (tnode_context.HasPendingOperations()) {
+        tnode_itr++;
+        continue;
       }
 
       // For SELECT statement, aggregate result sets if needed.
       if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-        const auto *select_stmt = static_cast<const PTSelectStmt *>(tnode);
-        // Evaluate aggregate functions if they are selected.
-        RETURN_STMT_NOT_OK(AggregateResultSets(select_stmt));
+        RETURN_STMT_NOT_OK(AggregateResultSets(static_cast<const PTSelectStmt *>(tnode)));
       }
 
-      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
-      // completed but exclude the time to commit the transaction if any. Ignore the auxillary
-      // write operations on the index tables.
-      if (ql_metrics_ != nullptr &&
-          (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt || !main_op->table()->IsIndex())) {
-        const auto delta_usec = (now - tnode_context.start_time()).ToMicroseconds();
+      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
+      // but exclude the time to commit the transaction if any. Report the metric only once.
+      if (ql_metrics_ != nullptr && !tnode_context.end_time().Initialized()) {
+        tnode_context.set_end_time(now);
+        const auto delta_usec = tnode_context.execution_time().ToMicroseconds();
         switch (tnode->opcode()) {
           case TreeNodeOpcode::kPTSelectStmt:
             ql_metrics_->ql_select_->Increment(delta_usec);
@@ -1220,40 +1449,45 @@ void Executor::FlushAsyncDone(const Status &s, const bool rescheduled_call) {
           case TreeNodeOpcode::kPTDeleteStmt:
             ql_metrics_->ql_delete_->Increment(delta_usec);
             break;
+          case TreeNodeOpcode::kPTStartTransaction:
+          case TreeNodeOpcode::kPTCommit:
+            break;
           default:
-            LOG(FATAL) << "unexpected operation";
+            LOG(FATAL) << "unexpected operation " << tnode->opcode();
         }
-        ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
+        if (tnode->IsDml()) {
+          ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
+        }
       }
 
-      // Apply child transaction results if any.
-      const QLResponsePB& response = main_op->response();
-      if (response.has_child_transaction_result()) {
-        const auto& result = response.child_transaction_result();
-        RETURN_STMT_NOT_OK(ql_env_->ApplyChildTransactionResult(result));
+      // If this is a batch returning status, keep the statement tnode with its ops so that we can
+      // return the row status when all statements in the batch finish.
+      if (IsReturnsStatusBatch()) {
+        tnode_itr++;
+        continue;
       }
 
-      tnode_contexts->erase(curr);
+      // Remove the statement tnode that has completed.
+      tnode_itr = tnode_contexts.erase(tnode_itr);
+    }
+
+    // If the current ExecContext is restarted, process it again. Otherwise, move to the next one.
+    if (!exec_context_->restart()) {
+      exec_itr++;
     }
   }
 
-  // If there are additional operations that have been applied above, flush them directly if we are
-  // called from a rescheduled call already. Otherwise, reschedule the current CQL call to flush.
-  // This is necessary because in an RF1 setup, the flush will be a direct local call and this
-  // callback can recurse too deeply hitting the stack limitiation. Rescheduling can also avoid
-  // occupying the RPC worker thread for too long starving other CQL calls waiting in the queue.
-  if (ql_env_->HasBufferedOperations()) {
-    return rescheduled_call ? FlushAsync()
-                            : ql_env_->RescheduleCurrentCall(&rescheduled_flush_async_cb_);
+  // If there are buffered ops that need flushes, the flushes need to be rescheduled if this call
+  // hasn't been rescheduled. This is necessary because in an RF1 setup, the flush is a direct
+  // local call and the recursive FlushAsync and FlushAsyncDone calls for a full table scan can
+  // recurse too deeply hitting the stack limitiation. Rescheduling can also avoid occupying the
+  // RPC worker thread for too long starving other CQL calls waiting in the queue. If there is no
+  // buffered ops to flush, just call FlushAsync() to commit the transactions if any.
+  if (has_buffered_ops && !rescheduled) {
+    rescheduler_([this]() { FlushAsync(); });
+  } else {
+    FlushAsync();
   }
-
-  // Commit the transaction if needed.
-  if (!exec_context().tnode_contexts()->empty() &&
-      exec_context().tnode_contexts()->back().tnode()->opcode() == TreeNodeOpcode::kPTCommit) {
-    return ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
-  }
-
-  StatementExecuted(Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1311,20 +1545,16 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
 } // namespace
 
 Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
-  if (tnode->table()->index_map().empty()) {
-    return Status::OK();
-  }
-
   // DML with TTL is not allowed if indexes are present.
   if (req->has_ttl()) {
-    return exec_context().Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
+    return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   // If updates of pk-only indexes can be issued from CQL proxy directly, do it. Otherwise, add
   // them to the list of indexes to be updated from tserver.
   if (!tnode->pk_only_indexes().empty()) {
     if (UpdateIndexesLocally(tnode, *req)) {
-      RETURN_NOT_OK(ApplyIndexWriteOps(tnode, *req));
+      RETURN_NOT_OK(AddIndexWriteOps(tnode, *req));
     } else {
       for (const auto& index : tnode->pk_only_indexes()) {
         req->add_update_index_ids(index->id());
@@ -1369,13 +1599,13 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   }
 
   if (!req->update_index_ids().empty() && tnode->RequiresTransaction()) {
-    RETURN_NOT_OK(ql_env_->PrepareChildTransaction(req->mutable_child_transaction_data()));
+    RETURN_NOT_OK(exec_context_->PrepareChildTransaction(req->mutable_child_transaction_data()));
   }
   return Status::OK();
 }
 
-// Apply the write operations to update the pk-only indexes.
-Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
+// Add the write operations to update the pk-only indexes.
+Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
   const Schema& schema = tnode->table()->InternalSchema();
   const bool is_upsert = (req.type() == QLWriteRequestPB::QL_STMT_INSERT ||
                           req.type() == QLWriteRequestPB::QL_STMT_UPDATE);
@@ -1394,12 +1624,10 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
   }
 
   // Create the write operation for each index and populate it using the original operation.
-  ExecContext& parent = exec_context();
   for (const auto& index_table : tnode->pk_only_indexes()) {
     const IndexInfo* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
-    shared_ptr<YBqlWriteOp> index_op(
-        is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
+    YBqlWriteOpPtr index_op(is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
     index_op->set_writes_primary_row(true);
     QLWriteRequestPB *index_req = index_op->mutable_request();
     index_req->set_request_id(req.request_id());
@@ -1419,8 +1647,7 @@ Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequest
         }
       }
     }
-    parent.AddTnode(tnode);
-    RETURN_NOT_OK(exec_context().Apply(index_op, !write_batch_.Add(index_op)));
+    RETURN_NOT_OK(AddOperation(index_op));
   }
 
   return Status::OK();
@@ -1446,19 +1673,42 @@ void Executor::WriteBatch::Clear() {
   ops_by_hash_key_.clear();
 }
 
-//--------------------------------------------------------------------------------------------------
-
-Status Executor::ApplyOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
-  RETURN_NOT_OK(exec_context().Apply(op, !write_batch_.Add(op)));
-
-  return UpdateIndexes(tnode, op->mutable_request());
+bool Executor::WriteBatch::Empty() const {
+  return ops_by_primary_key_.empty() &&  ops_by_hash_key_.empty();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::CommitDone(const Status &s) {
-  StatementExecuted(s);
+Status Executor::AddOperation(const YBqlReadOpPtr& op) {
+  DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
+  exec_context_->tnode_context().AddOperation(op);
+
+  TRACE("Apply");
+  return session_->Apply(op);
 }
+
+Status Executor::AddOperation(const YBqlWriteOpPtr& op) {
+  exec_context_->tnode_context().AddOperation(op);
+
+  // Check for inter-dependency in the current write batch before applying the write operation.
+  // Apply it in the transactional session in exec_context for the current statement if there is
+  // one. Otherwise, apply to the non-transactional session in the executor.
+  if (write_batch_.Add(op)) {
+    YBSessionPtr session = exec_context_->HasTransaction() ? exec_context_->transactional_session()
+                                                           : session_;
+    TRACE("Apply");
+    RETURN_NOT_OK(session->Apply(op));
+  }
+
+  // Also update secondary indexes if needed.
+  if (op->table()->index_map().empty()) {
+    return Status::OK();
+  }
+  return UpdateIndexes(static_cast<const PTDmlStmt*>(exec_context_->tnode_context().tnode()),
+                       op->mutable_request());
+}
+
+//--------------------------------------------------------------------------------------------------
 
 Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Status& s) {
   if (PREDICT_FALSE(!s.ok() && s.IsQLError() && !parse_tree.reparsed())) {
@@ -1473,11 +1723,11 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
     // - INVALID_ARGUMENTS when the column datatype is inconsistent with the supplied value in an
     //   INSERT or UPDATE statement.
     const ErrorCode errcode = GetErrorCode(s);
-    if (errcode == ErrorCode::TABLET_NOT_FOUND ||
-        errcode == ErrorCode::WRONG_METADATA_VERSION ||
+    if (errcode == ErrorCode::TABLET_NOT_FOUND         ||
+        errcode == ErrorCode::WRONG_METADATA_VERSION   ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
-        errcode == ErrorCode::INVALID_ARGUMENTS ||
-        errcode == ErrorCode::TABLE_NOT_FOUND ||
+        errcode == ErrorCode::INVALID_ARGUMENTS        ||
+        errcode == ErrorCode::TABLE_NOT_FOUND          ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
       parse_tree.ClearAnalyzedTableCache(ql_env_);
       parse_tree.ClearAnalyzedUDTypeCache(ql_env_);
@@ -1488,65 +1738,73 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
   return s;
 }
 
-Status Executor::ProcessOpResponse(const PTDmlStmt* stmt,
-                                   client::YBqlOp* op,
-                                   ExecContext* exec_context) {
+Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
+                                 const YBqlOpPtr& op,
+                                 ExecContext* exec_context) {
   const QLResponsePB &resp = op->response();
-  CHECK(resp.has_status()) << "QLResponsePB status missing";
-  if (resp.status() != QLResponsePB::YQL_STATUS_OK) {
-    if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
-      return STATUS(TryAgain, resp.error_message());
-    }
-
-    if (stmt->IsWriteOp() && stmt->returns_status()) {
-      // If we got an error we need to manually produce a result.
-      auto columns = std::make_shared<std::vector<ColumnSchema>>();
-      columns->emplace_back("[applied]", DataType::BOOL);
-      columns->emplace_back("[message]", DataType::STRING);
-      columns->insert(columns->end(),
-                      stmt->table()->schema().columns().begin(),
-                      stmt->table()->schema().columns().end());
-
-      QLRowBlock result_row_block(Schema(*columns, 0));
-      QLRow& row = result_row_block.Extend();
-      row.mutable_column(0)->set_bool_value(false);
-      row.mutable_column(1)->set_string_value(resp.error_message());
-      // Leave the rest of the columns null in this case.
-
-      faststring buffer;
-      result_row_block.Serialize(YQL_CLIENT_CQL, &buffer);
-      shared_ptr<RowsResult> result =
-          std::make_shared<RowsResult>(stmt->table()->name(), columns, buffer.ToString());
-
-      return AppendResult(result);
-    }
-
-    const ErrorCode errcode = QLStatusToErrorCode(resp.status());
-    return exec_context->Error(stmt, resp.error_message().c_str(), errcode);
+  // Returns if this op was deferred and has not been completed, or it has been completed okay.
+  if (!resp.has_status() || resp.status() == QLResponsePB::YQL_STATUS_OK) {
+    return Status::OK();
   }
-  return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
+
+  if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+    return STATUS(TryAgain, resp.error_message());
+  }
+
+  // If we got an error we need to manually produce a result in the op.
+  if (stmt->IsWriteOp() && stmt->returns_status()) {
+    std::vector<ColumnSchema> columns;
+    const auto& schema = stmt->table()->schema();
+    columns.reserve(stmt->table()->schema().num_columns() + 2);
+    columns.emplace_back("[applied]", DataType::BOOL);
+    columns.emplace_back("[message]", DataType::STRING);
+    columns.insert(columns.end(), schema.columns().begin(), schema.columns().end());
+    auto* column_schemas = op->mutable_response()->mutable_column_schemas();
+    column_schemas->Clear();
+    for (const auto& column : columns) {
+      ColumnSchemaToPB(column, column_schemas->Add());
+    }
+
+    QLRowBlock result_row_block(Schema(columns, 0));
+    QLRow& row = result_row_block.Extend();
+    row.mutable_column(0)->set_bool_value(false);
+    row.mutable_column(1)->set_string_value(resp.error_message());
+    // Leave the rest of the columns null in this case.
+
+    faststring row_data;
+    result_row_block.Serialize(YQL_CLIENT_CQL, &row_data);
+    *op->mutable_rows_data() = row_data.ToString();
+    return Status::OK();
+  }
+
+  const ErrorCode errcode = QLStatusToErrorCode(resp.status());
+  return exec_context->Error(stmt, resp.error_message().c_str(), errcode);
 }
 
-Status Executor::ProcessAsyncResults(const Status& s,
-                                     ExecContext* exec_context,
-                                     const TnodeContext& tnode_context) {
-  RETURN_NOT_OK(s);
-  if (tnode_context.IsDeferred()) {
-    return Status::OK(); // Skip deferred op.
-  }
-  const TreeNode* tnode = tnode_context.tnode();
-  for (auto& op : tnode_context.ops()) {
-    Status ss = ql_env_->GetOpError(op.get());
-    if (PREDICT_FALSE(!ss.ok() && !ss.IsTryAgain())) {
-      // YBOperation returns not-found error when the tablet is not found.
-      const auto errcode = ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
-      ss = exec_context->Error(tnode, ss, errcode);
+Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context) {
+  for (auto& tnode_context : exec_context->tnode_contexts()) {
+    const TreeNode* tnode = tnode_context.tnode();
+    for (auto& op : tnode_context.ops()) {
+      Status s;
+      const auto itr = op_errors.find(op.get());
+      if (itr != op_errors.end()) {
+        s = itr->second;
+      }
+      if (PREDICT_FALSE(!s.ok() && !NeedsRestart(s))) {
+        // YBOperation returns not-found error when the tablet is not found.
+        const auto errcode = s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
+        s = exec_context->Error(tnode, s, errcode);
+      }
+      if (s.ok()) {
+        DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
+        s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
+      }
+      if (NeedsRestart(s)) {
+        exec_context->Reset(client::Restart::kTrue);
+        return Status::OK();
+      }
+      RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), s));
     }
-    if (ss.ok()) {
-      DCHECK(tnode->IsDml()) << "Only DML should produce an op response";
-      ss = ProcessOpResponse(static_cast<const PTDmlStmt *>(tnode), op.get(), exec_context);
-    }
-    RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), ss));
   }
   return Status::OK();
 }
@@ -1564,29 +1822,10 @@ Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
 }
 
 void Executor::StatementExecuted(const Status& s) {
-  // When executing a transaction, the following transient errors may happen for which the YCQL
-  // service will reschedule the transaction to be re-executed:
-  // - TryAgain - when the transaction has a write conflict with another transaction or read-
-  //              restart is required.
-  // - Expired - when the transaction expires due to missed heartbeat
-  // - TimedOut - when a tablet times out while contacting the transaction status tablet
-  // The transaction will be retried repeatedly until the CQL client times out and closes the
-  // connection.
-  if (PREDICT_FALSE(s.IsTryAgain() || s.IsExpired() || s.IsTimedOut())) {
-    for (auto& exec_context : exec_contexts_) {
-      exec_context.Reset();
-    }
-    result_ = nullptr;
-    ql_env_->Reset(ReExecute::kTrue);
-    return ql_env_->RescheduleCurrentCall(&rescheduled_reexecute_cb_);
-  }
-
   // Update metrics for all statements executed.
   if (s.ok() && ql_metrics_ != nullptr) {
-    const MonoTime now = MonoTime::Now();
-    MonoTime transaction_start_time;
-    for (const auto& exec_context : exec_contexts_) {
-      for (const auto& tnode_context : exec_context.tnode_contexts()) {
+    for (auto& exec_context : exec_contexts_) {
+      for (auto& tnode_context : exec_context.tnode_contexts()) {
         const TreeNode* tnode = tnode_context.tnode();
         if (tnode != nullptr) {
           switch (tnode->opcode()) {
@@ -1594,20 +1833,16 @@ void Executor::StatementExecuted(const Status& s) {
             case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
             case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
-            case TreeNodeOpcode::kPTListNode:
+            case TreeNodeOpcode::kPTListNode:   FALLTHROUGH_INTENDED;
+            case TreeNodeOpcode::kPTStartTransaction: FALLTHROUGH_INTENDED;
+            case TreeNodeOpcode::kPTCommit:
               // The metrics for SELECT/INSERT/UPDATE/DELETE have been updated when the ops have
               // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
-              // in the metrics of its constituent DMLs only.
+              // in the metrics of its constituent DMLs only. Transaction metrics have been
+              // updated in CommitDone().
               break;
-            case TreeNodeOpcode::kPTStartTransaction:
-              transaction_start_time = tnode_context.start_time();
-              break;
-            case TreeNodeOpcode::kPTCommit: {
-              const auto delta_usec = (now - transaction_start_time).ToMicroseconds();
-              ql_metrics_->ql_transaction_->Increment(delta_usec);
-              break;
-            }
             default: {
+              const MonoTime now = MonoTime::Now();
               const auto delta_usec = (now - tnode_context.start_time()).ToMicroseconds();
               ql_metrics_->ql_others_->Increment(delta_usec);
               ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
@@ -1617,9 +1852,8 @@ void Executor::StatementExecuted(const Status& s) {
         }
       }
       ql_metrics_->num_retries_to_execute_ql_->Increment(exec_context.num_retries());
-      ql_metrics_->num_flushes_to_execute_ql_->Increment(exec_context.num_flushes());
-
     }
+    ql_metrics_->num_flushes_to_execute_ql_->Increment(num_flushes_);
   }
 
   // Clean up and invoke statement-executed callback.
@@ -1630,13 +1864,14 @@ void Executor::StatementExecuted(const Status& s) {
 }
 
 void Executor::Reset() {
+  exec_context_ = nullptr;
   exec_contexts_.clear();
   write_batch_.Clear();
+  session_->Abort();
+  num_flushes_ = 0;
   result_ = nullptr;
-  dml_batch_table_ = nullptr;
-  returns_status_batch_opt_ = boost::none;
   cb_.Reset();
-  ql_env_->Reset();
+  returns_status_batch_opt_ = boost::none;
 }
 
 }  // namespace ql
