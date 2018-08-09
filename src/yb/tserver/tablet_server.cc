@@ -153,40 +153,59 @@ Status TabletServer::ValidateMasterAddressResolution() const {
   return Status::OK();
 }
 
-Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config) {
-  auto new_master_addresses = make_shared<server::MasterAddresses>(*opts_.GetMasterAddresses());
+  Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+                                             bool is_master_leader) {
+  shared_ptr<server::MasterAddresses> new_master_addresses;
+  if (is_master_leader) {
+    SetCurrentMasterIndex(new_config.opid_index());
+    new_master_addresses = make_shared<server::MasterAddresses>();
 
-  SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.opid_index());
 
-  for (auto& list : *new_master_addresses) {
-    std::sort(list.begin(), list.end());
-  }
-
-  for (const auto& peer : new_config.peers()) {
-    std::vector<HostPort> list;
-    for (const auto& hp : peer.last_known_private_addr()) {
-      list.push_back(HostPortFromPB(hp));
-    }
-    for (const auto& hp : peer.last_known_broadcast_addr()) {
-      list.push_back(HostPortFromPB(hp));
-    }
-    std::sort(list.begin(), list.end());
-    bool found = false;
-    for (const auto& existing : *new_master_addresses) {
-      if (existing == list) {
-        found = true;
-        break;
+    for (const auto& peer : new_config.peers()) {
+      std::vector<HostPort> list;
+      for (const auto& hp : peer.last_known_private_addr()) {
+        list.push_back(HostPortFromPB(hp));
       }
-    }
-    if (!found) {
+      for (const auto& hp : peer.last_known_broadcast_addr()) {
+        list.push_back(HostPortFromPB(hp));
+      }
       new_master_addresses->push_back(std::move(list));
+    }
+  } else {
+    new_master_addresses = make_shared<server::MasterAddresses>(*opts_.GetMasterAddresses());
+
+    for (auto& list : *new_master_addresses) {
+      std::sort(list.begin(), list.end());
+    }
+
+    for (const auto& peer : new_config.peers()) {
+      std::vector<HostPort> list;
+      for (const auto& hp : peer.last_known_private_addr()) {
+        list.push_back(HostPortFromPB(hp));
+      }
+      for (const auto& hp : peer.last_known_broadcast_addr()) {
+        list.push_back(HostPortFromPB(hp));
+      }
+      std::sort(list.begin(), list.end());
+      bool found = false;
+      for (const auto& existing : *new_master_addresses) {
+        if (existing == list) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        new_master_addresses->push_back(std::move(list));
+      }
     }
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " old masters="
+            << new_config.opid_index() << " old masters = "
             << yb::ToString(opts_.GetMasterAddresses())
-            << " new masters=" << yb::ToString(new_master_addresses);
+            << " new masters = " << yb::ToString(new_master_addresses) << " from "
+            << (is_master_leader ? "leader." : "follower.");
 
   opts_.SetMasterAddresses(new_master_addresses);
 
