@@ -768,4 +768,35 @@ public class TestIndex extends BaseCQLTest {
                 new HashSet<String>(Arrays.asList("Row[1, 1, a]",
                                                   "Row[2, 2, b]")));
   }
+
+  @Test
+  public void testDMLInTranaction() throws Exception {
+    // Create 2 tables with secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn1 (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_txn1_by_v on test_txn1 (v);");
+
+    session.execute("create table test_txn2 (k text primary key, v text) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_txn2_by_v on test_txn2 (v);");
+
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, v) values (1, 101);" +
+                    "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
+                    "end transaction;");
+
+    // Verify the rows.
+    assertQuery("select k, v from test_txn1;", "Row[1, 101]");
+    assertQuery("select k, v from test_txn2;", "Row[k1, v101]");
+
+    // Verify rows can be selected by the index columns.
+    assertQuery("select k, v from test_txn1 where v = 101;", "Row[1, 101]");
+    assertQuery("select k, v from test_txn2 where v = 'v101';", "Row[k1, v101]");
+
+    // Verify the writetimes are the same.
+    assertEquals(session.execute("select writetime(v) from test_txn1 where k = 1;")
+                 .one().getLong("writetime(v)"),
+                 session.execute("select writetime(v) from test_txn2 where k = 'k1';")
+                 .one().getLong("writetime(v)"));
+  }
 }

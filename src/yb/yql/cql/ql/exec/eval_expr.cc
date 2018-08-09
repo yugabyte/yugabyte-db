@@ -88,7 +88,7 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 
 CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
   QLValue ql_bind;
-  RETURN_NOT_OK(exec_context().params().GetBindVariable(bind_pt->name()->c_str(),
+  RETURN_NOT_OK(exec_context_->params().GetBindVariable(bind_pt->name()->c_str(),
                                                         bind_pt->pos(),
                                                         bind_pt->ql_type(),
                                                         &ql_bind));

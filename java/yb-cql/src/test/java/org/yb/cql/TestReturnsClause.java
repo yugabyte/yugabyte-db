@@ -13,8 +13,14 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.BatchStatement;
+import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
+
 import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.util.*;
 
@@ -288,7 +294,6 @@ public class TestReturnsClause extends BaseCQLTest {
                                           "NULL",
                                           "NULL", "NULL", "NULL", "NULL"));
 
-
     assertQuery(batch, expectedColumns, String.join("", expectedRows));
   }
 
@@ -362,27 +367,103 @@ public class TestReturnsClause extends BaseCQLTest {
       // Check that no operations got applied.
       assertNoRow("SELECT * FROM test_rs_batch");
     }
-
-    // Transactions within a batch are not yet allowed.
-    // TODO this test should be removed when transactions inside batch are supported.
-    {
-      session.execute("CREATE TABLE test_rs_batch_trans(h int, r bigint, v1 int, v2 varchar, " +
-                          "primary key (h, r)) with transactions = { 'enabled' : true };");
-      session.execute(
-          "CREATE UNIQUE INDEX test_rs_batch_trans_idx ON test_rs_batch_trans(v1) INCLUDE (v2)");
-
-      BatchStatement batch = new BatchStatement();
-      batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans(h, r, v1, v2) " +
-                                        "VALUES (1, 1, 1 ,'a') RETURNS STATUS AS ROW"));
-      batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans(h, r, v1, v2) VALUES " +
-                                        "(1, 1, 1 ,'a') IF NOT EXISTS ELSE ERROR " +
-                                        "RETURNS STATUS AS ROW"));
-      batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans(h, r, v1, v2) VALUES " +
-                                        "(1, 1, 2 ,'b') IF NOT EXISTS RETURNS STATUS AS ROW"));
-      runInvalidQuery(batch);
-      // Check that no operations got applied.
-      assertNoRow("SELECT * FROM test_rs_batch_trans");
-    }
   }
 
+  @Test
+  public void testBatchDMLWithSecondaryIndex() {
+    // Test batch DMLs on a table with secondary index.
+    session.execute("CREATE TABLE test_rs_batch_trans (h int, r bigint, v1 int, v2 varchar, " +
+                    "primary key (h, r)) with transactions = { 'enabled' : true };");
+    session.execute(
+        "CREATE UNIQUE INDEX test_rs_batch_trans_idx ON test_rs_batch_trans (v1) INCLUDE (v2);");
+
+    session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (1, 1, 1, 'a');");
+    session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (1, 2, 2, 'b');");
+    session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (2, 1, 3, 'c');");
+    session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (2, 2, 4, 'd');");
+
+    BatchStatement batch = new BatchStatement();
+    String expectedResults = "";
+    batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) " +
+                                  "VALUES (3, 1, 5 ,'e') RETURNS STATUS AS ROW"));
+    expectedResults += "Row[true, NULL, NULL, NULL, NULL, NULL]";
+
+    batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES " +
+                                  "(1, 1, 1 ,'a') IF NOT EXISTS " +
+                                  "RETURNS STATUS AS ROW"));
+    expectedResults += "Row[false, NULL, 1, 1, 1, a]";
+
+    batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES " +
+                                  "(1, 1, 1 ,'a') IF NOT EXISTS ELSE ERROR " +
+                                  "RETURNS STATUS AS ROW"));
+    expectedResults += "Row[false, Condition was not satisfied., NULL, NULL, NULL, NULL]";
+
+    batch.add(new SimpleStatement("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES " +
+                                  "(3, 2, 1 ,'f') IF NOT EXISTS RETURNS STATUS AS ROW"));
+    expectedResults += "Row[false, Duplicate value disallowed by unique index "+
+                       "test_rs_batch_trans_idx, NULL, NULL, NULL, NULL]";
+
+    assertQuery(batch, expectedResults);
+
+    // Check that no operations got applied.
+    assertQuery("SELECT * FROM test_rs_batch_trans;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, a]",
+                                                  "Row[1, 2, 2, b]",
+                                                  "Row[2, 1, 3, c]",
+                                                  "Row[2, 2, 4, d]",
+                                                  "Row[3, 1, 5, e]")));
+  }
+
+  @Test
+  public void testBatchDMLWithUniqueIndex() {
+    // Test batch insert of a table with unique index. Verify that only 1 insert succeed for the
+    // same unique index value.
+    session.execute("CREATE TABLE test_unique (k int primary key, v int) " +
+                    "with transactions = { 'enabled' : true };");
+    session.execute("CREATE UNIQUE INDEX test_unique_idx ON test_unique (v);");
+
+    final int KEY_COUNT = 50;
+    HashSet<Integer> allKeys = new HashSet<>();
+    HashSet<Integer> allValues = new HashSet<>();
+    PreparedStatement stmt = session.prepare("INSERT INTO test_unique (k, v) VALUES (?, ?) " +
+                                             "RETURNS STATUS AS ROW;");
+    for (int i = 0; i < KEY_COUNT; i++) {
+      BatchStatement batch = new BatchStatement();
+      batch.add(stmt.bind(Integer.valueOf(100 + i), Integer.valueOf(i)));
+      batch.add(stmt.bind(Integer.valueOf(200 + i), Integer.valueOf(i)));
+      batch.add(stmt.bind(Integer.valueOf(300 + i), Integer.valueOf(i)));
+      allKeys.add(100 + i);
+      allKeys.add(200 + i);
+      allKeys.add(300 + i);
+      allValues.add(i);
+
+      // Verify only 1 insert succeeds and the others are prohibited by the unique index.
+      ResultSet rs = session.execute(batch);
+      int appliedCount = 0;
+      int totalCount = 0;
+      for (Row r : rs) {
+        if (r.getBool("[applied]")) {
+          appliedCount++;
+        } else {
+          assertEquals("Duplicate value disallowed by unique index test_unique_idx",
+                       r.getString("[message]"));
+        }
+        totalCount++;
+      }
+      assertEquals(1, appliedCount);
+      assertEquals(3, totalCount);
+    }
+
+    // Verify all the index values are present and unique.
+    HashSet<Integer> foundKeys = new HashSet<>();
+    HashSet<Integer> foundValues = new HashSet<>();
+    for (Row r : session.execute("select * from test_unique;")) {
+      LOG.info(r.toString());
+      foundKeys.add(r.getInt("k"));
+      foundValues.add(r.getInt("v"));
+    }
+    assertEquals(KEY_COUNT, foundKeys.size());
+    assertTrue(allKeys.containsAll(foundKeys));
+    assertEquals(allValues, foundValues);
+  }
 }

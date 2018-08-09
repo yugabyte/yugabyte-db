@@ -68,8 +68,7 @@ TestQLProcessor *QLTestBase::GetQLProcessor() {
     CreateSimulatedCluster();
   }
 
-  std::weak_ptr<rpc::Messenger> messenger;
-  ql_processors_.emplace_back(new TestQLProcessor(messenger, client_, metadata_cache_));
+  ql_processors_.emplace_back(new TestQLProcessor(client_, metadata_cache_));
   CallUseKeyspace(ql_processors_.back(), kDefaultKeyspaceName);
   return ql_processors_.back().get();
 }

@@ -16,29 +16,125 @@
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/yb_op.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace ql {
 
-ExecContext::ExecContext(const ParseTree& parse_tree,
-                         const StatementParameters& params,
-                         QLEnv *ql_env)
-    : parse_tree_(parse_tree),
-      params_(params),
-      ql_env_(ql_env) {
+using client::CommitCallback;
+using client::Restart;
+using client::YBSessionPtr;
+using client::YBTransactionPtr;
+
+ExecContext::ExecContext(const ParseTree& parse_tree, const StatementParameters& params)
+    : parse_tree_(parse_tree), params_(params) {
 }
 
 ExecContext::~ExecContext() {
+  // Reset to abort transaction explicitly instead of letting it expire.
+  Reset(client::Restart::kFalse);
 }
 
-void ExecContext::AddTnode(const TreeNode *tnode) {
-  tnode_contexts_.emplace_back(tnode);
+TnodeContext& ExecContext::tnode_context() {
+  restart_ = client::Restart::kFalse;
+  CHECK(!tnode_contexts_.empty());
+  return tnode_contexts_.back();
 }
 
-void ExecContext::Reset() {
+//--------------------------------------------------------------------------------------------------
+void ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* ql_env) {
+  TRACE("Start Transaction");
+  transaction_start_time_ = MonoTime::Now();
+  if (!transaction_) {
+    transaction_ = ql_env->NewTransaction(transaction_, isolation_level);
+  } else if (transaction_->IsRestartRequired()) {
+    transaction_ = transaction_->CreateRestartedTransaction();
+  } else {
+    // If there is no need to start or restart transaction, just return. This can happen to DMLs on
+    // a table with secondary index inside a "BEGIN TRANSACTION ... END TRANSACTION" block. Each DML
+    // will try to start a transaction "on-demand" and we will use the shared transaction already
+    // started by "BEGIN TRANSACTION".
+    return;
+  }
+
+  if (!transactional_session_) {
+    transactional_session_ = ql_env->NewSession();
+    transactional_session_->SetReadPoint(client::Restart::kFalse);
+  }
+  transactional_session_->SetTransaction(transaction_);
+}
+
+Status ExecContext::PrepareChildTransaction(ChildTransactionDataPB* data) {
+  ChildTransactionDataPB result =
+      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture().get());
+  *data = std::move(result);
+  return Status::OK();
+}
+
+Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
+  return DCHECK_NOTNULL(transaction_.get())->ApplyChildResult(result);
+}
+
+void ExecContext::CommitTransaction(CommitCallback callback) {
+  if (!transaction_) {
+    LOG(DFATAL) << "No transaction to commit";
+    return;
+  }
+
+  // Clear the transaction from the session before committing the transaction. SetTransaction()
+  // must be called before the Commit() call instead of after because when the commit callback is
+  // invoked, it will finish the current transaction, return the response and make the CQLProcessor
+  // available for the next statement and its operations would be aborted by SetTransaction().
+  transactional_session_->SetTransaction(nullptr);
+  transactional_session_ = nullptr;
+
+  YBTransactionPtr transaction = std::move(transaction_);
+  TRACE("Commit Transaction");
+  transaction->Commit(std::move(callback));
+}
+
+void ExecContext::AbortTransaction() {
+  if (!transaction_) {
+    LOG(DFATAL) << "No transaction to abort";
+    return;
+  }
+
+  // Abort the session and clear the transaction from the session before aborting the transaction.
+  transactional_session_->Abort();
+  transactional_session_->SetTransaction(nullptr);
+  transactional_session_ = nullptr;
+
+  YBTransactionPtr transaction = std::move(transaction_);
+  TRACE("Abort Transaction");
+  transaction->Abort();
+}
+
+bool ExecContext::HasPendingOperations() const {
+  for (const auto& tnode_context : tnode_contexts_) {
+    if (tnode_context.HasPendingOperations()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+//--------------------------------------------------------------------------------------------------
+void ExecContext::Reset(const Restart restart) {
+  if (transactional_session_) {
+    transactional_session_->Abort();
+    transactional_session_->SetTransaction(nullptr);
+  }
+  if (transaction_ && !(transaction_->IsRestartRequired() && restart)) {
+    YBTransactionPtr transaction = std::move(transaction_);
+    TRACE("Abort Transaction");
+    transaction->Abort();
+  }
+  restart_ = restart;
   tnode_contexts_.clear();
-  num_flushes_ = 0;
-  num_retries_++;
+  if (restart) {
+    num_retries_++;
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -100,6 +196,16 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   req->clear_hash_code();
   req->clear_max_hash_code();
 }
+
+bool TnodeContext::HasPendingOperations() const {
+  for (const auto& op : ops_) {
+    if (!op->response().has_status()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 
 }  // namespace ql
 }  // namespace yb

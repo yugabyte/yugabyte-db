@@ -91,10 +91,9 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   typedef std::unique_ptr<const TestQLProcessor> UniPtrConst;
 
   // Constructors.
-  TestQLProcessor(
-      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBMetaDataCache> cache)
-      : QLProcessor(messenger, client, cache, nullptr /* ql_metrics */, clock_,
+  TestQLProcessor(std::shared_ptr<client::YBClient> client,
+                  std::shared_ptr<client::YBMetaDataCache> cache)
+      : QLProcessor(client, cache, nullptr /* ql_metrics */, clock_,
                     TransactionManagerProvider()) { }
   virtual ~TestQLProcessor() { }
 
