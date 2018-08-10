@@ -13,9 +13,11 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 
 import com.avaje.ebean.*;
+import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -25,6 +27,7 @@ import static com.avaje.ebean.Ebean.endTransaction;
 
 @Entity
 public class Region extends Model {
+  private static final String SECURITY_GROUP_KEY = "sg_id";
 
   @Id
   public UUID uuid;
@@ -72,6 +75,25 @@ public class Region extends Model {
   public Boolean active = true;
   public Boolean isActive() { return active; }
   public void setActiveFlag(Boolean active) { this.active = active; }
+
+  @DbJson
+  public JsonNode details;
+
+  public void setSecurityGroupId(String securityGroupId) {
+    if (details == null) {
+      details = Json.newObject();
+    }
+    ((ObjectNode) details).put(SECURITY_GROUP_KEY, securityGroupId);
+    save();
+  }
+
+  public String getSecurityGroupId() {
+    if (details != null) {
+      JsonNode sgNode = details.get(SECURITY_GROUP_KEY);
+      return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
+    }
+    return null;
+  }
 
   /**
    * Query Helper for PlacementRegion with region code

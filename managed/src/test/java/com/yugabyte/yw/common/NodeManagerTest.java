@@ -189,8 +189,9 @@ public class NodeManagerTest extends FakeDBApplication {
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
   }
 
-  private List<String> nodeCommand(NodeManager.NodeCommandType type, NodeTaskParams params,
-                                   Common.CloudType cloud) {
+  private List<String> nodeCommand(
+      NodeManager.NodeCommandType type, NodeTaskParams params, TestData testData) {
+    Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add("instance");
@@ -219,9 +220,10 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add("--use_preemptible");
             }
           }
-          if (!cloud.equals(Common.CloudType.aws) && !cloud.equals(Common.CloudType.gcp)) {
+          String ybImage = testData.region.ybImage;
+          if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
-            expectedCommand.add(setupParams.getRegion().ybImage);
+            expectedCommand.add(ybImage);
           }
           if (setupParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
@@ -337,7 +339,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
@@ -357,7 +359,7 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
@@ -377,7 +379,7 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       if (t.cloudType.equals(Common.CloudType.aws)) {
         Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
         expectedCommand.removeIf(stringPredicate);
@@ -401,7 +403,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
@@ -437,9 +439,9 @@ public class NodeManagerTest extends FakeDBApplication {
     }
   }
 
-  @Test
-  public void testProvisionNodeCommandWithAccessKey() {
+  private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
+      t.region.setSecurityGroupId(sgId);
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
@@ -470,8 +472,8 @@ public class NodeManagerTest extends FakeDBApplication {
           accessKeyIndexOffset += 2;
         }
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       List<String> accessKeyCommand = new ArrayList<String>(ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key"));
@@ -480,14 +482,32 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
       if (t.cloudType.equals(Common.CloudType.aws)) {
-        List<String> awsAccessKeyCommands = ImmutableList.of("--key_pair_name",
-            userIntent.accessKeyCode, "--security_group", "yb-" +  t.region.code + "-sg");
+        List<String> awsAccessKeyCommands = new ArrayList<>();
+        awsAccessKeyCommands.add("--key_pair_name");
+        awsAccessKeyCommands.add(userIntent.accessKeyCode);
+        String customSecurityGroupId = t.region.getSecurityGroupId();
+        if (customSecurityGroupId != null) {
+          awsAccessKeyCommands.add("--security_group_id");
+          awsAccessKeyCommands.add(customSecurityGroupId);
+        }
         expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, awsAccessKeyCommands);
       }
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithAccessKeyNoSG() {
+    String sgId = "custom_sg_id";
+    runAndTestProvisionWithAccessKeyAndSG(sgId);
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithAccessKeyCustomSG() {
+    String sgId = null;
+    runAndTestProvisionWithAccessKeyAndSG(sgId);
   }
 
   @Test
@@ -524,7 +544,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
@@ -578,7 +598,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       // Set up expected command
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       List<String> accessKeyCommand = ImmutableList.of(
           "--vars_file", "/path/to/vault_file", "--vault_password_file", "/path/to/vault_password",
           "--private_key_file", "/path/to/private.key");
@@ -600,7 +620,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -683,7 +703,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("processType", MASTER.toString());
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -703,7 +723,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("processType", MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -815,7 +835,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("processType", MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -843,7 +863,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -858,7 +878,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -887,7 +907,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.command = "create";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
@@ -921,7 +941,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t.cloudType));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());

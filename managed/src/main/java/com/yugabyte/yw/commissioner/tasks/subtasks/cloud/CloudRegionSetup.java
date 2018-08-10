@@ -4,8 +4,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -23,8 +24,10 @@ import java.util.Map;
 public class CloudRegionSetup extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
 
-  public static class Params extends CloudBootstrap.Params {
+  public static class Params extends CloudTaskParams {
     public String regionCode;
+    public CloudBootstrap.Params.PerRegionMetadata metadata;
+    public String destVpcId;
   }
 
   @Override
@@ -44,18 +47,35 @@ public class CloudRegionSetup extends CloudTaskBase {
     JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
     Provider provider = getProvider();
     final Region region = Region.createWithMetadata(provider, regionCode, metaData);
+    String customImageId = taskParams().metadata.customImageId;
+    if (customImageId != null && !customImageId.isEmpty()) {
+      region.ybImage = customImageId;
+      region.save();
+    }
+    String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
+    if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
+      region.setSecurityGroupId(customSecurityGroupId);
+    }
+
+
+
     CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     JsonNode zoneInfo = null;
 
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:
-        zoneInfo =  queryHelper.getZones(region.uuid, taskParams().destVpcId);
-        if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
-          region.delete();
-          String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
-          throw new RuntimeException(errMsg);
+        Map<String, String> zoneSubnets = taskParams().metadata.azToSubnetIds;
+        // If no custom mapping, then query from devops.
+        if (zoneSubnets == null || zoneSubnets.size() == 0) {
+          // TODO(bogdan): move from destVpcId to metadata.vpcId ?
+          zoneInfo =  queryHelper.getZones(region.uuid, taskParams().destVpcId);
+          if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
+            region.delete();
+            String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
+            throw new RuntimeException(errMsg);
+          }
+          zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        Map<String, String> zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         region.zones = new HashSet<>();
         zoneSubnets.forEach((zone, subnet) ->
             region.zones.add(AvailabilityZone.create(region, zone, zone, subnet)));
