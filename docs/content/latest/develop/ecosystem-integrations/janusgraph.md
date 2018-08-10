@@ -15,7 +15,7 @@ In this tutorial, we are first going to setup JanusGraph to work with YugaByte D
 
 ## 1. Start Local Cluster
 
-Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugaByte DB using `cqlsh` by doing the following.
+Start a cluster on your [local machine](/quick-start/install/). Check that you are able to connect to YugaByte DB using `cqlsh` by doing the following.
 
 ```sh
 $ cqlsh

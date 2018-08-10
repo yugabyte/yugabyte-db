@@ -11,7 +11,7 @@
 
 ## Sample Java Application
 
-You can find a working example of a simple key-value workload running on YugaByte in our [sample applications](../../../quick-start/run-sample-apps/). The app writes out unique string keys, each with a string value. There are multiple readers and writers that insert, update and read these keys in parallel.
+You can find a working example of a simple key-value workload running on YugaByte in our [sample applications](/quick-start/run-sample-apps/). The app writes out unique string keys, each with a string value. There are multiple readers and writers that insert, update and read these keys in parallel.
 
 Here is how you can try out this sample application.
 

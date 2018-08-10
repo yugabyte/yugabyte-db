@@ -23,7 +23,7 @@ If you plan to run YugaByte DB nodes on public cloud providers such as Amazon We
 
 ### Private cloud or on-premises datacenters
 
-The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that of [YugaByte DB Community Edition](../../multi-node-cluster/#prerequisites).
+The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that of [YugaByte DB Community Edition](/deploy/checklist/).
 
 ## Configure cloud providers
 

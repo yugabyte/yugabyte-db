@@ -72,4 +72,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot YugaWare](#step-5-troubleshoot-yugaware) section below to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Enterprise Edition](/troubleshoot/enterprise-edition/) section below to identify the resolution.

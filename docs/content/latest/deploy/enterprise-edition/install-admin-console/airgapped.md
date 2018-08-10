@@ -1,4 +1,19 @@
-An “airgapped” host has no path to inbound or outbound Internet traffic at all. In order to install Replicated and YugaWare on such a host, we first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host.
+An “airgapped” host has either no or a restricted path to inbound/outbound Internet traffic at all. 
+
+## Pre-requisites
+
+### 1. Whitelist Endpoints
+
+In order to install Replicated and YugaWare on a host with no Internet connectivity at all, we have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
+
+```{.sh .copy}
+https://downloads.yugabyte.com
+https://download.docker.com
+```
+
+### 2. Install Docker Engine
+
+A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine on an airgapped host. After docker-engine is installed, perform the following steps to install Replicated and then YugaWare.
 
 ## Step 1. Install Replicated
 
@@ -28,10 +43,6 @@ $ wget https://downloads.yugabyte.com/replicated.tar.gz
 # get the yugaware binary where the 1.0.5.3 refers to the version of the binary. change this number as needed.
 $ wget https://downloads.yugabyte.com/yugaware-1.0.5.3.airgap
 ```
-
-On the host marked for installation, first ensure that a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
-
-After docker-engine is installed, perform the following steps to install replicated.
 
 ```{.sh .copy .separator-dollar}
 # change to the directory
@@ -104,4 +115,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot YugaWare](#step-5-troubleshoot-yugaware) section below to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Enterprise Edition](/troubleshoot/enterprise-edition/) section below to identify the resolution.
