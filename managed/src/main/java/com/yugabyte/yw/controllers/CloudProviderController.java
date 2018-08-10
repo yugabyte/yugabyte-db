@@ -318,10 +318,9 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
-    Form<CloudBootstrapFormData> formData = formFactory.form(CloudBootstrapFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
+    JsonNode requestBody = request().body().asJson();
+    CloudBootstrap.Params taskParams = Json.fromJson(requestBody, CloudBootstrap.Params.class);
 
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
@@ -331,53 +330,34 @@ public class CloudProviderController extends AuthenticatedController {
     if (customer == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
-    CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
-    taskParams.providerCode = Common.CloudType.valueOf(provider.code);
+    // Set the top-level provider info.
     taskParams.providerUUID = providerUUID;
-    taskParams.regionList = formData.get().regionList;
-    // For now, if we send an empty list from the UI it seems to show up in the formData as null.
-    if (taskParams.regionList == null) {
-      taskParams.regionList = new ArrayList<String>();
-    }
-    String hostVpcRegion = formData.get().hostVpcRegion;
+    // Do any special handling on GCP vs AWS.
+    String hostVpcRegion = taskParams.hostVpcRegion;
     if (provider.code.equals("gcp")) {
       // Ignore hostVpcRegion for GCP.
       hostVpcRegion = null;
     }
-    if (formData.get().destVpcId != null && !formData.get().destVpcId.isEmpty()) {
+    if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
       if (provider.code.equals("gcp")) {
         // We need to save the destVpcId into the provider config, because we'll need it during
         // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
         // store it somewhere and the config is the easiest place to put it. As such, since all the
         // config is loaded up as env vars anyway, might as well use in in devops like that...
         Map<String, String> config = provider.getConfig();
-        config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
+        config.put("CUSTOM_GCE_NETWORK", taskParams.destVpcId);
         provider.setConfig(config);
         provider.save();
       } else if (provider.code.equals("aws")) {
+        // TODO(bogdan): do we need this???
         if (hostVpcRegion == null || hostVpcRegion.isEmpty()) {
           return ApiResponse.error(
               BAD_REQUEST, "For AWS provider, destVpcId requires hostVpcRegion");
         }
-        // Add the hostVpcRegion to the regionList for an AWS provider, as we would only bootstrap
-        // that particular region.
-        taskParams.regionList.add(hostVpcRegion);
       }
     }
-    // If the regionList is still empty by here, then we need to list the regions available.
-    if (taskParams.regionList.isEmpty()) {
-      CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
-      JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
-      if (regionInfo instanceof ArrayNode) {
-        ArrayNode regionListArray = (ArrayNode) regionInfo;
-        for (JsonNode region : regionListArray) {
-          taskParams.regionList.add(region.asText());
-        }
-      }
-    }
+    // TODO(bogdan): do we need this???
     taskParams.hostVpcRegion = hostVpcRegion;
-    taskParams.hostVpcId = formData.get().hostVpcId;
-    taskParams.destVpcId = formData.get().destVpcId;
 
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(customer,

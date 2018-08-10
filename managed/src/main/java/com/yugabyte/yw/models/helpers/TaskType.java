@@ -18,7 +18,7 @@ public enum TaskType {
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
 
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
-  
+
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
@@ -121,8 +121,9 @@ public enum TaskType {
 
   CloudSetup("subtasks.cloud.CloudSetup"),
 
+
   BackupTable("subtasks.BackupTable"),
-  
+
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
   KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),

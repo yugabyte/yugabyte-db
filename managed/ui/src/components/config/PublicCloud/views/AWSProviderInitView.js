@@ -26,6 +26,11 @@ class AWSProviderInitView extends Component {
     } else {
       this.updateFormField("destVpcId", null);
       this.updateFormField("destVpcRegion", null);
+      this.updateFormField("azToSubnetIds", null);
+      this.updateFormField("customSecurityGroupId", null);
+    }
+    if (value !== "new_vpc") {
+      this.updateFormField("regionList", null);
     }
     this.setState({networkSetupType: value});
   }
@@ -54,19 +59,29 @@ class AWSProviderInitView extends Component {
       regionFormVals["hostVpcRegion"] = awsHostInfo["region"];
       regionFormVals["hostVpcId"] = awsHostInfo["vpc-id"];
     }
-    if (isNonEmptyString(formValues.destVpcId)) {
-      regionFormVals["destVpcId"] = formValues.destVpcId;
-      // If you're configuring a custom AWS setup, from, say, a GCP YW.
-      if (!this.isHostInAWS()) {
-        regionFormVals["hostVpcId"] = formValues.destVpcId;
+    const perRegionMetadata = {};
+    if (formValues.network_setup !== "new_vpc") {
+      const azMapping = {};
+      const mappings = formValues.azToSubnetIds.split(",");
+      for (const idx in mappings) {
+        const mapping = mappings[idx];
+        const pieces = mapping.split(":");
+        // TODO(bogdan): this is temporary so ignore validation...
+        azMapping[pieces[0]] = pieces[1];
       }
-    }
-    if (isNonEmptyString(formValues.destVpcRegion)) {
-      regionFormVals["destVpcRegion"] = formValues.destVpcRegion;
-      // If you're configuring a custom AWS setup, from, say, a GCP YW.
-      if (!this.isHostInAWS()) {
-        regionFormVals["hostVpcRegion"] = formValues.destVpcRegion;
+      perRegionMetadata[formValues.destVpcRegion] = {
+        "vpcId": formValues.destVpcId,
+        "azToSubnetIds": azMapping,
+        "customSecurityGroupId": formValues.customSecurityGroupId
+      };
+
+      regionFormVals["perRegionMetadata"] = perRegionMetadata;
+    } else {
+      const regions = formValues.regionList.split(",");
+      for (const idx in regions) {
+        perRegionMetadata[regions[idx]] = {};
       }
+      regionFormVals["perRegionMetadata"] = perRegionMetadata;
     }
     this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
   };
@@ -118,10 +133,30 @@ class AWSProviderInitView extends Component {
         <Field name="destVpcId" type="text" component={YBTextInputWithLabel}
           normalize={trimString} isReadOnly={this.state.networkSetupType === "host_vpc"} />
       );
+      const azToSubnetIdsField = (
+        <Field name="azToSubnetIds" type="text" component={YBTextInputWithLabel}
+          normalize={trimString} />
+      );
+      const customSecurityGroupIdField = (
+        <Field name="customSecurityGroupId" type="text" component={YBTextInputWithLabel}
+          normalize={trimString} />
+      );
       customVPCFields = (
         <Fragment>
           {this.generateRow("Custom VPC Region", destVpcRegionField)}
           {this.generateRow("Custom VPC ID", destVpcIdField)}
+          {this.generateRow("AZ to Subnet CSV", azToSubnetIdsField)}
+          {this.generateRow("Security Group ID", customSecurityGroupIdField)}
+        </Fragment>
+      );
+    } else {
+      const regionListField = (
+        <Field name="regionList" type="text" component={YBTextInputWithLabel}
+          normalize={trimString} />
+      );
+      customVPCFields = (
+        <Fragment>
+          {this.generateRow("Region List CSV", regionListField)}
         </Fragment>
       );
     }
@@ -214,6 +249,19 @@ function validate(values) {
     }
     if (!isNonEmptyString(values.destVpcRegion)) {
       errors.destVpcRegion = 'VPC region is required';
+    }
+  }
+  if (values.network_setup === "existing_vpc" || values.network_setup === "host_vpc") {
+    if (!isNonEmptyString(values.azToSubnetIds)) {
+      errors.azToSubnetIds = 'AZ to Subnet mapping is required';
+    }
+    if (!isNonEmptyString(values.customSecurityGroupId)) {
+      errors.customSecurityGroupId = 'Security Group ID is required';
+    }
+  }
+  if (values.network_setup === "new_vpc") {
+    if (!isNonEmptyString(values.regionList)) {
+      errors.regionList = 'Region List must not be empty';
     }
   }
 

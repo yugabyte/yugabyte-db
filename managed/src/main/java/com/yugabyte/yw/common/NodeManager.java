@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -123,10 +124,13 @@ public class NodeManager extends DevopsBase {
         if (params instanceof AnsibleSetupServer.Params && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
-          // Also we will add the security group name
-          // TODO: abstract this once we setup user-provided custom vpc/subnet/sg.
-          subCommand.add("--security_group");
-          subCommand.add("yb-" + params.getRegion().code + "-sg");
+          // Also we will add the security group information.
+          Region r = params.getRegion();
+          String customSecurityGroupId = r.getSecurityGroupId();
+          if (customSecurityGroupId != null) {
+            subCommand.add("--security_group_id");
+            subCommand.add(customSecurityGroupId);
+          }
         }
       }
 
@@ -302,10 +306,18 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--use_preemptible");
             }
           }
+          String ybImage = taskParam.getRegion().ybImage;
+          if (ybImage != null && !ybImage.isEmpty()) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(ybImage);
+          }
+          /*
+          // TODO(bogdan): talk to Ram about this, if we want/use it for kube/onprem?
           if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
             commandArgs.add("--machine_image");
             commandArgs.add(taskParam.getRegion().ybImage);
           }
+          */
           if (taskParam.assignPublicIP) {
             commandArgs.add("--assign_public_ip");
           }

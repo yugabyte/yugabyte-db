@@ -6,13 +6,13 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
+import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.models.Provider;
 import play.api.Play;
 
 public class CloudInitializer extends CloudTaskBase {
-  public static class Params extends CloudBootstrap.Params {
+  public static class Params extends CloudTaskParams {
     public String regionCode;
   }
 
