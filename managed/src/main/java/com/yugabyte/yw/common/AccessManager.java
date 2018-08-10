@@ -123,8 +123,12 @@ public class AccessManager extends DevopsBase {
 
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
-  // and return the file names. It will also create the vault file
+  // and return the file names. It will also create the vault file.
   public AccessKey addKey(UUID regionUUID, String keyCode) {
+    return addKey(regionUUID, keyCode, null, null);
+  }
+
+  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -135,9 +139,16 @@ public class AccessManager extends DevopsBase {
     commandArgs.add("--key_file_path");
     commandArgs.add(keyFilePath);
 
+    String privateKeyFilePath = null;
     if (accessKey != null && accessKey.getKeyInfo().privateKey != null) {
+      privateKeyFilePath = accessKey.getKeyInfo().privateKey;
+    } else if (privateKeyFile != null) {
+      privateKeyFilePath = privateKeyFile.getAbsolutePath();
+    }
+    // If we have a private key file to use, add in the param.
+    if (privateKeyFilePath != null) {
       commandArgs.add("--private_key_file");
-      commandArgs.add(accessKey.getKeyInfo().privateKey);
+      commandArgs.add(privateKeyFilePath);
     }
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
@@ -155,6 +166,9 @@ public class AccessManager extends DevopsBase {
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
+      if (sshUser != null) {
+        keyInfo.sshUser = sshUser;
+      }
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
     return accessKey;

@@ -3,8 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
+import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
@@ -14,7 +14,7 @@ import play.api.Play;
 public class CloudRegionCleanup extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudRegionCleanup.class);
 
-  public static class Params extends CloudBootstrap.Params {
+  public static class Params extends CloudTaskParams {
     public String regionCode;
   }
 

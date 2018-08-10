@@ -137,8 +137,13 @@ public class RegionController extends AuthenticatedController {
           });
         } else {
           // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
+          // TODO(bogdan): is this even used???
+          /*
           JsonNode vpcInfo = networkManager.bootstrap(
               region.uuid, null, form.hostVpcId, form.destVpcId, form.hostVpcRegion);
+          */
+          JsonNode vpcInfo = networkManager.bootstrap(
+              region.uuid, null, null /* customPayload */);
           if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
             region.delete();
             return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
