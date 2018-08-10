@@ -483,7 +483,7 @@ class Builder:
         return '{} ({})'.format(dep.name, self.build_type)
 
     def build_with_configure(self, log_prefix, extra_args=None, **kwargs):
-        os.environ["YB_REMOTE_BUILD"] = "0"
+        os.environ["YB_REMOTE_COMPILATION"] = "0"
         args = ['./configure', '--prefix={}'.format(self.prefix)]
         if extra_args is not None:
             args += extra_args
@@ -495,7 +495,7 @@ class Builder:
 
     def build_with_cmake(self, dep, extra_args=None, **kwargs):
         log_prefix = self.log_prefix(dep)
-        os.environ["YB_REMOTE_BUILD"] = "0"
+        os.environ["YB_REMOTE_COMPILATION"] = "0"
 
         remove_path('CMakeCache.txt')
         remove_path('CMakeFiles')

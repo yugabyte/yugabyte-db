@@ -37,7 +37,7 @@ class GPerfToolsDependency(Dependency):
 
     def build(self, builder):
         log_prefix = builder.log_prefix(self)
-        os.environ["YB_REMOTE_BUILD"] = "0"
+        os.environ["YB_REMOTE_COMPILATION"] = "0"
         log_output(log_prefix, ['./configure', '--prefix={}'.format(builder.prefix),
                                 '--enable-frame-pointers', '--enable-heap-checker', '--with-pic'])
         log_output(log_prefix, ['make', 'clean'])

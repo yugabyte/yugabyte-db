@@ -301,8 +301,7 @@ run_cxx_build() {
       # Always disable remote build (running the compiler on a remote worker node) when running the
       # CMake step.
       set -x
-      unset YB_REMOTE_BUILD
-      export YB_NO_REMOTE_BUILD=1
+      export YB_REMOTE_COMPILATION=0
       cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
     )
     capture_sec_timestamp "cmake_end"
@@ -756,14 +755,13 @@ while [[ $# -gt 0 ]]; do
       export YB_MAKE_PARALLELISM=${1#-j}
     ;;
     --remote)
-      export YB_REMOTE_BUILD=1
+      export YB_REMOTE_COMPILATION=1
       if [[ ! -f "$YB_BUILD_WORKERS_FILE" ]]; then
         fatal "--remote specified but $YB_BUILD_WORKERS_FILE not found"
       fi
     ;;
     --no-remote)
-      unset YB_REMOTE_BUILD
-      export YB_NO_REMOTE_BUILD=1
+      export YB_REMOTE_COMPILATION=0
     ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
@@ -936,11 +934,6 @@ if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
 
-if [[ ${YB_REMOTE_BUILD:-0} == "1" && ${YB_NO_REMOTE_BUILD:-0} == "1" ]]; then
-  fatal "YB_REMOTE_BUILD (--remote) and YB_NO_REMOTE_BUILD (--no-remote) cannot be set" \
-        "at the same time."
-fi
-
 if "$java_only" && ! "$build_java"; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
@@ -989,12 +982,12 @@ if "$export_compile_commands"; then
   export YB_EXPORT_COMPILE_COMMANDS=1
 fi
 
-configure_remote_build
+configure_remote_compilation
 do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
 
 if [[ -f $do_not_use_local_thirdparty_flag_path ]] || \
    "$use_shared_thirdparty" || \
-   is_remote_build && ! "$no_shared_thirdparty"; then
+   using_remote_compilation && ! "$no_shared_thirdparty"; then
   find_thirdparty_dir
 fi
 
@@ -1104,7 +1097,7 @@ fi
 
 detect_num_cpus_and_set_make_parallelism
 log "Using make parallelism of $YB_MAKE_PARALLELISM" \
-    "(YB_REMOTE_BUILD=${YB_REMOTE_BUILD:-undefined})"
+    "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 
 set_build_env_vars
 
