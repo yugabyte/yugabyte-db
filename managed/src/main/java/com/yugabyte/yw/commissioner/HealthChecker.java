@@ -16,14 +16,17 @@ import com.google.inject.Singleton;
 
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,26 +137,62 @@ public class HealthChecker extends Thread {
         continue;
       }
       LOG.info("Doing health check for universe: " + u.name);
-      // TODO: this should ignore Stopped nodes?
-      String masterNodes = details.nodeDetailsSet.stream()
-          .filter(nd -> nd.isMaster)
-          .map(nd -> nd.cloudInfo.private_ip)
-          .collect(Collectors.joining(","));
-      String tserverNodes = details.nodeDetailsSet.stream()
-          .filter(nd -> nd.isTserver)
-          .map(nd -> nd.cloudInfo.private_ip)
-          .collect(Collectors.joining(","));
-      UniverseDefinitionTaskParams.Cluster primaryCluster = details.getPrimaryCluster();
-      AccessKey accessKey = AccessKey.get(
-          UUID.fromString(primaryCluster.userIntent.provider),
-          primaryCluster.userIntent.accessKeyCode);
-      if (accessKey == null || accessKey.getProviderUUID() == null) {
-        LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+      Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
+      boolean invalidUniverseData = false;
+      for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
+        HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
+
+        AccessKey accessKey = AccessKey.get(
+            UUID.fromString(cluster.userIntent.provider),
+            cluster.userIntent.accessKeyCode);
+        if (accessKey == null || accessKey.getProviderUUID() == null) {
+          LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+          continue;
+        }
+        String providerCode = Provider.get(accessKey.getProviderUUID()).code;
+        // TODO(bogdan): We do not have access to the default port constnat at this level, as it is
+        // baked in devops...hardcode it for now.
+        // Default to 54422.
+        int sshPort = 54422;
+        if (providerCode.equals(Common.CloudType.onprem.toString())) {
+          // For onprem, technically, each node could have a different port, but let's pick one of
+          // the nodes for now and go from there.
+          // TODO(bogdan): Improve the onprem support in devops to have port per node.
+          for (NodeDetails nd : details.nodeDetailsSet) {
+            NodeInstance onpremNode = NodeInstance.getByName(nd.nodeName);
+            if (onpremNode != null) {
+              NodeInstanceFormData.NodeInstanceData onpremDetails = onpremNode.getDetails();
+              if (onpremDetails != null) {
+                sshPort = onpremDetails.sshPort;
+                break;
+              }
+            }
+          }
+        }
+        info.sshPort = sshPort;
+        info.identityFile = accessKey.getKeyInfo().privateKey;
+        clusterMetadata.put(cluster.uuid, info);
+      }
+      for (NodeDetails nd : details.nodeDetailsSet) {
+        HealthManager.ClusterInfo cluster = clusterMetadata.get(nd.placementUuid);
+        if (cluster == null) {
+          invalidUniverseData = true;
+          LOG.warn(String.format(
+                "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
+                nd.placementUuid));
+          break;
+        }
+        if (nd.isMaster) {
+          cluster.masterNodes.add(nd.cloudInfo.private_ip);
+        }
+        if (nd.isTserver) {
+          cluster.tserverNodes.add(nd.cloudInfo.private_ip);
+        }
+      }
+      // If any nodes were invalid, abort for this universe.
+      if (invalidUniverseData) {
         continue;
       }
-      String providerCode = Provider.get(accessKey.getProviderUUID()).code;
-      // TODO: we do not really have the ssh ports at this layer..
-      String sshPort = providerCode.equals(Common.CloudType.onprem) ? "22" : "54422";
       List<String> destinations = new ArrayList<String>();
       if (config != null) {
         AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
@@ -166,8 +205,8 @@ public class HealthChecker extends Thread {
       }
       String customerTag = String.format("[%s][%s]", c.email, c.code);
       ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-          masterNodes, tserverNodes, sshPort, u.name, accessKey.getKeyInfo().privateKey,
-          customerTag, (destinations.size() == 0 ? null : String.join(",", destinations)),
+          new ArrayList(clusterMetadata.values()), u.name, customerTag,
+          (destinations.size() == 0 ? null : String.join(",", destinations)),
           shouldSendStatusUpdate);
       if (response.code == 0) {
         HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
