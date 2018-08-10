@@ -50,7 +50,7 @@ class LibCXXDependency(Dependency):
     def build(self, builder):
         log_prefix = builder.log_prefix(self)
         prefix = os.path.join(builder.prefix, 'libcxx')
-        os.environ["YB_REMOTE_BUILD"] = "0"
+        os.environ["YB_REMOTE_COMPILATION"] = "0"
 
         remove_path('CMakeCache.txt')
         remove_path('CMakeFiles')

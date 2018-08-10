@@ -87,7 +87,12 @@ class PostgresBuilder:
         self.build_type = None
         self.postgres_src_dir = None
         self.compiler_type = None
-        self.user_disabled_remote_compilation = os.environ.get('YB_NO_REMOTE_BUILD') == '1'
+
+        # Check if the outer build is using runs the compiler on build workers.
+        self.build_uses_remote_compilation = os.environ.get('YB_REMOTE_COMPILATION')
+        if self.build_uses_remote_compilation == 'auto':
+            raise RuntimeError(
+                "No 'auto' value is allowed for YB_REMOTE_COMPILATION at this point")
 
     def parse_args(self):
         parser = argparse.ArgumentParser(
@@ -219,12 +224,12 @@ class PostgresBuilder:
                     logging.info("%s: %s", env_var_name, os.environ[env_var_name])
         # PostgreSQL builds pretty fast, and we don't want to use our remote compilation over SSH
         # for it as it might have issues with parallelism.
-        self.remote_compilation_allowed = (
-            ALLOW_REMOTE_COMPILATION and
-            step == 'make' and
-            not self.user_disabled_remote_compilation
+        self.remote_compilation_allowed = ALLOW_REMOTE_COMPILATION and step == 'make'
+
+        os.environ['YB_REMOTE_COMPILATION'] = (
+            '1' if self.remote_compilation_allowed and self.build_uses_remote_compilation
+            else '0'
         )
-        os.environ['YB_NO_REMOTE_BUILD'] = '0' if self.remote_compilation_allowed else '1'
 
         os.environ['YB_BUILD_TYPE'] = self.build_type
 
@@ -317,10 +322,10 @@ class PostgresBuilder:
         make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
         if make_parallelism:
             make_parallelism = int(make_parallelism)
-        if os.environ.get('YB_REMOTE_BUILD') == '1' and not self.remote_compilation_allowed:
+        if self.build_uses_remote_compilation and not self.remote_compilation_allowed:
             # Since we're building everything locally in this case, and YB_MAKE_PARALLELISM is
-            # likely specified for a distributed build, cap it at some factor times the number of
-            # CPU cores.
+            # likely specified for distributed compilation, cap it at some factor times the number
+            # of CPU cores.
             parallelism_cap = multiprocessing.cpu_count() * 2
             if make_parallelism:
                 make_parallelism = min(parallelism_cap, make_parallelism)

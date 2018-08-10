@@ -1125,7 +1125,7 @@ detect_num_cpus() {
 detect_num_cpus_and_set_make_parallelism() {
   detect_num_cpus
   if [[ -z ${YB_MAKE_PARALLELISM:-} ]]; then
-    if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+    if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
       declare -i num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
       # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit
       # by stressing the CPU on each worker a bit more.
@@ -1230,14 +1230,20 @@ is_jenkins_phabricator_build() {
 
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/(n|z|u)/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/(n|z|u|net)/ ]]; then
     return 0
   fi
   return 1
 }
 
-is_remote_build() {
-  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+using_remote_compilation() {
+  if [[ ! $YB_REMOTE_COMPILATION =~ ^(0|1)$ ]]; then
+    # TODO: this will still return from the function as if the value is false. This is how bash
+    # return values work.
+    fatal "YB_REMOTE_COMPILATION is supposed to be 0 or 1 by the time using_remote_compilation is" \
+          "called."
+  fi
+  if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
     return 0  # "true" return value
   fi
   return 1  # "false" return value
@@ -1276,38 +1282,43 @@ run_remote_cmd() {
 # of build workers), we ensure we run this command on the "distributed build master host"
 # machine, as there are some issues with running cmake or make over NFS (e.g. stale file handles).
 run_centralized_build_cmd() {
-  if is_remote_build && [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
+  if using_remote_compilation && \
+     [[ ${YB_ALLOW_CENTRALIZED_BUILD_HOST:-1} == "1" ]] && \
+     [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
     run_remote_cmd "$DISTRIBUTED_BUILD_MASTER_HOST" "$@"
   else
     "$@"
   fi
 }
 
-configure_remote_build() {
-  # Automatically set YB_REMOTE_BUILD in an NFS GCP environment.
-  if [[ ${YB_NO_REMOTE_BUILD:-0} != "1" ]] && is_running_on_gcp && is_src_root_on_nfs; then
-    if [[ -z ${YB_REMOTE_BUILD:-} ]]; then
-      log "Automatically enabling distributed build (running in an NFS GCP environment). " \
-          "Use YB_NO_REMOTE_BUILD (or the --no-remote ybd option) to disable this behavior."
-      YB_REMOTE_BUILD=1
+configure_remote_compilation() {
+  if [[ ! ${YB_REMOTE_COMPILATION:-auto} =~ ^(0|1|auto)$ ]]; then
+    fatal "Invalid value of the YB_REMOTE_COMPILATION environment variable: can be '0', '1', or" \
+          "'auto'. Actual value: ${YB_REMOTE_COMPILATION:-undefined}."
+  fi
+  # Automatically set YB_REMOTE_COMPILATION in an NFS GCP environment.
+  if [[ ${YB_REMOTE_COMPILATION:-auto} == "auto" ]]; then
+    if is_running_on_gcp && is_src_root_on_nfs; then
+      log "Automatically enabling reomte compilation (running in an NFS GCP environment). " \
+          "Use YB_REMOTE_COMPILATION=0 (or the --no-remote ybd option) to disable this behavior."
+      YB_REMOTE_COMPILATION=1
     else
-      log "YB_REMOTE_BUILD already defined: '$YB_REMOTE_BUILD', not enabling it automatically," \
-          "even though we would in this case."
-    fi
-  else
-    YB_REMOTE_BUILD=${YB_REMOTE_BUILD:-0}
-    if [[ $YB_REMOTE_BUILD != "1" ]] && is_jenkins; then
-      # Make it easier to diagnose why we're not using the distributed build. Only enable this on
-      # Jenkins to avoid confusing output during development.
-      log "Not using remote / distributed build:" \
-          "YB_NO_REMOTE_BUILD=${YB_NO_REMOTE_BUILD:-undefined}. See additional diagnostics below."
-      is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
-      if is_src_root_on_nfs; then
-        log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed build setup."
+      YB_REMOTE_COMPILATION=0
+      if is_jenkins; then
+        # Make it easier to diagnose why we're not using the distributed build. Only enable this on
+        # Jenkins to avoid confusing output during development.
+        log "Not using remote compilation: " \
+            "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}. "
+            "See additional diagnostics below."
+        is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
+        if is_src_root_on_nfs; then
+          log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed" \
+              "build setup."
+        fi
       fi
     fi
   fi
-  export YB_REMOTE_BUILD
+  export YB_REMOTE_COMPILATION
 }
 
 yb_edition_detected=false
