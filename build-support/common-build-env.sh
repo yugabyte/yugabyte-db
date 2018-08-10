@@ -1282,8 +1282,8 @@ run_remote_cmd() {
 # of build workers), we ensure we run this command on the "distributed build master host"
 # machine, as there are some issues with running cmake or make over NFS (e.g. stale file handles).
 run_centralized_build_cmd() {
-  if using_remote_compilation && \
-     [[ ${YB_ALLOW_CENTRALIZED_BUILD_HOST:-1} == "1" ]] && \
+  if using_remote_compilation &&
+     [[ ${YB_USE_CENTRALIZED_BUILD_HOST:-1} == "1" ]] &&
      [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
     run_remote_cmd "$DISTRIBUTED_BUILD_MASTER_HOST" "$@"
   else
@@ -1308,7 +1308,7 @@ configure_remote_compilation() {
         # Make it easier to diagnose why we're not using the distributed build. Only enable this on
         # Jenkins to avoid confusing output during development.
         log "Not using remote compilation: " \
-            "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}. "
+            "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}. " \
             "See additional diagnostics below."
         is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
         if is_src_root_on_nfs; then
