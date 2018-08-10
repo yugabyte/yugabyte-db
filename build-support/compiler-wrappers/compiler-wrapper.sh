@@ -273,8 +273,7 @@ if [[ $HOSTNAME == build-worker* ]]; then
 fi
 
 if [[ $local_build_only == "false" &&
-      ${YB_REMOTE_BUILD:-} == "1" &&
-      ${YB_NO_REMOTE_BUILD:-0} != "1" &&
+      ${YB_REMOTE_COMPILATION:-} == "1" &&
       $is_build_worker == "false" ]]; then
 
   trap remote_build_exit_handler EXIT
@@ -352,9 +351,9 @@ Exit code:  $exit_code
     PS4=$old_ps4
   fi
   exit $exit_code
-elif [[ ${YB_DEBUG_REMOTE_BUILD:-} == "1" ]] && ! $is_build_worker; then
+elif [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]] && ! $is_build_worker; then
   log "Not doing remote build: local_build_only=$local_build_only," \
-    "YB_REMOTE_BUILD=$YB_REMOTE_BUILD," \
+    "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}," \
     "HOSTNAME=$HOSTNAME"
 fi
 

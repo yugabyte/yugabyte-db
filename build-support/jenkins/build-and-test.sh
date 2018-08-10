@@ -90,7 +90,7 @@ build_cpp_code() {
 
   heading "Building C++ code in $YB_SRC_ROOT."
   remote_opt=""
-  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+  if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
     # This helps with our background script resizing the build cluster, because it looks at all
     # running build processes with the "--remote" option as of 08/2017.
     remote_opt="--remote"
@@ -112,7 +112,6 @@ build_cpp_code() {
     log "Building a dummy target to check if Ninja re-runs CMake (it should not)."
     # The "-d explain" option will make Ninja explain why it is building a particular target.
     (
-      set -x
       time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
         --make-ninja-extra-args "-d explain" \
         --target dummy_target \
@@ -293,7 +292,7 @@ if is_jenkins; then
   trap cleanup EXIT
 fi
 
-configure_remote_build
+configure_remote_compilation
 
 if "$using_default_thirdparty_dir"; then
   find_thirdparty_dir
