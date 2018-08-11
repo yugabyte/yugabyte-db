@@ -448,6 +448,8 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
+  # Enable reusing cache entries from builds in different directories.
+  export CCACHE_NOHASHDIR=1
   jenkins_ccache_dir=/n/jenkins/ccache
   if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs && is_running_on_gcp
   then
