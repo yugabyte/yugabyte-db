@@ -219,7 +219,7 @@ class ServicePoolImpl {
     auto last_backpressure_at = last_backpressure_at_.load(std::memory_order_acquire);
 
     // For testing purposes.
-    if (FLAGS_enable_backpressure_mode_for_testing) {
+    if (GetAtomicFlag(&FLAGS_enable_backpressure_mode_for_testing)) {
       last_backpressure_at = CoarseMonoClock::Now().time_since_epoch();
     }
 
