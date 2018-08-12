@@ -862,6 +862,15 @@ LogReader* Log::GetLogReader() const {
   return reader_.get();
 }
 
+Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
+  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  if (!reader_) {
+    return STATUS(IllegalState, "Log already closed");
+  }
+
+  return reader_->GetSegmentsSnapshot(segments);
+}
+
 uint64_t Log::OnDiskSize() {
   SegmentSequence segments;
   {

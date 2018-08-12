@@ -259,7 +259,7 @@ Status RemoteBootstrapSession::Init() {
   // Get the current segments from the log, including the active segment.
   // The Log doesn't add the active segment to the log reader's list until
   // a header has been written to it (but it will not have a footer).
-  RETURN_NOT_OK(tablet_peer_->log()->GetLogReader()->GetSegmentsSnapshot(&log_segments_));
+  RETURN_NOT_OK(tablet_peer_->log()->GetSegmentsSnapshot(&log_segments_));
   for (const scoped_refptr<ReadableLogSegment>& segment : log_segments_) {
     RETURN_NOT_OK(OpenLogSegmentUnlocked(segment->header().sequence_number()));
   }
