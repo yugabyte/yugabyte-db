@@ -161,6 +161,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // guaranteed to be live as long as the log itself is initialized and live.
   LogReader* GetLogReader() const;
 
+  CHECKED_STATUS GetSegmentsSnapshot(SegmentSequence* segments) const;
+
   void SetMaxSegmentSizeForTests(uint64_t max_segment_size) {
     max_segment_size_ = max_segment_size;
   }
