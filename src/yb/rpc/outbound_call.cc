@@ -317,15 +317,18 @@ void OutboundCall::set_state(State new_state) {
 }
 
 void OutboundCall::CallCallback() {
-  int64_t start_cycles = CycleClock::Now();
-  {
-    callback_();
-    // Clear the callback, since it may be holding onto reference counts
-    // via bound parameters. We do this inside the timer because it's possible
-    // the user has naughty destructors that block, and we want to account for that
-    // time here if they happen to run on this thread.
-    callback_ = nullptr;
+  if (!callback_) {
+    LOG(DFATAL) << "Callback is empty, it means that we already invoked callback";
+    return;
   }
+
+  int64_t start_cycles = CycleClock::Now();
+  callback_();
+  // Clear the callback, since it may be holding onto reference counts
+  // via bound parameters. We do this inside the timer because it's possible
+  // the user has naughty destructors that block, and we want to account for that
+  // time here if they happen to run on this thread.
+  callback_ = nullptr;
   int64_t end_cycles = CycleClock::Now();
   int64_t wait_cycles = end_cycles - start_cycles;
   if (PREDICT_FALSE(wait_cycles > FLAGS_rpc_callback_max_cycles)) {

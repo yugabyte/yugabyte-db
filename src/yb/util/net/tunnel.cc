@@ -120,6 +120,11 @@ class Tunnel::Impl {
   explicit Impl(boost::asio::io_context* io_context)
       : io_context_(*io_context), strand_(*io_context) {}
 
+  ~Impl() {
+    LOG_IF(DFATAL, !closing_.load(std::memory_order_acquire))
+        << "Tunnel shutdown has not been started";
+  }
+
   CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote) {
     auto acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(io_context_);
     boost::system::error_code ec;
@@ -152,6 +157,7 @@ class Tunnel::Impl {
   }
 
   void Shutdown() {
+    closing_.store(true, std::memory_order_release);
     strand_.dispatch([this] {
       LOG(INFO) << "Shutdown tunnel: " << local_ << " => " << remote_;
       if (acceptor_) {
@@ -209,6 +215,7 @@ class Tunnel::Impl {
   boost::optional<boost::asio::ip::tcp::acceptor> acceptor_;
   boost::optional<boost::asio::ip::tcp::socket> socket_;
   std::vector<std::weak_ptr<TunnelConnection>> connections_;
+  std::atomic<bool> closing_{false};
 };
 
 Tunnel::Tunnel(boost::asio::io_context* io_context) : impl_(new Impl(io_context)) {

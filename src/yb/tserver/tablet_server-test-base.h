@@ -77,6 +77,7 @@ class TabletServerTestBase : public YBTest {
 
   // Starts the tablet server, override to start it later.
   void SetUp() override;
+  void TearDown() override;
 
   virtual void StartTabletServer();
 

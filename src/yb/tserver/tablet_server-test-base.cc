@@ -85,6 +85,13 @@ void TabletServerTestBase::SetUp() {
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_);
 }
 
+void TabletServerTestBase::TearDown() {
+  tablet_peer_.reset();
+  if (mini_server_) {
+    mini_server_->Shutdown();
+  }
+}
+
 void TabletServerTestBase::StartTabletServer() {
   // Start server with an invalid master address, so it never successfully
   // heartbeats, even if there happens to be a master running on this machine.
