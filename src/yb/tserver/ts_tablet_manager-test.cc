@@ -99,6 +99,12 @@ class TsTabletManagerTest : public YBTest {
     fs_manager_ = mini_server_->server()->fs_manager();
   }
 
+  void TearDown() override {
+    if (mini_server_) {
+      mini_server_->Shutdown();
+    }
+  }
+
   Status CreateNewTablet(const std::string& tablet_id,
                          const Schema& schema,
                          std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
