@@ -424,7 +424,7 @@ void Peer::DoProcessResponse() {
 }
 
 Status Peer::SendRemoteBootstrapRequest() {
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Sending request to remotely bootstrap";
+  YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30) << "Sending request to remotely bootstrap";
   controller_.Reset();
   return raft_pool_token_->SubmitFunc([this]() {
     proxy_->StartRemoteBootstrap(&rb_request_, &rb_response_, &controller_,
@@ -439,10 +439,15 @@ void Peer::ProcessRemoteBootstrapResponse() {
 
   std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
 
-  // We treat remote bootstrap as fire-and-forget.
   if (rb_response_.has_error()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to begin remote bootstrap on peer: "
-                                      << rb_response_.ShortDebugString();
+    if (rb_response_.error().code() == tserver::TabletServerErrorPB::ALREADY_IN_PROGRESS) {
+      queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
+      YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(WARNING, 30)
+        << ":::Unable to begin remote bootstrap on peer: " << rb_response_.ShortDebugString();
+    } else {
+      LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to begin remote bootstrap on peer: "
+                                        << rb_response_.ShortDebugString();
+    }
   }
 }
 

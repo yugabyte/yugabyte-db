@@ -378,7 +378,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (member_type) *member_type = peer->member_type;
   if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
   if (PREDICT_FALSE(peer->needs_remote_bootstrap)) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer needs remote bootstrap: " << peer->ToString();
+      YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
+          << "Peer needs remote bootstrap: " << peer->ToString();
     *needs_remote_bootstrap = true;
     return Status::OK();
   }
@@ -704,8 +705,13 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
           << response.ShortDebugString();
 
       peer->needs_remote_bootstrap = true;
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Marked peer as needing remote bootstrap: "
-                                     << peer->ToString();
+      // Since we received a response from the peer, we know it is alive. So we need to update
+      // peer->last_successful_communication_time, otherwise, we will remove this peer from the
+      // configuration if the remote bootstrap is not completed within
+      // FLAGS_follower_unavailable_considered_failed_sec seconds.
+      peer->last_successful_communication_time = MonoTime::Now();
+      YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
+          << "Marked peer as needing remote bootstrap: " << peer->ToString();
       *more_pending = true;
       return;
     }

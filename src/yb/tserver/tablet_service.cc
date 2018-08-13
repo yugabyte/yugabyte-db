@@ -1428,7 +1428,18 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     return;
   }
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
-  LOG_IF(WARNING, !s.ok()) << "Start remote bootstrap failed: " << s;
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote bootstrap operation that is already in progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote bootstrap failed: " << s;
+      SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS,
+                           &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote bootstrap failed: " << s;
+    }
+  }
+
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }

@@ -4232,7 +4232,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   const TabletId& tablet_id = req.tablet_id();
   std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
   if (!l.owns_lock()) {
-    return STATUS(IllegalState,
+    return STATUS(AlreadyPresent,
                   Substitute("Remote bootstrap of tablet $0 already in progress", tablet_id));
   }
 
