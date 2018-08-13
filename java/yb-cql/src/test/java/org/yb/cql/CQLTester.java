@@ -116,6 +116,47 @@ public class CQLTester extends BaseCQLTest
         return expected;
     }
 
+    public static int displayRows(ResultSet result)
+    {
+        if (result == null)
+        {
+	    LOG.info("Resultset has zero rows");
+	    return 0;
+	}
+
+	ColumnDefinitions colDef = result.getColumnDefinitions();
+	List<ColumnDefinitions.Definition> meta = colDef.asList();
+        Iterator<Row> iter = result.iterator();
+	int i = 0;
+        while (iter.hasNext())
+        {
+            Row actual = iter.next();
+            for (int j = 0; j < meta.size(); j++)
+            {
+                ColumnDefinitions.Definition column = meta.get(j);
+		DataType.Name type = column.getType().getName();
+		switch (type) {
+		  case INT:
+		    int intActual = actual.getInt(j);
+		    LOG.info("Row[" + i + ", " + j + "] = " + intActual);
+		    break;
+
+		  case VARCHAR:
+		  case TEXT:
+		    String strActual = actual.getString(j);
+		    LOG.info("Row[" + i + ", " + j + "] = " + strActual);
+		    break;
+
+		  default:
+		    fail("Expect INT or VARCHAR or TEXT type but got: " + type.toString());
+		    break;
+		}
+            }
+	    i++;
+	}
+	return i;
+    }
+
     public static void assertRows(ResultSet result, Object[]... rows)
     {
         if (result == null)
@@ -128,6 +169,8 @@ public class CQLTester extends BaseCQLTest
 	List<ColumnDefinitions.Definition> meta = colDef.asList();
         Iterator<Row> iter = result.iterator();
         int i = 0;
+        if (!iter.hasNext() && rows.length > 0)
+	    fail(String.format("No rows returned by query but %d expected", rows.length));
         while (iter.hasNext() && i < rows.length)
         {
             Object[] expected = rows[i];
