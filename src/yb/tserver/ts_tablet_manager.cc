@@ -873,7 +873,7 @@ Status TSTabletManager::StartTabletStateTransitionUnlocked(
     scoped_refptr<TransitionInProgressDeleter>* deleter) {
   lock_.AssertAcquiredForWriting();
   if (!InsertIfNotPresent(&transition_in_progress_, tablet_id, reason)) {
-    return STATUS(IllegalState,
+    return STATUS(AlreadyPresent,
         Substitute("State transition of tablet $0 already in progress: $1",
                     tablet_id, transition_in_progress_[tablet_id]));
   }

@@ -99,6 +99,11 @@ DEFINE_test_flag(double, fault_crash_bootstrap_client_before_changing_role, 0.0,
 DEFINE_int32(remote_bootstrap_max_chunk_size, 1_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
+DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
+                 "The remote bootstrap client will take at least this number of seconds to finish. "
+                 "We use this for testing a scenario where a remote bootstrap takes longer than "
+                 "follower_unavailable_considered_failed_sec seconds");
+
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
   RETURN_NOT_OK_PREPEND(UnwindRemoteError(status, controller), msg)
@@ -356,6 +361,13 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   VLOG_WITH_PREFIX(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
   RETURN_NOT_OK(DownloadRocksDBFiles());
   RETURN_NOT_OK(DownloadWALs());
+
+  // We sleep here to simulate the transfer of very large files.
+  if (PREDICT_FALSE(FLAGS_simulate_long_remote_bootstrap_sec > 0)) {
+    LOG_WITH_PREFIX(INFO) << "Sleeping " << FLAGS_simulate_long_remote_bootstrap_sec
+                          << " seconds to simulate the transfer of very large files";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_long_remote_bootstrap_sec));
+  }
   return Status::OK();
 }
 
