@@ -135,6 +135,11 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
       if (range_keys != num_key_columns_ - num_hash_key_columns_) {
         if (opcode() == TreeNodeOpcode::kPTDeleteStmt) {
           // Range expression in write requests are allowed for deletes only.
+          for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+            if (op_counters[idx].eq_count() != 0) {
+              where_ops_.push_front(key_where_ops_[idx]);
+            }
+          }
           key_where_ops_.resize(num_hash_key_columns_);
         } else {
           return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
