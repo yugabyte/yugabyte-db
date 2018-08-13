@@ -375,15 +375,18 @@ Status Heartbeater::Thread::TryHeartbeat() {
     // Get the Total SST file sizes and set it in the proto buf
     std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
     uint64_t total_file_sizes = 0;
+    uint64_t uncompressed_file_sizes = 0;
     server_->tablet_manager()->GetTabletPeers(&tablet_peers);
     for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
       shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
       if (tablet_peer) {
         shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
         total_file_sizes += (tablet_class) ? tablet_class->GetTotalSSTFileSizes() : 0;
+        uncompressed_file_sizes += (tablet_class) ? tablet_class->GetUncompressedSSTFileSizes() : 0;
       }
     }
     req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
+    req.mutable_metrics()->set_uncompressed_sst_file_size(uncompressed_file_sizes);
 
     // Get the total number of read and write operations.
     scoped_refptr<Histogram> reads_hist = server_->GetMetricsHistogram

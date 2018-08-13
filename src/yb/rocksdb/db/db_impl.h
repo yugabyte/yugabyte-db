@@ -619,7 +619,9 @@ class DBImpl : public DB {
 
   uint64_t GetTotalSSTFileSize() override;
 
-  void SetTotalSSTFileSizeTicker();
+  void SetSSTFileSizeTickers();
+
+  uint64_t GetUncompressedSSTFileSize() override;
 
   void PrintStatistics();
 

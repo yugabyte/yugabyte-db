@@ -226,10 +226,12 @@ struct SstFileMetaData {
                   const std::string& _path,
                   uint64_t _total_size,
                   uint64_t _base_size,
+                  uint64_t _uncompressed_size,
                   const BoundaryValues& _smallest,
                   const BoundaryValues& _largest,
                   bool _being_compacted) :
-    total_size(_total_size), base_size(_base_size), name(_file_name),
+    total_size(_total_size), base_size(_base_size),
+    uncompressed_size(_uncompressed_size), name(_file_name),
     db_path(_path), smallest(_smallest), largest(_largest),
     being_compacted(_being_compacted) {
   }
@@ -238,6 +240,8 @@ struct SstFileMetaData {
   uint64_t total_size;
   // Base file size in bytes.
   uint64_t base_size;
+  // Total uncompressed size in bytes.
+  uint64_t uncompressed_size;
   // The name of the file.
   std::string name;
   // The full path where the file locates.
@@ -255,11 +259,11 @@ struct LiveFileMetaData : SstFileMetaData {
   int level;                       // Level at which this file resides.
 
   std::string ToString() const {
-    return yb::Format("{ total_size: $0 base_size: $1 name: \"$2\" db_path: \"$3\" imported: $4 "
-                      "being_compacted: $5 column_family_name: $6 level: $7 smallest: $8 "
-                      "largest: $9 }",
-                      total_size, base_size, name, db_path, imported, being_compacted,
-                      column_family_name, level, smallest, largest);
+    return yb::Format("{ total_size: $0 base_size: $1 uncompressed_size: $2 name: \"$3\" "
+                      "db_path: \"$4\" imported: $5 being_compacted: $6 column_family_name: $7 "
+                      "level: $8 smallest: $9 largest: $10 }",
+                      total_size, base_size, uncompressed_size, name, db_path, imported,
+                      being_compacted, column_family_name, level, smallest, largest);
   }
 };
 
