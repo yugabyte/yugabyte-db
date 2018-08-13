@@ -460,6 +460,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void LostLeadership();
 
   uint64_t GetTotalSSTFileSizes() const;
+  uint64_t GetUncompressedSSTFileSizes() const;
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);

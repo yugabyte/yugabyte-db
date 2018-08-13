@@ -784,6 +784,7 @@ class DB {
 
   // Returns the total combined size of all the SST Files in the rocksdb instance.
   virtual uint64_t GetTotalSSTFileSize() { return 0; }
+  virtual uint64_t GetUncompressedSSTFileSize() { return 0; }
 
   // Returns a list of all table files with their level, start key
   // and end key

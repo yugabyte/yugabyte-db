@@ -1630,17 +1630,28 @@ uint64_t DBImpl::GetTotalSSTFileSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_sst_file_size = 0;
-  for (const auto &meta : file_metadata) {
+  for (const auto& meta : file_metadata) {
     total_sst_file_size += meta.total_size;
   }
   return total_sst_file_size;
 }
 
-void DBImpl::SetTotalSSTFileSizeTicker() {
+void DBImpl::SetSSTFileSizeTickers() {
   uint64_t total_sst_file_size = GetTotalSSTFileSize();
   SetTickerCount(stats_, TOTAL_SST_FILE_SIZE, total_sst_file_size);
+  uint64_t uncompressed_sst_file_size = GetUncompressedSSTFileSize();
+  SetTickerCount(stats_, TOTAL_UNCOMPRESSED_SST_FILE_SIZE, uncompressed_sst_file_size);
 }
 
+uint64_t DBImpl::GetUncompressedSSTFileSize() {
+  std::vector<rocksdb::LiveFileMetaData> file_metadata;
+  GetLiveFilesMetaData(&file_metadata);
+  uint64_t total_uncompressed_file_size = 0;
+  for (const auto &meta : file_metadata) {
+    total_uncompressed_file_size += meta.uncompressed_size;
+  }
+  return total_uncompressed_file_size;
+}
 
 void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     FileMetaData* file_meta,
@@ -1686,7 +1697,7 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
     for (auto listener : db_options_.listeners) {
       listener->OnFlushCompleted(this, info);
     }
-    SetTotalSSTFileSizeTicker();
+    SetSSTFileSizeTickers();
   }
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
@@ -2097,7 +2108,7 @@ void DBImpl::NotifyOnCompactionCompleted(
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }
-    SetTotalSSTFileSizeTicker();
+    SetSSTFileSizeTickers();
   }
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
@@ -5855,7 +5866,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     delete impl;
     *dbptr = nullptr;
   } else if (impl) {
-    impl->SetTotalSSTFileSizeTicker();
+    impl->SetSSTFileSizeTickers();
   }
 
   return s;

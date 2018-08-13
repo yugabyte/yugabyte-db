@@ -747,6 +747,8 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file_path,
           file->fd.GetTotalFileSize(),
           file->fd.GetBaseFileSize(),
+          file->fd.GetBaseFileSize() +
+              file->raw_key_size + file->raw_value_size,
           ConvertBoundaryValues(file->smallest),
           ConvertBoundaryValues(file->largest),
           file->being_compacted);
@@ -3589,6 +3591,10 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.level = level;
         filemetadata.total_size = file->fd.GetTotalFileSize();
         filemetadata.base_size = file->fd.GetBaseFileSize();
+        // TODO: replace base_size with an accurate metadata size for
+        // uncompressed data. Look into: BlockBasedTableBuilder
+        filemetadata.uncompressed_size = filemetadata.base_size +
+            file->raw_key_size + file->raw_value_size;
         filemetadata.smallest = ConvertBoundaryValues(file->smallest);
         filemetadata.largest = ConvertBoundaryValues(file->largest);
         filemetadata.imported = file->imported;
