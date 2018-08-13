@@ -139,6 +139,8 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
 
 #define YB_LOG_WITH_PREFIX_EVERY_N(severity, n) YB_LOG_EVERY_N(severity, n) << LogPrefix()
+#define YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N(severity, n) \
+    YB_LOG_EVERY_N(severity, n) << LogPrefixUnlocked()
 
 #define YB_SYSLOG_EVERY_N(severity, n) \
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToSyslogAndLog)

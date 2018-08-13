@@ -981,6 +981,90 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
                                                   crash_test_workload_->rows_inserted()));
 }
 
+TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
+  vector<string> ts_flags, master_flags;
+
+  // Make everything happen 100x faster:
+  //  - follower_unavailable_considered_failed_sec from 300 to 3 secs
+  //  - raft_heartbeat_interval_ms from 500 to 5 ms
+  //  - consensus_rpc_timeout_ms from 3000 to 30 ms
+
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
+  ts_flags.push_back("--raft_heartbeat_interval_ms=5");
+  ts_flags.push_back("--consensus_rpc_timeout_ms=30");
+
+  // Increase the number of missed heartbeats used to detect leader failure since in slow testing
+  // instances it is very easy to miss the default (6) heartbeats since they are being sent very
+  // fast (5ms).
+  ts_flags.push_back("--leader_failure_max_missed_heartbeat_periods=40.0");
+
+  // Make the remote bootstrap take longer than follower_unavailable_considered_failed_sec seconds
+  // so the peer gets removed from the config while it is being remote bootstrapped.
+  ts_flags.push_back("--simulate_long_remote_bootstrap_sec=5");
+
+  master_flags.push_back("--enable_load_balancing=false");
+
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 4));
+
+  // We'll do a config change to remote bootstrap a replica here later. For now, shut it down.
+  auto constexpr kTsIndex = 0;
+  LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(kTsIndex)->uuid();
+  cluster_->tablet_server(kTsIndex)->Shutdown();
+  auto new_ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
+
+  // Bounce the Master so it gets new tablet reports and doesn't try to assign a replica to the
+  // dead TS.
+  const auto timeout = MonoDelta::FromSeconds(40);
+  cluster_->master()->Shutdown();
+  LOG(INFO) << "Restarting master " << cluster_->master()->uuid();
+  ASSERT_OK(cluster_->master()->Restart());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3, timeout));
+
+  // Populate a tablet with some data.
+  LOG(INFO)  << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  while (workload.rows_inserted() < 10) {
+    SleepFor(MonoDelta::FromMilliseconds(1));
+  }
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(1)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+
+  // Add back TS0.
+  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
+  LOG(INFO) << "Adding tserver with uuid " << new_ts->uuid();
+  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, new_ts, RaftPeerPB::PRE_VOTER, boost::none,
+                             timeout));
+  // After adding  new_ts, the leader will detect that TS0 needs to be remote bootstrapped. Verify
+  // that this process completes successfully.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_READY));
+  LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
+              << new_ts->uuid();
+
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(4, leader_ts, tablet_id, timeout));
+  LOG(INFO) << "Number of voters for tablet " << tablet_id << " is 4";
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+      ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+      ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                      ClusterVerifier::AT_LEAST,
+                                                      workload.rows_inserted()));
+}
+
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
   RejectRogueLeader(YBTableType::YQL_TABLE_TYPE);
 }
