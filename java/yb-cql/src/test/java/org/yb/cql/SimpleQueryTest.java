@@ -295,12 +295,7 @@ public class SimpleQueryTest extends CQLTester
 
         assertRows(execute("SELECT * FROM %s"), expected);
     }
-/*
- * The inidividual tests that follow are currently commented out. They will be
- * enabled in a subsequent pull request after they have been tested.
- */
 
-/*
     @Test
     public void testRangeTombstones() throws Throwable
     {
@@ -328,6 +323,12 @@ public class SimpleQueryTest extends CQLTester
         assertRows(execute("SELECT * FROM %s"), expected);
     }
 
+/*
+ * The inidividual tests that follow are currently commented out. They will be
+ * enabled in a subsequent pull request after they have been tested.
+ */
+
+/*
     @Test
     public void test2ndaryIndexes() throws Throwable
     {
