@@ -220,22 +220,31 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
-  string title = skip_system_tables ? "User Tables" : "All Tables";
 
-  (*output) << "<div class='panel panel-default'>\n"
-            << "<div class='panel-heading'><h2 class='panel-title'>" << title << "</h2></div>\n";
-  (*output) << "<div class='panel-body table-responsive'>";
   typedef map<string, string> StringMap;
-  StringMap ordered_tables;
+
+  // The first stores user tables, the second index tables, and the third system tables.
+  std::unique_ptr<StringMap> ordered_tables[kNumTypes];
+  for (int i = 0; i < kNumTypes; ++i) {
+    ordered_tables[i] = std::make_unique<StringMap>();
+  }
+
+  TableType table_cat;
   for (const scoped_refptr<TableInfo>& table : tables) {
     auto l = table->LockForRead();
     if (!l->data().is_running()) {
       continue;
     }
 
-    // Skip system tables if we should.
-    if (skip_system_tables && IsSystemTable(*table)) {
-      continue;
+    table_cat = kUserTable;
+    // Determine the table category.
+    if (IsSystemTable(*table)) {
+      // Skip system tables if we should.
+      if (skip_system_tables)
+        continue;
+      table_cat = kSystemTable;
+    } else if (!table->indexed_table_id().empty()) {
+      table_cat = kIndexTable;
     }
 
     const TableName long_table_name = TableLongName(
@@ -243,27 +252,40 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
-    ordered_tables[long_table_name] = Substitute(
+    (*ordered_tables[table_cat])[long_table_name] = Substitute(
         "<tr><td>$0</td><td><a href=\"/table?keyspace_name=$0&table_name=$1\">$1</a>"
-            "</td><td>$2</td><td>$3 $4</td></tr>\n",
+            "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
         state,
-        EscapeForHtmlToString(table->id()),
-        EscapeForHtmlToString(l->data().pb.state_msg()));
+        EscapeForHtmlToString(l->data().pb.state_msg()),
+        EscapeForHtmlToString(table->id()));
   }
-  if (ordered_tables.size() == 0) {
-    (*output) << "You do not have any tables.";
-  } else {
-    *output << "<table class='table table-striped'>\n";
-    *output << "  <tr><th>Keyspace</th><th>Table Name</th><th>State</th><th>UUID</th></tr>\n";
-    for (const StringMap::value_type &table : ordered_tables) {
-      *output << table.second;
+
+  for (int i = 0; i < kNumTypes; ++i) {
+    (*output) << "<div class='panel panel-default'>\n"
+              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
+              << " Tables</h2></div>\n";
+    (*output) << "<div class='panel-body table-responsive'>";
+
+    if (ordered_tables[i]->empty()) {
+      (*output) << "There are no " << static_cast<char>(tolower(table_type_[i][0]))
+                << table_type_[i].substr(1) << " type tables.\n";
+    } else {
+      *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
+      *output << "  <tr><th style='width: 2*;'>Keyspace</th>\n"
+              << "      <th style='width: 3*;'>Table Name</th>\n"
+              << "      <th style='width: 1*;'>State</th>\n"
+              << "      <th style='width: 2*'>Message</th>\n"
+              << "      <th style='width: 4*'>UUID</th></tr>\n";
+      for (const StringMap::value_type &table : *(ordered_tables[i])) {
+        *output << table.second;
+      }
+      (*output) << "</table>\n";
     }
-    (*output) << "</table>\n";
+    (*output) << "</div> <!-- panel-body -->\n";
+    (*output) << "</div> <!-- panel -->\n";
   }
-  (*output) << "</div> <!-- panel-body -->\n";
-  (*output) << "</div> <!-- panel -->\n";
 }
 
 namespace {

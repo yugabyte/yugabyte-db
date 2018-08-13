@@ -70,6 +70,15 @@ class MasterPathHandlers {
   string BytesToHumanReadable (uint64_t bytes);
 
  private:
+  enum TableType {
+    kUserTable,
+    kIndexTable,
+    kSystemTable,
+    kNumTypes
+  };
+
+  const string table_type_[3] = {"User", "Index", "System"};
+
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
                                    const Webserver::PathHandlerCallback& callback);
 
