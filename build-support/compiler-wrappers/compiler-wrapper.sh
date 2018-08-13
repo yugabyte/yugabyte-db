@@ -366,7 +366,7 @@ local_build_exit_handler() {
     if [[ -f ${stderr_path:-} ]]; then
       tail -n +2 "$stderr_path" >&2
     fi
-  elif [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+  elif is_thirdparty_build; then
     # Do not add any fancy output if we're running as part of the third-party build.
     if [[ -f ${stderr_path:-} ]]; then
       cat "$stderr_path" >&2
@@ -497,7 +497,8 @@ fi
 
 set_build_env_vars
 
-if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] && is_linux && "$rpath_found"; then
+if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] && ! is_thirdparty_build && is_linux &&
+   "$rpath_found"; then
   if [[ $num_output_files_found -ne 1 ]]; then
     # Ideally this will only happen as part of running PostgreSQL's configure and will be hidden.
     log "RPATH options found on the command line, but could not find exactly one output file " \
@@ -545,10 +546,9 @@ if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} &&
   show_compiler_command_line "$CYAN_COLOR"
 fi
 
-if [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
-  # This is the third-party build. Don't do any extra error checking/reporting, just pass the
-  # compiler output back to the caller. The compiler's standard error will be passed to the calling
-  # process by the exit handler.
+if is_thirdparty_build; then
+  # Don't do any extra error checking/reporting, just pass the compiler output back to the caller.
+  # The compiler's standard error will be passed to the calling process by the exit handler.
   exit "$compiler_exit_code"
 fi
 
