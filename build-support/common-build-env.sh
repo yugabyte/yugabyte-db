@@ -309,6 +309,10 @@ is_linux() {
   [[ "$OSTYPE" =~ ^linux ]]
 }
 
+is_thirdparty_build() {
+  [[ ${YB_IS_THIRDPARTY_BUILD:-0} == "1" ]]
+}
+
 expect_vars_to_be_set() {
   local calling_func_name=${FUNCNAME[1]}
   local var_name
