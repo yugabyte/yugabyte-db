@@ -1634,6 +1634,18 @@ uint64_t Tablet::GetTotalSSTFileSizes() const {
   return regular_db_->GetTotalSSTFileSize();
 }
 
+uint64_t Tablet::GetUncompressedSSTFileSizes() const {
+  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  std::lock_guard<rw_spinlock> lock(component_lock_);
+
+  // In order to get actual stats we would have to wait.
+  // This would give us correct stats but would make this request slower.
+  if (!pending_op_counter_.IsReady() || !regular_db_) {
+    return 0;
+  }
+  return regular_db_->GetUncompressedSSTFileSize();
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(

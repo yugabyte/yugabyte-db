@@ -155,16 +155,17 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   *output << buf.ToString();
 }
 
-  inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
+inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
   *output << "<table class='table table-striped'>\n";
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
-          << "      <th>Time since heartbeat</th>\n"
+          << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status</th>\n"
           << "      <th>Load (Num Tablets)</th>\n"
-          << "      <th>Leader Count (Num Tablets)</th>\n"
+          << "      <th>Leader Count</br>(Num Tablets)</th>\n"
           << "      <th>RAM Used</th>\n"
-          << "      <th>Total SST File Sizes</th>\n"
+          << "      <th>SST Files Size</th>\n"
+          << "      <th>Uncompressed SST </br>Files Size</th>\n"
           << "      <th>Read ops/sec</th>\n"
           << "      <th>Write ops/sec</th>\n"
           << "      <th>Cloud</th>\n"
@@ -200,6 +201,8 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                (desc->total_memory_usage()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable
                                (desc->total_sst_file_size()) << "</td>";
+      *output << "    <td>" << BytesToHumanReadable
+                             (desc->uncompressed_sst_file_size()) << "</td>";
       *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
       *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";

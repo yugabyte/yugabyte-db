@@ -457,6 +457,7 @@ message TServerMetricsPB {
   optional int64 total_ram_usage = 2;
   optional double read_ops_per_sec = 3;
   optional double write_ops_per_sec = 4;
+  optional int64 uncompressed_sst_file_size = 5;
 }
 
 // Heartbeat sent from the tablet-server to the master

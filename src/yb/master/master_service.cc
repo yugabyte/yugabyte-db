@@ -169,6 +169,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
       ts_desc->set_total_memory_usage(req->metrics().total_ram_usage());
     }
     ts_desc->set_total_sst_file_size(req->metrics().total_sst_file_size());
+    ts_desc->set_uncompressed_sst_file_size(req->metrics().uncompressed_sst_file_size());
     ts_desc->set_write_ops_per_sec(req->metrics().write_ops_per_sec());
     ts_desc->set_read_ops_per_sec(req->metrics().read_ops_per_sec());
   }
