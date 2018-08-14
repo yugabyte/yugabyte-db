@@ -981,10 +981,10 @@ void GetTableSchemaRpc::Finished(const Status& status) {
 
       info_->table_name.GetFromTableIdentifierPB(resp_.identifier());
       info_->table_id = resp_.identifier().table_id();
-      if (resp_.has_indexed_table_id()) {
-        info_->indexed_table_id = resp_.indexed_table_id();
-      }
       info_->index_map.FromPB(resp_.indexes());
+      if (resp_.has_index_info()) {
+        info_->index_info.emplace(resp_.index_info());
+      }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
     }
   }

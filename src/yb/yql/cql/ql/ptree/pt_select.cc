@@ -551,7 +551,7 @@ CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
   for (auto expr : exprs) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
       const PTAllColumns *ref = static_cast<const PTAllColumns*>(expr.get());
-      for (const auto& col_desc : ref->table_columns()) {
+      for (const auto& col_desc : ref->columns()) {
         selected_schemas_->emplace_back(col_desc.name(), col_desc.ql_type());
       }
     } else {

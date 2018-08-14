@@ -734,8 +734,14 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
 
+  // Indexes available on the table.
   const IndexMap& index_map() const;
+
+  // Is this an index?
   bool IsIndex() const;
+
+  // For index table: information about this index.
+  const IndexInfo& index_info() const;
 
   //------------------------------------------------------------------------------------------------
   // CQL support

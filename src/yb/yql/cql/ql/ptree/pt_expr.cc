@@ -948,6 +948,21 @@ CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
   }
   stmt_ = static_cast<PTSelectStmt*>(stmt);
 
+  // For 'select * ... ' using index only, duplicate the index columns and sort them in the same
+  // order as the table columns so that the selected columns are returned in the proper order.
+  if (stmt_->table()->IsIndex()) {
+    std::unordered_map<int, int> map; // A map of column_id -> indexed_column_id
+    for (const auto& column : stmt_->table()->index_info().columns()) {
+      map.emplace(column.column_id, column.indexed_column_id);
+    }
+    indexed_table_columns_.emplace(sem_context->PTreeMem());
+    *indexed_table_columns_ = stmt_->table_columns();
+    std::sort(indexed_table_columns_->begin(), indexed_table_columns_->end(),
+              [&map](const ColumnDesc& a, const ColumnDesc& b) {
+                return map[a.id()] < map[b.id()];
+              });
+  }
+
   // Note to server that all column are referenced by this statement.
   sem_context->current_dml_stmt()->AddRefForAllColumns();
 
@@ -958,8 +973,8 @@ CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
   return Status::OK();
 }
 
-const MCVector<ColumnDesc>& PTAllColumns::table_columns() const {
-  return stmt_->table_columns();
+const MCVector<ColumnDesc>& PTAllColumns::columns() const {
+  return indexed_table_columns_ ? *indexed_table_columns_ : stmt_->table_columns();
 }
 
 //--------------------------------------------------------------------------------------------------

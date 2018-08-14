@@ -52,7 +52,7 @@ public class TestIndex extends BaseCQLTest {
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
     session.execute("insert into i (h, r2, r1, c) values (1, 3, 2, 4);");
     assertQuery("select * from test_index;", "Row[1, 2, 3, 4]");
-    assertQuery("select * from i;", "Row[1, 3, 2, 4]");
+    assertQuery("select * from i;", "Row[1, 2, 3, 4]");
   }
 
   @Test
@@ -798,5 +798,18 @@ public class TestIndex extends BaseCQLTest {
                  .one().getLong("writetime(v)"),
                  session.execute("select writetime(v) from test_txn2 where k = 'k1';")
                  .one().getLong("writetime(v)"));
+  }
+
+  @Test
+  public void testSelectAll() throws Exception {
+    // Create a table with index.
+    session.execute("create table test_all (k int primary key, v1 int, v2 int) " +
+                    "with transactions = { 'enabled' : true };");
+    session.execute("create index test_all_by_v1 on test_all (v1) include (v2);");
+    session.execute("insert into test_all (k, v1, v2) values (1, 2, 3);");
+
+    // Select all columns using index and verify the selected columns are returned in the same order
+    // as the table columns.
+    assertQuery("select * from test_all where v1 = 2;", "Row[1, 2, 3]");
   }
 }
