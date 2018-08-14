@@ -282,9 +282,11 @@ class TableLoader : public Visitor<PersistentTableInfo> {
       catalog_manager_->table_names_map_[{l->data().namespace_id(), l->data().name()}] = table;
     }
 
+    l->Commit();
+
     LOG(INFO) << "Loaded metadata for table " << table->ToString();
     VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
-    l->Commit();
+
     return Status::OK();
   }
 
@@ -370,7 +372,7 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
 
     LOG(INFO) << "Loaded metadata for tablet " << tablet_id
               << " (first table " << first_table->ToString() << ")";
-    VLOG(2) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
+    VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 
     return Status::OK();
   }
@@ -404,9 +406,11 @@ class NamespaceLoader : public Visitor<PersistentNamespaceInfo> {
       catalog_manager_->namespace_names_map_[l->data().pb.name()] = ns;
     }
 
-    LOG(INFO) << "Loaded metadata for namespace " << l->data().pb.name() << " (id="
-        << ns_id << "): " << ns->ToString() << ": " << metadata.ShortDebugString();
     l->Commit();
+
+    LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
+    VLOG(1) << "Metadata for namespace " << ns->ToString() << ": " << metadata.ShortDebugString();
+
     return Status::OK();
   }
 
@@ -439,9 +443,11 @@ class UDTypeLoader : public Visitor<PersistentUDTypeInfo> {
       catalog_manager_->udtype_names_map_[{l->data().namespace_id(), l->data().name()}] = udtype;
     }
 
+    l->Commit();
+
     LOG(INFO) << "Loaded metadata for type " << udtype->ToString();
     VLOG(1) << "Metadata for type " << udtype->ToString() << ": " << metadata.ShortDebugString();
-    l->Commit();
+
     return Status::OK();
   }
 
@@ -529,9 +535,11 @@ class RoleLoader : public Visitor<PersistentRoleInfo> {
     l->mutable_data()->pb.CopyFrom(metadata);
     catalog_manager_->roles_map_[role_name] = role;
 
-    LOG(INFO) << "Loaded metadata for role " << l->data().pb.role()
-        << ": " << metadata.ShortDebugString();
     l->Commit();
+
+    LOG(INFO) << "Loaded metadata for role " << role->id();
+    VLOG(1) << "Metadata for role " << role->id() << ": " << metadata.ShortDebugString();
+
     return Status::OK();
   }
 
@@ -1075,35 +1083,43 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceId& namespace_id,
                                           const Schema& schema,
                                           YQLVirtualTable* vtable) {
+  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
   // Verify we have the catalog manager lock.
   if (!lock_.is_locked()) {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
 
-  std::shared_ptr<SystemTablet> system_tablet;
-  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
-
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
   bool create_table = true;
   if (table != nullptr) {
+    LOG(INFO) << Substitute("Table $0.$1 already created", namespace_name, table_name);
+
+    Schema persisted_schema;
+    RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+    if (!persisted_schema.Equals(schema)) {
+      LOG(INFO) << Substitute("Updating schema of $0.$1 ...", namespace_name, table_name);
+      auto l = table->LockForWrite();
+      RETURN_NOT_OK(SchemaToPB(schema, l->mutable_data()->pb.mutable_schema()));
+      l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
+
+      // Update sys-catalog with the new table schema.
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get()));
+      l->Commit();
+    }
+
     // There might have been a failure after writing the table but before writing the tablets. As
     // a result, if we don't find any tablets, we try to create the tablets only again.
     vector<scoped_refptr<TabletInfo>> tablets;
     table->GetAllTablets(&tablets);
     if (!tablets.empty()) {
-      LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
-                                       namespace_name, table_name);
       // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
-      system_tablet.reset(
-          new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
-      return sys_tables_handler_.AddTablet(system_tablet);
+      return sys_tables_handler_.AddTablet(
+          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id()));
     } else {
       // Table is already created, only need to create tablets now.
-      LOG(INFO) << strings::Substitute("Table $0.$1 already created, but tablets have not been "
-                                       "created. Creating only the respective tablets...",
-                                       namespace_name, table_name);
+      LOG(INFO) << Substitute("Creating tablets for $0.$1 ...", namespace_name, table_name);
       create_table = false;
     }
   }
@@ -1126,8 +1142,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false, namespace_id,
                                       partitions, nullptr, &tablets, nullptr, &table));
-    LOG(INFO) << "Inserted new table info into CatalogManager maps: "
-              << namespace_name << "." << table_name;
+    LOG(INFO) << Substitute("Inserted new $0.$1 table info into CatalogManager maps",
+                            namespace_name, table_name);
 
     // Update the on-disk table state to "running".
     table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
@@ -1161,10 +1177,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   }
 
   // Finally create the appropriate tablet object.
-  system_tablet.reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
-  RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
-
-  return Status::OK();
+  return sys_tables_handler_.AddTablet(
+      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id()));
 }
 
 Status CatalogManager::PrepareNamespace(const NamespaceName& name, const NamespaceId& id) {

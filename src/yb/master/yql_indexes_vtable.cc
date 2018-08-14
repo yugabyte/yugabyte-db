@@ -92,8 +92,10 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     options.set_map_value();
     options.add_map_key()->set_string_value("target");
     options.add_map_value()->set_string_value(target);
-    options.add_map_key()->set_string_value("include");
-    options.add_map_value()->set_string_value(include);
+    if (!include.empty()) {
+      options.add_map_key()->set_string_value("include");
+      options.add_map_value()->set_string_value(include);
+    }
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 
     // Create appropriate table uuids.
@@ -103,6 +105,23 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kTableId, uuid, &row));
     RETURN_NOT_OK(uuid.FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kIndexId, uuid, &row));
+
+    Schema schema;
+    RETURN_NOT_OK(table->GetSchema(&schema));
+    const auto & table_properties = schema.table_properties();
+    QLValue txn;
+    txn.set_map_value();
+    txn.add_map_key()->set_string_value("enabled");
+    txn.add_map_value()->set_string_value(table_properties.is_transactional() ? "true" : "false");
+    if (table_properties.consistency_level() == YBConsistencyLevel::USER_ENFORCED) {
+      // If consistency level is user-encorced, show it also. Omit the other consistency levels
+      // which are not recognized by "CREATE INDEX" syntax.
+      txn.add_map_key()->set_string_value("consistency_level");
+      txn.add_map_value()->set_string_value("user_enforced");
+    }
+    RETURN_NOT_OK(SetColumnValue(kTransactions, txn.value(), &row));
+
+    RETURN_NOT_OK(SetColumnValue(kIsUnique, table->is_unique_index(), &row));
   }
 
   return Status::OK();
@@ -118,6 +137,9 @@ Schema YQLIndexesVTable::CreateSchema() const {
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   CHECK_OK(builder.AddColumn(kTableId, QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn(kIndexId, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kTransactions,
+                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kIsUnique, QLType::Create(DataType::BOOL)));
 
   return builder.Build();
 }
