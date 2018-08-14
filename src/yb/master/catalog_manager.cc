@@ -2786,8 +2786,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   }
   resp->set_version(l->data().pb.version());
   resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
-  if (l->data().pb.has_indexed_table_id()) {
-    resp->set_indexed_table_id(l->data().pb.indexed_table_id());
+  if (l->data().pb.has_index_info()) {
+    *resp->mutable_index_info() = l->data().pb.index_info();
+    resp->set_deprecated_indexed_table_id(l->data().pb.index_info().indexed_table_id());
   }
 
   // Get namespace name by id.
