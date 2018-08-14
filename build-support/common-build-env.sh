@@ -1550,6 +1550,7 @@ kill_stuck_processes() {
 }
 
 handle_build_root_from_current_dir() {
+  predefined_build_root=""
   if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
     return
   fi
