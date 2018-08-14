@@ -701,30 +701,20 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      // It is our last chance to load transaction metadata, if missing.
-      // Because it will be deleted when intents are applied.
-      FindOrLoad(data.transaction_id, "pre cleanup"s);
+      auto it = transactions_.find(data.transaction_id);
+      if (it == transactions_.end()) {
+        return Status::OK();
+      }
+      if (!RemoveUnlocked(it)) {
+        VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
+                            << data.transaction_id;
+      }
     }
 
     auto status = applier_.RemoveIntents(data.transaction_id);
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to remove intents for "
                                              << data.transaction_id << ": " << status;
 
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto it = FindOrLoad(data.transaction_id, "cleanup"s);
-      if (it == transactions_.end()) {
-        // This situation is normal and could be caused by 2 scenarios:
-        // 1) Write batch failed, but originator doesn't know that.
-        // 2) Failed to notify client that we cleaned up transaction.
-        LOG_WITH_PREFIX(WARNING) << "Cleanup of unknown transaction: " << data.transaction_id;
-      } else {
-        if (!RemoveUnlocked(it)) {
-          VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
-                              << data.transaction_id;
-        }
-      }
-    }
     return Status::OK();
   }
 
