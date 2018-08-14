@@ -165,9 +165,12 @@ stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
 compiler_args=( "$@" )
 
+BUILD_ROOT=""
 if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
       ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
   handle_build_root_from_current_dir
+  BUILD_ROOT=$predefined_build_root
+  # Not calling set_build_root here, because we don't need additional setup that it does.
 fi
 
 set +u
@@ -497,8 +500,18 @@ fi
 
 set_build_env_vars
 
-if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] && ! is_thirdparty_build && is_linux &&
-   "$rpath_found"; then
+# Make RPATHs relative whenever possible. This is an effort towards being able to relocate the
+# entire build root to a different path and still be able to run tests. Currently disabled for
+# PostgreSQL code because to do it correctly we need to know the eventual "installation" locations
+# of PostgreSQL binaries and libraries, which requires a bit more work.
+if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
+   ! is_thirdparty_build &&
+   is_linux &&
+   "$rpath_found" &&
+   # In case BUILD_ROOT is defined (should be in all cases except for when we're determining the
+   # compilier type), and we know we are building inside of the PostgreSQL dir, we don't want to
+   # make RPATHs relative.
+   [[ -z $BUILD_ROOT || $PWD != $BUILD_ROOT/postgres_build/* ]]; then
   if [[ $num_output_files_found -ne 1 ]]; then
     # Ideally this will only happen as part of running PostgreSQL's configure and will be hidden.
     log "RPATH options found on the command line, but could not find exactly one output file " \
