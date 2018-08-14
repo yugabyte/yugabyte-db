@@ -45,10 +45,10 @@ namespace client {
 struct YBTable::Info {
   YBTableName table_name;
   std::string table_id;
-  std::string indexed_table_id;
   YBSchema schema;
   PartitionSchema partition_schema;
   IndexMap index_map;
+  boost::optional<IndexInfo> index_info;
 };
 
 class YBTable::Data {

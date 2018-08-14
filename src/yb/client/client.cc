@@ -456,7 +456,7 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
   // Verify it is not an index table.
-  if (!info.indexed_table_id.empty()) {
+  if (info.index_info) {
     return STATUS(NotFound, "The table does not exist");
   }
 
@@ -1346,7 +1346,12 @@ const IndexMap& YBTable::index_map() const {
 }
 
 bool YBTable::IsIndex() const {
-  return !data_->info_.indexed_table_id.empty();
+  return data_->info_.index_info != boost::none;
+}
+
+const IndexInfo& YBTable::index_info() const {
+  CHECK(data_->info_.index_info);
+  return *data_->info_.index_info;
 }
 
 const PartitionSchema& YBTable::partition_schema() const {

@@ -1133,11 +1133,15 @@ class PTAllColumns : public PTOperator0 {
     return "*";
   }
 
-  const MCVector<ColumnDesc>& table_columns() const;
+  const MCVector<ColumnDesc>& columns() const;
 
  private:
   // Fields that should be resolved by semantic analysis.
   PTSelectStmt *stmt_;
+
+  // For 'SELECT * ... ' using index only: column descriptors in the order of the indexed table
+  // columns instead of the index columns.
+  boost::optional<MCVector<ColumnDesc>> indexed_table_columns_;
 };
 
 //--------------------------------------------------------------------------------------------------
