@@ -28,6 +28,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.MiniYBCluster;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -82,10 +83,8 @@ public class TestIndex extends BaseCQLTest {
                  table.getIndex("i2").asCQLQuery());
 
     // Verify the covering columns.
-    assertIndexOptions("test_create_index", "i1",
-                       "Row[{target=r1, r2, h1, h2, include=c1, c4}]");
-    assertIndexOptions("test_create_index", "i2",
-                       "Row[{target=c4, h1, h2, r1, r2, include=c1, c2}]");
+    assertIndexOptions("test_create_index", "i1", "r1, r2, h1, h2", "c1, c4");
+    assertIndexOptions("test_create_index", "i2", "c4, h1, h2, r1, r2", "c1, c2");
 
     // Test retrieving non-existent index.
     assertNull(table.getIndex("i3"));
@@ -108,7 +107,7 @@ public class TestIndex extends BaseCQLTest {
 
     // Test create index if not exists. Verify i1 is still the same.
     session.execute("create index if not exists i1 on test_create_index (r1) include (c1);");
-    assertIndexOptions("test_create_index", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c4}]");
+    assertIndexOptions("test_create_index", "i1", "r1, r2, h1, h2", "c1, c4");
 
     // Create another test table.
     session.execute("create table test_create_index_2 " +
@@ -211,7 +210,7 @@ public class TestIndex extends BaseCQLTest {
                           .getTable("test_drop_index");
     assertEquals("CREATE INDEX i1 ON cql_test_keyspace.test_drop_index (r1, r2, h1, h2);",
                  table.getIndex("i1").asCQLQuery());
-    assertIndexOptions("test_drop_index", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c2}]");
+    assertIndexOptions("test_drop_index", "i1", "r1, r2, h1, h2", "c1, c2");
 
     // Drop test index.
     session.execute("drop index i1;");
@@ -236,8 +235,7 @@ public class TestIndex extends BaseCQLTest {
     table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getTable("test_drop_index");
     assertEquals("CREATE INDEX i1 ON cql_test_keyspace.test_drop_index (c1, c2, h1, h2, r1, r2);",
                  table.getIndex("i1").asCQLQuery());
-    assertIndexOptions("test_drop_index", "i1",
-                       "Row[{target=c1, c2, h1, h2, r1, r2, include=c3, c4}]");
+    assertIndexOptions("test_drop_index", "i1", "c1, c2, h1, h2, r1, r2", "c3, c4");
   }
 
   @Test
@@ -253,8 +251,8 @@ public class TestIndex extends BaseCQLTest {
     // Create test index.
     session.execute("create index i1 on test_drop_cascade (r1, r2) include (c1, c2);");
     session.execute("create index i2 on test_drop_cascade (c4) include (c1);");
-    assertIndexOptions("test_drop_cascade", "i1", "Row[{target=r1, r2, h1, h2, include=c1, c2}]");
-    assertIndexOptions("test_drop_cascade", "i2", "Row[{target=c4, h1, h2, r1, r2, include=c1}]");
+    assertIndexOptions("test_drop_cascade", "i1", "r1, r2, h1, h2", "c1, c2");
+    assertIndexOptions("test_drop_cascade", "i2", "c4, h1, h2, r1, r2", "c1");
 
     // Drop test table. Verify the index is cascade-deleted.
     session.execute("drop table test_drop_cascade;");
@@ -266,11 +264,18 @@ public class TestIndex extends BaseCQLTest {
                                DEFAULT_TEST_KEYSPACE, "test_drop_cascade", "i2").one());
   }
 
-  private void assertIndexOptions(String table, String index, String options) throws Exception {
-    Row row = session.execute("select options from system_schema.indexes " +
+  private void assertIndexOptions(String table, String index, String target, String include)
+      throws Exception {
+    Row row = session.execute("select options, transactions, is_unique " +
+                              "from system_schema.indexes " +
                               "where keyspace_name = ? and table_name = ? and index_name = ?",
                               DEFAULT_TEST_KEYSPACE, table, index).one();
-    assertEquals(options, row.toString());
+    Map<String, String> options = row.getMap("options", String.class, String.class);
+    assertEquals(target, options.get("target"));
+    assertEquals(include, options.get("include"));
+    Map<String, String> transactions = row.getMap("transactions", String.class, String.class);
+    assertEquals("true", transactions.get("enabled"));
+    assertFalse(row.getBool("is_unique"));
   }
 
   private void assertIndexColumns(String index, String columns) throws Exception {
@@ -446,6 +451,13 @@ public class TestIndex extends BaseCQLTest {
     session.execute("create index test_batch_by_v on test_batch (v) " +
                     "with transactions = {'enabled' : false, " +
                     "'consistency_level' : 'user_enforced'};");
+
+    assertQuery(String.format("select options, transactions from system_schema.indexes where "+
+                              "keyspace_name = '%s' and " +
+                              "table_name = 'test_batch' and " +
+                              "index_name = 'test_batch_by_v';",
+                              DEFAULT_TEST_KEYSPACE),
+                "Row[{target=v, k}, {enabled=false, consistency_level=user_enforced}]");
 
     final int BATCH_SIZE = 20;
     final int KEY_COUNT = 1000;
@@ -664,6 +676,12 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true};");
     session.execute("create unique index test_unique_by_v1 on test_unique (v1);");
     session.execute("create unique index test_unique_by_v2_v3 on test_unique (v2, v3);");
+
+    assertQuery(String.format("select is_unique from system_schema.indexes where "+
+                              "keyspace_name = '%s' and table_name = 'test_unique';",
+                              DEFAULT_TEST_KEYSPACE),
+                "Row[true]" +
+                "Row[true]");
 
     // Test unique constraint on NULL values in v2 and v3.
     session.execute(

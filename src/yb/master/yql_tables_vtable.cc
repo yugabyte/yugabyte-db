@@ -76,12 +76,12 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
         schema.table_properties().DefaultTimeToLive() / MonoTime::kMillisecondsPerSecond);
     RETURN_NOT_OK(SetColumnValue(kDefaultTimeToLive, cql_ttl, &row));
 
-    QLValue dtxn;
-    dtxn.set_map_value();
-    dtxn.add_map_key()->set_string_value("enabled");
-    dtxn.add_map_value()->set_string_value(schema.table_properties().is_transactional() ?
-                                           "true" : "false");
-    RETURN_NOT_OK(SetColumnValue(kTransactions, dtxn.value(), &row));
+    QLValue txn;
+    txn.set_map_value();
+    txn.add_map_key()->set_string_value("enabled");
+    txn.add_map_value()->set_string_value(schema.table_properties().is_transactional() ?
+                                          "true" : "false");
+    RETURN_NOT_OK(SetColumnValue(kTransactions, txn.value(), &row));
   }
 
   return Status::OK();
