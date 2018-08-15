@@ -958,5 +958,97 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
   ASSERT_EQ(doc_ht.ToString(), "HT{ physical: 1000 }");
 }
 
+TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+  TransactionStatusManagerMock txn_status_manager;
+
+  Result<TransactionId> txn = FullyDecodeTransactionId("0000000000000001");
+  ASSERT_OK(txn);
+
+  SetCurrentTransactionId(*txn);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(500)));
+
+  // Verify the content of RocksDB.
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
+    SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+      )#");
+
+  IntentAwareIterator iter(
+      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
+  for (int i = 1; i <= 2; ++i) {
+    iter.Seek(DocKey());
+    ASSERT_TRUE(iter.valid()) << "Seek #" << i << " failed";
+  }
+}
+
+TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+  TransactionStatusManagerMock txn_status_manager;
+
+  Result<TransactionId> txn = FullyDecodeTransactionId("0000000000000001");
+  ASSERT_OK(txn);
+
+  SetCurrentTransactionId(*txn);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row2_c_t1"), HybridTime::FromMicros(500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(600)));
+
+  LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
+
+  const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
+  const Schema &projection = kProjectionForIteratorTests;
+
+  DocRowwiseIterator iter(
+      projection, kSchemaForIteratorTests, txn_context, doc_db(),
+      MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(1000));
+  ASSERT_OK(iter.Init());
+
+  QLTableRow row;
+  QLValue value;
+
+  ASSERT_TRUE(iter.HasNext());
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ("row1_c_t1", value.string_value());
+
+  ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+  ASSERT_TRUE(value.IsNull());
+
+  ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+  ASSERT_TRUE(value.IsNull());
+
+  ASSERT_TRUE(iter.HasNext());
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ("row2_c_t1", value.string_value());
+
+  ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+  ASSERT_TRUE(value.IsNull());
+
+  ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+  ASSERT_TRUE(value.IsNull());
+
+  ASSERT_FALSE(iter.HasNext());
+}
+
 }  // namespace docdb
 }  // namespace yb
