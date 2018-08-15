@@ -444,9 +444,13 @@ Result<Slice> IntentAwareIterator::FetchKey(DocHybridTime* doc_ht) {
 
 Slice IntentAwareIterator::value() {
   if (IsEntryRegular()) {
+    VLOG(4) << "IntentAwareIterator::value() returning iter_->value(): "
+            << iter_->value().ToDebugHexString();
     return iter_->value();
   } else {
     DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);
+    VLOG(4) << "IntentAwareIterator::value() returning resolved_intent_value_: "
+            << resolved_intent_value_.AsSlice().ToDebugHexString();
     return resolved_intent_value_;
   }
 }
@@ -485,6 +489,11 @@ void IntentAwareIterator::ProcessIntent() {
     }
     if (decode_result->same_transaction) {
       intent_dht_from_same_txn_ = decode_result->value_time;
+      // We set resolved_intent_txn_dht_ to maximum possible time (time higher than read_time_.read
+      // will cause read restart or will be ignored if higher than read_time_.global_limit) in
+      // order to ignore intents/values from other transactions. But we save origin intent time into
+      // intent_dht_from_same_txn_, so we can compare time of intents for the same key from the same
+      // transaction and select the latest one.
       resolved_intent_txn_dht_ = DocHybridTime(read_time_.read, kMaxWriteId);
     } else {
       resolved_intent_txn_dht_ = decode_result->value_time;
@@ -518,6 +527,7 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
   DOCDB_DEBUG_SCOPE_LOG("", std::bind(&IntentAwareIterator::DebugDump, this));
   resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_ = DocHybridTime::kMin;
+  intent_dht_from_same_txn_ = DocHybridTime::kMin;
   auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
 
   // Find latest suitable intent for the first SubDocKey having suitable intents.
