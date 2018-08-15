@@ -44,7 +44,8 @@ export default class AZSelectorTable extends Component {
       });
     }
     currentTemplate.userAZSelected = true;
-    currentTemplate.currentClusterType = clusterType;
+    currentTemplate.currentClusterType = clusterType.toUpperCase();
+    currentTemplate.clusterOperation = 'EDIT';
     this.props.submitConfigureUniverse(currentTemplate);
   };
 
@@ -98,7 +99,7 @@ export default class AZSelectorTable extends Component {
     const cluster = clusterType === "primary"
                     ? getPrimaryCluster(universeConfigTemplate.clusters)
                     : getReadOnlyCluster(universeConfigTemplate.clusters);
-    
+
     if ((currentProvider.code !== "onprem" || totalNodesInConfig <= maxNumNodes) &&
         totalNodesInConfig >= minNumNodes && isNonEmptyObject(cluster)) {
       const newPlacementInfo = _.clone(cluster.placementInfo, true);
@@ -144,11 +145,13 @@ export default class AZSelectorTable extends Component {
         });
       }
       if (isEmptyObject(currentUniverse.data)) {
-        newTaskParams.currentClusterType = clusterType;
+        newTaskParams.currentClusterType = clusterType.toUpperCase();
+        newTaskParams.clusterOperation = "CREATE";
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
-        newTaskParams.currentClusterType = clusterType;
+        newTaskParams.currentClusterType = clusterType.toUpperCase();
+        newTaskParams.clusterOperation = "EDIT";
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
