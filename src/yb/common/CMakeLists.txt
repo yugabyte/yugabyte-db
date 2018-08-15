@@ -149,6 +149,11 @@ ADD_YB_LIBRARY(yb_common
   DEPS ${COMMON_LIBS})
 add_dependencies(yb_common yb_bfql yb_bfpg)
 
+add_library(yb_common_test_util
+            transaction-test-util.cc)
+target_link_libraries(yb_common_test_util
+                      yb_common)
+
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)

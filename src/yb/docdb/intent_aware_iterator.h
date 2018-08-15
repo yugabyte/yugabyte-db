@@ -35,6 +35,7 @@ class Value;
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
+YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
 
 // Caches transaction statuses fetched by single IntentAwareIterator.
 // Thread safety is not required, because IntentAwareIterator is used in a single thread only.
@@ -209,6 +210,8 @@ class IntentAwareIterator {
   // beyond the current regular key unnecessarily.
   CHECKED_STATUS SetIntentUpperbound();
 
+  void SeekIntentIterIfNeeded();
+
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
   const string encoded_read_time_global_limit_;
@@ -241,6 +244,7 @@ class IntentAwareIterator {
 
   bool skip_future_records_needed_ = false;
   bool skip_future_intents_needed_ = false;
+  SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBytes seek_key_buffer_;

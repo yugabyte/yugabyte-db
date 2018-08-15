@@ -425,6 +425,8 @@ std::string DocDBDebugDumpToStr(
     rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
+std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
