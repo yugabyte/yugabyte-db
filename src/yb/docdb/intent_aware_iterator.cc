@@ -260,12 +260,8 @@ void IntentAwareIterator::Seek(const Slice& key) {
   ROCKSDB_SEEK(iter_.get(), key);
   skip_future_records_needed_ = true;
   if (intent_iter_) {
-    status_ = SetIntentUpperbound();
-    if (!status_.ok()) {
-      return;
-    }
-    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key));
-    SeekForwardToSuitableIntent();
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeek;
+    GetIntentPrefixForKeyWithoutHt(key, &seek_key_buffer_);
   }
 }
 
@@ -292,12 +288,8 @@ void IntentAwareIterator::SeekForward(KeyBytes* key_bytes) {
   SeekForwardRegular(*key_bytes);
   key_bytes->Truncate(key_size);
   if (intent_iter_ && status_.ok()) {
-    status_ = SetIntentUpperbound();
-    if (!status_.ok()) {
-      return;
-    }
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeekForward;
     GetIntentPrefixForKeyWithoutHt(*key_bytes, &seek_key_buffer_);
-    SeekForwardToSuitableIntent(seek_key_buffer_);
   }
 }
 
@@ -310,14 +302,10 @@ void IntentAwareIterator::SeekPastSubKey(const Slice& key) {
   docdb::SeekPastSubKey(key, iter_.get());
   skip_future_records_needed_ = true;
   if (intent_iter_ && status_.ok()) {
-    status_ = SetIntentUpperbound();
-    if (!status_.ok()) {
-      return;
-    }
-    KeyBytes intent_prefix = GetIntentPrefixForKeyWithoutHt(key);
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeekForward;
+    GetIntentPrefixForKeyWithoutHt(key, &seek_key_buffer_);
     // Skip all intents for subdoc_key.
-    intent_prefix.mutable_data()->push_back(ValueTypeAsChar::kIntentType + 1);
-    SeekForwardToSuitableIntent(intent_prefix);
+    seek_key_buffer_.mutable_data()->push_back(ValueTypeAsChar::kIntentType + 1);
   }
 }
 
@@ -329,14 +317,10 @@ void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
 
   docdb::SeekOutOfSubKey(key_bytes, iter_.get());
   if (intent_iter_ && status_.ok()) {
-    status_ = SetIntentUpperbound();
-    if (!status_.ok()) {
-      return;
-    }
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeekForward;
     GetIntentPrefixForKeyWithoutHt(*key_bytes, &seek_key_buffer_);
     // See comment for SubDocKey::AdvanceOutOfSubDoc.
     seek_key_buffer_.AppendValueType(ValueType::kMaxByte);
-    SeekForwardToSuitableIntent(seek_key_buffer_);
   }
 }
 
@@ -350,12 +334,9 @@ void IntentAwareIterator::SeekOutOfSubDoc(const Slice& key) {
 }
 
 void IntentAwareIterator::SeekToLastDocKey() {
-  if (intent_iter_) {
-    // TODO (dtxn): Implement SeekToLast when inten intents are present. Since part of the
-    // is made of intents, we may have to avoid that. This is needed when distributed txns are fully
-    // supported. See ENG-3376.
-    return;
-  }
+  // TODO (dtxn): Implement SeekToLast when intents are present. Since part of the
+  // is made of intents, we may have to avoid that. This is needed when distributed txns are fully
+  // supported. See ENG-3376.
   iter_->SeekToLast();
   SkipFutureRecords(Direction::kBackward);
   if (!iter_valid_) {
@@ -396,11 +377,36 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
   Seek(prev_key);
 }
 
+void IntentAwareIterator::SeekIntentIterIfNeeded() {
+  if (seek_intent_iter_needed_ == SeekIntentIterNeeded::kNoNeed || !status_.ok()) {
+    return;
+  }
+  status_ = SetIntentUpperbound();
+  if (!status_.ok()) {
+    return;
+  }
+  switch (seek_intent_iter_needed_) {
+    case SeekIntentIterNeeded::kNoNeed:
+      break;
+    case SeekIntentIterNeeded::kSeek:
+      ROCKSDB_SEEK(intent_iter_.get(), seek_key_buffer_);
+      SeekForwardToSuitableIntent();
+      seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
+      return;
+    case SeekIntentIterNeeded::kSeekForward:
+      SeekForwardToSuitableIntent(seek_key_buffer_);
+      seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(SeekIntentIterNeeded, seek_intent_iter_needed_);
+}
+
 bool IntentAwareIterator::valid() {
   if (skip_future_records_needed_) {
     SkipFutureRecords(Direction::kForward);
     skip_future_records_needed_ = false;
   }
+  SeekIntentIterIfNeeded();
   if (skip_future_intents_needed_) {
     SkipFutureIntents();
     skip_future_intents_needed_ = false;
@@ -600,6 +606,10 @@ Status IntentAwareIterator::FindLastWriteTime(
   DCHECK(!DebugHasHybridTime(key_without_ht));
 
   RETURN_NOT_OK(status_);
+
+  if (!valid()) {
+    return Status::OK();
+  }
 
   bool found_later_intent_result = false;
   if (intent_iter_) {
