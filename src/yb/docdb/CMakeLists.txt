@@ -79,7 +79,7 @@ target_link_libraries(yb_docdb_test_common
                       yb_docdb
                       yb_test_util)
 
-set(YB_TEST_LINK_LIBS yb_docdb_test_common ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)

@@ -18,6 +18,7 @@
 #include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -95,9 +96,11 @@ class DocOperationTest : public DocDBTestBase {
 
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
-               const HybridTime& hybrid_time = HybridTime::kMax) {
+               const HybridTime& hybrid_time = HybridTime::kMax,
+               const TransactionOperationContextOpt& txn_op_context =
+                   kNonTransactionalOperationContext) {
     QLWriteOperation ql_write_op(schema, IndexMap(), nullptr /* unique_index_key_schema */,
-                                 kNonTransactionalOperationContext);
+                                 txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     ASSERT_OK(ql_write_op.Apply(
@@ -168,7 +171,9 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
-                const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time) {
+                  const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
+                  const TransactionOperationContextOpt& txn_op_content =
+                      kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb;
     yb::QLResponsePB ql_writeresp_pb;
     ql_writereq_pb.set_type(stmt_type);
@@ -188,7 +193,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     ql_writereq_pb.set_ttl(ttl);
 
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time);
+    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
@@ -584,165 +589,257 @@ std::pair<It, It> GetIteratorRange(const It begin, const It end, const It it, QL
   }
 }
 
-class DocOperationRangeFilterTest : public DocOperationTest {
- public:
-  void TestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan = true);
- private:
-  void TestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan,
-      size_t num_rows_per_key);
+} // namespace
+
+class DocOperationScanTest : public DocOperationTest {
+ protected:
+  DocOperationScanTest() {
+    Seed(&rng_);
+  }
+
+  void InitSchema(ColumnSchema::SortingType range_column_sorting) {
+    range_column_sorting_type_ = range_column_sorting;
+    ColumnSchema hash_column("k", INT32, false, true);
+    ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
+    ColumnSchema value_column("v", INT32, false, false);
+    auto columns = { hash_column, range_column, value_column };
+    schema_ = Schema(columns, CreateColumnIds(columns.size()), 2);
+  }
+
+  void InsertRows(const size_t num_rows_per_key,
+      TransactionStatusManagerMock* txn_status_manager = nullptr) {
+    ResetCurrentTransactionId();
+    ASSERT_OK(DisableCompactions());
+
+    std::unordered_set<int32_t> used_ints;
+    h_key_ = NewInt(&rng_, &used_ints);
+    rows_.clear();
+    for (int32_t i = 0; i != kNumKeys; ++i) {
+      int32_t r_key = NewInt(&rng_, &used_ints);
+      for (int32_t j = 0; j < num_rows_per_key; ++j) {
+        RowData row_data = {h_key_, r_key, NewInt(&rng_, &used_ints)};
+        auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
+            NewInt(&rng_, &used_ints, kMinTime, kMaxTime), 0);
+        RowDataWithHt row = {row_data, ht};
+        rows_.push_back(row);
+
+        std::unique_ptr<TransactionOperationContext> txn_op_context;
+        boost::optional<TransactionId> txn_id;
+        if (txn_status_manager) {
+          if (RandomActWithProbability(0.5, &rng_)) {
+            txn_id = GenerateTransactionId();
+            SetCurrentTransactionId(*txn_id);
+            txn_op_context = std::make_unique<TransactionOperationContext>(*txn_id,
+                txn_status_manager);
+          } else {
+            ResetCurrentTransactionId();
+          }
+        }
+        WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
+                   schema_,
+                   { row_data.k, row_data.r, row_data.v },
+                   1000,
+                   ht,
+                   txn_op_context ? *txn_op_context : kNonTransactionalOperationContext);
+        if (txn_id) {
+          txn_status_manager->Commit(*txn_id, ht);
+        }
+      }
+
+      ASSERT_OK(FlushRocksDbAndWait());
+    }
+    LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
+  }
+
+  void PerformScans(const bool is_forward_scan,
+      const TransactionOperationContextOpt& txn_op_context,
+      boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
+    std::vector <PrimitiveValue> hashed_components = {PrimitiveValue::Int32(h_key_)};
+    std::vector <QLOperator> operators = {
+        QL_OP_EQUAL,
+        QL_OP_LESS_THAN_EQUAL,
+        QL_OP_GREATER_THAN_EQUAL,
+    };
+
+    std::shuffle(rows_.begin(), rows_.end(), rng_);
+    auto ordered_rows = rows_;
+    std::sort(ordered_rows.begin(), ordered_rows.end());
+
+    for (const auto op : operators) {
+      LOG(INFO) << "Testing: " << QLOperator_Name(op);
+      for (const auto& row : rows_) {
+        QLConditionPB condition;
+        condition.add_operands()->set_column_id(1_ColId);
+        condition.set_op(op);
+        condition.add_operands()->mutable_value()->set_int32_value(row.data.r);
+        auto it = std::lower_bound(ordered_rows.begin(), ordered_rows.end(), row);
+        LOG(INFO) << "Bound: " << yb::ToString(*it);
+        const auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
+        std::vector <int32_t> ht_diffs;
+        if (op == QL_OP_EQUAL) {
+          ht_diffs = {0};
+        } else {
+          ht_diffs = {-1, 0, 1};
+        }
+        for (auto ht_diff : ht_diffs) {
+          std::vector <RowDataWithHt> expected_rows;
+          auto read_ht = ReadHybridTime::FromMicros(row.ht.GetPhysicalValueMicros() + ht_diff);
+          LOG(INFO) << "Read time: " << read_ht;
+          size_t keys_in_range = range.first < range.second;
+          for (auto it_r = range.first; it_r < range.second;) {
+            auto it = it_r;
+            if (it_r->ht <= read_ht.read) {
+              expected_rows.emplace_back(*it_r);
+              while (it_r < range.second && IsSameKey(*it_r, *it)) {
+                ++it_r;
+              }
+            } else {
+              ++it_r;
+            }
+            if (it_r < range.second && !IsSameKey(*it_r, *it)) {
+              ++keys_in_range;
+            }
+          }
+
+          if (is_forward_scan ==
+              (range_column_sorting_type_ == ColumnSchema::SortingType::kDescending)) {
+            std::reverse(expected_rows.begin(), expected_rows.end());
+          }
+          DocQLScanSpec ql_scan_spec(
+              schema_, kFixedHashCode, kFixedHashCode, hashed_components,
+              &condition, rocksdb::kDefaultQueryId, is_forward_scan);
+          DocRowwiseIterator ql_iter(
+              schema_, schema_, txn_op_context, doc_db(), MonoTime::Max() /* deadline */, read_ht);
+          ASSERT_OK(ql_iter.Init(ql_scan_spec));
+          LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
+          it = expected_rows.begin();
+          while (ql_iter.HasNext()) {
+            QLTableRow value_map;
+            ASSERT_OK(ql_iter.NextRow(&value_map));
+            ASSERT_EQ(3, value_map.ColumnCount());
+
+            RowData fetched_row = {value_map.TestValue(0_ColId).value.int32_value(),
+                value_map.TestValue(1_ColId).value.int32_value(),
+                value_map.TestValue(2_ColId).value.int32_value()};
+            LOG(INFO) << "Fetched row: " << fetched_row;
+            ASSERT_LT(it, expected_rows.end());
+            ASSERT_EQ(fetched_row, it->data);
+            it++;
+          }
+          ASSERT_EQ(expected_rows.end(), it);
+
+          after_scan_callback(keys_in_range);
+        }
+      }
+    }
+  }
+
+  void TestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan) {
+    DoTestWithSortingType(sorting_type, is_forward_scan, 1 /* num_rows_per_key */);
+    ASSERT_OK(DestroyRocksDB());
+    ASSERT_OK(ReopenRocksDB());
+    DoTestWithSortingType(sorting_type, is_forward_scan, 5 /* num_rows_per_key */);
+  }
+
+  virtual void DoTestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan,
+      size_t num_rows_per_key) = 0;
+
+  constexpr static int32_t kNumKeys = 20;
+  constexpr static uint32_t kMinTime = 500;
+  constexpr static uint32_t kMaxTime = 1500;
+
+  std::mt19937_64 rng_;
+  ColumnSchema::SortingType range_column_sorting_type_;
+  Schema schema_;
+  int32_t h_key_;
+  std::vector<RowDataWithHt> rows_;
 };
 
-void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType schema_type,
-    bool is_forward_scan) {
-  TestWithSortingType(schema_type, is_forward_scan, 1 /* num_rows_per_key */);
-  ASSERT_OK(DestroyRocksDB());
-  ASSERT_OK(ReopenRocksDB());
-  TestWithSortingType(schema_type, is_forward_scan, 5 /* num_rows_per_key */);
-}
+class DocOperationRangeFilterTest : public DocOperationScanTest {
+ protected:
+  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+      size_t num_rows_per_key) override;
+};
 
-  // Currently we test using one column and one scan type.
+// Currently we test using one column and one scan type.
 // TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
-void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType schema_type,
+void DocOperationRangeFilterTest::DoTestWithSortingType(ColumnSchema::SortingType sorting_type,
     const bool is_forward_scan, const size_t num_rows_per_key) {
   ASSERT_OK(DisableCompactions());
 
-  ColumnSchema hash_column("k", INT32, false, true);
-  ColumnSchema range_column("r", INT32, false, false, false, false, 1, schema_type);
-  ColumnSchema value_column("v", INT32, false, false);
-  auto columns = { hash_column, range_column, value_column };
-  Schema schema(columns, CreateColumnIds(columns.size()), 2);
+  InitSchema(sorting_type);
+  InsertRows(num_rows_per_key);
 
-  constexpr uint32_t kMinTime = 500;
-  constexpr uint32_t kMaxTime = 1500;
-  constexpr int32_t kNumKeys = 20;
-
-  std::mt19937_64 rng;
-  Seed(&rng);
-  std::unordered_set<int32_t> used_ints;
-  int32_t h_key = NewInt(&rng, &used_ints);
-  std::vector<RowDataWithHt> rows;
-  for (int32_t i = 0; i != kNumKeys; ++i) {
-    int32_t r_key = NewInt(&rng, &used_ints);
-    for (int32_t j = 0; j < num_rows_per_key; ++j) {
-      RowData row_data = {h_key, r_key, NewInt(&rng, &used_ints)};
-      auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
-          NewInt(&rng, &used_ints, kMinTime, kMaxTime), 0);
-      RowDataWithHt row = {row_data, ht};
-      rows.push_back(row);
-      WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
-                  schema,
-                  { row_data.k, row_data.r, row_data.v },
-                  1000,
-                  ht);
-    }
-
-    ASSERT_OK(FlushRocksDbAndWait());
+  {
+    std::vector<rocksdb::LiveFileMetaData> live_files;
+    rocksdb()->GetLiveFilesMetaData(&live_files);
+    const auto expected_live_files = kNumKeys;
+    ASSERT_EQ(expected_live_files, live_files.size());
   }
-  std::vector<rocksdb::LiveFileMetaData> live_files;
-  rocksdb()->GetLiveFilesMetaData(&live_files);
-  ASSERT_EQ(kNumKeys, live_files.size());
-
-  std::shuffle(rows.begin(), rows.end(), rng);
-  auto ordered_rows = rows;
-  std::sort(ordered_rows.begin(), ordered_rows.end());
-
-  LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
-
-  std::vector<QLOperator> operators = {
-    QL_OP_EQUAL,
-    QL_OP_LESS_THAN_EQUAL,
-    QL_OP_GREATER_THAN_EQUAL,
-  };
 
   auto old_iterators =
       rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
-  for (const auto op : operators) {
-    LOG(INFO) << "Testing: " << QLOperator_Name(op);
-    for (const auto& row : rows) {
-      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue::Int32(h_key) };
-      QLConditionPB condition;
-      condition.add_operands()->set_column_id(1_ColId);
-      condition.set_op(op);
-      condition.add_operands()->mutable_value()->set_int32_value(row.data.r);
-      auto it = std::lower_bound(ordered_rows.begin(), ordered_rows.end(), row);
-      LOG(INFO) << "Bound: " << yb::ToString(*it);
-      const auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
-      std::vector<int32_t> ht_diffs;
-      if (op == QL_OP_EQUAL) {
-        ht_diffs = {0};
-      } else {
-        ht_diffs = {-1, 0, 1};
-      }
-      for (auto ht_diff : ht_diffs) {
-        std::vector<RowDataWithHt> expected_rows;
-        auto read_ht = ReadHybridTime::FromMicros(row.ht.GetPhysicalValueMicros() + ht_diff);
-        LOG(INFO) << "Read time: " << read_ht;
-        size_t keys_in_range = range.first < range.second;
-        for (auto it_r = range.first; it_r < range.second;) {
-          auto it = it_r;
-          if (it_r->ht <= read_ht.read) {
-            expected_rows.emplace_back(*it_r);
-            while (it_r < range.second && IsSameKey(*it_r, *it)) {
-              ++it_r;
-            }
-          } else {
-            ++it_r;
-          }
-          if (it_r < range.second && !IsSameKey(*it_r, *it)) {
-            ++keys_in_range;
-          }
-        }
 
-        if (is_forward_scan == (schema_type == ColumnSchema::SortingType::kDescending)) {
-          std::reverse(expected_rows.begin(), expected_rows.end());
-        }
-        DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
-                                   &condition, rocksdb::kDefaultQueryId, is_forward_scan);
-        DocRowwiseIterator ql_iter(
-            schema, schema, boost::none, doc_db(), MonoTime::Max() /* deadline */, read_ht);
-        ASSERT_OK(ql_iter.Init(ql_scan_spec));
-        LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
-        it = expected_rows.begin();
-        while(ql_iter.HasNext()) {
-          QLTableRow value_map;
-          ASSERT_OK(ql_iter.NextRow(&value_map));
-          ASSERT_EQ(3, value_map.ColumnCount());
-
-          RowData fetched_row = { value_map.TestValue(0_ColId).value.int32_value(),
-                                  value_map.TestValue(1_ColId).value.int32_value(),
-                                  value_map.TestValue(2_ColId).value.int32_value() };
-          LOG(INFO) << "Fetched row: " << fetched_row;
-          ASSERT_EQ(fetched_row, it->data);
-          it++;
-        }
-        ASSERT_EQ(expected_rows.end(), it);
-        auto new_iterators =
-            rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
-
-        ASSERT_EQ(keys_in_range, new_iterators - old_iterators);
-        old_iterators = new_iterators;
-      }
-    }
-  }
+  PerformScans(is_forward_scan, kNonTransactionalOperationContext,
+      [this, &old_iterators](const size_t key_in_scan_range) {
+    auto new_iterators =
+        rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+    ASSERT_EQ(key_in_scan_range, new_iterators - old_iterators);
+    old_iterators = new_iterators;
+  });
 }
 
-} // namespace
-
-TEST_F_EX(DocOperationTest, QLRangeFilterAscending, DocOperationRangeFilterTest) {
+TEST_F_EX(DocOperationTest, QLRangeFilterAscendingForwardScan, DocOperationRangeFilterTest) {
   TestWithSortingType(ColumnSchema::kAscending, true);
 }
 
-TEST_F_EX(DocOperationTest, QLRangeFilterDescending, DocOperationRangeFilterTest) {
+TEST_F_EX(DocOperationTest, QLRangeFilterDescendingForwardScan, DocOperationRangeFilterTest) {
   TestWithSortingType(ColumnSchema::kDescending, true);
 }
 
-TEST_F_EX(DocOperationTest, TestQLAscDescScan, DocOperationRangeFilterTest) {
+TEST_F_EX(DocOperationTest, QLRangeFilterAscendingReverseScan, DocOperationRangeFilterTest) {
   TestWithSortingType(ColumnSchema::kAscending, false);
 }
 
-TEST_F_EX(DocOperationTest, TestQLDescAscScan, DocOperationRangeFilterTest) {
+TEST_F_EX(DocOperationTest, QLRangeFilterDescendingReverseScan, DocOperationRangeFilterTest) {
   TestWithSortingType(ColumnSchema::kDescending, false);
 }
+
+class DocOperationTxnScanTest : public DocOperationScanTest {
+ protected:
+  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+      size_t num_rows_per_key) override {
+    ASSERT_OK(DisableCompactions());
+
+    InitSchema(sorting_type);
+
+    TransactionStatusManagerMock txn_status_manager;
+    SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+    InsertRows(num_rows_per_key, &txn_status_manager);
+
+    PerformScans(is_forward_scan,
+                 TransactionOperationContext(GenerateTransactionId(), &txn_status_manager),
+                 [](size_t){});
+  }
+};
+
+TEST_F_EX(DocOperationTest, QLTxnAscendingForwardScan, DocOperationTxnScanTest) {
+  TestWithSortingType(ColumnSchema::kAscending, true);
+}
+
+TEST_F_EX(DocOperationTest, QLTxnDescendingForwardScan, DocOperationTxnScanTest) {
+  TestWithSortingType(ColumnSchema::kDescending, true);
+}
+
+// TODO - enable these tests after ENG-3376 is implemented.
+// TEST_F_EX(DocOperationTest, QLTxnAscendingReverseScan, DocOperationTxnScanTest) {
+//   TestWithSortingType(ColumnSchema::kAscending, false);
+// }
+//
+// TEST_F_EX(DocOperationTest, QLTxnDescendingReverseScan, DocOperationTxnScanTest) {
+//   TestWithSortingType(ColumnSchema::kDescending, false);
+// }
 
 TEST_F(DocOperationTest, TestQLCompactions) {
   yb::QLWriteRequestPB ql_writereq_pb;

@@ -14,6 +14,8 @@
 #include <memory>
 #include <string>
 
+#include "yb/common/transaction-test-util.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_base.h"
@@ -625,51 +627,6 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     ASSERT_FALSE(iter.HasNext());
   }
 }
-
-namespace {
-
-class TransactionStatusManagerMock : public TransactionStatusManager {
- public:
-  HybridTime LocalCommitTime(const TransactionId &id) override {
-    return HybridTime::kInvalid;
-  }
-
-  void RequestStatusAt(const StatusRequest& request) override {
-    auto it = txn_commit_time_.find(*request.id);
-    if (it == txn_commit_time_.end()) {
-      request.callback(STATUS_FORMAT(TryAgain, "Unknown transaction id: $0", *request.id));
-    } else {
-      if (request.read_ht >= it->second) {
-        request.callback(TransactionStatusResult{TransactionStatus::COMMITTED, it->second});
-      } else {
-        request.callback(TransactionStatusResult{TransactionStatus::PENDING, HybridTime::kMin});
-      }
-    }
-  }
-
-  void Commit(const TransactionId& txn_id, HybridTime commit_time) {
-    txn_commit_time_.emplace(txn_id, commit_time);
-  }
-
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
-    return boost::none;
-  }
-
-  void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
-  }
-
-  int64_t RegisterRequest() override {
-    return 0;
-  }
-
-  void UnregisterRequest(int64_t) override {
-  }
-
- private:
-  std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
-};
-
-} // namespace
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
