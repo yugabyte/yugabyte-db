@@ -387,8 +387,8 @@ public class PlacementInfoUtil {
     LOG.info("Placement={}, numNodes={}, AZ={}.", cluster.placementInfo,
              taskParams.nodeDetailsSet.size(), taskParams.userAZSelected);
 
-    // If user AZ Selection is made for Edit get a new configuration from placement info
-    if (taskParams.userAZSelected) {
+    // If user AZ Selection is made for Edit get a new configuration from placement info.
+    if (taskParams.userAZSelected && universe != null) {
       mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
       configureNodeStates(taskParams, universe, mode, cluster);
       return;
@@ -443,13 +443,13 @@ public class PlacementInfoUtil {
 
     // If RF is not compatible with number of placement zones, reset the placement during create.
     // For ex., when RF goes from 3/5/7 to 1, we want to show only one zone. When RF goes from 1
-    // to 5, we will show MAX zones.
+    // to 5, we will show existing zones. ResetConfig can be used to change zone count.
     boolean mode_changed = false;
     if (clusterOpType.equals(ClusterOperationType.CREATE)) {
       int numZones = getAzUuidToNumNodes(taskParams.getNodesInCluster(cluster.uuid)).size();
       int rf = cluster.userIntent.replicationFactor;
       LOG.info("Replication factor={} while zones={}.", rf, numZones);
-      if ((rf < numZones) || (rf >= MAX_ZONES && numZones < MAX_ZONES)) {
+      if (rf < numZones) {
         cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
         int numNewZones = getNumZones(cluster.placementInfo);
         LOG.info("New placement has {} zones.", numNewZones);

@@ -45,7 +45,11 @@ export default class AZSelectorTable extends Component {
     }
     currentTemplate.userAZSelected = true;
     currentTemplate.currentClusterType = clusterType.toUpperCase();
-    currentTemplate.clusterOperation = 'EDIT';
+    if (isEmptyObject(this.props.universe.currentUniverse.data)) {
+      currentTemplate.clusterOperation = 'CREATE';
+    } else {
+      currentTemplate.clusterOperation = 'EDIT';
+    }
     this.props.submitConfigureUniverse(currentTemplate);
   };
 
