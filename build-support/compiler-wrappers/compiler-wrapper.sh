@@ -451,8 +451,14 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
-  # Enable reusing cache entries from builds in different directories.
-  export CCACHE_NOHASHDIR=1
+  if is_jenkins; then
+    # Enable reusing cache entries from builds in different directories, potentially with incorrect
+    # file paths in debug information. This is OK for Jenkins because we probably won't be running
+    # these builds in the debugger.
+    export CCACHE_NOHASHDIR=1
+  fi
+  # Ensure CCACHE puts temporary files on the local disk.
+  export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp}
   jenkins_ccache_dir=/n/jenkins/ccache
   if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs && is_running_on_gcp
   then
