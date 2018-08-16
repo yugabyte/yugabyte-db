@@ -12,10 +12,13 @@
 //
 package org.yb.cql;
 
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 
 import org.junit.Test;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -124,5 +127,36 @@ public class TestPagingSelect extends BaseCQLTest {
                                  "r1", TOTAL_ROWS);
     assertIncompleteRangeColumns("SELECT r1 FROM test_paging WHERE h = 0 AND r1 <= 10;",
                                  "r1", TOTAL_ROWS);
+  }
+
+  @Test
+  public void testMultiPartitionSelect() throws Exception {
+    session.execute("CREATE TABLE test_in_paging (h1 int, h2 int, r int, v int, " +
+                        "PRIMARY KEY ((h1, h2), r));");
+    PreparedStatement pstmt = session.prepare("INSERT INTO test_in_paging (h1, h2, r, v) " +
+                                                  "VALUES (?, ?, ?, 0);");
+    BatchStatement batch = new BatchStatement();
+    for (Integer h1 = 0; h1 < 30; h1++) {
+      for (Integer h2 = 0; h2 < 30; h2++) {
+        for (Integer r = 0; r < 5; r++) {
+          batch.add(pstmt.bind(h1, h2, r));
+        }
+      }
+    }
+    session.execute(batch);
+
+    SimpleStatement stmt = new SimpleStatement("SELECT * FROM test_in_paging " +
+                                                   "WHERE h1 IN (4,3) AND h2 = 1 " +
+                                                   "AND r >= 2 and r <= 8");
+    stmt.setFetchSize(4);
+    Set<String> expectedRows = new HashSet<>();
+    String rowTemplate = "Row[%d, 1, %d, 0]";
+    for (int h1 = 3; h1 <= 4; h1++) {
+      for (int r = 2; r < 5; r++) {
+        expectedRows.add(String.format(rowTemplate, h1, r));
+      }
+    }
+    assertQuery(stmt, expectedRows);
+
   }
 }
