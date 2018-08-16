@@ -65,7 +65,7 @@ export default class TableDetail extends Component {
       tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>;
     }
     let tableMetricsContent = <span/>;
-    if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentTableDetail)) {
+    if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentTableDetail)) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
       const tableName = currentTableDetail.tableDetails.tableName;
       tableMetricsContent =
