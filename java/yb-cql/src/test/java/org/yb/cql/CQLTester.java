@@ -57,7 +57,7 @@ public class CQLTester extends BaseCQLTest
         final long startTimeMs = System.currentTimeMillis();
         session.execute(fullQuery);
         long elapsedTimeMs = System.currentTimeMillis() - startTimeMs;
-	LOG.info("After execute: {} took {}ms", fullQuery, elapsedTimeMs);
+        LOG.info("After execute: {} took {}ms", fullQuery, elapsedTimeMs);
     }
 
     protected String createTableName()
@@ -123,8 +123,8 @@ public class CQLTester extends BaseCQLTest
             return 0;
         }
 
-	ColumnDefinitions colDef = result.getColumnDefinitions();
-	List<ColumnDefinitions.Definition> meta = colDef.asList();
+        ColumnDefinitions colDef = result.getColumnDefinitions();
+        List<ColumnDefinitions.Definition> meta = colDef.asList();
         int i = 0;
         for (Row actual : result)
         {
@@ -158,22 +158,22 @@ public class CQLTester extends BaseCQLTest
             for (int j = 0; j < meta.size(); j++)
             {
                 ColumnDefinitions.Definition column = meta.get(j);
-		DataType.Name type = column.getType().getName();
-		switch (type) {
-		    case INT:
-			assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
-		        LOG.info("Row[{}, {}] = {}", i, j, actual.getInt(j));
-		        break;
+                DataType.Name type = column.getType().getName();
+                switch (type) {
+                    case INT:
+                        assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
+                        LOG.info("Row[{}, {}] = {}", i, j, actual.getInt(j));
+                        break;
 
-		    case VARCHAR:
-		    case TEXT:
-			assertEquals((String)expected[j], actual.getString(j));
-		        LOG.info("Row[{}, {}] = {}", i, j, actual.getString(j));
-		        break;
+                    case VARCHAR:
+                    case TEXT:
+                        assertEquals((String)expected[j], actual.getString(j));
+                        LOG.info("Row[{}, {}] = {}", i, j, actual.getString(j));
+                        break;
 
-		    default:
-		        fail(String.format("Expect INT or VARCHAR or TEXT type but got: %s", type.toString()));
-		        break;
+                    default:
+                        fail(String.format("Expect INT or VARCHAR or TEXT type but got: %s", type.toString()));
+                        break;
 		}
             }
             i++;
