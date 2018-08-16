@@ -31,7 +31,6 @@ import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +45,6 @@ import org.yb.minicluster.RocksDBMetrics;
 import org.yb.util.ServerInfo;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -491,8 +489,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   protected void assertQuery(String stmt, Set<String> expectedRows) {
+    assertQuery(new SimpleStatement(stmt), expectedRows);
+  }
+
+  protected void assertQuery(Statement stmt, Set<String> expectedRows) {
     ResultSet rs = session.execute(stmt);
-    HashSet<String> actualRows = new HashSet<String>();
+    HashSet<String> actualRows = new HashSet<>();
     for (Row row : rs) {
       actualRows.add(row.toString());
     }
