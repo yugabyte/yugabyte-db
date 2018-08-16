@@ -753,7 +753,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
-  // start partition here, and then iteratively scan the rest in FetchMoreRowsIfNeeded.
+  // start partition here, and then iteratively scan the rest in FetchMoreRows.
   // Otherwise, the request will already have the right hashed column values set.
   TnodeContext& tnode_context = exec_context_->tnode_context();
   if (tnode_context.UnreadPartitionsRemaining() > 0) {
@@ -785,7 +785,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
                                      TnodeContext* tnode_context,
                                      ExecContext* exec_context) {
   if (result_ == nullptr) {
-    return false;
+    return STATUS(InternalError, "Missing result for SELECT operation");
   }
 
   // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
@@ -842,6 +842,11 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       return false;
     }
 
+    // Sanity check that if we finished a partition the next partition/row key are empty.
+    // Otherwise we could start scanning the next partition from the wrong place.
+    DCHECK(current_params.next_partition_key().empty());
+    DCHECK(current_params.next_row_key().empty());
+
     // Otherwise, we continue to the next partition.
     tnode_context->AdvanceToNextPartition(op->mutable_request());
   }
@@ -849,15 +854,22 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   // If we reached the fetch limit (min of paging state and limit clause) we are done.
   if (current_fetch_row_count >= fetch_limit) {
 
-    // If we reached the paging limit at the end of the previous partition for a multi-partition
-    // select the next fetch should continue directly from the current partition.
-    // We create a paging state here so that we can resume from the right partition.
-    if (finished_current_read_partition && op->request().return_paging_state()) {
+    // If we need to return a paging state to the user, we create it here so that we can resume from
+    // the exact place where we left off: partition index and primary key within that partition.
+    if (op->request().return_paging_state()) {
       QLPagingStatePB paging_state;
       paging_state.set_total_num_rows_read(total_row_count);
       paging_state.set_total_rows_skipped(total_rows_skipped);
       paging_state.set_table_id(tnode->table()->id());
+
+      // Set the partition to resume from. Relevant for multi-partition selects, i.e. with IN
+      // condition on the partition columns.
       paging_state.set_next_partition_index(tnode_context->current_partition_index());
+
+      // Within a partition, set the exact primary key to resume from (if any).
+      paging_state.set_next_partition_key(current_params.next_partition_key());
+      paging_state.set_next_row_key(current_params.next_row_key());
+
       current_result->set_paging_state(paging_state);
     }
 
