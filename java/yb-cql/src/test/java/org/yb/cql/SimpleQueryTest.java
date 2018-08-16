@@ -30,8 +30,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 2, "v12");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 3, "v13");
 
-        // flush();
-
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 4, "v14");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key", 5, "v15");
 
@@ -83,8 +81,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, v1, v2) values (?, ?, ?)", "second", 2, "value2");
         execute("INSERT INTO %s (k, v1, v2) values (?, ?, ?)", "third", 3, "value3");
 
-        // flush();
-
         assertRows(execute("SELECT * FROM %s WHERE k = ?", "first"),
             row("first", 1, "value1")
         );
@@ -108,8 +104,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 1, "v11", "v21");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 2, "v12", "v22");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 3, "v13", "v23");
-
-        // flush();
 
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 4, "v14", "v24");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 5, "v15", "v25");
@@ -161,8 +155,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 1, "v11", "v21");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 2, "v12", "v22");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 3, "v13", "v23");
-
-        // flush();
 
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 4, "v14", "v24");
         execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", 5, "v15", "v25");
@@ -224,7 +216,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t1, t2, v) values (?, ?, ?, ?)", "key", "v2", 1, "v3");
         execute("INSERT INTO %s (k, t1, t2, v) values (?, ?, ?, ?)", "key", "v2", 2, "v4");
         execute("INSERT INTO %s (k, t1, t2, v) values (?, ?, ?, ?)", "key", "v2", 3, "v5");
-        // flush();
 
         assertRows(execute("SELECT * FROM %s"),
             row("key",  "v1", 1, "v1"),
@@ -256,8 +247,6 @@ public class SimpleQueryTest extends CQLTester
             for (int t2 = 0; t2 < 10; t2++)
                 execute("INSERT INTO %s (k, t1, t2, v) values (?, ?, ?, ?)", "key", t1, t2, "someSemiLargeTextForValue_" + t1 + "_" + t2);
 
-        // flush();
-
         Object[][] expected = new Object[10][];
         for (int t2 = 0; t2 < 10; t2++)
             expected[t2] = row("key", 15, t2);
@@ -280,8 +269,6 @@ public class SimpleQueryTest extends CQLTester
 
         for (int t = 0; t < N; t++)
             execute("INSERT INTO %s (k, t, v1, v2) values (?, ?, ?, ?)", "key", t, "v" + t, t + 10);
-
-        // flush();
 
         for (int i = 0; i < N / 2; i++)
             execute("DELETE FROM %s WHERE k=? AND t=?", "key", i * 2);
@@ -307,11 +294,7 @@ public class SimpleQueryTest extends CQLTester
             for (int t2 = 0; t2 < N; t2++)
                 execute("INSERT INTO %s (k, t1, t2, v) values (?, ?, ?, ?)", "key", t1, t2, "someSemiLargeTextForValue_" + t1 + "_" + t2);
 
-        // flush();
-
         execute("DELETE FROM %s WHERE k=? AND t1=?", "key", 1);
-
-        // flush();
 
         Object[][] expected = new Object[2*N][];
         for (int t2 = 0; t2 < N; t2++)
@@ -340,8 +323,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 2, "bar");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 1, "foo");
 
-        flush();
-
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 2, "foo");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 3, "bar");
 
@@ -365,13 +346,9 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v, s) values (?, ?, ?, ?)", "key1", 1, "foo1", "st1");
         execute("INSERT INTO %s (k, t, v, s) values (?, ?, ?, ?)", "key1", 2, "foo2", "st2");
 
-        flush();
-
         execute("INSERT INTO %s (k, t, v, s) values (?, ?, ?, ?)", "key1", 3, "foo3", "st3");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 4, "foo4");
         execute("INSERT INTO %s (k, t, v, s) values (?, ?, ?, ?)", "key1", 2, "foo2", "st2-repeat");
-
-        flush();
 
         execute("INSERT INTO %s (k, t, v, s) values (?, ?, ?, ?)", "key1", 5, "foo5", "st5");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 6, "foo6");
@@ -417,8 +394,6 @@ public class SimpleQueryTest extends CQLTester
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 1, "foo1");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 2, "foo2");
 
-        flush();
-
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 3, "foo3");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 4, "foo4");
         execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 5, "foo5");
@@ -435,8 +410,6 @@ public class SimpleQueryTest extends CQLTester
         createTable("CREATE TABLE %s (k int PRIMARY KEY, s set<int>);");
 
         execute("INSERT INTO %s (k, s) VALUES (?, ?)", 1, set(1));
-
-        flush();
 
         execute("INSERT INTO %s (k, s) VALUES (?, ?)", 1, set(2));
 
@@ -497,11 +470,7 @@ public class SimpleQueryTest extends CQLTester
             row(0, 1, 0, 0)
         );
 
-        flush();
-
         execute("DELETE FROM %s WHERE k=? AND c1=?", 0, 1);
-
-        flush();
 
         assertRows(execute("SELECT * FROM %s WHERE v=?", 0),
             row(0, 0, 0, 0)
@@ -557,11 +526,9 @@ public class SimpleQueryTest extends CQLTester
 
         // sstable1
         execute("INSERT INTO %s(k1,v1,v2) VALUES(1,1,1)  USING TIMESTAMP 5");
-        flush();
 
         // sstable2
         execute("INSERT INTO %s(k1,v1,v2) VALUES(1,1,2)  USING TIMESTAMP 8");
-        flush();
 
         execute("INSERT INTO %s(k1) VALUES(1)  USING TIMESTAMP 7");
         execute("DELETE FROM %s USING TIMESTAMP 6 WHERE k1 = 1");

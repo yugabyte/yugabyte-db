@@ -27,14 +27,13 @@ import com.datastax.driver.core.DataType.Name;
 import org.junit.Test;
 import org.yb.client.TestUtils;
 
-import java.util.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
-import static org.junit.Assert.*;
 
 /**
  * Base class for CQL tests.
@@ -58,7 +57,7 @@ public class CQLTester extends BaseCQLTest
         final long startTimeMs = System.currentTimeMillis();
         session.execute(fullQuery);
         long elapsedTimeMs = System.currentTimeMillis() - startTimeMs;
-        LOG.info("After execute: " + fullQuery + " took " + elapsedTimeMs + "ms");
+	LOG.info("After execute: {} took {}ms", fullQuery, elapsedTimeMs);
     }
 
     protected String createTableName()
@@ -92,18 +91,18 @@ public class CQLTester extends BaseCQLTest
     }
 
     public ResultSet execute(String query, Object... values) throws Exception {
-      String fullQuery = formatQuery(KEYSPACE, query);
-      final ResultSet result = session.execute(fullQuery, values);
-      LOG.info("EXEC CQL FINISHED: " + fullQuery);
-      return result;
+        String fullQuery = formatQuery(KEYSPACE, query);
+        final ResultSet result = session.execute(fullQuery, values);
+        LOG.info("EXEC CQL FINISHED: {}", fullQuery);
+        return result;
     }
 
 
     public ResultSet execute(String query) throws Exception {
-      String fullQuery = formatQuery(KEYSPACE, query);
-      final ResultSet result = session.execute(fullQuery);
-      LOG.info("EXEC CQL FINISHED: " + fullQuery);
-      return result;
+        String fullQuery = formatQuery(KEYSPACE, query);
+        final ResultSet result = session.execute(fullQuery);
+        LOG.info("EXEC CQL FINISHED: {}", fullQuery);
+        return result;
     }
 
     protected void assertAllRows(Object[]... rows) throws Throwable
@@ -120,40 +119,18 @@ public class CQLTester extends BaseCQLTest
     {
         if (result == null)
         {
-	    LOG.info("Resultset has zero rows");
-	    return 0;
-	}
+            LOG.info("Resultset has zero rows");
+            return 0;
+        }
 
 	ColumnDefinitions colDef = result.getColumnDefinitions();
 	List<ColumnDefinitions.Definition> meta = colDef.asList();
-        Iterator<Row> iter = result.iterator();
-	int i = 0;
-        while (iter.hasNext())
+        int i = 0;
+        for (Row actual : result)
         {
-            Row actual = iter.next();
-            for (int j = 0; j < meta.size(); j++)
-            {
-                ColumnDefinitions.Definition column = meta.get(j);
-		DataType.Name type = column.getType().getName();
-		switch (type) {
-		  case INT:
-		    int intActual = actual.getInt(j);
-		    LOG.info("Row[" + i + ", " + j + "] = " + intActual);
-		    break;
-
-		  case VARCHAR:
-		  case TEXT:
-		    String strActual = actual.getString(j);
-		    LOG.info("Row[" + i + ", " + j + "] = " + strActual);
-		    break;
-
-		  default:
-		    fail("Expect INT or VARCHAR or TEXT type but got: " + type.toString());
-		    break;
-		}
-            }
-	    i++;
-	}
+            LOG.info("Row {} = {}", i, actual.toString());
+            i++;
+        }
 	return i;
     }
 
@@ -165,8 +142,8 @@ public class CQLTester extends BaseCQLTest
                 fail(String.format("No rows returned by query but %d expected", rows.length));
             return;
         }
-	ColumnDefinitions colDef = result.getColumnDefinitions();
-	List<ColumnDefinitions.Definition> meta = colDef.asList();
+        ColumnDefinitions colDef = result.getColumnDefinitions();
+        List<ColumnDefinitions.Definition> meta = colDef.asList();
         Iterator<Row> iter = result.iterator();
         int i = 0;
         if (!iter.hasNext() && rows.length > 0)
@@ -183,34 +160,28 @@ public class CQLTester extends BaseCQLTest
                 ColumnDefinitions.Definition column = meta.get(j);
 		DataType.Name type = column.getType().getName();
 		switch (type) {
-		  case INT:
-		    int intActual = actual.getInt(j);
-		    int intExpected = (Integer)expected[j];
-		    assertEquals(intActual, intExpected);
-		    LOG.info("Row[" + i + ", " + j + "] = " + intActual);
-		    break;
+		    case INT:
+			assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
+		        LOG.info("Row[{}, {}] = {}", i, j, actual.getInt(j));
+		        break;
 
-		  case VARCHAR:
-		  case TEXT:
-		    String strActual = actual.getString(j);
-		    String strExpected = (String)expected[j];
-		    assertEquals(strActual, strExpected);
-		    LOG.info("Row[" + i + ", " + j + "] = " + strActual);
-		    break;
+		    case VARCHAR:
+		    case TEXT:
+			assertEquals((String)expected[j], actual.getString(j));
+		        LOG.info("Row[{}, {}] = {}", i, j, actual.getString(j));
+		        break;
 
-		  default:
-		    fail("Expect INT or VARCHAR or TEXT type but got: " + type.toString());
-		    break;
+		    default:
+		        fail(String.format("Expect INT or VARCHAR or TEXT type but got: %s", type.toString()));
+		        break;
 		}
-
             }
             i++;
         }
 
         if (iter.hasNext())
-	  fail("Got more rows than expected");
+            fail("Got more rows than expected");
         if (i != rows.length)
-	  fail("Got less rows than expected");
+            fail("Got less rows than expected");
     }
-
 }
