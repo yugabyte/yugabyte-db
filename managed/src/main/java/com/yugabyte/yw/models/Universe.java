@@ -87,9 +87,12 @@ public class Universe extends Model {
   public String getDnsName() {
     Provider p = Provider.get(
         UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
+    if (p == null) {
+      return null;
+    }
     String dnsSuffix = p.getAwsHostedZoneName();
     if (dnsSuffix == null) {
-      return dnsSuffix;
+      return null;
     }
     return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
   }
