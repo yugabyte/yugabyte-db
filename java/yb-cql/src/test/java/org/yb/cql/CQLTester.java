@@ -110,9 +110,31 @@ public class CQLTester extends BaseCQLTest
         assertRows(execute("SELECT * FROM %s"), rows);
     }
 
+    protected void assertEmpty(ResultSet result) throws Throwable
+    {
+        if (result != null && !result.isExhausted())
+        {
+            List<String> rows = makeRowStrings(result);
+            throw new AssertionError(String.format("Expected empty result but got %d rows: %s \n", rows.size(), rows));
+        }
+    }
+
     public static Object[] row(Object... expected)
     {
         return expected;
+    }
+
+    protected static List<String> makeRowStrings(ResultSet resultSet)
+    {
+        List<String> rows = new ArrayList<>();
+        int i = 0;
+        for (Row row : resultSet)
+        {
+            rows.add(String.format("Row {} = {}", i, row.toString()));
+            i++;
+        }
+
+        return rows;
     }
 
     public static int displayRows(ResultSet result)
