@@ -13,9 +13,9 @@ export default class UniverseInfoPanel extends Component {
     universeInfo: PropTypes.object.isRequired
   };
 
-  renderEndpointUrl = (endpointUrl) => {
+  renderEndpointUrl = (endpointUrl, endpointName) => {
     return (
-      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">Endpoint &nbsp;
+      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">{endpointName} &nbsp;
         <i className="fa fa-external-link" aria-hidden="true"></i>
       </a>
     );
@@ -35,13 +35,12 @@ export default class UniverseInfoPanel extends Component {
     const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
     const universeInfoItems = [
       {name: "DB Version", data: userIntent.ybSoftwareVersion || 'n/a'},
-      {name: "YCQL Service", data: this.renderEndpointUrl(ycqlServiceUrl)},
-      {name: "YEDIS Service", data: this.renderEndpointUrl(yedisServiceUrl)},
+      {name: "Service endpoints", data: <span>{this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
       {name: "Universe ID", data: universeIdData},
       {name: "Launch Time", data: formattedCreationDate},
     ];
 
-    if (userIntent.providerType === "aws") {
+    if (userIntent.providerType === "aws" && universeInfo.dnsName) {
       const dnsNameData = (
         <FlexContainer>
           <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
