@@ -146,8 +146,6 @@ public class CQLTester extends BaseCQLTest
         List<ColumnDefinitions.Definition> meta = colDef.asList();
         Iterator<Row> iter = result.iterator();
         int i = 0;
-        if (!iter.hasNext() && rows.length > 0)
-	    fail(String.format("No rows returned by query but %d expected", rows.length));
         while (iter.hasNext() && i < rows.length)
         {
             Object[] expected = rows[i];
@@ -161,14 +159,14 @@ public class CQLTester extends BaseCQLTest
                 DataType.Name type = column.getType().getName();
                 switch (type) {
                     case INT:
-                        assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
                         LOG.info("Row[{}, {}] = {}", i, j, actual.getInt(j));
+                        assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
                         break;
 
                     case VARCHAR:
                     case TEXT:
-                        assertEquals((String)expected[j], actual.getString(j));
                         LOG.info("Row[{}, {}] = {}", i, j, actual.getString(j));
+                        assertEquals((String)expected[j], actual.getString(j));
                         break;
 
                     default:
@@ -180,8 +178,8 @@ public class CQLTester extends BaseCQLTest
         }
 
         if (iter.hasNext())
-            fail("Got more rows than expected");
+            fail(String.format("Query returned more than %d rows expected", rows.length));
         if (i != rows.length)
-            fail("Got less rows than expected");
+            fail(String.format("Query returned %d rows but expected %d rows", i, rows.length));
     }
 }
