@@ -21,4 +21,5 @@ set(YB_ENT_CURRENT_SOURCE_DIR
 set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   snapshot-test
   secure_connection_test
+  transaction-ent-test
   PARENT_SCOPE)
