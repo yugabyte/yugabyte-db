@@ -143,15 +143,6 @@ class QLTransactionTest : public KeyValueTableTest {
     transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
   }
 
-  shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
-    auto session = std::make_shared<YBSession>(client_);
-    if (transaction) {
-      session->SetTransaction(transaction);
-    }
-    session->SetTimeout(NonTsanVsTsan(15s, 60s));
-    return session;
-  }
-
   void WriteRows(
       const YBSessionPtr& session, size_t transaction = 0,
       const WriteOpType op_type = WriteOpType::INSERT) {
