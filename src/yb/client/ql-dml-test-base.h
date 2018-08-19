@@ -91,6 +91,8 @@ class KeyValueTableTest : public QLDmlTestBase {
   Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key,
                             const std::string& column = kValueColumn);
 
+  YBSessionPtr CreateSession(const YBTransactionPtr& transaction = nullptr);
+
   static const std::string kKeyColumn;
   static const std::string kValueColumn;
   TableHandle table_;

@@ -221,6 +221,10 @@ void RpcContext::CloseConnection() {
   });
 }
 
+std::string RpcContext::ToString() const {
+  return call_->ToString();
+}
+
 void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message) {
   if (context) {
     context->Panic(file, line_number, message);

@@ -153,5 +153,14 @@ Result<int32_t> KeyValueTableTest::SelectRow(
   return rowblock->row(0).column(0).int32_value();
 }
 
+YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction) {
+  auto session = std::make_shared<YBSession>(client_);
+  if (transaction) {
+    session->SetTransaction(transaction);
+  }
+  session->SetTimeout(NonTsanVsTsan(15s, 60s));
+  return session;
+}
+
 } // namespace client
 } // namespace yb
