@@ -43,6 +43,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

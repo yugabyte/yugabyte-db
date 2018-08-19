@@ -68,6 +68,11 @@ struct TransactionStatusResult {
   HybridTime status_time;
 };
 
+inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
+  return out << "{ status: " << TransactionStatus_Name(result.status)
+             << " status_time: " << result.status_time << " }";
+}
+
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 

@@ -13,6 +13,8 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/server/hybrid_clock.h"
+
 namespace yb {
 namespace server {
 

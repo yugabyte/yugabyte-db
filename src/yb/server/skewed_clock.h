@@ -14,8 +14,6 @@
 #ifndef YB_SERVER_SKEWED_CLOCK_H
 #define YB_SERVER_SKEWED_CLOCK_H
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/util/physical_time.h"
 
 namespace yb {

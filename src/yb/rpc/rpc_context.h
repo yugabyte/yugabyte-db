@@ -206,6 +206,9 @@ class RpcContext {
 
   // Closes connection that received this request.
   void CloseConnection();
+
+  std::string ToString() const;
+
  private:
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<const google::protobuf::Message> request_pb_;
