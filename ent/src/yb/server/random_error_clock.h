@@ -11,27 +11,32 @@
 // under the License.
 //
 
-#include "yb/util/ntp_clock.h"
+#ifndef ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H
+#define ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H
+
+#include "yb/util/physical_time.h"
 
 namespace yb {
+namespace server {
 
-NtpClock::NtpClock() : impl_(WallClock()) {}
+class RandomErrorClock : public PhysicalClock {
+ public:
+  static const std::string kName;
+  static const std::string kNtpName;
 
-NtpClock::NtpClock(PhysicalClockPtr impl) : impl_(std::move(impl)) {}
+  explicit RandomErrorClock(PhysicalClockPtr clock);
 
-Result<PhysicalTime> NtpClock::Now() {
-  auto now = VERIFY_RESULT(impl_->Now());
-  return PhysicalTime{now.time_point - now.max_error, now.max_error};
-}
+  static void Register();
+  static PhysicalClockPtr CreateNtpClock();
 
-MicrosTime NtpClock::MaxGlobalTime(PhysicalTime time) {
-  // time_point is original time_point - max_error, so we add max_error twice here.
-  return time.time_point + time.max_error * 2;
-}
+ private:
+  Result<PhysicalTime> Now() override;
+  MicrosTime MaxGlobalTime(PhysicalTime time) override;
 
-const std::string& NtpClock::Name() {
-  static std::string result("ntp");
-  return result;
-}
+  PhysicalClockPtr impl_;
+};
 
+} // namespace server
 } // namespace yb
+
+#endif // ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H

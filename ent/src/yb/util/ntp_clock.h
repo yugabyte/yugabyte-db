@@ -21,6 +21,7 @@ namespace yb {
 class NtpClock : public PhysicalClock {
  public:
   NtpClock();
+  explicit NtpClock(PhysicalClockPtr impl);
 
   Result<PhysicalTime> Now() override;
   MicrosTime MaxGlobalTime(PhysicalTime time) override;
@@ -28,7 +29,7 @@ class NtpClock : public PhysicalClock {
   static const std::string& Name();
 
  private:
-  PhysicalClockPtr wall_clock_;
+  PhysicalClockPtr impl_;
 };
 
 } // namespace yb
