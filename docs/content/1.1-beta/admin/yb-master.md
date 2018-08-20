@@ -11,7 +11,7 @@ aliases:
   - admin/yb-master
 ---
 
-`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/universe/#yb-master) binary.
+`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master](../../architecture/concepts/universe/#yb-master) binary.
 
 ## Example
 

@@ -11,7 +11,7 @@ aliases:
   - admin/yb-master
 ---
 
-`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/universe/#yb-master) binary.
+`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master](../../architecture/concepts/universe/#yb-master) binary.
 
 ## Example
 
@@ -40,7 +40,7 @@ Flag | Mandatory | Default | Description
 `--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-master` log files.  
 `--rpc_bind_addresses`| N |`0.0.0.0:7100` | Comma-separated list of addresses to bind to for RPC connections.
 `--webserver_port`| N | `7000` | Monitoring web server port
-`--webserver_doc_root`| N | The `www` directory in the YugaByte home directory | Monitoring web server home
+`--webserver_doc_root`| N | The `www` directory in the YugaByte DB home directory | Monitoring web server home
 `--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
 `--placement_cloud`| N |`cloud1`  | Name of the cloud where this instance is deployed
 `--placement_region`| N |`datacenter1`  | Name of the region or datacenter where this instance is deployed

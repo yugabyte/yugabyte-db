@@ -17,15 +17,15 @@ First, ensure that the expected YugaByte DB processes are running on the current
 At a minimum, the tserver process needs to be running to be able to connect to this node with a CQL client or application.
 
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
-Follow the instructions on the [check processes](nodes/check-processes/) page.
+Follow the instructions on the [check processes](../nodes/check-processes/) page.
 
 ## 2. Check cluster level issues
 
-Next, check the list of [cluster issues](cluster) and the respective fixes for each of them.
+Next, check the list of [cluster issues](../cluster) and the respective fixes for each of them.
 
 ## 3. Check logs
 
-Inspect the YugaByte logs for more details on your issue. See [this](nodes/check-logs) page for more details on where to find and how to understand the YugaByte log files.
+Inspect the YugaByte logs for more details on your issue. See [this](../nodes/check-logs) page for more details on where to find and how to understand the YugaByte log files.
 
 ## 4. File an issue
 

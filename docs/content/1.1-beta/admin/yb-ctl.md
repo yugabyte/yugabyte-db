@@ -11,7 +11,7 @@ aliases:
   - admin/yb-ctl
 ---
 
-`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (/admin/yb-master/) and [`yb-tserver`] (/admin/yb-tserver/) binaries to perform the necessary administration.
+`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`](../yb-master/) and [`yb-tserver`](../yb-tserver/) binaries to perform the necessary administration.
 
 Use the **-\-help** option to see all the commands supported.
 
@@ -32,8 +32,7 @@ Optional Argument | Default | Description
 
 The `create` cluster command is used to create a cluster.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. 
-Use the [add_node](/admin/yb-ctl/#add-a-node) and [remove_node](/admin/yb-ctl/#remove-a-node) commands to expand or shrink the cluster.
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [add_node](#adding-nodes) and [remove_node](#stopping-removing-nodes) commands to expand or shrink the cluster.
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
 

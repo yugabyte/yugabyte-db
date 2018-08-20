@@ -79,11 +79,11 @@ Clients can now connect to the YCQL service at localhost:9042, to the YEDIS API 
 
 Follow the instructions in the Quick Start section with Docker using the links below.
 
-- [YCQL API](/quick-start/test-cassandra/#docker)
+- [YCQL API](../../quick-start/test-cassandra/#docker)
 
-- [YEDIS API](/quick-start/test-redis/#docker)
+- [YEDIS API](../../quick-start/test-redis/#docker)
 
-- [PostgreSQL API (Beta)](/quick-start/test-postgresql/#docker)
+- [PostgreSQL API (Beta)](../../quick-start/test-postgresql/#docker)
 
 
 ## 4. Stop the cluster

@@ -11,7 +11,7 @@ aliases:
   - admin/yb-tserver
 ---
 
-`yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](/architecture/concepts/universe/#yb-tserver) binary.
+`yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
 
 ## Example
 
@@ -39,7 +39,7 @@ Flag | Mandatory | Default | Description
 `--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-tserver` log files.  
 `--rpc_bind_addresses`| N |`0.0.0.0:9100` | Comma-separated list of addresses to bind to for RPC connections.
 `--webserver_port`| N | `7000` | Monitoring web server port
-`--webserver_doc_root`| N | The `www` directory in the YugaByte home directory | Monitoring web server home
+`--webserver_doc_root`| N | The `www` directory in the YugaByte DB home directory | Monitoring web server home
 `--cql_proxy_bind_address`| N | `0.0.0.0:9042` | YCQL API bind address
 `--cql_proxy_webserver_port`| N | 12000 | YCQL metrics monitoring port
 `--redis_proxy_bind_address`| N | `0.0.0.0:6379`  | YEDIS API bind address

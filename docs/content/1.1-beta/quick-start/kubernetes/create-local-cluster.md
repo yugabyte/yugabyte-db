@@ -14,7 +14,7 @@ statefulset "yb-tserver" created
 
 ## 2. Check cluster status
 
-Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugaByte DB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
+Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugaByte DB cluster (aka Universe) is explained in detail [here](/architecture/concepts/universe/).
 
 ```{.sh .copy .separator-dollar}
 $ kubectl get pods
@@ -62,27 +62,31 @@ Clients can now connect to this YugaByte DB universe using Cassandra and Redis A
 
 ## 4. Check cluster status via Kubernetes
 
-You can see the status of the 2 services by simply running the following command.
+You can see the status of the 3 services by simply running the following command.
 
 ```{.sh .copy .separator-dollar}
 $ kubectl get services
 ```
 ```sh
-NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                               AGE
-kubernetes    ClusterIP   10.96.0.1    <none>        443/TCP                               3d
-yb-masters    ClusterIP   None         <none>        7000/TCP,7100/TCP                     1m
-yb-tservers   ClusterIP   None         <none>        9042/TCP,6379/TCP,9000/TCP,9100/TCP   1m
+NAME           TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
+kubernetes     ClusterIP      10.96.0.1       <none>        443/TCP                               10m
+yb-master-ui   LoadBalancer   10.102.121.64   <pending>     7000:31283/TCP                        8m
+yb-masters     ClusterIP      None            <none>        7000/TCP,7100/TCP                     8m
+yb-tservers    ClusterIP      None            <none>        9000/TCP,9100/TCP,9042/TCP,6379/TCP   8m
 ```
 
 ## 5. Check cluster status with Admin UI
 
-In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the `yb-master` service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). Let us set up a network route to access `yb-master-0` on port 7000 from our localhost. You can do this by running the following command.
+In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the `yb-master` service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). In order to do so, we find the URL for the yb-master-ui LoadBalancer service.
 
 ```{.sh .copy .separator-dollar}
-$ kubectl port-forward yb-master-0 7000
+$ minikube service  yb-master-ui --url
+```
+```sh
+http://192.168.99.100:31283
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at http://localhost:7000.
+Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at the above URL.
 
 ### 5.1 Overview and Master status
 

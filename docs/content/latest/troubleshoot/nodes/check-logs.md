@@ -10,7 +10,7 @@ menu:
     weight: 844
 ---
 
-## YugaByte base folder
+## YugaByte DB base folder
 
 The logs for each node are found in the yugabyte base directory which may depend on the details of your deployment:
 

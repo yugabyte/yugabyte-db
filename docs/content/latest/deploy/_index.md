@@ -14,7 +14,7 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/checklist/">
+    <a class="section-link icon-offset" href="checklist/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Checklist</div>
@@ -25,7 +25,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/multi-node-cluster/">
+    <a class="section-link icon-offset" href="multi-node-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
         <div class="articles">5 articles</div>
@@ -37,7 +37,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/kubernetes/">
+    <a class="section-link icon-offset" href="kubernetes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
         <div class="title">Kubernetes</div>
@@ -48,7 +48,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/docker-swarm/">
+    <a class="section-link icon-offset" href="docker-swarm/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/docker-swarm.png" aria-hidden="true" />
         <div class="title">Docker Swarm</div>
@@ -59,7 +59,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/public-clouds/">
+    <a class="section-link icon-offset" href="public-clouds/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
@@ -71,7 +71,7 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="/deploy/enterprise-edition/">
+    <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
         <div class="articles">3 articles</div>

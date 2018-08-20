@@ -10,7 +10,7 @@ menu:
     weight: 822
 ---
 
-## 1. Are YugaByte processes running?
+## 1. Are YugaByte DB processes running?
 
 First, ensure that the expected YugaByte DB processes on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a CQL client or application.

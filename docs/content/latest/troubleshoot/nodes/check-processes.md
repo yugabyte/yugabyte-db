@@ -10,7 +10,7 @@ menu:
     weight: 842
 ---
 
-## 1. Are the YugaByte processes running?
+## 1. Are the YugaByte DB processes running?
 Connect to the local node where YugaByte DB is running. 
 
 On the local setup, this is your local machine (or a docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte node(s) are running.

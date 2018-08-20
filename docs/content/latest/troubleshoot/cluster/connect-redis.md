@@ -10,12 +10,12 @@ menu:
     weight: 824
 ---
 
-## 1. Are YugaByte processes running?
+## 1. Are YugaByte DB processes running?
 
 First, ensure that the expected YugaByte DB processes on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a Redis client or application.
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
-Follow the instructions on the [Check Processes](/troubleshoot/nodes/check-processes/) page.
+Follow the instructions on the [Check Processes](../../nodes/check-processes/) page.
 
 ## 2. Is YugaByte DB's Redis-compatible YEDIS service running?
 

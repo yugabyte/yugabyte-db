@@ -14,7 +14,7 @@ menu:
 ---
 
 {{< note title="Note" >}}
-Local clusters should be used only for functional testing and not for performance testing or production deployments. You can either [manually deploy](/deploy/manual-deployment/) YugaByte DB binaries on a set of instances or use the [Enterprise Edition](/deploy/enterprise-edition/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
+Local clusters should be used only for functional testing and not for performance testing or production deployments. You can either [manually deploy](../deploy/manual-deployment/) YugaByte DB binaries on a set of instances or use the [Enterprise Edition](../deploy/enterprise-edition/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
 {{< /note >}}
 
 <div class="row">

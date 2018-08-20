@@ -11,7 +11,7 @@ menu:
 type: page
 ---
 
-After [installing YugaByte DB](/quick-start/install/), follow the instructions below to create a local cluster.
+After [installing YugaByte DB](../install/), follow the instructions below to create a local cluster.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
