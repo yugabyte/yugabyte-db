@@ -458,6 +458,7 @@ message TServerMetricsPB {
   optional double read_ops_per_sec = 3;
   optional double write_ops_per_sec = 4;
   optional int64 uncompressed_sst_file_size = 5;
+  optional uint64 uptime_seconds = 6;
 }
 
 // Heartbeat sent from the tablet-server to the master

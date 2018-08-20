@@ -165,13 +165,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   // Set the TServer metrics in TS Descriptor.
   if (req->has_metrics()) {
-    if (req->metrics().has_total_ram_usage()) {
-      ts_desc->set_total_memory_usage(req->metrics().total_ram_usage());
-    }
-    ts_desc->set_total_sst_file_size(req->metrics().total_sst_file_size());
-    ts_desc->set_uncompressed_sst_file_size(req->metrics().uncompressed_sst_file_size());
-    ts_desc->set_write_ops_per_sec(req->metrics().write_ops_per_sec());
-    ts_desc->set_read_ops_per_sec(req->metrics().read_ops_per_sec());
+    ts_desc->UpdateMetrics(req->metrics());
   }
 
   if (req->has_tablet_report()) {
