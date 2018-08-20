@@ -44,16 +44,24 @@ class AWSProviderInitView extends Component {
       awsProviderConfig['AWS_HOSTED_ZONE_ID'] = formValues.hostedZoneId;
     }
     const regionFormVals = {};
-    if (isNonEmptyString(formValues.destVpcId)) {
-      regionFormVals["destVpcId"] = formValues.destVpcId;
-    }
-    if (isNonEmptyString(formValues.destVpcRegion)) {
-      regionFormVals["destVpcRegion"] = formValues.destVpcRegion;
-    }
     if (this.isHostInAWS()) {
       const awsHostInfo = hostInfo["aws"];
       regionFormVals["hostVpcRegion"] = awsHostInfo["region"];
       regionFormVals["hostVpcId"] = awsHostInfo["vpc-id"];
+    }
+    if (isNonEmptyString(formValues.destVpcId)) {
+      regionFormVals["destVpcId"] = formValues.destVpcId;
+      // If you're configuring a custom AWS setup, from, say, a GCP YW.
+      if (!this.isHostInAWS()) {
+        regionFormVals["hostVpcId"] = formValues.destVpcId;
+      }
+    }
+    if (isNonEmptyString(formValues.destVpcRegion)) {
+      regionFormVals["destVpcRegion"] = formValues.destVpcRegion;
+      // If you're configuring a custom AWS setup, from, say, a GCP YW.
+      if (!this.isHostInAWS()) {
+        regionFormVals["hostVpcRegion"] = formValues.destVpcRegion;
+      }
     }
     this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
   };
