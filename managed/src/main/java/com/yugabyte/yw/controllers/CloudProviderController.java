@@ -144,7 +144,11 @@ public class CloudProviderController extends AuthenticatedController {
     // Confirm we had a "config" key and it was not null.
     if (configNode != null && !configNode.isNull()) {
       if (providerCode.equals(Common.CloudType.gcp)) {
-        config = Json.fromJson(configNode.get("config_file_contents"), Map.class);
+        // We may receive a config file, or we may be asked to use the local service account.
+        JsonNode contents = configNode.get("config_file_contents");
+        if (contents != null) {
+          config = Json.fromJson(contents, Map.class);
+        }
       } else {
         config = Json.fromJson(configNode, Map.class);
       }
@@ -175,6 +179,10 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   private void updateGCPConfig(Provider provider, Map<String,String> config) {
+    // If we were not given a config file, then no need to do anything here.
+    if (config.isEmpty()) {
+      return;
+    }
     String gcpCredentialsFile = null;
     try {
       gcpCredentialsFile = accessManager.createCredentialsFile(
