@@ -832,14 +832,13 @@ TEST_F_EX(DocOperationTest, QLTxnDescendingForwardScan, DocOperationTxnScanTest)
   TestWithSortingType(ColumnSchema::kDescending, true);
 }
 
-// TODO - enable these tests after ENG-3376 is implemented.
-// TEST_F_EX(DocOperationTest, QLTxnAscendingReverseScan, DocOperationTxnScanTest) {
-//   TestWithSortingType(ColumnSchema::kAscending, false);
-// }
-//
-// TEST_F_EX(DocOperationTest, QLTxnDescendingReverseScan, DocOperationTxnScanTest) {
-//   TestWithSortingType(ColumnSchema::kDescending, false);
-// }
+TEST_F_EX(DocOperationTest, QLTxnAscendingReverseScan, DocOperationTxnScanTest) {
+  TestWithSortingType(ColumnSchema::kAscending, false);
+}
+
+TEST_F_EX(DocOperationTest, QLTxnDescendingReverseScan, DocOperationTxnScanTest) {
+  TestWithSortingType(ColumnSchema::kDescending, false);
+}
 
 TEST_F(DocOperationTest, TestQLCompactions) {
   yb::QLWriteRequestPB ql_writereq_pb;
