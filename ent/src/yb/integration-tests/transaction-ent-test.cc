@@ -64,8 +64,8 @@ class TransactionEntTest : public client::KeyValueTableTest {
 
 
 TEST_F(TransactionEntTest, RandomErrorClock) {
-  constexpr size_t kNumReaders = 3;
-  constexpr size_t kNumKeys = 5;
+  static constexpr size_t kNumReaders = 3;
+  static constexpr size_t kNumKeys = 5;
 
   struct RandomErrorClockShare {
     std::atomic<bool> stopped{false};
