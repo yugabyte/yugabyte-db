@@ -157,6 +157,9 @@ class IntentAwareIterator {
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(const Slice& slice);
 
+  // Seek to latest doc key among regular and intent iterator.
+  void SeekToLatestDocKeyInternal();
+
   // Skips regular entries with hybrid time after read limit.
   // If `is_forward` is `false` and `iter_` is positioned to the earliest record for the current
   // key, there are two cases:
@@ -178,10 +181,12 @@ class IntentAwareIterator {
   // If iterator already positioned far enough - does not perform seek.
   void SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix);
 
-  // Seek intent sub-iterator forward to latest suitable intent for first available key.
-  // intent_iter_ will be positioned to first intent for the smallest key greater than
-  // resolved_intent_sub_doc_key_encoded_.
-  void SeekForwardToSuitableIntent();
+  // Seek intent sub-iterator forward (backward) to latest suitable intent for first available
+  // key. Updates resolved_intent_XXX fields.
+  // intent_iter_ will be positioned to first intent for the smallest (biggest) key
+  // greater (smaller) than resolved_intent_sub_doc_key_encoded_.
+  template<Direction direction>
+  void SeekToSuitableIntent();
 
   // Decodes intent at intent_iter_ position and updates resolved_intent_* fields if that intent
   // matches all following conditions:
@@ -210,6 +215,10 @@ class IntentAwareIterator {
   // beyond the current regular key unnecessarily.
   CHECKED_STATUS SetIntentUpperbound();
 
+  // Resets the exclusive upperbound of the intent iterator to the beginning of the transaction
+  // metadata and reverse index region.
+  void ResetIntentUpperbound();
+
   void SeekIntentIterIfNeeded();
 
   const ReadHybridTime read_time_;
@@ -232,13 +241,13 @@ class IntentAwareIterator {
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   // SubDocKey (no HT).
   KeyBytes resolved_intent_key_prefix_;
-
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
   DocHybridTime resolved_intent_txn_dht_;
   DocHybridTime intent_dht_from_same_txn_ = DocHybridTime::kMin;
   KeyBytes resolved_intent_sub_doc_key_encoded_;
   KeyBytes resolved_intent_value_;
+
   std::vector<Slice> prefix_stack_;
   TransactionStatusCache transaction_status_cache_;
 

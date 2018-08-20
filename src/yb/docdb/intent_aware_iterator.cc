@@ -334,47 +334,68 @@ void IntentAwareIterator::SeekOutOfSubDoc(const Slice& key) {
 }
 
 void IntentAwareIterator::SeekToLastDocKey() {
-  // TODO (dtxn): Implement SeekToLast when intents are present. Since part of the
-  // is made of intents, we may have to avoid that. This is needed when distributed txns are fully
-  // supported. See ENG-3376.
   iter_->SeekToLast();
   SkipFutureRecords(Direction::kBackward);
-  if (!iter_valid_) {
+  if (intent_iter_) {
+    ResetIntentUpperbound();
+    intent_iter_->SeekToLast();
+    SeekToSuitableIntent<Direction::kBackward>();
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
+    skip_future_intents_needed_ = false;
+  }
+  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
     return;
   }
-  // Seek to the first rocksdb kv-pair for this row.
-  rocksdb::Slice rocksdb_key(iter_->key());
-  DocKey doc_key;
-  status_ = doc_key.DecodeFrom(&rocksdb_key);
-  if (!status_.ok()) {
-    return;
-  }
-  Seek(doc_key.Encode());
+  SeekToLatestDocKeyInternal();
 }
 
 void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
-  Seek(doc_key);
-  // TODO(dtxn) - also should move back intent iterator. See ENG-3376.
-  if (!status_.ok()) {
-    return;
+  auto key_bytes = doc_key.Encode();
+
+  ROCKSDB_SEEK(iter_.get(), key_bytes);
+  if (iter_->Valid()) {
+    iter_->Prev();
+  } else {
+    iter_->SeekToLast();
   }
-  if (!iter_->Valid()) {
-    SeekToLastDocKey();
-    return;
-  }
-  iter_->Prev();
   SkipFutureRecords(Direction::kBackward);
-  if (!iter_valid_) {
-    // TODO(dtxn) support reverse scan with read restart
+
+  if (intent_iter_) {
+    ResetIntentUpperbound();
+    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key_bytes));
+    if (intent_iter_->Valid()) {
+      intent_iter_->Prev();
+    } else {
+      intent_iter_->SeekToLast();
+    }
+    SeekToSuitableIntent<Direction::kBackward>();
+    seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
+    skip_future_intents_needed_ = false;
+  }
+
+  if (!iter_valid_ && resolved_intent_state_ != ResolvedIntentState::kValid) {
     return;
   }
-  Slice key_slice = iter_->key();
-  DocKey prev_key;
-  status_ = prev_key.DecodeFrom(&key_slice);
-  if (!status_.ok()) {
+  SeekToLatestDocKeyInternal();
+}
+
+void IntentAwareIterator::SeekToLatestDocKeyInternal() {
+  DCHECK(iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid)
+      << "Expected iter_valid(" << iter_valid_ << ") || resolved_intent_state_("
+      << resolved_intent_state_ << ") == ResolvedIntentState::kValid";
+  // Choose latest subkey among regular and intent iterators.
+  Slice subdockey_slice(
+      !iter_valid_ ||
+      (resolved_intent_state_ == ResolvedIntentState::kValid
+          && iter_->key().compare(resolved_intent_sub_doc_key_encoded_) < 0)
+      ? resolved_intent_key_prefix_.AsSlice() : iter_->key());
+  // Seek to the first key for row containing found subdockey.
+  auto dockey_size = DocKey::EncodedSize(subdockey_slice, DocKeyPart::WHOLE_DOC_KEY);
+  if (!dockey_size.ok()) {
+    status_ = dockey_size.status();
     return;
   }
-  Seek(prev_key);
+  Seek(Slice(subdockey_slice.data(), *dockey_size));
 }
 
 void IntentAwareIterator::SeekIntentIterIfNeeded() {
@@ -390,7 +411,7 @@ void IntentAwareIterator::SeekIntentIterIfNeeded() {
       break;
     case SeekIntentIterNeeded::kSeek:
       ROCKSDB_SEEK(intent_iter_.get(), seek_key_buffer_);
-      SeekForwardToSuitableIntent();
+      SeekToSuitableIntent<Direction::kForward>();
       seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
       return;
     case SeekIntentIterNeeded::kSeekForward:
@@ -404,12 +425,10 @@ void IntentAwareIterator::SeekIntentIterIfNeeded() {
 bool IntentAwareIterator::valid() {
   if (skip_future_records_needed_) {
     SkipFutureRecords(Direction::kForward);
-    skip_future_records_needed_ = false;
   }
   SeekIntentIterIfNeeded();
   if (skip_future_intents_needed_) {
     SkipFutureIntents();
-    skip_future_intents_needed_ = false;
   }
   return !status_.ok() || iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid;
 }
@@ -526,10 +545,11 @@ void IntentAwareIterator::SeekForwardToSuitableIntent(const KeyBytes &intent_key
   // Use ROCKSDB_SEEK() to force re-seek of "intent_iter_" in case the iterator was invalid by the
   // previous intent upperbound, but the upperbound has changed therefore requiring re-seek.
   ROCKSDB_SEEK(intent_iter_.get(), intent_key_prefix.AsSlice());
-  SeekForwardToSuitableIntent();
+  SeekToSuitableIntent<Direction::kForward>();
 }
 
-void IntentAwareIterator::SeekForwardToSuitableIntent() {
+template<Direction direction>
+void IntentAwareIterator::SeekToSuitableIntent() {
   DOCDB_DEBUG_SCOPE_LOG("", std::bind(&IntentAwareIterator::DebugDump, this));
   resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_ = DocHybridTime::kMin;
@@ -553,7 +573,14 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
     if (!status_.ok()) {
       return;
     }
-    intent_iter_->Next();
+    switch (direction) {
+      case Direction::kForward:
+        intent_iter_->Next();
+        break;
+      case Direction::kBackward:
+        intent_iter_->Prev();
+        break;
+    }
   }
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     UpdateResolvedIntentSubDocKeyEncoded();
@@ -687,6 +714,7 @@ void IntentAwareIterator::PopPrefix() {
 }
 
 void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
+  skip_future_records_needed_ = false;
   if (!status_.ok()) {
     return;
   }
@@ -742,6 +770,7 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
 }
 
 void IntentAwareIterator::SkipFutureIntents() {
+  skip_future_intents_needed_ = false;
   if (!intent_iter_ || !status_.ok()) {
     return;
   }
@@ -759,12 +788,12 @@ void IntentAwareIterator::SkipFutureIntents() {
       return;
     }
   }
-  SeekForwardToSuitableIntent();
+  SeekToSuitableIntent<Direction::kForward>();
 }
 
 Status IntentAwareIterator::SetIntentUpperbound() {
-  intent_upperbound_keybytes_.Clear();
   if (iter_->Valid()) {
+    intent_upperbound_keybytes_.Clear();
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
     // to upperbound with 0xff.
     Slice subdoc_key = iter_->key();
@@ -773,14 +802,21 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     subdoc_key.remove_suffix(1 + doc_ht_size);
     intent_upperbound_keybytes_.AppendRawBytes(subdoc_key);
     intent_upperbound_keybytes_.AppendValueType(ValueType::kMaxByte);
+    intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
   } else {
     // In case the current position of the regular iterator is invalid, set the exclusive
-    // upperbound to the beginning of the transaction metadata region.
-    intent_upperbound_keybytes_.AppendValueType(ValueType::kTransactionId);
+    // upperbound to the beginning of the transaction metadata and reverse index region.
+    ResetIntentUpperbound();
   }
-  intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
   VLOG(4) << "SetIntentUpperbound = " << intent_upperbound_.ToDebugString();
   return Status::OK();
+}
+
+void IntentAwareIterator::ResetIntentUpperbound() {
+  intent_upperbound_keybytes_.Clear();
+  intent_upperbound_keybytes_.AppendValueType(ValueType::kTransactionId);
+  intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
+  VLOG(4) << "ResetIntentUpperbound = " << intent_upperbound_.ToDebugString();
 }
 
 }  // namespace docdb
