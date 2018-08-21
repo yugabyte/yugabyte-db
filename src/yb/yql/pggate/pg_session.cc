@@ -107,13 +107,12 @@ shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& t
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::LoadTable(
-    const YBTableName& name,
-    const bool write_table,
-    shared_ptr<YBTable> *table,
-    vector<ColumnDesc> *col_descs,
-    int *num_key_columns,
-    int *num_partition_columns) {
+Status PgSession::LoadTable(const YBTableName& name,
+                            const bool write_table,
+                            shared_ptr<YBTable> *table,
+                            vector<PgColumn>* columns,
+                            int* num_key_columns,
+                            int* num_partition_columns) {
 
   *table = nullptr;
   shared_ptr<YBTable> pg_table;
@@ -136,20 +135,22 @@ Status PgSession::LoadTable(
     *num_partition_columns = schema.num_hash_key_columns();
   }
 
-  if (col_descs != nullptr) {
-    col_descs->resize(num_columns);
+  if (columns != nullptr) {
+    columns->resize(num_columns);
     for (int idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
-      // TODO(neil) It would make a lot more sense if we index by attr_num instead of ID.
-      (*col_descs)[idx].Init(idx,
-                             schema.ColumnId(idx),
-                             col.name(),
-                             idx < *num_partition_columns,
-                             idx < *num_key_columns,
-                             col.order() /* attr_num */,
-                             col.type(),
-                             YBColumnSchema::ToInternalDataType(col.type()));
+
+      // TODO(neil) Considering index columns by attr_num instead of ID.
+      ColumnDesc *desc = (*columns)[idx].desc();
+      desc->Init(idx,
+                 schema.ColumnId(idx),
+                 col.name(),
+                 idx < *num_partition_columns,
+                 idx < *num_key_columns,
+                 col.order() /* attr_num */,
+                 col.type(),
+                 YBColumnSchema::ToInternalDataType(col.type()));
     }
   }
 

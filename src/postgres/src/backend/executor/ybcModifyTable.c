@@ -30,6 +30,7 @@
 #include "utils/lsyscache.h"
 #include "commands/dbcommands.h"
 #include "executor/tuptable.h"
+#include "executor/ybcExpr.h"
 #include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 
@@ -45,12 +46,12 @@ YBCExecuteInsert(Relation relationDesc, TupleDesc tupleDesc, HeapTuple tuple)
 
 	char	   *tablename = NameStr(relationDesc->rd_rel->relname);
 
-	YBCPgStatement stmt_handle;
+	YBCPgStatement ybc_stmt;
 
 	PG_TRY();
 	{
 		YBCLogInfo("Inserting into table: %s.%s.%s", dbname, schemaname, tablename);
-		HandleYBStatus(YBCPgAllocInsert(ybc_pg_session, dbname, schemaname, tablename, &stmt_handle));
+		HandleYBStatus(YBCPgNewInsert(ybc_pg_session, dbname, schemaname, tablename, &ybc_stmt));
 
 		bool		is_null = false;
 
@@ -59,59 +60,19 @@ YBCExecuteInsert(Relation relationDesc, TupleDesc tupleDesc, HeapTuple tuple)
 			Oid			type_id = tupleDesc->attrs[i]->atttypid;
 			/* Attribute numbers start from 1 */
 			int			attnum = i + 1;
-
 			Datum		datum = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-
-			if (is_null)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Null values are not supported yet.")));
-				return;
-			}
-
-			switch (type_id)
-			{
-				case INT2OID:
-					{
-						HandleYBStatus(YBCPgInsertSetColumnInt2(stmt_handle, attnum, DatumGetInt16(datum)));
-						break;
-					}
-				case INT4OID:
-					{
-						HandleYBStatus(YBCPgInsertSetColumnInt4(stmt_handle, attnum, DatumGetInt32(datum)));
-						break;
-					}
-				case INT8OID:
-					{
-						HandleYBStatus(YBCPgInsertSetColumnInt8(stmt_handle, attnum, DatumGetInt64(datum)));
-						break;
-					}
-				case FLOAT4OID:
-					{
-						HandleYBStatus(YBCPgInsertSetColumnFloat4(stmt_handle, attnum, DatumGetFloat4(datum)));
-						break;
-					}
-				case FLOAT8OID:
-					{
-						HandleYBStatus(YBCPgInsertSetColumnFloat8(stmt_handle, attnum, DatumGetFloat8(datum)));
-						break;
-					}
-				default:
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
-			}
+			YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, datum, is_null);
+			HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr));
 		}
 		YBCLogInfo("Prepared Insert.");
-		HandleYBStatus(YBCPgExecInsert(stmt_handle));
+		HandleYBStatus(YBCPgExecInsert(ybc_stmt));
 		YBCLogInfo("Executed Insert");
 	}
 	PG_CATCH();
 	{
-		HandleYBStatus(YBCPgDeleteStatement(stmt_handle));
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	HandleYBStatus(YBCPgDeleteStatement(stmt_handle));
+	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 }

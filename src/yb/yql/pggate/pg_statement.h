@@ -22,6 +22,7 @@
 
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_env.h"
+#include "yb/yql/pggate/pg_expr.h"
 
 namespace yb {
 namespace pggate {
@@ -66,6 +67,10 @@ class PgStatement : public RefCountedThreadSafe<PgStatement> {
   }
 
   //------------------------------------------------------------------------------------------------
+  // Add expressions that are belong to this statement.
+  void AddExpr(PgExpr::SharedPtr expr);
+
+  //------------------------------------------------------------------------------------------------
   // Clear all values and expressions that were bound to the given statement.
   virtual CHECKED_STATUS ClearBinds() = 0;
 
@@ -79,6 +84,9 @@ class PgStatement : public RefCountedThreadSafe<PgStatement> {
   // Execution status.
   Status status_;
   string errmsg_;
+
+  // Expression list to be destroyed as soon as the statement is removed from the API.
+  std::list<PgExpr::SharedPtr> exprs_;
 };
 
 }  // namespace pggate

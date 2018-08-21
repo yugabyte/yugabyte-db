@@ -1,7 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
- *
- * ybctype.c
- *        Commands for creating and altering table structures and settings
+ * ybcExpr.c
+ *        Routines to construct YBC expression tree.
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -16,39 +15,26 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/catalog/ybctype.c
- *
+ *        src/backend/executor/ybcExpr.c
  *--------------------------------------------------------------------------------------------------
  */
-
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_type.h"
-#include "commands/ybctype.h"
-#include "parser/parse_type.h"
+#include "utils/relcache.h"
+#include "utils/rel.h"
+#include "utils/lsyscache.h"
+#include "commands/dbcommands.h"
+#include "executor/tuptable.h"
+#include "miscadmin.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_yb_utils.h"
+#include "executor/ybcExpr.h"
 
-/*
- * TODO For now we use the CQL/YQL types here, eventually we should use the
- * internal (protobuf) types.
- */
-YBCPgDataType
-YBCDataTypeFromName(TypeName *typeName)
-{
-	Oid			type_id;
-	int32		typmod;
-
-	typenameTypeIdAndMod(NULL /* parseState */ , typeName, &type_id, &typmod);
-
-	if (typmod != -1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Type modifiers are not supported yet: %d", typmod)));
-	}
-
-	switch (type_id)
+YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null) {
+	YBCPgExpr expr;
+  switch (type_id)
 	{
 		case BOOLOID:
 		case BYTEAOID:
@@ -56,26 +42,30 @@ YBCDataTypeFromName(TypeName *typeName)
 		case NAMEOID:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case INT8OID:
-			return 4;
+			HandleYBStatus(YBCPgNewConstantInt8(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
+			break;
 		case INT2OID:
-			return 2;
+			HandleYBStatus(YBCPgNewConstantInt2(ybc_stmt, DatumGetInt16(datum), is_null, &expr));
+			break;
 		case INT2VECTOROID:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case INT4OID:
-			return 3;
+			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
+			break;
 		case REGPROCOID:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case TEXTOID:
-			return 5;
+			HandleYBStatus(YBCPgNewConstantText(ybc_stmt, DatumGetCString(datum), is_null, &expr));
+			break;
 		case OIDOID:
 		case TIDOID:
 		case XIDOID:
@@ -89,12 +79,14 @@ YBCDataTypeFromName(TypeName *typeName)
 		case LINEOID:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case FLOAT4OID:
-			return 7;
+			HandleYBStatus(YBCPgNewConstantFloat4(ybc_stmt, DatumGetFloat4(datum), is_null, &expr));
+			break;
 		case FLOAT8OID:
-			return 8;
+			HandleYBStatus(YBCPgNewConstantFloat8(ybc_stmt, DatumGetFloat8(datum), is_null, &expr));
+			break;
 		case ABSTIMEOID:
 		case RELTIMEOID:
 		case TINTERVALOID:
@@ -106,10 +98,11 @@ YBCDataTypeFromName(TypeName *typeName)
 		case BPCHAROID:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case VARCHAROID:
-			return 5;
+			HandleYBStatus(YBCPgNewConstantText(ybc_stmt, DatumGetCString(datum), is_null, &expr));
+			break;
 		case DATEOID:
 		case TIMEOID:
 		case TIMESTAMPOID:
@@ -139,8 +132,16 @@ YBCDataTypeFromName(TypeName *typeName)
 		default:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 	}
-	return -1;
+
+	// Return the constructed expression.
+	return expr;
+}
+
+YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num) {
+	YBCPgExpr expr;
+	HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, &expr));
+	return expr;
 }

@@ -29,6 +29,10 @@ typedef struct YBCStatusStruct {
 
 typedef struct YBCStatusStruct* YBCStatus;
 
+extern YBCStatus YBCStatusOK;
+bool YBCStatusIsOK(YBCStatus s);
+bool YBCStatusIsNotFound(YBCStatus s);
+
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 
 typedef void* (*YBCPAllocFn)(size_t size);

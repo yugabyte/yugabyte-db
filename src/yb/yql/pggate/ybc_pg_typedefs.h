@@ -45,6 +45,9 @@ YB_DEFINE_HANDLE_TYPE(PgSession)
 // Handle to a statement.
 YB_DEFINE_HANDLE_TYPE(PgStatement)
 
+// Handle to an expression.
+YB_DEFINE_HANDLE_TYPE(PgExpr);
+
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------

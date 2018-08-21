@@ -45,7 +45,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
 	YBCLogWarning("Ignoring source database '%s' when creating database '%s'", src_dbname, dbname);
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgAllocCreateDatabase(ybc_pg_session, dbname, &handle));
+		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, &handle));
 		HandleYBStatus(YBCPgExecCreateDatabase(handle));
 	}
 	PG_CATCH();
@@ -64,7 +64,7 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgAllocDropDatabase(ybc_pg_session,
+		HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
 											  dbname,
 											  false,	/* if_exists */
 											  &handle));
@@ -195,7 +195,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgAllocCreateTable(ybc_pg_session,
+		HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
 											 db_name,
 											 stmt->relation->schemaname,
 											 stmt->relation->relname,
@@ -259,7 +259,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 													 attnum++,
 													 col_type,
 													 is_primary && is_first,	/* is_hash */
-													 is_primary && !is_first /* is_range */ ));
+													 is_primary /* is_range */ ));
 		}
 
 		/* Create the table. */
@@ -285,7 +285,7 @@ YBCDropTable(Oid relationId,
 	{
 		char	   *db_name = get_database_name(MyDatabaseId);
 
-		HandleYBStatus(YBCPgAllocDropTable(ybc_pg_session,
+		HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
 										   db_name,
 										   schemaname,
 										   relname,

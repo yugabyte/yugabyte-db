@@ -29,7 +29,9 @@ set(PGGATE_SRCS
     pg_insert.cc
     pg_update.cc
     pg_delete.cc
-    pg_select.cc)
+    pg_select.cc
+    pg_expr.cc
+    pg_column.cc)
 
 set(PGGATE_LIBS
     yb_util

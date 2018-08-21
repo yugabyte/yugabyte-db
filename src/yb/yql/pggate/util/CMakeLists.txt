@@ -12,9 +12,9 @@
 #
 
 set(PGGATE_UTIL_SRCS
-    pg_net_writer.cc
-    pg_net_reader.cc
-    pg_bind.cc)
+    pg_wire.cc
+    pg_doc_data.cc
+    pg_tuple.cc)
 
 set(PGGATE_UTIL_LIBS
     yb_util

@@ -158,14 +158,8 @@ ybcGetForeignPlan(PlannerInfo *root,
  */
 typedef struct YbcFdwExecutionState
 {
-	YBCPgStatement handle;
 	/* The handle for the internal YB Select statement. */
-
-	/* TODO this stores the bind output space for each column. */
-	/* Should be fixed when the API for bind is changed. */
-	int32		values[10];
-	int16		num_values;
-
+	YBCPgStatement handle;
 }			YbcFdwExecutionState;
 
 /*
@@ -192,11 +186,11 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		/* Allocate and initialize YB scan state. */
 		ybc_state = (YbcFdwExecutionState *) palloc(sizeof(YbcFdwExecutionState));
 		node->fdw_state = (void *) ybc_state;
-		HandleYBStatus(YBCPgAllocSelect(ybc_pg_session,
-										dbname,
-										schemaname,
-										tablename,
-										&ybc_state->handle));
+		HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
+																	dbname,
+																	schemaname,
+																	tablename,
+																	&ybc_state->handle));
 
 		/* Set WHERE clause values (currently only partition key). */
 		RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PRIMARY_KEY);
@@ -208,6 +202,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				OpExpr	   *opExpr = (OpExpr *) expr;
 
+				// TODO(mihnea) WHERE clause should be analyzed for operators other than Int4EqualOperator.
 				if (opExpr->opno == Int4EqualOperator)
 				{
 					Var		   *col_desc = linitial(opExpr->args);
@@ -217,9 +212,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 					if (bms_is_member(col_desc->varattno - FirstLowInvalidHeapAttributeNumber,
 									  relation->rd_pkattr))
 					{
-						HandleYBStatus(YBCPgSelectSetColumnInt4(ybc_state->handle,
-																col_desc->varattno,
-																DatumGetInt32(col_val->constvalue)));
+						YBCPgExpr ybc_expr = YBCNewConstant(ybc_state->handle, INT4OID, col_val->constvalue,
+																								false);
+						HandleYBStatus(YBCPgDmlBindColumn(ybc_state->handle, col_desc->varattno, ybc_expr));
 					}
 				}
 			}
@@ -227,16 +222,12 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 		/* Set scan targets. */
 		/* TODO Fix the allocation here when the YB API for this is changed. */
-		int16		idx = 0;
-
 		foreach(lc, foreignScan->scan.plan.targetlist)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(lc);
-
-			HandleYBStatus(YBCPgSelectBindExprInt4(ybc_state->handle, tle->resno, &ybc_state->values[idx]));
-			idx++;
+			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, tle->resno);
+			YBCPgDmlAppendTarget(ybc_state->handle, expr);
 		}
-		ybc_state->num_values = idx;
 
 		/* Execute the select statement. */
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle));
@@ -261,39 +252,18 @@ ybcIterateForeignScan(ForeignScanState *node)
 {
 	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
 	YbcFdwExecutionState *ybc_state = (YbcFdwExecutionState *) node->fdw_state;
-	int64		num_rows_fetched;
+	bool has_data = false;
 
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
-	MemSet(slot->tts_values, 0, ybc_state->num_values * sizeof(Datum));
-	MemSet(slot->tts_isnull, true, ybc_state->num_values * sizeof(bool));
-
 	PG_TRY();
 	{
-		/* Fetch some rows -- currently always 1 (or 0) */
-		HandleYBStatus(YBCPgSelectFetch(ybc_state->handle, &num_rows_fetched));
+		// Fetch one row.
+		HandleYBStatus(YBCPgDmlFetch(ybc_state->handle, slot->tts_values, slot->tts_isnull, &has_data));
 
 		/* If we have result(s) update the tuple slot. */
-		if (num_rows_fetched >= 1)
+		if (has_data)
 		{
-			/*
-			 * TODO (neil) Can remove this check if pggate handles
-			 * pre-fetching.
-			 */
-			if (num_rows_fetched > 1)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Internal Error: We do not yet support fetching more "
-								"than one row, found %d", num_rows_fetched)));
-			}
-
-			for (int i = 0; i < ybc_state->num_values; i++)
-			{
-				slot->tts_isnull[i] = false;
-				slot->tts_values[i] = Int32GetDatum(ybc_state->values[i]);
-			}
-
 			ExecStoreVirtualTuple(slot);
 		}
 	}
@@ -327,11 +297,11 @@ ybcReScanForeignScan(ForeignScanState *node)
 
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgAllocSelect(ybc_pg_session,
-										dbname,
-										schemaname,
-										tablename,
-										&ybc_state->handle));
+		HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
+																	dbname,
+																	schemaname,
+																	tablename,
+																	&ybc_state->handle));
 
 		/* TODO Set (primary/partition key) values and execute. */
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle));
