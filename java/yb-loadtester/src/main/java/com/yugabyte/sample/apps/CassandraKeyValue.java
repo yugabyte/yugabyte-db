@@ -17,7 +17,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BoundStatement;
@@ -182,7 +181,7 @@ public class CassandraKeyValue extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     if (key == null) {
       return 0;

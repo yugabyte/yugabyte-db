@@ -109,7 +109,7 @@ public class CassandraUserId extends CassandraKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     try {
       // Do the write to Cassandra.

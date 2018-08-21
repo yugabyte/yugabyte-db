@@ -20,19 +20,14 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import redis.clients.jedis.Response;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
-import redis.clients.jedis.Jedis;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import java.util.Vector;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.Adler32;
-import java.util.zip.Checksum;
 
 /**
  * This workload writes and reads some random string keys from a Redis server. One reader and one
@@ -99,8 +94,8 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     return numOpsRespondedThisRound.getAndSet(0);
   }
 
-  public void performWrite() {
-    super.performWrite();
+  public void performWrite(int threadIdx) {
+    super.performWrite(threadIdx);
     sleepIfNeededBeforeNextBatch();
   }
 
@@ -177,7 +172,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     if (key != null) {
       Response<String> retVal = doActualWrite(key);

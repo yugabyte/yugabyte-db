@@ -13,16 +13,13 @@
 
 package com.yugabyte.sample.apps;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -62,10 +59,10 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
 
   @Override
   public List<String> getCreateTableStatements() {
-    String create_stmt = String.format(
+    String createStmt = String.format(
         "CREATE TABLE IF NOT EXISTS %s (k varchar, v bigint, primary key (k)) " +
         "WITH transactions = { 'enabled' : true };", getTableName());
-    return Arrays.asList(create_stmt);
+    return Arrays.asList(createStmt);
   }
 
   public String getTableName() {
@@ -79,8 +76,8 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   }
 
   private void verifyValue(Key key, long value1, long value2) {
-    long key_number = key.asNumber();
-    if (key_number != value1 + value2) {
+    long keyNumber = key.asNumber();
+    if (keyNumber != value1 + value2) {
       LOG.fatal("Value mismatch for key: " + key.toString() +
                 " != " + value1 + " + " +  value2);
     }
@@ -124,15 +121,15 @@ public class CassandraTransactionalKeyValue extends CassandraKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     try {
       // Do the write to Cassandra.
       BoundStatement insert = null;
-      long key_num = key.asNumber();
+      long keyNum = key.asNumber();
       /* Generate two numbers that add up to the key, and use them as values */
-      long value1 = ThreadLocalRandom.current().nextLong(key_num + 1);
-      long value2 = key_num - value1;
+      long value1 = ThreadLocalRandom.current().nextLong(keyNum + 1);
+      long value2 = keyNum - value1;
       insert = getPreparedInsert()
                  .bind()
                  .setString("k1", key.asString() + "_1")

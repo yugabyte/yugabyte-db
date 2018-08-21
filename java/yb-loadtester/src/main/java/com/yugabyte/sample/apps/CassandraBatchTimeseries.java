@@ -13,10 +13,8 @@
 
 package com.yugabyte.sample.apps;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -214,7 +212,7 @@ public class CassandraBatchTimeseries extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     // Pick a random data source.
     DataSource dataSource = dataSources.get(random.nextInt(dataSources.size()));
     long numKeysWritten = 0;
