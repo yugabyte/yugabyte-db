@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.FileUtil;
 import org.yb.util.GzipHelpers;
+import org.yb.util.ConfForTesting;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -60,13 +61,13 @@ public class BaseYBTest {
     List<String> logsToDelete = new ArrayList<>();
 
     public void doCleanup() {
-      if (TestUtils.deleteSuccessfulPerTestMethodLogs()) {
+      if (ConfForTesting.deleteSuccessfulPerTestMethodLogs()) {
         if (seenTestFailures.get()) {
           if (!logsToDelete.isEmpty()) {
             LOG.info("Not deleting these test logs, seen test failures: " + logsToDelete);
           }
         } else {
-          LOG.info("Deleting test logs (" + TestUtils.DELETE_SUCCESSFUL_LOGS_ENV_VAR +
+          LOG.info("Deleting test logs (" + ConfForTesting.DELETE_SUCCESSFUL_LOGS_ENV_VAR +
               " is specified, and no test failures seen): " + logsToDelete);
           for (String filePath : logsToDelete) {
             if (new File(filePath).exists() && !new File(filePath).delete()) {
@@ -142,7 +143,7 @@ public class BaseYBTest {
     private void switchLogging(LogSwitcher switcher) {
       switcher.logEventDetails(false);
 
-      if (TestUtils.usePerTestLogFiles()) {
+      if (ConfForTesting.usePerTestLogFiles()) {
         switcher.switchStandardStreams();
         recreateOutAppender();
         switcher.logEventDetails(true);
@@ -247,15 +248,15 @@ public class BaseYBTest {
                 FileUtil.bestEffortDeleteIfEmpty(perTestStdoutPath);
                 FileUtil.bestEffortDeleteIfEmpty(perTestStderrPath);
 
-                if (TestUtils.gzipPerTestMethodLogs()) {
+                if (ConfForTesting.gzipPerTestMethodLogs()) {
                   LOG.info(
-                      "Gzipping test logs (" + TestUtils.GZIP_PER_TEST_METHOD_LOGS_ENV_VAR +
+                      "Gzipping test logs (" + ConfForTesting.GZIP_PER_TEST_METHOD_LOGS_ENV_VAR +
                           " is set): " + perTestStdoutPath + ", " + perTestStderrPath);
                   perTestStdoutPath = GzipHelpers.bestEffortGzipFile(perTestStdoutPath);
                   perTestStderrPath = GzipHelpers.bestEffortGzipFile(perTestStderrPath);
                 }
 
-                if (succeeded && TestUtils.deleteSuccessfulPerTestMethodLogs()) {
+                if (succeeded && ConfForTesting.deleteSuccessfulPerTestMethodLogs()) {
                   logDeleter.addLogToDelete(perTestStdoutPath);
                   logDeleter.addLogToDelete(perTestStderrPath);
                 }

@@ -32,14 +32,18 @@
 package org.yb.client;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import static org.junit.Assert.fail;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.fail;
+import org.yb.YBTestRunner;
 
 /**
  * Tests {@link AsyncYBClient} with multiple masters.
  */
+@RunWith(value=YBTestRunner.class)
 public class TestMasterFailover extends BaseYBClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterFailover.class);
   private static final String TABLE_NAME =

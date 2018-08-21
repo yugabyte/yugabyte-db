@@ -28,6 +28,11 @@ import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestTransaction extends BaseCQLTest {
 
   public int getTestMethodTimeoutSec() {

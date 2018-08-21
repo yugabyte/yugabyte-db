@@ -39,6 +39,11 @@ import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestDeadlineTracker {
 
   @Test

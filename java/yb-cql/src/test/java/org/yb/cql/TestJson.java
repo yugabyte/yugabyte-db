@@ -22,6 +22,11 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestJson extends BaseCQLTest {
 
   private void verifyEmptyRows(ResultSet rs, int expected_rows) {

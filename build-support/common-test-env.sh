@@ -84,6 +84,11 @@ declare -i -r MIN_REPEATED_TEST_PARALLELISM=1
 declare -i -r MAX_REPEATED_TEST_PARALLELISM=100
 declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM=4
 
+readonly MVN_COMMON_SKIPPED_OPTIONS_IN_TEST=(
+  -DskipAssembly
+  -Dmaven.javadoc.skip
+)
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -96,11 +101,10 @@ sanitize_for_path() {
 set_common_test_paths() {
   expect_num_args 0 "$@"
 
-  # Allow putting all the test logs into a separate directory by setting YB_TEST_LOG_ROOT_SUFFIX.
-  # This is useful for regression tracking when rolling commits back one by one after the main build
-  # is done (see track_down_regressions.sh), so that we don't pollute the main test result
-  # directory.
-  YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs${YB_TEST_LOG_ROOT_SUFFIX:-}"
+  if [[ -z ${YB_TEST_LOG_ROOT_DIR:-} ]]; then
+    # Allow putting all the test logs into a separate directory by setting YB_TEST_LOG_ROOT_SUFFIX.
+    YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs${YB_TEST_LOG_ROOT_SUFFIX:-}"
+  fi
 
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
 }
@@ -1287,13 +1291,20 @@ fix_cxx_test_name() {
   fi
 }
 
-# Arguments: <maven_module_name> <package_and_class>
-# Example: yb-client org.yb.client.TestYBClient
+# Arguments: <maven_module_name> <test_class_and_maybe_method>
+# The second argument could have slashes instead of dots, and could have an optional .java
+# extension.
+# Examples:
+# - yb-client org.yb.client.TestYBClient
+# - yb-client org.yb.client.TestYBClient#testAllMasterChangeConfig
 run_java_test() {
   expect_num_args 2 "$@"
   local module_name=$1
   local test_class_and_maybe_method=${2%.java}
-  local test_method_name=${test_class_and_maybe_method##*#}
+  local test_method_name=""
+  if [[ $test_class_and_maybe_method == *\#* ]]; then
+    test_method_name=${test_class_and_maybe_method##*#}
+  fi
   local test_class=${test_class_and_maybe_method%#*}
 
   if [[ -z ${BUILD_ROOT:-} ]]; then
@@ -1313,54 +1324,80 @@ run_java_test() {
   cd "$YB_SRC_ROOT/java"
   # We specify tempDir to use a separate temporary directory for each test.
   # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
-  mvn_options=(
-    "${mvn_common_options[@]}"
+  mvn_opts=(
     -Dtest="$test_class_and_maybe_method"
     --projects "$module_name"
     -DtempDir="$surefire_rel_tmp_dir"
-    -DskipAssembly
-    -Dmaven.javadoc.skip
   )
-  if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
-    mvn_options+=(
-      "-Dyb.surefire.reports.directory=$YB_SUREFIRE_REPORTS_DIR"
-    )
-  else
-    log "YB_SUREFIRE_REPORTS_DIR is not set, using default reports dir"
-  fi
+  append_common_mvn_opts
 
-  if is_jenkins || \
-     [[ $YB_MVN_SETTINGS_PATH != "$HOME/.m2/settings.xml" ]] || \
-     [[ -f $YB_MVN_SETTINGS_PATH ]]; then
-    mvn_options+=( --settings "$YB_MVN_SETTINGS_PATH" )
+  local report_suffix=${test_class}__${test_method_name}
+  report_suffix=${report_suffix//[/_}
+  report_suffix=${report_suffix//]/_}
+  local module_dir=$YB_SRC_ROOT/java/$module_name
+  ensure_directory_exists "$module_dir"
+  local surefire_reports_dir=$module_dir/target/surefire-reports_${report_suffix}
+  unset report_suffix
+
+  if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
+    surefire_reports_dir=$YB_SUREFIRE_REPORTS_DIR
+  elif should_run_java_test_methods_separately &&
+       [[ -d $surefire_reports_dir && -n $test_method_name ]]; then
+    # If we are only running one test method, and it has its own surefire reports directory, it is
+    # OK to delete all other stuff in it.
+    if ! is_jenkins; then
+      log "Cleaning the existing contents of: $surefire_reports_dir"
+    fi
+    ( set -x; rm -f "$surefire_reports_dir"/* )
   fi
+  if ! is_jenkins; then
+    log "Using surefire reports directory: $surefire_reports_dir"
+  fi
+  mvn_opts+=(
+    "-Dyb.surefire.reports.directory=$surefire_reports_dir"
+  )
 
   if is_jenkins; then
     # When running on Jenkins we'd like to see more debug output.
-    mvn_options+=( -X )
+    mvn_opts+=( -X )
   fi
 
-  local surefire_reports_dir=$YB_SRC_ROOT/java/$module_name/target/surefire-reports
   local log_files_path_prefix=$surefire_reports_dir/$test_class
   local test_log_path=$log_files_path_prefix-output.txt
   local junit_xml_path=$surefire_reports_dir/TEST-$test_class.xml
 
-  log "Test log path: $test_log_path"
-  log
+  if ! is_jenkins; then
+    log "Test log path: $test_log_path"
+  fi
 
-  ( set -x; mvn "${mvn_options[@]}" surefire:test )
+  mvn_opts+=( surefire:test )
+
+  local mvn_output_path=""
+  if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
+    mkdir -p "$surefire_reports_dir"
+    mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
+    time ( set -x; mvn "${mvn_opts[@]}" ) &>"$mvn_output_path"
+  else
+    time ( set -x; mvn "${mvn_opts[@]}" )
+  fi
 
   if is_jenkins || [[ ${YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT:-} == "1" ]]; then
     # If the test is successful, all expected files exist, and no failures are found in the JUnit
     # test XML, delete the test log files to save disk space in the Jenkins archive.
+    #
+    # We redirect both stdout and stderr for egrep commands to /dev/null because the files we are
+    # looking for might not exist. There could be a better way to do this that would not hide
+    # real errors.
     if [[ -f $test_log_path && -f $junit_xml_path ]] && \
        ! egrep "YB Java test failed" \
-         "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt >/dev/null && \
-       ! egrep "(errors|failures)=\"?[1-9][0-9]*\"?" "$junit_xml_path" >/dev/null; then
+         "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt &>/dev/null && \
+       ! egrep "(errors|failures)=\"?[1-9][0-9]*\"?" "$junit_xml_path" &>/dev/null; then
       log "Removing $test_log_path and related per-test-method logs: test succeeded."
       (
         set -x
-        rm -f "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt
+        rm -f "$test_log_path" \
+              "$log_files_path_prefix".*.{stdout,stderr}.txt \
+              "$mvn_output_path"
       )
     else
       log "Not removing $test_log_path and related per-test-method logs: some tests failed, " \
@@ -1369,6 +1406,67 @@ run_java_test() {
       log_file_existence "$junit_xml_path"
     fi
   fi
+
+  if should_gzip_test_logs; then
+    gzip_if_exists "$test_log_path" "$mvn_output_path"
+    local per_test_method_log_path
+    for per_test_method_log_path in "$log_files_path_prefix".*.{stdout,stderr}.txt; do
+      gzip_if_exists "$per_test_method_log_path"
+    done
+  fi
+}
+
+collect_java_tests() {
+  set_common_test_paths
+  log "Collecting the list of all Java test methods and parameterized test methods"
+  local old_surefire_reports_dir=${YB_SUREFIRE_REPORTS_DIR:-}
+  unset YB_SUREFIRE_REPORTS_DIR
+  local mvn_opts=( -DcollectTests )
+  append_common_mvn_opts
+  java_test_list_path=$BUILD_ROOT/java_test_list.txt
+  local collecting_java_tests_log_prefix=$BUILD_ROOT/collecting_java_tests
+  local stdout_log="$collecting_java_tests_log_prefix.out"
+  local stderr_log="$collecting_java_tests_log_prefix.err"
+  cp /dev/null "$java_test_list_path"
+  cp /dev/null "$stdout_log"
+  cp /dev/null "$stderr_log"
+
+  local java_project_dir
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    pushd "$java_project_dir"
+    local log_msg="Collecting Java tests in directory $PWD"
+    echo "$log_msg" >>"$stdout_log"
+    echo "$log_msg" >>"$stderr_log"
+    set +e
+    (
+      export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
+      set -x
+      # The string "YUGABYTE_JAVA_TEST: " is specified in the Java code as COLLECTED_TESTS_PREFIX.
+      #
+      time mvn "${mvn_opts[@]}" surefire:test \
+        2>>"$stderr_log" | \
+        tee -a "$stdout_log" | \
+        egrep '^YUGABYTE_JAVA_TEST: ' | \
+        sed 's/^YUGABYTE_JAVA_TEST: //g' >>"$java_test_list_path"
+    )
+    if [[ $? -ne 0 ]]; then
+      fatal "Failed collecting Java tests. See '$stdout_log' and '$stderr_log'."
+    fi
+    set -e
+    popd
+  done
+  log "Collected the list of Java tests to '$java_test_list_path'"
+}
+
+run_all_java_test_methods_separately() {
+  (
+    export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
+    export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    collect_java_tests
+    for java_test_name in $( cat "$java_test_list_path" | sort ); do
+      resolve_and_run_java_test "$java_test_name"
+    done
+  )
 }
 
 run_python_doctest() {
@@ -1394,6 +1492,110 @@ run_python_tests() {
   activate_virtualenv
   run_python_doctest
   check_python_script_syntax
+}
+
+should_run_java_test_methods_separately() {
+  [[ ${YB_RUN_JAVA_TEST_METHODS_SEPARATELY:-0} == "1" ]]
+}
+
+# Finds the directory (Maven module) the given Java test belongs to and runs it.
+#
+# Argument: the test to run in the following form:
+# com.yugabyte.jedis.TestReadFromFollowers#testSameZoneOps[0]
+resolve_and_run_java_test() {
+  expect_num_args 1 "$@"
+  local java_test_name=$1
+  set_common_test_paths
+  log "Running Java test $java_test_name"
+  local module_dir
+  local language
+  local java_test_method_name=""
+  if [[ $java_test_name == *\#* ]]; then
+    java_test_method_name=${java_test_name##*#}
+  fi
+  local java_test_class=${java_test_name%#*}
+  local rel_java_src_path=${java_test_class//./\/}
+  if ! is_jenkins; then
+    log "Java test class: $java_test_class"
+    log "Java test method name and optionally a parameter set index: $java_test_method_name"
+  fi
+
+  local module_name=""
+  for module_dir in "$YB_SRC_ROOT"/java/*; do
+    if [[ -d $module_dir ]]; then
+      for language in java scala; do
+        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
+          module_name=${module_dir##*/}
+        fi
+      done
+    fi
+  done
+
+  local IFS=$'\n'
+  if [[ -z $module_name ]]; then
+    # Could not find the test source assuming we are given the complete package. Let's assume we
+    # only have the class name.
+    module_name=""
+    local rel_source_path=""
+    local java_project_dir
+    for java_project_dir in "${java_project_dirs[@]}"; do
+      for module_dir in "$java_project_dir"/*; do
+        if [[ -d $module_dir ]]; then
+          local module_test_src_root="$module_dir/src/test"
+          if [[ -d $module_test_src_root ]]; then
+            local candidate_files=(
+              $(
+                cd "$module_test_src_root" &&
+                find . \( -name "$java_test_class.java" -or -name "$java_test_class.scala" \)
+              )
+            )
+            if [[ ${#candidate_files[@]} -gt 0 ]]; then
+              local current_module_name=${module_dir##*/}
+              if [[ -n $module_name ]]; then
+                fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                      "'$module_name' and '$current_moudle_name' are valid candidates."
+              fi
+              module_name=$current_module_name
+
+              if [[ ${#candidate_files[@]} -gt 1 ]]; then
+                fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
+                      "${candidate_files[*]}"
+              fi
+
+              rel_source_path=${candidate_files[0]}
+            fi
+          fi
+        fi
+      done
+    done
+
+    if [[ -z $module_name ]]; then
+      fatal "Could not find module name for Java/Scala test '$java_test_name'"
+    fi
+
+    local java_class_with_package=${rel_source_path%.java}
+    java_class_with_package=${java_class_with_package%.scala}
+    java_class_with_package=${java_class_with_package#./java/}
+    java_class_with_package=${java_class_with_package#./scala/}
+    java_class_with_package=${java_class_with_package//\//.}
+    if [[ $java_class_with_package != *.$java_test_class ]]; then
+      fatal "Internal error: could not find Java package name for test class $java_test_name. " \
+            "Found source file: $rel_source_path, and extracted Java class with package from it:" \
+            "'$java_class_with_package'. Expected that Java class name with package" \
+            "('$java_class_with_package') would end dot and Java test class name" \
+            "('.$java_test_class') but that is not the case."
+    fi
+    java_test_name=$java_class_with_package
+    if [[ -n $java_test_method_name ]]; then
+      java_test_name+="#$java_test_method_name"
+    fi
+  fi
+
+  if [[ ${num_test_repetitions:-1} -eq 1 ]]; then
+    run_java_test "$module_name" "$java_test_name"
+  else
+    run_repeat_unit_test "$module_name" "$java_test_name" --java
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

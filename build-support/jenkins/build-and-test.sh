@@ -67,6 +67,7 @@
 #   Default: 0
 #     Try to auto-detect the set of C++ tests to run for the current set of changes relative to
 #     origin/master.
+
 #
 # Portions Copyright (c) YugaByte, Inc.
 
@@ -144,6 +145,7 @@ cleanup() {
 
 cd "$YB_SRC_ROOT"
 
+export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
 log "Running with Bash version $BASH_VERSION"
 if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
   fatal "Test of the common build environment failed, cannot proceed."
@@ -476,6 +478,8 @@ fi
 #   pom.xml changes we've just made, forcing us to always run Java tests.
 current_git_commit=$(git rev-parse HEAD)
 
+random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
+
 # -------------------------------------------------------------------------------------------------
 # Java build
 
@@ -487,47 +491,50 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   if [[ -n ${JAVA_HOME:-} ]]; then
     export PATH=$JAVA_HOME/bin:$PATH
   fi
-  pushd "$YB_SRC_ROOT/java"
 
-  # build_yb_java_code will provide some common options for Maven. This includes local Maven
-  # repository location and the local Maven settings file.
-  build_yb_java_code clean
+  build_yb_java_code_in_all_dirs clean
 
   if is_jenkins; then
     # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
     # into ~/.m2/repository.
-    random_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
-    yb_java_project_version=yugabyte-jenkins-$random_id
+    yb_new_group_id=org.yb$random_build_id
 
-    yb_new_group_id=org.yb$random_id
-    find . -name "pom.xml" \
-           -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
+    for java_project_dir in "${yb_java_project_dirs[@]}"; do
+      pushd "$java_project_dir"
+      heading \
+        "Changing groupId from 'org.yb' to '$yb_new_group_id' in directory '$java_project_dir'"
+      find "$java_project_dir" -name "pom.xml" | \
+        while read pom_file_path; do
+          sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" \
+                "$pom_file_path"
+        done
+      heading "Building Java code in directory '$java_project_dir'"
+      if ! build_yb_java_code_with_retries -DskipTests clean install; then
+        EXIT_STATUS=1
+        FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
+      fi
+      popd
+    done
 
     # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
     # being built, not our temporary commit to update pom.xml files.
     get_current_git_sha1
     export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
 
-    commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
-    commit_msg+="during testing"
+    commit_msg="Updating groupId to $yb_new_group_id during testing"
 
-    build_yb_java_code versions:set -DnewVersion="$yb_java_project_version"
     (
       set -x
+      cd "$YB_SRC_ROOT"
       git add -A .
       git commit -m "$commit_msg"
     )
     unset commit_msg
   fi
 
-  java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
-  if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
-                                            -DskipTests clean install 2>&1; then
-    EXIT_STATUS=1
-    FAILURES+=$'Java build failed\n'
-  fi
+  collect_java_tests
+
   log "Finished building Java code (see timing information above)"
-  popd
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -592,6 +599,7 @@ set_sanitizer_runtime_options
 # To reduce Jenkins archive size, let's gzip Java logs and delete per-test-method logs in case
 # of no test failures.
 export YB_GZIP_PER_TEST_METHOD_LOGS=1
+export YB_GZIP_TEST_LOGS=1
 export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
 
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
@@ -652,16 +660,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
     fi
 
     if [[ $YB_BUILD_JAVA == "1" ]]; then
-      pushd "$YB_SRC_ROOT/java"
       set_test_invocation_id
       log "Running Java tests in a non-distributed way"
-      if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
+      if ! time run_all_java_test_methods_separately; then
         EXIT_STATUS=1
         FAILURES+=$'Java tests failed\n'
       fi
       log "Finished running Java tests (see timing information above)"
       kill_stuck_processes
-      popd
     fi
   fi
 fi

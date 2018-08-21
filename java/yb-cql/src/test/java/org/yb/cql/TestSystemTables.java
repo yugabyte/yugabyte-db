@@ -43,6 +43,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestSystemTables extends BaseCQLTest {
 
   private static final String DEFAULT_SCHEMA_VERSION = "00000000-0000-0000-0000-000000000000";

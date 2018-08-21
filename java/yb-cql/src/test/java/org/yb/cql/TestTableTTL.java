@@ -22,6 +22,11 @@ import java.util.Iterator;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestTableTTL extends BaseCQLTest {
 
   private Iterator<Row> execQuery(String tableName, int primaryKey) {

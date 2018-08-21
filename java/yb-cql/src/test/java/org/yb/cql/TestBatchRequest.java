@@ -29,6 +29,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestBatchRequest extends BaseCQLTest {
 
   @Override

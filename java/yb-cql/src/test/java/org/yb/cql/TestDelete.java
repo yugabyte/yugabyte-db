@@ -29,6 +29,11 @@ import static org.junit.Assert.assertEquals;
 import org.junit.rules.ExpectedException;
 import org.junit.Rule;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestDelete extends BaseCQLTest {
   @Rule
   public ExpectedException exception = ExpectedException.none();

@@ -26,6 +26,11 @@ import java.util.Iterator;
 import java.util.Random;
 import java.util.TreeSet;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestDecimalDataType extends BaseCQLTest {
   private String getRandomVarInt(boolean withSign, int length) {
     String digits = "0123456789";

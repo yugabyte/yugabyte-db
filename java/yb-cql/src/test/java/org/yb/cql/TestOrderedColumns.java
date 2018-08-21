@@ -36,6 +36,11 @@ import java.util.Random;
 import java.util.stream.*;
 import java.util.TreeSet;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestOrderedColumns extends BaseCQLTest {
 
   @Override

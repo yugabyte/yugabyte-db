@@ -24,6 +24,11 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.*;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestReturnsClause extends BaseCQLTest {
 
 

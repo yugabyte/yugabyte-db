@@ -24,6 +24,11 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestArith extends BaseCQLTest {
   interface MathOperator {
     Long Eval(Long a, Long b);

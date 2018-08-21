@@ -22,6 +22,11 @@ import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestBlobDataType extends BaseCQLTest {
 
     @Test

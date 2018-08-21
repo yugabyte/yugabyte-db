@@ -56,6 +56,11 @@ import com.google.common.net.HostAndPort;
 
 import com.google.protobuf.ByteString;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestYBClient extends BaseYBClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBClientTest.class);
 

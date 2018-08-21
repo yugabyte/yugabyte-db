@@ -25,6 +25,11 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestAuthentication extends BaseCQLTest {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {

@@ -22,6 +22,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Random;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestCreateTableWithProperties extends BaseCQLTest {
   @Test
   public void testCreateTable() throws Exception {

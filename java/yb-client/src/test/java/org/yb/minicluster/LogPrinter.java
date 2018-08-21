@@ -41,6 +41,10 @@ public class LogPrinter {
 
   private static final boolean LOG_PRINTER_DEBUG = false;
 
+  // A mechanism to wait for a line in the log that says that the server is starting.
+  private final Object serverStartEventMonitor = new Object();
+  private boolean sawServerStarting = false;
+
   public LogPrinter(String streamName, InputStream stream, String logPrefix) {
     this.streamName = streamName;
     this.stream = stream;
@@ -62,6 +66,7 @@ public class LogPrinter {
       try {
         while (!stopRequested.get()) {
           while ((line = in.readLine()) != null) {
+            handleLine(line);
             System.out.println(logPrefix + line);
           }
           // Sleep for a short time and give the child process a chance to generate more output.
@@ -75,8 +80,9 @@ public class LogPrinter {
       }
       in.close();
     } catch (Exception e) {
-      if (!e.getMessage().contains("Stream closed")) {
-        LOG.error("Caught error while reading a process' output", e);
+      String msg = e.getMessage();
+      if (msg == null || !msg.contains("Stream closed")) {
+        LOG.error("Caught error while reading a process's output", e);
       }
     } finally {
       try {
@@ -100,4 +106,35 @@ public class LogPrinter {
       }
     }
   }
+
+  /** Additional processing on a log line */
+  private void handleLine(String line) {
+    synchronized (serverStartEventMonitor) {
+      if (sawServerStarting)
+        return;
+    }
+    if (line.contains("RPC server started.")) {
+      synchronized (serverStartEventMonitor) {
+        sawServerStarting = true;
+        serverStartEventMonitor.notifyAll();
+      }
+    }
+  }
+
+  public void waitForServerStartingLogLine(long deadlineMs) throws InterruptedException {
+    long timeoutMs = deadlineMs - System.currentTimeMillis();
+    synchronized (serverStartEventMonitor) {
+      long timeLeftMs = deadlineMs - System.currentTimeMillis();
+      while (timeLeftMs > 0 && !sawServerStarting) {
+        serverStartEventMonitor.wait(timeLeftMs);
+      }
+      if (!sawServerStarting) {
+        throw new RuntimeException(
+            "Timed out waiting for a 'server starting' message to appear. " +
+                "Waited for " + timeoutMs + ". Log prefix: " + logPrefix);
+      }
+    }
+
+  }
+
 }
