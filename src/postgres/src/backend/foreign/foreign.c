@@ -416,23 +416,15 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 	FdwRoutine *fdwroutine;
 	FdwRoutine *cfdwroutine;
 
-	/* We currently ignore the makecopy argument because we are not
-	 * getting the fdwroutine from the relcache anyway.
-	 * TODO Check if this is the right way/place to handle this.
-	 */
-	if (IsYugaByteEnabled())
-	{
-		if (relation->rd_rel->relkind == RELKIND_RELATION)
-		{
-			relation->rd_fdwroutine = (FdwRoutine *) ybc_fdw_handler();
-			return relation->rd_fdwroutine;
-		}
-	}
-
 	if (relation->rd_fdwroutine == NULL)
 	{
-		/* Get the info by consulting the catalogs and the FDW code */
-		fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
+		if (IsYugaByteEnabled() && relation->rd_rel->relkind == RELKIND_RELATION) {
+			/* Get the custom YB FDW directly */
+			fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+		} else {
+			/* Get the info by consulting the catalogs and the FDW code */
+			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
+		}
 
 		/* Save the data for later reuse in CacheMemoryContext */
 		cfdwroutine = (FdwRoutine *) MemoryContextAlloc(CacheMemoryContext,

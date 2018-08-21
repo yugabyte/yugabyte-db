@@ -108,6 +108,7 @@ message PgsqlWriteRequestPB {
   // Table schema version.
   optional uint32 schema_version = 4; // required
 
+  //------------------------------------------------------------------------------------------------
   // Primary key.
   // - Hash code is used to locate efficiently a group of data values of the same hash code.
   //   First, it is used to find tablet server.
@@ -121,12 +122,22 @@ message PgsqlWriteRequestPB {
   // Columns to be written or overwritten.
   repeated PgsqlColumnValuePB column_values = 8;
 
-  // Where clause condition.
-  optional PgsqlExpressionPB where_expr = 9;
+  //------------------------------------------------------------------------------------------------
+  // Tuple descriptor for RETURNING clause.
+  //
+  // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
+  // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
+  // database in our coding.
+  optional PgsqlRSRowDescPB rsrow_desc = 9;
+  repeated PgsqlExpressionPB targets = 10; // required.
+
+  //------------------------------------------------------------------------------------------------
+  // Where clause condition
+  optional PgsqlExpressionPB where_expr = 11;
 
   // Listing of all columns that this write operation is referencing.
   // TServers will need to read these columns when processing the write request.
-  optional PgsqlColumnRefsPB column_refs = 10;
+  optional PgsqlColumnRefsPB column_refs = 12;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -198,15 +209,11 @@ message PgsqlReadRequestPB {
   //------------------------------------------------------------------------------------------------
   // Tuple descriptor.
   //
-  // TODO(neil) Currently, we need only the datatypes of the rsrow descriptor. However, when we
-  // optimize our execution pipeline to bypass QL layer, we might need to send the name as part
-  // of the prepared protobuf so that server know how to form result set without the help from QL.
-  //
   // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
   // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
   // database in our coding.
   optional PgsqlRSRowDescPB rsrow_desc = 6;
-  repeated PgsqlExpressionPB selected_exprs = 7; // required.
+  repeated PgsqlExpressionPB targets = 7; // required.
 
   //------------------------------------------------------------------------------------------------
   // Where clause condition

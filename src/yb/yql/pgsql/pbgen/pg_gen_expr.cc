@@ -66,7 +66,7 @@ CHECKED_STATUS PgCoder::TExprToPB(const PgTAllColumns *ref_pt, PgsqlReadRequestP
       // Skip all internal columns as users do not expect to see them.
       continue;
     }
-    req->add_selected_exprs()->set_column_id(col_desc.id());
+    req->add_targets()->set_column_id(col_desc.id());
 
     // Add the expression metadata (rsrow descriptor).
     PgsqlRSColDescPB *rscol_descs_pb = rsrow_desc_pb->add_rscol_descs();

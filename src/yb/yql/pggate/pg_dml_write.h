@@ -32,11 +32,11 @@ class PgDmlWrite : public PgDml {
   // Prepare write operations.
   CHECKED_STATUS Prepare();
 
+  // Setup internal structures for binding values during prepare.
+  void PrepareColumns();
+
   // Execute.
   CHECKED_STATUS Exec();
-
-  // Setup internal structures for binding values.
-  void PrepareBinds();
 
  protected:
   // Constructor.
@@ -50,7 +50,10 @@ class PgDmlWrite : public PgDml {
   virtual void AllocWriteRequest() = 0;
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnExprPB(int attr_num) override;
+  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+
+  // Allocate target for selected or returned expressions.
+  PgsqlExpressionPB *AllocTargetPB() override;
 
   // Protobuf code.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;

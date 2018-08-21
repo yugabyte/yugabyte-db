@@ -62,27 +62,30 @@ YBCStatus YBCPgDestroySession(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->DestroySession(pg_session));
 }
 
+//--------------------------------------------------------------------------------------------------
+// DDL Statements.
+//--------------------------------------------------------------------------------------------------
 // Database Operations -----------------------------------------------------------------------------
 
 YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(pg_session, database_name));
 }
 
-YBCStatus YBCPgAllocCreateDatabase(YBCPgSession pg_session,
-                                   const char *database_name,
-                                   YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocCreateDatabase(pg_session, database_name, handle));
+YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
+                                 const char *database_name,
+                                 YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateDatabase(pg_session, database_name, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateDatabase(handle));
 }
 
-YBCStatus YBCPgAllocDropDatabase(YBCPgSession pg_session,
-                                 const char *database_name,
-                                 bool if_exist,
-                                 YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocDropDatabase(pg_session, database_name, if_exist, handle));
+YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
+                               const char *database_name,
+                               bool if_exist,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropDatabase(pg_session, database_name, if_exist, handle));
 }
 
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
@@ -100,16 +103,16 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
 }
 
 // Schema Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgAllocCreateSchema(YBCPgSession pg_session,
-                                  const char *database_name,
-                                  const char *schema_name,
-                                  bool if_not_exist,
-                                  YBCPgStatement *handle) {
+YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
+                               const char *database_name,
+                               const char *schema_name,
+                               bool if_not_exist,
+                               YBCPgStatement *handle) {
   return YBCStatusNotSupport("SCHEMA");
 #if (0)
   // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->AllocCreateSchema(pg_session, schema_name, database_name,
-                                              if_not_exist, handle));
+  return ToYBCStatus(pgapi->NewCreateSchema(pg_session, schema_name, database_name,
+                                            if_not_exist, handle));
 #endif
 }
 
@@ -121,16 +124,16 @@ YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle) {
 #endif
 }
 
-YBCStatus YBCPgAllocDropSchema(YBCPgSession pg_session,
-                                const char *database_name,
-                                const char *schema_name,
-                                bool if_exist,
-                                YBCPgStatement *handle) {
+YBCStatus YBCPgNewDropSchema(YBCPgSession pg_session,
+                             const char *database_name,
+                             const char *schema_name,
+                             bool if_exist,
+                             YBCPgStatement *handle) {
   return YBCStatusNotSupport("SCHEMA");
 #if (0)
   // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->AllocDropSchema(pg_session, database_name, schema_name,
-                                            if_exist, handle));
+  return ToYBCStatus(pgapi->NewDropSchema(pg_session, database_name, schema_name,
+                                          if_exist, handle));
 #endif
 }
 
@@ -144,14 +147,14 @@ YBCStatus YBCPgExecDropSchema(YBCPgStatement handle) {
 
 // Table Operations -------------------------------------------------------------------------------
 
-YBCStatus YBCPgAllocCreateTable(YBCPgSession pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 const char *table_name,
-                                 bool if_not_exist,
-                                 YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocCreateTable(pg_session, database_name, schema_name, table_name,
-                                             if_not_exist, handle));
+YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *table_name,
+                              bool if_not_exist,
+                              YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
+                                           if_not_exist, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -164,62 +167,49 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
 
-YBCStatus YBCPgAllocDropTable(YBCPgSession pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               const char *table_name,
-                               bool if_exist,
-                               YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocDropTable(pg_session, database_name, schema_name, table_name,
-                                           if_exist, handle));
+YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
+                            const char *database_name,
+                            const char *schema_name,
+                            const char *table_name,
+                            bool if_exist,
+                            YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropTable(pg_session, database_name, schema_name, table_name,
+                                         if_exist, handle));
 }
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+//--------------------------------------------------------------------------------------------------
+// DML Statements.
+//--------------------------------------------------------------------------------------------------
+
+YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
+  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
+}
+
+YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
+                             int attr_num,
+                             YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls, bool *has_data) {
+  return ToYBCStatus(pgapi->DmlFetch(handle, values, isnulls, has_data));
+}
+
 // INSERT Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgAllocInsert(YBCPgSession pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocInsert(pg_session,
-                                        database_name,
-                                        schema_name,
-                                        table_name,
-                                        handle));
-}
-
-YBCStatus YBCPgInsertSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value) {
-  return ToYBCStatus(pgapi->InsertSetColumnInt2(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgInsertSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value) {
-  return ToYBCStatus(pgapi->InsertSetColumnInt4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgInsertSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value) {
-  return ToYBCStatus(pgapi->InsertSetColumnInt8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgInsertSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value) {
-  return ToYBCStatus(pgapi->InsertSetColumnFloat4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgInsertSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value) {
-  return ToYBCStatus(pgapi->InsertSetColumnFloat8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgInsertSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
-                                   int attr_bytes) {
-  return ToYBCStatus(pgapi->InsertSetColumnText(handle, attr_num, attr_value, attr_bytes));
-}
-
-YBCStatus YBCPgInsertSetColumnSerializedData(YBCPgStatement handle, int attr_num,
-                                             const char *attr_value, int attr_bytes) {
-  return ToYBCStatus(pgapi->InsertSetColumnSerializedData(handle, attr_num, attr_value,
-                                                          attr_bytes));
+YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
+                         const char *database_name,
+                         const char *schema_name,
+                         const char *table_name,
+                         YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewInsert(pg_session,
+                                      database_name,
+                                      schema_name,
+                                      table_name,
+                                      handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -231,86 +221,92 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 // DELETE Operations -------------------------------------------------------------------------------
 
 // SELECT Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgAllocSelect(YBCPgSession pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->AllocSelect(pg_session,
-                                        database_name,
-                                        schema_name,
-                                        table_name,
-                                        handle));
-}
-
-YBCStatus YBCPgSelectSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value) {
-  return ToYBCStatus(pgapi->SelectSetColumnInt2(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value) {
-  return ToYBCStatus(pgapi->SelectSetColumnInt4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value) {
-  return ToYBCStatus(pgapi->SelectSetColumnInt8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value) {
-  return ToYBCStatus(pgapi->SelectSetColumnFloat4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value) {
-  return ToYBCStatus(pgapi->SelectSetColumnFloat8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
-                                   int attr_bytes) {
-  return ToYBCStatus(pgapi->SelectSetColumnText(handle, attr_num, attr_value, attr_bytes));
-}
-
-YBCStatus YBCPgSelectSetColumnSerializedData(YBCPgStatement handle, int attr_num,
-                                             const char *attr_value, int attr_bytes) {
-  return ToYBCStatus(pgapi->SelectSetColumnSerializedData(handle, attr_num, attr_value,
-                                                          attr_bytes));
-}
-
-YBCStatus YBCPgSelectBindExprInt2(YBCPgStatement handle, int attr_num, int16_t *attr_value) {
-  return ToYBCStatus(pgapi->SelectBindExprInt2(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectBindExprInt4(YBCPgStatement handle, int attr_num, int32_t *attr_value) {
-  return ToYBCStatus(pgapi->SelectBindExprInt4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectBindExprInt8(YBCPgStatement handle, int attr_num, int64_t *attr_value) {
-  return ToYBCStatus(pgapi->SelectBindExprInt8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectBindExprFloat4(YBCPgStatement handle, int attr_num, float *attr_value) {
-  return ToYBCStatus(pgapi->SelectBindExprFloat4(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectBindExprFloat8(YBCPgStatement handle, int attr_num, double *attr_value) {
-  return ToYBCStatus(pgapi->SelectBindExprFloat8(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgSelectBindExprText(YBCPgStatement handle, int attr_num, char *attr_value,
-                                  int64_t *attr_bytes) {
-  return ToYBCStatus(pgapi->SelectBindExprText(handle, attr_num, attr_value, attr_bytes));
-}
-
-YBCStatus YBCPgSelectBindExprSerializedData(YBCPgStatement handle, int attr_num,
-                                             char *attr_value, int64_t *attr_bytes) {
-  return ToYBCStatus(pgapi->SelectBindExprSerializedData(handle, attr_num, attr_value,
-                                                         attr_bytes));
+YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
+                         const char *database_name,
+                         const char *schema_name,
+                         const char *table_name,
+                         YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewSelect(pg_session,
+                                      database_name,
+                                      schema_name,
+                                      table_name,
+                                      handle));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecSelect(handle));
 }
 
-YBCStatus YBCPgSelectFetch(YBCPgStatement handle, int64_t *row_count) {
-  return ToYBCStatus(pgapi->SelectFetch(handle, row_count));
+//--------------------------------------------------------------------------------------------------
+// Expression Operations
+//--------------------------------------------------------------------------------------------------
+
+YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
+                                 YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
+                                 YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, bytes, is_null, expr_handle));
+}
+
+// Overwriting the expression's result with any desired values.
+YBCStatus YBCPgUpdateConstInt2(YBCPgExpr expr, int16_t value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstInt4(YBCPgExpr expr, int32_t value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstInt8(YBCPgExpr expr, int64_t value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstFloat4(YBCPgExpr expr, float value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstFloat8(YBCPgExpr expr, double value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
+}
+
+YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
+  return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
 } // extern "C"

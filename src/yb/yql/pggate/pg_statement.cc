@@ -44,5 +44,9 @@ PgStatement::PgStatement(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op)
 PgStatement::~PgStatement() {
 }
 
+void PgStatement::AddExpr(PgExpr::SharedPtr expr) {
+  exprs_.push_back(expr);
+}
+
 }  // namespace pggate
 }  // namespace yb

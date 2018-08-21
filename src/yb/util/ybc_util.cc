@@ -53,6 +53,15 @@ constexpr size_t kFormattingBufSize = 16384;
 
 extern "C" {
 
+YBCStatus YBCStatus_OK = nullptr;
+bool YBCStatusIsOK(YBCStatus s) {
+  return (s == nullptr || s->code == Status::Code::kOk);
+}
+
+bool YBCStatusIsNotFound(YBCStatus s) {
+  return (s->code == Status::Code::kNotFound);
+}
+
 YBCStatus YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
   YBCSetPAllocFn(palloc_fn);
   return ToYBCStatus(yb::InitInternal(argv0));

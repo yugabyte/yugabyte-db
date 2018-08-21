@@ -18,8 +18,11 @@
 #ifndef YB_YQL_PGGATE_PG_COLDESC_H_
 #define YB_YQL_PGGATE_PG_COLDESC_H_
 
-#include "yb/common/types.h"
-#include "yb/util/memory/mc_types.h"
+// #include "yb/common/types.h"
+// #include "yb/util/memory/mc_types.h"
+
+// #include "yb/common/ql_type.h"
+#include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {
@@ -36,13 +39,7 @@ class ColumnDesc {
   typedef std::shared_ptr<ColumnDesc> SharedPtr;
   typedef std::shared_ptr<const ColumnDesc> SharedPtrConst;
 
-  ColumnDesc()
-      : index_(-1),
-        id_(-1),
-        is_partition_(false),
-        is_primary_(false),
-        ql_type_(QLType::Create(DataType::UNKNOWN_DATA)),
-        internal_type_(InternalType::VALUE_NOT_SET) {
+  ColumnDesc() : ql_type_(QLType::Create(DataType::UNKNOWN_DATA)) {
   }
 
   void Init(int index,
@@ -100,14 +97,14 @@ class ColumnDesc {
   }
 
  private:
-  int index_;
-  int id_;
+  int index_ = -1;
+  int id_ = -1;
   string name_;
-  bool is_partition_;
-  bool is_primary_;
-  int32_t attr_num_;
+  bool is_partition_ = false;
+  bool is_primary_ = false;
+  int32_t attr_num_ = -1;
   std::shared_ptr<QLType> ql_type_;
-  InternalType internal_type_;
+  InternalType internal_type_ = InternalType::VALUE_NOT_SET;
 };
 
 }  // namespace pggate

@@ -15,7 +15,7 @@
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
 #include "yb/yql/pgsql/ybpostgres/pg_send.h"
-#include "yb/yql/pggate/util/pg_net_writer.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
 namespace tablet {
@@ -123,7 +123,7 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
     sender.WriteTuples(resultset, rsrow_desc, &result->rows_data);
   } else {
     // Communicating with PgGate API.
-    RETURN_NOT_OK(pggate::PgNetWriter::WriteTuples(resultset, &result->rows_data));
+    RETURN_NOT_OK(pggate::PgDocData::WriteTuples(resultset, &result->rows_data));
   }
   TRACE("Done Serialize");
 

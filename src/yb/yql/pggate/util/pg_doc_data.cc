@@ -13,15 +13,17 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/util/pg_net_writer.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
-#include "yb/yql/pggate/util/pg_net_data.h"
 #include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {
 
-Status PgNetWriter::WriteTuples(const PgsqlResultSet& tuples, faststring *buffer) {
+//--------------------------------------------------------------------------------------------------
+// Write Tuple Routine in DocDB Format (wire_protocol).
+//--------------------------------------------------------------------------------------------------
+Status PgDocData::WriteTuples(const PgsqlResultSet& tuples, faststring *buffer) {
   // Write the number rows.
   WriteInt64(tuples.rsrow_count(), buffer);
 
@@ -32,7 +34,7 @@ Status PgNetWriter::WriteTuples(const PgsqlResultSet& tuples, faststring *buffer
   return Status::OK();
 }
 
-Status PgNetWriter::WriteTuple(const PgsqlRSRow& tuple, faststring *buffer) {
+Status PgDocData::WriteTuple(const PgsqlRSRow& tuple, faststring *buffer) {
   // Write the column contents.
   for (const QLValue& col_value : tuple.rscols()) {
     RETURN_NOT_OK(WriteColumn(col_value, buffer));
@@ -40,10 +42,10 @@ Status PgNetWriter::WriteTuple(const PgsqlRSRow& tuple, faststring *buffer) {
   return Status::OK();
 }
 
-Status PgNetWriter::WriteColumn(const QLValue& col_value, faststring *buffer) {
+Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
   // Write data header.
   bool has_data = true;
-  PgColumnHeader col_header;
+  PgWireDataHeader col_header;
   if (col_value.IsNull()) {
     col_header.set_null();
     has_data = false;
@@ -100,36 +102,31 @@ Status PgNetWriter::WriteColumn(const QLValue& col_value, faststring *buffer) {
   return Status::OK();
 }
 
-void PgNetWriter::WriteUint8(uint8_t value, faststring *buffer) {
-  buffer->append(&value, sizeof(uint8_t));
+//--------------------------------------------------------------------------------------------------
+// Read Tuple Routine in DocDB Format (wire_protocol).
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
+  // Setup the buffer to read the next set of tuples.
+  CHECK(cursor->empty()) << "Existing cache is not yet fully read";
+  *cursor = cache;
+
+  // Read the number row_count in this set.
+  int64_t this_count;
+  size_t read_size = ReadNumber(cursor, &this_count);
+  *total_row_count += this_count;
+  cursor->remove_prefix(read_size);
+
+  return Status::OK();
 }
 
-void PgNetWriter::WriteInt16(int16_t value, faststring *buffer) {
-  WriteInt(NetworkByteOrder::Store16, static_cast<uint16>(value), buffer);
-}
+PgWireDataHeader PgDocData::ReadDataHeader(Slice *cursor) {
+  // Read for NULL value.
+  uint8_t header_data;
+  size_t read_size = ReadNumber(cursor, &header_data);
+  cursor->remove_prefix(read_size);
 
-void PgNetWriter::WriteInt32(int32_t value, faststring *buffer) {
-  WriteInt(NetworkByteOrder::Store32, static_cast<uint32>(value), buffer);
-}
-
-void PgNetWriter::WriteInt64(int64_t value, faststring *buffer) {
-  WriteInt(NetworkByteOrder::Store64, static_cast<uint64>(value), buffer);
-}
-
-void PgNetWriter::WriteFloat(float value, faststring *buffer) {
-  const uint32 int_value = *reinterpret_cast<const uint32*>(&value);
-  WriteInt(NetworkByteOrder::Store32, int_value, buffer);
-}
-
-void PgNetWriter::WriteDouble(double value, faststring *buffer) {
-  const uint64 int_value = *reinterpret_cast<const uint64*>(&value);
-  WriteInt(NetworkByteOrder::Store64, int_value, buffer);
-}
-
-void PgNetWriter::WriteText(const string& value, faststring *buffer) {
-  const uint64 length = value.size();
-  WriteInt(NetworkByteOrder::Store64, length, buffer);
-  buffer->append(value);
+  return PgWireDataHeader(header_data);
 }
 
 }  // namespace pggate

@@ -155,8 +155,8 @@ CHECKED_STATUS PgCreateTable::Exec() {
       errmsg = "Duplicate table";
     } else if (s.IsNotFound()) {
       errmsg = "Schema not found";
-    } else if (s.IsInvalidArgument()) {
-      errmsg = "Invalid table definition";
+    } else {
+      errmsg = strings::Substitute("Invalid table definition. $0", s.ToString()).c_str();
     }
     return STATUS(InvalidArgument, errmsg);
   }

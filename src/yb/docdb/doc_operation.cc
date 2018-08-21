@@ -2964,11 +2964,11 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
 CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                                      PgsqlResultSet *resultset) {
-  int column_count = request_.selected_exprs().size();
+  int column_count = request_.targets().size();
   PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
 
   int rscol_index = 0;
-  for (const PgsqlExpressionPB& expr : request_.selected_exprs()) {
+  for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
     rscol_index++;
   }
@@ -2978,12 +2978,12 @@ CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr
 
 CHECKED_STATUS PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
   if (aggr_result_.empty()) {
-    int column_count = request_.selected_exprs().size();
+    int column_count = request_.targets().size();
     aggr_result_.resize(column_count);
   }
 
   int aggr_index = 0;
-  for (const PgsqlExpressionPB& expr : request_.selected_exprs()) {
+  for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
     aggr_index++;
   }
@@ -2992,7 +2992,7 @@ CHECKED_STATUS PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& ta
 
 CHECKED_STATUS PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
                                                      PgsqlResultSet *resultset) {
-  int column_count = request_.selected_exprs().size();
+  int column_count = request_.targets().size();
   PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];

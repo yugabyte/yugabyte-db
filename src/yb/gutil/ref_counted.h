@@ -338,6 +338,12 @@ class scoped_refptr {
 
   T* get() const { return ptr_; }
 
+  T* detach() {
+    T *temp = ptr_;
+    ptr_ = nullptr;
+    return temp;
+  }
+
   explicit operator bool() const { return ptr_ != nullptr; }
 
   bool operator!() const { return ptr_ == nullptr; }
