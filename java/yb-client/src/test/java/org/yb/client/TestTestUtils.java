@@ -48,6 +48,11 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for non-trivial helper methods in TestUtils.
  */
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestTestUtils {
 
   public static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);

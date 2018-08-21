@@ -22,6 +22,11 @@ import org.yb.client.TestUtils;
 
 import static org.junit.Assert.*;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestKeyspace extends BaseCQLTest {
   public void setupTable(String test_table) throws Exception {
     LOG.info("Create & setup table: " + test_table);

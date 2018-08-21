@@ -42,6 +42,11 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestYBTable extends BaseYBClientTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYBTable.class);

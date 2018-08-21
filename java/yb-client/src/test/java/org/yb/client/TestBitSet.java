@@ -39,13 +39,18 @@ import static org.junit.Assert.assertFalse;
 
 import java.util.BitSet;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestBitSet {
 
   /**
    * Test out BitSet-related operations
    */
   @Test
-  public void test() {
+  public void testBitSet() {
     int colCount = 1;
     BitSet bs = new BitSet(colCount);
     bs.set(0);

@@ -25,6 +25,11 @@ import java.util.List;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.fail;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestHideRedis extends BaseCQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestHideRedis.class);

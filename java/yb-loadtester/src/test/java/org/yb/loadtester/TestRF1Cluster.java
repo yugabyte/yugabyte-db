@@ -13,9 +13,10 @@
 package org.yb.loadtester;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
 
 import static junit.framework.TestCase.assertTrue;
@@ -24,6 +25,8 @@ import static junit.framework.TestCase.assertTrue;
  * This is an integration test that is specific to RF=1 case, so that we can default to
  * creating and deleting RF=1 cluster in the setup phase.
  */
+
+@RunWith(value=YBTestRunner.class)
 public class TestRF1Cluster extends TestClusterBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestRF1Cluster.class);
 

@@ -14,17 +14,11 @@ package org.yb.loadtester;
 
 import com.datastax.driver.core.Host;
 import com.google.common.net.HostAndPort;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.yugabyte.sample.Main;
-import com.yugabyte.sample.apps.AppBase;
 import com.yugabyte.sample.apps.CassandraStockTicker;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
@@ -34,24 +28,12 @@ import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.Socket;
-import java.net.URL;
-import java.net.URLConnection;
 import java.util.*;
 
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertTrue;
+import static junit.framework.TestCase.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-/**
- * This is the base class for integration test for cluster expand/shrink with workload testing.
- * NOTE: Please add the actual @Test to the derived classes.
- */
 public class TestClusterBase extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestClusterBase.class);
 

@@ -19,6 +19,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestKeyspaceProperties extends BaseCQLTest {
   private String createKeyspaceStmt(String properties) {
     return String.format("CREATE KEYSPACE test_keyspace WITH %s", properties);

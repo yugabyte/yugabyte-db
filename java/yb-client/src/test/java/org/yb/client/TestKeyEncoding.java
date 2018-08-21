@@ -50,6 +50,11 @@ import org.yb.client.PartitionSchema.RangeSchema;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestKeyEncoding {
 
   private static Schema buildSchema(ColumnSchemaBuilder... columns) {

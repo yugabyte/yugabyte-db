@@ -131,7 +131,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int DEFAULT_NUM_TSERVERS = 3;
 
-  private int numShardsPerTserver = DEFAULT_NUM_SHARDS_PER_TSERVER;
+  private int numShardsPerTserver;
 
   /**
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
@@ -306,9 +306,20 @@ public class MiniYBCluster implements AutoCloseable {
     }
     LOG.info("Starting {} masters...", numMasters);
     startMasters(numMasters, baseDirPath, masterArgs);
+
     LOG.info("Starting {} tablet servers...", numTservers);
+    startTabletServers(numTservers, tserverArgs);
+  }
+
+  private void startTabletServers(
+      int numTservers, List<List<String>> tserverArgs) throws Exception {
     for (int i = 0; i < numTservers; i++) {
       startTServer(tserverArgs.get(i));
+    }
+
+    long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
+    for (MiniYBDaemon tserverProcess : tserverProcesses.values()) {
+      tserverProcess.waitForServerStartLogMessage(tserverStartupDeadlineMs);
     }
   }
 
@@ -530,6 +541,11 @@ public class MiniYBCluster implements AutoCloseable {
         pathsToDelete.add(flagsPath);
       }
       pathsToDelete.add(dataDirPath);
+    }
+
+    long startupDeadlineMs = System.currentTimeMillis() + 60000;
+    for (MiniYBDaemon masterProcess : masterProcesses.values()) {
+      masterProcess.waitForServerStartLogMessage(startupDeadlineMs);
     }
   }
 

@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBParameterizedTestRunner;
 import org.yb.minicluster.MiniYBDaemon;
 import java.util.*;
 import redis.clients.jedis.JedisCommands;
@@ -25,7 +26,7 @@ import redis.clients.jedis.JedisCommands;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertTrue;
 
-@RunWith(Parameterized.class)
+@RunWith(value=YBParameterizedTestRunner.class)
 public class TestYBJedisCluster extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
 

@@ -14,6 +14,11 @@ import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestQLType extends BaseYBClientTest {
 
     private void checkType(QLType yqlType, Common.DataType dataType, QLType... params) {

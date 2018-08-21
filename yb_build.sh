@@ -159,6 +159,9 @@ Options:
     to provide better code assistance.
   --make-ninja-extra-args <extra_args>
     Extra arguments for the build tool such as Unix Make or Ninja.
+  --run-java-test-methods-separately, --rjtms
+    Run each Java test (test method or a parameterized instantiation of a test method) separately
+    as its own top-level Maven invocation, writing output to a separate file.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -251,7 +254,11 @@ print_report() {
       fi
       report_time "CMake" "cmake"
       report_time "C++ compilation" "make"
-      report_time "Java compilation" "java_build"
+      if "$run_java_tests"; then
+        report_time "Java compilation and tests" "java_build"
+      else
+        report_time "Java compilation" "java_build"
+      fi
       report_time "C++ (one test program)" "cxx_test"
       report_time "ctest (multiple C++ test programs)" "ctest"
       report_time "Remote tests" "remote_tests"
@@ -468,83 +475,6 @@ run_cxx_test() {
   fi
 }
 
-resolve_and_run_java_test() {
-  local module_dir
-  local language
-  local java_test_method_name=${java_test_name##*#}
-  local java_test_class=${java_test_name%#*}
-  local rel_java_src_path=${java_test_class//./\/}
-
-  local module_name=""
-  for module_dir in "$YB_SRC_ROOT"/java/*; do
-    if [[ -d $module_dir ]]; then
-      for language in java scala; do
-        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
-          module_name=${module_dir##*/}
-        fi
-      done
-    fi
-  done
-
-  local IFS=$'\n'
-  if [[ -z $module_name ]]; then
-    # Could not find the test source assuming we are given the complete package. Let's assume we
-    # only have the class name.
-    module_name=""
-    local rel_source_path=""
-    for module_dir in "$YB_SRC_ROOT"/java/*; do
-      if [[ -d $module_dir ]]; then
-        local module_test_src_root="$module_dir/src/test"
-        if [[ -d $module_test_src_root ]]; then
-          local candidate_files=(
-            $(
-              cd "$module_test_src_root" &&
-              find . \( -name "$java_test_class.java" -or -name "$java_test_class.scala" \)
-            )
-          )
-          if [[ ${#candidate_files[@]} -gt 0 ]]; then
-            local current_module_name=${module_dir##*/}
-            if [[ -n $module_name ]]; then
-              fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                    "'$module_name' and '$current_moudle_name' are valid candidates."
-            fi
-            module_name=$current_module_name
-
-            if [[ ${#candidate_files[@]} -gt 1 ]]; then
-              fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
-                    "${candidate_files[*]}"
-            fi
-
-            rel_source_path=${candidate_files[0]}
-          fi
-        fi
-      fi
-    done
-
-    if [[ -z $module_name ]]; then
-      fatal "Could not find module name for Java/Scala test '$java_test_name'"
-    fi
-
-    local java_class_with_package=${rel_source_path%.java}
-    java_class_with_package=${java_class_with_package%.scala}
-    java_class_with_package=${java_class_with_package#./java/}
-    java_class_with_package=${java_class_with_package#./scala/}
-    java_class_with_package=${java_class_with_package//\//.}
-    if [[ $java_class_with_package != *.$java_test_name ]]; then
-      fatal "Internal error: could not find Java package name for test class $java_test_name. " \
-            "Found source file: $rel_source_path, and extracted Java class with package from it: " \
-            "$java_class_with_package"
-    fi
-    java_test_name=$java_class_with_package
-  fi
-
-  if [[ $num_test_repetitions -eq 1 ]]; then
-    "$YB_BUILD_SUPPORT_DIR"/run-test.sh "$module_name" "$java_test_name"
-  else
-    run_repeat_unit_test "$module_name" "$java_test_name" --java
-  fi
-}
-
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -576,7 +506,7 @@ repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 java_with_assembly=false
-mvn_opts=""
+user_mvn_opts=""
 java_only=false
 cmake_only=false
 use_shared_thirdparty=false
@@ -805,7 +735,7 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --mvn-opts)
-      mvn_opts+=" $2"
+      user_mvn_opts+=" $2"
       shift
     ;;
     --ninja)
@@ -889,6 +819,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --gen-compilation-db|--gcdb)
       export_compile_commands=true
+    ;;
+    --run-java-test-methods-separately|--rjtms)
+      export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     ;;
     *)
       echo "Invalid option: '$1'" >&2
@@ -995,6 +928,10 @@ echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
 
 detect_edition
 
+# -------------------------------------------------------------------------------------------------
+# Recursively invoke this script in order to save the log to a file.
+# -------------------------------------------------------------------------------------------------
+
 if "$save_log"; then
   log_dir="$HOME/logs"
   mkdir_safe "$log_dir"
@@ -1020,6 +957,10 @@ if "$save_log"; then
   exit "$exit_code"
 fi
 
+# -------------------------------------------------------------------------------------------------
+# End of the section for supporting --save-log.
+# -------------------------------------------------------------------------------------------------
+
 if "$verbose"; then
   log "$script_name command line: ${original_args[@]}"
 fi
@@ -1038,8 +979,11 @@ if "$verbose"; then
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
 
+# -------------------------------------------------------------------------------------------------
 # If we are running in an interactive session, check if a clean build was done less than an hour
 # ago. In that case, make sure this is what the user really wants.
+# -------------------------------------------------------------------------------------------------
+
 if tty -s && ( $clean_before_build || $clean_thirdparty ); then
   build_root_basename=${BUILD_ROOT##*/}
   last_clean_timestamp_path="$YB_SRC_ROOT/build/last_clean_timestamp__$build_root_basename"
@@ -1060,6 +1004,10 @@ if tty -s && ( $clean_before_build || $clean_thirdparty ); then
   mkdir -p "$YB_SRC_ROOT/build"
   echo "$current_timestamp_sec" >"$last_clean_timestamp_path"
 fi
+
+# -------------------------------------------------------------------------------------------------
+# End of clean build confirmation.
+# -------------------------------------------------------------------------------------------------
 
 if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
@@ -1116,23 +1064,32 @@ fi
 if "$build_java"; then
   # We'll need this for running Java tests.
   set_sanitizer_runtime_options
+  set_mvn_parameters
 
-  cd "$YB_SRC_ROOT"/java
   java_build_opts=( install )
   if ! "$java_with_assembly"; then
     java_build_opts+=( -DskipAssembly )
   fi
-  if "$run_java_tests"; then
-    java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
-  else
+  java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
+
+  if ! "$run_java_tests" || should_run_java_test_methods_separately; then
     java_build_opts+=( -DskipTests )
   fi
-  java_build_start_time_sec=$(date +%s)
-  time ( build_yb_java_code $mvn_opts ${java_build_opts[@]} )
 
-  if [[ $YB_EDITION == "enterprise" ]]; then
-    cd "$YB_SRC_ROOT"/ent/java
-    time ( build_yb_java_code $mvn_opts ${java_build_opts[@]} )
+  java_build_start_time_sec=$(date +%s)
+
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    time (
+      cd "$java_project_dir"
+      build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
+    )
+  done
+  unset java_project_dir
+
+  if "$run_java_tests" && should_run_java_test_methods_separately; then
+    run_all_java_test_methods_separately
+  elif should_run_java_test_methods_separately; then
+    collect_java_tests
   fi
 
   java_build_end_time_sec=$(date +%s)
@@ -1149,7 +1106,12 @@ if ! "$ran_tests_remotely"; then
   fi
 
   if [[ -n $java_test_name ]]; then
-    resolve_and_run_java_test
+    (
+      if [[ $java_test_name == *\#* ]]; then
+        export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
+      fi
+      resolve_and_run_java_test "$java_test_name"
+    )
   fi
 
   if "$should_run_ctest"; then

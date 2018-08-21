@@ -21,6 +21,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestConditionalDml extends BaseCQLTest {
 
   // Assert that the specified row (h1, h2, r1, r2, v1, v2) exists.

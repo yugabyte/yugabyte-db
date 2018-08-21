@@ -12,19 +12,16 @@
 //
 package org.yb.loadtester;
 
-import com.google.common.net.HostAndPort;
-
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.minicluster.MiniYBCluster;
-
-import java.util.*;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 
 /**
  * This is an integration test that ensures we can expand, shrink a YB cluster
  * without any significant impact to a running load test.
  */
+
+@RunWith(value=YBTestRunner.class)
 public class TestClusterExpandShrink extends TestClusterBase {
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
   public void testClusterExpandAndShrink() throws Exception {

@@ -57,14 +57,13 @@
     <!-- Overriding this property allows us to put test results in a custom directory -->
     <yb.surefire.reports.directory>${project.build.directory}/surefire-reports</yb.surefire.reports.directory>
 
-    <!-- Maven plugins -->
+    <!-- Maven plugin versions -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
     <maven-assembly-plugin.version>3.0.0</maven-assembly-plugin.version>
     <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.0.0-M1</maven-enforcer-plugin.version>
     <protobuf-maven-plugin.version>0.5.1</protobuf-maven-plugin.version>
     <maven-surefire-plugin.version>2.22.0</maven-surefire-plugin.version>
-    <maven-failsafe-plugin.version>2.22.0</maven-failsafe-plugin.version>
     <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
     <scala-maven-plugin.version>3.2.1</scala-maven-plugin.version>
     <maven-javadoc-plugin.version>3.0.0</maven-javadoc-plugin.version>
@@ -73,6 +72,15 @@
     <maven-s3-wagon.version>1.2.1</maven-s3-wagon.version>
     <maven-source-plugin.version>3.0.1</maven-source-plugin.version>
     <commons-codec.version>1.10</commons-codec.version>
+
+    <!-- Surefire / failsafe configuration -->
+    <testing.reuseForks>false</testing.reuseForks>
+    <testing.perCoreThreadCount>false</testing.perCoreThreadCount>
+    <testing.redirectTestOutputToFile>true</testing.redirectTestOutputToFile>
+
+    <!-- Phases for execution of certain plugins that we want to optionally disable -->
+    <assembly.execution.phase>install</assembly.execution.phase>
+    <maven-dependency-plugin.phase>prepare-package</maven-dependency-plugin.phase>
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
@@ -104,6 +112,8 @@
       -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
       -Djava.awt.headless=true
     </testArgLine>
+
+    <yb.only.collect.tests>false</yb.only.collect.tests>
   </properties>
 
   <modules>
@@ -137,34 +147,21 @@
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-failsafe-plugin</artifactId>
-          <version>${maven-failsafe-plugin.version}</version>
-          <executions>
-            <execution>
-              <goals>
-                <goal>integration-test</goal>
-                <goal>verify</goal>
-              </goals>
-            </execution>
-          </executions>
-          <configuration>
-            <failIfNoTests>false</failIfNoTests>
-            <reuseForks>false</reuseForks>
-            <redirectTestOutputToFile>true</redirectTestOutputToFile>
-            <argLine>${testArgLine}</argLine>
-          </configuration>
-        </plugin>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${maven-surefire-plugin.version}</version>
           <configuration>
             <failIfNoTests>false</failIfNoTests>
-            <reuseForks>false</reuseForks>
-            <redirectTestOutputToFile>true</redirectTestOutputToFile>
+            <reuseForks>${testing.reuseForks}</reuseForks>
             <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
             <argLine>${testArgLine}</argLine>
             <reportsDirectory>${yb.surefire.reports.directory}</reportsDirectory>
+            <threadCount>1</threadCount>
+            <perCoreThreadCount>${testing.perCoreThreadCount}</perCoreThreadCount>
+            <redirectTestOutputToFile>${testing.redirectTestOutputToFile}</redirectTestOutputToFile>
+            <systemPropertyVariables>
+              <yb.only.collect.tests>${yb.only.collect.tests}</yb.only.collect.tests>
+              <yb.surefire.reports.directory>${yb.surefire.reports.directory}</yb.surefire.reports.directory>
+            </systemPropertyVariables>
           </configuration>
         </plugin>
         <plugin>
@@ -183,10 +180,12 @@
           </configuration>
           <executions>
             <execution>
-              <phase>install</phase>
-              <goals>
-                <goal>single</goal>
-              </goals>
+              <id>build-assembly</id>
+              <!--
+                Assembly will be disabled if -DskipAssembly is specified. See the parent pom.xml
+                for the corresponding profile.
+              -->
+              <phase>${assembly.execution.phase}</phase>
             </execution>
           </executions>
         </plugin>
@@ -495,4 +494,36 @@
       <url>${yugabyte.snapshots.repository.url}</url>
     </snapshotRepository>
   </distributionManagement>
+
+  <profiles>
+    <profile>
+      <id>collectTests</id>
+      <activation>
+        <property>
+          <name>collectTests</name>
+        </property>
+      </activation>
+      <properties>
+        <!-- If we are simply collecting the list of tests, we can "run" them in parallel. -->
+        <!-- No tests are actually being run in this case. -->
+        <testing.reuseForks>true</testing.reuseForks>
+        <testing.perCoreThreadCount>true</testing.perCoreThreadCount>
+        <testing.redirectTestOutputToFile>false</testing.redirectTestOutputToFile>
+        <assembly.execution.phase>none</assembly.execution.phase>
+        <maven-dependency-plugin.phase>none</maven-dependency-plugin.phase>
+        <yb.only.collect.tests>true</yb.only.collect.tests>
+      </properties>
+    </profile>
+    <profile>
+      <id>skipAssembly</id>
+      <activation>
+        <property>
+          <name>skipAssembly</name>
+        </property>
+      </activation>
+      <properties>
+        <assembly.execution.phase>none</assembly.execution.phase>
+      </properties>
+    </profile>
+  </profiles>
 </project>

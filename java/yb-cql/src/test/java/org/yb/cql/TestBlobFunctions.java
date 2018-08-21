@@ -9,6 +9,11 @@ import com.datastax.driver.core.Row;
 
 import static org.junit.Assert.assertEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestBlobFunctions extends BaseCQLTest {
 
     /**

@@ -12,7 +12,6 @@
 //
 package com.yugabyte.jedis;
 
-import junit.framework.TestCase;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -28,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+
+import org.yb.YBParameterizedTestRunner;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
@@ -40,7 +41,7 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.fail;
 
-@RunWith(Parameterized.class)
+@RunWith(YBParameterizedTestRunner.class)
 public class TestYBJedis extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
 

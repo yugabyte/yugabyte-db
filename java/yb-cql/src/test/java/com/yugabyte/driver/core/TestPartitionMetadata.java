@@ -21,6 +21,11 @@ import org.yb.cql.BaseCQLTest;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestPartitionMetadata extends BaseCQLTest {
 
   private TableSplitMetadata getPartitionMap(TableMetadata table) {

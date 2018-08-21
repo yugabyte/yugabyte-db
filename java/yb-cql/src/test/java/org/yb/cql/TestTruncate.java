@@ -12,14 +12,18 @@
 //
 package org.yb.cql;
 
+import java.util.*;
+
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-import java.util.*;
+import org.yb.YBTestRunner;
 
+@RunWith(value=YBTestRunner.class)
 public class TestTruncate extends BaseCQLTest {
 
   @Test

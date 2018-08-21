@@ -32,6 +32,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestTimeuuidFunctions extends BaseCQLTest {
 
     // A grand day! millis at 00:00:00.000 15 Oct 1582.

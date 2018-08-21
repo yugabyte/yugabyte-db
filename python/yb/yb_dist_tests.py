@@ -43,10 +43,17 @@ MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
 
 class TestDescriptor:
     """
-    test_descriptor is either a C++ test program name relative to the build root, optionally
-    followed by the separator and the gtest filter identifying a test within that test program,
-    or a Java test class source path (including .java/.scala extension) relative to the "java"
-    directory.
+    A "test descriptor" identifies a particular test we could run on a distributed test worker.
+    A string representation of a "test descriptor" is one of the following:
+    - A C++ test program name relative to the build root. This implies running all tests within
+      the test program. This has the disadvantage that a failure of one of those tests will cause
+      the rest of tests to not be run.
+    - A C++ test program name relative to the build root followed by the ':::' separator and the
+      gtest filter identifying a test within that test program,
+    - A string like 'com.yugabyte.jedis.TestYBJedis#testPool[1]' describing a Java test. This is
+      something that could be passed directly to the -Dtest=... Maven option.
+    - A Java test class source path (including .java/.scala extension) relative to the "java"
+      directory in the YugaByte DB source tree.
     """
     def __init__(self, descriptor_str):
         self.descriptor_str = descriptor_str
@@ -60,22 +67,34 @@ class TestDescriptor:
             self.descriptor_str_without_attempt_index = descriptor_str
 
         self.is_jvm_based = False
-        if self.descriptor_str.endswith('.java'):
+        is_mvn_compatible_descriptor = False
+        if len(self.descriptor_str.split('#')) == 2:
+            self.is_jvm_based = True
+            # Could be Scala, but as of 08/2018 we only have Java tests in the repository.
+            self.language = 'Java'
+            is_mvn_compatible_descriptor = True
+        elif self.descriptor_str.endswith('.java'):
             self.is_jvm_based = True
             self.language = 'Java'
-        if self.descriptor_str.endswith('.scala'):
+        elif self.descriptor_str.endswith('.scala'):
             self.is_jvm_based = True
             self.language = 'Scala'
 
         if self.is_jvm_based:
-            # This is a Java/Scala test. The "test descriptors string " is the Java source file path
-            # relative to the "java" directory.
-            mvn_module, package_and_class_with_slashes = JAVA_TEST_DESCRIPTOR_RE.match(
-                self.descriptor_str_without_attempt_index).groups()
+            # This is a Java/Scala test.
+            if is_mvn_compatible_descriptor:
+                # This is a string of the form "com.yugabyte.jedis.TestYBJedis#testPool[1]".
+                self.args_for_run_test = self.descriptor_str
+                output_file_name = self.descriptor_str
+            else:
+                # The "test descriptors string " is the Java source file path relative to the "java"
+                # directory.
+                mvn_module, package_and_class_with_slashes = JAVA_TEST_DESCRIPTOR_RE.match(
+                    self.descriptor_str_without_attempt_index).groups()
 
-            package_and_class = package_and_class_with_slashes.replace('/', '.')
-            self.args_for_run_test = "{} {}".format(mvn_module, package_and_class)
-            output_file_name = package_and_class
+                package_and_class = package_and_class_with_slashes.replace('/', '.')
+                self.args_for_run_test = "{} {}".format(mvn_module, package_and_class)
+                output_file_name = package_and_class
         else:
             self.language = 'C++'
             # This is a C++ test.
@@ -97,7 +116,7 @@ class TestDescriptor:
             if test_name:
                 output_file_name += '__' + test_name
 
-        output_file_name = output_file_name.replace('/', '__')
+        output_file_name = re.sub(r'[\[\]/#]', '_', output_file_name)
         self.error_output_path = os.path.join(
                 global_conf.build_root, 'yb-test-logs', output_file_name + '__error.log')
 

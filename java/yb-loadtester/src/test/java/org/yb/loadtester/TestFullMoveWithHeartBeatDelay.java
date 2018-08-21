@@ -17,19 +17,23 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.net.HostAndPort;
-
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
 
 /**
  * This is an integration test that ensures tserver do not miss master config change updates
  * (with injected heartbeat delays) without any significant impact to a running load test.
  */
+
+@RunWith(value=YBTestRunner.class)
 public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
+
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
   public void testClusterFullMoveWithHeartbeatDelay() throws Exception {
     // Wait for load tester to generate traffic.
@@ -89,4 +93,5 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     verifyClusterHealth();
   }
+
 }
