@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.yb</groupId>
-    <artifactId>yb-parent</artifactId>
+    <artifactId>yb-enterprise</artifactId>
     <version>0.8.0-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cql-ent</artifactId>

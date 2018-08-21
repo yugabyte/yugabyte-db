@@ -12,28 +12,21 @@
 //
 package org.yb.cqlent;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.exceptions.TransportException;
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Row;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
-import org.yb.cql.*;
+import org.yb.cql.BaseCQLTest;
 
-import java.io.*;
-import java.net.InetAddress;
-import java.text.SimpleDateFormat;
-import java.security.*;
-import java.util.*;
+import java.util.ArrayList;
 
-import javax.net.ssl.*;
-
-import io.netty.handler.ssl.*;
-
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
+@RunWith(value=YBTestRunner.class)
 public class TestCQLSecure extends BaseCQLTest {
   public TestCQLSecure() {
     tserverArgs = new ArrayList<String>();
