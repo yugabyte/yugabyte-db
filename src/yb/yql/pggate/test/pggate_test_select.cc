@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/util/ybc-internal.h"
 
 namespace yb {
 namespace pggate {
@@ -28,100 +29,128 @@ TEST_F(PggateTestSelect, TestSelectBasic) {
   YBCPgStatement pg_stmt;
 
   // Create table in the connected database.
-  CHECK_YBC_STATUS(YBCPgAllocCreateTable(pg_session_, nullptr, nullptr, tabname,
-                                         true /* if_not_exist */, &pg_stmt));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "hash_key", 1,
+  int col_count = 0;
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, nullptr, nullptr, tabname,
+                                       true /* if_not_exist */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                              DataType::INT64, true, true));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "id", 2,
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "id", ++col_count,
                                              DataType::INT32, false, true));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "dependent_count", 3,
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "dependent_count", ++col_count,
                                              DataType::INT16, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "project_count", 4,
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "project_count", ++col_count,
                                              DataType::INT32, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "salary", 5,
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "salary", ++col_count,
                                              DataType::FLOAT, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "job", 6,
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                              DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
-  int insert_row_count = 7;
-  int seed;
+  // Allocate new insert.
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+
+  // Allocate constant expressions.
+  // TODO(neil) We can also allocate expression with bind.
+  int seed = 1;
+  YBCPgExpr expr_hash;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
+  YBCPgExpr expr_id;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
+  YBCPgExpr expr_depcnt;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
+  YBCPgExpr expr_projcnt;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
+  YBCPgExpr expr_salary;
+  CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
+  YBCPgExpr expr_job;
+  string job = strings::Substitute("Job_title_$0", seed);
+  CHECK_YBC_STATUS(YBCPgNewConstantChar(pg_stmt, job.c_str(), job.size(), false, &expr_job));
+
+  // Set column value to be inserted.
+  int attr_num = 0;
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_hash));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_id));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_depcnt));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_projcnt));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_salary));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_job));
+  CHECK_EQ(attr_num, col_count);
+
+  const int insert_row_count = 7;
   for (int i = 0; i < insert_row_count; i++) {
-    seed = i + 1;
-
-    // Allocate new insert.
-    CHECK_YBC_STATUS(YBCPgAllocInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
-
-    // Insert row 1.
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnInt8(pg_stmt, 1, 0));
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnInt4(pg_stmt, 2, seed));
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnInt2(pg_stmt, 3, seed));
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnInt4(pg_stmt, 4, 100 + seed));
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnFloat4(pg_stmt, 5, seed + 1.0*seed/10.0));
-
-    string job_name = strings::Substitute("Job_title_$0", seed);
-    CHECK_YBC_STATUS(YBCPgInsertSetColumnText(pg_stmt, 6, job_name.c_str(), job_name.size()));
+    // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
 
-    // Delete insert.
-    CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
-    pg_stmt = nullptr;
+    // Update the constant expresions to insert the next row.
+    // TODO(neil) When we support binds, we can also call UpdateBind here.
+    seed++;
+    YBCPgUpdateConstInt4(expr_id, seed, false);
+    YBCPgUpdateConstInt2(expr_depcnt, seed, false);
+    YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
+    YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false);
+    job = strings::Substitute("Job_title_$0", seed);
+    YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
   }
 
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
   // SELECT ----------------------------------------------------------------------------------------
-  int64_t hash_key = 0;
-  int32_t id = 0;
-  int16_t dep_count = 0;
-  int32_t proj_count = 0;
-  float salary = 0;
-  char job[4096] = "";
-  int64_t job_bytes = 4096;
-  CHECK_YBC_STATUS(YBCPgAllocSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+
+  // Specify the selected expressions.
+  YBCPgExpr colref;
+  YBCPgNewColumnRef(pg_stmt, 1, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 3, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 4, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 5, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 6, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT.
-  CHECK_YBC_STATUS(YBCPgSelectSetColumnInt8(pg_stmt, 1, 0));
+  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_hash));
 
-  // Bind select expression.
-  CHECK_YBC_STATUS(YBCPgSelectBindExprInt8(pg_stmt, 1, &hash_key));
-  CHECK_YBC_STATUS(YBCPgSelectBindExprInt4(pg_stmt, 2, &id));
-  CHECK_YBC_STATUS(YBCPgSelectBindExprInt2(pg_stmt, 3, &dep_count));
-  CHECK_YBC_STATUS(YBCPgSelectBindExprInt4(pg_stmt, 4, &proj_count));
-  CHECK_YBC_STATUS(YBCPgSelectBindExprFloat4(pg_stmt, 5, &salary));
-  CHECK_YBC_STATUS(YBCPgSelectBindExprText(pg_stmt, 6, job, &job_bytes));
+  // Execute select statement.
   YBCPgExecSelect(pg_stmt);
 
-  int64_t fetch_row_count = 1;
-  seed = 0;
-  while (fetch_row_count > 0) {
-    seed++;
+  // Fetching rows and check their contents.
+  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+  for (int i = 0; i < insert_row_count; i++) {
+    bool has_data = false;
+    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    CHECK(has_data) << "Not all inserted rows are fetch";
 
-    // Fetch a row.
-    YBCPgSelectFetch(pg_stmt, &fetch_row_count);
-    if (fetch_row_count <= 0) {
-      break;
-    }
-
-    LOG(INFO) << "ROW " << seed << ": "
-              << "hash_key = " << hash_key
-              << ", id = " << id
-              << ", dependent count = " << dep_count
-              << ", project count = " << proj_count
-              << ", salary = " << salary
-              << ", job = (" << job << ", " << job_bytes << ")";
+    // Print result
+    LOG(INFO) << "ROW " << i << ": "
+              << "hash_key = " << values[0]
+              << ", id = " << values[1]
+              << ", dependent count = " << values[2]
+              << ", project count = " << values[3]
+              << ", salary = " << *reinterpret_cast<float*>(&values[4])
+              << ", job = (" << values[5] << ")";
 
     // Check result.
-    CHECK_EQ(hash_key, 0);
-    CHECK_EQ(id, seed);
-    CHECK_EQ(dep_count, seed);
-    CHECK_EQ(proj_count, 100 + seed);
-    CHECK_LE(salary, seed + 1.0*seed/10.0 + 0.01);
-    CHECK_GE(salary, seed + 1.0*seed/10.0 - 0.01);
+    int col_index = 0;
+    CHECK_EQ(values[col_index++], 0);  // hash_key : int64
+    int32_t id = values[col_index++];  // id : int32
+    CHECK_EQ(values[col_index++], id);  // dependent_count : int16
+    CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
+    CHECK_LE(*reinterpret_cast<float*>(&values[col_index]), id + 1.0*id/10.0 + 0.01); // salary
+    CHECK_GE(*reinterpret_cast<float*>(&values[col_index++]), id + 1.0*id/10.0 - 0.01); // float
 
-    string selected_job_name = string(job, job_bytes);
-    string expected_job_name = strings::Substitute("Job_title_$0", seed);
+    string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+    string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
   }
 

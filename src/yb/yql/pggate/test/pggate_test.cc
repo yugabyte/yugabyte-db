@@ -115,8 +115,9 @@ void PggateTest::SetupDB(const string& db_name) {
 
 void PggateTest::CreateDB(const string& db_name) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgAllocCreateDatabase(pg_session_, db_name.c_str(), &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }
 
 void PggateTest::ConnectDB(const string& db_name) {

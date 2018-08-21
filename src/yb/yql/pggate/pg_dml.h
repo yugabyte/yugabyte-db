@@ -29,22 +29,26 @@ class PgDml : public PgStatement {
  public:
   virtual ~PgDml();
 
+  // Append a target in SELECT or RETURNING.
+  CHECKED_STATUS AppendTarget(PgExpr *target);
+
+  // Find the column associated with the given "attr_num".
+  CHECKED_STATUS FindColumn(int attr_num, PgColumn **col);
+
+  // Prepare column for both ends.
+  // - Prepare protobuf to communicate with DocDB.
+  // - Prepare PgExpr to send data back to Postgres layer.
+  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *proto, const PgColumn **col);
+
+  // Bind a column with an expression.
+  CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+
+  // This function is not yet working and might not be needed.
   virtual CHECKED_STATUS ClearBinds();
 
-  // INPUT BINDS -----------------------------------------------------------------------------------
-  // Set numeric types.
-  CHECKED_STATUS SetColumnInt2(int attnum, int16_t value);
-  CHECKED_STATUS SetColumnInt4(int attnum, int32_t value);
-  CHECKED_STATUS SetColumnInt8(int attnum, int64_t value);
-
-  CHECKED_STATUS SetColumnFloat4(int attnum, float value);
-  CHECKED_STATUS SetColumnFloat8(int attnum, double value);
-
-  // Set string types.
-  CHECKED_STATUS SetColumnText(int attnum, const char *att_value, int att_bytes);
-
-  // Set serialized-to-string types.
-  CHECKED_STATUS SetColumnSerializedData(int attnum, const char *att_value, int att_bytes);
+  // Fetch a row and advance cursor to the next row.
+  CHECKED_STATUS Fetch(uint64_t *values, bool *isnulls, bool *has_data);
+  CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
 
  protected:
   // Method members.
@@ -59,24 +63,56 @@ class PgDml : public PgStatement {
   CHECKED_STATUS LoadTable(bool for_write);
 
   // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocColumnExprPB(int attr_num) = 0;
+  virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
 
-  // Data members.
+  // Allocate column protobuf.
+  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+
+  // Update bind values.
+  CHECKED_STATUS UpdateBindPBs();
+
+  // -----------------------------------------------------------------------------------------------
+  // Data members that define the DML statement.
+  //
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
   client::YBTableName table_name_;
   std::shared_ptr<client::YBTable> table_;
-  // TODO(neil) It would make a lot more sense if we index by attr_num instead of ID.
-  std::vector<ColumnDesc> col_descs_;
+
+  // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
+  std::vector<PgColumn> columns_;
   int key_col_count_;
   int partition_col_count_;
 
-  // Protobuf code.
-  // Input binds. For now these are just literal values of the columns.
-  std::unordered_map<int, PgsqlExpressionPB *> primary_exprs_;
+  // Postgres targets of statements. These are either selected or returned expressions.
+  std::vector<PgExpr*> targets_;
+
+  // -----------------------------------------------------------------------------------------------
+  // Data members for generated protobuf.
+  // NOTE:
+  // - Where clause processing data is not supported yet.
+  // - Some protobuf structure are also setup in PgColumn class.
 
   // Column references.
   PgsqlColumnRefsPB *column_refs_ = nullptr;
+
+  // Column associated values (expressions) to be used by DML statements.
+  // - When expression are constructed, we bind them with their associated protobuf.
+  // - These expressions might not yet have values for place_holders or literals.
+  // - During execution, the place_holder values are updated, and the statement protobuf need to
+  //   be updated accordingly.
+  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+
+  //------------------------------------------------------------------------------------------------
+  // Data members for output.
+  // Result set either from seleted or returned targets is cached in a list of strings.
+  std::list<string> result_set_;
+
+  // Cursor.
+  Slice cursor_;
+
+  // Total number of rows that have been found.
+  int64_t total_row_count_ = 0;
 };
 
 }  // namespace pggate

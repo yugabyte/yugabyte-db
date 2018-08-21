@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/client/yb_op.h"
 
 namespace yb {
@@ -41,19 +42,20 @@ Status PgSelect::Prepare() {
   // Allocate SELECT request.
   read_op_.reset(table_->NewPgsqlSelect());
   read_req_ = read_op_->mutable_request();
-  PrepareBinds();
+  PrepareColumns();
 
   return Status::OK();
 }
 
-void PgSelect::PrepareBinds() {
+void PgSelect::PrepareColumns() {
+  // Setting protobuf.
   column_refs_ = read_req_->mutable_column_refs();
 
-  // When reading, only values of partition column may present.
-  for (ColumnDesc col : col_descs_) {
-    if (col.is_partition()) {
-      primary_exprs_[col.id()] = read_req_->add_partition_column_values();
-    }
+  // When reading, only values of partition columns are special-cased in protobuf.
+  // Because Kudu API requires that partition columns must be listed in their created-order, the
+  // slots for partition column bind expressions are allocated here in correct order.
+  for (PgColumn &col : columns_) {
+    col.AllocPartitionBindPB(read_req_);
   }
 }
 
@@ -61,20 +63,12 @@ void PgSelect::PrepareBinds() {
 // DML support.
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
 
-PgsqlExpressionPB *PgSelect::AllocColumnExprPB(int attr_num) {
-  for (ColumnDesc col : col_descs_) {
-    if (col.attr_num() == attr_num) {
-      // Return the reserved space for the column in the partition key.
-      if (col.is_partition()) {
-        DCHECK(primary_exprs_.find(col.id()) != primary_exprs_.end());
-        return primary_exprs_[col.id()];
-      }
-      break;
-    }
-  }
+PgsqlExpressionPB *PgSelect::AllocColumnBindPB(PgColumn *col) {
+  return col->AllocBindPB(read_req_);
+}
 
-  LOG(FATAL) << "Only valid partition attr_num is allowed (" << attr_num << ") ";
-  return nullptr;
+PgsqlExpressionPB *PgSelect::AllocTargetPB() {
+  return read_req_->add_targets();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -82,118 +76,25 @@ PgsqlExpressionPB *PgSelect::AllocColumnExprPB(int attr_num) {
 // For now, selected expressions are just a list of column names (ref).
 //   SELECT column_l, column_m, column_n FROM ...
 
-PgsqlExpressionPB *PgSelect::AllocSelectedExprPB() {
-  return read_req_->add_selected_exprs();
-}
-
-Status PgSelect::AddSelectedColumnPB(int attr_num) {
-  PgsqlExpressionPB *sel_expr = AllocSelectedExprPB();
-  for (ColumnDesc col : col_descs_) {
-    if (col.attr_num() == attr_num) {
-      sel_expr->set_column_id(col.id());
-      column_refs_->add_ids(col.id());
-      return Status::OK();
-    }
-  }
-
-  return STATUS_FORMAT(InvalidArgument, "Invalid attr_num ($0) is selected", attr_num);
-}
-
-Status PgSelect::BindExprInt2(int attr_num, int16_t *attr_value) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindInt16>(attr_value));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprInt4(int attr_num, int32_t *attr_value) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindInt32>(attr_value));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprInt8(int attr_num, int64_t *attr_value) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindInt64>(attr_value));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprFloat4(int attr_num, float *attr_value) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindFloat>(attr_value));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprFloat8(int attr_num, double *attr_value) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindDouble>(attr_value));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprText(int attr_num, char *attr_value, int64_t *attr_bytes) {
-  // Tell DocDB we are selecting column that are associated with 'attr_num'.
-  // TODO(neil) when we extend selected column into selected expression, update this code.
-  RETURN_NOT_OK(AddSelectedColumnPB(attr_num));
-
-  // Set the bind to write data into Postgres buffer.
-  pg_binds_.push_back(make_shared<PgBindText>(attr_value, attr_bytes, true /* allow_truncate */));
-  return Status::OK();
-}
-
-Status PgSelect::BindExprSerializedData(int attr_num, char *attr_value, int64_t *attr_bytes) {
-  return STATUS(NotSupported, "Setting serialized values is not yet supported");
-}
-
 Status PgSelect::Exec() {
   // TODO(neil) The following code is a simple read and cache. It operates once and done.
   // - This will be extended to do scanning and caching chunk by chunk.
   // - "result_set_" field need to be locked and release. Available rows are fetched from the
   //   beginning while the arriving rows are append at the end.
+
+  // Update bind values for constants and placeholders.
+  RETURN_NOT_OK(UpdateBindPBs());
+
+  // Execute select statement.
   RETURN_NOT_OK(pg_session_->Apply(read_op_));
 
   // Append the data and wait for the fetch request.
   result_set_.push_back(read_op_->rows_data());
   if (cursor_.empty()) {
-    RETURN_NOT_OK(PgNetReader::ReadNewTuples(result_set_.front(), &total_row_count_, &cursor_));
+    RETURN_NOT_OK(PgDocData::LoadCache(result_set_.front(), &total_row_count_, &cursor_));
   }
 
   return Status::OK();
-}
-
-Status PgSelect::Fetch(int64_t *row_count) {
-  // Deserialize next row.
-  if (cursor_.empty()) {
-    if (result_set_.size() <= 1) {
-      result_set_.clear();
-      *row_count = 0;
-      return Status::OK();
-    } else {
-      result_set_.pop_front();
-      RETURN_NOT_OK(PgNetReader::ReadNewTuples(result_set_.front(), &total_row_count_, &cursor_));
-    }
-  }
-
-  *row_count = 1;
-  return PgNetReader::ReadTuple(pg_binds_, &cursor_);
 }
 
 }  // namespace pggate

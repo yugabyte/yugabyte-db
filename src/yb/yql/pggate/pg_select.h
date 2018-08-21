@@ -20,7 +20,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/yql/pggate/pg_dml.h"
-#include "yb/yql/pggate/util/pg_bind.h"
 
 namespace yb {
 namespace pggate {
@@ -40,50 +39,26 @@ class PgSelect : public PgDml {
            const char *schema_name,
            const char *table_name);
   virtual ~PgSelect();
+
+  // Prepare SELECT before execution.
   CHECKED_STATUS Prepare();
 
-  // Setup internal structures for binding values.
-  void PrepareBinds();
-
-  // Output bind for selected expressions.
-  PgsqlExpressionPB *AllocSelectedExprPB();
-  CHECKED_STATUS AddSelectedColumnPB(int attr_num);
-
-  // Currently, we only bind to column values.
-  CHECKED_STATUS BindExprInt2(int attnum, int16_t *attr_value);
-  CHECKED_STATUS BindExprInt4(int attnum, int32_t *attr_value);
-  CHECKED_STATUS BindExprInt8(int attnum, int64_t *attr_value);
-
-  CHECKED_STATUS BindExprFloat4(int attnum, float *attr_value);
-  CHECKED_STATUS BindExprFloat8(int attnum, double *attr_value);
-
-  // Set string types.
-  CHECKED_STATUS BindExprText(int attnum, char *att_value, int64_t *att_bytes);
-
-  // Set serialized-to-string types.
-  CHECKED_STATUS BindExprSerializedData(int attnum, char *att_value, int64_t *att_bytes);
+  // Setup internal structures for binding values during prepare.
+  void PrepareColumns();
 
   // Execute.
   CHECKED_STATUS Exec();
 
-  // Fetch a row and advance cursor to the next row.
-  CHECKED_STATUS Fetch(int64_t *row_count);
-
  private:
   // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocColumnExprPB(int attr_num) override;
+  virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+
+  // Allocate protobuf for target.
+  PgsqlExpressionPB *AllocTargetPB() override;
 
   // Protobuf instruction.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;
   PgsqlReadRequestPB *read_req_ = nullptr;
-
-  // Caching data.
-  std::list<string> result_set_;
-  vector<PgBind::SharedPtr> pg_binds_;
-
-  // Cursor.
-  int64_t total_row_count_ = 0;
-  PgNetBuffer cursor_;
 };
 
 }  // namespace pggate

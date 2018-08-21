@@ -18,3 +18,4 @@
 # False positive from atexit() registration in libc
 leak:*__new_exitfn*
 leak:InitModule
+leak:__res_vinit

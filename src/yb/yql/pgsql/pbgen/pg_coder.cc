@@ -250,13 +250,13 @@ CHECKED_STATUS PgCoder::TStmtToPB(const PgTSelectStmt *tstmt) {
                                 tstmt->partition_key_ops(), tstmt->func_ops(), &no_results));
 #endif
 
-  // Specify selected list by adding the expressions to selected_exprs in read request.
+  // Specify selected list by adding the expressions to targets in read request.
   PgsqlRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tstmt->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPgTAllColumns) {
       RETURN_NOT_OK(TExprToPB(static_cast<const PgTAllColumns*>(expr.get()), req));
     } else {
-      RETURN_NOT_OK(TExprToPB(expr, req->add_selected_exprs()));
+      RETURN_NOT_OK(TExprToPB(expr, req->add_targets()));
 
       // Add the expression metadata (rsrow descriptor).
       PgsqlRSColDescPB *rscol_desc_pb = rsrow_desc_pb->add_rscol_descs();

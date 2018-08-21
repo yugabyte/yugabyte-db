@@ -47,13 +47,13 @@ YBCStatus YBCPgDestroySession(YBCPgSession pg_session);
 YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name);
 
 // Create database.
-YBCStatus YBCPgAllocCreateDatabase(YBCPgSession pg_session,
+YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                    const char *database_name,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
 // Drop database.
-YBCStatus YBCPgAllocDropDatabase(YBCPgSession pg_session,
+YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                  const char *database_name,
                                  bool if_exist,
                                  YBCPgStatement *handle);
@@ -69,7 +69,7 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 //--------------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
-YBCStatus YBCPgAllocCreateSchema(YBCPgSession pg_session,
+YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
                                  const char *database_name,
                                  const char *schema_name,
                                  bool if_not_exist,
@@ -88,7 +88,7 @@ YBCStatus YBCPgExecDropSchema(YBCPgStatement handle);
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
 // - When "database_name" is NULL, the table "connected_database_name.table_name" is created.
-YBCStatus YBCPgAllocCreateTable(YBCPgSession pg_session,
+YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                                 const char *database_name,
                                 const char *schema_name,
                                 const char *table_name,
@@ -100,7 +100,7 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
-YBCStatus YBCPgAllocDropTable(YBCPgSession pg_session,
+YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
                               const char *database_name,
                               const char *schema_name,
                               const char *table_name,
@@ -110,49 +110,32 @@ YBCStatus YBCPgAllocDropTable(YBCPgSession pg_session,
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
 //--------------------------------------------------------------------------------------------------
-#if 0
-// TODO(neil) On next diff.
-// - Read how Postgres process SELECT and other DMLs and define the binding interface accordingly.
-// - Read structures for all datatypes and define appropricate YBCPgBind.
-// - Postfix the bind function name with datatype help avoiding "switch(datatype){}" for every call.
-//   Do we need this? This only helps for execute-immediate.
+// All DML statements (select, insert, update, delete)
+
+// This function is for specifying the selected or returned expressions.
+// - SELECT target_expr1, target_expr2, ...
+// - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
+YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
+
+// Bind column with an expression in a statement.
+// - INSERT INTO tab(x) VALUES(x_expr)
+//   This bind-column function is used to bind "x" with "x_expr", and "x_expr" that can contain
+//   bind-variables (placeholders) and contants whose values can be updated for each execution of
+//   the same allocated statement.
 //
-// BINDING
-// - These functions bind an input and/or output value to a memory space to be read and/or written
-// respectively. They can be applied to all DML statements but not DDL statements.
-// - As of now (7/27/2018) we can bind either a column of a table or a placeholder in SQL statements
-// (such as ?, :1, :x) to a memory space.
+// - SELECT / UPDATE / DELETE .... WHERE key = "key_expr"
+//   This bind-column function is used to bind the primary column "key" with "key_expr" that can
+//   contain bind-variables (placeholders) and contants whose values can be updated for each
+//   execution of the same allocated statement.
+YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
+                             int attr_num,
+                             YBCPgExpr attr_value);
 
-// Binding columns: These functions are mostly only useful for partition or range columns (primary).
-// - YugaByte storage requires information on partitiion and range columns to operate DML
-//   statements. When setting up DML statements, the values that are associated with primary
-//   columns must be specified.
-// - If values for primary columns are not specified, full scan will be applied.
-
-typedef struct YBCPgBind {
-  int64_t data_header;  // indicators for NULL, IN, OUT, IN/OUT value.
-  void *data;  // data buffer.
-  size_t data_bytes;  // data buffer size in bytes.
-} YBCPgBind;
-
-// We might need to define one Bind function for all column types.
-YBCStatus YBCPgBindColumn(YBCPgStatement, int attr_num, yb::DataType dtype, YBCPgBind *bind);
-
-// Since template is not in C, postfixing the datatype with function name speeds up processing.
-// For example, the following prototype postfixes function name with "Int2".
-YBCStatus YBCPgBindColumnInt2(YBCPgStatement handle, int attr_num, YBCPgBind *bind);
-
-// Binding placeholders: These functions are useful when processing expression.
-YBCStatus YBCPgBindPlaceholder(YBCPgStatement, int attr_num, yb::DataType dtype, YBCPgBind *bind);
-
-// Since template is not in C, postfixing the datatype with function name speeds up processing.
-// For example, the following prototype postfixes function name with "Int2".
-YBCStatus YBCPgBindPlaceholderInt2(YBCPgStatement handle, int var_index, YBCPgBind *bind);
-#endif
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls, bool *has_data);
 
 //--------------------------------------------------------------------------------------------------
 // INSERT
-YBCStatus YBCPgAllocInsert(YBCPgSession pg_session,
+YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                            const char *database_name,
                            const char *schema_name,
                            const char *table_name,
@@ -160,71 +143,58 @@ YBCStatus YBCPgAllocInsert(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
-// TODO(neil) Once binding routines are defined, we can remove the "*Set*" functions.
-YBCStatus YBCPgInsertSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value);
+//--------------------------------------------------------------------------------------------------
+// UPDATE
 
-YBCStatus YBCPgInsertSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value);
-
-YBCStatus YBCPgInsertSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value);
-
-YBCStatus YBCPgInsertSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value);
-
-YBCStatus YBCPgInsertSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value);
-
-YBCStatus YBCPgInsertSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
-                                   int attr_bytes);
-
-YBCStatus YBCPgInsertSetColumnSerializedData(YBCPgStatement handle, int attr_num,
-                                             const char *attr_value, int attr_bytes);
+//--------------------------------------------------------------------------------------------------
+// DELETE
 
 //--------------------------------------------------------------------------------------------------
 // SELECT
-YBCStatus YBCPgAllocSelect(YBCPgSession pg_session,
+YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                            const char *database_name,
                            const char *schema_name,
                            const char *table_name,
                            YBCPgStatement *handle);
 
 // API for setting partition and range columns.
-// When reading and writing, DocDB requires that the values of hash and range columns are provided.
-YBCStatus YBCPgSelectSetColumnInt2(YBCPgStatement handle, int attr_num, int16_t attr_value);
-
-YBCStatus YBCPgSelectSetColumnInt4(YBCPgStatement handle, int attr_num, int32_t attr_value);
-
-YBCStatus YBCPgSelectSetColumnInt8(YBCPgStatement handle, int attr_num, int64_t attr_value);
-
-YBCStatus YBCPgSelectSetColumnFloat4(YBCPgStatement handle, int attr_num, float attr_value);
-
-YBCStatus YBCPgSelectSetColumnFloat8(YBCPgStatement handle, int attr_num, double attr_value);
-
-YBCStatus YBCPgSelectSetColumnText(YBCPgStatement handle, int attr_num, const char *attr_value,
-                                   int attr_bytes);
-
-YBCStatus YBCPgSelectSetColumnSerializedData(YBCPgStatement handle, int attr_num,
-                                             const char *attr_value, int attr_bytes);
-
-// API for binding SQL expression with either values or memory spaces.
-YBCStatus YBCPgSelectBindExprInt2(YBCPgStatement handle, int attr_num, int16_t *attr_value);
-
-YBCStatus YBCPgSelectBindExprInt4(YBCPgStatement handle, int attr_num, int32_t *attr_value);
-
-YBCStatus YBCPgSelectBindExprInt8(YBCPgStatement handle, int attr_num, int64_t *attr_value);
-
-YBCStatus YBCPgSelectBindExprFloat4(YBCPgStatement handle, int attr_num, float *attr_value);
-
-YBCStatus YBCPgSelectBindExprFloat8(YBCPgStatement handle, int attr_num, double *attr_value);
-
-YBCStatus YBCPgSelectBindExprText(YBCPgStatement handle, int attr_num, char *attr_value,
-                                  int64_t *attr_bytes);
-
-YBCStatus YBCPgSelectBindExprSerializedData(YBCPgStatement handle, int attr_num,
-                                            char *attr_value, int64_t *attr_bytes);
-
 YBCStatus YBCPgExecSelect(YBCPgStatement handle);
 
-YBCStatus YBCPgSelectFetch(YBCPgStatement handle, int64_t *row_count);
-
 //--------------------------------------------------------------------------------------------------
+// Expressions.
+
+YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle);
+
+YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
+                               YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
+                               YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
+                               YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
+                               YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes,
+                               bool is_null, YBCPgExpr *expr_handle);
+// YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const uint8_t *value, int64_t bytes,
+//                                  bool is_null, YBCPgExpr *expr_handle);
+
+// The following update functions only work for constants.
+// Overwriting the constant expression with new value.
+YBCStatus YBCPgUpdateConstInt2(YBCPgExpr expr, int16_t value, bool is_null);
+YBCStatus YBCPgUpdateConstInt4(YBCPgExpr expr, int32_t value, bool is_null);
+YBCStatus YBCPgUpdateConstInt8(YBCPgExpr expr, int64_t value, bool is_null);
+YBCStatus YBCPgUpdateConstFloat4(YBCPgExpr expr, float value, bool is_null);
+YBCStatus YBCPgUpdateConstFloat8(YBCPgExpr expr, double value, bool is_null);
+YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
+YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
+
+//------------------------------------------------------------------------------------------------
+// Deprecated Code End. The above code should be deleted.
+//------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/if_macros_c_wrapper_decl.h"
 #include "yb/yql/pggate/pggate_if.h"

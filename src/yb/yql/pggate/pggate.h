@@ -93,83 +93,75 @@ class PgApiImpl {
   CHECKED_STATUS ConnectDatabase(PgSession *pg_session, const char *database_name);
 
   // Create database.
-  CHECKED_STATUS AllocCreateDatabase(PgSession *pg_session,
-                                     const char *database_name,
-                                     PgStatement **handle);
+  CHECKED_STATUS NewCreateDatabase(PgSession *pg_session,
+                                   const char *database_name,
+                                   PgStatement **handle);
   CHECKED_STATUS ExecCreateDatabase(PgStatement *handle);
 
   // Drop database.
-  CHECKED_STATUS AllocDropDatabase(PgSession *pg_session,
-                                   const char *database_name,
-                                   bool if_exist,
-                                   PgStatement **handle);
+  CHECKED_STATUS NewDropDatabase(PgSession *pg_session,
+                                 const char *database_name,
+                                 bool if_exist,
+                                 PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop schema.
   // - When "database_name" is NULL, the connected database name is used.
-  CHECKED_STATUS AllocCreateSchema(PgSession *pg_session,
-                                   const char *database_name,
-                                   const char *schema_name,
-                                   bool if_not_exist,
-                                   PgStatement **handle);
+  CHECKED_STATUS NewCreateSchema(PgSession *pg_session,
+                                 const char *database_name,
+                                 const char *schema_name,
+                                 bool if_not_exist,
+                                 PgStatement **handle);
 
   CHECKED_STATUS ExecCreateSchema(PgStatement *handle);
 
-  CHECKED_STATUS AllocDropSchema(PgSession *pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 bool if_exist,
-                                 PgStatement **handle);
+  CHECKED_STATUS NewDropSchema(PgSession *pg_session,
+                               const char *database_name,
+                               const char *schema_name,
+                               bool if_exist,
+                               PgStatement **handle);
 
   CHECKED_STATUS ExecDropSchema(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop table.
-  CHECKED_STATUS AllocCreateTable(PgSession *pg_session,
-                                  const char *database_name,
-                                  const char *schema_name,
-                                  const char *table_name,
-                                  bool if_not_exist,
-                                  PgStatement **handle);
+  CHECKED_STATUS NewCreateTable(PgSession *pg_session,
+                                const char *database_name,
+                                const char *schema_name,
+                                const char *table_name,
+                                bool if_not_exist,
+                                PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
                                       int attr_ybtype, bool is_hash, bool is_range);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
-  CHECKED_STATUS AllocDropTable(PgSession *pg_session,
-                                const char *database_name,
-                                const char *schema_name,
-                                const char *table_name,
-                                bool if_exist,
-                                PgStatement **handle);
+  CHECKED_STATUS NewDropTable(PgSession *pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *table_name,
+                              bool if_exist,
+                              PgStatement **handle);
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
+  // All DML statements
+  CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+
+  CHECKED_STATUS DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls, bool *has_data);
+
+  //------------------------------------------------------------------------------------------------
   // Insert.
-  CHECKED_STATUS AllocInsert(PgSession *pg_session,
-                             const char *database_name,
-                             const char *schema_name,
-                             const char *table_name,
-                             PgStatement **handle);
-
-  CHECKED_STATUS InsertSetColumnInt2(PgStatement *handle, int attr_num, int16_t attr_value);
-
-  CHECKED_STATUS InsertSetColumnInt4(PgStatement *handle, int attr_num, int32_t attr_value);
-
-  CHECKED_STATUS InsertSetColumnInt8(PgStatement *handle, int attr_num, int64_t attr_value);
-
-  CHECKED_STATUS InsertSetColumnFloat4(PgStatement *handle, int attr_num, float attr_value);
-
-  CHECKED_STATUS InsertSetColumnFloat8(PgStatement *handle, int attr_num, double attr_value);
-
-  CHECKED_STATUS InsertSetColumnText(PgStatement *handle, int attr_num, const char *attr_value,
-                                     int attr_bytes);
-
-  CHECKED_STATUS InsertSetColumnSerializedData(PgStatement *handle, int attr_num,
-                                               const char *attr_value, int attr_bytes);
+  CHECKED_STATUS NewInsert(PgSession *pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
 
@@ -181,51 +173,52 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  CHECKED_STATUS AllocSelect(PgSession *pg_session,
-                             const char *database_name,
-                             const char *schema_name,
-                             const char *table_name,
-                             PgStatement **handle);
-
-  // Setting values for partition and range columns.
-  // At the moment, when reading, DocDB requires these values to be set.
-  // We'll support a full scan soon.
-  CHECKED_STATUS SelectSetColumnInt2(PgStatement *handle, int attr_num, int16_t attr_value);
-
-  CHECKED_STATUS SelectSetColumnInt4(PgStatement *handle, int attr_num, int32_t attr_value);
-
-  CHECKED_STATUS SelectSetColumnInt8(PgStatement *handle, int attr_num, int64_t attr_value);
-
-  CHECKED_STATUS SelectSetColumnFloat4(PgStatement *handle, int attr_num, float attr_value);
-
-  CHECKED_STATUS SelectSetColumnFloat8(PgStatement *handle, int attr_num, double attr_value);
-
-  CHECKED_STATUS SelectSetColumnText(PgStatement *handle, int attr_num, const char *attr_value,
-                                     int attr_bytes);
-
-  CHECKED_STATUS SelectSetColumnSerializedData(PgStatement *handle, int attr_num,
-                                               const char *attr_value, int attr_bytes);
-
-  // Binding expressions with either values or memory spaces.
-  CHECKED_STATUS SelectBindExprInt2(PgStatement *handle, int attr_num, int16_t *attr_value);
-
-  CHECKED_STATUS SelectBindExprInt4(PgStatement *handle, int attr_num, int32_t *attr_value);
-
-  CHECKED_STATUS SelectBindExprInt8(PgStatement *handle, int attr_num, int64_t *attr_value);
-
-  CHECKED_STATUS SelectBindExprFloat4(PgStatement *handle, int attr_num, float *attr_value);
-
-  CHECKED_STATUS SelectBindExprFloat8(PgStatement *handle, int attr_num, double *attr_value);
-
-  CHECKED_STATUS SelectBindExprText(PgStatement *handle, int attr_num, char *attr_value,
-                                    int64_t *attr_bytes);
-
-  CHECKED_STATUS SelectBindExprSerializedData(PgStatement *handle, int attr_num,
-                                              char *attr_value, int64_t *attr_bytes);
+  CHECKED_STATUS NewSelect(PgSession *pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecSelect(PgStatement *handle);
 
-  CHECKED_STATUS SelectFetch(PgStatement *handle, int64 *row_count);
+  //------------------------------------------------------------------------------------------------
+  // Expressions.
+  //------------------------------------------------------------------------------------------------
+  // Column reference.
+  CHECKED_STATUS NewColumnRef(PgStatement *handle, int attr_num, PgExpr **expr_handle);
+
+  // Constant expressions - numeric.
+  template<typename value_type>
+  CHECKED_STATUS NewConstant(PgStatement *stmt, value_type value, bool is_null,
+                             PgExpr **expr_handle) {
+    if (!stmt) {
+      // Invalid handle.
+      return STATUS(InvalidArgument, "Invalid statement handle");
+    }
+    PgExpr::SharedPtr pg_const = std::make_shared<PgConstant>(value, is_null);
+    stmt->AddExpr(pg_const);
+
+    *expr_handle = pg_const.get();
+    return Status::OK();
+  }
+
+  template<typename value_type>
+  CHECKED_STATUS UpdateConstant(PgExpr *expr, value_type value, bool is_null) {
+    if (expr->op() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
+      // Invalid handle.
+      return STATUS(InvalidArgument, "Invalid expression handle for constant");
+    }
+    down_cast<PgConstant*>(expr)->UpdateConstant(value, is_null);
+    return Status::OK();
+  }
+
+  // Constant expressions - text.
+  CHECKED_STATUS NewConstant(PgStatement *stmt, const char *value, bool is_null,
+                             PgExpr **expr_handle);
+  CHECKED_STATUS NewConstant(PgStatement *stmt, const char *value, int64_t bytes, bool is_null,
+                             PgExpr **expr_handle);
+  CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, bool is_null);
+  CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null);
 
  private:
   // Control variables.
