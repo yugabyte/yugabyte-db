@@ -11,7 +11,7 @@
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
     <version>0.8.0-SNAPSHOT</version>
-    <relativePath>../../java/pom.xml</relativePath>
+    <relativePath>../../java/</relativePath>
   </parent>
 
   <name>YugaByte Enterprise Edition</name>
