@@ -263,7 +263,7 @@ public class CassandraTimeseries extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     // Pick a random data source.
     DataSource dataSource = dataSources.get(random.nextInt(dataSources.size()));
     // Enter as many data points as are needed.

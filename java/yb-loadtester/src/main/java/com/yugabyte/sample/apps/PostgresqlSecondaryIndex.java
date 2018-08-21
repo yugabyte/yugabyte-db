@@ -18,7 +18,6 @@ import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.List;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
@@ -153,7 +152,7 @@ public class PostgresqlSecondaryIndex extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     if (key == null) {
       return 0;

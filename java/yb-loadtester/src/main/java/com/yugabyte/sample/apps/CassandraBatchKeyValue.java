@@ -23,7 +23,6 @@ import org.apache.log4j.Logger;
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
-import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 /**
@@ -47,7 +46,7 @@ public class CassandraBatchKeyValue extends CassandraKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     BatchStatement batch = new BatchStatement();
     HashSet<Key> keys = new HashSet<Key>();
     PreparedStatement insert = getPreparedInsert();

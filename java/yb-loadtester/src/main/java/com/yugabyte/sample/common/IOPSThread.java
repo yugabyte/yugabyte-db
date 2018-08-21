@@ -84,7 +84,7 @@ public class IOPSThread extends Thread {
       while (!app.hasFinished()) {
         try {
           switch (ioType) {
-            case Write: app.performWrite(); break;
+            case Write: app.performWrite(threadIdx); break;
             case Read: app.performRead(); break;
           }
           numConsecutiveExceptions = 0;

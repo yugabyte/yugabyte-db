@@ -49,6 +49,7 @@ public class CmdLineOpts {
     CassandraBatchKeyValue,
     CassandraBatchTimeseries,
     CassandraTransactionalKeyValue,
+    CassandraTransactionalRestartRead,
     CassandraStockTicker,
     CassandraTimeseries,
     CassandraUserId,

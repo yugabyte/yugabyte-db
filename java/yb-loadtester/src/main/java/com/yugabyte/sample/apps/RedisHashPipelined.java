@@ -195,7 +195,7 @@ public class RedisHashPipelined extends RedisPipelinedKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     ArrayList<KeySubKey> keySubKeys =
         getRedisHashLoadGenerator().getKeySubkeysToWrite();
     Key key = keySubKeys.get(0).getKey();

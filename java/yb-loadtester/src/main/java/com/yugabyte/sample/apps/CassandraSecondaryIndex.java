@@ -17,7 +17,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BatchStatement;
@@ -110,7 +109,7 @@ public class CassandraSecondaryIndex extends CassandraKeyValue {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     HashSet<Key> keys = new HashSet<Key>();
 
     try {
