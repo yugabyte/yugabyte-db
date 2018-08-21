@@ -73,6 +73,12 @@ trap cleanup EXIT
 
 set_common_test_paths
 
+if [[ $# -eq 1 && $1 == *\#* ]]; then
+  # We are trying to run a specific test method or even a parameterized test.
+  resolve_and_run_java_test "$1"
+  exit
+fi
+
 if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   # This is a Java test.
   # Arguments: <maven_module_name> <package_and_class>

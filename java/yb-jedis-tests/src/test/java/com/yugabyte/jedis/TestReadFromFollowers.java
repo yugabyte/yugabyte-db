@@ -14,38 +14,29 @@ package com.yugabyte.jedis;
 
 import com.google.protobuf.ByteString;
 import org.apache.commons.text.RandomStringGenerator;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.LocatedTablet;
-import org.yb.client.ModifyClusterConfigLiveReplicas;
-import org.yb.client.TestUtils;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
+import org.yb.YBParameterizedTestRunner;
+import org.yb.client.*;
 import org.yb.master.Master;
-import org.yb.minicluster.MiniYBDaemon;
-import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.YBJedis;
 import redis.clients.util.JedisClusterCRC16;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.fail;
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertNull;
-import static junit.framework.TestCase.assertTrue;
+import static junit.framework.TestCase.*;
 
-@RunWith(Parameterized.class)
+@RunWith(value=YBParameterizedTestRunner.class)
 public class TestReadFromFollowers extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
 
@@ -73,7 +64,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
   }
 
   @Override
-  public void setUpBefore() throws Exception {
+  public void setUpBefore() {
     TestUtils.clearReservedPorts();
   }
 

@@ -30,6 +30,11 @@ import static org.junit.Assert.assertNotEquals;
 // connected to. In addition to this, we also test that the 'system.local' table returns only the
 // node that we are connected to. For this purpose, we need to look into a few internals of the
 // datastax driver and hence we are in the 'com.datastax.driver.core' package.
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestSystemTables extends BaseCQLTest {
 
   @Test

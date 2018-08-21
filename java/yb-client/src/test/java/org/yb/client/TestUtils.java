@@ -49,9 +49,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 
-/**
- * A grouping of methods that help unit testing.
- */
 public class TestUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
 
@@ -78,14 +75,6 @@ public class TestUtils {
 
   private static PrintStream defaultStdOut = System.out;
   private static PrintStream defaultStdErr = System.err;
-
-  private static final boolean DEFAULT_USE_PER_TEST_LOG_FILES = true;
-
-  public static final String DELETE_SUCCESSFUL_LOGS_ENV_VAR =
-      "YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS";
-
-  public static final String GZIP_PER_TEST_METHOD_LOGS_ENV_VAR =
-      "YB_GZIP_PER_TEST_METHOD_LOGS";
 
   static {
     long seed = System.nanoTime();
@@ -118,6 +107,12 @@ public class TestUtils {
 
   private static volatile String cppBinariesDir = null;
   private static volatile String buildType = null;
+
+  /**
+   * When collecting the list of tests to run using the -DcollectTests option to the build, prefix
+   * each line describing a test with this.
+   */
+  private static final String COLLECTED_TESTS_PREFIX = "YUGABYTE_JAVA_TEST: ";
 
   /**
    * @return the path of the flags file to pass to daemon processes
@@ -418,10 +413,6 @@ public class TestUtils {
         MAX_ATTEMPTS + " attempts");
   }
 
-  public static boolean isJenkins() {
-    return System.getenv("BUILD_ID") != null && System.getenv("JOB_NAME") != null;
-  }
-
   public static void waitFor(Condition condition, long timeoutMs) throws Exception {
     waitFor(condition, timeoutMs, SLEEP_TIME_MS);
   }
@@ -452,9 +443,13 @@ public class TestUtils {
     out.println("\n" + HORIZONTAL_LINE + "\n" + msg + "\n" + HORIZONTAL_LINE + "\n");
   }
 
+  public static String formatTestDescrition(String className, String methodName) {
+    return "class=\"" + className + "\", method=\"" + methodName + "\"";
+
+  }
+
   public static String getClassAndMethodStr(Description description) {
-    return "class=\"" + description.getClassName() +
-        "\", method=\"" + description.getMethodName() + "\"";
+    return formatTestDescrition(description.getClassName(), description.getMethodName());
   }
 
   /**
@@ -530,6 +525,12 @@ public class TestUtils {
       sb.append("    " + line);
     }
     return sb.toString();
+  }
+
+  public static void reportCollectedTest(
+      String packageAndClassName, String methodNameAndParameters) {
+    System.out.println(COLLECTED_TESTS_PREFIX + packageAndClassName + "#" +
+        methodNameAndParameters);
   }
 
   public static class CommandResult {
@@ -623,7 +624,10 @@ public class TestUtils {
           "Found class " + testClass + " in directory " + testClassesDir + ", expected it to be " +
               "in a 'test-classes' directory");
     }
-    File surefireDir = new File(new File(testClassesDir).getParent(), "surefire-reports");
+    final String defaultSurefireReportsDir =
+        new File(new File(testClassesDir).getParent(), "surefire-reports").getPath();
+    File surefireDir = new File(System.getProperty("yb.surefire.reports.directory",
+                                                   defaultSurefireReportsDir));
     if (!surefireDir.isDirectory()) {
       LOG.warn("Directory " + surefireDir + " does not exist, attempting to create");
       if (!surefireDir.mkdirs() && !surefireDir.isDirectory()) {
@@ -639,40 +643,8 @@ public class TestUtils {
     ).toString();
   }
 
-  public static boolean isStringTrue(String value, boolean defaultValue) {
-    if (value == null)
-      return defaultValue;
-    value = value.trim().toLowerCase();
-    if (value.isEmpty() || value.equals("auto") || value.equals("default"))
-      return defaultValue;
-    return !value.equals("0") && !value.equals("no") && !value.equals("false");
-  }
-
-  public static boolean isEnvVarTrue(String envVarName, boolean defaultValue) {
-    return isStringTrue(System.getenv(envVarName), defaultValue);
-  }
-
   public static void resetDefaultStdOutAndErr() {
     System.setOut(defaultStdOut);
     System.setErr(defaultStdErr);
   }
-
-  private static volatile Boolean usePerTestLogFiles = null;
-
-  public static boolean usePerTestLogFiles() {
-    if (usePerTestLogFiles == null) {
-      usePerTestLogFiles = isEnvVarTrue(
-          "YB_JAVA_PER_TEST_LOG_FILES", DEFAULT_USE_PER_TEST_LOG_FILES);
-    }
-    return usePerTestLogFiles.booleanValue();
-  }
-
-  public static boolean gzipPerTestMethodLogs() {
-    return isEnvVarTrue(GZIP_PER_TEST_METHOD_LOGS_ENV_VAR, false);
-  }
-
-  public static boolean deleteSuccessfulPerTestMethodLogs() {
-    return isEnvVarTrue(DELETE_SUCCESSFUL_LOGS_ENV_VAR, false);
-  }
-
 }

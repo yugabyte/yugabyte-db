@@ -17,6 +17,7 @@ import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
+import org.yb.util.ConfForTesting;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -185,7 +186,7 @@ public class MiniYBDaemon {
   private String getLogPrefix() {
     return type.shortStr() + indexForLog + LOG_PREFIX_SEPARATOR + PID_PREFIX +
         getPidStr() + LOG_PREFIX_SEPARATOR + ":" + rpcPort +
-        (TestUtils.isJenkins() ? "" // No need for a clickable web UI link on Jenkins.
+        (ConfForTesting.isJenkins() ? "" // No need for a clickable web UI link on Jenkins.
             : LOG_PREFIX_SEPARATOR + "http://" + getWebHostAndPort()) +
         " ";
   }
@@ -219,6 +220,14 @@ public class MiniYBDaemon {
 
   public List<LogPrinter> getLogPrinters() {
     return Arrays.asList(new LogPrinter[] { stdoutPrinter, stderrPrinter });
+  }
+
+  public LogPrinter getStdoutPrinter() {
+    return stdoutPrinter;
+  }
+
+  public LogPrinter getStderrPrinter() {
+    return stderrPrinter;
   }
 
   public MiniYBDaemonType getType() {
@@ -307,6 +316,11 @@ public class MiniYBDaemon {
       LOG.warn("Interrupted when waiting for logging of process shutdown to finish: " + this);
       Thread.currentThread().interrupt();
     }
+  }
+
+  public void waitForServerStartLogMessage(long deadlineMs) throws InterruptedException {
+    stdoutPrinter.waitForServerStartingLogLine(deadlineMs);
+    LOG.info("Saw an 'RPC server started' message from " + this);
   }
 
 }

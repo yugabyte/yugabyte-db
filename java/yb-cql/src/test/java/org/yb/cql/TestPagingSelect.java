@@ -27,6 +27,11 @@ import com.datastax.driver.core.SimpleStatement;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestPagingSelect extends BaseCQLTest {
 
   /**

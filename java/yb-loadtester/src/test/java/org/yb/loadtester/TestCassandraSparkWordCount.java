@@ -17,6 +17,7 @@ import com.yugabyte.sample.apps.CassandraSparkWordCount;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.yb.cql.BaseCQLTest;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
@@ -26,6 +27,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.yb.YBTestRunner;
+
+@RunWith(value=YBTestRunner.class)
 public class TestCassandraSparkWordCount extends BaseCQLTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();

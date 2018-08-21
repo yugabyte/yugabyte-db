@@ -521,6 +521,21 @@ def fatal_error(msg):
     raise RuntimeError(msg)
 
 
+def collect_java_tests():
+    java_test_list_path = os.path.join(yb_dist_tests.global_conf.build_root, 'java_test_list.txt')
+    if not os.path.exists(java_test_list_path):
+        raise IOError("Java test list not found at '%s'", java_test_list_path)
+    with open(java_test_list_path) as java_test_list_file:
+        java_test_descriptors = [
+            yb_dist_tests.TestDescriptor(java_test_str.strip())
+            for java_test_str in java_test_list_file.read().split("\n")
+            if java_test_str.strip()
+        ]
+    if not java_test_descriptors:
+        raise RuntimeError("Could not find any Java tests listed in '%s'" % java_test_list_path)
+    return java_test_descriptors
+
+
 def collect_tests(args):
     cpp_test_descriptors = []
 
@@ -555,28 +570,8 @@ def collect_tests(args):
     java_test_descriptors = []
     yb_src_root = yb_dist_tests.global_conf.yb_src_root
     if args.run_java_tests:
-        for java_src_root in [os.path.join(yb_src_root, 'java'),
-                              os.path.join(yb_src_root, 'ent', 'java')]:
-            for dir_path, dir_names, file_names in os.walk(java_src_root):
-                rel_dir_path = os.path.relpath(dir_path, java_src_root)
-                for file_name in file_names:
-                    if (file_name.startswith('Test') and
-                        (file_name.endswith('.java') or file_name.endswith('.scala')) or
-                        file_name.endswith('Test.java') or file_name.endswith('Test.scala')) and \
-                       '/src/test/' in rel_dir_path:
-                        test_descriptor_str = os.path.join(rel_dir_path, file_name)
-                        if yb_dist_tests.JAVA_TEST_DESCRIPTOR_RE.match(test_descriptor_str):
-                            java_test_descriptors.append(
-                                    yb_dist_tests.TestDescriptor(test_descriptor_str))
-                        else:
-                            logging.warning("Skipping file (does not match expected pattern): " +
-                                            test_descriptor)
-
-    # TODO: sort tests in the order of reverse historical execution time. If Spark starts running
-    # tasks from the beginning, this will ensure the longest tests start the earliest.
-    #
-    # Right now we just put Java tests first because those tests are entire test classes and will
-    # take longer to run on average.
+        java_test_descriptors = collect_java_tests()
+        logging.info("Found %d Java tests", len(java_test_descriptors))
     return sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
 
 

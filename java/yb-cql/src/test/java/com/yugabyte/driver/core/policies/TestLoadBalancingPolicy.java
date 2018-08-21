@@ -46,6 +46,11 @@ import java.util.LinkedList;
 import java.util.Random;
 import java.util.UUID;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestLoadBalancingPolicy extends BaseCQLTest {
 
   // Test hash-key function in PartitionAwarePolicy to verify it is consistent with the hash

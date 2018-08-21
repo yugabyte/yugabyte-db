@@ -17,6 +17,11 @@ import org.junit.Test;
 
 import com.datastax.driver.core.Session;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestBasicStatements extends BaseCQLTest {
   @Test
   public void testCreateTable() throws Exception {

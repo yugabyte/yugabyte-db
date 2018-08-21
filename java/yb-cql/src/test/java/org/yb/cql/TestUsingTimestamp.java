@@ -25,6 +25,11 @@ import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestUsingTimestamp extends BaseCQLTest {
 
   private void createTimestampTable(String tableName) {

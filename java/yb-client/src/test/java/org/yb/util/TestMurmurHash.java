@@ -43,6 +43,11 @@ import static org.junit.Assert.assertEquals;
  * These tests are duplicated on the C++ side to ensure that hash computations
  * are stable across both platforms.
  */
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestMurmurHash {
 
     @Test

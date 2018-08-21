@@ -25,6 +25,11 @@ import com.datastax.driver.core.ProtocolOptions.Compression;
 
 import static org.junit.Assert.assertEquals;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public class TestMessageCompression extends BaseCQLTest {
 
   @Test

@@ -340,10 +340,10 @@ expect_num_args() {
       error_msg+=" Check if \"\$@\" was included in the call to expect_num_args."
     fi
     if [[ $# -gt 0 ]]; then
-      log "Logging actual arguments to '$calling_func_name' before a fatal error:"
+      log "Logging actual arguments to '$calling_func_name' before a fatal error (XML-style):"
       local arg
       for arg in "$@"; do
-        log "  - $arg"
+        log "  - <argument>$arg</argument>"
       done
     fi
     fatal "$error_msg"
@@ -418,6 +418,7 @@ ensure_build_root_is_set() {
   fi
 }
 
+# TODO: rename to check_directory_exists
 ensure_directory_exists() {
   expect_num_args 1 "$@"
   local directory_path=$1
@@ -426,6 +427,7 @@ ensure_directory_exists() {
   fi
 }
 
+# TODO: rename to check_file_exists
 ensure_file_exists() {
   expect_num_args 1 "$@"
   local file_name=$1
@@ -434,6 +436,7 @@ ensure_file_exists() {
   fi
 }
 
+# TODO: rename to ensure_build_root_exists
 ensure_build_root_exists() {
   ensure_build_root_is_set
   if [[ ! -d $BUILD_ROOT ]]; then
@@ -737,6 +740,24 @@ set_mvn_parameters() {
   )
 }
 
+# Appends the settings path specified by $YB_MVN_SETTINGS_PATH (in case that path exists), as well
+# as other common Maven options used across all invocations of Maven, to the mvn_opts array. The
+# caller of this function usually declares mvn_opts as a local array.
+append_common_mvn_opts() {
+  mvn_opts+=(
+    "${mvn_common_options[@]}"
+    "${MVN_COMMON_SKIPPED_OPTIONS_IN_TEST[@]}"
+  )
+  if [[ -f $YB_MVN_SETTINGS_PATH ]]; then
+    mvn_opts+=(
+      --settings "$YB_MVN_SETTINGS_PATH"
+    )
+  elif [[ $YB_MVN_SETTINGS_PATH != $HOME/.m2/settings.xml ]]; then
+    log "Non-default maven user settings file specified by YB_MVN_SETTINGS_PATH does not exist:" \
+        "'$YB_MVN_SETTINGS_PATH'"
+  fi
+}
+
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
@@ -751,15 +772,8 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  local mvn_opts=( "${mvn_common_options[@]}" )
-  if [[ -f $YB_MVN_SETTINGS_PATH  ]]; then
-    mvn_opts+=(
-      --settings "$YB_MVN_SETTINGS_PATH"
-    )
-  elif [[ $YB_MVN_SETTINGS_PATH != $HOME/.m2/settings.xml ]]; then
-    log "Maven user settings file specified by YB_MVN_SETTINGS_PATH does not exist:" \
-        "'$YB_MVN_SETTINGS_PATH'"
-  fi
+  local mvn_opts=()
+  append_common_mvn_opts
   if ! is_jenkins; then
     mvn_opts+=( -Dmaven.javadoc.skip )
   fi
@@ -822,6 +836,19 @@ build_yb_java_code_with_retries() {
     let attempt+=1
   done
   return 1
+}
+
+build_yb_java_code_in_all_dirs() {
+  local java_project_dir
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    pushd "$java_project_dir"
+    if ! time build_yb_java_code_with_retries "$@"; then
+      log "Failed to build Java code in directory '$java_project_dir'" \
+          "with these Maven arguments: $*"
+      return 1
+    fi
+    popd
+  done
 }
 
 # Create a directory on an ephemeral drive and link it into the given target location. If there are
@@ -1211,6 +1238,21 @@ is_jenkins() {
   return 1  # Probably running locally.
 }
 
+should_gzip_test_logs() {
+  is_jenkins || [[ ${YB_GZIP_TEST_LOGS:-0} == "1" ]]
+}
+
+# For each file provided as an argument, gzip the given file if it exists and is not already
+# compressed.
+gzip_if_exists() {
+  local f
+  for f in "$@"; do
+    if [[ -f $f && $f != *.gz && $f != *.bz2 ]]; then
+      gzip "$f"
+    fi
+  done
+}
+
 # Check if we're in a Jenkins master build.
 is_jenkins_master_build() {
   if [[ -n ${JOB_NAME:-} && $JOB_NAME = *-master-* ]]; then
@@ -1365,6 +1407,11 @@ detect_edition() {
 
   readonly YB_EDITION
   export YB_EDITION
+
+  yb_java_project_dirs=( "$YB_SRC_ROOT"/java )
+  if [[ $YB_EDITION == "enterprise" ]]; then
+    yb_java_project_dirs+=( "$YB_ENTERPRISE_ROOT"/java )
+  fi
 }
 
 set_yb_src_root() {
@@ -1721,6 +1768,15 @@ get_current_git_sha1() {
   current_git_sha1=$( git rev-parse HEAD )
   if [[ ! $current_git_sha1 =~ ^[0-9a-f]{40}$ ]]; then
     fatal "Could not get current git SHA1 in $PWD, got: $current_git_sha1"
+  fi
+}
+
+# sed -i works differently on Linux vs macOS.
+sed_i() {
+  if is_mac; then
+    sed -i "" "$@"
+  else
+    sed -i "$@"
   fi
 }
 
