@@ -1,0 +1,16 @@
+# This is a sample of the contents for crontab on itest/ptest scheduler machines.
+# One can do 'crontab -e' and cut-paste this into that file.
+
+PATH=/home/centos/code/devtools/bin:/home/centos/code/google-styleguide/cpplint:/home/centos/tools/google-cloud-sdk/bin:/home/centos/.local/bin:/home/centos/.linuxbrew-yb-build/bin:/home/centos/tools/arcanist/bin:/usr/local/bin:/opt/yugabyte/yb-server/bin:/opt/yugabyte/yugaware/bin:/usr/lib64/ccache:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/apache-maven-3.3.9/bin:/home/centos/.local/bin:/home/centos/bin
+DEVOPS_HOME=/home/centos/code/devops
+
+19 19 * * * /home/centos/scripts/itest_cron.sh >> /var/log/itest.log 2>&1
+23 23 * * * /home/centos/scripts/ptest_cron.sh >> /var/log/ptest.log 2>&1
+
+00 00 * * * . "$HOME/.yugabyte/ansible.env"; /home/centos/code/devops/bin/ybcloud.sh aws instance audit --notify >> /var/log/aws_audit.log 2>&1
+05 00 * * * . "$HOME/.yugabyte/ansible.env"; /home/centos/code/devops/bin/ybcloud.sh gcp instance audit --notify >> /var/log/gcp_audi.log 2>&1
+
+### PLEASE DON"T COMMENT THESE OUT, talk to ram/bogdan before you do
+*/5 * * * * source /home/centos/.bash_profile; /home/centos/code/yugaweb/api/cli query --publish >> /var/log/website-requests.log 2>&1
+00 00 * * * YUGABYTE_CLUSTER_IPS=10.150.0.45,10.150.0.46,20.150.0.50 /home/centos/code/internal-services/diagnostics/py_wrapper /home/centos/code/internal-services/diagnostics/analyze.py >> /var/log/analyze_downloads.log 2>&1
+
