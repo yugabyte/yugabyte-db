@@ -26,11 +26,12 @@ In terms of data model and APIs, YugaByte DB currently supports 3 APIs.
 
 ## What makes YugaByte DB unique?
 
-YugaByte DB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees.
+YugaByte DB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees. Additionally, it is built for the modern cloud native era and is completely open source both at the core and the API layer.
 
 ### 1. Transactional
 
 - [Distributed acid transactions](/explore/transactions/) that allow multi-row updates across any number of shards at any scale.
+
 - Transactional key-document [storage engine](/architecture/concepts/persistence/) that's backed by self-healing, strongly consistent [replication](/architecture/concepts/replication/).
 
 ### 2. High Performance
@@ -51,4 +52,8 @@ YugaByte DB is a single operational database that brings together 3 must-have ne
 
 - [Self-healing database](/explore/cloud-native/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
+### 4. Open Source
 
+- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/YugaByte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
+
+- Multi-API/multi-model database that extends existing popular and open APIs including Cassandra, Redis and PostgreSQL.

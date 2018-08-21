@@ -1,9 +1,9 @@
 ---
-title: Quick Start
+title: Community Edition Quick Start
 linkTitle: Quick Start
-description: Quick Start
+description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
-headcontent: The easiest way to get started with YugaByte DB is to create a multi-node local cluster. 
+headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local multi-node cluster. We recommend deploying YugaByte DB to individual machines for performance benchmarking and pre-production evaluations. 
 type: page
 aliases:
   - /quick-start/
@@ -13,9 +13,18 @@ menu:
     weight: 100
 ---
 
-{{< note title="Note" >}}
-Local clusters should be used only for functional testing and not for performance testing or production deployments. You can either [manually deploy](/deploy/manual-deployment/) YugaByte DB binaries on a set of instances or use the [Enterprise Edition](/deploy/enterprise-edition/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
-{{< /note >}}
+{{< tip title="Contact Us for YugaByte DB Enterprise Edition" >}}
+<a href="https://www.yugabyte.com/about/contact/">
+Enterprise Edition is Community Edition plus:
+</a>
+
+- Multi-cloud orchestration
+- Monitoring dashboard
+- Read replicas
+- Enterprise security
+- Distributed backups
+- Production support
+{{< /tip >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

@@ -12,6 +12,20 @@ menu:
     weight: 20
 ---
 
+{{< tip title="Contact Us for YugaByte DB Enterprise Edition" >}}
+<a href="https://www.yugabyte.com/about/contact/">
+Enterprise Edition is Community Edition plus:
+</a>
+
+- Multi-cloud orchestration
+- Monitoring dashboard
+- Read replicas
+- Enterprise security
+- Distributed backups
+- Production support
+{{< /tip >}}
+
+
 <div class="row">
   <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="overview/">
