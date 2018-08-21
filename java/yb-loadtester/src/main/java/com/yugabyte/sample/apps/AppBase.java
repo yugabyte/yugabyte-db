@@ -18,12 +18,9 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -161,7 +158,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Private method that is thread-safe and creates the Cassandra client. Exactly one calling thread
    * will succeed in creating the client. This method does nothing for the other threads.
    */
-  protected static synchronized void createCassandraClient(List<ContactPoint> contactPoints) {
+  protected synchronized void createCassandraClient(List<ContactPoint> contactPoints) {
     if (cassandra_cluster == null) {
       Cluster.Builder builder = Cluster.builder();
       Integer port = null;
@@ -176,17 +173,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       }
       LOG.info("Connecting to nodes: " + builder.getContactPoints().stream()
               .map(it -> it.toString()).collect(Collectors.joining(",")));
-      if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
-        builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
-            DCAwareRoundRobinPolicy.builder()
-              .withLocalDc(appConfig.localDc)
-              .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
-              .allowRemoteDCsForLocalConsistencyLevel()
-              .build()));
-      } else if (!appConfig.disableYBLoadBalancingPolicy) {
-        builder.withLoadBalancingPolicy(
-          new PartitionAwarePolicy());
-      }
+      setupLoadBalancingPolicy(builder);
       cassandra_cluster =
           builder.withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
                  .withRetryPolicy(new LoggingRetryPolicy(DefaultRetryPolicy.INSTANCE))
@@ -197,6 +184,20 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       LOG.debug("Creating a session...");
       cassandra_session = cassandra_cluster.connect();
       createKeyspace(cassandra_session, keyspace);
+    }
+  }
+
+  protected void setupLoadBalancingPolicy(Cluster.Builder builder) {
+    if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
+      builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
+              DCAwareRoundRobinPolicy.builder()
+                      .withLocalDc(appConfig.localDc)
+                      .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+                      .allowRemoteDCsForLocalConsistencyLevel()
+                      .build()));
+    } else if (!appConfig.disableYBLoadBalancingPolicy) {
+      builder.withLoadBalancingPolicy(
+              new PartitionAwarePolicy());
     }
   }
 
@@ -452,8 +453,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   /**
    * This call models an OLTP write for the app to perform write operations.
    * @return Number of writes done, a value <= 0 indicates no ops were done.
+   * @param threadIdx index of thread that invoked this write.
    */
-  public long doWrite() { return 0; }
+  public long doWrite(int threadIdx) { return 0; }
 
   /**
    * This call should implement the main logic in non-OLTP apps. Not called for OLTP apps.
@@ -577,8 +579,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Called by the framework to perform write operations - internally measures the time taken to
    * perform the write op and keeps track of the number of keys written, so that we are able to
    * report the metrics to the user.
+   * @param threadIdx index of thread that invoked this write.
    */
-  public void performWrite() {
+  public void performWrite(int threadIdx) {
     // If we have written enough keys we are done.
     if (appConfig.numKeysToWrite > 0 && numKeysWritten.get() >= appConfig.numKeysToWrite
         || isOutOfTime()) {
@@ -587,7 +590,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     }
     // Perform the write and track the number of successfully written keys.
     long startTs = System.nanoTime();
-    long count = doWrite();
+    long count = doWrite(threadIdx);
     long endTs = System.nanoTime();
     if (count > 0) {
       numKeysWritten.addAndGet(count);

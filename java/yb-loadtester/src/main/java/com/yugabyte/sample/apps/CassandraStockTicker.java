@@ -227,7 +227,7 @@ public class CassandraStockTicker extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     // Pick a random data source.
     TickerInfo dataSource = tickers.get(random.nextInt(tickers.size()));
     // Enter as many data points as are needed.

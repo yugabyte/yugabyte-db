@@ -13,7 +13,6 @@
 
 package com.yugabyte.sample.apps;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
@@ -22,7 +21,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.Vector;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BatchStatement;
@@ -200,7 +198,7 @@ public class CassandraPersonalization extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     BatchStatement batch = new BatchStatement();
     PreparedStatement insert = getPreparedInsert();
     Key key = getSimpleLoadGenerator().getKeyToWrite();

@@ -195,7 +195,7 @@ public class SimpleLoadGenerator {
     return maxGeneratedKey.get();
   }
 
-  private Key generateKey(long key) {
+  public Key generateKey(long key) {
     return new Key(key, keyPrefix);
   }
 

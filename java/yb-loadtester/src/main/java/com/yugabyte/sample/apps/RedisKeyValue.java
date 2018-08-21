@@ -19,7 +19,6 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 /**
  * This workload writes and reads some random string keys from a Redis server. One reader and one
@@ -74,7 +73,7 @@ public class RedisKeyValue extends AppBase {
   }
 
   @Override
-  public long doWrite() {
+  public long doWrite(int threadIdx) {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     try {
       String retVal;
