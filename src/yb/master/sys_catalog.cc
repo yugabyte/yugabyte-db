@@ -124,7 +124,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
     : metric_registry_(metrics),
       master_(master),
       leader_cb_(std::move(leader_cb)) {
-  CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
+  CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
@@ -141,7 +141,7 @@ void SysCatalogTable::Shutdown() {
   if (tablet_peer()) {
     std::atomic_load(&tablet_peer_)->Shutdown();
   }
-  apply_pool_->Shutdown();
+  inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
 }
@@ -412,7 +412,7 @@ void SysCatalogTable::SysCatalogStateChanged(
                                       &peer),
                   Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
       WARN_NOT_OK(
-          apply_pool_->SubmitFunc(
+          inform_removed_master_pool_->SubmitFunc(
               std::bind(&Master::InformRemovedMaster, master_,
                         DesiredHostPort(peer, master_->MakeCloudInfoPB()))),
           Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
@@ -436,7 +436,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout());
   std::shared_ptr<tablet::TabletPeer> null_tablet_peer(nullptr);
   std::atomic_store(&tablet_peer_, null_tablet_peer);
-  apply_pool_.reset();
+  inform_removed_master_pool_.reset();
   raft_pool_.reset();
   tablet_prepare_pool_.reset();
 
@@ -449,8 +449,8 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
-      metadata, local_peer_pb_, apply_pool_.get(),
-      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id()));
+      metadata, local_peer_pb_, Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this),
+      metadata->tablet_id()));
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }

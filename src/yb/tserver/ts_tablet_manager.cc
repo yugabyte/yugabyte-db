@@ -752,7 +752,6 @@ TabletPeerPtr TSTabletManager::CreateAndRegisterTabletPeer(
   TabletPeerPtr tablet_peer(
       new TabletPeerClass(meta,
                           local_peer_pb_,
-                          apply_pool_.get(),
                           Bind(&TSTabletManager::ApplyChange,
                                Unretained(this),
                                meta->tablet_id())));

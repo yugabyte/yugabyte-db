@@ -110,7 +110,6 @@ class TabletPeerTest : public YBTabletTest,
 
     table_type_ = YQL_TABLE_TYPE;
 
-    ASSERT_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
 
@@ -131,7 +130,6 @@ class TabletPeerTest : public YBTabletTest,
     tablet_peer_.reset(
       new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
                           config_peer,
-                          apply_pool_.get(),
                           Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
                                Unretained(this),
                                tablet()->tablet_id())));
@@ -192,7 +190,6 @@ class TabletPeerTest : public YBTabletTest,
 
   void TearDown() override {
     tablet_peer_->Shutdown();
-    apply_pool_->Shutdown();
     YBTabletTest::TearDown();
   }
 
@@ -282,7 +279,6 @@ class TabletPeerTest : public YBTabletTest,
   scoped_refptr<MetricEntity> metric_entity_;
   shared_ptr<Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-  gscoped_ptr<ThreadPool> apply_pool_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> append_pool_;

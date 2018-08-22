@@ -58,53 +58,46 @@ class Preparer;
 
 // Base class for operation drivers.
 //
-// OperationDriver classes encapsulate the logic of coordinating the execution of
-// an operation. The exact triggering of the methods differs based on whether the
-// operation is being executed on a leader or replica, but the general flow is:
+// OperationDriver classes encapsulate the logic of coordinating the execution of an operation. The
+// exact triggering of the methods differs based on whether the operation is being executed on a
+// leader or replica, but the general flow is:
 //
-//  1 - Init() is called on a newly created driver object.
-//      If the driver is instantiated from a REPLICA, then we know that
-//      the operation is already "REPLICATING" (and thus we don't need to
-//      trigger replication ourself later on).
+//  1 - Init() is called on a newly created driver object.  If the driver is instantiated from a
+//  REPLICA, then we know that the operation is already "REPLICATING" (and thus we don't need to
+//  trigger replication ourself later on).
 //
-//  2 - ExecuteAsync() is called. This submits the operation driver to the Preparer
-//      and returns immediately.
+//  2 - ExecuteAsync() is called. This submits the operation driver to the Preparer and returns
+//      immediately.
 //
 //  3 - PrepareAndStartTask() calls Prepare() and Start() on the operation.
 //
-//      Once successfully prepared, if we have not yet replicated (i.e we are leader),
-//      also triggers consensus->Replicate() and changes the replication state to
-//      REPLICATING.
+//      Once successfully prepared, if we have not yet replicated (i.e we are leader), also triggers
+//      consensus->Replicate() and changes the replication state to REPLICATING.
 //
 //      What happens in reality is more complicated, as Preparer tries to batch leader-side
 //      operations before submitting them to consensus.
-
-//      On the other hand, if we have already successfully replicated (e.g. we are the
-//      follower and ConsensusCommitted() has already been called, then we can move
-//      on to ApplyAsync().
+//
+//      On the other hand, if we have already successfully replicated (e.g. we are the follower and
+//      ConsensusCommitted() has already been called, then we can move on to ApplyOperation().
 //
 //  4 - The Consensus implementation calls ConsensusCommitted()
 //
-//      This is triggered by consensus when the commit index moves past our own
-//      OpId. On followers, this can happen before Prepare() finishes, and thus
-//      we have to check whether we have already done step 3. On leaders, we
-//      don't start the consensus round until after Prepare, so this check always
-//      passes.
+//      This is triggered by consensus when the commit index moves past our own OpId. On followers,
+//      this can happen before Prepare() finishes, and thus we have to check whether we have already
+//      done step 3. On leaders, we don't start the consensus round until after Prepare, so this
+//      check always passes.
 //
 //      If Prepare() has already completed, then we trigger ApplyAsync().
 //
-//  5 - ApplyAsync() submits ApplyTask() to the apply_pool_.
-//      ApplyTask() calls operation_->Apply().
+//  5 - ApplyOperation() calls ApplyTask(), which then calls operation_->Apply().
 //
-//      When Apply() is called, changes are made to the in-memory data structures. These
+//      When operation_->Apply() is called, changes are made to the in-memory data structures. These
 //      changes are not visible to clients yet.
 //
-//      After the commit message has been enqueued in the Log, the driver executes Finalize()
-//      which, in turn, makes operations make their changes visible to other operations.
-//      After this step the driver replies to the client if needed and the operation
-//      is completed.
-//      In-mem data structures that contain the changes made by the operation can now
-//      be made durable.
+//  6 - The driver executes Finalize() which, in turn, makes operations make their changes visible
+//      to other operations.  After this step the driver replies to the client if needed and the
+//      operation is completed.  In-mem data structures that contain the changes made by the
+//      operation can now be made durable.
 //
 // [1] - see 'Implementation Techniques for Main Memory Database Systems', DeWitt et. al.
 //
@@ -119,7 +112,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
                   consensus::Consensus* consensus,
                   log::Log* log,
                   Preparer* preparer,
-                  ThreadPool* apply_pool,
                   OperationOrderVerifier* order_verifier,
                   TableType table_type_);
 
@@ -238,8 +230,8 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Starts operation, returns false is we should NOT continue processing the operation.
   bool StartOperation();
 
-  // Submits ApplyTask to the apply pool.
-  CHECKED_STATUS ApplyAsync();
+  // Performs status checks and calls ApplyTask.
+  CHECKED_STATUS ApplyOperation();
 
   // Calls Operation::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
@@ -262,7 +254,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   consensus::Consensus* const consensus_;
   log::Log* const log_;
   Preparer* const preparer_;
-  ThreadPool* const apply_pool_;
   OperationOrderVerifier* const order_verifier_;
 
   Status operation_status_;

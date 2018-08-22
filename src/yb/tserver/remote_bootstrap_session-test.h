@@ -93,7 +93,6 @@ class RemoteBootstrapTest : public YBTabletTest {
   }
 
   virtual void SetUp() override {
-    ASSERT_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
     ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
@@ -134,7 +133,6 @@ class RemoteBootstrapTest : public YBTabletTest {
     tablet_peer_.reset(
         new TabletPeerClass(tablet()->metadata(),
                             config_peer,
-                            apply_pool_.get(),
                             Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
                                  Unretained(this),
                                  tablet()->tablet_id())));
@@ -233,7 +231,6 @@ class RemoteBootstrapTest : public YBTabletTest {
 
   MetricRegistry metric_registry_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
-  gscoped_ptr<ThreadPool> apply_pool_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> tablet_prepare_pool_;
   unique_ptr<ThreadPool> append_pool_;
