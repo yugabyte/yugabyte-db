@@ -79,11 +79,7 @@ class DataCenterConfiguration extends Component {
             </YBTabsPanel>
           </Tab>
           <Tab eventKey="backup" title="Backup" key="storage-config">
-            <YBTabsPanel defaultTab="aws" activeTab={this.props.params.section} id="storage-config-tab-panel" className="config-tabs" routePrefix="/config/backup/">
-              <Tab eventKey="aws" title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
-                <StorageConfigurationContainer />
-              </Tab>
-            </YBTabsPanel>
+            <StorageConfigurationContainer activeTab={this.props.params.section} />
           </Tab>
         </YBTabsPanel>
       </div>
