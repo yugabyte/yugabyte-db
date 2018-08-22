@@ -77,6 +77,9 @@
       __FILE__, __LINE__, google::GLOG_ ## severity, num_suppressed, \
       &google::LogMessage::SendToLog).stream()
 
+#define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
+    YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
+
 #define YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefixUnlocked()
 

@@ -118,6 +118,10 @@ typedef std::shared_ptr<Peer> PeerPtr;
 
 class Peer : public std::enable_shared_from_this<Peer> {
  public:
+  Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
+       PeerProxyPtr proxy, PeerMessageQueue* queue,
+       ThreadPoolToken* raft_pool_token, Consensus* consensus);
+
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
 
@@ -166,10 +170,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   }
 
  private:
-  Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
-       PeerProxyPtr proxy, PeerMessageQueue* queue,
-       ThreadPoolToken* raft_pool_token, Consensus* consensus);
-
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
   // Signals that a response was received from the peer.  This method is called from the reactor
@@ -194,16 +194,18 @@ class Peer : public std::enable_shared_from_this<Peer> {
   void ProcessResponseError(const Status& status);
 
   // Returns true if the peer is closed and the calling function should return.
-  bool IsClosedOnResponse();
+  bool IsClosedOnResponseUnlocked();
 
-  std::string LogPrefixUnlocked() const;
+  void ReleaseResourcesUnlocked();
+
+  std::string LogPrefix() const;
 
   const std::string& tablet_id() const { return tablet_id_; }
 
   const std::string tablet_id_;
   const std::string leader_uuid_;
 
-  RaftPeerPB peer_pb_;
+  const RaftPeerPB peer_pb_;
 
   PeerProxyPtr proxy_;
 
@@ -249,14 +251,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   mutable simple_spinlock peer_lock_;
   std::atomic<State> state_;
   Consensus* consensus_ = nullptr;
-
-  // Used to keep object alive when we are waiting for a response after closing the peer.
-  PeerPtr shared_from_this_ = nullptr;
-
-  // True if we sent a request and are waiting for a response. Peer::Close() uses this value to
-  // determine whether it should wait for sem_ to get unlocked, or take ownership while
-  // we are waiting for a response.
-  bool waiting_for_response_ = false;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for

@@ -313,15 +313,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
-  TrackedPeer* peer = nullptr;
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
+  bool is_new;
+  int64_t next_index;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
     DCHECK_NE(uuid, local_peer_uuid_);
 
-    peer = FindPtrOrNull(peers_map_, uuid);
+    auto peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
@@ -360,6 +361,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
+    if (member_type) *member_type = peer->member_type;
+    if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
+    *needs_remote_bootstrap = peer->needs_remote_bootstrap;
+    is_new = peer->is_new;
+    next_index = peer->next_index;
   }
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
@@ -375,11 +381,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
   }
 
-  if (member_type) *member_type = peer->member_type;
-  if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
-  if (PREDICT_FALSE(peer->needs_remote_bootstrap)) {
+  if (PREDICT_FALSE(*needs_remote_bootstrap)) {
       YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
-          << "Peer needs remote bootstrap: " << peer->ToString();
+          << "Peer needs remote bootstrap: " << uuid;
     *needs_remote_bootstrap = true;
     return Status::OK();
   }
@@ -388,14 +392,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // If we've never communicated with the peer, we don't know what messages to send, so we'll send a
   // status-only request. Otherwise, we grab requests from the log starting at the last_received
   // point.
-  if (!peer->is_new) {
+  if (!is_new) {
     DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
 
     // We try to get the follower's next_index from our log.
-    Status s = log_cache_.ReadOps(peer->next_index - 1,
+    Status s = log_cache_.ReadOps(next_index - 1,
                                   max_batch_size,
                                   &messages,
                                   &preceding_id);
@@ -415,12 +419,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
                                         << "while preparing peer request: "
                                         << s.ToString() << ". Destination peer: "
-                                        << peer->ToString();
+                                        << uuid;
         return s;
       } else {
         LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
                                         << s.ToString() << ". Destination peer: "
-                                        << peer->ToString();
+                                        << uuid;
       }
     }
 
