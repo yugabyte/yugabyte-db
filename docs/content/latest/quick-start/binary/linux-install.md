@@ -21,10 +21,10 @@ Download the YugaByte DB CE package as shown below.
 
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.5.3-linux.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.6.0-linux.tar.gz
 ```
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-1.0.5.3-linux.tar.gz && cd yugabyte-1.0.5.3/
+$ tar xvfz yugabyte-ce-1.0.6.0-linux.tar.gz && cd yugabyte-1.0.6.0/
 ```
 
 ## Configure
