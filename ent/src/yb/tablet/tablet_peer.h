@@ -13,9 +13,9 @@ class TabletPeer : public yb::tablet::TabletPeer{
   typedef yb::tablet::TabletPeer super;
  public:
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
-             const consensus::RaftPeerPB& local_peer_pb, ThreadPool* apply_pool,
+             const consensus::RaftPeerPB& local_peer_pb,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
-      : super(meta, local_peer_pb, apply_pool, mark_dirty_clbk) {}
+      : super(meta, local_peer_pb, mark_dirty_clbk) {}
 
  protected:
   std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg) override;
