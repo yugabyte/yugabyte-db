@@ -107,6 +107,14 @@ using std::string;
 
 namespace yb {
 
+// https://gcc.gnu.org/onlinedocs/libstdc++/libstdc++-html-USERS-4.3/a01696.html
+enum DemangleStatus : int {
+  kDemangleOk = 0,
+  kDemangleMemAllocFailure = -1,
+  kDemangleInvalidMangledName = -2,
+  kDemangleInvalidArgument = -3
+};
+
 namespace {
 
 // Global structure used to communicate between the signal handler
@@ -327,12 +335,15 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
   int demangle_status = 0;
   char* const demangled_function_name =
       original_function_name != nullptr ?
-      abi::__cxa_demangle(original_function_name, 0, 0, &demangle_status) :
+      abi::__cxa_demangle(original_function_name,
+                          nullptr,  // output_buffer
+                          nullptr,  // length
+                          &demangle_status) :
       nullptr;
   const char* function_name_to_use = original_function_name;
   if (original_function_name != nullptr) {
-    if (demangle_status != 0) {
-      if (demangle_status != -2) {
+    if (demangle_status != kDemangleOk) {
+      if (demangle_status != kDemangleInvalidMangledName) {
         // -2 means the mangled name is not a valid name under the C++ ABI mangling rules.
         // This happens when the name is e.g. "main", so we don't report the error.
         StringAppendF(buf, "Error: __cxa_demangle failed for '%s' with error code %d\n",
@@ -919,6 +930,16 @@ void __cyg_profile_func_exit (void *this_fn, void *call_site) {
   }
 }
 
+}  // extern "C"
+
+std::string DemangleName(const char* mangled_name) {
+  int demangle_status = 0;
+  char* demangled_name =
+      abi::__cxa_demangle(mangled_name, nullptr /* output_buffer */, nullptr /* length */,
+                          &demangle_status);
+  string ret_val = demangle_status == kDemangleOk ? demangled_name : mangled_name;
+  free(demangled_name);
+  return ret_val;
 }
 
 }  // namespace yb

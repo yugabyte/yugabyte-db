@@ -18,8 +18,10 @@
 #include <string>
 #include <vector>
 
-#include "yb/yql/pggate/pg_env.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_env.h"
 
 namespace yb {
 namespace pggate {
@@ -42,24 +44,20 @@ enum class StmtOp {
   STMT_SELECT,
 };
 
-class PgStatement {
+class PgStatement : public RefCountedThreadSafe<PgStatement> {
  public:
   // Public types.
-  typedef std::shared_ptr<PgStatement> SharedPtr;
-  typedef std::shared_ptr<const PgStatement> SharedPtrConst;
-
-  typedef std::unique_ptr<PgStatement> UniPtr;
-  typedef std::unique_ptr<const PgStatement> UniPtrConst;
+  typedef scoped_refptr<PgStatement> ScopedRefPtr;
 
   //------------------------------------------------------------------------------------------------
   // Constructors.
   // pg_session is the session that this statement belongs to. If PostgreSQL cancels the session
   // while statement is running, pg_session::sharedptr can still be accessed without crashing.
-  PgStatement(PgSession::SharedPtr pg_session, StmtOp stmt_op);
+  PgStatement(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op);
   virtual ~PgStatement();
 
   //------------------------------------------------------------------------------------------------
-  static bool IsValidStmt(PgStatement::SharedPtr stmt, StmtOp op) {
+  static bool IsValidStmt(PgStatement* stmt, StmtOp op) {
     return (stmt != nullptr && stmt->stmt_op_ == op);
   }
 
@@ -73,7 +71,7 @@ class PgStatement {
 
  protected:
   // YBSession that this statement belongs to.
-  PgSession::SharedPtr pg_session_;
+  PgSession::ScopedRefPtr pg_session_;
 
   // Statement type.
   StmtOp stmt_op_;

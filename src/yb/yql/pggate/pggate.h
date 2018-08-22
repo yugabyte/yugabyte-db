@@ -77,10 +77,10 @@ class PgApiImpl {
   CHECKED_STATUS DestroySession(PgSession *pg_session);
 
   // Read session.
-  PgSession::SharedPtr GetSession(PgSession *handle);
+  PgSession::ScopedRefPtr GetSession(PgSession *handle);
 
   // Read statement.
-  PgStatement::SharedPtr GetStatement(PgStatement *handle);
+  PgStatement::ScopedRefPtr GetStatement(PgStatement *handle);
 
   // Delete statement.
   CHECKED_STATUS DeleteStatement(PgStatement *handle);
@@ -244,18 +244,6 @@ class PgApiImpl {
   // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
   // all the custom flags the PostgreSQL sets. We ignore them all for now.
   PgEnv::SharedPtr pg_env_;
-
-  // List of session shared_ptr. When destroying session, remove it from this list.
-  // Our internal might still have reference to this session while the Postgres API might instruct
-  // YugaByte to destroy the session whenever users cancel a connection / session. Removing
-  // shared_ptr from map instead of calling "free(ptr)" will save us from crashing.
-  std::unordered_map<PgSession*, PgSession::SharedPtr> sessions_;
-
-  // List of handle shared_ptr. When destroying a handle, remove it from this list.
-  // Our internal might still have reference to this handle while the Postgres API might instruct
-  // YugaByte to destroy the handle whenever users cancel a connection / session. Removing
-  // shared_ptr instead of calling "free(ptr)" will save us from crashing.
-  std::unordered_map<PgStatement*, PgStatement::SharedPtr> statements_;
 };
 
 // Generate C++ interface class declarations from the common DSL.

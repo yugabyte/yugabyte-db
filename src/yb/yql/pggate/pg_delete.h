@@ -27,14 +27,14 @@ namespace pggate {
 class PgDelete : public PgDmlWrite {
  public:
   // Public types.
-  typedef std::shared_ptr<PgDelete> SharedPtr;
-  typedef std::shared_ptr<const PgDelete> SharedPtrConst;
+  typedef scoped_refptr<PgDelete> ScopedRefPtr;
+  typedef scoped_refptr<const PgDelete> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgDelete> UniPtr;
   typedef std::unique_ptr<const PgDelete> UniPtrConst;
 
   // Constructors.
-  PgDelete(PgSession::SharedPtr pg_session,
+  PgDelete(PgSession::ScopedRefPtr pg_session,
            const char *database_name,
            const char *schema_name,
            const char *table_name);
