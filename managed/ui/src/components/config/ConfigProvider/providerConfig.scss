@@ -153,9 +153,21 @@
   > li > a {
     min-width: 180px;
     min-height: 72px;
+    padding-bottom: 0;
 
     img {
       height: 50px;
+    }
+
+    h3 {
+      margin: 0;
+      vertical-align: middle;
+      line-height: 50px;
+
+      i {
+        color: #679;
+        margin-right: 10px;
+      }
     }
 
     .on-premise {

@@ -48,6 +48,9 @@
       color: rgba(white, 0.5);
     }
   }
+  .btn-disabled {
+    color: rgba(white, 0.5) !important;
+  }
 }
 
 .btn-default {
@@ -207,7 +210,7 @@
 }
 
 .btn-disabled {
-  color: rgba($YB_TEXT_COLOR, 0.7) !important;
+  color: rgba($YB_TEXT_COLOR, 0.5) !important;
   border-color: $YB_GRAY_BORDER;
   background-color: $YB_GRAY_HOVER;
 }
