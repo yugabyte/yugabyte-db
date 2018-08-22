@@ -412,9 +412,8 @@ void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response
   SetOptionalInt(type, value, 0, response);
 }
 
-CHECKED_STATUS GetCardinality(IntentAwareIterator* iterator,
-                              const RedisKeyValuePB& kv,
-                              int64_t *result) {
+Result<int64_t> GetCardinality(IntentAwareIterator* iterator,
+                              const RedisKeyValuePB& kv) {
   auto encoded_key_card = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
   PrimitiveValue(ValueType::kCounter).AppendToKey(&encoded_key_card);
   SubDocument subdoc_card;
@@ -424,12 +423,7 @@ CHECKED_STATUS GetCardinality(IntentAwareIterator* iterator,
 
   RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
-  if (subdoc_card_found) {
-    *result = subdoc_card.GetInt64();
-  } else {
-    *result = 0;
-  }
-  return Status::OK();
+  return subdoc_card_found ? subdoc_card.GetInt64() : 0;
 }
 
 template <typename AddResponseValues>
@@ -736,8 +730,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         }
 
         if (new_elements_added > 0) {
-          int64_t card;
-          RETURN_NOT_OK(GetCardinality(iterator_.get(), kv, &card));
+          int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv));
           // Insert card + new_elements_added back into the document for the updated card.
           kv_entries_card = SubDocument(PrimitiveValue(card + new_elements_added));
           kv_entries.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(kv_entries_card));
@@ -923,8 +916,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
           num_keys--;
         }
       }
-      int64_t card;
-      RETURN_NOT_OK(GetCardinality(iterator_.get(), kv, &card));
+      int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv));
       // The new cardinality is card - num_keys.
       values_card = SubDocument(PrimitiveValue(card - num_keys));
 
@@ -1171,64 +1163,44 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
   SubDocument doc;
   bool doc_found = false;
+  auto encoded_doc_key = doc_key.EncodeWithoutHt();
+
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
-  auto encoded_doc_key = doc_key.EncodeWithoutHt();
   GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
-  switch (value_type) {
-    case ValueType::kRedisSortedSet: {
-      if (add_keys || add_values) {
-        RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
-            SeekFwdSuffices::kFalse));
-        response_.set_allocated_array_response(new RedisArrayPB());
-        if (!doc_found) {
-          response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-          return Status::OK();
-        }
-        if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
-          RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
-                                             &response_, add_keys, add_values));
-        }
-      } else {
-        int64_t card;
-        data.return_type_only = true;
-        RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
-            SeekFwdSuffices::kFalse));
-        if (*data.doc_found && data.result->value_type() != ValueType::kRedisSortedSet) {
-          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-          response_.set_error_message(wrong_type_message);
-          return Status::OK();
-        }
-        RETURN_NOT_OK(GetCardinality(iterator_.get(), request_.key_value(), &card));
-        response_.set_int_response(card);
-        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-      }
-      break;
-    }
-    default: {
-      data.count_only = !(add_keys || add_values);
-      RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
-          SeekFwdSuffices::kFalse));
-      if (add_keys || add_values) {
-        response_.set_allocated_array_response(new RedisArrayPB());
-      }
-      if (!doc_found) {
-        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-        if (data.count_only) {
-          response_.set_int_response(0);
-        }
-        return Status::OK();
-      }
-      if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
-        if (add_keys || add_values) {
-          RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
-                                             &response_, add_keys, add_values));
-        } else {
-          response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-          response_.set_int_response(data.record_count);
-        }
-      }
-      break;
+
+  // TODO: change this to include lists when implementing.
+  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet;
+  bool return_array_response = add_keys || add_values;
+
+  if (has_cardinality_subkey) {
+    data.return_type_only = !return_array_response;
+  } else {
+    data.count_only = !return_array_response;
+  }
+
+  RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
+                               SeekFwdSuffices::kFalse));
+  if (return_array_response)
+    response_.set_allocated_array_response(new RedisArrayPB());
+
+  if (!doc_found) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+    if (!return_array_response)
+      response_.set_int_response(0);
+    return Status::OK();
+  }
+
+  if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
+    if (return_array_response) {
+      RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
+                                         &response_, add_keys, add_values));
+    } else {
+      int64_t card = has_cardinality_subkey ?
+        VERIFY_RESULT(GetCardinality(iterator_.get(), request_.key_value())) :
+        data.record_count;
+      response_.set_int_response(card);
+      response_.set_code(RedisResponsePB_RedisStatusCode_OK);
     }
   }
   return Status::OK();
@@ -1352,8 +1324,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         return Status::OK();
       }
 
-      int64_t card;
-      RETURN_NOT_OK(GetCardinality(iterator_.get(), request_.key_value(), &card));
+      int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), request_.key_value()));
 
       const RedisIndexBoundPB& low_index_bound = request_.index_range().lower_bound();
       const RedisIndexBoundPB& high_index_bound = request_.index_range().upper_bound();
