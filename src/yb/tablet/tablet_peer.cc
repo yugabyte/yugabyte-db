@@ -131,14 +131,12 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const scoped_refptr<TabletMetadata>& meta,
     const consensus::RaftPeerPB& local_peer_pb,
-    ThreadPool* apply_pool,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
     tablet_id_(meta->tablet_id()),
     local_peer_pb_(local_peer_pb),
     state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
-    apply_pool_(apply_pool),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)) {}
 
@@ -854,7 +852,6 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
       consensus_.get(),
       log_.get(),
       prepare_thread_.get(),
-      apply_pool_,
       &operation_order_verifier_,
       tablet_->table_type()));
 }

@@ -215,7 +215,7 @@ class SysCatalogTable {
 
   MetricRegistry* metric_registry_;
 
-  gscoped_ptr<ThreadPool> apply_pool_;
+  gscoped_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
   gscoped_ptr<ThreadPool> raft_pool_;

@@ -99,7 +99,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
-             const consensus::RaftPeerPB& local_peer_pb, ThreadPool* apply_pool,
+             const consensus::RaftPeerPB& local_peer_pb,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   ~TabletPeer();
@@ -383,11 +383,6 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   mutable simple_spinlock state_change_lock_;
 
   std::unique_ptr<Preparer> prepare_thread_;
-
-  // Pool that executes apply tasks for transactions. This is a multi-threaded
-  // pool, constructor-injected by either the Master (for system tables) or
-  // the Tablet server.
-  ThreadPool* apply_pool_;
 
   scoped_refptr<server::Clock> clock_;
 

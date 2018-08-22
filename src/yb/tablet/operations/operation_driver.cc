@@ -67,14 +67,12 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
                                  Consensus* consensus,
                                  Log* log,
                                  Preparer* preparer,
-                                 ThreadPool* apply_pool,
                                  OperationOrderVerifier* order_verifier,
                                  TableType table_type)
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       log_(log),
       preparer_(preparer),
-      apply_pool_(apply_pool),
       order_verifier_(order_verifier),
       trace_(new Trace()),
       start_time_(MonoTime::Now()),
@@ -278,10 +276,9 @@ Status OperationDriver::PrepareAndStart() {
       FALLTHROUGH_INTENDED;
     case REPLICATED:
     {
-      // We can move on to apply.
-      // Note that ApplyAsync() will handle the error status in the
+      // We can move on to apply.  Note that ApplyOperation() will handle the error status in the
       // REPLICATION_FAILED case.
-      return ApplyAsync();
+      return ApplyOperation();
     }
   }
   FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
@@ -367,13 +364,13 @@ void OperationDriver::ReplicationFinished(const Status& status) {
   }
 
   // If we have prepared and replicated, we're ready to move ahead and apply this operation.
-  // Note that if we set the state to REPLICATION_FAILED above, ApplyAsync() will actually abort the
-  // operation, i.e. ApplyTask() will never be called and the operation will never be applied to
+  // Note that if we set the state to REPLICATION_FAILED above, ApplyOperation() will actually abort
+  // the operation, i.e. ApplyTask() will never be called and the operation will never be applied to
   // the tablet.
   if (prepare_state_copy == PREPARED) {
     // We likely need to do cleanup if this fails so for now just
     // CHECK_OK
-    CHECK_OK(ApplyAsync());
+    CHECK_OK(ApplyOperation());
   }
 }
 
@@ -397,7 +394,7 @@ void OperationDriver::Abort(const Status& status) {
   }
 }
 
-Status OperationDriver::ApplyAsync() {
+Status OperationDriver::ApplyOperation() {
   {
     std::unique_lock<simple_spinlock> lock(lock_);
     DCHECK_EQ(prepare_state_, PREPARED);
@@ -415,8 +412,9 @@ Status OperationDriver::ApplyAsync() {
   }
 
   TRACE_EVENT_FLOW_BEGIN0("operation", "ApplyTask", this);
-  // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
-  // the order.
+
+  // RocksDB-backed tables require that we apply changes in the same order they appear in the Raft
+  // log.
   ApplyTask();
   return Status::OK();
 }
