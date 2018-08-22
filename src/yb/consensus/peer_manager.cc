@@ -100,7 +100,7 @@ void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
       LOG(WARNING) << GetLogPrefix()
                    << "Peer was closed, removing from peers. Peer: "
                    << (*iter).second->peer_pb().ShortDebugString();
-      iter = peers_.erase(iter++);
+      iter = peers_.erase(iter);
     } else {
       iter++;
     }
