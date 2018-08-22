@@ -59,6 +59,7 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/spinlock.h"
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
@@ -73,6 +74,10 @@ DEFINE_string(fatal_details_path_prefix, "",
               "other details to.");
 DEFINE_string(minicluster_daemon_id, "",
               "A human-readable 'daemon id', e.g. 'm-1' or 'ts-2', used in tests.");
+
+DEFINE_string(ref_counted_debug_type_name_regex, "",
+              "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
+              "An empty string disables RefCounted debug logging.");
 
 const char* kProjName = "yb";
 
@@ -193,6 +198,26 @@ void CustomGlogFailureWriter(const char* data, int size) {
   }
 }
 
+#ifndef NDEBUG
+void ReportRefCountedDebugEvent(
+    const char* type_name,
+    const void* this_ptr,
+    int32_t current_refcount,
+    int ref_delta) {
+  std::string demangled_type = DemangleName(type_name);
+  LOG(INFO) << demangled_type << "::" << (ref_delta == 1 ? "AddRef" : "Release")
+            << "(this=" << this_ptr << ", ref_count_=" << current_refcount << "):\n"
+            << GetStackTrace(StackTraceLineFormat::DEFAULT, 2);
+}
+#endif
+
+void ApplyFlagsInternal() {
+#ifndef NDEBUG
+  subtle::InitRefCountedDebugging(
+      FLAGS_ref_counted_debug_type_name_regex, ReportRefCountedDebugEvent);
+#endif
+}
+
 } // anonymous namespace
 
 void InitializeGoogleLogging(const char *arg) {
@@ -259,6 +284,9 @@ void InitGoogleLoggingSafe(const char* arg) {
   // Stderr logging threshold: FLAGS_stderrthreshold.
   // Sink logging: off.
   initial_stderr_severity = FLAGS_stderrthreshold;
+
+  ApplyFlagsInternal();
+
   logging_initialized = true;
 }
 
@@ -275,6 +303,9 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   // Stderr logging threshold: INFO.
   // Sink logging: off.
   initial_stderr_severity = google::INFO;
+
+  ApplyFlagsInternal();
+
   logging_initialized = true;
 }
 

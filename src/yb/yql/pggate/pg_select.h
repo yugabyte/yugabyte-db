@@ -17,6 +17,8 @@
 
 #include <list>
 
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/util/pg_bind.h"
 
@@ -30,14 +32,10 @@ namespace pggate {
 class PgSelect : public PgDml {
  public:
   // Public types.
-  typedef std::shared_ptr<PgSelect> SharedPtr;
-  typedef std::shared_ptr<const PgSelect> SharedPtrConst;
-
-  typedef std::unique_ptr<PgSelect> UniPtr;
-  typedef std::unique_ptr<const PgSelect> UniPtrConst;
+  typedef scoped_refptr<PgSelect> ScopedRefPtr;
 
   // Constructors.
-  PgSelect(PgSession::SharedPtr pg_session,
+  PgSelect(PgSession::ScopedRefPtr pg_session,
            const char *database_name,
            const char *schema_name,
            const char *table_name);

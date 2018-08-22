@@ -22,7 +22,7 @@ namespace pggate {
 
 class PgDdl : public PgStatement {
  public:
-  PgDdl(PgSession::SharedPtr pg_session, StmtOp stmt_op)
+  PgDdl(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op)
       : PgStatement(pg_session, stmt_op) {
   }
 
@@ -38,14 +38,14 @@ class PgDdl : public PgStatement {
 class PgCreateDatabase : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgCreateDatabase> SharedPtr;
-  typedef std::shared_ptr<const PgCreateDatabase> SharedPtrConst;
+  typedef scoped_refptr<PgCreateDatabase> ScopedRefPtr;
+  typedef scoped_refptr<const PgCreateDatabase> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgCreateDatabase> UniPtr;
   typedef std::unique_ptr<const PgCreateDatabase> UniPtrConst;
 
   // Constructors.
-  PgCreateDatabase(PgSession::SharedPtr pg_session, const char *database_name);
+  PgCreateDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name);
   virtual ~PgCreateDatabase();
 
   // Execute.
@@ -58,14 +58,14 @@ class PgCreateDatabase : public PgDdl {
 class PgDropDatabase : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgDropDatabase> SharedPtr;
-  typedef std::shared_ptr<const PgDropDatabase> SharedPtrConst;
+  typedef scoped_refptr<PgDropDatabase> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropDatabase> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgDropDatabase> UniPtr;
   typedef std::unique_ptr<const PgDropDatabase> UniPtrConst;
 
   // Constructors.
-  PgDropDatabase(PgSession::SharedPtr pg_session, const char *database_name, bool if_exist);
+  PgDropDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name, bool if_exist);
   virtual ~PgDropDatabase();
 
   // Execute.
@@ -86,14 +86,14 @@ class PgDropDatabase : public PgDdl {
 class PgCreateSchema : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgCreateSchema> SharedPtr;
-  typedef std::shared_ptr<const PgCreateSchema> SharedPtrConst;
+  typedef scoped_refptr<PgCreateSchema> ScopedRefPtr;
+  typedef scoped_refptr<const PgCreateSchema> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgCreateSchema> UniPtr;
   typedef std::unique_ptr<const PgCreateSchema> UniPtrConst;
 
   // Constructors.
-  PgCreateSchema(PgSession::SharedPtr pg_session,
+  PgCreateSchema(PgSession::ScopedRefPtr pg_session,
                  const char *database_name,
                  const char *schema_name,
                  bool if_not_exist);
@@ -111,14 +111,14 @@ class PgCreateSchema : public PgDdl {
 class PgDropSchema : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgDropSchema> SharedPtr;
-  typedef std::shared_ptr<const PgDropSchema> SharedPtrConst;
+  typedef scoped_refptr<PgDropSchema> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropSchema> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgDropSchema> UniPtr;
   typedef std::unique_ptr<const PgDropSchema> UniPtrConst;
 
   // Constructors.
-  PgDropSchema(PgSession::SharedPtr pg_session,
+  PgDropSchema(PgSession::ScopedRefPtr pg_session,
                const char *database_name,
                const char *schema_name,
                bool if_exist);
@@ -140,14 +140,14 @@ class PgDropSchema : public PgDdl {
 class PgCreateTable : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgCreateTable> SharedPtr;
-  typedef std::shared_ptr<const PgCreateTable> SharedPtrConst;
+  typedef scoped_refptr<PgCreateTable> ScopedRefPtr;
+  typedef scoped_refptr<const PgCreateTable> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgCreateTable> UniPtr;
   typedef std::unique_ptr<const PgCreateTable> UniPtrConst;
 
   // Constructors.
-  PgCreateTable(PgSession::SharedPtr pg_session,
+  PgCreateTable(PgSession::ScopedRefPtr pg_session,
                 const char *database_name,
                 const char *schema_name,
                 const char *table_name,
@@ -169,14 +169,14 @@ class PgCreateTable : public PgDdl {
 class PgDropTable : public PgDdl {
  public:
   // Public types.
-  typedef std::shared_ptr<PgDropTable> SharedPtr;
-  typedef std::shared_ptr<const PgDropTable> SharedPtrConst;
+  typedef scoped_refptr<PgDropTable> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropTable> ScopedRefPtrConst;
 
   typedef std::unique_ptr<PgDropTable> UniPtr;
   typedef std::unique_ptr<const PgDropTable> UniPtrConst;
 
   // Constructors.
-  PgDropTable(PgSession::SharedPtr pg_session,
+  PgDropTable(PgSession::ScopedRefPtr pg_session,
               const char *database_name,
               const char *schema_name,
               const char *table_name,

@@ -15,6 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_DML_H_
 #define YB_YQL_PGGATE_PG_DML_H_
 
+#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 
 namespace yb {
@@ -48,7 +49,7 @@ class PgDml : public PgStatement {
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::SharedPtr pg_session,
+  PgDml(PgSession::ScopedRefPtr pg_session,
         const char *database_name,
         const char *schema_name,
         const char *table_name,

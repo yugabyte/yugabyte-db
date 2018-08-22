@@ -19,7 +19,12 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include <regex>
+#include <atomic>
+#include <mutex>
+
 #include <glog/logging.h>
+
 #include "yb/gutil/threading/thread_collision_warner.h"
 
 namespace yb {
@@ -104,6 +109,46 @@ bool RefCountedThreadSafeBase::Release() const {
   }
   return false;
 }
+
+#ifndef NDEBUG
+
+bool g_ref_counted_debug_enabled = false;
+
+namespace {
+
+RefCountedDebugFn* g_ref_counted_debug_report_event_fn;
+std::regex g_ref_counted_debug_type_name_regex;
+
+}  // anonymous namespace
+
+void InitRefCountedDebugging(const std::string& type_name_regex,
+                             RefCountedDebugFn* debug_fn) {
+  g_ref_counted_debug_report_event_fn = debug_fn;
+  g_ref_counted_debug_enabled = !type_name_regex.empty();
+  if (g_ref_counted_debug_enabled) {
+    g_ref_counted_debug_type_name_regex = std::regex(type_name_regex);
+  }
+}
+
+void RefCountedDebugHook(
+    const char* type_name,
+    const void* this_ptr,
+    int32_t current_ref_count,
+    int32_t ref_delta) {
+  std::match_results<const char*> match;
+  if (!std::regex_match(type_name, match, g_ref_counted_debug_type_name_regex)) {
+    return;
+  }
+
+  (*g_ref_counted_debug_report_event_fn)(type_name, this_ptr, current_ref_count, ref_delta);
+}
+
+#else
+
+void InitRefCountedDebugging(const std::string& type_name_regex) {
+}
+
+#endif
 
 }  // namespace subtle
 

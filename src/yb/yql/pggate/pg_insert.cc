@@ -39,7 +39,7 @@ static MonoDelta kSessionTimeout = 60s;
 // PgInsert
 //--------------------------------------------------------------------------------------------------
 
-PgInsert::PgInsert(PgSession::SharedPtr pg_session,
+PgInsert::PgInsert(PgSession::ScopedRefPtr pg_session,
                    const char *database_name,
                    const char *schema_name,
                    const char *table_name)

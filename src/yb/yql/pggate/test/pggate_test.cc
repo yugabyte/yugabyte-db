@@ -14,7 +14,10 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/test/pggate_test.h"
+
 #include <gflags/gflags.h>
+
+#include "yb/yql/pggate/pg_session.h"
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
@@ -47,12 +50,19 @@ void *PggateTestAlloc(size_t bytes) {
 
 //--------------------------------------------------------------------------------------------------
 // Starting and ending routines.
+
 void PggateTest::SetUp() {
   FLAGS_test_leave_files = "always";
   YBTest::SetUp();
 }
 
 void PggateTest::TearDown() {
+  LOG(INFO) << "pg_session_->HasOneRef()=" << pg_session_->HasOneRef();
+  while (!pg_session_->HasOneRef()) {
+    pg_session_->Release();
+  }
+  YBCPgDestroySession(pg_session_);
+
   // Destroy the client before shutting down servers.
   YBCDestroyPgGate();
 

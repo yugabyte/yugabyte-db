@@ -15,6 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_UPDATE_H_
 #define YB_YQL_PGGATE_PG_UPDATE_H_
 
+#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_dml_write.h"
 
 namespace yb {
@@ -27,14 +28,10 @@ namespace pggate {
 class PgUpdate : public PgDmlWrite {
  public:
   // Public types.
-  typedef std::shared_ptr<PgUpdate> SharedPtr;
-  typedef std::shared_ptr<const PgUpdate> SharedPtrConst;
-
-  typedef std::unique_ptr<PgUpdate> UniPtr;
-  typedef std::unique_ptr<const PgUpdate> UniPtrConst;
+  typedef scoped_refptr<PgUpdate> ScopedRefPtr;
 
   // Constructors.
-  PgUpdate(PgSession::SharedPtr pg_session,
+  PgUpdate(PgSession::ScopedRefPtr pg_session,
            const char *database_name,
            const char *schema_name,
            const char *table_name);

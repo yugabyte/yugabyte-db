@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_update.h"
+
 #include "yb/client/yb_op.h"
 
 namespace yb {
@@ -39,7 +40,7 @@ static MonoDelta kSessionTimeout = 60s;
 // PgUpdate
 //--------------------------------------------------------------------------------------------------
 
-PgUpdate::PgUpdate(PgSession::SharedPtr pg_session,
+PgUpdate::PgUpdate(PgSession::ScopedRefPtr pg_session,
                    const char *database_name,
                    const char *schema_name,
                    const char *table_name)

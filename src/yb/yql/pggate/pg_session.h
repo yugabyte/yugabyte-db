@@ -16,20 +16,19 @@
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
+
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
+
 #include "yb/yql/pggate/pg_coldesc.h"
 
 namespace yb {
 namespace pggate {
 
-class PgSession {
+class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
-  typedef std::shared_ptr<PgSession> SharedPtr;
-  typedef std::shared_ptr<const PgSession> SharedPtrConst;
-
-  typedef std::unique_ptr<PgSession> UniPtr;
-  typedef std::unique_ptr<const PgSession> UniPtrConst;
+  typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
   PgSession(std::shared_ptr<client::YBClient> client, const string& database_name);
