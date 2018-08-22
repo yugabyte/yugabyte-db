@@ -35,7 +35,7 @@ static MonoDelta kSessionTimeout = 60s;
 // PgCreateDatabase
 //--------------------------------------------------------------------------------------------------
 
-PgCreateDatabase::PgCreateDatabase(PgSession::SharedPtr pg_session, const char *database_name)
+PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name)
     : PgDdl(pg_session, StmtOp::STMT_CREATE_DATABASE),
       database_name_(database_name) {
 }
@@ -47,7 +47,7 @@ CHECKED_STATUS PgCreateDatabase::Exec() {
   return pg_session_->CreateDatabase(database_name_);
 }
 
-PgDropDatabase::PgDropDatabase(PgSession::SharedPtr pg_session,
+PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
                                bool if_exist)
     : PgDdl(pg_session, StmtOp::STMT_DROP_DATABASE),
@@ -66,7 +66,7 @@ CHECKED_STATUS PgDropDatabase::Exec() {
 // PgCreateSchema
 //--------------------------------------------------------------------------------------------------
 
-PgCreateSchema::PgCreateSchema(PgSession::SharedPtr pg_session,
+PgCreateSchema::PgCreateSchema(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
                                const char *schema_name,
                                bool if_not_exist)
@@ -85,7 +85,7 @@ CHECKED_STATUS PgCreateSchema::Exec() {
   return STATUS(NotSupported, "SCHEMA is not yet implemented");
 }
 
-PgDropSchema::PgDropSchema(PgSession::SharedPtr pg_session,
+PgDropSchema::PgDropSchema(PgSession::ScopedRefPtr pg_session,
                            const char *database_name,
                            const char *schema_name,
                            bool if_exist)
@@ -108,7 +108,7 @@ CHECKED_STATUS PgDropSchema::Exec() {
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
 
-PgCreateTable::PgCreateTable(PgSession::SharedPtr pg_session,
+PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *database_name,
                              const char *schema_name,
                              const char *table_name,
@@ -164,7 +164,7 @@ CHECKED_STATUS PgCreateTable::Exec() {
   return Status::OK();
 }
 
-PgDropTable::PgDropTable(PgSession::SharedPtr pg_session,
+PgDropTable::PgDropTable(PgSession::ScopedRefPtr pg_session,
                          const char *database_name,
                          const char *schema_name,
                          const char *table_name,

@@ -301,14 +301,15 @@ if [[ $local_build_only == "false" &&
     run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
     exit_code=$?
     set -e
-    # Exit code 254: "write: Connection reset by peer".
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
     # Exit code 127: "remote_cmd.sh: No such file or directory"
-    if [[ $exit_code -eq 255 || \
-          $exit_code -eq 254 || \
-          $exit_code -eq 126 || \
-          $exit_code -eq 127 ]] || \
-        egrep "\
+    # Exit code 254: "write: Connection reset by peer".
+    # Exit code 255: ssh: connect to host ... port ...: Connection refused
+    if [[ $exit_code -eq 126 ||
+          $exit_code -eq 127 ||
+          $exit_code -eq 254 ||
+          $exit_code -eq 255 ]] ||
+       egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
 Fatal error: can't create .*: Stale file handle|\
 /usr/bin/env: bash: Input/output error\

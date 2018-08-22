@@ -110,131 +110,76 @@ CHECKED_STATUS PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 CHECKED_STATUS PgApiImpl::CreateSession(const PgEnv *pg_env,
                                         const string& database_name,
                                         PgSession **pg_session) {
-  PgSession::SharedPtr session = std::make_shared<PgSession>(client(), database_name);
+  auto session = make_scoped_refptr<PgSession>(client(), database_name);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
 
-  *pg_session = session.get();
-  sessions_[*pg_session]= session;
+  *pg_session = nullptr;
+  session.swap(pg_session);
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::DestroySession(PgSession *pg_session) {
-  if (sessions_.find(pg_session) == sessions_.end()) {
-    // Invalid session.
-    return STATUS(InvalidArgument, "Invalid session handle");
+  if (pg_session) {
+    pg_session->Release();
   }
-  sessions_[pg_session]= nullptr;
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-PgSession::SharedPtr PgApiImpl::GetSession(PgSession *handle) {
-  std::unordered_map<PgSession*, PgSession::SharedPtr>::iterator iter;
-  iter = sessions_.find(handle);
-  if (iter == sessions_.end()) {
-    // Invalid session.
-    return nullptr;
-  }
-  return iter->second;
-}
-
-PgStatement::SharedPtr PgApiImpl::GetStatement(PgStatement *handle) {
-  std::unordered_map<PgStatement*, PgStatement::SharedPtr>::iterator iter;
-  iter = statements_.find(handle);
-  if (iter == statements_.end()) {
-    // Invalid session.
-    return nullptr;
-  }
-  return iter->second;
-}
-
 CHECKED_STATUS PgApiImpl::DeleteStatement(PgStatement *handle) {
-  if (!handle) {
-    // If handle is null nothing to do.
-    return Status::OK();
-  }
-  std::unordered_map<PgStatement *, PgStatement::SharedPtr>::iterator iter;
-  iter = statements_.find(handle);
-  if (iter == statements_.end()) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  } else {
-    // Delete handle.
-    statements_.erase(iter);
+  if (handle) {
+    handle->Release();
   }
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ClearBinds(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!stmt) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
   return handle->ClearBinds();
 }
 
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PgApiImpl::ConnectDatabase(PgSession *pg_session, const char *database_name) {
-  if (sessions_.find(pg_session) == sessions_.end()) {
-    // Invalid session.
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
   return pg_session->ConnectDatabase(database_name);
 }
 
 CHECKED_STATUS PgApiImpl::AllocCreateDatabase(PgSession *pg_session,
                                               const char *database_name,
                                               PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
-  PgCreateDatabase::SharedPtr stmt = make_shared<PgCreateDatabase>(session, database_name);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgCreateDatabase* stmt = new PgCreateDatabase(pg_session, database_name);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ExecCreateDatabase(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_DATABASE)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_DATABASE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  return static_cast<PgCreateDatabase*>(handle)->Exec();
+  return down_cast<PgCreateDatabase*>(handle)->Exec();
 }
 
 CHECKED_STATUS PgApiImpl::AllocDropDatabase(PgSession *pg_session,
                                             const char *database_name,
                                             bool if_exist,
                                             PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
-  PgDropDatabase::SharedPtr stmt = make_shared<PgDropDatabase>(session, database_name, if_exist);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgDropDatabase* stmt = new PgDropDatabase(pg_session, database_name, if_exist);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ExecDropDatabase(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_DATABASE)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_DATABASE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgDropDatabase*>(handle)->Exec();
+  return down_cast<PgDropTable*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -244,26 +189,22 @@ CHECKED_STATUS PgApiImpl::AllocCreateSchema(PgSession *pg_session,
                                             const char *schema_name,
                                             bool if_not_exist,
                                             PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
+  if (pg_session == nullptr) {
     return STATUS(InvalidArgument, "Invalid session handle");
   }
 
-  PgCreateSchema::SharedPtr stmt =
-    make_shared<PgCreateSchema>(session, database_name, schema_name, if_not_exist);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgCreateSchema* stmt = new PgCreateSchema(pg_session, database_name, schema_name, if_not_exist);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ExecCreateSchema(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_SCHEMA)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_SCHEMA)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgCreateSchema*>(handle)->Exec();
+  return down_cast<PgCreateSchema*>(handle)->Exec();
 }
 
 CHECKED_STATUS PgApiImpl::AllocDropSchema(PgSession *pg_session,
@@ -271,26 +212,18 @@ CHECKED_STATUS PgApiImpl::AllocDropSchema(PgSession *pg_session,
                                           const char *schema_name,
                                           bool if_exist,
                                           PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
-  PgDropSchema::SharedPtr stmt =
-    make_shared<PgDropSchema>(session, database_name, schema_name, if_exist);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgDropSchema* stmt = new PgDropSchema(pg_session, database_name, schema_name, if_exist);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ExecDropSchema(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_SCHEMA)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_SCHEMA)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgDropSchema*>(handle)->Exec();
+  return down_cast<PgDropSchema*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -301,43 +234,35 @@ CHECKED_STATUS PgApiImpl::AllocCreateTable(PgSession *pg_session,
                                            const char *table_name,
                                            bool if_not_exist,
                                            PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
   if (database_name == nullptr) {
-    database_name = session->connected_dbname();
+    database_name = pg_session->connected_dbname();
   }
 
-  PgCreateTable::SharedPtr stmt =
-    make_shared<PgCreateTable>(session, database_name, schema_name, table_name, if_not_exist);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgCreateTable* stmt = new PgCreateTable(
+      pg_session, database_name, schema_name, table_name, if_not_exist);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_name,
                                                int attr_num, int attr_ybtype, bool is_hash,
                                                bool is_range) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_TABLE)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgCreateTable *pg_stmt = static_cast<PgCreateTable*>(handle);
+  PgCreateTable *pg_stmt = down_cast<PgCreateTable*>(handle);
   return pg_stmt->AddColumn(attr_name, attr_num, attr_ybtype, is_hash, is_range);
 }
 
 CHECKED_STATUS PgApiImpl::ExecCreateTable(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_CREATE_TABLE)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgCreateTable*>(handle)->Exec();
+  return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 CHECKED_STATUS PgApiImpl::AllocDropTable(PgSession *pg_session,
@@ -346,30 +271,22 @@ CHECKED_STATUS PgApiImpl::AllocDropTable(PgSession *pg_session,
                                          const char *table_name,
                                          bool if_exist,
                                          PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
   if (database_name == nullptr) {
-    database_name = session->connected_dbname();
+    database_name = pg_session->connected_dbname();
   }
 
-  PgDropTable::SharedPtr stmt =
-    make_shared<PgDropTable>(session, database_name, schema_name, table_name, if_exist);
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgDropTable* stmt = new PgDropTable(pg_session, database_name, schema_name, table_name, if_exist);
+  stmt->AddRef();
+  *handle = stmt;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::ExecDropTable(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_DROP_TABLE)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return static_cast<PgDropTable*>(handle)->Exec();
+  return down_cast<PgDropTable*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -379,115 +296,101 @@ CHECKED_STATUS PgApiImpl::AllocInsert(PgSession *pg_session,
                                       const char *schema_name,
                                       const char *table_name,
                                       PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
   if (database_name == nullptr) {
-    database_name = session->connected_dbname();
+    database_name = pg_session->connected_dbname();
   }
 
-  PgInsert::SharedPtr stmt = make_shared<PgInsert>(session, database_name, schema_name, table_name);
+  auto stmt = make_scoped_refptr<PgInsert>(pg_session, database_name, schema_name, table_name);
   RETURN_NOT_OK(stmt->Prepare());
-  statements_[stmt.get()] = stmt;
-
-  *handle = stmt.get();
+  PgInsert* insert = nullptr;
+  stmt.swap(&insert);
+  *handle = insert;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnInt2(PgStatement *handle, int attr_num,
                                               int16_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnInt2(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnInt4(PgStatement *handle, int attr_num,
                                               int32_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
-  return pg_stmt->SetColumnInt4(attr_num, attr_value);
+  return down_cast<PgInsert*>(handle)->SetColumnInt4(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnInt8(PgStatement *handle, int attr_num,
                                               int64_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnInt8(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnFloat4(PgStatement *handle, int attr_num,
                                                 float attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnFloat4(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnFloat8(PgStatement *handle, int attr_num,
                                                 double attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnFloat8(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnText(PgStatement *handle, int attr_num,
                                               const char *attr_value, int attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnText(attr_num, attr_value, attr_bytes);
 }
 
 CHECKED_STATUS PgApiImpl::InsertSetColumnSerializedData(PgStatement *handle, int attr_num,
                                                         const char *attr_value, int attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->SetColumnSerializedData(attr_num, attr_value, attr_bytes);
 }
 
 CHECKED_STATUS PgApiImpl::ExecInsert(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_INSERT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgInsert *pg_stmt = static_cast<PgInsert*>(handle);
+  PgInsert *pg_stmt = down_cast<PgInsert*>(handle);
   return pg_stmt->Exec();
 }
 
@@ -498,205 +401,190 @@ CHECKED_STATUS PgApiImpl::AllocSelect(PgSession *pg_session,
                                       const char *schema_name,
                                       const char *table_name,
                                       PgStatement **handle) {
-  PgSession::SharedPtr session = GetSession(pg_session);
-  if (session == nullptr) {
+  if (pg_session == nullptr) {
     return STATUS(InvalidArgument, "Invalid session handle");
   }
 
   if (database_name == nullptr) {
-    database_name = session->connected_dbname();
+    database_name = pg_session->connected_dbname();
   }
 
-  PgSelect::SharedPtr stmt = make_shared<PgSelect>(session, database_name, schema_name, table_name);
+  PgSelect::ScopedRefPtr stmt = make_scoped_refptr<PgSelect>(
+      pg_session, database_name, schema_name, table_name);
   RETURN_NOT_OK(stmt->Prepare());
-  statements_[stmt.get()] = stmt;
 
-  *handle = stmt.get();
+  PgSelect* select = nullptr;
+  stmt.swap(&select);
+  *handle = select;
   return Status::OK();
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnInt2(PgStatement *handle, int attr_num,
                                               int16_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnInt2(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnInt4(PgStatement *handle, int attr_num,
                                               int32_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnInt4(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnInt8(PgStatement *handle, int attr_num,
                                               int64_t attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnInt8(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnFloat4(PgStatement *handle, int attr_num,
                                                 float attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnFloat4(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnFloat8(PgStatement *handle, int attr_num,
                                                 double attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnFloat8(attr_num, attr_value);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnText(PgStatement *handle, int attr_num,
                                               const char *attr_value, int attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnText(attr_num, attr_value, attr_bytes);
 }
 
 CHECKED_STATUS PgApiImpl::SelectSetColumnSerializedData(PgStatement *handle, int attr_num,
                                                         const char *attr_value, int attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->SetColumnSerializedData(attr_num, attr_value, attr_bytes);
 }
 
 Status PgApiImpl::SelectBindExprInt2(PgStatement *handle, int attr_num, int16_t *attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprInt2(attr_num, attr_value);
 }
 
 Status PgApiImpl::SelectBindExprInt4(PgStatement *handle, int attr_num, int32_t *attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprInt4(attr_num, attr_value);
 }
 
 Status PgApiImpl::SelectBindExprInt8(PgStatement *handle, int attr_num, int64_t *attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprInt8(attr_num, attr_value);
 }
 
 Status PgApiImpl::SelectBindExprFloat4(PgStatement *handle, int attr_num, float *attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprFloat4(attr_num, attr_value);
 }
 
 Status PgApiImpl::SelectBindExprFloat8(PgStatement *handle, int attr_num, double *attr_value) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprFloat8(attr_num, attr_value);
 }
 
 Status PgApiImpl::SelectBindExprText(PgStatement *handle, int attr_num, char *attr_value,
                                      int64_t *attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprText(attr_num, attr_value, attr_bytes);
 }
 
 Status PgApiImpl::SelectBindExprSerializedData(PgStatement *handle, int attr_num,
                                                char *attr_value, int64_t *attr_bytes) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->BindExprSerializedData(attr_num, attr_value, attr_bytes);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement *handle) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->Exec();
 }
 
 Status PgApiImpl::SelectFetch(PgStatement *handle, int64 *row_count) {
-  PgStatement::SharedPtr stmt = GetStatement(handle);
-  if (!PgStatement::IsValidStmt(stmt, StmtOp::STMT_SELECT)) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgSelect *pg_stmt = static_cast<PgSelect*>(handle);
+  PgSelect *pg_stmt = down_cast<PgSelect*>(handle);
   return pg_stmt->Fetch(row_count);
 }
 

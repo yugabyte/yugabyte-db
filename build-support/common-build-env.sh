@@ -1087,9 +1087,9 @@ detect_linuxbrew() {
         candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
       fi
     elif is_jenkins; then
-      fail "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
-           "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent non-deterministic " \
-           "builds."
+      fatal "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
+            "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent non-deterministic " \
+            "builds."
     fi
   elif is_jenkins; then
     log "Warning: '$version_for_jenkins_file' does not exist"

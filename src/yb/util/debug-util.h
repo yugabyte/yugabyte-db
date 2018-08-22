@@ -216,11 +216,12 @@ class ScopeLogger {
   std::function<void()> on_scope_bounds_;
 };
 
-std::string GetClassNameStr(void* p);
-
 std::string SymbolizeAddress(
     void *pc,
     const StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT);
+
+// Demangle a C++-mangled identifier.
+std::string DemangleName(const char* name);
 
 } // namespace yb
 

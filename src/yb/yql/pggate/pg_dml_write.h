@@ -40,7 +40,7 @@ class PgDmlWrite : public PgDml {
 
  protected:
   // Constructor.
-  PgDmlWrite(PgSession::SharedPtr pg_session,
+  PgDmlWrite(PgSession::ScopedRefPtr pg_session,
              const char *database_name,
              const char *schema_name,
              const char *table_name,

@@ -21,6 +21,11 @@
 #define YB_GUTIL_REF_COUNTED_H
 
 #include <cassert>
+#include <atomic>
+
+#ifndef NDEBUG
+#include <string>
+#endif
 
 #include "yb/gutil/atomic_refcount.h"
 #include "yb/gutil/port.h"
@@ -29,6 +34,7 @@
 namespace yb {
 namespace subtle {
 
+// TODO: switch to std::atomic<int32_t>
 typedef Atomic32 AtomicRefCount;
 
 class RefCountedBase {
@@ -44,8 +50,12 @@ class RefCountedBase {
   // Returns true if the object should self-delete.
   bool Release() const;
 
+#ifndef NDEBUG
+  int32_t GetRefCountForDebugging() const { return ref_count_; }
+#endif
+
  private:
-  mutable int ref_count_;
+  mutable int32_t ref_count_;
 #ifndef NDEBUG
   mutable bool in_dtor_;
 #endif
@@ -68,6 +78,12 @@ class RefCountedThreadSafeBase {
   // Returns true if the object should self-delete.
   bool Release() const;
 
+#ifndef NDEBUG
+  int32_t GetRefCountForDebugging() const {
+    return reinterpret_cast<std::atomic<int32_t>*>(&ref_count_)->load(std::memory_order_acquire);
+  }
+#endif
+
  private:
   mutable AtomicRefCount ref_count_;
 #ifndef NDEBUG
@@ -76,6 +92,43 @@ class RefCountedThreadSafeBase {
 
   DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafeBase);
 };
+
+// ------------------------------------------------------------------------------------------------
+// A facility for debugging where exactly reference counts are incremented and decremented.
+
+#ifdef NDEBUG
+
+// No-op in release mode.
+#define INVOKE_REF_COUNTED_DEBUG_HOOK(event_type)
+
+#else
+
+extern bool g_ref_counted_debug_enabled;
+
+// This callback is called for type names matching the regex to do the actual reporting of refcount
+// increase/decrease.
+// Parameters: type name, instance pointer, current refcount, refcount delta (+1 or -1).
+typedef void RefCountedDebugFn(const char*, const void*, int32_t, int32_t);
+
+// Configure logging on reference count increments/decrements.
+// type_name_regex - regular expression for type names that we'll be logging for.
+// debug_fn - a function to log a refcount increment/decrement event.
+void InitRefCountedDebugging(const std::string& type_name_regex, RefCountedDebugFn* debug_fn);
+
+void RefCountedDebugHook(const char* type_name,
+                         const void* this_ptr,
+                         int32_t current_refcount,
+                         int32_t ref_delta);
+
+#define INVOKE_REF_COUNTED_DEBUG_HOOK(ref_delta) \
+    do { \
+      if (subtle::g_ref_counted_debug_enabled) { \
+        subtle::RefCountedDebugHook(typeid(*this).name(), this, GetRefCountForDebugging(), \
+                                    ref_delta); \
+      } \
+    } while (0)
+
+#endif
 
 }  // namespace subtle
 
@@ -92,17 +145,19 @@ class RefCountedThreadSafeBase {
 //   };
 //
 // You should always make your destructor private, to avoid any code deleting
-// the object accidentally while there are references to it.
+// the object accidentally while there are references to it.ging();
 template <class T>
 class RefCounted : public subtle::RefCountedBase {
  public:
   RefCounted() {}
 
   void AddRef() const {
+    INVOKE_REF_COUNTED_DEBUG_HOOK(1);
     subtle::RefCountedBase::AddRef();
   }
 
   void Release() const {
+    INVOKE_REF_COUNTED_DEBUG_HOOK(-1);
     if (subtle::RefCountedBase::Release()) {
       delete static_cast<const T*>(this);
     }
@@ -126,8 +181,7 @@ struct DefaultRefCountedThreadSafeTraits {
     // Delete through RefCountedThreadSafe to make child classes only need to be
     // friend with RefCountedThreadSafe instead of this struct, which is an
     // implementation detail.
-    RefCountedThreadSafe<T,
-                         DefaultRefCountedThreadSafeTraits>::DeleteInternal(x);
+    RefCountedThreadSafe<T, DefaultRefCountedThreadSafeTraits>::DeleteInternal(x);
   }
 };
 
@@ -149,10 +203,12 @@ class RefCountedThreadSafe : public subtle::RefCountedThreadSafeBase {
   RefCountedThreadSafe() {}
 
   void AddRef() const {
+    INVOKE_REF_COUNTED_DEBUG_HOOK(1);
     subtle::RefCountedThreadSafeBase::AddRef();
   }
 
   void Release() const {
+    INVOKE_REF_COUNTED_DEBUG_HOOK(-1);
     if (subtle::RefCountedThreadSafeBase::Release()) {
       Traits::Destruct(static_cast<const T*>(this));
     }
@@ -402,5 +458,7 @@ template<class T>
 std::ostream& operator<<(std::ostream& out, const scoped_refptr<T>& ptr) {
   return out << ptr.get();
 }
+
+#undef INVOKE_REF_COUNTED_DEBUG_HOOK
 
 #endif // YB_GUTIL_REF_COUNTED_H
