@@ -458,7 +458,7 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
     export CCACHE_NOHASHDIR=1
   fi
   # Ensure CCACHE puts temporary files on the local disk.
-  export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USERNAME}
+  export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
   jenkins_ccache_dir=/n/jenkins/ccache
   if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs && is_running_on_gcp
   then
