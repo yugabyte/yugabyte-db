@@ -41,7 +41,7 @@
 }
 
 .btn-orange[disabled] {
-  background-color: rgba(205,101,0, 0.8) !important;
+  background-color: rgba($YB_ORANGE, 0.8) !important;
   cursor: not-allowed;
 }
 
