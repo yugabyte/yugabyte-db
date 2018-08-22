@@ -1216,11 +1216,23 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
 }
 
 Status CatalogManager::CheckLocalHostInMasterAddresses() {
-  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
   auto local_hostport = master_->first_rpc_address();
+  std::vector<IpAddress> local_addrs;
+
+  if (local_hostport.address().is_unspecified()) {
+    auto status = GetLocalAddresses(&local_addrs, AddressFilter::ANY);
+    if (!status.ok() || local_addrs.empty()) {
+      LOG(WARNING) << "Could not enumerate network interfaces due to " << status << ", found "
+                   << local_addrs.size() << " local addresses.";
+      return Status::OK();
+    }
+  } else {
+    local_addrs.push_back(local_hostport.address());
+  }
+
+  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
   const auto kResolveSleepInterval = 1s;
   const auto kResolveMaxIterations = 5;
-
   for (const auto& list : *master_addresses_shared_ptr) {
     for (const HostPort& peer_addr : list) {
       std::vector<Endpoint> addresses;
@@ -1236,8 +1248,10 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
         std::this_thread::sleep_for(kResolveSleepInterval);
         s = peer_addr.ResolveAddresses(&addresses);
       }
-      for (auto const& address : addresses) {
-        if (local_hostport == address) {
+      for (auto const& addr : addresses) {
+        if (addr.address().is_unspecified() ||
+            std::find(local_addrs.begin(), local_addrs.end(), addr.address()) !=
+                 local_addrs.end()) {
           return Status::OK();
         }
       }
@@ -1245,8 +1259,8 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
   }
 
   return STATUS(IllegalState,
-                Substitute("Local host/port $0 not present in master_addresses $1.",
-                           yb::ToString(local_hostport), master_->opts().master_addresses_flag));
+                Substitute("None of the local addresses are present in master_addresses $0.",
+                           master_->opts().master_addresses_flag));
 }
 
 Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
