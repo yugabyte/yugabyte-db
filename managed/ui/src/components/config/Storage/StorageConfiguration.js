@@ -147,19 +147,19 @@ class StorageConfiguration extends Component {
             );
           });
 
-          const configControls = <div>
-              <YBButton btnText={"Delete Configuration"} disabled={ submitting || loading || isEmptyObject(config) }
-                        btnClass={"btn btn-default"}
-                        onClick={isDefinedNotNull(config) ? this.showDeleteConfirmModal.bind(this, config.name) : () => {}}/>
-              {isDefinedNotNull(config) && <YBConfirmModal name="delete-storage-config" title={"Confirm Delete"}
-                              onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
-                              currentModal={"delete" + config.name + "StorageConfig"}
-                              visibleModal={this.props.visibleModal}
-                              hideConfirmModal={this.props.hideDeleteStorageConfig}>
-                Are you sure you want to delete {config.name} Storage Configuration?
-              </YBConfirmModal>}
-            </div>;
-        
+          const configControls = (<div>
+            <YBButton btnText={"Delete Configuration"} disabled={ submitting || loading || isEmptyObject(config) }
+                      btnClass={"btn btn-default"}
+                      onClick={isDefinedNotNull(config) ? this.showDeleteConfirmModal.bind(this, config.name) : () => {}}/>
+            {isDefinedNotNull(config) && <YBConfirmModal name="delete-storage-config" title={"Confirm Delete"}
+                            onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
+                            currentModal={"delete" + config.name + "StorageConfig"}
+                            visibleModal={this.props.visibleModal}
+                            hideConfirmModal={this.props.hideDeleteStorageConfig}>
+              Are you sure you want to delete {config.name} Storage Configuration?
+            </YBConfirmModal>}
+          </div>);
+      
 
           configs.push(
             this.wrapFields(configFields, configName, configControls)
