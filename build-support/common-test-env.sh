@@ -1331,7 +1331,12 @@ run_java_test() {
   )
   append_common_mvn_opts
 
-  local report_suffix=${test_class}__${test_method_name}
+  local report_suffix
+  if [[ -n $test_method_name ]]; then
+    report_suffix=${test_class}__${test_method_name}
+  else
+    report_suffix=$test_class
+  fi
   report_suffix=${report_suffix//[/_}
   report_suffix=${report_suffix//]/_}
   local module_dir=$YB_SRC_ROOT/java/$module_name
@@ -1538,7 +1543,7 @@ resolve_and_run_java_test() {
     module_name=""
     local rel_source_path=""
     local java_project_dir
-    for java_project_dir in "${java_project_dirs[@]}"; do
+    for java_project_dir in "${yb_java_project_dirs[@]}"; do
       for module_dir in "$java_project_dir"/*; do
         if [[ -d $module_dir ]]; then
           local module_test_src_root="$module_dir/src/test"

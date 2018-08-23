@@ -36,7 +36,7 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name)
-    : PgDdl(pg_session, StmtOp::STMT_CREATE_DATABASE),
+    : PgDdl(std::move(pg_session), StmtOp::STMT_CREATE_DATABASE),
       database_name_(database_name) {
 }
 

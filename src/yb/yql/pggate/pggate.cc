@@ -179,7 +179,7 @@ CHECKED_STATUS PgApiImpl::ExecDropDatabase(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgDropTable*>(handle)->Exec();
+  return down_cast<PgDropDatabase*>(handle)->Exec();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -189,6 +189,7 @@ CHECKED_STATUS PgApiImpl::AllocCreateSchema(PgSession *pg_session,
                                             const char *schema_name,
                                             bool if_not_exist,
                                             PgStatement **handle) {
+  *handle = nullptr;
   if (pg_session == nullptr) {
     return STATUS(InvalidArgument, "Invalid session handle");
   }
@@ -296,6 +297,7 @@ CHECKED_STATUS PgApiImpl::AllocInsert(PgSession *pg_session,
                                       const char *schema_name,
                                       const char *table_name,
                                       PgStatement **handle) {
+  *handle = nullptr;
   if (database_name == nullptr) {
     database_name = pg_session->connected_dbname();
   }
@@ -401,6 +403,7 @@ CHECKED_STATUS PgApiImpl::AllocSelect(PgSession *pg_session,
                                       const char *schema_name,
                                       const char *table_name,
                                       PgStatement **handle) {
+  *handle = nullptr;
   if (pg_session == nullptr) {
     return STATUS(InvalidArgument, "Invalid session handle");
   }
