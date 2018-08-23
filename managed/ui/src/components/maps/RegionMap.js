@@ -38,7 +38,10 @@ export default class RegionMap extends Component {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;
     let regionMarkers = [];
     let bounds = [[61.96, 105.78], [-21.96, -95.78]];
-    let regionData = regions;
+    let regionData = [];
+    if (isDefinedNotNull(regions) && Array.isArray(regions)) {
+      regionData = regionData.concat(regions);
+    }
     if (type === "Universe") {
       const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
       if (isDefinedNotNull(primaryCluster)) regionData = primaryCluster.regions;
