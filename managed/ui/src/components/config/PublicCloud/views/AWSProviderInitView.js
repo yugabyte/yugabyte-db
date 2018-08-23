@@ -152,21 +152,21 @@ class AWSProviderInitView extends Component {
       );
     }
     const nameField = this.generateRow(
-        "Name",
-        <Field name="accountName" type="text" component={YBTextInputWithLabel} />);
+      "Name",
+      <Field name="accountName" type="text" component={YBTextInputWithLabel} />);
     const credentialInputField = this.generateRow(
-        "Credential Type",
-        <Field name="credential_input" component={YBSelectWithLabel}
-          options={credential_input_options} onInputChanged={this.credentialInputChanged} />
+      "Credential Type",
+      <Field name="credential_input" component={YBSelectWithLabel}
+        options={credential_input_options} onInputChanged={this.credentialInputChanged} />
     );
     const networkInputField = this.generateRow(
-        "VPC Setup",
-        <Field name="network_setup" component={YBSelectWithLabel} options={network_setup_options}
-          onInputChanged={this.networkSetupChanged} />);
+      "VPC Setup",
+      <Field name="network_setup" component={YBSelectWithLabel} options={network_setup_options}
+        onInputChanged={this.networkSetupChanged} />);
     const hostedZoneToggleField = this.generateRow(
-        "Enable Hosted Zone",
-        <Field name="setupHostedZone" component={YBToggle}
-          defaultChecked={this.state.setupHostedZone} onToggle={this.hostedZoneToggled} />);
+      "Enable Hosted Zone",
+      <Field name="setupHostedZone" component={YBToggle}
+        defaultChecked={this.state.setupHostedZone} onToggle={this.hostedZoneToggled} />);
     return (
       <div className="provider-config-container">
         <form name="awsProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>

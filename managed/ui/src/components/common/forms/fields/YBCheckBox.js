@@ -20,7 +20,7 @@ export default class YBCheckBox extends Component {
         <input className="yb-input-checkbox" {...input} type="checkbox"
           name={this.props.name} defaultChecked={checkState}
           id={this.props.id} onClick={onCheckClick} />
-        &nbsp; {label}
+        {label}
       </label>
     );
   }
