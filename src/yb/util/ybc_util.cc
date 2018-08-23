@@ -28,6 +28,19 @@ namespace yb {
 namespace {
 
 Status InitInternal(const char* argv0) {
+  // Allow putting gflags into a file and specifying that file's path as an env variable.
+  const char* pg_flagfile_path = getenv("YB_PG_FLAGFILE");
+  if (pg_flagfile_path) {
+    char* arguments[] = {
+        const_cast<char*>(argv0),
+        const_cast<char*>("--flagfile"),
+        const_cast<char*>(pg_flagfile_path)
+    };
+    char** argv_ptr = arguments;
+    int argc = arraysize(arguments);
+    gflags::ParseCommandLineFlags(&argc, &argv_ptr, /* remove_flags */ false);
+  }
+
   RETURN_NOT_OK(CheckCPUFlags());
   yb::InitGoogleLoggingSafeBasic(argv0);
   google::InstallFailureSignalHandler();
