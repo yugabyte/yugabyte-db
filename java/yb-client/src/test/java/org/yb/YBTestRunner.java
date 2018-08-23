@@ -14,9 +14,13 @@
  */
 package org.yb;
 
+import org.junit.runner.Description;
+import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
 
@@ -24,6 +28,9 @@ import java.util.Collections;
 import java.util.List;
 
 public class YBTestRunner extends BlockJUnit4ClassRunner {
+
+  private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
+
   /**
    * Creates a BlockJUnit4ClassRunner to run {@code klass}
    *
@@ -46,6 +53,17 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
       return Collections.emptyList();
     }
     return super.getChildren();
+  }
+
+  @Override
+  protected void runChild(FrameworkMethod method, RunNotifier notifier) {
+    LOG.info("RunChild is running for method " + method);
+    try {
+      super.runChild(method, notifier);
+    } catch (AssertionError assertionError) {
+      LOG.error("Assertion failure in test method: " + method, assertionError);
+      throw assertionError;
+    }
   }
 
 }

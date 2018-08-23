@@ -34,7 +34,6 @@ import org.yb.minicluster.LogPrinter;
 
 import static org.junit.Assert.fail;
 import static org.yb.client.TestUtils.findFreePort;
-import static org.yb.client.TestUtils.findYbRootDir;
 import static org.yb.client.TestUtils.getBaseTmpDir;
 import static org.yb.client.TestUtils.getBinDir;
 import static org.yb.client.TestUtils.pidStrOfProcess;
@@ -77,11 +76,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Register PostgreSQL JDBC driver.
     Class.forName("org.postgresql.Driver");
     String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, port, DEFAULT_DATABASE);
-    try {
-      connection = DriverManager.getConnection(url, DEFAULT_USER, DEFAULT_PASSWORD);
-    } catch (SQLException e) {
-      LOG.error("Exception while trying to create connection: " + e.getMessage());
-      throw e;
+
+    int delayMs = 1000;
+    for (int attemptsLeft = 10; attemptsLeft >= 1; --attemptsLeft) {
+      try {
+        connection = DriverManager.getConnection(url, DEFAULT_USER, DEFAULT_PASSWORD);
+      } catch (SQLException e) {
+        if (attemptsLeft > 1 &&
+            e.getMessage().contains("FATAL: the database system is starting up") ||
+            e.getMessage().contains("refused. Check that the hostname and port are correct and " +
+                                    "that the postmaster is accepting")) {
+          LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
+              "Got message: " + e.getMessage());
+          Thread.sleep(delayMs);
+          delayMs += 1000;
+          continue;
+        }
+        LOG.error("Exception while trying to create connection: " + e.getMessage());
+        throw e;
+      }
     }
   }
 
@@ -108,6 +121,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     //----------------------------------------------------------------------------------------------
     // Run initdb to initialize the postgres data folder.
+
     LOG.info("Postgres: Running initdb");
     String initCmd = String.format("%s/%s", pgBinDir, "initdb");
     ProcessBuilder pb = new ProcessBuilder(initCmd, "-U", DEFAULT_USER).redirectErrorStream(true);
@@ -140,7 +154,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     try {
       int ev = postgresProc.exitValue();
       throw new Exception("We tried starting a postgres process but it exited with " +
-                              "value=" + ev);
+                          "value=" + ev);
     } catch (IllegalThreadStateException ex) {
       // This means the process is still alive, which is what we expect.
     }

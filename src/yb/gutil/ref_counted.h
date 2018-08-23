@@ -85,7 +85,7 @@ class RefCountedThreadSafeBase {
 #endif
 
  private:
-  mutable AtomicRefCount ref_count_;
+  mutable AtomicRefCount ref_count_ = 0;
 #ifndef NDEBUG
   mutable bool in_dtor_;
 #endif
