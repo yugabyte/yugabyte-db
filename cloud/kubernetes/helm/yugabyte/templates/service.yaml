@@ -26,7 +26,8 @@ spec:
 ---
 {{- $service := . -}}
 {{- range $type, $metadata :=  $root.Values.serviceEndpoints }}
-{{ if eq $service.label (printf "yb-%s" $type) }}
+{{- if eq $service.label (printf "yb-%s" $type) }}
+{{- with $metadata }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -47,6 +48,7 @@ spec:
   selector:
     app: "{{ $service.label }}"
   type: {{ $metadata.type }}
+{{- end}}
 {{- end}}
 {{- end}}
 
