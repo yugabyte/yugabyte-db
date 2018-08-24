@@ -23,15 +23,8 @@ spec:
   selector:
     app: "{{ .label }}"
 
-{{- $service := . -}}
-
-{{ if eq $service.name "yb-masters" }}
-  {{- $metadata := $root.Values.serviceEndpoints.master }}
-{{ else }}
-  {{- $metadata := $root.Values.serviceEndpoints.tserver }}
-{{ end }}
-
 ---
+{{- $service := . -}}
 {{- range $type, $metadata :=  $root.Values.serviceEndpoints }}
 {{ if eq $service.label (printf "yb-%s" $type) }}
 apiVersion: v1
