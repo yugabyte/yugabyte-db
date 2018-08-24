@@ -38,7 +38,7 @@ Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) 
 }
 
 void LocalOutboundCall::Serialize(std::deque<RefCntBuffer> *output) const {
-  LOG(FATAL) << "local call should not require serialization";
+  LOG(FATAL) << "Local call should not require serialization";
 }
 
 const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInboundCall() {
@@ -77,11 +77,18 @@ const Endpoint& LocalYBInboundCall::local_address() const {
 }
 
 void LocalYBInboundCall::Respond(const google::protobuf::MessageLite& response, bool is_success) {
+  auto call = outbound_call();
+  if (!call) {
+    LOG(DFATAL) << "Outbound call is NULL during Respond, looks like double response. "
+                << "is_success: " << is_success;
+    return;
+  }
+
   if (is_success) {
-    outbound_call()->SetFinished();
+    call->SetFinished();
   } else {
-    outbound_call()->SetFailed(STATUS(RemoteError, "Local call error"),
-                               new ErrorStatusPB(yb::down_cast<const ErrorStatusPB&>(response)));
+    call->SetFailed(STATUS(RemoteError, "Local call error"),
+                    new ErrorStatusPB(yb::down_cast<const ErrorStatusPB&>(response)));
   }
 }
 
