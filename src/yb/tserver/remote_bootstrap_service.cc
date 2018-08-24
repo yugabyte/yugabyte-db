@@ -156,7 +156,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
 
   scoped_refptr<RemoteBootstrapSessionClass> session;
   {
-    boost::lock_guard<simple_spinlock> l(sessions_lock_);
+    std::lock_guard<simple_spinlock> l(sessions_lock_);
     if (!FindCopy(sessions_, session_id, &session)) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
@@ -168,6 +168,11 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                         Substitute("Error initializing remote bootstrap session for tablet $0",
                                    tablet_id));
       InsertOrDie(&sessions_, session_id, session);
+      auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
+      if (new_nsessions != sessions_.size()) {
+        LOG(DFATAL) << "nsessions_ " << new_nsessions
+                    << " !=  number of sessions " << sessions_.size();
+      }
     } else {
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
@@ -200,7 +205,7 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
 
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSessionClass> session;
-  boost::lock_guard<simple_spinlock> l(sessions_lock_);
+  std::lock_guard<simple_spinlock> l(sessions_lock_);
   RemoteBootstrapErrorPB::Code app_error;
   Status status = FindSessionUnlocked(session_id, &app_error, &session);
   if (status.ok()) {
@@ -228,6 +233,7 @@ Status RemoteBootstrapServiceImpl::GetDataFilePiece(
     string* data,
     int64_t* total_data_length,
     RemoteBootstrapErrorPB::Code* error_code) {
+
   switch (data_id.type()) {
     case DataIdPB::BLOCK: {
       // Fetching a data block chunk.
@@ -268,21 +274,25 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext context) {
   const string& session_id = req->session_id();
+
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSessionClass> session;
   {
-    boost::lock_guard<simple_spinlock> l(sessions_lock_);
+    std::lock_guard<simple_spinlock> l(sessions_lock_);
     RemoteBootstrapErrorPB::Code app_error;
     RPC_RETURN_NOT_OK(FindSessionUnlocked(session_id, &app_error, &session),
                       app_error, "No such session");
     ResetSessionExpirationUnlocked(session_id);
   }
 
+  session->EnsureRateLimiterIsInitialized();
+
   MAYBE_FAULT(FLAGS_fault_crash_on_handle_rb_fetch_data);
 
   uint64_t offset = req->offset();
-  int64_t client_maxlen = req->max_length();
-
+  VLOG(3) << " rate limiter max len: "  << session->rate_limiter().GetMaxSizeForNextTransmission();
+  int64_t client_maxlen = std::min(static_cast<uint64_t>(req->max_length()),
+                                   session->rate_limiter().GetMaxSizeForNextTransmission());
   const DataIdPB& data_id = req->data_id();
   RemoteBootstrapErrorPB::Code error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
   RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &error_code, session),
@@ -296,12 +306,12 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                     error_code, "Unable to get piece of data file");
 
   data_chunk->set_total_data_length(total_data_length);
+  session->rate_limiter().UpdateDataSizeAndMaybeSleep(data->size());
   data_chunk->set_offset(offset);
 
   // Calculate checksum.
   uint32_t crc32 = Crc32c(data->data(), data->length());
   data_chunk->set_crc32(crc32);
-
   context.RespondSuccess();
 }
 
@@ -310,13 +320,13 @@ void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
         EndRemoteBootstrapSessionResponsePB* resp,
         rpc::RpcContext context) {
   {
-    boost::lock_guard<simple_spinlock> l(sessions_lock_);
+    std::lock_guard<simple_spinlock> l(sessions_lock_);
     RemoteBootstrapErrorPB::Code app_error;
-    LOG(INFO) << "Request end of remote bootstrap session " << req->session_id()
-      << " received from " << context.requestor_string();
     RPC_RETURN_NOT_OK(DoEndRemoteBootstrapSessionUnlocked(req->session_id(), req->is_success(),
                                                           &app_error),
                       app_error, "No such session");
+    LOG(INFO) << "Request end of remote bootstrap session " << req->session_id()
+              << " received from " << context.requestor_string();
   }
   context.RespondSuccess();
 }
@@ -453,6 +463,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
   LOG(INFO) << "Ending remote bootstrap session " << session_id << " on tablet "
             << session->tablet_id() << " with peer " << session->requestor_uuid();
   CHECK_EQ(1, sessions_.erase(session_id));
+  nsessions_.fetch_sub(1, std::memory_order_acq_rel);
   CHECK_EQ(1, session_expirations_.erase(session_id));
 
   return Status::OK();
@@ -460,7 +471,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
 
 void RemoteBootstrapServiceImpl::EndExpiredSessions() {
   do {
-    boost::lock_guard<simple_spinlock> l(sessions_lock_);
+    std::lock_guard<simple_spinlock> l(sessions_lock_);
     MonoTime now = MonoTime::Now();
 
     vector<string> expired_session_ids;

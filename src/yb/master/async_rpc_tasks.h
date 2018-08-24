@@ -396,7 +396,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
   virtual std::string change_config_ts_uuid() const { return change_config_ts_uuid_; }
 
  protected:
-  // Used by SendRequest. Return's false if RPC should not be sent.
+  // Used by SendOrReceiveData. Return's false if RPC should not be sent.
   virtual bool PrepareRequest(int attempt) = 0;
 
   TabletServerId permanent_uuid() const;
