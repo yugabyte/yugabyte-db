@@ -1089,10 +1089,23 @@ detect_linuxbrew() {
         candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
       fi
     elif is_jenkins; then
-      yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
-      fatal "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
-            "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent non-deterministic " \
-            "builds."
+      if is_jenkins && is_src_root_on_nfs; then
+        declare -i attempt=0
+        while [[ ! -d $preferred_linuxbrew_dir ]]; do
+          if [[ $attempt -ge 120 ]]; then
+            fatal "Gave up waiting for '$preferred_linuxbrew_dir' to mount after $attempt attempts"
+          fi
+          log "Directory '$preferred_linuxbrew_dir' not found, waiting for it to mount"
+          ( set +e; ls "$preferred_linuxbrew_dir"/* >/dev/null )
+          let attempt+=1
+          sleep 1
+        done
+      else
+        yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
+        fatal "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
+              "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent " \
+              "non-deterministic builds."
+      fi
     fi
   elif is_jenkins; then
     log "Warning: '$version_for_jenkins_file' does not exist"

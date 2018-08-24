@@ -59,6 +59,8 @@ fi
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
 
+detect_edition
+
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.
   echo "ctest test: \"$1\""
