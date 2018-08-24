@@ -746,7 +746,6 @@ set_mvn_parameters() {
 append_common_mvn_opts() {
   mvn_opts+=(
     "${mvn_common_options[@]}"
-    "${MVN_COMMON_SKIPPED_OPTIONS_IN_TEST[@]}"
   )
   if [[ -f $YB_MVN_SETTINGS_PATH ]]; then
     mvn_opts+=(
