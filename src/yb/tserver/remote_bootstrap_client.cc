@@ -60,8 +60,8 @@
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -104,6 +104,12 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "We use this for testing a scenario where a remote bootstrap takes longer than "
                  "follower_unavailable_considered_failed_sec seconds");
 
+DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 50_MB,
+             "Maximum transmission rate during a remote bootstrap. This is across all the remote "
+             "bootstrap sessions for which this process is acting as a sender or receiver. So "
+             "the total limit will be 2 * remote_boostrap_rate_limit_bytes_per_sec because a "
+             "tserver or master can act both as a sender and receiver at the same time.");
+
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
   RETURN_NOT_OK_PREPEND(UnwindRemoteError(status, controller), msg)
@@ -130,6 +136,7 @@ using tablet::TabletStatusListener;
 using tablet::TabletSuperBlockPB;
 
 constexpr int kBytesReservedForMessageHeaders = 16384;
+std::atomic<int32_t> RemoteBootstrapClient::n_started_(0);
 
 RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
                                              FsManager* fs_manager,
@@ -155,6 +162,12 @@ RemoteBootstrapClient::~RemoteBootstrapClient() {
     LOG_WITH_PREFIX(INFO) << "Closing remote bootstrap session " << session_id_
                           << " in RemoteBootstrapClient destructor.";
     WARN_NOT_OK(EndRemoteSession(), "Unable to close remote bootstrap session " + session_id_);
+  }
+  if (started_) {
+    auto old_count = n_started_.fetch_sub(1, std::memory_order_acq_rel);
+    if (old_count < 1) {
+      LOG(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
+    }
   }
 }
 
@@ -348,6 +361,12 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
 
   started_ = true;
+  auto old_count = n_started_.fetch_add(1, std::memory_order_acq_rel);
+  if (old_count < 0) {
+    LOG(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
+    n_started_ = 0;
+  }
+
   if (meta) {
     *meta = meta_;
   }
@@ -607,7 +626,11 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_sb->rocksdb_files()) {
+    auto start = MonoTime::Now();
     RETURN_NOT_OK(DownloadFile(file_pb, rocksdb_dir, &data_id));
+    auto elapsed = MonoTime::Now().GetDeltaSince(start);
+    LOG(INFO) << "Downloaded file " << file_pb.name() << " of size " << file_pb.size_bytes()
+              << " in " << elapsed.ToSeconds() << " seconds";
   }
 
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
@@ -634,9 +657,15 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   gscoped_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->NewWritableFile(opts, dest_path, &writer),
                         "Unable to open file for writing");
+
+  auto start = MonoTime::Now();
   RETURN_NOT_OK_PREPEND(DownloadFile(data_id, writer.get()),
                         Substitute("Unable to download WAL segment with seq. number $0",
                                    wal_segment_seqno));
+  auto elapsed = MonoTime::Now().GetDeltaSince(start);
+  LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
+                        << " of size " << writer->Size() << " in " << elapsed.ToSeconds()
+                        << " seconds";
   return Status::OK();
 }
 
@@ -693,6 +722,23 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
   int32_t max_length = std::min(FLAGS_remote_bootstrap_max_chunk_size,
                                 FLAGS_rpc_max_message_size - kBytesReservedForMessageHeaders);
 
+  std::unique_ptr<RateLimiter> rate_limiter;
+
+  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
+    static auto rate_updater = []() {
+      if (n_started_.load(std::memory_order_acquire) < 1) {
+        YB_LOG_EVERY_N(ERROR, 100) << "Invalid number of remote bootstrap sessions: " << n_started_;
+        return static_cast<uint64_t>(FLAGS_remote_boostrap_rate_limit_bytes_per_sec);
+      }
+      return static_cast<uint64_t>(FLAGS_remote_boostrap_rate_limit_bytes_per_sec / n_started_);
+    };
+
+    rate_limiter = std::make_unique<RateLimiter>(rate_updater);
+  } else {
+    // Inactive RateLimiter.
+    rate_limiter = std::make_unique<RateLimiter>();
+  }
+
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(session_idle_timeout_millis_));
   FetchDataRequestPB req;
@@ -703,24 +749,37 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
     req.set_session_id(session_id_);
     req.mutable_data_id()->CopyFrom(data_id);
     req.set_offset(offset);
+    if (rate_limiter->active()) {
+      auto max_size = rate_limiter->GetMaxSizeForNextTransmission();
+      if (max_size > std::numeric_limits<decltype(max_length)>::max()) {
+        max_size = std::numeric_limits<decltype(max_length)>::max();
+      }
+      max_length = std::min(max_length, decltype(max_length)(max_size));
+    }
     req.set_max_length(max_length);
 
     FetchDataResponsePB resp;
-    RETURN_NOT_OK_UNWIND_PREPEND(proxy_->FetchData(req, &resp, &controller),
-                                controller,
-                                "Unable to fetch data from remote");
+    auto status = rate_limiter->SendOrReceiveData([this, &req, &resp, &controller]() {
+      return proxy_->FetchData(req, &resp, &controller);
+    }, [&resp]() { return resp.ByteSize(); });
+    RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
+
     // Sanity-check for corruption.
     RETURN_NOT_OK_PREPEND(VerifyData(offset, resp.chunk()),
                           Substitute("Error validating data item $0", data_id.ShortDebugString()));
 
     // Write the data.
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
+    VLOG(3) << "resp size: " << resp.ByteSize()
+            << ", chunk size: " << resp.chunk().data().size();
 
     if (offset + resp.chunk().data().size() == resp.chunk().total_data_length()) {
       done = true;
     }
     offset += resp.chunk().data().size();
   }
+
+  VLOG(2) << "Transmission rate: " << rate_limiter->GetRate();
 
   return Status::OK();
 }

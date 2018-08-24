@@ -32,6 +32,7 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
 #define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
 
+#include <atomic>
 #include <string>
 #include <memory>
 #include <vector>
@@ -196,6 +197,9 @@ class RemoteBootstrapClient {
 
   // State flags that enforce the progress of remote bootstrap.
   bool started_;            // Session started.
+  // Total number of remote bootstrap sessions. Used to calculate the transmission rate across all
+  // the sessions.
+  static std::atomic<int32_t> n_started_;
   bool downloaded_wal_;     // WAL segments downloaded.
   bool downloaded_blocks_;  // Data blocks downloaded.
   bool downloaded_rocksdb_files_;
