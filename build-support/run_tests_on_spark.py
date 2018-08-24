@@ -90,7 +90,7 @@ propagated_env_vars = {}
 global_conf_dict = None
 
 DEFAULT_SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
-DEFAULT_SPARK_MASTER_URL_TSAN = 'spark://buildmaster.c.yugabyte.internal:7078'
+DEFAULT_SPARK_MASTER_URL_ASAN_TSAN = 'spark://buildmaster.c.yugabyte.internal:7078'
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
@@ -132,11 +132,11 @@ def init_spark_context(details=[]):
     # NOTE: we never retry failed tests to avoid hiding bugs. This failure tolerance mechanism
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
-    if yb_dist_tests.global_conf.build_type == 'tsan':
-        logging.info("Using a separate default Spark cluster for TSAN tests")
-        default_spark_master_url = DEFAULT_SPARK_MASTER_URL_TSAN
+    if yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
+        logging.info("Using a separate default Spark cluster for ASAN and TSAN tests")
+        default_spark_master_url = DEFAULT_SPARK_MASTER_URL_ASAN_TSAN
     else:
-        logging.info("Using the regular default Spark cluster for non-TSAN tests")
+        logging.info("Using the regular default Spark cluster for non-ASAN/TSAN tests")
         default_spark_master_url = DEFAULT_SPARK_MASTER_URL
 
     spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', default_spark_master_url)
@@ -537,8 +537,6 @@ def collect_java_tests():
 
 
 def collect_tests(args):
-    cpp_test_descriptors = []
-
     if args.cpp_test_program_regexp and args.test_conf:
         raise RuntimeException(
             "--cpp_test_program_regexp and --test_conf cannot both be specified at the same time.")
@@ -568,7 +566,6 @@ def collect_tests(args):
                 args.cpp_test_program_regexp)
 
     java_test_descriptors = []
-    yb_src_root = yb_dist_tests.global_conf.yb_src_root
     if args.run_java_tests:
         java_test_descriptors = collect_java_tests()
         logging.info("Found %d Java tests", len(java_test_descriptors))
@@ -671,12 +668,10 @@ def main():
         level=log_level,
         format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
-    global_conf = yb_dist_tests.set_global_conf_from_args(args)
-    build_root = global_conf.build_root
-    yb_src_root = global_conf.yb_src_root
-
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
+
+    yb_dist_tests.set_global_conf_from_args(args)
 
     report_base_dir = args.report_base_dir
     write_report = args.write_report

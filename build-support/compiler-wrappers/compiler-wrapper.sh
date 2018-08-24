@@ -305,10 +305,13 @@ if [[ $local_build_only == "false" &&
     # Exit code 127: "remote_cmd.sh: No such file or directory"
     # Exit code 254: "write: Connection reset by peer".
     # Exit code 255: ssh: connect to host ... port ...: Connection refused
+    # $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY: we return this when we fail to find files or
+    #   directories that are supposed to exist. We retry to work around NFS issues.
     if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 254 ||
-          $exit_code -eq 255 ]] ||
+          $exit_code -eq 255 ||
+          $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
        egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
 Fatal error: can't create .*: Stale file handle|\
