@@ -48,6 +48,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/util/env_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
@@ -103,7 +104,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
  public:
   RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
-                         FsManager* fs_manager);
+                         FsManager* fs_manager, const std::atomic<int>* nsessions = nullptr);
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
@@ -150,6 +151,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
       const std::string path, const std::string file_name, uint64_t offset, int64_t client_maxlen,
       std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
+  MonoTime start_time() { return start_time_; }
+
   const tablet::TabletSuperBlockPB& tablet_superblock() const { return tablet_superblock_; }
 
   const consensus::ConsensusStatePB& initial_committed_cstate() const {
@@ -167,6 +170,12 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Change the peer's role to VOTER.
   CHECKED_STATUS ChangeRole();
+
+  void InitRateLimiter();
+
+  void EnsureRateLimiterIsInitialized();
+
+  RateLimiter& rate_limiter() { return rate_limiter_; }
 
  protected:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
@@ -230,6 +239,16 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;
+
+  // Time when this session was initialized.
+  MonoTime start_time_;
+
+  // Used to limit the transmission rate.
+  RateLimiter rate_limiter_;
+
+  // Pointer to the counter for of the number of sessions in RemoteBootstrapService. Used to
+  // calculate the rate for the rate limiter.
+  const std::atomic<int>* nsessions_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);

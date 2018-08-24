@@ -181,6 +181,7 @@ set(UTIL_SRCS
   net/inetaddress.cc
   net/net_util.cc
   net/sockaddr.cc
+  net/rate_limiter.cc
   net/socket.cc
   net/tunnel.cc
   oid_generator.cc
@@ -352,6 +353,7 @@ ADD_YB_TEST(mt-metrics-test RUN_SERIAL true)
 ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
 ADD_YB_TEST(net/net_util-test)
+ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)

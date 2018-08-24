@@ -125,6 +125,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   // Protects sessions_ and session_expirations_ maps.
   mutable simple_spinlock sessions_lock_;
   SessionMap sessions_;
+  std::atomic<int32> nsessions_ = {0};
   MonoTimeMap session_expirations_;
 
   // Session expiration thread.

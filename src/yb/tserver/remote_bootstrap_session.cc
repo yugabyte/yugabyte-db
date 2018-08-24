@@ -43,10 +43,12 @@
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 
 DECLARE_int32(rpc_max_message_size);
+DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
@@ -68,14 +70,15 @@ using tablet::TabletSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
-    std::string requestor_uuid, FsManager* fs_manager)
+    std::string requestor_uuid, FsManager* fs_manager, const std::atomic<int>* nsessions)
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
       fs_manager_(fs_manager),
       blocks_deleter_(&blocks_),
       logs_deleter_(&logs_),
-      succeeded_(false) {}
+      succeeded_(false),
+      nsessions_(nsessions) {}
 
 RemoteBootstrapSession::~RemoteBootstrapSession() {
   // No lock taken in the destructor, should only be 1 thread with access now.
@@ -278,6 +281,8 @@ Status RemoteBootstrapSession::Init() {
   // this anchor is released by ending the remote bootstrap session.
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
       last_logged_opid.index, anchor_owner_token, &log_anchor_));
+
+  start_time_ = MonoTime::Now();
 
   return Status::OK();
 }
@@ -567,6 +572,39 @@ void RemoteBootstrapSession::SetSuccess() {
 
 bool RemoteBootstrapSession::Succeeded() {
   return succeeded_;
+}
+
+void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
+  if (!rate_limiter_.IsInitialized()) {
+    InitRateLimiter();
+  }
+}
+
+
+void RemoteBootstrapSession::InitRateLimiter() {
+  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0 && nsessions_) {
+    // Calling SetTargetRateUpdater will activate the rate limiter.
+    rate_limiter_.SetTargetRateUpdater([this]() -> uint64_t {
+      DCHECK_GT(FLAGS_remote_boostrap_rate_limit_bytes_per_sec, 0);
+      if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec <= 0) {
+        YB_LOG_EVERY_N(ERROR, 1000)
+          << "Invalid value for remote_boostrap_rate_limit_bytes_per_sec: "
+          << FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+        // Since the rate limiter is initialized, it's expected that the value of
+        // FLAGS_remote_boostrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
+        // case, we'll log an error, and set the rate to 50 MB/s.
+        return 50_MB;
+      }
+      auto nsessions = nsessions_->load(std::memory_order_acquire);
+      if (nsessions > 0) {
+        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec / nsessions;
+      } else {
+        LOG(DFATAL) << "Invalid number of sessions: " << nsessions;
+        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+      }
+    });
+  }
+  rate_limiter_.Init();
 }
 
 } // namespace tserver
