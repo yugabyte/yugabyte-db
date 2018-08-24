@@ -4,7 +4,7 @@
 Component: "yugabytedb"
 Image:
   repository: "yugabytedb/yugabyte"
-  tag: latest
+  tag: 1.0.6.0-b33
   pullPolicy: IfNotPresent
 
 persistentVolume:
@@ -28,13 +28,23 @@ replicas:
 
 PodManagementPolicy: Parallel
 
+serviceEndpoints:
+  master:
+    type: LoadBalancer
+    ports:
+      ui: "7000"
+  tserver:
+    type: LoadBalancer
+    ports:
+      yql-port: "9042"
+      yedis-port: "6379"
+
 Services:
   - name: "yb-masters"
     label: "yb-master"
     ports:
       ui: "7000"
       rpc-port: "7100"
-    hasLoadBalancer: true
 
   - name: "yb-tservers"
     label: "yb-tserver"
@@ -43,7 +53,6 @@ Services:
       rpc-port: "7100"
       yql-port: "9042"
       yedis-port: "6379"
-    hasLoadBalancer: false
 
 resources: {}
 
