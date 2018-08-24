@@ -1297,10 +1297,30 @@ fix_cxx_test_name() {
 # Examples:
 # - yb-client org.yb.client.TestYBClient
 # - yb-client org.yb.client.TestYBClient#testAllMasterChangeConfig
+#
+# <maven_module_name> could also be the module directory relative to $YB_SRC_ROOT, e.g.
+# java/yb-cql or ent/java/<enterprise_module_name>.
 run_java_test() {
   expect_num_args 2 "$@"
-  local module_name=$1
+  local module_name_or_rel_module_dir=$1
   local test_class_and_maybe_method=${2%.java}
+  test_class_and_maybe_method=${test_class_and_maybe_method%.scala}
+  if [[ $module_name_or_rel_module_dir == */* ]]; then
+    # E.g. java/yb-cql or ent/java/<enterprise_module_name>.
+    local module_dir=$YB_SRC_ROOT/$module_name_or_rel_module_dir
+    module_name=${module_name_or_rel_module_dir##*/}
+  else
+    # E.g. yb-cql.
+    local module_name=$module_name_or_rel_module_dir
+    local module_dir=$YB_SRC_ROOT/java/$module_name
+  fi
+  ensure_directory_exists "$module_dir"
+  local java_project_dir=${module_dir%/*}
+  if [[ $java_project_dir != */java ]]; then
+    fatal "Something wrong: expected the Java module directory '$module_dir' to have the form of" \
+          ".../java/<module_name>. Trying to run test: $test_class_and_maybe_method"
+  fi
+
   local test_method_name=""
   if [[ $test_class_and_maybe_method == *\#* ]]; then
     test_method_name=${test_class_and_maybe_method##*#}
@@ -1321,7 +1341,7 @@ run_java_test() {
   local timestamp=$( get_timestamp_for_filenames )
   local surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
-  cd "$YB_SRC_ROOT/java"
+  cd "$module_dir"/..
   # We specify tempDir to use a separate temporary directory for each test.
   # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
   mvn_opts=(
@@ -1340,8 +1360,7 @@ run_java_test() {
   fi
   report_suffix=${report_suffix//[/_}
   report_suffix=${report_suffix//]/_}
-  local module_dir=$YB_SRC_ROOT/java/$module_name
-  ensure_directory_exists "$module_dir"
+
   local surefire_reports_dir=$module_dir/target/surefire-reports_${report_suffix}
   unset report_suffix
 
@@ -1406,7 +1425,7 @@ run_java_test() {
               "$mvn_output_path"
       )
     else
-      log "Not removing $test_log_path and related per-test-method logs: some tests failed, " \
+      log "Not removing $test_log_path and related per-test-method logs: some tests failed," \
           "or could not find test output or JUnit XML output."
       log_file_existence "$test_log_path"
       log_file_existence "$junit_xml_path"
@@ -1530,14 +1549,29 @@ resolve_and_run_java_test() {
   fi
 
   local module_name=""
-  for module_dir in "$YB_SRC_ROOT"/java/*; do
-    if [[ -d $module_dir ]]; then
-      for language in java scala; do
-        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
-          module_name=${module_dir##*/}
-        fi
-      done
-    fi
+  local rel_module_dir=""
+  local java_project_dir
+
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    for module_dir in "$java_project_dir"/*; do
+      if [[ "$module_dir" == */target ]]; then
+        continue
+      fi
+      if [[ -d $module_dir ]]; then
+        for language in java scala; do
+          candidate_source_path=$module_dir/src/test/$language/$rel_java_src_path.$language
+          if [[ -f $candidate_source_path ]]; then
+            local current_module_name=${module_dir##*/}
+            if [[ -n $module_name ]]; then
+              fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                    "'$module_name' and '$current_moudle_name' are valid candidates."
+            fi
+            module_name=$current_module_name
+            rel_module_dir=${module_dir##$YB_SRC_ROOT/}
+          fi
+        done
+      fi
+    done
   done
 
   local IFS=$'\n'
@@ -1549,6 +1583,9 @@ resolve_and_run_java_test() {
     local java_project_dir
     for java_project_dir in "${yb_java_project_dirs[@]}"; do
       for module_dir in "$java_project_dir"/*; do
+        if [[ "$module_dir" == */target ]]; then
+          continue
+        fi
         if [[ -d $module_dir ]]; then
           local module_test_src_root="$module_dir/src/test"
           if [[ -d $module_test_src_root ]]; then
@@ -1565,6 +1602,7 @@ resolve_and_run_java_test() {
                       "'$module_name' and '$current_moudle_name' are valid candidates."
               fi
               module_name=$current_module_name
+              rel_module_dir=${module_dir##$YB_SRC_ROOT/}
 
               if [[ ${#candidate_files[@]} -gt 1 ]]; then
                 fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
@@ -1601,8 +1639,9 @@ resolve_and_run_java_test() {
   fi
 
   if [[ ${num_test_repetitions:-1} -eq 1 ]]; then
-    run_java_test "$module_name" "$java_test_name"
+    run_java_test "$rel_module_dir" "$java_test_name"
   else
+    # TODO: support enterprise case by passing rel_module_dir here.
     run_repeat_unit_test "$module_name" "$java_test_name" --java
   fi
 }
