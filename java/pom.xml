@@ -186,6 +186,9 @@
                 for the corresponding profile.
               -->
               <phase>${assembly.execution.phase}</phase>
+              <goals>
+                <goal>single</goal>
+              </goals>
             </execution>
           </executions>
         </plugin>

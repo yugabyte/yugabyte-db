@@ -85,8 +85,8 @@ declare -i -r MAX_REPEATED_TEST_PARALLELISM=100
 declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM=4
 
 readonly MVN_COMMON_SKIPPED_OPTIONS_IN_TEST=(
-  -DskipAssembly
   -Dmaven.javadoc.skip
+  -DskipAssembly
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -1328,6 +1328,7 @@ run_java_test() {
     -Dtest="$test_class_and_maybe_method"
     --projects "$module_name"
     -DtempDir="$surefire_rel_tmp_dir"
+    "${MVN_COMMON_SKIPPED_OPTIONS_IN_TEST[@]}"
   )
   append_common_mvn_opts
 
@@ -1426,7 +1427,10 @@ collect_java_tests() {
   log "Collecting the list of all Java test methods and parameterized test methods"
   local old_surefire_reports_dir=${YB_SUREFIRE_REPORTS_DIR:-}
   unset YB_SUREFIRE_REPORTS_DIR
-  local mvn_opts=( -DcollectTests )
+  local mvn_opts=(
+    -DcollectTests
+    "${MVN_COMMON_SKIPPED_OPTIONS_IN_TEST[@]}"
+  )
   append_common_mvn_opts
   java_test_list_path=$BUILD_ROOT/java_test_list.txt
   local collecting_java_tests_log_prefix=$BUILD_ROOT/collecting_java_tests
