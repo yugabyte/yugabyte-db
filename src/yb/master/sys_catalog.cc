@@ -550,8 +550,23 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   operation_state->set_completion_callback(std::move(txn_callback));
 
   tablet_peer()->WriteAsync(std::move(operation_state), MonoTime::Max());
-  while (!latch.WaitFor(15s)) {
-    LOG(DFATAL) << "SyncWrite hang";
+
+  {
+    int num_iterations = 0;
+    static constexpr auto kWarningInterval = 10s;
+    static constexpr int kMaxNumIterations = 6;
+    while (!latch.WaitFor(kWarningInterval)) {
+      ++num_iterations;
+      const auto waited_so_far = num_iterations * kWarningInterval;
+      LOG(WARNING) << "Waited for "
+                   << waited_so_far << " for synchronous write to complete. "
+                   << "Continuing to wait.";
+      if (num_iterations >= kMaxNumIterations) {
+        LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
+                   << "Returning a timeout from SyncWrite.";
+        return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
+      }
+    }
   }
 
   if (resp.has_error()) {
