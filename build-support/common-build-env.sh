@@ -32,6 +32,9 @@ YB_COMMON_BUILD_ENV_SOURCED=1
 
 declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 
+# Reuse the C errno value for this.
+declare -r -i YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY=2
+
 # What matches these expressions will be filtered out of Maven output.
 MVN_OUTPUT_FILTER_REGEX='\[INFO\] (Download(ing|ed): '
 MVN_OUTPUT_FILTER_REGEX+='|[^ ]+ already added, skipping$)'
@@ -99,7 +102,7 @@ fatal() {
   if ! "$yb_log_quiet"; then
     print_stack_trace 2  # Exclude this line itself from the stack trace (start from 2nd line).
   fi
-  exit 1
+  exit "${yb_fatal_exit_code:-1}"
 }
 
 get_timestamp() {
@@ -1086,6 +1089,7 @@ detect_linuxbrew() {
         candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
       fi
     elif is_jenkins; then
+      yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
       fatal "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
             "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent non-deterministic " \
             "builds."

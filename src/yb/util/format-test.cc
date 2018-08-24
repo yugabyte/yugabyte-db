@@ -18,6 +18,7 @@
 #include <map>
 #include <vector>
 #include <unordered_map>
+#include <sstream>
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -171,6 +172,14 @@ TEST(FormatTest, Performance) {
              "client",
              "127.0.0.1:12345"s,
              "127.0.0.1:9042"s);
+}
+
+TEST(FormatTest, Time) {
+  ASSERT_EQ("Time: 10.000s", Format("Time: $0", 10s));
+  ASSERT_EQ("Time: 0.001s", Format("Time: $0", 1ms));
+  std::ostringstream out;
+  out << 15s;
+  ASSERT_EQ("15.000s", out.str());
 }
 
 } // namespace yb

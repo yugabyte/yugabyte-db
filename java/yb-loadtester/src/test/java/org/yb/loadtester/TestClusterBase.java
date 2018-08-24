@@ -322,13 +322,21 @@ public class TestClusterBase extends BaseCQLTest {
 
   public Set<HostAndPort> startNewMasters(int numMasters) throws Exception {
     Set<HostAndPort> newMasters = new HashSet<>();
+    LOG.info("Attempting to start " + numMasters + " new masters");
     for (int i = 0; i < numMasters; i++) {
       // Add new master.
       HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+      LOG.info("Starting a new shell master (#" + i + " in this batch) on host/port " +
+          masterRpcHostPort + " with a timeout of " + NEW_MASTER_TIMEOUT_MS + " ms");
 
       newMasters.add(masterRpcHostPort);
       // Wait for new master to be online.
-      assertTrue(client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS));
+      boolean waitSuccessful = client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS);
+      if (!waitSuccessful) {
+        LOG.error("Timed out waiting for master on host/port " + masterRpcHostPort +
+            " to come up. Waited for " + NEW_MASTER_TIMEOUT_MS + " ms.");
+      }
+      assertTrue(waitSuccessful);
 
       LOG.info("New master online: " + masterRpcHostPort.toString());
     }

@@ -108,9 +108,12 @@ int main(int argc, char** argv) {
 #ifdef __linux__
   struct rlimit64 core_limits;
   if (getrlimit64(RLIMIT_CORE, &core_limits) == 0) {
-    LOG(INFO) << "Core file size limits set by parent process: "
-              << "current=" << core_limits.rlim_cur
-              << ", max=" << core_limits.rlim_max << ". Trying to set both to infinity.";
+    if (core_limits.rlim_cur != RLIM_INFINITY || core_limits.rlim_max != RLIM_INFINITY) {
+      // Only print the debug message if core file limits are not infinite already.
+      LOG(INFO) << "Core file size limits set by parent process: "
+                << "current=" << core_limits.rlim_cur
+                << ", max=" << core_limits.rlim_max << ". Trying to set both to infinity.";
+    }
   } else {
     perror("getrlimit64 failed");
   }

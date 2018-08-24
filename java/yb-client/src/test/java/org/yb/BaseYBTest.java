@@ -304,7 +304,7 @@ public class BaseYBTest {
    * called from the constructor, so the state of the derived class might not be fully initialized.
    */
   public int getTestMethodTimeoutSec() {
-    return 120;
+    return 180;
   }
 
   public static String getCurrentTestClassName() {
