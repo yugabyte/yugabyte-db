@@ -869,6 +869,8 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
           if (MonoTime::Now().GetDeltaSince(
               consensus->TimeSinceLastMessageFromLeader()).ToMilliseconds() >
               FLAGS_max_stale_read_bound_time_ms) {
+            SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
+                                 TabletServerErrorPB::STALE_FOLLOWER, context);
             return false;
           } else if (PREDICT_FALSE(
               FLAGS_assert_reads_from_follower_rejected_because_of_staleness)) {
@@ -881,6 +883,10 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
           }
         } else {
           // If we haven't received a ping from the leader, we shouldn't serve read requests.
+          SetupErrorAndRespond(
+              resp->mutable_error(),
+              STATUS(IllegalState, "Haven't received a ping from the leader"),
+              TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
         }
       }
@@ -924,12 +930,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
   shared_ptr<tablet::AbstractTablet> tablet;
   if (!GetTabletOrRespond(req, resp, &context, &tablet)) {
-    if (req->consistency_level() == YBConsistencyLevel::STRONG) {
-      return;
-    }
-
-    SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
-                         TabletServerErrorPB::STALE_FOLLOWER, &context);
     return;
   }
 
