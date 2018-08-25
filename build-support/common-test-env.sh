@@ -60,8 +60,8 @@ readonly TEST_RESTART_PATTERN="Address already in use|\
 pthread .*: Device or resource busy"
 
 # We use this to submit test jobs for execution on Spark.
-readonly SPARK_SUBMIT_CMD_PATH_NON_TSAN=/n/tools/spark/current/bin/spark-submit
-readonly SPARK_SUBMIT_CMD_PATH_TSAN=/n/tools/spark/current-tsan/bin/spark-submit
+readonly SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN=/n/tools/spark/current/bin/spark-submit
+readonly SPARK_SUBMIT_CMD_PATH_ASAN_TSAN=/n/tools/spark/current-tsan/bin/spark-submit
 readonly INITIAL_SPARK_DRIVER_CORES=8
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -1186,10 +1186,10 @@ show_disk_usage() {
 }
 
 find_spark_submit_cmd() {
-  if [[ $build_type == "tsan" ]]; then
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_TSAN
+  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_ASAN_TSAN
   else
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_NON_TSAN
+    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN
   fi
 }
 
