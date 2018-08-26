@@ -13,18 +13,29 @@ menu:
     weight: 100
 ---
 
-{{< tip title="Contact Us for YugaByte DB Enterprise Edition" >}}
-<a href="https://www.yugabyte.com/about/contact/">
+{{< hero class="enterprise-edition" title="Contact Us for YugaByte DB Enterprise Edition" >}}
+<p class="subtitle">
 Enterprise Edition is Community Edition plus:
-</a>
+</p>
+<div class="row features">
+<div class="col-12 col-md-12 col-lg-12 col-xl-4">
 
-- Multi-cloud orchestration
-- Monitoring dashboard
-- Read replicas
-- Enterprise security
-- Distributed backups
-- Production support
-{{< /tip >}}
+  - Multi-cloud orchestration
+  - Monitoring dashboard
+  - Read replicas
+
+</div>
+<div class="col-12 col-md-12 col-lg-12 col-xl-4">
+
+  - Enterprise security
+  - Distributed backups
+  - Production support
+</div>
+</div>
+<a href="https://www.yugabyte.com/about/contact/" class="btn cta-button">
+  Contact Us
+</a>
+{{< /hero >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
