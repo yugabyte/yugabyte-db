@@ -28,16 +28,9 @@ replicas:
 
 PodManagementPolicy: Parallel
 
-serviceEndpoints:
-  master:
-    type: LoadBalancer
-    ports:
-      ui: "7000"
-  tserver:
-    type: LoadBalancer
-    ports:
-      yql-port: "9042"
-      yedis-port: "6379"
+serviceEndpoint:
+  type: LoadBalancer
+  expose: False
 
 Services:
   - name: "yb-masters"
@@ -45,12 +38,17 @@ Services:
     ports:
       ui: "7000"
       rpc-port: "7100"
+    exposePorts:
+      ui: "7000"
 
   - name: "yb-tservers"
     label: "yb-tserver"
     ports:
       ui: "9000"
       rpc-port: "7100"
+      yql-port: "9042"
+      yedis-port: "6379"
+    exposePorts:
       yql-port: "9042"
       yedis-port: "6379"
 
