@@ -20,7 +20,62 @@ You should see something like the screenshot below, click `Create` next.
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
-## 2. Provision instance for YugaWare
+## 2. Create a new IAM role (optional)
+In order for YugaWare to manage YugaByte nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where YugaWare will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugaWare. Below we provide a sample of such a role:
+
+```{.sh .copy .separator-dollar}
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AttachVolume",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:ImportVolume",
+                "ec2:ModifyVolumeAttribute",
+                "ec2:DescribeInstances",
+                "ec2:DescribeInstanceAttribute",
+                "ec2:CreateKeyPair",
+                "ec2:DescribeVolumesModifications",
+                "ec2:DeleteVolume",
+                "ec2:DescribeVolumeStatus",
+                "ec2:StartInstances",
+                "ec2:DescribeAvailabilityZones",
+                "ec2:CreateSecurityGroup",
+                "ec2:DescribeVolumes",
+                "ec2:ModifyInstanceAttribute",
+                "ec2:DescribeKeyPairs",
+                "ec2:DescribeInstanceStatus",
+                "ec2:DetachVolume",
+                "ec2:ModifyVolume",
+                "ec2:TerminateInstances",
+                "ec2:AssignIpv6Addresses",
+                "ec2:ImportKeyPair",
+                "ec2:DescribeTags",
+                "ec2:CreateTags",
+                "ec2:RunInstances",
+                "ec2:AssignPrivateIpAddresses",
+                "ec2:StopInstances",
+                "ec2:AllocateAddress",
+                "ec2:DescribeVolumeAttribute",
+                "ec2:DescribeSecurityGroups",
+                "ec2:CreateVolume",
+                "ec2:EnableVolumeIO",
+                "ec2:DescribeImages",
+                "ec2:DescribeVpcs",
+                "ec2:DeleteSecurityGroup",
+                "ec2:DescribeSubnets",
+                "ec2:DeleteKeyPair"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+## 3. Provision instance for YugaWare
 
 Create an instance to run YugaWare. In order to do so, go to `EC2` -> `Instances` and click on `Launch Instance`. Fill in the following values.
 
@@ -30,7 +85,7 @@ Create an instance to run YugaWare. In order to do so, go to `EC2` -> `Instances
 
 - Choose `c5.xlarge` (4 vCPUs are recommended for production) as the machine type. Continue to the next step.
 
-- Choose the VPC, subnet and other settings as appropriate. Make sure to enable the `Auto-assign Public IP` setting, otherwise this machine would not be accessible from outside AWS. Continue to the next step.
+- Choose the VPC, subnet and other settings as appropriate. Make sure to enable the `Auto-assign Public IP` setting, otherwise this machine would not be accessible from outside AWS. If you created an IAM role above, or already had one that you would like to use, provide that under `IAM role`. Continue to the next step.
 
 - Increase the root storage volume size to at least `100GiB`. Continue to the next step.
 
