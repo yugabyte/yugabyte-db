@@ -13,9 +13,10 @@ menu:
     weight: 100
 ---
 
-{{< hero class="enterprise-edition" title="Contact Us for YugaByte DB Enterprise Edition" >}}
+
+{{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}
 <p class="subtitle">
-Enterprise Edition is Community Edition plus:
+YugaByte DB Community Edition plus:
 </p>
 <div class="row features">
 <div class="col-12 col-md-12 col-lg-12 col-xl-4">
@@ -32,7 +33,7 @@ Enterprise Edition is Community Edition plus:
   - Production support
 </div>
 </div>
-<a href="https://www.yugabyte.com/about/contact/" class="btn cta-button">
+<a href="https://www.yugabyte.com/about/contact/" target="_blank" class="btn cta-button">
   Contact Us
 </a>
 {{< /hero >}}
