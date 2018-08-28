@@ -385,5 +385,25 @@ void UpdateAtomicMax(std::atomic<T>* max_holder, T new_value) {
   while (new_value > current_max && !max_holder->compare_exchange_weak(current_max, new_value)) {}
 }
 
+class AtomicTryMutex {
+ public:
+  void unlock() {
+    auto value = locked_.exchange(false, std::memory_order_acq_rel);
+    DCHECK(value);
+  }
+
+  bool try_lock() {
+    bool expected = false;
+    return locked_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+  }
+
+  bool is_locked() const {
+    return locked_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::atomic<bool> locked_{false};
+};
+
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */
