@@ -115,12 +115,10 @@ Peer::Peer(
       peer_pb_(peer_pb),
       proxy_(std::move(proxy)),
       queue_(queue),
-      sem_(1),
       heartbeater_(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
           std::bind(&Peer::SignalRequest, this, RequestTriggerMode::kAlwaysSend)),
       raft_pool_token_(raft_pool_token),
-      state_(kPeerCreated),
       consensus_(consensus) {}
 
 void Peer::SetTermForTest(int term) {
@@ -138,15 +136,14 @@ Status Peer::Init() {
 Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   // If the peer is currently sending, return Status::OK().
   // If there are new requests in the queue we'll get them on ProcessResponse().
-  std::unique_lock<Semaphore> sem_lock(sem_, std::try_to_lock);
-  if (!sem_lock.owns_lock()) {
+  auto performing_lock = LockPerforming(std::try_to_lock);
+  if (!performing_lock.owns_lock()) {
     return Status::OK();
   }
 
   {
-    std::lock_guard<simple_spinlock> l(peer_lock_);
-
-    if (PREDICT_FALSE(state_ == kPeerClosed)) {
+    auto processing_lock = StartProcessingUnlocked();
+    if (!processing_lock.owns_lock()) {
       return STATUS(IllegalState, "Peer was closed.");
     }
 
@@ -174,16 +171,20 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   auto status = raft_pool_token_->SubmitFunc(
       std::bind(&Peer::SendNextRequest, shared_from_this(), trigger_mode));
   if (status.ok()) {
-    sem_lock.release();
+    performing_lock.release();
   }
   return status;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   auto retain_self = shared_from_this();
-  DCHECK_EQ(sem_.GetValue(), 0) << "Cannot send request";
+  DCHECK(performing_mutex_.is_locked()) << "Cannot send request";
 
-  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
+  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
+    return;
+  }
 
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
@@ -214,20 +215,11 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       return;
     }
 
-    {
-      std::lock_guard<simple_spinlock> l(peer_lock_);
-      if (state_.load(std::memory_order_acquire) != kPeerClosed) {
-        s = SendRemoteBootstrapRequest();
-        if (s.ok()) {
-          // If we successfully sent the request, release ownership of sem_lock so the semaphore
-          // won't be unlocked when we exits this method.
-          sem_lock.release();
-        }
-      } else {
-        // We don't release ownership sem_lock here so when we exit the method the semaphore will
-        // be unlocked.
-        LOG_WITH_PREFIX(INFO) << "Didn't send remote bootstrap request because peer is closed";
-      }
+    s = SendRemoteBootstrapRequest();
+    if (s.ok()) {
+      // If we successfully sent the request, release ownership of performing_lock so the semaphore
+      // won't be unlocked when we exits this method.
+      performing_lock.release();
     }
     return;
   }
@@ -238,7 +230,8 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
     if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
-      sem_lock.unlock();
+      processing_lock.unlock();
+      performing_lock.unlock();
       consensus::ChangeConfigRequestPB req;
       consensus::ChangeConfigResponsePB resp;
 
@@ -287,34 +280,31 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
   controller_.Reset();
 
-  if (state_.load(std::memory_order_acquire) != kPeerClosed) {
-    sem_lock.release();
-    proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
-                        std::bind(&Peer::ProcessResponse, retain_self));
-  } else {
-    // We don't release ownership of sem_lock here so when we exit the method the semaphore will
-    // be unlocked.
-    LOG_WITH_PREFIX(INFO) << "Didn't send request because peer is closed";
-  }
+  processing_lock.unlock();
+  performing_lock.release();
+  proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
+                      std::bind(&Peer::ProcessResponse, retain_self));
 }
 
-bool Peer::IsClosedOnResponseUnlocked() {
-  if (state_.load(std::memory_order_acquire) != kPeerClosed) {
-    return false;
+std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
+  std::unique_lock<simple_spinlock> lock(peer_lock_);
+
+  if (state_ == kPeerClosed) {
+    lock.unlock();
+    ReleaseResourcesUnlocked();
   }
 
-  ReleaseResourcesUnlocked();
-  return true;
+  return lock;
 }
 
 void Peer::ProcessResponse() {
   // Note: This method runs on the reactor thread.
 
-  DCHECK_EQ(sem_.GetValue(), 0) << "Got a response when nothing was pending";
+  DCHECK(performing_mutex_.is_locked()) << "Got a response when nothing was pending";
 
-  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
-
-  if (IsClosedOnResponseUnlocked()) {
+  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
     return;
   }
 
@@ -356,6 +346,7 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  processing_lock.unlock();
   // The queue's handling of the peer response may generate IO (reads against the WAL) and
   // SendNextRequest() may do the same thing. So we run the rest of the response handling logic on
   // our thread pool and not on the reactor thread.
@@ -364,21 +355,26 @@ void Peer::ProcessResponse() {
     LOG_WITH_PREFIX(WARNING) << "Unable to process peer response: " << s
                              << ": " << response_.ShortDebugString();
   } else {
-    sem_lock.release();
+    performing_lock.release();
   }
 }
 
 void Peer::DoProcessResponse() {
   auto retain_self = shared_from_this();
-  DCHECK_EQ(0, sem_.GetValue());
-  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
+  DCHECK(performing_mutex_.is_locked());
+  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
+    return;
+  }
 
   failed_attempts_ = 0;
   bool more_pending = false;
   queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);
 
-  if (state_.load(std::memory_order_acquire) != kPeerClosed && more_pending) {
-    sem_lock.release();
+  if (more_pending) {
+    processing_lock.unlock();
+    performing_lock.release();
     SendNextRequest(RequestTriggerMode::kAlwaysSend);
   }
 }
@@ -394,9 +390,9 @@ Status Peer::SendRemoteBootstrapRequest() {
 }
 
 void Peer::ProcessRemoteBootstrapResponse() {
-  std::unique_lock<Semaphore> sem_lock(sem_, std::adopt_lock);
-
-  if (IsClosedOnResponseUnlocked()) {
+  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
     return;
   }
 
@@ -413,7 +409,7 @@ void Peer::ProcessRemoteBootstrapResponse() {
 }
 
 void Peer::ProcessResponseError(const Status& status) {
-  DCHECK_EQ(0, sem_.GetValue());
+  DCHECK(performing_mutex_.is_locked());
   failed_attempts_++;
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
@@ -431,8 +427,11 @@ void Peer::Close() {
 
   // If the peer is already closed return.
   {
-    std::lock_guard<simple_spinlock> l(peer_lock_);
-    if (state_ == kPeerClosed) return;
+    std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+
+    if (state_ == kPeerClosed) {
+      return;
+    }
     DCHECK(state_ == kPeerRunning || state_ == kPeerStarted) << "Unexpected state: " << state_;
     state_ = kPeerClosed;
     LOG_WITH_PREFIX(INFO) << "Closing peer";
@@ -442,15 +441,17 @@ void Peer::Close() {
 
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
 
-  std::unique_lock<Semaphore> sem_lock(sem_, std::try_to_lock);
-  if (sem_lock.owns_lock()) {
+  auto performing_lock = LockPerforming(std::try_to_lock);
+  if (performing_lock.owns_lock()) {
     ReleaseResourcesUnlocked();
   }
 }
 
 Peer::~Peer() {
-  CHECK_EQ(state_.load(std::memory_order_acquire), kPeerClosed)
-      << "Peer cannot be implicitly closed";
+  {
+    std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+    CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
+  }
 
   // We don't own the ops (the queue does).
   request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);

@@ -115,6 +115,8 @@ class ConsensusPeersTest : public YBTest {
 
   void TearDown() override {
     ASSERT_OK(log_->WaitUntilAllFlushed());
+    append_pool_->Shutdown();
+    raft_pool_->Shutdown();
   }
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(

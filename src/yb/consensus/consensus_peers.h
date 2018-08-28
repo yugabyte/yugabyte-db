@@ -44,8 +44,11 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/ref_counted_replicate.h"
 #include "yb/consensus/consensus_util.h"
+
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -194,7 +197,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
   void ProcessResponseError(const Status& status);
 
   // Returns true if the peer is closed and the calling function should return.
-  bool IsClosedOnResponseUnlocked();
+  std::unique_lock<simple_spinlock> StartProcessingUnlocked();
+
+  template <class LockType>
+  std::unique_lock<AtomicTryMutex> LockPerforming(LockType type) {
+    return std::unique_lock<AtomicTryMutex>(performing_mutex_, type);
+  }
 
   void ReleaseResourcesUnlocked();
 
@@ -230,7 +238,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
   // single request outstanding at a time, and to wait for the outstanding requests at Close().
-  Semaphore sem_;
+  AtomicTryMutex performing_mutex_;
 
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
@@ -249,7 +257,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Lock that protects Peer state changes, initialization, etc.  Must not try to acquire sem_ while
   // holding peer_lock_.
   mutable simple_spinlock peer_lock_;
-  std::atomic<State> state_;
+  State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
 };
 
