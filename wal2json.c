@@ -39,7 +39,6 @@ typedef struct
 	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
 	bool		include_not_null;	/* include not-null constraints */
-	bool		include_unchanged_toast;	/* include unchanged TOAST field values in output */
 
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
@@ -140,7 +139,6 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->write_in_chunks = false;
 	data->include_lsn = false;
 	data->include_not_null = false;
-	data->include_unchanged_toast = true;
 	data->filter_tables = NIL;
 
 	/* pretty print */
@@ -299,19 +297,6 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_lsn = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_lsn))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
-							 strVal(elem->arg), elem->defname)));
-		}
-		else if (strcmp(elem->defname, "include-unchanged-toast") == 0)
-		{
-			if (elem->arg == NULL)
-			{
-				elog(LOG, "include-unchanged-toast is null");
-				data->include_unchanged_toast = true;
-			}
-			else if (!parse_bool(strVal(elem->arg), &data->include_unchanged_toast))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -579,10 +564,10 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		if (isnull && replident)
 			continue;
 
-		if (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval) && !data->include_unchanged_toast)
+		/* XXX Unchanged TOAST Datum does not need to be output */
+		if (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval))
 		{
-			/* TOAST value is not returned if include-unchanged-toast is specified */
-			elog(DEBUG2, "column \"%s\" has an unchanged TOAST - excluding", NameStr(attr->attname));
+			elog(WARNING, "column \"%s\" has an unchanged TOAST", NameStr(attr->attname));
 			continue;
 		}
 

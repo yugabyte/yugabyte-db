@@ -27,11 +27,7 @@ UPDATE xpto SET toasted_col1 = (SELECT string_agg(g.i::text, '') FROM generate_s
 
 UPDATE xpto SET rand1 = 123.456 WHERE id = 1;
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0', 'include-unchanged-toast', '0');
+DELETE FROM xpto WHERE id = 1;
 
-UPDATE xpto SET rand1 = 234.567 WHERE id = 1;
-
--- include-unchanged-toast=1 is the default
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
-
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
