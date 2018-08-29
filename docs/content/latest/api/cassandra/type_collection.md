@@ -90,7 +90,7 @@ cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) VALUES ('
 ```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
 ```
-```sh
+```
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
       bar |                               null |                                       null |                  null
@@ -98,6 +98,7 @@ cqlsh:example> SELECT * FROM users;
 ```
 
 ### `UPDATE` Collection Column.
+
 - Collection values can be updated by setting all their elements at once.
 
 ```{.sql .copy .separator-gt}
@@ -112,7 +113,7 @@ cqlsh:example> UPDATE users SET top_cities = ['London', 'Tokyo'] WHERE username 
 ```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
 ```
-```sh
+```
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
       bar |                {'bar@example.com'} |                      {'home': '123-45678'} |   ['London', 'Tokyo']
@@ -131,11 +132,34 @@ cqlsh:example> UPDATE users SET emails = emails - {'a@example.com', 'c.example.c
 ```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones = phones + {'office' : '333-3333'} WHERE username = 'foo';
 ```
-To remove map elements only the relevant keys need to be given (as a set).
+
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM users;
+```
+```
+ username | emails                               | phones                                                           | top_cities
+----------+--------------------------------------+------------------------------------------------------------------+-----------------------
+      bar |                  {'bar@example.com'} |                                            {'home': '123-45678'} |   ['London', 'Tokyo']
+      foo | {'c@example.com', 'foo@example.com'} | {'home': '999-9999', 'mobile': '000-0000', 'office': '333-3333'} | ['New York', 'Paris']
+```
+
+- To remove map elements only the relevant keys need to be given (as a set).
+
 ```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones = phones - {'home'} WHERE username = 'foo';
 ```
-List elements can be either prepended or appended. 
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM users;
+```
+```
+ username | emails                               | phones                                       | top_cities
+----------+--------------------------------------+----------------------------------------------+-----------------------
+      bar |                  {'bar@example.com'} |                        {'home': '123-45678'} |   ['London', 'Tokyo']
+      foo | {'c@example.com', 'foo@example.com'} | {'mobile': '000-0000', 'office': '333-3333'} | ['New York', 'Paris']
+```
+
+- List elements can be either prepended or appended. 
+
 ```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';
 ```
@@ -148,7 +172,7 @@ cqlsh:example> UPDATE users SET top_cities = top_cities - ['Paris', 'New York'] 
 ```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
 ```
-```sh
+```
  username | emails              | phones                                       | top_cities
 ----------+---------------------+----------------------------------------------+------------------------
       bar | {'bar@example.com'} |                        {'home': '123-45678'} |    ['London', 'Tokyo']
@@ -157,31 +181,40 @@ cqlsh:example> SELECT * FROM users;
 
 ### `UPDATE` Map and List Elements
 
-Maps and Lists also allow updating elements individually.
+- Maps allow referencing elements by key.
 
 ```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones['mobile'] = '111-1111' WHERE username = 'foo';
 ```
-Map elements can also be accessed in IF/WHERE conditions.
 ```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones['mobile'] = '345-6789' WHERE username = 'bar' IF phones['mobile'] = null;
-```
-List numbering starts from 1.
-```{.sql .copy .separator-gt}
-cqlsh:example> UPDATE users SET top_cities[1] = 'San Francisco' WHERE username = 'bar';
-```
-List elements can also be accessed in IF/WHERE conditions.
-```{.sql .copy .separator-gt}
-cqlsh:example> UPDATE users SET top_cities[2] = 'Mumbai' WHERE username = 'foo' IF top_cities[2] = 'Delhi';
 ```
 ```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
 ```
-```sh
- username | emails              | phones                                       | top_cities
-----------+---------------------+----------------------------------------------+----------------------------
-      bar | {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} | ['San Francisco', 'Tokyo']
-      foo | {'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} |    ['Sunnyvale', 'Mumbai']
+```
+ username | emails                               | phones                                       | top_cities
+----------+--------------------------------------+----------------------------------------------+-----------------------
+      bar |                  {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} |   ['London', 'Tokyo']
+      foo | {'c@example.com', 'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} | ['New York', 'Paris']
+```
+
+- Lists allow referencing elements by index (numbering starts from 0).
+
+```{.sql .copy .separator-gt}
+cqlsh:example> UPDATE users SET top_cities[0] = 'San Francisco' WHERE username = 'bar';
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> UPDATE users SET top_cities[1] = 'Mumbai' WHERE username = 'bar' IF top_cities[1] = 'Tokyo';
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM users;
+```
+```
+ username | emails                               | phones                                       | top_cities
+----------+--------------------------------------+----------------------------------------------+-----------------------------
+      bar |                  {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} | ['San Francisco', 'Mumbai']
+      foo | {'c@example.com', 'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} |       ['New York', 'Paris']
 ```
 
 ## See Also

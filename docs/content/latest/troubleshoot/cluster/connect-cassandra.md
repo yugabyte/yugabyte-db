@@ -26,8 +26,9 @@ $ lsof -i :9042
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
 yb-tserve 81590 centos  131u  IPv4 0xdeadbeef      0t0  TCP localhost:9042 (LISTEN)
 ```
+Note: You may need to install `lsof` first.
 
-Note: when running a local cluster with `yb-ctl` you should see all the nodes here with different IPs. For instance:
+When running a local cluster with `yb-ctl` you should see all the nodes here with different IPs. For instance:
 ```
 $ lsof -i :9042
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
@@ -43,8 +44,10 @@ tserver process.
 
 Once on the machine where YugaByte DB is running, use `cqlsh` to connect to the local YugaByte DB instance.
 Depending on your installation, you may need to install `cqlsh`, otherwise you can find it in the YugaByte `bin` directory. 
+Try running:
 ```
-cqlsh 127.0.0.1
+cqlsh <yb-local-address>
 ```
+where `<yb-local-address>` is the address where the YugaByte CQL server is listening (e.g. as returned by `lsof`). For instance, in the example above, it is `localhost` (or, additionally, `127.0.0.2` and `127.0.0.3` for the `yb-ctl` case).
 
 If `cqlsh` can connect, the issue is likely a network issue with the original client not being able to access this node where YugaByte DB is running. See also [Are Master or TServer Endpoints Accessible?](../../nodes/check-processes#cannot-access-master-or-tserver-endpoints).

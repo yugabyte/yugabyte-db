@@ -51,9 +51,18 @@ the `CAST` function to convert text retrieved from the `->>` operator to the app
 type.
 
 ## Examples
+
+- Create table with a JSONB column
+
+```{.sql .copy .separator-gt}
+cqlsh> CREATE KEYSPACE store;
+```
+
 ```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
+
+- Insert JSONB documents
 
 ```{.sql .copy}
 INSERT INTO store.books (id, details) VALUES
@@ -68,10 +77,13 @@ INSERT INTO store.books (id, details) VALUES
   (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
 ```
 
+- Select from JSONB column
+
 ```{.sql .copy .separator-gt}
 cqlsh> SELECT * FROM store.books;
 ```
-```sql
+
+```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
   5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
@@ -79,39 +91,96 @@ cqlsh> SELECT * FROM store.books;
   4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
   2 |                                {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
   3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
-
-(5 rows)
 ```
 
-```sql
-cqlsh> SELECT * FROM store.books where details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
+- Select with condition on JSONB object value
 
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
+```
+```
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
   1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
   2 |     {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
-
-(2 rows)
 ```
 
-```sql
-cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
+- Select with condition on JSONB array element
 
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
+```
+```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
-
-(1 rows)
 ```
 
-```sql
-cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
+- Select with condition using on JSONB element
 
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
+```
+```
  id | details
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+```
 
-(1 rows)
+- Update entire JSONB document
+
+```{.sql .copy .separator-gt}
+cqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
+```
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE id = 1;
+```
+```
+ id | details
+----+-----------------------------------------------------------------------------------------------------------------------------------
+  1 | {"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}
+```
+
+- Update a JSONB object value.
+
+```{.sql .copy .separator-gt}
+cqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
+```
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE id = 4;
+```
+```
+ id | details
+----+------------------------------------------------------------------------------------------------------------------------------------------------------
+  4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+```
+
+- Update a JSONB array element.
+
+```{.sql .copy .separator-gt}
+cqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
+```
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE id = 4;
+```
+```
+ id | details
+----+------------------------------------------------------------------------------------------------------------------------------------------------------
+  4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+```
+
+- Update a JSONB subdocument.
+
+```{.sql .copy .separator-gt}
+cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
+```
+```{.sql .copy .separator-gt}
+cqlsh> SELECT * FROM store.books WHERE id = 4;
+```
+```
+ id | details
+----+-------------------------------------------------------------------------------------------------------------------------------------------------
+  4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 
 ## See Also

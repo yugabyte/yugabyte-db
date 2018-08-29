@@ -14,8 +14,10 @@ menu:
 
 To check the CPU, Memory and Disk usage on a Linux machine you can run:
 
-```sh
+```{.sh .copy .separator-dollar}
 $ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem; 
+```
+```
 CPUs: 72
 Mem: 251G
 Disk: /dev/sda2       160G   13G  148G   8% /
@@ -27,6 +29,20 @@ Disk: /dev/sda2       208G   22G  187G  11% /
 CPUs: 88
 Mem: 251G
 Disk: /dev/sda2       208G  5.1G  203G   3% /
+```
+Generally, common tools like `top` or `iostat` may be useful.
+
+### Auditd
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. 
+You can try temporarily disabling `audit` by running (on each YugaByte node):
+```{.sh .copy .separator-dollar}
+$ auditctl -e 0
+```
+and check if this improves peformance.
+
+To re-enable it afterwards run:
+```{.sh .copy .separator-dollar}
+$ auditctl -e 1
 ```
 
 ## YugaByte processes state

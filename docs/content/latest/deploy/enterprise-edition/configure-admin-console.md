@@ -93,13 +93,16 @@ If your host has SELinux turned on, then docker-engine may not be able to connec
 
 ```{.sh .copy}
 sudo firewall-cmd --zone=trusted --add-interface=docker0
-sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 sudo firewall-cmd --zone=public --add-port=80/tcp
-sudo firewall-cmd --zone=public --add-port=80/tcp
+sudo firewall-cmd --zone=public --add-port=443/tcp
+sudo firewall-cmd --zone=public --add-port=8800/tcp
 sudo firewall-cmd --zone=public --add-port=5432/tcp
-sudo firewall-cmd --zone=public --add-port=4000/tcp
 sudo firewall-cmd --zone=public --add-port=9000/tcp
 sudo firewall-cmd --zone=public --add-port=9090/tcp
+sudo firewall-cmd --zone=public --add-port=32769/tcp
+sudo firewall-cmd --zone=public --add-port=32770/tcp
+sudo firewall-cmd --zone=public --add-port=9880/tcp
+sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 ```
 
 ### Unable to perform passwordless ssh into the data nodes
