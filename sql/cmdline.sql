@@ -7,6 +7,8 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2js
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nosuchopt', '42');
 
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-unchanged-toast', '1');
+
 -- don't include not-null constraint by default
 CREATE TABLE table_optional (
 a smallserial,

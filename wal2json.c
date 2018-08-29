@@ -302,6 +302,12 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
 		}
+		else if (strcmp(elem->defname, "include-unchanged-toast") == 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("parameter \"%s\" was deprecated", elem->defname)));
+		}
 		else if (strcmp(elem->defname, "filter-tables") == 0)
 		{
 			char	*rawstr;
