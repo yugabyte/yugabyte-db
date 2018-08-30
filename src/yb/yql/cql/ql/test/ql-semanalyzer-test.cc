@@ -343,15 +343,15 @@ TEST_F(QLTestAnalyzer, TestCreateLocalIndex) {
 // index that should be used, but I do not know how to do this yet, as index_tree has the name of
 // the index while select_tree has the id.
 CHECKED_STATUS AnalyzeSelectTree(const ParseTree::UniPtr &select_parse_tree,
-                                 const bool &use_index = false,
-                                 const bool &read_just_index = false) {
+                                 const bool use_index = false,
+                                 const bool covers_fully = false) {
   TreeNode::SharedPtr root = select_parse_tree->root();
   EXPECT_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
   PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
 
-  EXPECT_EQ(pt_select_stmt->use_index(), use_index);
+  EXPECT_EQ(!pt_select_stmt->index_id().empty(), use_index);
 
-  EXPECT_EQ(pt_select_stmt->read_just_index(), read_just_index);
+  EXPECT_EQ(pt_select_stmt->covers_fully(), covers_fully);
 
   return Status::OK();
 }

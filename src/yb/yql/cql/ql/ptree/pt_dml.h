@@ -26,6 +26,7 @@
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/common/table_properties_constants.h"
+#include "yb/client/client.h"
 
 namespace yb {
 namespace ql {
@@ -34,9 +35,7 @@ namespace ql {
 // Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".
 class ColumnOpCounter {
  public:
-  ColumnOpCounter() : gt_count_(0), lt_count_(0), eq_count_(0), in_count_(0),
-                      partial_col_gt_count_(0), partial_col_lt_count_(0), partial_col_eq_count_(0),
-                      partial_col_in_count_(0) {}
+  ColumnOpCounter() {}
   int gt_count() const { return gt_count_; }
   int lt_count() const { return lt_count_; }
   int eq_count() const { return eq_count_; }
@@ -70,21 +69,20 @@ class ColumnOpCounter {
 
  private:
   // These are counts for regular columns.
-  int gt_count_;
-  int lt_count_;
-  int eq_count_;
-  int in_count_;
+  int gt_count_ = 0;
+  int lt_count_ = 0;
+  int eq_count_ = 0;
+  int in_count_ = 0;
   // These are counts for partial columns like json(c1->'a') and collection(c1[0]) operators.
-  int partial_col_gt_count_;
-  int partial_col_lt_count_;
-  int partial_col_eq_count_;
-  int partial_col_in_count_;
+  int partial_col_gt_count_ = 0;
+  int partial_col_lt_count_ = 0;
+  int partial_col_eq_count_ = 0;
+  int partial_col_in_count_ = 0;
 };
 
 // State variables for where clause.
 class WhereExprState {
  public:
-
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
                  MCList<SubscriptedColumnOp> *subscripted_col_ops,
@@ -183,22 +181,19 @@ class PTDmlStmt : public PTCollection {
  public:
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTDmlStmt(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
-                     PTExpr::SharedPtr where_clause = nullptr,
-                     PTExpr::SharedPtr if_clause = nullptr,
-                     bool else_error = false,
-                     PTDmlUsingClause::SharedPtr using_clause = nullptr,
-                     bool returns_status = false);
+  PTDmlStmt(MemoryContext *memctx,
+            YBLocation::SharedPtr loc,
+            PTExpr::SharedPtr where_clause = nullptr,
+            PTExpr::SharedPtr if_clause = nullptr,
+            bool else_error = false,
+            PTDmlUsingClause::SharedPtr using_clause = nullptr,
+            bool returns_status = false);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
   inline static PTDmlStmt::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTDmlStmt>(memctx, std::forward<TypeArgs>(args)...);
   }
-
-  // Lookup table from the metadata database.
-  CHECKED_STATUS LookupTable(SemContext *sem_context);
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
@@ -227,15 +222,15 @@ class PTDmlStmt : public PTCollection {
   }
 
   int num_columns() const {
-    return table_columns_.size();
+    return table_->schema().num_columns();
   }
 
   int num_key_columns() const {
-    return num_key_columns_;
+    return table_->schema().num_key_columns();
   }
 
   int num_hash_key_columns() const {
-    return num_hash_key_columns_;
+    return table_->schema().num_hash_key_columns();
   }
 
   const MCVector<ColumnOp>& key_where_ops() const {
@@ -278,12 +273,12 @@ class PTDmlStmt : public PTCollection {
     return if_clause_;
   }
 
-  const PTExpr::SharedPtr& ttl_seconds() const {
-    return using_clause_ != nullptr ? using_clause_->ttl_seconds() : kNullPointerRef;
+  PTExpr::SharedPtr ttl_seconds() const {
+    return using_clause_ ? using_clause_->ttl_seconds() : nullptr;
   }
 
-  const PTExpr::SharedPtr& user_timestamp_usec() const {
-    return using_clause_ != nullptr ? using_clause_->user_timestamp_usec() : kNullPointerRef;
+  PTExpr::SharedPtr user_timestamp_usec() const {
+    return using_clause_ ? using_clause_->user_timestamp_usec() : nullptr;
   }
 
   const MCVector<PTBindVar*> &bind_variables() const {
@@ -388,11 +383,14 @@ class PTDmlStmt : public PTCollection {
   }
 
  protected:
+  // Lookup table from the metadata database.
+  CHECKED_STATUS LookupTable(SemContext *sem_context);
+
   // Semantic-analyzing the where clause.
-  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
+  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);
 
   // Semantic-analyzing the if clause.
-  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context, const PTExpr::SharedPtr& if_clause);
+  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context);
 
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
@@ -423,11 +421,12 @@ class PTDmlStmt : public PTCollection {
 
   // -- The semantic analyzer will decorate this node with the following information --
 
-  std::shared_ptr<client::YBTable> table_;
-  bool is_system_ = false; // Is the table a system table?
-  MCVector<ColumnDesc> table_columns_; // Table columns.
-  int num_key_columns_ = 0;
-  int num_hash_key_columns_ = 0;
+  // Is the target table a system table?
+  bool is_system_ = false;
+
+  // Target table and columns.
+  client::YBTablePtr table_;
+  MCVector<ColumnDesc> table_columns_;
 
   // Where operator list.
   // - When reading (SELECT), key_where_ops_ has only HASH (partition) columns.
@@ -467,7 +466,7 @@ class PTDmlStmt : public PTCollection {
 
   // The set of indexes that index primary key columns of the indexed table only and the set of
   // indexes that do not.
-  MCUnorderedSet<std::shared_ptr<client::YBTable>> pk_only_indexes_;
+  MCUnorderedSet<client::YBTablePtr> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
 
   // For inter-dependency analysis of DMLs in a batch/transaction
@@ -478,8 +477,6 @@ class PTDmlStmt : public PTCollection {
   // For optimizing SELECT queries with IN condition on hash key: does this SELECT have all primary
   // key columns set with '=' or 'IN' conditions.
   bool select_has_primary_keys_set_ = false;
-
-  static const PTExpr::SharedPtr kNullPointerRef;
 };
 
 }  // namespace ql

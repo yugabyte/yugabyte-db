@@ -146,6 +146,11 @@ class Executor : public QLExprExecutor {
   //------------------------------------------------------------------------------------------------
   // Result processing.
 
+  // Returns the YBSession for the statement in execution.
+  client::YBSessionPtr GetSession(ExecContext* exec_context) {
+    return exec_context->HasTransaction() ? exec_context->transactional_session() : session_;
+  }
+
   // Flush operations that have been applied and commit. If there is none, finish the statement
   // execution.
   void FlushAsync();
@@ -156,6 +161,7 @@ class Executor : public QLExprExecutor {
   // Callback for Commit.
   void CommitDone(Status s, ExecContext* exec_context);
 
+  // Process async results from FlushAsync and Commit.
   void ProcessAsyncResults(bool rescheduled = false);
 
   // Process the status of executing a statement.
@@ -283,15 +289,13 @@ class Executor : public QLExprExecutor {
   // Where clause evaluation.
 
   // Convert where clause to protobuf for read request.
-  CHECKED_STATUS WhereClauseToPB(QLReadRequestPB *req,
-                                 const MCVector<ColumnOp>& key_where_ops,
-                                 const MCList<ColumnOp>& where_ops,
-                                 const MCList<SubscriptedColumnOp>& subcol_where_ops,
-                                 const MCList<JsonColumnOp>& jsoncol_where_ops,
-                                 const MCList<PartitionKeyOp>& partition_key_ops,
-                                 const MCList<FuncOp>& func_ops,
-                                 bool *no_results,
-                                 uint64_t *max_selected_rows_estimate);
+  Result<uint64_t> WhereClauseToPB(QLReadRequestPB *req,
+                                   const MCVector<ColumnOp>& key_where_ops,
+                                   const MCList<ColumnOp>& where_ops,
+                                   const MCList<SubscriptedColumnOp>& subcol_where_ops,
+                                   const MCList<JsonColumnOp>& jsoncol_where_ops,
+                                   const MCList<PartitionKeyOp>& partition_key_ops,
+                                   const MCList<FuncOp>& func_ops);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(QLWriteRequestPB *req,

@@ -33,32 +33,27 @@ namespace ql {
 
 struct SymbolEntry {
   // Parse tree node for column. It's used for table creation.
-  PTColumnDefinition *column_;
+  PTColumnDefinition *column_ = nullptr;
 
   // Parse tree node for column alterations.
-  PTAlterColumnDefinition *alter_column_;
+  PTAlterColumnDefinition *alter_column_ = nullptr;
 
   // Parse tree node for table. It's used for table creation.
-  PTCreateTable *create_table_;
-  PTAlterTable *alter_table_;
+  PTCreateTable *create_table_ = nullptr;
+  PTAlterTable *alter_table_ = nullptr;
 
   // Parser tree node for user-defined type. It's used for creating types.
-  PTCreateType *create_type_;
-  PTTypeField *type_field_;
+  PTCreateType *create_type_ = nullptr;
+  PTTypeField *type_field_ = nullptr;
 
   // Column description. It's used for DML statements including select.
-  // Not part of a parse tree, but it is allocated within the parse tree pool because it us
+  // Not part of a parse tree, but it is allocated within the parse tree pool because it is
   // persistent metadata. It represents a column during semantic and execution phases.
   //
   // TODO(neil) Add "column_read_count_" and potentially "column_write_count_" and use them for
   // error check wherever needed. Symbol tables and entries are destroyed after compilation, so
   // data that are used during compilation but not execution should be declared here.
-  ColumnDesc *column_desc_;
-
-  SymbolEntry()
-    : column_(nullptr), alter_column_(nullptr), create_table_(nullptr), alter_table_(nullptr),
-      create_type_(nullptr), type_field_(nullptr), column_desc_(nullptr) {
-  }
+  ColumnDesc *column_desc_ = nullptr;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -104,8 +99,6 @@ class SemContext : public ProcessContext {
                              std::shared_ptr<client::YBTable>* table,
                              bool* is_system,
                              MCVector<ColumnDesc>* col_descs = nullptr,
-                             int* num_key_columns = nullptr,
-                             int* num_hash_key_columns = nullptr,
                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
   // Load index schema into symbol table.
@@ -113,8 +106,6 @@ class SemContext : public ProcessContext {
                              const YBLocation& loc,
                              std::shared_ptr<client::YBTable>* index_table,
                              MCVector<ColumnDesc>* col_descs = nullptr,
-                             int* num_key_columns = nullptr,
-                             int* num_hash_key_columns = nullptr,
                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
   //------------------------------------------------------------------------------------------------
@@ -275,19 +266,11 @@ class SemContext : public ProcessContext {
     current_dml_stmt_ = stmt;
   }
 
-  std::shared_ptr<client::YBTable> current_table() { return current_table_; }
-
-  void set_current_table(std::shared_ptr<client::YBTable> table) {
-    current_table_ = table;
-  }
-
   void Reset();
 
  private:
   CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,
                             MCVector<ColumnDesc>* col_descs = nullptr,
-                            int* num_key_columns = nullptr,
-                            int* num_hash_key_columns = nullptr,
                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
   // Find symbol.
@@ -303,17 +286,14 @@ class SemContext : public ProcessContext {
   QLEnv *ql_env_;
 
   // Is metadata cache used?
-  bool cache_used_;
+  bool cache_used_ = false;
 
   // The current dml statement being processed.
-  PTDmlStmt *current_dml_stmt_;
-
-  // The semantic analyzer will set the current table for dml queries.
-  std::shared_ptr<client::YBTable> current_table_;
+  PTDmlStmt *current_dml_stmt_ = nullptr;
 
   // sem_state_ consists of state variables that are used to process one tree node. It is generally
   // set and reset at the beginning and end of the semantic analysis of one treenode.
-  SemState *sem_state_;
+  SemState *sem_state_ = nullptr;
 };
 
 }  // namespace ql

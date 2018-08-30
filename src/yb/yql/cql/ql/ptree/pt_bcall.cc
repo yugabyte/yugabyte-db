@@ -344,7 +344,7 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(PTBcall::Analyze(sem_context));
 
   // Analyzing the arguments: their types need to be inferred based on table schema (hash columns).
-  size_t size = sem_context->current_table()->schema().num_hash_key_columns();
+  size_t size = sem_context->current_dml_stmt()->table()->schema().num_hash_key_columns();
   if (args().size() != size) {
     return sem_context->Error(
         this,
@@ -380,7 +380,7 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
 
   // Otherwise, it could be a call with literal values to be evaluated.
   size_t index = 0;
-  auto& schema = sem_context->current_table()->schema();
+  auto& schema = sem_context->current_dml_stmt()->table()->schema();
   for (const PTExpr::SharedPtr &arg : args()) {
     if (arg->expr_op() != ExprOperator::kConst &&
         arg->expr_op() != ExprOperator::kUMinus &&
