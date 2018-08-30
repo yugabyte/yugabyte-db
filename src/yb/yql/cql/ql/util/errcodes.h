@@ -129,6 +129,7 @@ enum class ErrorCode : int64_t {
   ROLE_NOT_FOUND = -314,
   RESOURCE_NOT_FOUND = -315,
   INVALID_REQUEST = -316,
+  PERMISSION_NOT_FOUND = -317,
 
 };
 

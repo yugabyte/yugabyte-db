@@ -34,7 +34,7 @@
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
-#include "yb/yql/cql/ql/ptree/pt_grant.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -110,11 +110,11 @@ class Executor : public QLExprExecutor {
   // Alter an existing role.
   CHECKED_STATUS ExecPTNode(const PTAlterRole *tnode);
 
-  // Grants a role to another role.
-  CHECKED_STATUS ExecPTNode(const PTGrantRole *tnode);
+  // Grants or revokes a role to another role.
+  CHECKED_STATUS ExecPTNode(const PTGrantRevokeRole* tnode);
 
-  // Select statement.
-  CHECKED_STATUS ExecPTNode(const PTGrantPermission *tnode);
+  // Grants or revokes permissions to resources (roles/tables/keyspaces).
+  CHECKED_STATUS ExecPTNode(const PTGrantRevokePermission* tnode);
 
   // Select statement.
   CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context);
