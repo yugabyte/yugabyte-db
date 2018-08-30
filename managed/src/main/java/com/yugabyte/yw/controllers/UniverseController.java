@@ -281,7 +281,9 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.create(customer,
                           universe.universeUUID,
                           taskUUID,
-                          CustomerTask.TargetType.Universe,
+                          primaryCluster == null 
+                            ? CustomerTask.TargetType.Cluster 
+                            : CustomerTask.TargetType.Universe,
                           CustomerTask.TaskType.Update,
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
@@ -468,7 +470,7 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.create(customer,
                           universe.universeUUID,
                           taskUUID,
-                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TargetType.Cluster,
                           CustomerTask.TaskType.Create,
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
@@ -540,7 +542,7 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.create(customer,
                           universe.universeUUID,
                           taskUUID,
-                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TargetType.Cluster,
                           CustomerTask.TaskType.Delete,
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
