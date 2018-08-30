@@ -22,6 +22,9 @@ public class CustomerTask extends Model {
     @EnumValue("Universe")
     Universe,
 
+    @EnumValue("Cluster")
+    Cluster,
+
     @EnumValue("Table")
     Table,
 
