@@ -149,7 +149,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   // Now check that each column in the hash key is associated with an argument.
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
-  for (idx = 0; idx < num_hash_key_columns_; idx++) {
+  for (idx = 0; idx < num_hash_key_columns(); idx++) {
     if (!column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
@@ -158,7 +158,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // with an argument or no range key has an argument. Else, check that all range columns
   // have arguments.
   int range_keys = 0;
-  for (idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+  for (idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       range_keys++;
     }
@@ -168,15 +168,15 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(AnalyzeColumnArgs(sem_context));
 
   if (StaticColumnArgsOnly()) {
-    if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
+    if (range_keys != num_key_columns() - num_hash_key_columns() && range_keys != 0)
       return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
   } else {
-    if (range_keys != num_key_columns_ - num_hash_key_columns_)
+    if (range_keys != num_key_columns() - num_hash_key_columns())
       return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
   }
 
   // Primary key cannot be null.
-  for (idx = 0; idx < num_key_columns_; idx++) {
+  for (idx = 0; idx < num_key_columns(); idx++) {
     if (column_args_->at(idx).IsInitialized() && column_args_->at(idx).expr()->is_null()) {
       return sem_context->Error(value_clause_, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
@@ -186,7 +186,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(AnalyzeHashColumnBindVars(sem_context));
 
   // Run error checking on the IF conditions.
-  RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context));
 
   // Run error checking on USING clause.
   RETURN_NOT_OK(AnalyzeUsingClause(sem_context));

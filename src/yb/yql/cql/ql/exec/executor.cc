@@ -639,24 +639,20 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   QLReadRequestPB *req = select_op->mutable_request();
   // Where clause - Hash, range, and regular columns.
 
-  bool no_results = false;
   req->set_is_aggregate(tnode->is_aggregate());
-  uint64_t max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
-  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                             tnode->subscripted_col_where_ops(), tnode->json_col_where_ops(),
-                             tnode->partition_key_ops(), tnode->func_ops(),
-                             &no_results, &max_selected_rows_estimate);
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
-  }
 
-  if (!tnode->HasPrimaryKeysSet()) {
-    // If not all primary keys have '=' or 'IN' conditions the max rows estimate is not reliable.
-    max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
+  Result<uint64_t> max_rows_estimate = WhereClauseToPB(req, tnode->key_where_ops(),
+                                                       tnode->where_ops(),
+                                                       tnode->subscripted_col_where_ops(),
+                                                       tnode->json_col_where_ops(),
+                                                       tnode->partition_key_ops(),
+                                                       tnode->func_ops());
+  if (PREDICT_FALSE(!max_rows_estimate)) {
+    return exec_context_->Error(tnode, max_rows_estimate.status(), ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
-  if (no_results && !tnode->is_aggregate()) {
+  if (*max_rows_estimate == 0 && !tnode->is_aggregate()) {
     QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
     faststring buffer;
     empty_row_block.Serialize(select_op->request().client(), &buffer);
@@ -671,9 +667,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-      s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+      const Status s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+      if (PREDICT_FALSE(!s.ok())) {
+        return exec_context_->Error(expr, s, ErrorCode::INVALID_ARGUMENTS);
+      }
     } else {
-      s = PTExprToPB(expr, req->add_selected_exprs());
+      const Status s = PTExprToPB(expr, req->add_selected_exprs());
       if (PREDICT_FALSE(!s.ok())) {
         return exec_context_->Error(expr, s, ErrorCode::INVALID_ARGUMENTS);
       }
@@ -686,7 +685,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Setup the column values that need to be read.
-  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  Status s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -700,7 +699,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   req->set_return_paging_state(true);
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
-  if (tnode->has_limit()) {
+  if (tnode->limit()) {
     int32_t limit;
     RETURN_NOT_OK(GetOffsetOrLimit(
         tnode,
@@ -721,7 +720,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     }
   }
 
-  if (tnode->has_offset()) {
+  if (tnode->offset()) {
     int32_t offset;
     RETURN_NOT_OK(GetOffsetOrLimit(
         tnode,
@@ -763,11 +762,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     // We can optimize to run the ops in parallel (rather than serially) if:
     //   - the estimated max number of rows is less than req limit (min of page size and CQL limit).
     //   - there is no offset (which requires passing skipped rows from one request to the next).
-    if (max_selected_rows_estimate <= req->limit() && !req->has_offset()) {
+    if (*max_rows_estimate <= req->limit() && !req->has_offset()) {
       RETURN_NOT_OK(AddOperation(select_op));
       while (tnode_context.UnreadPartitionsRemaining() > 1) {
         YBqlReadOpPtr op(table->NewQLSelect());
         op->mutable_request()->CopyFrom(select_op->request());
+        op->set_yb_consistency_level(select_op->yb_consistency_level());
         tnode_context.AdvanceToNextPartition(op->mutable_request());
         RETURN_NOT_OK(AddOperation(op));
         select_op = op; // Use new op as base for the next one, if any.
@@ -807,7 +807,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
   // The limit for this select: min of page size and result limit (if set).
   uint64_t fetch_limit = exec_context->params().page_size(); // default;
-  if (tnode->has_limit()) {
+  if (tnode->limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
 
@@ -881,7 +881,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
   // Update limit, offset and paging_state information for next scan request.
   op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
-  if (tnode->has_offset()) {
+  if (tnode->offset()) {
     QLExpressionPB offset_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->offset(), &offset_pb));
     // The paging state keeps a running count of the number of rows skipped so far.
@@ -1220,8 +1220,7 @@ void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
   // Process FlushAsync status for either transactional session in an ExecContext, or the
   // non-transactional session in the Executor for other ExecContexts with no transactional session.
   const int64_t num_async_calls = --num_async_calls_;
-  const client::YBSessionPtr& session = exec_context ? exec_context->transactional_session()
-                                                     : session_;
+  const YBSessionPtr& session = exec_context != nullptr ? GetSession(exec_context) : session_;
 
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the errors and discard the IOError.
@@ -1313,9 +1312,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       if (root->opcode() == TreeNodeOpcode::kPTSelectStmt) {
         result_ = nullptr;
       }
-      YBSessionPtr session = exec_context_->HasTransaction()
-                             ? exec_context_->transactional_session()
-                             : session_;
+      YBSessionPtr session = GetSession(exec_context_);
       session->SetReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root));
       if (session->CountBufferedOperations() > 0) {
@@ -1706,8 +1703,7 @@ Status Executor::AddOperation(const YBqlWriteOpPtr& op) {
   // Apply it in the transactional session in exec_context for the current statement if there is
   // one. Otherwise, apply to the non-transactional session in the executor.
   if (write_batch_.Add(op)) {
-    YBSessionPtr session = exec_context_->HasTransaction() ? exec_context_->transactional_session()
-                                                           : session_;
+    YBSessionPtr session = GetSession(exec_context_);
     TRACE("Apply");
     RETURN_NOT_OK(session->Apply(op));
   }
@@ -1716,8 +1712,8 @@ Status Executor::AddOperation(const YBqlWriteOpPtr& op) {
   if (op->table()->index_map().empty()) {
     return Status::OK();
   }
-  return UpdateIndexes(static_cast<const PTDmlStmt*>(exec_context_->tnode_context().tnode()),
-                       op->mutable_request());
+  const auto* dml_stmt = static_cast<const PTDmlStmt*>(exec_context_->tnode_context().tnode());
+  return UpdateIndexes(dml_stmt, op->mutable_request());
 }
 
 //--------------------------------------------------------------------------------------------------

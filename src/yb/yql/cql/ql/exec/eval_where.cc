@@ -60,17 +60,14 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
-                                         const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops,
-                                         const MCList<SubscriptedColumnOp>& subcol_where_ops,
-                                         const MCList<JsonColumnOp>& jsoncol_where_ops,
-                                         const MCList<PartitionKeyOp>& partition_key_ops,
-                                         const MCList<FuncOp>& func_ops,
-                                         bool *no_results,
-                                         uint64_t *max_selected_rows_estimate) {
-  // If where clause restrictions guarantee no results can be found this will be set to true below.
-  *no_results = false;
+Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
+                                           const MCVector<ColumnOp>& key_where_ops,
+                                           const MCList<ColumnOp>& where_ops,
+                                           const MCList<SubscriptedColumnOp>& subcol_where_ops,
+                                           const MCList<JsonColumnOp>& jsoncol_where_ops,
+                                           const MCList<PartitionKeyOp>& partition_key_ops,
+                                           const MCList<FuncOp>& func_ops) {
+  uint64_t max_rows_estimate = std::numeric_limits<uint64_t>::max();
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
@@ -102,8 +99,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
           req->set_hash_code(hash_code + 1);
         } else {
           // Token hash greater than max implies no results.
-          *no_results = true;
-          return Status::OK();
+          return 0;
         }
         break;
       case QL_OP_GREATER_THAN_EQUAL:
@@ -117,8 +113,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
             req->set_max_hash_code(hash_code - 1);
           } else {
             // Token hash smaller than min implies no results.
-            *no_results = true;
-            return Status::OK();
+            return 0;
           }
         }
         break;
@@ -181,8 +176,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
 
         // Fast path for returning no results when 'IN' list is empty.
         if (col_pb.value().list_value().elems_size() == 0) {
-          *no_results = true;
-          return Status::OK();
+          return 0;
         }
 
         std::set<QLValuePB> set_values;
@@ -208,59 +202,60 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     }
   }
 
-  if (key_where_ops.empty()) {
-    // Cannot yet estimate num rows if hash key is missing (table scan).
-    *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
-  } else {
+  if (!key_where_ops.empty()) {
     // If this is a multi-partition select, set the partitions count in the execution context.
     if (is_multi_partition) {
       tnode_context.set_partitions_count(partitions_count);
     }
-    *max_selected_rows_estimate = partitions_count;
+    max_rows_estimate = partitions_count;
   }
 
-  // Skip generation of query condition if where clause is empty.
-  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty() &&
-      jsoncol_where_ops.empty()) {
-    return Status::OK();
-  }
+  // Generate query condition if where clause is not empty.
+  if (!where_ops.empty() || !subcol_where_ops.empty() || !func_ops.empty() ||
+      !jsoncol_where_ops.empty()) {
 
-  // Setup the where clause.
-  QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
-  where_pb->set_op(QL_OP_AND);
-  for (const auto& col_op : where_ops) {
-    QLConditionPB* cond = where_pb->add_operands()->mutable_condition();
-    RETURN_NOT_OK(WhereOpToPB(cond, col_op));
-    // Update the estimate for the number of selected rows if needed.
-    if (col_op.desc()->is_primary()) {
-      if (cond->op() == QL_OP_IN) {
-        int in_size = cond->operands(1).value().list_value().elems_size();
-        if (in_size == 0 || // Can happen when binding an empty list as 'IN' argument.
-            *max_selected_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
-          *max_selected_rows_estimate *= in_size;
+    // Setup the where clause.
+    QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+    where_pb->set_op(QL_OP_AND);
+    for (const auto& col_op : where_ops) {
+      QLConditionPB* cond = where_pb->add_operands()->mutable_condition();
+      RETURN_NOT_OK(WhereOpToPB(cond, col_op));
+      // Update the estimate for the number of selected rows if needed.
+      if (col_op.desc()->is_primary()) {
+        if (cond->op() == QL_OP_IN) {
+          int in_size = cond->operands(1).value().list_value().elems_size();
+          if (in_size == 0 || // Can happen when binding an empty list as 'IN' argument.
+              max_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
+            max_rows_estimate *= in_size;
+          } else {
+            max_rows_estimate = std::numeric_limits<uint64_t>::max();
+          }
+        } else if (cond->op() == QL_OP_EQUAL) {
+          // Nothing to do (equality condition implies one option).
         } else {
-          *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
+          // Cannot yet estimate num rows for inequality (and other) conditions.
+          max_rows_estimate = std::numeric_limits<uint64_t>::max();
         }
-      } else if (cond->op() == QL_OP_EQUAL) {
-        // Nothing to do (equality condition implies one option).
-      } else {
-        // Cannot yet estimate num rows for inequality (and other) conditions.
-        *max_selected_rows_estimate = std::numeric_limits<uint64_t>::max();
       }
+    }
+
+    for (const auto& col_op : subcol_where_ops) {
+      RETURN_NOT_OK(WhereSubColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
+    }
+    for (const auto& col_op : jsoncol_where_ops) {
+      RETURN_NOT_OK(WhereJsonColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
+    }
+    for (const auto& func_op : func_ops) {
+      RETURN_NOT_OK(FuncOpToPB(where_pb->add_operands()->mutable_condition(), func_op));
     }
   }
 
-  for (const auto& col_op : subcol_where_ops) {
-    RETURN_NOT_OK(WhereSubColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
-  }
-  for (const auto& col_op : jsoncol_where_ops) {
-    RETURN_NOT_OK(WhereJsonColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
-  }
-  for (const auto& func_op : func_ops) {
-    RETURN_NOT_OK(FuncOpToPB(where_pb->add_operands()->mutable_condition(), func_op));
+  // If not all primary keys have '=' or 'IN' conditions the max rows estimate is not reliable.
+  if (!static_cast<const PTSelectStmt*>(tnode_context.tnode())->HasPrimaryKeysSet()) {
+    return std::numeric_limits<uint64_t>::max();
   }
 
-  return Status::OK();
+  return max_rows_estimate;
 }
 
 CHECKED_STATUS Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op) {

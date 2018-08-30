@@ -36,11 +36,7 @@ using client::YBSchema;
 SemContext::SemContext(ParseTree::UniPtr parse_tree, QLEnv *ql_env)
     : ProcessContext(std::move(parse_tree)),
       symtab_(PTempMem()),
-      ql_env_(ql_env),
-      cache_used_(false),
-      current_dml_stmt_(nullptr),
-      current_table_(nullptr),
-      sem_state_(nullptr) {
+      ql_env_(ql_env) {
 }
 
 SemContext::~SemContext() {
@@ -50,17 +46,11 @@ SemContext::~SemContext() {
 
 Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
                               MCVector<ColumnDesc>* col_descs,
-                              int* num_key_columns,
-                              int* num_hash_key_columns,
                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
   const YBSchema& schema = table->schema();
   const int num_columns = schema.num_columns();
-  if (num_key_columns != nullptr) {
-    *num_key_columns = schema.num_key_columns();
-  }
-  if (num_hash_key_columns != nullptr) {
-    *num_hash_key_columns = schema.num_hash_key_columns();
-  }
+  const int num_key_columns = schema.num_key_columns();
+  const int num_hash_key_columns = schema.num_hash_key_columns();
 
   if (col_descs != nullptr) {
     col_descs->resize(num_columns);
@@ -73,8 +63,8 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
       (*col_descs)[idx].Init(idx,
                              schema.ColumnId(idx),
                              col.name(),
-                             idx < *num_hash_key_columns,
-                             idx < *num_key_columns,
+                             idx < num_hash_key_columns,
+                             idx < num_key_columns,
                              col.is_static(),
                              col.is_counter(),
                              col.type(),
@@ -108,8 +98,6 @@ Status SemContext::LookupTable(const YBTableName& name,
                                shared_ptr<YBTable>* table,
                                bool* is_system,
                                MCVector<ColumnDesc>* col_descs,
-                               int* num_key_columns,
-                               int* num_hash_key_columns,
                                MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
   *is_system = name.is_system();
   if (*is_system && write_table && client::FLAGS_yb_system_namespace_readonly) {
@@ -123,17 +111,14 @@ Status SemContext::LookupTable(const YBTableName& name,
       (*table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
-  set_current_table(*table);
 
-  return LoadSchema(*table, col_descs, num_key_columns, num_hash_key_columns, column_definitions);
+  return LoadSchema(*table, col_descs, column_definitions);
 }
 
 Status SemContext::LookupIndex(const TableId& index_id,
                                const YBLocation& loc,
                                shared_ptr<YBTable>* index_table,
                                MCVector<ColumnDesc>* col_descs,
-                               int* num_key_columns,
-                               int* num_hash_key_columns,
                                MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
   VLOG(3) << "Loading table descriptor for " << index_id;
   *index_table = GetTableDesc(index_id);
@@ -142,10 +127,8 @@ Status SemContext::LookupIndex(const TableId& index_id,
       (*index_table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
-  set_current_table(*index_table);
 
-  return LoadSchema(*index_table, col_descs, num_key_columns, num_hash_key_columns,
-                    column_definitions);
+  return LoadSchema(*index_table, col_descs, column_definitions);
 }
 
 Status SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
@@ -298,7 +281,6 @@ void SemContext::Reset() {
   symtab_.clear();
   current_processing_id_ = SymbolEntry();
   current_dml_stmt_ = nullptr;
-  current_table_ = nullptr;
   sem_state_ = nullptr;
 }
 

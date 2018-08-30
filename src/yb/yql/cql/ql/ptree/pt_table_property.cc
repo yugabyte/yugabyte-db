@@ -112,14 +112,13 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, OBJECT_TABLE));
 
     bool is_system; // ignored
-    int num_key_cols, num_hash_key_cols;
     MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
     RETURN_NOT_OK(sem_context->LookupTable(copartition_table_name_->ToTableName(),
                                            copartition_table_name_->loc(), /* write_table = */ true,
                                            &copartition_table_, &is_system,
-                                           &copartition_table_columns, &num_key_cols,
-                                           &num_hash_key_cols));
-    if (sem_context->current_create_table_stmt()->hash_columns().size() != num_hash_key_cols) {
+                                           &copartition_table_columns));
+    if (sem_context->current_create_table_stmt()->hash_columns().size() !=
+        copartition_table_->schema().num_hash_key_columns()) {
       return sem_context->Error(this, Substitute("The number of hash keys in the current table "
                                 "differ from the number of hash keys in '$0'.",
                                 copartition_table_name_->ToTableName().table_name()).c_str(),

@@ -48,8 +48,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */, &table_, &is_system_ignored,
-                                         &column_descs_, &num_key_columns_, &num_hash_key_columns_,
-                                         &column_definitions_));
+                                         &column_descs_, &column_definitions_));
 
   // Save context state, and set "this" as current create-table statement in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -62,7 +61,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // to the primary key of the index table to make the non-unique values unique. For unique index,
   // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
-  for (int idx = 0; idx < num_key_columns_; idx++) {
+  for (int idx = 0; idx < schema.num_key_columns(); idx++) {
     const MCString col_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
     PTColumnDefinition* col = sem_context->GetColumnDefinition(col_name);
     if (!col->is_primary_key()) {
@@ -83,7 +82,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Check whether the index is local, i.e. whether the hash keys match (including being in the
   // same order).
   is_local_ = true;
-  if (num_hash_key_columns_ != hash_columns_.size()) {
+  if (schema.num_hash_key_columns() != hash_columns_.size()) {
     is_local_ = false;
   } else {
     int idx = 0;

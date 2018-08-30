@@ -61,8 +61,8 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(AnalyzeColumnArgs(sem_context));
 
   // Run error checking on the WHERE conditions.
-  RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
-  bool range_key_missing = key_where_ops_.size() < num_key_columns_;
+  RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
+  bool range_key_missing = key_where_ops_.size() < num_key_columns();
 
   // If target columns are given, range key can be omitted only if all columns targeted for
   // deletions are static. Then we must also check there are no extra conditions on the range
@@ -93,7 +93,7 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   }
 
   // Run error checking on the IF conditions.
-  RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context));
 
   // Run error checking on USING clause.
   RETURN_NOT_OK(AnalyzeUsingClause(sem_context));

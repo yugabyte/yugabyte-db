@@ -27,8 +27,6 @@ namespace ql {
 
 using strings::Substitute;
 
-const PTExpr::SharedPtr PTDmlStmt::kNullPointerRef = nullptr;
-
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      PTExpr::SharedPtr where_clause,
@@ -60,13 +58,13 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
 PTDmlStmt::~PTDmlStmt() {
 }
 
-CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
+Status PTDmlStmt::LookupTable(SemContext *sem_context) {
   return sem_context->LookupTable(table_name(), table_loc(), IsWriteOp(), &table_, &is_system_,
-                                  &table_columns_, &num_key_columns_, &num_hash_key_columns_);
+                                  &table_columns_);
 }
 
 // Node semantics analysis.
-CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
+Status PTDmlStmt::Analyze(SemContext *sem_context) {
   sem_context->set_current_dml_stmt(this);
   MemoryContext *psem_mem = sem_context->PSemMem();
   column_args_ = MCMakeShared<MCVector<ColumnArg>>(psem_mem);
@@ -75,9 +73,8 @@ CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
-                                             const PTExpr::SharedPtr& where_clause) {
-  if (where_clause == nullptr) {
+Status PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context) {
+  if (!where_clause_) {
     if (IsWriteOp()) {
       return sem_context->Error(this, "Missing partition key", ErrorCode::CQL_STATEMENT_INVALID);
     }
@@ -86,15 +83,15 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
 
   // Analyze where expression.
   if (IsWriteOp()) {
-    key_where_ops_.resize(num_key_columns_);
+    key_where_ops_.resize(num_key_columns());
   } else {
-    key_where_ops_.resize(num_hash_key_columns_);
+    key_where_ops_.resize(num_hash_key_columns());
   }
-  RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get()));
+  RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause_.get()));
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
+Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   // Construct the state variables and analyze the expression.
   MCVector<ColumnOpCounter> op_counters(sem_context->PTempMem());
   op_counters.resize(num_columns());
@@ -109,7 +106,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
 
   if (IsWriteOp()) {
     // Make sure that all hash entries are referenced in where expression.
-    for (int idx = 0; idx < num_hash_key_columns_; idx++) {
+    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
       if (op_counters[idx].eq_count() == 0) {
         return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -119,28 +116,28 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
     // If writing static columns only, check that either all range key entries are referenced in the
     // where expression or none is referenced. Else, check that all range key are referenced.
     int range_keys = 0;
-    for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+    for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
       if (op_counters[idx].eq_count() != 0) {
         range_keys++;
       }
     }
     if (StaticColumnArgsOnly()) {
-      if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
+      if (range_keys != num_key_columns() - num_hash_key_columns() && range_keys != 0)
         return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       if (range_keys == 0) {
-        key_where_ops_.resize(num_hash_key_columns_);
+        key_where_ops_.resize(num_hash_key_columns());
       }
     } else {
-      if (range_keys != num_key_columns_ - num_hash_key_columns_) {
+      if (range_keys != num_key_columns() - num_hash_key_columns()) {
         if (opcode() == TreeNodeOpcode::kPTDeleteStmt) {
           // Range expression in write requests are allowed for deletes only.
-          for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+          for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
             if (op_counters[idx].eq_count() != 0) {
               where_ops_.push_front(key_where_ops_[idx]);
             }
           }
-          key_where_ops_.resize(num_hash_key_columns_);
+          key_where_ops_.resize(num_hash_key_columns());
         } else {
           return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                     ErrorCode::CQL_STATEMENT_INVALID);
@@ -151,14 +148,14 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
     bool has_incomplete_hash = false;
-    for (int idx = 0; idx < num_hash_key_columns_; idx++) {
+    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
       if (!key_where_ops_[idx].IsInitialized()) {
         has_incomplete_hash = true;
         break;
       }
     }
     if (has_incomplete_hash) {
-      for (int idx = num_hash_key_columns_ - 1; idx >= 0; idx--) {
+      for (int idx = num_hash_key_columns() - 1; idx >= 0; idx--) {
         if (key_where_ops_[idx].IsInitialized()) {
           where_ops_.push_front(key_where_ops_[idx]);
         }
@@ -167,7 +164,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
     } else {
       select_has_primary_keys_set_ = true;
       // Unset if there is a range key without a condition.
-      for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+      for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
         if (op_counters[idx].IsEmpty()) {
           select_has_primary_keys_set_ = false;
           break;
@@ -182,17 +179,16 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
-                                          const PTExpr::SharedPtr& if_clause) {
-  if (if_clause != nullptr) {
+Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
+  if (if_clause_) {
     SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
-    return if_clause->Analyze(sem_context);
+    return if_clause_->Analyze(sem_context);
   }
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
+Status PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
   if (using_clause_ == nullptr) {
     return Status::OK();
   }
@@ -201,7 +197,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
+Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   const Schema& indexed_schema = table_->InternalSchema();
   for (const auto& itr : table_->index_map()) {
     const TableId& index_id = itr.first;
@@ -235,18 +231,18 @@ bool PTDmlStmt::RequiresTransaction() const {
       table_->InternalSchema().table_properties().is_transactional();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
+Status PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
   // If not all hash columns are bound, clear hash_col_bindvars_ because the client driver will not
   // be able to compute the full hash key unless it parses the SQL statement and extracts the
   // literals also, which is not currently supported and unlikely to be.
-  if (hash_col_bindvars_.size() != num_hash_key_columns_) {
+  if (hash_col_bindvars_.size() != num_hash_key_columns()) {
     hash_col_bindvars_.clear();
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
+Status PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
 
   // If we have no args, this must be a delete modifying primary key only.
   if (column_args_->empty() && subscripted_col_args_->empty() && json_col_args_->empty()) {
@@ -255,7 +251,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   }
 
   // If we have range keys we modify the primary row.
-  for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+  for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       modifies_primary_row_ = true;
       break;
@@ -267,7 +263,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   //  - Writing to non-static columns -> modify primary row.
 
   // Check plain column args.
-  for (int idx = num_key_columns_; idx < column_args_->size(); idx++) {
+  for (int idx = num_key_columns(); idx < column_args_->size(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       if (column_args_->at(idx).desc()->is_static()) {
         modifies_static_row_ = true;
@@ -314,11 +310,11 @@ bool PTDmlStmt::StaticColumnArgsOnly() const {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
-                                               const PTRelationExpr *expr,
-                                               const ColumnDesc *col_desc,
-                                               PTExpr::SharedPtr value,
-                                               PTExprListNode::SharedPtr col_args) {
+Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
+                                       const PTRelationExpr *expr,
+                                       const ColumnDesc *col_desc,
+                                       PTExpr::SharedPtr value,
+                                       PTExprListNode::SharedPtr col_args) {
   ColumnOpCounter& counter = op_counters_->at(col_desc->index());
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
@@ -466,10 +462,10 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
-                                                     const PTRelationExpr *expr,
-                                                     PTExpr::SharedPtr value,
-                                                     PTBcall::SharedPtr call) {
+Status WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
+                                             const PTRelationExpr *expr,
+                                             PTExpr::SharedPtr value,
+                                             PTBcall::SharedPtr call) {
   switch (expr->ql_op()) {
     case QL_OP_LESS_THAN:
     case QL_OP_LESS_THAN_EQUAL:
@@ -492,9 +488,9 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
 }
 
 
-CHECKED_STATUS WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
-                                                     const PTRelationExpr *expr,
-                                                     PTExpr::SharedPtr value) {
+Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
+                                             const PTRelationExpr *expr,
+                                             PTExpr::SharedPtr value) {
   switch (expr->ql_op()) {
     case QL_OP_LESS_THAN: {
       partition_key_counter_->increase_lt();
