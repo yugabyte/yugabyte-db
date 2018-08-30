@@ -50,8 +50,8 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTUpdateStmt)
                (kPTCreateRole)
                (kPTAlterRole)
-               (kPTGrantPermission)
-               (kPTGrantRole)
+               (kPTGrantRevokePermission)
+               (kPTGrantRevokeRole)
                (kPTStartTransaction)
                (kPTCommit)
 

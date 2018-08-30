@@ -27,7 +27,7 @@ Status YQLAuthRolesVTable::RetrieveData(const QLReadRequestPB& request,
   vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<RoleInfo>> roles;
   master_->catalog_manager()->GetAllRoles(&roles);
-  for (const auto role : roles) {
+  for (const auto& role : roles) {
     auto l = role->LockForRead();
     const auto& pb = l->data().pb;
     QLRow& row = (*vtable)->Extend();
@@ -38,10 +38,8 @@ Status YQLAuthRolesVTable::RetrieveData(const QLReadRequestPB& request,
     QLValuePB members;
     QLSeqValuePB* list_value = members.mutable_list_value();
 
-    for (int i = 0; i < pb.member_of_size(); i++) {
-      const auto& member = pb.member_of(i);
+    for (const auto& member : pb.member_of()) {
       (*list_value->add_elems()).set_string_value(member);
-
     }
     RETURN_NOT_OK(SetColumnValue(kMemberOf, members, &row));
     if (pb.has_salted_hash()) {

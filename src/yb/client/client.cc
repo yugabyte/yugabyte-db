@@ -113,14 +113,14 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
-using yb::master::GrantRoleRequestPB;
-using yb::master::GrantRoleResponsePB;
+using yb::master::GrantRevokeRoleRequestPB;
+using yb::master::GrantRevokeRoleResponsePB;
 using yb::master::ListUDTypesRequestPB;
 using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
-using yb::master::GrantPermissionResponsePB;
-using yb::master::GrantPermissionRequestPB;
+using yb::master::GrantRevokePermissionResponsePB;
+using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::MasterServiceProxy;
 using yb::master::ReplicationInfoPB;
 using yb::master::TabletLocationsPB;
@@ -511,14 +511,15 @@ Status YBClient::ListNamespaces(YQLDatabase database_type, std::vector<std::stri
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
-                                         const ResourceType& resource_type,
-                                         const std::string& canonical_resource,
-                                         const char* resource_name,
-                                         const char* namespace_name,
-                                         const std::string& role_name) {
+Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
+                                       const PermissionType& permission,
+                                       const ResourceType& resource_type,
+                                       const std::string& canonical_resource,
+                                       const char* resource_name,
+                                       const char* namespace_name,
+                                       const std::string& role_name) {
   // Setting up request.
-  GrantPermissionRequestPB req;
+  GrantRevokePermissionRequestPB req;
   req.set_role_name(role_name);
   req.set_canonical_resource(canonical_resource);
   if (resource_name != nullptr) {
@@ -530,8 +531,10 @@ CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
   req.set_resource_type(resource_type);
   req.set_permission(permission);
 
-  GrantPermissionResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantPermission);
+  req.set_revoke(statement_type == GrantRevokeStatementType::REVOKE);
+
+  GrantRevokePermissionResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantRevokePermission);
   return Status::OK();
 }
 
@@ -664,15 +667,17 @@ CHECKED_STATUS YBClient::GetRedisConfig(const string& key, vector<string>* value
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::GrantRole(const std::string& granted_role_name,
-                                   const std::string& recipient_role_name) {
+CHECKED_STATUS YBClient::GrantRevokeRole(GrantRevokeStatementType statement_type,
+                                         const std::string& granted_role_name,
+                                         const std::string& recipient_role_name) {
   // Setting up request.
-  GrantRoleRequestPB req;
+  GrantRevokeRoleRequestPB req;
+  req.set_revoke(statement_type == GrantRevokeStatementType::REVOKE);
   req.set_granted_role(granted_role_name);
   req.set_recipient_role(recipient_role_name);
 
-  GrantRoleResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantRole);
+  GrantRevokeRoleResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantRevokeRole);
   return Status::OK();
 }
 

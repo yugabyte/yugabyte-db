@@ -101,9 +101,9 @@ class MasterServiceImpl : public MasterServiceIf,
                                DeleteNamespaceResponsePB* resp,
                                rpc::RpcContext rpc) override;
 
-  virtual void GrantPermission(const GrantPermissionRequestPB* req,
-                                GrantPermissionResponsePB* resp,
-                                rpc::RpcContext rpc) override;
+  virtual void GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                     GrantRevokePermissionResponsePB* resp,
+                                     rpc::RpcContext rpc) override;
 
   virtual void ListNamespaces(const ListNamespacesRequestPB* req,
                               ListNamespacesResponsePB* resp,
@@ -117,9 +117,9 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void DeleteRole(const DeleteRoleRequestPB* req,
                           DeleteRoleResponsePB* resp,
                           rpc::RpcContext rpc) override;
-  virtual void GrantRole(const GrantRoleRequestPB* req,
-                         GrantRoleResponsePB* resp,
-                         rpc::RpcContext rpc) override;
+  virtual void GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
+                               GrantRevokeRoleResponsePB* resp,
+                               rpc::RpcContext rpc) override;
   virtual void RedisConfigSet(const RedisConfigSetRequestPB* req,
                               RedisConfigSetResponsePB* resp,
                               rpc::RpcContext rpc) override;

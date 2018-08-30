@@ -117,11 +117,13 @@ message MasterErrorPB {
     ROLE_ALREADY_PRESENT = 27;
     ROLE_NOT_FOUND = 28;
     INVALID_REQUEST = 29;
+    PERMISSION_NOT_FOUND = 32;
 
     // Indicator to client that the are leaders on preferred only operation can be retried.
     CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK = 30;
 
     REDIS_CONFIG_NOT_FOUND = 31;
+
   }
 
   // The error code.
@@ -1026,16 +1028,19 @@ message DeleteNamespaceResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message GrantPermissionRequestPB {
+message GrantRevokePermissionRequestPB {
   optional PermissionType permission = 1;
   optional ResourceType resource_type = 2;
   optional string canonical_resource = 3;
   optional string resource_name = 4;
   optional NamespaceIdentifierPB namespace = 5;
   optional string role_name = 6;
+
+  // true if this is a revoke request.
+  optional bool revoke = 7 [ default = false ];
 }
 
-message GrantPermissionResponsePB {
+message GrantRevokePermissionResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
@@ -1088,12 +1093,15 @@ message DeleteRoleResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message GrantRoleRequestPB {
+message GrantRevokeRoleRequestPB {
   optional string granted_role = 1;
   optional string recipient_role = 2;
+
+  // true if this is a revoke request.
+  optional bool revoke = 3 [ default = false ];
 }
 
-message GrantRoleResponsePB {
+message GrantRevokeRoleResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
@@ -1230,7 +1238,8 @@ service MasterService {
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
 
-  rpc GrantPermission(GrantPermissionRequestPB) returns (GrantPermissionResponsePB);
+  rpc GrantRevokePermission(GrantRevokePermissionRequestPB)
+      returns (GrantRevokePermissionResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
@@ -1239,7 +1248,7 @@ service MasterService {
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
   rpc AlterRole(AlterRoleRequestPB) returns (AlterRoleResponsePB);
   rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
-  rpc GrantRole(GrantRoleRequestPB) returns (GrantRoleResponsePB);
+  rpc GrantRevokeRole(GrantRevokeRoleRequestPB) returns (GrantRevokeRoleResponsePB);
 
   rpc CreateUDType(CreateUDTypeRequestPB) returns (CreateUDTypeResponsePB);
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);

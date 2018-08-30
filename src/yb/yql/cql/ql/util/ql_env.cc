@@ -15,6 +15,7 @@
 // QLEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
@@ -146,11 +147,16 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 }
 
 //------------------------------------------------------------------------------------------------
-Status QLEnv::GrantPermission(const PermissionType& permission, const ResourceType& resource_type,
-                              const std::string& canonical_resource, const char* resource_name,
-                              const char* namespace_name, const std::string& role_name) {
-  return client_->GrantPermission(permission, resource_type, canonical_resource, resource_name,
-                                  namespace_name, role_name);
+Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
+                                    const PermissionType& permission,
+                                    const ResourceType& resource_type,
+                                    const std::string& canonical_resource,
+                                    const char* resource_name,
+                                    const char* namespace_name,
+                                    const std::string& role_name) {
+  return client_->GrantRevokePermission(statement_type, permission, resource_type,
+                                        canonical_resource, resource_name, namespace_name,
+                                        role_name);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -198,9 +204,10 @@ Status QLEnv::DeleteRole(const std::string& role_name) {
   return client_->DeleteRole(role_name);
 }
 
-Status QLEnv::GrantRole(const std::string& granted_role_name,
-                        const std::string& recipient_role_name) {
-  return client_->GrantRole(granted_role_name, recipient_role_name);
+Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
+                              const std::string& granted_role_name,
+                              const std::string& recipient_role_name) {
+  return client_->GrantRevokeRole(statement_type, granted_role_name, recipient_role_name);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -878,6 +878,8 @@ Status CatalogManager::VisitSysCatalog() {
   // empty version 0.
   RETURN_NOT_OK(PrepareDefaultClusterConfig());
 
+  BuildRecursiveRolesUnlocked();
+
   return Status::OK();
 }
 
@@ -2961,6 +2963,71 @@ vector<string> CatalogManager::DirectMemberOf(const RoleName& role) {
   return roles;
 }
 
+void CatalogManager::BuildRecursiveRoles() {
+  std::lock_guard<LockType> l_big(lock_);
+  BuildRecursiveRolesUnlocked();
+}
+
+void CatalogManager::TraverseRole(const string& role_name, unordered_set<RoleName>* granted_roles) {
+  auto iter = recursive_granted_roles_.find(role_name);
+  // This node has already been visited. So just add all the granted (directly or through
+  // inheritance) roles to granted_roles.
+  if (iter != recursive_granted_roles_.end()) {
+    if (granted_roles) {
+      const auto& set = iter->second;
+      granted_roles->insert(set.begin(), set.end());
+    }
+    return;
+  }
+
+  const auto& role_info = roles_map_[role_name];
+  auto l = role_info->LockForRead();
+  const auto& pb = l->data().pb;
+  if (pb.member_of().size() == 0) {
+    recursive_granted_roles_.insert({role_name, {}});
+  } else {
+    for (const auto& direct_granted_role : pb.member_of()) {
+      recursive_granted_roles_[role_name].insert(direct_granted_role);
+      TraverseRole(direct_granted_role, &recursive_granted_roles_[role_name]);
+    }
+    if (granted_roles) {
+      const auto& set = recursive_granted_roles_[role_name];
+      granted_roles->insert(set.begin(), set.end());
+    }
+  }
+}
+
+// Depth first search. We assume that there are no cycles in the graph of dependencies.
+void CatalogManager::BuildRecursiveRolesUnlocked() {
+  TRACE("Acquired catalog manager lock");
+  recursive_granted_roles_.clear();
+
+  // Build the first level member of map and find all the roles that have at least one member in its
+  // member_of field.
+  for (const auto& e : roles_map_) {
+    const auto& role_name = e.first;
+    if (recursive_granted_roles_.find(role_name) == recursive_granted_roles_.end()) {
+      TraverseRole(role_name, nullptr);
+    }
+  }
+}
+
+bool CatalogManager::IsMemberOf(const RoleName& granted_role, const RoleName& role) {
+  const auto& iter = recursive_granted_roles_.find(role);
+  if (iter == recursive_granted_roles_.end()) {
+    // No roles have been granted to role.
+    return false;
+  }
+
+  const auto& granted_roles = iter->second;
+  if (granted_roles.find(granted_role) == granted_roles.end()) {
+    // granted_role has not been granted directly or through inheritance to role.
+    return false;
+  }
+
+  return true;
+}
+
 NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   boost::shared_lock<LockType> l(lock_);
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
@@ -3329,34 +3396,71 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   return Status::OK();
 }
 
-Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
-                                       GrantPermissionResponsePB* resp,
-                                       rpc::RpcContext* rpc) {
-  LOG(INFO) << "Grant Permission" << RequestorString(rpc) << ": " << req->DebugString();
+namespace {
+
+// Helper class to abort mutations at the end of a scope.
+template<class PersistentDataEntryPB>
+class ScopedMutation {
+ public:
+  explicit ScopedMutation(PersistentDataEntryPB* cow_object)
+      : cow_object_(DCHECK_NOTNULL(cow_object)) {
+    cow_object->mutable_metadata()->StartMutation();
+  }
+
+  void Commit() {
+    cow_object_->mutable_metadata()->CommitMutation();
+    committed_ = true;
+  }
+
+  // Abort the mutation if it wasn't committed.
+  ~ScopedMutation() {
+    if (PREDICT_FALSE(!committed_)) {
+      cow_object_->mutable_metadata()->AbortMutation();
+    }
+  }
+
+ private:
+  PersistentDataEntryPB* cow_object_;
+  bool committed_ = false;
+};
+}  // anonymous namespace
+
+Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                             GrantRevokePermissionResponsePB* resp,
+                                             rpc::RpcContext* rpc) {
+  LOG(INFO) << (req->revoke() ? "Revoke" : "Grant") << " permission "
+            << RequestorString(rpc) << ": " << req->ShortDebugString();
   RETURN_NOT_OK(CheckOnline());
 
   std::lock_guard<LockType> l_big(lock_);
   TRACE("Acquired catalog manager lock");
   Status s;
   scoped_refptr<NamespaceInfo> ns;
-  scoped_refptr<TableInfo> tbl;
+  scoped_refptr<TableInfo> table;
 
   // Checking if resources exist.
   if (req->resource_type() == ResourceType::TABLE ||
       req->resource_type() == ResourceType::KEYSPACE) {
-    if (!req->has_namespace_()) {
-      Status s = STATUS(InvalidArgument, "No Namespace given", req->DebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    }
+    // We can't match Apache Cassandra's error because when a namespace is not provided, the error
+    // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
+    DCHECK(req->has_namespace_());
     ns = FindPtrOrNull(namespace_names_map_, req->namespace_().name());
-    if (ns == nullptr) {
-      s = STATUS(NotFound, "Namespace name not found", req->namespace_().name());
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    }
-    if (req->resource_type() == ResourceType::TABLE) {
-      tbl = FindPtrOrNull(table_names_map_, {ns->id(), req->resource_name()});
-      if (tbl == nullptr) {
-        s = STATUS(NotFound, "The table does not exist", req->resource_name());
+
+    if (req->resource_type() == ResourceType::KEYSPACE) {
+      if (ns == nullptr) {
+        // Matches Apache Cassandra's error.
+        s = STATUS_SUBSTITUTE(NotFound, "Resource <keyspace $0> doesn't exist",
+                              req->namespace_().name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      }
+    } else {
+      if (ns) {
+        table = FindPtrOrNull(table_names_map_, {ns->id(), req->resource_name()});
+      }
+      if (table == nullptr) {
+        // Matches Apache Cassandra's error.
+        s = STATUS_SUBSTITUTE(NotFound, "Resource <table $0.$1> doesn't exist",
+            req->namespace_().name(), req->resource_name());
         return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
       }
     }
@@ -3367,7 +3471,7 @@ Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
     role = FindPtrOrNull(roles_map_, req->resource_name());
     if (role == nullptr) {
       s = STATUS(NotFound,
-                 Substitute("The role $0 does not exist", req->role_name()));
+                 Substitute("Resource <role $0> does not exist", req->role_name()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
   }
@@ -3376,75 +3480,102 @@ Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
   rp = FindPtrOrNull(roles_map_, req->role_name());
   if (rp == nullptr) {
     s = STATUS(InvalidArgument,
-               Substitute("Cannot grant permission to role $0 that has not been created yet",
+               Substitute("Role $0 doesn't exist",
                           req->role_name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
   SysRoleEntryPB* metadata;
-  rp->mutable_metadata()->StartMutation();
-  metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+  {
+    ScopedMutation<RoleInfo> role_info_mutation(rp.get());
+    metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
 
-  ResourcePermissionsPB* currentResource = nullptr;
-  for (int i = 0; i < metadata->resources_size(); i++) {
-    ResourcePermissionsPB* resource = metadata->mutable_resources(i);
-    if (resource->canonical_resource() == req->canonical_resource()) {
-      currentResource = resource;
-      break;
-    }
-  }
-
-  if (currentResource == nullptr) {
-    currentResource = metadata->add_resources();
-
-    currentResource->set_canonical_resource(req->canonical_resource());
-    currentResource->set_resource_type(req->resource_type());
-    if (req->has_resource_name()) {
-      currentResource->set_resource_name(req->resource_name());
-    }
-    if (req->has_namespace_()) {
-      currentResource->set_namespace_name(req->namespace_().name());
-    }
-  }
-
-  if (req->permission() != PermissionType::ALL_PERMISSION) {
-    bool permission_found = false;
-    for (int i = 0; i < currentResource->permissions_size(); i++) {
-      const PermissionType& permission = currentResource->permissions(i);
-      if (permission == req->permission()) {
-        permission_found = true;
+    ResourcePermissionsPB* current_resource = nullptr;
+    for (int i = 0; i < metadata->resources_size(); i++) {
+      ResourcePermissionsPB* resource = metadata->mutable_resources(i);
+      if (resource->canonical_resource() == req->canonical_resource()) {
+        current_resource = resource;
         break;
       }
     }
 
-    if (!permission_found) {
-      currentResource->add_permissions(req->permission());
+    if (current_resource == nullptr) {
+      if (req->revoke()) {
+        return Status::OK();
+      }
+
+      current_resource = metadata->add_resources();
+
+      current_resource->set_canonical_resource(req->canonical_resource());
+      current_resource->set_resource_type(req->resource_type());
+      if (req->has_resource_name()) {
+        current_resource->set_resource_name(req->resource_name());
+      }
+      if (req->has_namespace_()) {
+        current_resource->set_namespace_name(req->namespace_().name());
+      }
     }
-  } else {
-    // TODO (Bristy) : Add different permissions for different resources based on role names.
-    currentResource->clear_permissions();
-    std::vector<PermissionType> all_permissions (7);
-    all_permissions = { PermissionType::ALTER_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
-        PermissionType::CREATE_PERMISSION, PermissionType::MODIFY_PERMISSION,
-        PermissionType::DROP_PERMISSION, PermissionType::SELECT_PERMISSION,
-        PermissionType::AUTHORIZE_PERMISSION };
 
-    for (int i = 0 ; i < all_permissions.size(); i++) {
-      currentResource->add_permissions(all_permissions[i]);
+    if (req->permission() != PermissionType::ALL_PERMISSION) {
+      bool permission_found = false;
+
+      // Used to store the permissions that we want to keep when the command is REVOKE.
+      vector<PermissionType> permissions;
+      for (int i = 0; i < current_resource->permissions_size(); i++) {
+        const PermissionType& permission = current_resource->permissions(i);
+        if (permission == req->permission()) {
+          permission_found = true;
+          if (!req->revoke()) break;
+        } else {
+          permissions.push_back(permission);
+        }
+      }
+
+      if (!permission_found) {
+        if (req->revoke()) {
+          return Status::OK();
+        }
+        current_resource->add_permissions(req->permission());
+      }
+
+      // Remove the permission by clearing all the permissions and inserting those that didn't match
+      // the requested permission.
+      if (req->revoke()) {
+        current_resource->clear_permissions();
+        for (auto permission : permissions) {
+          current_resource->add_permissions(permission);
+        }
+      }
+    } else {
+      // TODO (Bristy) : Add different permissions for different resources based on role names.
+      // For REVOKE ALL we clear all the permissions and do nothing else.
+      current_resource->clear_permissions();
+
+      if (!req->revoke()) {
+        std::vector<PermissionType> all_permissions(7);
+        all_permissions = {PermissionType::ALTER_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
+                           PermissionType::CREATE_PERMISSION, PermissionType::MODIFY_PERMISSION,
+                           PermissionType::DROP_PERMISSION, PermissionType::SELECT_PERMISSION,
+                           PermissionType::AUTHORIZE_PERMISSION};
+
+        for (int i = 0; i < all_permissions.size(); i++) {
+          current_resource->add_permissions(all_permissions[i]);
+        }
+      }
     }
-  }
 
-  s = sys_catalog_->UpdateItem(rp.get());
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute(
-        "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
-    LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
-  }
-  TRACE("Wrote Permission to sys-catalog");
+    s = sys_catalog_->UpdateItem(rp.get());
+    if (!s.ok()) {
+      s = s.CloneAndPrepend(Substitute(
+          "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
+      LOG(WARNING) << s.ToString();
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    }
+    TRACE("Wrote Permission to sys-catalog");
 
-  rp->mutable_metadata()->CommitMutation();
-  LOG(INFO) << "Modified Permission for role" << rp->id();
+    role_info_mutation.Commit();
+  }
+  LOG(INFO) << "Modified Permission for role " << rp->id();
   return Status::OK();
 }
 
@@ -3630,7 +3761,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager:: CreateRoleUnlocked(const std::string& role_name,
+CHECKED_STATUS CatalogManager::CreateRoleUnlocked(const std::string& role_name,
                                                    const std::string& salted_hash,
                                                    const bool login, const bool superuser) {
 
@@ -3659,6 +3790,7 @@ CHECKED_STATUS CatalogManager:: CreateRoleUnlocked(const std::string& role_name,
   RETURN_NOT_OK(sys_catalog_->AddItem(role.get()));
 
   l->Commit();
+  BuildRecursiveRolesUnlocked();
   return Status::OK();
 }
 
@@ -3794,6 +3926,7 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l->Commit();
+  BuildRecursiveRolesUnlocked();
 
   LOG(INFO) << "Successfully deleted role " << role->ToString()
             << " per request from " << RequestorString(rpc);
@@ -3801,70 +3934,109 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::GrantRole(const GrantRoleRequestPB* req,
-                                 GrantRoleResponsePB* resp,
-                                 rpc::RpcContext* rpc) {
+Status CatalogManager::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
+                                       GrantRevokeRoleResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
 
-  LOG(INFO) << "Servicing GrantRole request from " << RequestorString(rpc)
-            << ": " << req->ShortDebugString();
+  LOG(INFO) << "Servicing " << (req->revoke() ? "RevokeRole" : "GrantRole")
+            << " request from " << RequestorString(rpc) << ": " << req->ShortDebugString();
   RETURN_NOT_OK(CheckOnline());
+
+  // Cannot grant or revoke itself.
+  if (req->granted_role() == req->recipient_role()) {
+    if (req->revoke()) {
+      // Ignore the request. This is what Apache Cassandra does.
+      return Status::OK();
+    }
+    auto s = STATUS(InvalidArgument,
+                    Substitute("$0 is a member of $1", req->recipient_role(), req->granted_role()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
   Status s;
-  bool role_found = false;
+  // If the request is revoke, we need to create a new list of the roles req->recipient_role()
+  // is member of in which we exclude req->granted_role().
   if (!req->has_granted_role() || !req->has_recipient_role()) {
     s = STATUS(InvalidArgument, "No role name given", req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
   {
+    constexpr char role_not_found_msg_str[] = "$0 doesn't exist";
     TRACE("Acquired catalog manager lock");
     std::lock_guard<LockType> l_big(lock_);
-    if (FindPtrOrNull(roles_map_, req->granted_role()) == nullptr) {
-      s = STATUS(NotFound,
-                 Substitute("Role $0 does not exist", req->granted_role()));
+
+    scoped_refptr<RoleInfo> granted_role;
+    granted_role = FindPtrOrNull(roles_map_, req->granted_role());
+    if (granted_role == nullptr) {
+      s = STATUS(NotFound, Substitute(role_not_found_msg_str, req->granted_role()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
-    scoped_refptr<RoleInfo> rp;
-    rp = FindPtrOrNull(roles_map_, req->recipient_role());
-    if (rp == nullptr) {
-      s = STATUS(NotFound,
-                 Substitute("Role $0 does not exist", req->recipient_role()));
+    scoped_refptr<RoleInfo> recipient_role;
+    recipient_role = FindPtrOrNull(roles_map_, req->recipient_role());
+    if (recipient_role == nullptr) {
+      s = STATUS(NotFound, Substitute(role_not_found_msg_str, req->recipient_role()));
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
     // Both roles are present.
-    SysRoleEntryPB *metadata;
-    rp->mutable_metadata()->StartMutation();
-    metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+    SysRoleEntryPB* metadata;
+    {
+      ScopedMutation<RoleInfo> role_info_mutation(recipient_role.get());
+      metadata = &recipient_role->mutable_metadata()->mutable_dirty()->pb;
 
-    for (int i = 0; i < metadata->member_of_size(); i++) {
-      if (metadata->member_of(i) == req->granted_role()) {
-        role_found = true;
-        break;
+      // When revoking a role, the granted role has to be a direct member of the recipient role,
+      // but when granting a role, if the recipient role has been granted to the granted role either
+      // directly or through inheritance, we will return an error.
+      if (req->revoke()) {
+        bool direct_member = false;
+        vector<string> member_of_new_list;
+        for (const auto& member_of : metadata->member_of()) {
+          if (member_of == req->granted_role()) {
+            direct_member = true;
+          } else if (req->revoke()) {
+            member_of_new_list.push_back(member_of);
+          }
+        }
+
+        if (!direct_member) {
+          s = STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a member of $1",
+                                req->recipient_role(), req->granted_role());
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        }
+
+        metadata->clear_member_of();
+        for (auto member_of : member_of_new_list) {
+          metadata->add_member_of(std::move(member_of));
+        }
+        s = sys_catalog_->UpdateItem(recipient_role.get());
+      } else {
+        // Let's make sure that we don't have circular dependencies.
+        if (IsMemberOf(req->granted_role(), req->recipient_role()) ||
+            IsMemberOf(req->recipient_role(), req->granted_role()) ||
+            req->granted_role() == req->recipient_role()) {
+          s = STATUS_SUBSTITUTE(InvalidArgument, "$0 is a member of $1",
+                                req->recipient_role(), req->granted_role());
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        }
+        metadata->add_member_of(req->granted_role());
+        s = sys_catalog_->UpdateItem(recipient_role.get());
       }
-    }
-
-    if (!role_found) {
-      metadata->add_member_of(req->granted_role());
-      s = sys_catalog_->UpdateItem(rp.get());
       if (!s.ok()) {
         s = s.CloneAndPrepend(Substitute(
             "An error occurred while updating roles in sys-catalog: $0", s.ToString()));
         LOG(WARNING) << s.ToString();
         return CheckIfNoLongerLeaderAndSetupError(s, resp);
       }
-      TRACE("Wrote Grant Role to sys-catalog");
-      LOG(INFO) << "Modified 'member of' field of role " << rp->id();
+
+      LOG(INFO) << "Modified 'member of' field of role " << recipient_role->id();
+      role_info_mutation.Commit();
+      BuildRecursiveRolesUnlocked();
     }
-    rp->mutable_metadata()->CommitMutation();
+    TRACE("Wrote grant/revoke role to sys-catalog");
   }
 
-  if (role_found) {
-    s = STATUS(InvalidArgument,
-               Substitute("The role $0 is already a member of $1",
-                          req->granted_role(), req->recipient_role()));
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
-  }
   return Status::OK();
 }
 

@@ -22,6 +22,7 @@
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
 #include "yb/client/callbacks.h"
+#include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 
@@ -32,8 +33,8 @@
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/ql/ql_session.h"
 
-#include "yb/util/enums.h"
 #include "yb/common/common.pb.h"
+#include "yb/util/enums.h"
 #include "yb/server/hybrid_clock.h"
 
 namespace yb {
@@ -90,12 +91,14 @@ class QLEnv {
   //------------------------------------------------------------------------------------------------
   // Permission related methods.
 
-  // Grant Permission with the given arguments.
-  virtual CHECKED_STATUS GrantPermission(const PermissionType& permission,
-                                         const ResourceType& resource_type,
-                                         const std::string& canonical_resource,
-                                         const char* resource_name, const char* namespace_name,
-                                         const std::string& role_name);
+  // Grant/Revoke a permission with the given arguments.
+  virtual CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
+                                               const PermissionType& permission,
+                                               const ResourceType& resource_type,
+                                               const std::string& canonical_resource,
+                                               const char* resource_name,
+                                               const char* namespace_name,
+                                               const std::string& role_name);
 
   //------------------------------------------------------------------------------------------------
   // Keyspace related methods.
@@ -130,8 +133,9 @@ class QLEnv {
   // Delete role by name.
   virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
-  CHECKED_STATUS GrantRole(const std::string& granted_role_name,
-                           const std::string& recipient_role_name);
+  CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
+                                 const std::string& granted_role_name,
+                                 const std::string& recipient_role_name);
 
   virtual std::string CurrentRoleName() const {
     return ql_session()->current_role_name();

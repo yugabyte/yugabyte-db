@@ -32,17 +32,16 @@ Status YQLAuthRolePermissionsVTable::RetrieveData(const QLReadRequestPB& request
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->data().pb;
-    for (int i = 0; i <  pb.resources_size(); i++) {
-      const auto& rp = pb.resources(i);
+    for (const auto& resource : pb.resources()) {
       QLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(SetColumnValue(kRole, pb.role(), &row));
-      RETURN_NOT_OK(SetColumnValue(kResource, rp.canonical_resource(), &row));
+      RETURN_NOT_OK(SetColumnValue(kResource, resource.canonical_resource(), &row));
 
       QLValuePB permissions;
       QLSeqValuePB* list_value = permissions.mutable_list_value();
 
-      for (int j = 0; j < rp.permissions_size(); j++) {
-        const auto& permission = rp.permissions(j);
+      for (int j = 0; j < resource.permissions_size(); j++) {
+        const auto& permission = resource.permissions(j);
         const char* permission_name  = RoleInfo::permissionName(permission);
         if (permission_name == nullptr) {
           return STATUS(InvalidArgument,

@@ -864,10 +864,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
-  // Grant Permission to a role.
-  CHECKED_STATUS GrantPermission(const GrantPermissionRequestPB* req,
-                                 GrantPermissionResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+  // Grant/Revoke a permission to a role.
+  CHECKED_STATUS GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                       GrantRevokePermissionResponsePB* resp,
+                                       rpc::RpcContext* rpc);
 
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
@@ -903,9 +903,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const bool login, const bool superuser);
 
   // Grant one role to another role.
-  CHECKED_STATUS GrantRole(const GrantRoleRequestPB* req,
-                           GrantRoleResponsePB* resp,
-                           rpc::RpcContext* rpc);
+  CHECKED_STATUS GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
+                                 GrantRevokeRoleResponsePB* resp,
+                                 rpc::RpcContext* rpc);
   // Set Redis Config
   CHECKED_STATUS RedisConfigSet(
       const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext* rpc);
@@ -972,6 +972,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Find all the roles for which 'role' is a member of the list 'member_of'.
   std::vector<std::string> DirectMemberOf(const RoleName& role);
+
+  void TraverseRole(const string& role_name, std::unordered_set<RoleName>* granted_roles);
+
+  // Build the recursive map of roles (recursive_granted_roles_). If r1 is granted to r2, and r2
+  // is granted to r3, then recursive_granted_roles_["r3"] will contain roles r2, and r1.
+  void BuildRecursiveRoles();
+
+  void BuildRecursiveRolesUnlocked();
+
+  bool IsMemberOf(const RoleName& granted_role, const RoleName& role);
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
@@ -1504,6 +1514,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   RoleInfoMap roles_map_;
 
   // TODO (Bristy) : Implement (resource) --> (role->permissions) map
+  typedef std::unordered_map<RoleName, std::unordered_set<RoleName>> RoleMemberMap;
+
+  // role_name -> set of granted roles (including those acquired transitively).
+  RoleMemberMap recursive_granted_roles_;
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
   typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
