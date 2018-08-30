@@ -26,13 +26,23 @@ And check Java build JAR file:
   export AWS_DEFAULT_REGION=us-west-2
   export YB_EC2_KEY_PAIR_NAME=no-such-key
   ```
-* Install aws cli utility for your platform. Follow the instructions at http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+* Install aws cli utility for your mac.
+```
+  brew install awscli
+```
+* For other platforms, follow the instructions at http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+
 * Download YugaByte EE release from AWS S3.
 ```
   cd /opt/yugabyte/releases/
   aws s3 sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
 OR
   s3cmd sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
+```
+
+* Install third-parties
+```
+yb_devops_home=~/code/devops/ ~/code/devops/bin/py_wrapper ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
 ```
 
 #### On a mac, run the following:
@@ -54,10 +64,9 @@ Note: on CentOS use yum to install java, sbt, node(js), awscli, postgresql-9.6. 
   # Note: do not set any password for postgres.
   # Make postgres a daemon.
   # Check the path (and fix if it's needed) before doing it.
-  $ ln -sfv /usr/local/opt/postgresql/*.plist ~/Library/LaunchAgents
-  $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist
-  # Note: use systemctl tool on CentOS
-  # Create user and database
+  $ ln -sfv /usr/local/opt/postgresql\@9.5/*.plist ~/Library/LaunchAgents
+  $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql\@9.5.plist
+  # Create user and database (Use -U <username> in case of different usernames)
   $ createuser root
   $ createdb yugaware
 ```
@@ -90,11 +99,6 @@ yugaware=> \password
 Enter new password:
 Enter it again:
 yugaware=> \q
-```
-
-* Install third-parties
-```
-yb_devops_home=~/code/devops/ ~/code/devops/bin/py_wrapper ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
 ```
 
 ### Setup AWS credentials
