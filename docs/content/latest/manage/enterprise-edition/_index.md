@@ -13,7 +13,7 @@ menu:
     weight: 710
 ---
 
-Universe is a set of YugaByte DB nodes grouped together to form one logical distributed database. These nodes contain YugaByte software installed on the underlying IaaS instances.
+YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines etc provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one `Primary` cluster and zero or more `Read Replica` clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -72,6 +72,18 @@ Universe is a set of YugaByte DB nodes grouped together to form one logical dist
       </div>
       <div class="body">
         Upgrade universes in a rolling manner without any application impact.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="node-actions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <div class="title">Node Status and Actions</div>
+      </div>
+      <div class="body">
+        Node status and actions to transition them for node maintenance.
       </div>
     </a>
   </div>

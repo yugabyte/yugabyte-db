@@ -24,8 +24,8 @@ Your data/log/conf directories are generally stored in a separate location which
 
 ```{.sh}
 1. pkill yb-master
-2. switch binaries to new release >
-3. start the yb-master process >
+2. switch binaries to new release
+3. start the yb-master process
 4. verify in http://<any-yb-master>:7000/ that all masters are alive
 5. pause ~60 secs before upgrading next yb-master
 ```
