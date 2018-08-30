@@ -27,12 +27,12 @@ endif
 VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 
 # We support 8.1 and later.
-ifeq ($(shell echo $(VERSION) | grep -qE " 7[.]|8[.]0" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(7[.]|8[.]0)" && echo yes || echo no),yes)
 $(error pgTAP requires PostgreSQL 8.1 or later. This is $(VERSION))
 endif
 
 # Compile the C code only if we're on 8.3 or older.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][123]" && echo yes || echo no),yes)
 MODULES = src/pgtap
 endif
 
@@ -41,7 +41,7 @@ EXTRA_CLEAN += $(_IN_PATCHED)
 all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
 
 # Add extension build targets on 9.1 and up.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(8[.]|9[.]0)" && echo no || echo yes),yes)
 all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
 
 sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
@@ -89,19 +89,19 @@ $(warning     cpan TAP::Parser::SourceHandler::pgTAP)
 endif
 
 # Enum tests not supported by 8.2 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][12]" && echo yes || echo no),yes)
 TESTS   := $(filter-out test/sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out enumtap,$(REGRESS))
 endif
 
 # Values tests not supported by 8.1 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][1]" && echo yes || echo no),yes)
 TESTS   := $(filter-out test/sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 
 # Partition tests tests not supported by 9.x and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^[89][.]" && echo yes || echo no),yes)
 TESTS   := $(filter-out test/sql/partitions.sql,$(TESTS))
 REGRESS := $(filter-out partitions,$(REGRESS))
 endif
@@ -113,34 +113,34 @@ OSNAME := $(shell $(SHELL) ./getos.sh)
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "([98]|10)[.]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^([98]|10)[.]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-10.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][0123456]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][0123456]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.6.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][01234]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.4.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][012]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][012]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.2.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][01]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.1.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.]0|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.0.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.4.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][123]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.3.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][12]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.2.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^8[.][1]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.1.patch
 endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
@@ -150,24 +150,24 @@ endif
 EXTRA_CLEAN += sql/pgtap--0.97.0--0.98.0.sql
 sql/pgtap--0.97.0--0.98.0.sql: sql/pgtap--0.97.0--0.98.0.sql.in
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^[89][.]" && echo yes || echo no),yes)
 	patch -p0 < compat/9.6/pgtap--0.97.0--0.98.0.patch
 endif
 
 EXTRA_CLEAN += sql/pgtap--0.96.0--0.97.0.sql
 sql/pgtap--0.96.0--0.97.0.sql: sql/pgtap--0.96.0--0.97.0.sql.in
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][01234]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/9.4/pgtap--0.96.0--0.97.0.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.]0|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/9.0/pgtap--0.96.0--0.97.0.patch
 endif
 
 EXTRA_CLEAN += sql/pgtap--0.95.0--0.96.0.sql
 sql/pgtap--0.95.0--0.96.0.sql: sql/pgtap--0.95.0--0.96.0.sql.in
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "9[.][012]|8[.][1234]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][012]|8[.][1234])" && echo yes || echo no),yes)
 	patch -p0 < compat/9.2/pgtap--0.95.0--0.96.0.patch
 endif
 
