@@ -32,6 +32,10 @@ export default class UniverseStatus extends Component {
       return (taskItem.targetUUID === universeUUID && (taskItem.status === "Running" ||
         taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     }) : null;
+
+    if (!updateInProgress && isNonEmptyObject(universePendingTask)) {
+      this.props.fetchCurrentUniverse(universeUUID);
+    }
     if (showLabelText) {
       statusText = "Loading";
     }
