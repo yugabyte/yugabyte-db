@@ -1,6 +1,6 @@
 YugaWare ensures that YugaByte DB nodes run inside your own AWS account and are secured by a dedicated VPC and Key Pair. To that end, YugaWare will require access to your cloud infrastructure, which it can do in one of two ways:
 
-- dirrectly provide provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html)
+- directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html)
 - attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugaWare VM in the EC2 tab
 
 Once you decide which access method is right for you, it is time to consider deployment options. YugaWare currently supports 3 modes of deploying YugaByte DB nodes:

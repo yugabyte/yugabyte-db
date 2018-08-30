@@ -1,7 +1,7 @@
 ---
-title: Universe, YB-TServer, YB-Master
-linkTitle: Universe, YB-TServer, YB-Master
-description: Universe, YB-TServer, YB-Master
+title: Universe, Cluster, YB-TServer, YB-Master
+linkTitle: Universe, Cluster, YB-TServer, YB-Master
+description: Universe, Cluster, YB-TServer, YB-Master
 aliases:
   - /architecture/concepts/universe/
 menu:
@@ -15,18 +15,17 @@ menu:
 
 ### Introduction
 
-A YugaByte cluster, also referred to as a universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A YugaByte universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
 
-A YugaByte universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
+The universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
 
 - Single availability zone (AZ/rack/failure domain)
 - Multiple AZs in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
-A YugaByte *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, AZ or region
-failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
+A YugaByte *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
 
-### Components
+### Processes
 
 A YugaByte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes.
 
@@ -42,8 +41,10 @@ Below is an illustration of a simple 4-node YugaByte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
 
-Before we dive into the roles of these processes, it is useful to introduce the idea behind how data is sharded, replicated and persisted.
+## Cluster
+A YugaByte Universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing strong (synchronous) replication of the user data or are in a timeline consistent (asynchronous) replication mode. The set of nodes that are performing strong replication are referred to as the Primary cluster and other groups are called Read Replica clusters. There is always one primary cluster in a universe and there can be zero or more read replica clusters in that universe. More information is [here](../replication/#read-only-replicas).
 
+Note: In most of the docs, the term `cluster` and `universe` are used interchangeably.
 
 ## YB-TServer
 

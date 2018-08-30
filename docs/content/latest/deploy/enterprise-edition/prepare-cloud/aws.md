@@ -1,7 +1,7 @@
 
 ## 1. Create a new security group (optional)
 
-In order to access YugaWare from outside the AWS environment, you would need to enable access by assigning an appropriate seciruty group to the YugaWare machine. You will at minimum need to:
+In order to access YugaWare from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the YugaWare machine. You will at minimum need to:
 
 - Access the YugaWare instance over ssh (port tcp:22)
 - Check, manage and upgrade YugaWare (port tcp:8800)

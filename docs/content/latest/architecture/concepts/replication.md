@@ -52,15 +52,16 @@ performed as a controlled background operation without any impact to the foregro
 
 Only the tablet leader can process user-facing write and read requests. Note that while this is the
 case for strongly consistent reads, YugaByte DB offers reading from **followers** with relaxed
-guarantees which is desired in some deployment models]. All other tablet-peers are called followers
+guarantees which is desired in some deployment models. All other tablet-peers are called followers
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
 
 ## Read-only replicas
 
 In addition to the core distributed consensus based replication, YugaByte DB extends Raft to add
-read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent copy of the data inan asynchronous manner. Nodes in remote  datacenters can thus be added in "read-only" mode. This is
-primarily for cases where latency of doing a distributed consensus based write is not tolerable for
-some workloads. This read-only node (or timeline-consistent node) is still strictly better than
+read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent
+copy of the data in an asynchronous manner. Nodes in remote  datacenters can thus be added in "read-only"
+mode. This is primarily for cases where latency of doing a distributed consensus based write is not
+tolerable for some workloads. This read-only node (or timeline-consistent node) is still strictly better than
 eventual consistency, because with the latter the application's view of the data can move back and
 forth in time and is hard to program to.

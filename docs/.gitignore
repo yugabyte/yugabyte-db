@@ -5,6 +5,11 @@ public/*
 npm-debug.log
 node_modules
 
+# VIM/emacs stuff
+*.swp
+*~
+core*
+
 static/css/site.css
 static/js/site.js
 
