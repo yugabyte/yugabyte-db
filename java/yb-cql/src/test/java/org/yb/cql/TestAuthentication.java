@@ -15,12 +15,6 @@ package org.yb.cql;
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.ProtocolOptions.Compression;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.yb.AssertionWrappers.*;
@@ -30,65 +24,7 @@ import org.yb.YBTestRunner;
 import org.junit.runner.RunWith;
 
 @RunWith(value=YBTestRunner.class)
-public class TestAuthentication extends BaseCQLTest {
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    // Setting verbose level for debugging.
-    BaseCQLTest.tserverArgs = Arrays.asList("--use_cassandra_authentication=true");
-    BaseCQLTest.setUpBeforeClass();
-  }
-
-  public Cluster.Builder getDefaultClusterBuilder() {
-    // Default return cassandra/cassandra auth.
-    return super.getDefaultClusterBuilder().withCredentials("cassandra", "cassandra");
-  }
-
-  public Session getDefaultSession() {
-    Cluster.Builder cb = getDefaultClusterBuilder();
-    Cluster c = cb.build();
-    Session s = c.connect();
-    return s;
-  }
-
-  // Verifies that roleName exists in the system_auth.roles table, and that canLogin and isSuperuser
-  // match the fields 'can_login' and 'is_superuser' for this role.
-  private void verifyRole(String roleName, boolean canLogin, boolean isSuperuser)
-      throws Exception {
-    verifyRoleFields(roleName, canLogin, isSuperuser, new ArrayList<>());
-  }
-
-  private void verifyRoleFields(String roleName, boolean canLogin, boolean isSuperuser,
-                                List<String> memberOf) throws Exception {
-    Session s = getDefaultSession();
-    ResultSet rs = s.execute(
-        String.format("SELECT * FROM system_auth.roles WHERE role = '%s';", roleName));
-
-    Iterator<Row> iter = rs.iterator();
-    assertTrue(String.format("Unable to find role '%s'", roleName), iter.hasNext());
-    Row r = iter.next();
-    assertEquals(r.getBool("can_login"), canLogin);
-    assertEquals(r.getBool("is_superuser"), isSuperuser);
-    assertEquals(r.getList("member_of", String.class), memberOf);
-  }
-
-  private void testCreateRoleHelper(String roleName, String password, boolean canLogin,
-                                    boolean isSuperuser) throws Exception {
-    Session s = getDefaultSession();
-
-    // Create the role.
-    String createStmt = String.format(
-        "CREATE ROLE %s WITH PASSWORD = '%s' AND LOGIN = %s AND SUPERUSER = %s",
-        roleName, password, canLogin, isSuperuser);
-
-    s.execute(createStmt);
-
-    // Verify that we can connect using the new role.
-    checkConnectivity(true, roleName, password, !canLogin);
-
-    // Verify that the information got written into system_auth.roles correctly.
-    verifyRole(roleName, canLogin, isSuperuser);
-  }
-
+public class TestAuthentication extends BaseAuthenticationCQLTest {
   @Test(timeout = 100000)
   public void testCreateRoles() throws Exception {
     testCreateRoleHelper("role1", "$!@$q1<>?", false, false);
@@ -245,36 +181,5 @@ public class TestAuthentication extends BaseCQLTest {
     checkConnectivity(true, "fakeUser", "fakePass", Compression.SNAPPY, true);
     checkConnectivity(false, null, null, Compression.LZ4, true);
     checkConnectivity(false, null, null, Compression.SNAPPY, true);
-  }
-
-  public void checkConnectivity(
-      boolean usingAuth, String optUser, String optPass, boolean expectFailure) {
-    checkConnectivity(usingAuth, optUser, optPass, Compression.NONE, expectFailure);
-  }
-
-  public void checkConnectivity(boolean usingAuth,
-                                String optUser,
-                                String optPass,
-                                Compression compression,
-                                boolean expectFailure) {
-    // Use superclass definition to not have a default set of credentials.
-    Cluster.Builder cb = super.getDefaultClusterBuilder();
-    Cluster c = null;
-    if (usingAuth) {
-      cb = cb.withCredentials(optUser, optPass);
-    }
-    if (compression != Compression.NONE) {
-      cb = cb.withCompression(compression);
-    }
-    c = cb.build();
-    try {
-      Session s = c.connect();
-      s.execute("SELECT * FROM system_auth.roles;");
-      // If we're expecting a failure, we should NOT be in here.
-      assertFalse(expectFailure);
-    } catch (com.datastax.driver.core.exceptions.AuthenticationException e) {
-      // If we're expecting a failure, we should be in here.
-      assertTrue(expectFailure);
-    }
   }
 }

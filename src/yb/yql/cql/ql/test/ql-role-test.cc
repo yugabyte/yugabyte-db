@@ -82,26 +82,49 @@ class TestQLPermission : public QLTestBase {
     return Substitute("GRANT $0 ON ALL KEYSPACES TO $1;", permission, role_name);
   }
 
+  string RevokeAllKeyspaces(const string& permission, const string& role_name) const {
+    return Substitute("REVOKE $0 ON ALL KEYSPACES FROM $1;", permission, role_name);
+  }
+
   string GrantKeyspace(const string& permission, const string& keyspace,
                             const string& role_name) const {
     return Substitute("GRANT $0 ON KEYSPACE $1 TO $2;", permission, keyspace, role_name);
+  }
+
+  string RevokeKeyspace(const string& permission, const string& keyspace,
+                       const string& role_name) const {
+    return Substitute("REVOKE $0 ON KEYSPACE $1 FROM $2;", permission, keyspace, role_name);
   }
 
   string GrantTable(const string& permission, const string& table, const string& role_name) const {
     return Substitute("GRANT $0 ON TABLE $1 TO $2;", permission, table, role_name);
   }
 
+  string RevokeTable(const string& permission, const string& table, const string& role_name) const {
+    return Substitute("REVOKE $0 ON TABLE $1 FROM $2;", permission, table, role_name);
+  }
+
   string GrantAllRoles(const string& permission, const string& role_name) const {
     return Substitute("GRANT $0 ON ALL ROLES TO $1;", permission, role_name);
   }
 
+  string RevokeAllRoles(const string& permission, const string& role_name) const {
+    return Substitute("REVOKE $0 ON ALL ROLES FROM $1;", permission, role_name);
+  }
+
   string GrantRole(const string& permission, const string& role_resource,
-                        const string& role_name) const {
+                   const string& role_name) const {
     return Substitute("GRANT $0 ON ROLE $1 TO $2;", permission, role_resource, role_name);
   }
 
   string SelectStmt(const string& role_name) const {
     return Substitute("SELECT * FROM system_auth.role_permissions where role='$0';", role_name);
+  }
+
+  string SelectStmt(const string& role_name, const string& resource) const {
+    return Substitute(
+        "SELECT * FROM system_auth.role_permissions where role='$0' AND resource='$1';",
+        role_name, resource);
   }
 
   void CheckRowContents(const QLRow& row, const string& canonical_resource,
@@ -123,16 +146,18 @@ class TestQLPermission : public QLTestBase {
     }
   }
 
-  // Generic Select
-  void CheckPermission(TestQLProcessor* processor, const string& grant_stmt,
-                       const string& canonical_resource,
-                       const std::vector<string> &permissions, const string& role_name){
+  // Issues a GRANT or REVOKE PERMISSION statement and verifies that it was granted/revoked
+  // correctly.
+  void GrantRevokePermissionAndVerify(TestQLProcessor* processor, const string& stmt,
+                                      const string& canonical_resource,
+                                      const std::vector<string>& permissions,
+                                      const string& role_name) {
 
-    LOG (INFO) << "Running Statement" << grant_stmt;
-    Status s = processor->Run(grant_stmt);
+    LOG (INFO) << "Running statement " << stmt;
+    Status s = processor->Run(stmt);
     CHECK(s.ok());
 
-    auto select = SelectStmt(role_name);
+    auto select = SelectStmt(role_name, canonical_resource);
     s = processor->Run(select);
     CHECK(s.ok());
     auto row_block = processor->row_block();
@@ -144,13 +169,13 @@ class TestQLPermission : public QLTestBase {
 
 };
 
-TEST_F(TestQLPermission, TestGrantAll) {
+TEST_F(TestQLPermission, TestGrantRevokeAll) {
 
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
   TestQLProcessor* processor = GetQLProcessor();
-  // Ensure permission granted to proper role
+  // Ensure permission granted to proper role.
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
   const string role_name_3 = "test_role_3";
@@ -162,17 +187,19 @@ TEST_F(TestQLPermission, TestGrantAll) {
   const string grant_stmt = GrantAllKeyspaces("SELECT", role_name);
   std::vector<string> permissions_keyspaces = { "SELECT" };
 
-  CheckPermission(processor, grant_stmt, canonical_resource_keyspaces, permissions_keyspaces,
-                  role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource_keyspaces,
+                                 permissions_keyspaces, role_name);
 
-  // Ensure no permission granted to non-existent role
+  // Ensure no permission granted to non-existent role.
   const string grant_stmt2 = GrantAllKeyspaces("MODIFY", role_name_3);
   EXEC_INVALID_STMT_MSG(grant_stmt2, "Invalid Argument");
 
-  // Check Multiple resources
+  // Check multiple resources.
   const string canonical_resource_roles = "roles";
   const string grant_stmt3 = GrantAllRoles("DESCRIBE", role_name);
   std::vector<string> permissions_roles = { "DESCRIBE" };
+  GrantRevokePermissionAndVerify(processor, grant_stmt3,
+                                 canonical_resource_roles, permissions_roles, role_name);
 
   Status s = processor->Run(grant_stmt3);
   CHECK(s.ok());
@@ -182,18 +209,42 @@ TEST_F(TestQLPermission, TestGrantAll) {
   CHECK(s.ok());
 
   auto row_block = processor->row_block();
-  EXPECT_EQ(2, row_block->row_count());  // 2 Resources found
+  EXPECT_EQ(2, row_block->row_count());  // 2 Resources found.
 
   QLRow& keyspaces_row = row_block->row(0);
   QLRow& roles_row = row_block->row(1);
   CheckRowContents(roles_row, canonical_resource_roles, permissions_roles, role_name);
   CheckRowContents(keyspaces_row, canonical_resource_keyspaces, permissions_keyspaces, role_name);
 
+  // Grant another permission to test_role on all keyspaces.
+  const auto grant_drop_all_keyspaces = GrantAllKeyspaces("DROP", role_name);
+  permissions_keyspaces.push_back("DROP");
+  GrantRevokePermissionAndVerify(processor, grant_drop_all_keyspaces, canonical_resource_keyspaces,
+                                 permissions_keyspaces, role_name);
+
+  // Revoke SELECT from test_role on all keyspaces.
+  const auto revoke_select_all_keyspaces = RevokeAllKeyspaces("SELECT", role_name);
+  permissions_keyspaces = { "DROP" };
+  GrantRevokePermissionAndVerify(processor, revoke_select_all_keyspaces,
+                                 canonical_resource_keyspaces, permissions_keyspaces, role_name);
+
+  // Revoke DROP from test_role on all keyspaces.
+  const auto revoke_drop_all_keyspaces = RevokeAllKeyspaces("DROP", role_name);
+  permissions_keyspaces = {};
+  GrantRevokePermissionAndVerify(processor, revoke_drop_all_keyspaces,
+                                 canonical_resource_keyspaces, permissions_keyspaces, role_name);
+
+  // Revoke DESCRIBE from test_role on all roles.
+  const auto revoke_describe_all_roles = RevokeAllRoles("DESCRIBE", role_name);
+  permissions_roles = {};
+  GrantRevokePermissionAndVerify(processor, revoke_describe_all_roles,
+                                 canonical_resource_roles, permissions_keyspaces, role_name);
+
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
 }
 
-TEST_F(TestQLPermission, TestGrantKeyspace) {
+TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
@@ -207,36 +258,61 @@ TEST_F(TestQLPermission, TestGrantKeyspace) {
 
   const string grant_stmt = GrantKeyspace("SELECT",  keyspace1, role_name);
   std::vector<string> permissions = { "SELECT" };
-  CheckPermission(processor, grant_stmt, canonical_resource, permissions, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions,
+                                 role_name);
 
-  // Grant Multiple Permissions
+  // Grant multiple permissions.
   const string grant_stmt2 = GrantKeyspace("MODIFY",  keyspace1, role_name);
   permissions.push_back("MODIFY");
-  CheckPermission(processor, grant_stmt2, canonical_resource, permissions, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt2, canonical_resource, permissions,
+                                 role_name);
 
   const string grant_stmt3 = GrantKeyspace("CREATE",  keyspace1, role_name);
   permissions.push_back("CREATE");
-  CheckPermission(processor, grant_stmt3, canonical_resource, permissions, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt3, canonical_resource, permissions,
+                                 role_name);
 
-  // Keyspace not present
+  // Revoke "CREATE" permission on keyspace1 from test_role.
+  const auto revoke_create_stmt = RevokeKeyspace("CREATE", keyspace1, role_name);
+  permissions.pop_back();
+  GrantRevokePermissionAndVerify(processor, revoke_create_stmt, canonical_resource, permissions,
+                                 role_name);
+
+  // Revoke "MODIFY" permission on keyspace1 from test_role.
+  const auto revoke_modify_stmt = RevokeKeyspace("MODIFY", keyspace1, role_name);
+  permissions.pop_back();
+  GrantRevokePermissionAndVerify(processor, revoke_modify_stmt, canonical_resource, permissions,
+                                 role_name);
+
+  // Invalid keyspace.
   const string keyspace2 = "keyspace2";
   const string grant_stmt4 = GrantKeyspace("ALTER", keyspace2, role_name);
   EXEC_INVALID_STMT_MSG(grant_stmt4, "Resource Not Found");
 
-  // Grant All permissions
+  const string revoke_invalid_stmt = GrantKeyspace("ALTER", keyspace2, role_name);
+  EXEC_INVALID_STMT_MSG(revoke_invalid_stmt, "Resource Not Found");
+
+  // Grant all the permissions.
   const string role_name_2 = "test_role_2";
   CreateRole(processor, role_name_2);
   const string grant_stmt5 = GrantKeyspace("ALL",  keyspace1, role_name_2);
   std::vector<string> permissions_2 =
       { "ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT" };
-  CheckPermission(processor, grant_stmt5, canonical_resource, permissions_2, role_name_2);
+  GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource, permissions_2,
+                                 role_name_2);
+
+  // Revoke all the permissions.
+  const auto revoke_all_stmt = RevokeKeyspace("ALL", keyspace1, role_name_2);
+  permissions_2.clear();
+  GrantRevokePermissionAndVerify(processor, revoke_all_stmt, canonical_resource, permissions_2,
+                                 role_name_2);
 
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_MSG(grant_stmt4, "Unauthorized");
 }
 
-TEST_F(TestQLPermission, TestGrantRole) {
+TEST_F(TestQLPermission, TestGrantToRole) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
@@ -251,7 +327,7 @@ TEST_F(TestQLPermission, TestGrantRole) {
   const string canonical_resource = "roles/" + role_name_2;
   const string grant_stmt = GrantRole("AUTHORIZE", role_name_2, role_name);
   std::vector<string> permissions = { "AUTHORIZE" };
-  CheckPermission(processor, grant_stmt, canonical_resource, permissions, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions, role_name);
 
   // Resource (role) not present
   const string role_name_3 = "test_role_3";
@@ -262,12 +338,12 @@ TEST_F(TestQLPermission, TestGrantRole) {
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
 }
 
-TEST_F(TestQLPermission, TestGrantTable) {
+TEST_F(TestQLPermission, TestGrantRevokeTable) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
   TestQLProcessor* processor = GetQLProcessor();
-  // Ensure permission granted to proper role
+  // Ensure permission granted to proper role.
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
   const string table1 = "table1";
@@ -279,19 +355,40 @@ TEST_F(TestQLPermission, TestGrantTable) {
   const string canonical_resource = "data/keyspace1/table1";
   const string grant_stmt = GrantTable("MODIFY", "keyspace1.table1", role_name);
   std::vector<string> permissions = { "MODIFY" };
-  CheckPermission(processor, grant_stmt, canonical_resource, permissions, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions, role_name);
 
-  // keyspace absent
-  const string grant_stmt2 = GrantTable("SELECT", "keyspace2.table1", role_name);
+  // Grant with keyspace not provided.
+  const auto grant_stmt2 = GrantTable("SELECT", "table1", role_name);
   EXEC_INVALID_STMT_MSG(grant_stmt2, "Resource Not Found");
 
-  // Table absent
-  const string grant_stmt3 = GrantTable("SELECT", "keyspace1.table2", role_name);
+  // Grant with invalid keyspace.
+  const string grant_stmt3 = GrantTable("SELECT", "keyspace2.table1", role_name);
   EXEC_INVALID_STMT_MSG(grant_stmt3, "Resource Not Found");
+
+  // Grant with invalid table.
+  const string grant_stmt4 = GrantTable("SELECT", "keyspace1.table2", role_name);
+  EXEC_INVALID_STMT_MSG(grant_stmt4, "Resource Not Found");
+
+  // Revoke with keyspace not provided.
+  const auto invalid_revoke1 = RevokeTable("SELECT", "table1", role_name);
+  EXEC_INVALID_STMT_MSG(invalid_revoke1, "Resource Not Found");
+
+  // Revoke with invalid keyspace.
+  const auto invalid_revoke2 = RevokeTable("SELECT", "someKeyspace.table1", role_name);
+  EXEC_INVALID_STMT_MSG(invalid_revoke2, "Resource Not Found");
+
+  // Revoke with invalid table.
+  const auto invalid_revoke3 = RevokeTable("SELECT", "keyspace1.someTable", role_name);
+  EXEC_INVALID_STMT_MSG(invalid_revoke3, "Resource Not Found");
+
+  const string revoke = RevokeTable("MODIFY", "keyspace1.table1", role_name);
+  // No permissions on keyspace1.table1 should remain for role test_role.
+  permissions = {};
+  GrantRevokePermissionAndVerify(processor, revoke, canonical_resource, permissions, role_name);
 
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
-  EXEC_INVALID_STMT_MSG(grant_stmt2, "Unauthorized");
+  EXEC_INVALID_STMT_MSG(grant_stmt3, "Unauthorized");
 }
 
 class TestQLRole : public QLTestBase {
@@ -317,7 +414,11 @@ class TestQLRole : public QLTestBase {
   }
 
   static const string GrantStmt(const string& role, const string& recipient) {
-    return Substitute("GRANT $0 to $1", role, recipient);
+    return Substitute("GRANT $0 TO $1", role, recipient);
+  }
+
+  static const string RevokeStmt(const string& role, const string& recipient) {
+    return Substitute("REVOKE $0 FROM $1", role, recipient);
   }
 
   void CreateRole(TestQLProcessor* processor, const string& role_name) {
@@ -330,6 +431,13 @@ class TestQLRole : public QLTestBase {
   void GrantRole(TestQLProcessor* processor, const string& role, const string& recipient) {
     const string grant_stmt = GrantStmt(role, recipient);
     Status s = processor->Run(grant_stmt);
+    CHECK(s.ok());
+  }
+
+  void RevokeRole(TestQLProcessor* processor, const string& role, const string& recipient) {
+    const string revoke_stmt = RevokeStmt(role, recipient);
+    LOG(INFO) << revoke_stmt;
+    Status s = processor->Run(revoke_stmt);
     CHECK(s.ok());
   }
 
@@ -422,9 +530,17 @@ TEST_F(TestQLRole, TestGrantRole) {
   const string role_2 = "role2";
   const string role_3 = "role3";
   const string role_4 = "role4";
+  const string role_5 = "role5";
+  const string role_6 = "role6";
+  const string role_7 = "role7";
+
   CreateRole(processor, role_1);
   CreateRole(processor, role_2);
   CreateRole(processor, role_3);
+
+  CreateRole(processor, role_5);
+  CreateRole(processor, role_6);
+  CreateRole(processor, role_7);
 
   // Single Role Granted
   GrantRole(processor, role_1, role_2);
@@ -436,18 +552,93 @@ TEST_F(TestQLRole, TestGrantRole) {
   roles.insert(role_3);
   CheckGrantedRoles(processor, role_2, roles);
 
+  GrantRole(processor, role_5, role_3);
+  GrantRole(processor, role_6, role_3);
+  GrantRole(processor, role_7, role_5);
+
   // Same Grant Twice
   const string invalid_grant_1 = GrantStmt(role_1, role_2);
-  EXEC_INVALID_STMT_MSG(invalid_grant_1, "Invalid Request");
+  EXEC_INVALID_STMT_MSG(invalid_grant_1, Substitute("$0 is a member of $1", role_2, role_1));
 
   // Roles not present
   const string invalid_grant_2 = GrantStmt(role_1, role_4);
-  EXEC_INVALID_STMT_MSG(invalid_grant_2, "Role Not Found");
+  EXEC_INVALID_STMT_MSG(invalid_grant_2, Substitute("$0 doesn't exist", role_4));
 
   const string invalid_grant_3 = GrantStmt(role_4, role_2);
-  EXEC_INVALID_STMT_MSG(invalid_grant_3, "Role Not Found");
-  // TODO (Bristy) : Add in test to check circular grant of roles.
+  EXEC_INVALID_STMT_MSG(invalid_grant_3, Substitute("$0 doesn't exist", role_4));
 
+  const auto invalid_circular_reference_grant = GrantStmt(role_1, role_1);
+  EXEC_INVALID_STMT_MSG(invalid_circular_reference_grant,
+                        Substitute("$0 is a member of $1", role_1, role_1));
+
+  // It should fail because role_3 was granted to role_2.
+  const auto invalid_circular_reference_grant2 = GrantStmt(role_2, role_3);
+  // The message is backwards, but that's what Apache Cassandra outputs.
+  EXEC_INVALID_STMT_MSG(invalid_circular_reference_grant2,
+                        Substitute("$0 is a member of $1", role_3, role_2));
+
+  CreateRole(processor, role_4);
+  // Single Role Granted
+  GrantRole(processor, role_4, role_3);
+  roles = {role_4, role_5, role_6};
+  CheckGrantedRoles(processor, role_3, roles);
+
+  // It should fail because role_3 was granted to role_2, and role_4 granted to role3.
+  const auto invalid_circular_reference_grant3 = GrantStmt(role_4, role_2);
+  // The message is backwards, but that's what Apache Cassandra outputs.
+  EXEC_INVALID_STMT_MSG(invalid_circular_reference_grant3,
+                        Substitute("$0 is a member of $1", role_2, role_4));
+
+  // It should fail because role_4 was granted to role_3, and role_3 to role_2.
+  const auto invalid_circular_reference_grant4 = GrantStmt(role_2, role_4);
+  // The message is backwards, but that's what Apache Cassandra outputs.
+  EXEC_INVALID_STMT_MSG(invalid_circular_reference_grant4,
+                        Substitute("$0 is a member of $1", role_4, role_2));
+
+  // It should fail because role_7 -> role_5 -> role_3 -> role_2.
+  const auto invalid_circular_reference_grant5 = GrantStmt(role_2, role_7);
+  // The message is backwards, but that's what Apache Cassandra outputs.
+  EXEC_INVALID_STMT_MSG(invalid_circular_reference_grant5,
+                        Substitute("$0 is a member of $1", role_7, role_2));
+}
+
+TEST_F(TestQLRole, TestRevokeRole) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  const string role1 = "role1";
+  const string role2 = "role2";
+  const string role3 = "role3";
+  const string role4 = "role4";
+  CreateRole(processor, role1);
+  CreateRole(processor, role2);
+  CreateRole(processor, role3);
+
+  // Grant roles role1 and role3 to role2.
+  GrantRole(processor, role1, role2);
+  GrantRole(processor, role3, role2);
+
+  std::unordered_set<string> roles ( {role1, role3} );
+  CheckGrantedRoles(processor, role2, roles);
+
+  // Revoke role1 from role2.
+  RevokeRole(processor, role1, role2);
+
+  // Verify that the only granted role to role2 is role3.
+  roles = {role3};
+  CheckGrantedRoles(processor, role2, roles);
+
+  // Revoke the last granted role and verify it.
+  RevokeRole(processor, role3, role2);
+  roles = {};
+  CheckGrantedRoles(processor, role2, roles);
+
+  // Try to revoke it again. It should fail.
+  RevokeRole(processor, role1, role1);
+  const auto invalid_revoke = RevokeStmt(role3, role2);
+  EXEC_INVALID_STMT_MSG(invalid_revoke, Substitute("$0 is not a member of $1", role2, role3));
 }
 
 TEST_F(TestQLRole, TestRoleQuerySimple) {
@@ -626,6 +817,39 @@ TEST_F(TestQLRole, TestQLDroppedRoleIsRemovedFromMemberOfField) {
 
   roles = {};
   CheckGrantedRoles(processor, role3, roles);
+}
+
+// When a mutation doesn't get committed or aborted during a GRANT or REVOKE request, subsequent
+// requests will time out.
+TEST_F(TestQLRole, TestMutationsGetCommittedOrAborted) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  // Ensure permission granted to proper role
+  const string role1 = "test_role_1";
+  const string role2 = "test_role_2";
+
+  CreateRole(processor, role1);
+  CreateRole(processor, role2);
+
+  GrantRole(processor, role1, role2);
+
+  // Same Grant Twice
+  const auto invalid_grant = GrantStmt(role1, role2);
+  EXEC_INVALID_STMT_MSG(invalid_grant, Substitute("$0 is a member of $1", role2, role1));
+
+  // Verify that the same invalid operation fails instead of timing out.
+  EXEC_INVALID_STMT_MSG(invalid_grant, Substitute("$0 is a member of $1", role2, role1));
+
+  RevokeRole(processor, role1, role2);
+
+  // Revoke it again.
+  const auto invalid_revoke = RevokeStmt(role1, role2);
+  EXEC_INVALID_STMT_MSG(invalid_revoke, Substitute("$0 is not a member of $1", role2, role1));
+
+  // If the mutation was ended properly, this request shouldn't time out.
+  EXEC_INVALID_STMT_MSG(invalid_revoke, Substitute("$0 is not a member of $1", role2, role1));
 }
 
 } // namespace ql

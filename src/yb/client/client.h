@@ -63,6 +63,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
@@ -72,6 +73,8 @@
 #include "yb/util/threadpool.h"
 
 template<class T> class scoped_refptr;
+
+YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 
 namespace yb {
 
@@ -316,11 +319,13 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                  YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
 
   // Grant permission with given arguments.
-  CHECKED_STATUS GrantPermission(const PermissionType& permission,
-                                 const ResourceType& resource_type,
-                                 const std::string& canonical_resource,
-                                 const char* resource_name, const char* namespace_name,
-                                 const std::string& role_name);
+  CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
+                                       const PermissionType& permission,
+                                       const ResourceType& resource_type,
+                                       const std::string& canonical_resource,
+                                       const char* resource_name,
+                                       const char* namespace_name,
+                                       const std::string& role_name);
   // List all namespace names.
   // 'namespaces' is appended to only on success.
   CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
@@ -356,9 +361,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS SetRedisConfig(const string& key, const vector<string>& values);
   CHECKED_STATUS GetRedisConfig(const string& key, vector<string>* values);
 
-  // Grants a role to another role.
-  CHECKED_STATUS GrantRole(const std::string& granted_role_name,
-                           const std::string& recipient_role_name);
+  // Grants a role to another role, or revokes a role from another role.
+  CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
+                                 const std::string& granted_role_name,
+                                 const std::string& recipient_role_name);
 
   // (User-defined) type related methods.
 

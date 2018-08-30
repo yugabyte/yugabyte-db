@@ -15,12 +15,13 @@
 // Tree node definitions for GRANT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_GRANT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_GRANT_H_
+#ifndef YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
+#define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 
 #include "yb/common/schema.h"
 #include "yb/common/common.pb.h"
 #include "yb/master/master.pb.h"
+#include "yb/util/enums.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
@@ -28,36 +29,36 @@
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
-
 namespace yb {
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------
 // GRANT Role Statement
 
-class PTGrantRole : public TreeNode {
+class PTGrantRevokeRole : public TreeNode {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTGrantRole> SharedPtr;
-  typedef MCSharedPtr<const PTGrantRole> SharedPtrConst;
+  typedef MCSharedPtr<PTGrantRevokeRole> SharedPtr;
+  typedef MCSharedPtr<const PTGrantRevokeRole> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
+  PTGrantRevokeRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
+              GrantRevokeStatementType statement_type,
               const MCSharedPtr<MCString>& granted_role_name,
               const MCSharedPtr<MCString>& recipient_role_name);
-  virtual ~PTGrantRole();
+  virtual ~PTGrantRevokeRole();
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {
-    return TreeNodeOpcode::kPTGrantRole;
+    return TreeNodeOpcode::kPTGrantRevokeRole;
   }
 
   // Support for shared_ptr.
   template<typename... TypeArgs>
-  inline static PTGrantRole::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTGrantRole>(memctx, std::forward<TypeArgs>(args)...);
+  inline static PTGrantRevokeRole::SharedPtr MakeShared(MemoryContext* memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTGrantRevokeRole>(memctx, std::forward<TypeArgs>(args)...);
   }
 
   // Node semantics analysis.
@@ -66,61 +67,71 @@ class PTGrantRole : public TreeNode {
   }
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  // Name of Role that is being granted
+  // Name of role that is being granted.
   std::string granted_role_name() const {
     return granted_role_name_->c_str();
   }
 
-  // Name of role that is receiving the grant statement
+  // Name of role that is receiving the grant statement.
   std::string recipient_role_name() const {
     return recipient_role_name_->c_str();
   }
 
+  // Type of statement: GRANT or REVOKE.
+  GrantRevokeStatementType statement_type() const {
+    return statement_type_;
+  }
 
  private:
+  const GrantRevokeStatementType statement_type_;
   const MCSharedPtr<MCString>  granted_role_name_;
   const MCSharedPtr<MCString>  recipient_role_name_;
 };
 
-
 //--------------------------------------------------------------------------------------------------
 // GRANT Permission Statement
 
-class PTGrantPermission : public TreeNode {
+class PTGrantRevokePermission : public TreeNode {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTGrantPermission> SharedPtr;
-  typedef MCSharedPtr<const PTGrantPermission> SharedPtrConst;
+  typedef MCSharedPtr<PTGrantRevokePermission> SharedPtr;
+  typedef MCSharedPtr<const PTGrantRevokePermission> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantPermission(MemoryContext* memctx, YBLocation::SharedPtr loc,
+  PTGrantRevokePermission(MemoryContext* memctx, YBLocation::SharedPtr loc,
+                    GrantRevokeStatementType statement_type,
                     const MCSharedPtr<MCString>& permission_name,
                     const ResourceType& resource_type,
                     const PTQualifiedName::SharedPtr& resource_name,
                     const PTQualifiedName::SharedPtr& role_name);
-  virtual ~PTGrantPermission();
-
+  virtual ~PTGrantRevokePermission();
 
   static const std::map<std::string, PermissionType> kPermissionMap;
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {
-    return TreeNodeOpcode::kPTGrantPermission;
+    return TreeNodeOpcode::kPTGrantRevokePermission;
   }
 
   // Support for shared_ptr.
   template<typename... TypeArgs>
-  inline static PTGrantPermission::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTGrantPermission>(memctx, std::forward<TypeArgs>(args)...);
+  inline static PTGrantRevokePermission::SharedPtr MakeShared(MemoryContext* memctx,
+                                                              TypeArgs&&... args) {
+    return MCMakeShared<PTGrantRevokePermission>(memctx, std::forward<TypeArgs>(args)...);
   }
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  // Name of Role the permission is being granted to
+  // Type of statement: GRANT or REVOKE.
+  GrantRevokeStatementType statement_type() const {
+    return statement_type_;
+  }
+
+  // Name of Role the permission is being granted to.
   const PTQualifiedName::SharedPtr role_name() const {
     return role_name_;
   }
@@ -129,7 +140,7 @@ class PTGrantPermission : public TreeNode {
     return resource_type_;
   }
 
-  // Name of resource, i.e role/table/keyspace
+  // Name of resource, i.e role/table/keyspace.
   const char* resource_name() const {
     if (resource_type_ == ResourceType::ALL_ROLES ||
         resource_type_ == ResourceType::ALL_KEYSPACES) {
@@ -138,7 +149,7 @@ class PTGrantPermission : public TreeNode {
     return complete_resource_name_->last_name().c_str();
   }
 
-  // Keyspace name for tables and Keyspaces
+  // Keyspace name for tables and keyspaces.
   const char* namespace_name() const {
     if (resource_type_ == ResourceType::TABLE || resource_type_ == ResourceType::KEYSPACE) {
       return complete_resource_name_->first_name().c_str();
@@ -160,7 +171,7 @@ class PTGrantPermission : public TreeNode {
       suffix = suffix + "/" + string(resource_name());
     }
 
-    if (resource_type_ == ResourceType::ALL_ROLES ||  resource_type_ == ResourceType::ROLE) {
+    if (resource_type_ == ResourceType::ALL_ROLES || resource_type_ == ResourceType::ROLE) {
       prefix = "roles";
     } else {
       prefix = "data";
@@ -170,6 +181,7 @@ class PTGrantPermission : public TreeNode {
   }
 
  protected:
+  const GrantRevokeStatementType statement_type_;
   PermissionType permission_;
   const MCSharedPtr<MCString> permission_name_;
   const PTQualifiedName::SharedPtr complete_resource_name_;
@@ -180,4 +192,4 @@ class PTGrantPermission : public TreeNode {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_GRANT_H_
+#endif  // YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_

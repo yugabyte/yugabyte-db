@@ -63,7 +63,9 @@
 // The following code block goes into YACC generated *.hh header file.
 %code requires {
 #include <stdbool.h>
+
 #include "yb/common/common.pb.h"
+#include "yb/gutil/macros.h"
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -77,7 +79,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
-#include "yb/yql/cql/ql/ptree/pt_grant.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -89,7 +91,6 @@
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
-#include "yb/gutil/macros.h"
 
 namespace yb {
 namespace ql {
@@ -207,7 +208,10 @@ using namespace yb::ql;
                           ConstraintElem ConstraintAttr
 
                           // Create role.
-                          CreateRoleStmt AlterRoleStmt
+                          CreateRoleStmt
+
+                          // Alter role.
+                          AlterRoleStmt
 
                           // Truncate table.
                           TruncateStmt
@@ -215,8 +219,11 @@ using namespace yb::ql;
                           // Drop.
                           DropStmt
 
-                          // Grant
+                          // Grant.
                           GrantStmt GrantRoleStmt
+
+                          // Revoke.
+                          RevokeStmt RevokeRoleStmt
 
                           // Select.
                           distinct_clause opt_all_clause
@@ -445,7 +452,7 @@ using namespace yb::ql;
                           ImportForeignSchemaStmt
                           ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
-                          RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
+                          RemoveFuncStmt RemoveOperStmt RenameStmt
                           RuleActionStmt RuleActionStmtOrEmpty RuleStmt
                           SecLabelStmt
                           UnlistenStmt VacuumStmt
@@ -868,6 +875,12 @@ stmt:
     $$ = $1;
   }
   | GrantRoleStmt {
+      $$ = $1;
+  }
+  | RevokeStmt {
+     $$ = $1;
+  }
+  | RevokeRoleStmt {
       $$ = $1;
   }
   | TruncateStmt {
@@ -5422,8 +5435,6 @@ inactive_stmt:
   | RemoveFuncStmt
   | RemoveOperStmt
   | RenameStmt
-  | RevokeStmt
-  | RevokeRoleStmt
   | RuleStmt
   | SecLabelStmt
   | UnlistenStmt
@@ -7645,37 +7656,63 @@ opt_from_in:
  * GRANT and REVOKE statements
  *
  *****************************************************************************/
-/*
-GrantStmt:
-  GRANT privileges ON privilege_target TO grantee_list opt_grant_grant_option {
-  }
-;
-*/
-
 GrantStmt:
   GRANT permissions ON ALL KEYSPACES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ALL_KEYSPACES,
-                   /*keyspace_node*/ nullptr, role_node);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::ALL_KEYSPACES, /*keyspace_node*/ nullptr, role_node);
   }
   | GRANT permissions ON KEYSPACE ColId TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::KEYSPACE, keyspace_node, role_node);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::KEYSPACE, keyspace_node, role_node);
   }
   | GRANT permissions ON TABLE qualified_name TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::TABLE, $5, role_node);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::TABLE, $5, role_node);
   }
   | GRANT permissions ON ALL ROLES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ALL_ROLES,
-                   /*on_role_node*/ nullptr , role_node);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::ALL_ROLES, /*on_role_node*/ nullptr , role_node);
   }
   | GRANT permissions ON ROLE role_name TO role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ROLE, on_role_node, to_role_node);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::ROLE, on_role_node, to_role_node);
+  }
+;
+
+RevokeStmt:
+  REVOKE permissions ON ALL KEYSPACES FROM role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::ALL_KEYSPACES, /*keyspace_node*/ nullptr, role_node);
+  }
+  | REVOKE permissions ON KEYSPACE ColId FROM role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::KEYSPACE, keyspace_node, role_node);
+  }
+  | REVOKE permissions ON TABLE qualified_name FROM role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::TABLE, $5, role_node);
+  }
+  | REVOKE permissions ON ALL ROLES FROM role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::ALL_ROLES, /*on_role_node*/ nullptr , role_node);
+  }
+  | REVOKE permissions ON ROLE role_name FROM role_name {
+    PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::ROLE, on_role_node, to_role_node);
   }
 ;
 
@@ -7723,13 +7760,6 @@ opt_permission:
   /* EMPTY */ {
   }
   | PERMISSION {
-  }
-;
-
-RevokeStmt:
-  REVOKE privileges ON privilege_target FROM grantee_list opt_drop_behavior {
-  }
-  | REVOKE GRANT OPTION FOR privileges ON privilege_target FROM grantee_list opt_drop_behavior {
   }
 ;
 
@@ -7856,16 +7886,16 @@ GrantRoleStmt:
 
 GrantRoleStmt:
   GRANT role_name TO role_name {
-    $$ = MAKE_NODE(@1, PTGrantRole, $2, $4 );
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::GRANT, $2, $4);
   }
 ;
 
 RevokeRoleStmt:
-  REVOKE privilege_list FROM role_list opt_granted_by opt_drop_behavior {
-  }
-  | REVOKE ADMIN OPTION FOR privilege_list FROM role_list opt_granted_by opt_drop_behavior {
+  REVOKE role_name FROM role_name {
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::REVOKE, $2, $4);
   }
 ;
+
 /*
 opt_grant_admin_option:
   WITH ADMIN OPTION {
@@ -7915,6 +7945,7 @@ DefACLOption:
  * This should match GRANT/REVOKE, except that individual target objects
  * are not mentioned and we only allow a subset of object types.
  */
+
 DefACLAction:
   GRANT privileges ON defacl_privilege_target TO grantee_list opt_grant_grant_option {
   }

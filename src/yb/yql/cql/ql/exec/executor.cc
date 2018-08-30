@@ -195,14 +195,14 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTAlterRole:
       return ExecPTNode(static_cast<const PTAlterRole *>(tnode));
 
-    case TreeNodeOpcode::kPTGrantRole:
-      return ExecPTNode(static_cast<const PTGrantRole *>(tnode));
+    case TreeNodeOpcode::kPTGrantRevokeRole:
+      return ExecPTNode(static_cast<const PTGrantRevokeRole *>(tnode));
 
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNode(static_cast<const PTDropStmt *>(tnode));
 
-    case TreeNodeOpcode::kPTGrantPermission:
-      return ExecPTNode(static_cast<const PTGrantPermission *>(tnode));
+    case TreeNodeOpcode::kPTGrantRevokePermission:
+      return ExecPTNode(static_cast<const PTGrantRevokePermission *>(tnode));
 
     case TreeNodeOpcode::kPTSelectStmt:
       return ExecPTNode(static_cast<const PTSelectStmt *>(tnode), tnode_context);
@@ -270,8 +270,9 @@ Status Executor::ExecPTNode(const PTAlterRole *tnode) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ExecPTNode(const PTGrantRole *tnode) {
-  const Status s = ql_env_->GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
+Status Executor::ExecPTNode(const PTGrantRevokeRole* tnode) {
+  const Status s = ql_env_->GrantRevokeRole(tnode->statement_type(), tnode->granted_role_name(),
+                                            tnode->recipient_role_name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsInvalidArgument()) {
@@ -561,16 +562,18 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
   return Status::OK();
 }
 
-Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
+Status Executor::ExecPTNode(const PTGrantRevokePermission* tnode) {
   const string role_name = tnode->role_name()->QLName();
   const string canonical_resource = tnode->canonical_resource();
   const char* resource_name = tnode->resource_name();
   const char* namespace_name = tnode->namespace_name();
   ResourceType resource_type = tnode->resource_type();
   PermissionType permission = tnode->permission();
+  const auto statement_type = tnode->statement_type();
 
-  Status s = ql_env_->GrantPermission(permission, resource_type, canonical_resource,
-                                      resource_name, namespace_name, role_name);
+  Status s = ql_env_->GrantRevokePermission(statement_type, permission, resource_type,
+                                            canonical_resource, resource_name, namespace_name,
+                                            role_name);
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;

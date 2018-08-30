@@ -257,8 +257,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(GetUDTypeInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateRole);
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterRole);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteRole);
-YB_CLIENT_SPECIALIZE_SIMPLE(GrantRole);
-YB_CLIENT_SPECIALIZE_SIMPLE(GrantPermission);
+YB_CLIENT_SPECIALIZE_SIMPLE(GrantRevokeRole);
+YB_CLIENT_SPECIALIZE_SIMPLE(GrantRevokePermission);
 YB_CLIENT_SPECIALIZE_SIMPLE(RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE(RedisConfigGet);
 // These are not actually exposed outside, but it's nice to auto-add using directive.

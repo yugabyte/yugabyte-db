@@ -302,9 +302,10 @@ void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
 }
 
-void MasterServiceImpl::GrantPermission(const GrantPermissionRequestPB* req,
-                                       GrantPermissionResponsePB* resp, rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantPermission);
+void MasterServiceImpl::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                              GrantRevokePermissionResponsePB* resp,
+                                              rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokePermission);
 }
 
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
@@ -331,10 +332,10 @@ void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteRole);
 }
 
-void MasterServiceImpl::GrantRole(const GrantRoleRequestPB* req,
-                                  GrantRoleResponsePB* resp,
-                                  rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantRole);
+void MasterServiceImpl::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
+                                        GrantRevokeRoleResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokeRole);
 }
 
 void MasterServiceImpl::RedisConfigSet(
