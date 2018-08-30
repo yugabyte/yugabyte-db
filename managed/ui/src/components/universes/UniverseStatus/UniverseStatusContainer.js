@@ -2,6 +2,18 @@
 
 import { connect } from 'react-redux';
 import UniverseStatus from './UniverseStatus';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+
+const mapDispatchToProps = (dispatch) => {
+  return {
+    fetchCurrentUniverse: (universeUUID) => {
+      dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    }
+  };
+};
+
 
 function mapStateToProps(state) {
   return {
@@ -11,4 +23,4 @@ function mapStateToProps(state) {
   };
 }
 
-export default connect(mapStateToProps)(UniverseStatus);
+export default connect(mapStateToProps, mapDispatchToProps)(UniverseStatus);
