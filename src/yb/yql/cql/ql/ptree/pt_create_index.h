@@ -98,8 +98,6 @@ class PTCreateIndex : public PTCreateTable {
   std::shared_ptr<client::YBTable> table_;
   MCVector<ColumnDesc> column_descs_;
   MCVector<PTColumnDefinition::SharedPtr> column_definitions_;
-  int num_key_columns_ = 0;
-  int num_hash_key_columns_ = 0;
 };
 
 }  // namespace ql

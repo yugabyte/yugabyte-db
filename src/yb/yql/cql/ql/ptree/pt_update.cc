@@ -161,10 +161,10 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(AnalyzeColumnArgs(sem_context));
 
   // Run error checking on the WHERE conditions.
-  RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+  RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
 
   // Run error checking on the IF conditions.
-  RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context));
 
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));

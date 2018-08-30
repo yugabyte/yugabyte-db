@@ -215,19 +215,11 @@ class PTSelectStmt : public PTDmlStmt {
     return is_forward_scan_;
   }
 
-  bool has_limit() const {
-    return limit_clause_ != nullptr;
-  }
-
-  PTExpr::SharedPtr limit() const {
+  const PTExpr::SharedPtr& limit() const {
     return limit_clause_;
   }
 
-  bool has_offset() const {
-    return offset_clause_ != nullptr;
-  }
-
-  PTExpr::SharedPtr offset() const {
+  const PTExpr::SharedPtr& offset() const {
     return offset_clause_;
   }
 
@@ -254,16 +246,12 @@ class PTSelectStmt : public PTDmlStmt {
     return is_aggregate_;
   }
 
-  bool use_index() const {
-    return use_index_;
-  }
-
-  bool read_just_index() const {
-    return read_just_index_;
-  }
-
   const TableId& index_id() const {
     return index_id_;
+  }
+
+  bool covers_fully() const {
+    return covers_fully_;
   }
 
  private:
@@ -300,9 +288,8 @@ class PTSelectStmt : public PTDmlStmt {
   bool is_aggregate_ = false;
 
   // Index info.
-  bool use_index_ = false;
-  bool read_just_index_ = false;
   TableId index_id_;
+  bool covers_fully_ = false;
 };
 
 }  // namespace ql

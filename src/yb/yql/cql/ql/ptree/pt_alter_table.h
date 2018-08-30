@@ -159,9 +159,6 @@ class PTAlterTable : public TreeNode {
   MCVector<ColumnDesc> table_columns_;
   MCList<PTAlterColumnDefinition *> mod_columns_;
   MCList<PTTableProperty *> mod_props_;
-
-  int num_key_columns_;
-  int num_hash_key_columns_;
 };
 
 }  // namespace ql
