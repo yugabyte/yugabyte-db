@@ -216,7 +216,12 @@ public class MiniYBCluster implements AutoCloseable {
       Thread.sleep(200);
       count = syncClient.listTabletServers().getTabletServersCount();
     }
-    return count >= expected;
+    boolean success = count >= expected;
+    if (!success) {
+      LOG.error("Waited for " + defaultTimeoutMs + " ms for " + expected + " tablet servers " +
+                "to be online. Only found " + count + " tablet servers.");
+    }
+    return success;
   }
 
   /**
@@ -543,7 +548,7 @@ public class MiniYBCluster implements AutoCloseable {
       pathsToDelete.add(dataDirPath);
     }
 
-    long startupDeadlineMs = System.currentTimeMillis() + 60000;
+    long startupDeadlineMs = System.currentTimeMillis() + 120000;
     for (MiniYBDaemon masterProcess : masterProcesses.values()) {
       masterProcess.waitForServerStartLogMessage(startupDeadlineMs);
     }
