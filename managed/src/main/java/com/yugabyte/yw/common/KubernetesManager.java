@@ -34,13 +34,13 @@ public class KubernetesManager {
     return execCommand(providerUUID, commandList);
   }
 
-  public ShellProcessHandler.ShellResponse helmInstall(UUID providerUUID, String universePrefix) {
+  public ShellProcessHandler.ShellResponse helmInstall(UUID providerUUID, String universePrefix, String overridesFile) {
     String helmPackagePath = appConfig.getString("yb.helm.package");
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
       throw new RuntimeException("Helm Package path not provided.");
     }
     List<String> commandList = ImmutableList.of("helm",  "install",
-        helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "--wait");
+        helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile, "--wait");
     return execCommand(providerUUID, commandList);
   }
 
