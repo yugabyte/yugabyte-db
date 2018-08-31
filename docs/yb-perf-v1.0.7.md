@@ -33,8 +33,6 @@ See [YCSB results](https://github.com/YugaByte/yugabyte-db/blob/master/docs/yb-p
 
 # Detailed Breakdown
 
-Performance Summary:
-
 ## CassandraKeyValue
 
 ### Workload CassandraKeyValue with 256 writers and 0 readers:
