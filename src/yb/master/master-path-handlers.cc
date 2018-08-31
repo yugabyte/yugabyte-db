@@ -243,14 +243,14 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   *output << "<h2>Tablet Servers</h2>\n";
 
 
-  *output << "<h3 style=\"color:" << kYBOrange << "\">Placement UUID (Live): "
+  *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Primary Cluster UUID: "
           << (live_id.empty() ? kNoPlacementUUID : live_id) << "</h3>\n";
 
   TServerTable(output);
   TServerDisplay(live_id, &descs, output);
 
   for (const auto& read_replica_uuid : read_replica_uuids) {
-    *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Placement UUID (Read Replica): "
+    *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
     TServerTable(output);
     TServerDisplay(read_replica_uuid, &descs, output);
