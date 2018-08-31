@@ -16,7 +16,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.libs.Json;
 
 import java.util.UUID;
 
@@ -127,7 +126,6 @@ public class BackupUniverseTest extends CommissionerBaseTest {
   @Test
   public void testBackupTableInvalidAction() {
     TaskInfo taskInfo = submitTask(null);
-    System.out.println(Json.toJson(taskInfo));
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     verify(mockTableManager, times(0)).createBackup(any());
   }
