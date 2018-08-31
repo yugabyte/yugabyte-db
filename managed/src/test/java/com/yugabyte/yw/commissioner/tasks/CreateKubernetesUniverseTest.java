@@ -7,6 +7,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -15,7 +16,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -26,7 +26,6 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import play.libs.Json;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +71,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
+    userIntent.ybSoftwareVersion = "1.0.0";
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
@@ -135,7 +135,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(/* Create Masters */ false);
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     when(mockKubernetesManager.helmInit(any())).thenReturn(response);
-    when(mockKubernetesManager.helmInstall(any(), any())).thenReturn(response);
+    when(mockKubernetesManager.helmInstall(any(), any(), any())).thenReturn(response);
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -160,10 +160,20 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
       e.printStackTrace();
     }
+
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockKubernetesManager, times(1)).helmInit(defaultProvider.uuid);
-    verify(mockKubernetesManager, times(1)).helmInstall(defaultProvider.uuid, nodePrefix);
+    verify(mockKubernetesManager, times(1)).helmInstall(expectedUniverseUUID.capture(),
+        expectedNodePrefix.capture(), expectedOverrideFile.capture());
+    assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
+    assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
     verify(mockKubernetesManager, times(1)).getPodInfos(defaultProvider.uuid, nodePrefix);
     verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
 

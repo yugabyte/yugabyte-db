@@ -63,7 +63,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
         kubernetesManager.helmInit(defaultProvider.uuid);
         break;
       case HELM_INSTALL:
-        kubernetesManager.helmInstall(defaultProvider.uuid, "demo-universe");
+        kubernetesManager.helmInstall(defaultProvider.uuid, "demo-universe",
+            "/tmp/override.yml");
         break;
       case POD_INFO:
         kubernetesManager.getPodInfos(defaultProvider.uuid, "demo-universe");
@@ -108,7 +109,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
-        "--namespace", "demo-universe", "--name", "demo-universe", "--wait"),
+        "--namespace", "demo-universe", "--name", "demo-universe", "-f",
+        "/tmp/override.yml", "--wait"),
         command.getValue());
     assertTrue(config.getValue().isEmpty());
   }

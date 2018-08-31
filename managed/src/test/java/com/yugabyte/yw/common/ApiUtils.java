@@ -155,6 +155,7 @@ public class ApiUtils {
     UserIntent ui = new UserIntent();
     ui.regionList = ImmutableList.of(r.uuid);
     ui.provider = p.uuid.toString();
+    ui.providerType = Common.CloudType.valueOf(p.code);
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
     return ui;
