@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -12,12 +13,22 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import play.Application;
 import play.api.Play;
 import play.libs.Json;
+import org.yaml.snakeyaml.Yaml;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -51,11 +62,15 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   @Inject
   KubernetesManager kubernetesManager;
 
+  @Inject
+  Application application;
+
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   @Override
   public void initialize(ITaskParams params) {
     this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
+    this.application = Play.current().injector().instanceOf(Application.class);
     super.initialize(params);
   }
 
@@ -80,7 +95,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         kubernetesManager.helmInit(taskParams().providerUUID);
         break;
       case HELM_INSTALL:
-        kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix);
+        String overridesFile = this.generateHelmOverride();
+        kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
         break;
       case HELM_DELETE:
         kubernetesManager.helmDelete(taskParams().providerUUID, taskParams().nodePrefix);
@@ -146,5 +162,51 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     int nodeIdx = Integer.parseInt(matcher.group(1));
     return String.format("%s-%d", isMaster ? "yb-master": "yb-tserver", nodeIdx - 1);
+  }
+
+  private String generateHelmOverride() {
+    Map<String, Object> overrides = new HashMap<String, Object>();
+    Yaml yaml = new Yaml();
+    // TODO: decide if the user want to expose all the services or just master
+    overrides =(HashMap<String, Object>) yaml.load(
+        application.resourceAsStream("k8s-expose-all.yml")
+    );
+
+    Universe u = Universe.get(taskParams().universeUUID);
+    // TODO: This only takes into account primary cluster for Kuberentes, we need to
+    // address ReadReplica clusters as well.
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent;
+    InstanceType instanceType = InstanceType.get(userIntent.providerType, userIntent.instanceType);
+    if (instanceType == null) {
+      LOG.error("Unable to fetch InstanceType for {}, {}",
+          userIntent.providerType, userIntent.instanceType);
+      throw new RuntimeException("Unable to fetch InstanceType " + userIntent.providerType +
+          ": " +  userIntent.instanceType);
+    }
+
+    // Override resource limit based on instance type
+    Map<String, Object> tserverResource = new HashMap<>();
+    tserverResource.put("cpu", instanceType.numCores);
+    tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    overrides.put("resource", ImmutableMap.of(
+        "tserver", ImmutableMap.of("requests", tserverResource)
+    ));
+
+    // Override image tag based on ybsoftwareversion
+    overrides.put("Image", ImmutableMap.of("tag", userIntent.ybSoftwareVersion));
+
+    // Override num of tserver replicas based on num nodes.
+    overrides.put("replicas", ImmutableMap.of("tserver", userIntent.numNodes));
+
+    try {
+      Path tempFile = Files.createTempFile(taskParams().universeUUID.toString(), ".yml");
+      BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
+      yaml.dump(overrides, bw);
+      return tempFile.toAbsolutePath().toString();
+    } catch (IOException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Error writing Helm Override file!");
+    }
   }
 }

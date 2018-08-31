@@ -39,13 +39,15 @@ class CreateKubernetesConfiguration extends Component {
       const zoneData = [vals.zoneLabel.replace(" ", "-")];
       // TODO: we need to have this in YW backend.
       const instanceTypes = [
+        {"instanceTypeCode": "xsmall", "numCores": 2, "memSizeGB": 7.5,
+          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
         {"instanceTypeCode": "small", "numCores": 4, "memSizeGB": 7.5,
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
         {"instanceTypeCode": "medium", "numCores": 8, "memSizeGB": 15,
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "large", "numCores": 16, "memSizeGB": 30,
+        {"instanceTypeCode": "large", "numCores": 16, "memSizeGB": 15,
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "xlarge", "numCores": 32, "memSizeGB": 60,
+        {"instanceTypeCode": "xlarge", "numCores": 32, "memSizeGB": 30,
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]}
       ];
       self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypes);
