@@ -90,6 +90,10 @@ using base::SpinLockHolder;
 
 namespace yb {
 
+// We cannot initialize this inside a function that could be invoked for the first time in a signal
+// handler.
+const std::regex kStackTraceLineFormatRe(R"#(^\s*@\s+(0x[0-9a-f]+)\s+.*\n?$)#");
+
 // Sink which implements special handling for LOG(FATAL) and CHECK failures, such as disabling
 // core dumps and printing the failure stack trace into a separate file.
 unique_ptr<LogFatalHandlerSink> log_fatal_handler_sink;
@@ -179,7 +183,6 @@ void CustomGlogFailureWriter(const char* data, int size) {
   if (size == 0) {
     return;
   }
-  static const std::regex kStackTraceLineFormatRe(R"#(^\s*@\s+(0x[0-9a-f]+)\s+.*\n?$)#");
 
   std::smatch match;
   string line = string(data, size);
