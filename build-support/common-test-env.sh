@@ -1401,10 +1401,16 @@ run_java_test() {
   if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
     mkdir -p "$surefire_reports_dir"
     mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
+    set +e
     time ( set -x; mvn "${mvn_opts[@]}" ) &>"$mvn_output_path"
   else
+    set +e
     time ( set -x; mvn "${mvn_opts[@]}" )
   fi
+  local mvn_exit_code=$?
+  set -e
+
+  log "Maven exited with code $mvn_exit_code"
 
   if is_jenkins || [[ ${YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT:-} == "1" ]]; then
     # If the test is successful, all expected files exist, and no failures are found in the JUnit
@@ -1432,6 +1438,20 @@ run_java_test() {
     fi
   fi
 
+  if [[ -f $junit_xml_path ]]; then
+    # No reason to include mini cluster logs in the JUnit XML. In fact, these logs can interfere
+    # with XML parsing by Jenkins.
+    local filtered_junit_xml_path=$junit_xml_path.filtered
+    egrep -v '^(m|ts)[0-9]+[|]pid[0-9]+[|]' "$junit_xml_path" >"$filtered_junit_xml_path"
+    # See if we've got a valid XML file after filtering.
+    if xmllint "$filtered_junit_xml_path" >/dev/null; then
+      log "Filtered JUnit XML file '$junit_xml_path'"
+      mv -f "$filtered_junit_xml_path" "$junit_xml_path"
+    else
+      rm -f "$filtered_junit_xml_path"
+    fi
+  fi
+
   if should_gzip_test_logs; then
     gzip_if_exists "$test_log_path" "$mvn_output_path"
     local per_test_method_log_path
@@ -1439,6 +1459,8 @@ run_java_test() {
       gzip_if_exists "$per_test_method_log_path"
     done
   fi
+
+  return "$mvn_exit_code"
 }
 
 collect_java_tests() {
@@ -1639,6 +1661,7 @@ resolve_and_run_java_test() {
   fi
 
   if [[ ${num_test_repetitions:-1} -eq 1 ]]; then
+    # This will return an error code appropriate to the test result.
     run_java_test "$rel_module_dir" "$java_test_name"
   else
     # TODO: support enterprise case by passing rel_module_dir here.
