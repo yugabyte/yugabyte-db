@@ -148,11 +148,13 @@ spec:
           - "--rpc_bind_addresses=$(POD_IP)"
           - "--master_addresses=yb-masters:7100"
           - "--master_replication_factor={{ $root.Values.replicas.master }}"
+          - "--default_memory_limit_to_ram_ratio={{ .memory_limit_to_ram_ratio }}"
         {{ else }}
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs={{range $index := until (int ($root.Values.persistentVolume.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
           - "--tserver_master_addrs=yb-masters:7100"
           - "--tserver_master_replication_factor={{ $root.Values.replicas.master }}"
+          - "--default_memory_limit_to_ram_ratio={{ .memory_limit_to_ram_ratio }}"
         {{ end }}
         ports:
           {{- range $label, $port := .ports }}
