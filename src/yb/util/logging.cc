@@ -224,7 +224,13 @@ void ApplyFlagsInternal() {
 } // anonymous namespace
 
 void InitializeGoogleLogging(const char *arg) {
-  google::InstallFailureWriter(CustomGlogFailureWriter);
+  // TODO: re-enable this when we make stack trace symbolization async-safe, which means we have
+  // to get rid of memory allocations there. We also need to make sure that libbacktrace is
+  // async-safe.
+  static constexpr bool kUseCustomFailureWriter = false;
+  if (kUseCustomFailureWriter) {
+    google::InstallFailureWriter(CustomGlogFailureWriter);
+  }
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
