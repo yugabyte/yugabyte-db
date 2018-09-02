@@ -32,6 +32,7 @@ public class TestCQLSecure extends BaseCQLTest {
     tserverArgs = new ArrayList<String>();
     tserverArgs.add("--use_client_to_server_encryption=true");
     tserverArgs.add(String.format("--certs_for_client_dir=%s", certsDir()));
+    useRandomIp = false;
   }
 
   @BeforeClass
