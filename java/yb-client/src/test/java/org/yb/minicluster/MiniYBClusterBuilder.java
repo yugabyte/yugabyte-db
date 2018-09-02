@@ -21,6 +21,7 @@ public class MiniYBClusterBuilder {
   private int numMasters = 1;
   private int numTservers = MiniYBCluster.DEFAULT_NUM_TSERVERS;
   private int numShardsPerTServer = MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER;
+  private boolean useRandomIp = true;
   private int defaultTimeoutMs = 50000;
   private List<String> masterArgs = null;
   private List<List<String>> tserverArgs = null;
@@ -38,6 +39,11 @@ public class MiniYBClusterBuilder {
 
   public MiniYBClusterBuilder numShardsPerTServer(int numShardsPerTServer) {
     this.numShardsPerTServer = numShardsPerTServer;
+    return this;
+  }
+
+  public MiniYBClusterBuilder useRandomIp(boolean value) {
+    this.useRandomIp = value;
     return this;
   }
 
@@ -81,6 +87,6 @@ public class MiniYBClusterBuilder {
 
   public MiniYBCluster build() throws Exception {
     return new MiniYBCluster(numMasters, numTservers, defaultTimeoutMs, masterArgs, tserverArgs,
-        numShardsPerTServer, testClassName);
+        numShardsPerTServer, testClassName, useRandomIp);
   }
 }
