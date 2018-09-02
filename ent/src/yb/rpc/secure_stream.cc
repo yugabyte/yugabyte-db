@@ -39,7 +39,7 @@ const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
 
 std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
-void LockingCallback(int mode, int n, const char* /*file*/, int /*line*/) {
+__attribute__((unused)) void LockingCallback(int mode, int n, const char* /*file*/, int /*line*/) {
   CHECK_LT(static_cast<size_t>(n), crypto_mutexes.size());
   if (mode & CRYPTO_LOCK) {
     crypto_mutexes[n]->lock();
@@ -141,7 +141,7 @@ Result<detail::X509Ptr> CreateCertificate(
     return SSL_STATUS(IOError, "Failed to set certificate version: $0");
   }
 
-  ASN1_INTEGERPtr aserial(M_ASN1_INTEGER_new());
+  ASN1_INTEGERPtr aserial(ASN1_INTEGER_new());
   ASN1_INTEGER_set(aserial.get(), 0);
   if (!X509_set_serialNumber(cert.get(), aserial.get())) {
     return SSL_STATUS(IOError, "Failed to set serial number: $0");
@@ -174,13 +174,13 @@ Result<detail::X509Ptr> CreateCertificate(
     return SSL_STATUS(IOError, "Failed to set public key: $0");
   }
 
-  if (!X509_gmtime_adj(X509_get_notBefore(cert), 0)) {
+  if (!X509_gmtime_adj(X509_get_notBefore(cert.get()), 0)) {
     return SSL_STATUS(IOError, "Failed to set not before: $0");
   }
 
   const auto k1Year = 365 * 24h;
   auto seconds = std::chrono::duration_cast<std::chrono::seconds>(k1Year).count();
-  if (!X509_gmtime_adj(X509_get_notAfter(cert), seconds)) {
+  if (!X509_gmtime_adj(X509_get_notAfter(cert.get()), seconds)) {
     return SSL_STATUS(IOError, "Failed to set not after: $0");
   }
 
