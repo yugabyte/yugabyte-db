@@ -57,6 +57,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected static List<String> masterArgs = null;
   protected static List<String> tserverArgs = null;
+  protected boolean useRandomIp = true;
 
   // Comma separate describing the master addresses and ports.
   protected static String masterAddresses;
@@ -117,6 +118,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .masterArgs(masterArgs)
                       .tserverArgs(tserverArgs)
                       .numShardsPerTServer(overridableNumShardsPerTServer())
+                      .useRandomIp(useRandomIp)
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();
