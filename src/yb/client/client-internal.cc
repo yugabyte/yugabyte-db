@@ -40,6 +40,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <fstream>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -69,6 +70,8 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
+
+#include <boost/algorithm/string/predicate.hpp>
 
 DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that SelectTServer "
                  "selected the local tablet server. Also verify that ReplicaSelection is equal "
@@ -1155,6 +1158,34 @@ Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
   return Status::OK();
 }
 
+namespace {
+
+Result<std::string> ReadMasterAddressesFromFlagFile(const std::string& flag_file_path) {
+  std::ifstream input_file(flag_file_path);
+  if (!input_file) {
+    return STATUS_FORMAT(IOError, "Unable to open flag file '$0': $1",
+        flag_file_path, strerror(errno));
+  }
+  std::string line;
+
+  std::string master_addrs;
+  while (input_file.good() && std::getline(input_file, line)) {
+    static const std::string kTServerMasterAddrsFlagPrefix = "--tserver_master_addrs=";
+    if (boost::starts_with(line, kTServerMasterAddrsFlagPrefix)) {
+      master_addrs = line.c_str() + kTServerMasterAddrsFlagPrefix.size();
+    }
+  }
+
+  if (input_file.bad()) {
+    // Do not check input_file.fail() here, reaching EOF may set that.
+    return STATUS_FORMAT(IOError, "Failed reading flag file '$0': $1",
+        flag_file_path, strerror(errno));
+  }
+  return master_addrs;
+}
+
+} // anonymous namespace
+
 // Read the master addresses (from a remote endpoint or a file depending on which is specified), and
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
@@ -1177,17 +1208,15 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
               << " from REST endpoint: " << master_server_endpoint_;
   } else if (!FLAGS_flagfile.empty()) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
-    if (!RefreshFlagsFile(FLAGS_flagfile)) {
-      return STATUS_SUBSTITUTE(RuntimeError, "Couldn't load flags from file: $0", FLAGS_flagfile);
-    }
+    string master_addrs = VERIFY_RESULT(ReadMasterAddressesFromFlagFile(FLAGS_flagfile));
 
-    if (FLAGS_tserver_master_addrs.empty()) {
+    if (master_addrs.empty()) {
       return STATUS_SUBSTITUTE(IllegalState, "Couldn't find flag $0 in flagfile $1",
                                FLAGS_tserver_master_addrs, FLAGS_flagfile);
     }
     master_server_addrs_.clear();
-    master_server_addrs_.push_back(FLAGS_tserver_master_addrs);
-    LOG(INFO) << "New master addresses: " << FLAGS_tserver_master_addrs;
+    master_server_addrs_.push_back(master_addrs);
+    LOG(INFO) << "New master addresses: " << master_addrs;
   } else {
     VLOG(1) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
   }
