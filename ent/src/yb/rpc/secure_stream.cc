@@ -35,6 +35,8 @@ namespace rpc {
 
 namespace {
 
+const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
+
 std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
 void LockingCallback(int mode, int n, const char* /*file*/, int /*line*/) {
@@ -242,6 +244,9 @@ SecureContext::SecureContext() {
   DCHECK(context_);
 
   SSL_CTX_set_options(context_.get(), SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION);
+  auto res = SSL_CTX_set_session_id_context(context_.get(), kContextId, sizeof(kContextId));
+  LOG_IF(DFATAL, res != 1) << "Failed to set session id for SSL context: "
+                           << SSLErrorMessage(ERR_get_error());
 }
 
 detail::SSLPtr SecureContext::Create() const {
