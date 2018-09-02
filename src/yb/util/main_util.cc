@@ -19,9 +19,9 @@ namespace yb {
 
 void LogOrPrintStatus(const Status& status) {
   if (IsLoggingInitialized()) {
-    std::cerr << status << std::endl;
-  } else {
     LOG(ERROR) << status;
+  } else {
+    std::cerr << status << std::endl;
   }
 }
 

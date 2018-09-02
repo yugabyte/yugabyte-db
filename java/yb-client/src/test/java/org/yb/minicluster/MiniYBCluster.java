@@ -133,6 +133,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   private int numShardsPerTserver;
 
+  private boolean useRandomIp;
+
   /**
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
    * based mini clusters in external_mini_cluster.cc.
@@ -149,10 +151,12 @@ public class MiniYBCluster implements AutoCloseable {
                 List<String> masterArgs,
                 List<List<String>> tserverArgs,
                 int numShardsPerTserver,
-                String testClassName) throws Exception {
+                String testClassName,
+                boolean useRandomIp) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
     this.numShardsPerTserver = numShardsPerTserver;
+    this.useRandomIp = useRandomIp;
 
     startCluster(numMasters, numTservers, masterArgs, tserverArgs);
     startSyncClient();
@@ -256,7 +260,7 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private String getTabletServerBindAddress() throws IllegalArgumentException, IOException {
-    if (TestUtils.IS_LINUX) {
+    if (TestUtils.IS_LINUX && useRandomIp) {
       final int NUM_ATTEMPTS = 1000;
       for (int i = 1; i <= NUM_ATTEMPTS; ++i) {
         String randomBindAddress = getRandomBindAddressOnLinux();
@@ -268,22 +272,39 @@ public class MiniYBCluster implements AutoCloseable {
           "in " + NUM_ATTEMPTS + " attempts");
     }
 
-    for (int i = 1; i <= NUM_LOCALHOSTS_ON_MAC_OS_X; ++i) {
-      String bindAddress = "127.0.0." + i;
-      if (canUseForTServer(bindAddress, i == NUM_LOCALHOSTS_ON_MAC_OS_X)) {
+    return pickFirstSuitableIp(true);
+  }
+
+  private String pickFirstSuitableIp(boolean tserver) throws IOException {
+    // We have certificates with names of even IPs only, so we try to use only such IPs.
+    int idx = 2;
+    for (;;) {
+      String bindAddress = "127.0.0." + idx;
+      idx += 2;
+      boolean last = idx > NUM_LOCALHOSTS_ON_MAC_OS_X;
+      // Since this check is quite strict, we could also use it for master.
+      if (canUseForTServer(bindAddress, last)) {
         return bindAddress;
+      }
+      if (last) {
+        break;
       }
     }
 
-    throw new IOException("Cannot find a loopback IP to launch a tablet server on");
+    throw new IOException(String.format(
+        "Cannot find a loopback IP to launch a %s on", tserver ? "tablet server" : "master"));
   }
 
-  private String getMasterBindAddress() {
-    if (TestUtils.IS_LINUX) {
-      return getRandomBindAddressOnLinux();
+  private String getMasterBindAddress() throws IOException {
+    if (useRandomIp) {
+      if (TestUtils.IS_LINUX) {
+        return getRandomBindAddressOnLinux();
+      }
+      final Random rng = TestUtils.getRandomGenerator();
+      return "127.0.0." + (1 + rng.nextInt(NUM_LOCALHOSTS_ON_MAC_OS_X - 1));
     }
-    final Random rng = TestUtils.getRandomGenerator();
-    return "127.0.0." + (1 + rng.nextInt(NUM_LOCALHOSTS_ON_MAC_OS_X - 1));
+
+    return pickFirstSuitableIp(false);
   }
 
   /**
