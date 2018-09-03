@@ -28,11 +28,20 @@ import org.junit.Test;
 import org.yb.client.TestUtils;
 
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+import com.google.common.collect.ImmutableSet;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -146,6 +155,28 @@ public class CQLTester extends BaseCQLTest
     return expected;
   }
 
+  protected Object list(Object...values)
+  {
+    return Arrays.asList(values);
+  }
+
+  protected Object set(Object...values)
+  {
+    return ImmutableSet.copyOf(values);
+  }
+
+  protected Object map(Object...values)
+  {
+    if (values.length % 2 != 0)
+        throw new IllegalArgumentException("Invalid number of arguments, got " + values.length);
+
+    int size = values.length / 2;
+    Map m = new LinkedHashMap(size);
+    for (int i = 0; i < size; i++)
+        m.put(values[2 * i], values[(2 * i) + 1]);
+    return m;
+  }
+
   protected static List<String> makeRowStrings(ResultSet resultSet)
   {
     List<String> rows = new ArrayList<>();
@@ -200,12 +231,14 @@ public class CQLTester extends BaseCQLTest
       for (int j = 0; j < meta.size(); j++)
       {
         ColumnDefinitions.Definition column = meta.get(j);
-        DataType.Name type = column.getType().getName();
-        switch (type) 
+        DataType type = column.getType();
+        DataType.Name typeName = type.getName();
+        switch (typeName) 
         {
           case INT:
-            LOG.info("Row[{}, {}] = {}", i, j, actual.getInt(j));
-            assertEquals((Integer)expected[j], (Integer)actual.getInt(j));
+            Integer intActual = actual.isNull(j) ? null : actual.getInt(j);
+            LOG.info("Row[{}, {}] = {}", i, j, intActual);
+            assertEquals((Integer)expected[j], intActual);
             break;
 
           case VARCHAR:
@@ -214,8 +247,39 @@ public class CQLTester extends BaseCQLTest
             assertEquals((String)expected[j], actual.getString(j));
             break;
 
+          case SET:
+            List<DataType> setType = type.getTypeArguments();
+            DataType elementType = setType.get(0);
+            String setValue;
+            switch (elementType.getName())
+            {
+              case INT:
+                Set<Integer> intSet = actual.getSet(j, Integer.class);
+                ImmutableSet<Integer> expIntSet = (ImmutableSet<Integer>)expected[j];
+                setValue = intSet.stream().map(String::valueOf).collect(Collectors.joining(","));
+                LOG.info("Row[{}, {}] = {}", i, j, setValue);
+                assertEquals(intSet.size(), expIntSet.size());
+                assertTrue(intSet.containsAll(expIntSet));
+                break;
+
+              case VARCHAR:
+              case TEXT:
+                Set<String> strSet = actual.getSet(j, String.class);
+                ImmutableSet<String> expStrSet = (ImmutableSet<String>)expected[j];
+                setValue = strSet.stream().map(String::valueOf).collect(Collectors.joining(","));
+                LOG.info("Row[{}, {}] = {}", i, j, setValue);
+                assertEquals(strSet.size(), expStrSet.size());
+                assertTrue(strSet.containsAll(expStrSet));
+                break;
+
+              default:
+                fail(String.format("Expect INT or VARCHAR or TEXT element type of Set but got: %s", type.toString()));
+                break;
+            }
+            break;
+
           default:
-            fail(String.format("Expect INT or VARCHAR or TEXT type but got: %s", type.toString()));
+            fail(String.format("Expect INT or VARCHAR or TEXT or SET type but got: %s", type.toString()));
             break;
         }
       }
