@@ -67,6 +67,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
+  // Added constant to compute CPU burst limit
+  static final double burstVal = 1.2;
+
   @Override
   public void initialize(ITaskParams params) {
     this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
@@ -185,19 +188,37 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           ": " +  userIntent.instanceType);
     }
 
-    // Override resource limit based on instance type
+    // Override disk count and size according to user intent.
+    Map<String, Object> diskSpecs = new HashMap<>();
+    if (userIntent.deviceInfo != null) {
+      if (userIntent.deviceInfo.numVolumes != null) {
+        diskSpecs.put("count", userIntent.deviceInfo.numVolumes);
+      }
+      if (userIntent.deviceInfo.volumeSize != null) {
+        diskSpecs.put("storage", String.format("%dGi", userIntent.deviceInfo.volumeSize));
+      }
+      if (!diskSpecs.isEmpty()) {
+        overrides.put("persistentVolume", diskSpecs);
+      }
+    }
+
+    // Override resource request and limit based on instance type.
     Map<String, Object> tserverResource = new HashMap<>();
+    Map<String, Object> tserverLimit = new HashMap<>();
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    tserverLimit.put("cpu", instanceType.numCores * burstVal);
     overrides.put("resource", ImmutableMap.of(
-        "tserver", ImmutableMap.of("requests", tserverResource)
+        "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit)
     ));
 
-    // Override image tag based on ybsoftwareversion
+    // Override image tag based on ybsoftwareversion.
     overrides.put("Image", ImmutableMap.of("tag", userIntent.ybSoftwareVersion));
 
-    // Override num of tserver replicas based on num nodes.
-    overrides.put("replicas", ImmutableMap.of("tserver", userIntent.numNodes));
+    // Override num of tserver replicas based on num nodes 
+    // and num of master replicas based on replication factor.
+    overrides.put("replicas", ImmutableMap.of("tserver", userIntent.numNodes,
+        "master", userIntent.replicationFactor));
 
     try {
       Path tempFile = Files.createTempFile(taskParams().universeUUID.toString(), ".yml");
