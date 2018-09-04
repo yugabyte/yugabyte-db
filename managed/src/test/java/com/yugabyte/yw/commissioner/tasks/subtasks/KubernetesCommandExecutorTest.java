@@ -44,6 +44,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   KubernetesManager kubernetesManager;
   Provider defaultProvider;
   Universe defaultUniverse;
+  UniverseDefinitionTaskParams.UserIntent defaultUserIntent;
   InstanceType instanceType;
   String ybSoftwareVersion = "1.0.0";
   int numNodes = 3;
@@ -67,15 +68,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     instanceType = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r,
+    defaultUserIntent = getTestUserIntent(r,
         defaultProvider, instanceType, numNodes);
-    userIntent.replicationFactor = 3;
-    userIntent.masterGFlags = new HashMap<>();
-    userIntent.tserverGFlags = new HashMap<>();
-    userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    defaultUserIntent.replicationFactor = 3;
+    defaultUserIntent.masterGFlags = new HashMap<>();
+    defaultUserIntent.tserverGFlags = new HashMap<>();
+    defaultUserIntent.universeName = "demo-universe";
+    defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, "host", true));
+        ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
   }
 
   private KubernetesCommandExecutor createExecutor(KubernetesCommandExecutor.CommandType commandType) {
@@ -105,16 +106,33 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
           provideApplication().resourceAsStream("k8s-expose-all.yml")
       );
     }
+    double burstVal = 1.2;
+
+    Map<String, Object> diskSpecs = new HashMap<>();
+    if (defaultUserIntent.deviceInfo != null) {
+      if (defaultUserIntent.deviceInfo.numVolumes != null) {
+        diskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.deviceInfo.volumeSize != null) {
+        diskSpecs.put("storage", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      }
+      if (!diskSpecs.isEmpty()) {
+        expectedOverrides.put("persistentVolume", diskSpecs);
+      }
+    }
 
     Map<String, Object> tserverResource = new HashMap<>();
+    Map<String, Object> tserverLimit = new HashMap<>();
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    tserverLimit.put("cpu", instanceType.numCores * burstVal);
     expectedOverrides.put("resource", ImmutableMap.of(
-        "tserver", ImmutableMap.of("requests", tserverResource)
+        "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit)
     ));
 
     expectedOverrides.put("Image", ImmutableMap.of("tag", ybSoftwareVersion));
-    expectedOverrides.put("replicas", ImmutableMap.of("tserver", numNodes));
+    expectedOverrides.put("replicas", ImmutableMap.of("tserver", numNodes,
+        "master", defaultUserIntent.replicationFactor));
     return expectedOverrides;
   }
 
