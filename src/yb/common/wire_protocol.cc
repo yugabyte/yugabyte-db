@@ -406,6 +406,9 @@ bool UsePublicIp(const CloudInfoPB& connect_to,
                  const CloudInfoPB& connect_from) {
   auto mode = GetMode();
 
+  if (mode == UsePrivateIpMode::never) {
+    return true;
+  }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
     return true;
   }
