@@ -21,7 +21,7 @@ menu:
         <div class="title">YCQL</div>
       </div>
       <div class="body">
-        Complete reference for Cassandra-compatible Yugabyte Cloud Query Language (YCQL) API.
+        Complete reference for Cassandra-compatible <b>Y</b>ugaByte <b>C</b>loud <b>Q</b>uery <b>L</b>anguage (<b>YCQL</b>) API.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ menu:
         <div class="title">YEDIS</div>
       </div>
       <div class="body">
-        Complete reference for Redis-compatible YugabytE DIrectory Server (YEDIS) API.
+        Complete reference for Redis-compatible <b>Y</b>ugaByt<b>E</b> <b>DI</b>rectory <b>S</b>erver (<b>YEDIS</b>) API.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ menu:
         <div class="title">PostgreSQL (Beta)</div>
       </div>
       <div class="body">
-        Complete reference for PostgreSQL API.
+        Complete reference for <b>PostgreSQL</b> API.
       </div>
     </a>
   </div>
