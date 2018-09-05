@@ -23,6 +23,8 @@ public class KubernetesManager {
   @Inject
   play.Configuration appConfig;
 
+  private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}";
+
   public ShellProcessHandler.ShellResponse helmInit(UUID providerUUID) {
     Provider provider = Provider.get(providerUUID);
     Map<String, String> config = provider.getConfig();
@@ -47,6 +49,13 @@ public class KubernetesManager {
   public ShellProcessHandler.ShellResponse getPodInfos(UUID providerUUID, String universePrefix) {
     List<String> commandList = ImmutableList.of("kubectl",  "get", "pods", "--namespace", universePrefix,
         "-o", "json", "-l", "release=" + universePrefix);
+    return execCommand(providerUUID, commandList);
+  }
+
+  public ShellProcessHandler.ShellResponse getServiceIPs(UUID providerUUID, String universePrefix, boolean isMaster) {
+    String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
+    List<String> commandList = ImmutableList.of("kubectl",  "get", "svc", serviceName, "--namespace", universePrefix,
+        "-o", "jsonpath=" + SERVICE_INFO_JSONPATH);
     return execCommand(providerUUID, commandList);
   }
 

@@ -6,6 +6,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,9 +24,16 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.mvc.Controller;
 import play.mvc.Result;
 
+import static com.yugabyte.yw.models.helpers.NodeDetails.masterRpcPort;
+import static com.yugabyte.yw.models.helpers.NodeDetails.redisServerRpcPort;
+import static com.yugabyte.yw.models.helpers.NodeDetails.yqlServerRpcPort;
+
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
+
+  @Inject
+  KubernetesManager kubernetesManager;
 
   public Result get(UUID universeUUID) {
     try {
@@ -60,6 +72,13 @@ public class MetaMasterController extends Controller {
     try {
       // Lookup the entry for the instanceUUID.
       Universe universe = Universe.get(universeUUID);
+      // In case of kuberentes universe we would fetch the service ip
+      // instead of the POD ip.
+      String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
+      if (serviceIPPort != null) {
+        return ApiResponse.success(serviceIPPort);
+      }
+
       switch (type) {
         case MASTER: return ApiResponse.success(universe.getMasterAddresses());
         case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
@@ -93,6 +112,29 @@ public class MetaMasterController extends Controller {
       mNode.masterRpcPort = uNode.masterRpcPort;
 
       return mNode;
+    }
+  }
+
+  private String getKuberenetesServiceIPPort(ServerType type, Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
+    if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      return null;
+    } else {
+      ShellProcessHandler.ShellResponse r = kubernetesManager.getServiceIPs(
+          UUID.fromString(primary.userIntent.provider),
+          universeDetails.nodePrefix,
+          type == ServerType.MASTER);
+      if (r.code != 0 || r.message == null) {
+        LOG.warn("Kuberenetes getServiceIPs api failed!", r.message);
+        return null;
+      }
+      String[] ips = r.message.split("\\|");
+      int rpcPort = masterRpcPort;
+      if (!type.equals(ServerType.MASTER)) {
+        rpcPort = type == ServerType.YQLSERVER ? yqlServerRpcPort : redisServerRpcPort;
+      }
+      return String.format("%s:%d", ips[ips.length-1], rpcPort);
     }
   }
 }
