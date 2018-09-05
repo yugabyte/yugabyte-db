@@ -159,12 +159,7 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Add a statement tree node to be executed.
-  void AddTnode(const TreeNode *tnode) {
-    tnode_contexts_.emplace_back(tnode);
-  }
-
-  // Returns the context for the current tree node being executed.
-  TnodeContext& tnode_context();
+  TnodeContext* AddTnode(const TreeNode *tnode);
 
   // Return the tnode contexts being executed.
   std::list<TnodeContext>& tnode_contexts() {

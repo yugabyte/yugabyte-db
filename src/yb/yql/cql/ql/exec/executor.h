@@ -114,19 +114,19 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ExecPTNode(const PTGrantRole *tnode);
 
   // Select statement.
-  CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
-
-  // Select statement.
   CHECKED_STATUS ExecPTNode(const PTGrantPermission *tnode);
 
+  // Select statement.
+  CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context);
+
   // Insert statement.
-  CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_context);
 
   // Delete statement.
-  CHECKED_STATUS ExecPTNode(const PTDeleteStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_context);
 
   // Update statement.
-  CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context);
 
   // Truncate statement.
   CHECKED_STATUS ExecPTNode(const PTTruncateStmt *tnode);
@@ -163,6 +163,10 @@ class Executor : public QLExprExecutor {
 
   // Process async results from FlushAsync and Commit.
   void ProcessAsyncResults(bool rescheduled = false);
+
+  // Process async results from FlushAsync and Commit for a tnode. Returns true if there are new ops
+  // being buffered to be flushed.
+  Result<bool> ProcessTnodeResults(TnodeContext* tnode_context);
 
   // Process the status of executing a statement.
   CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
@@ -295,7 +299,8 @@ class Executor : public QLExprExecutor {
                                    const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                    const MCList<JsonColumnOp>& jsoncol_where_ops,
                                    const MCList<PartitionKeyOp>& partition_key_ops,
-                                   const MCList<FuncOp>& func_ops);
+                                   const MCList<FuncOp>& func_ops,
+                                   TnodeContext* tnode_context);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(QLWriteRequestPB *req,
@@ -313,8 +318,8 @@ class Executor : public QLExprExecutor {
   // Add a read/write operation for the current statement and apply it. For write operation, check
   // for inter-dependency before applying. If it is a write operation to a table with secondary
   // indexes, update them as needed.
-  CHECKED_STATUS AddOperation(const client::YBqlReadOpPtr& op);
-  CHECKED_STATUS AddOperation(const client::YBqlWriteOpPtr& op);
+  CHECKED_STATUS AddOperation(const client::YBqlReadOpPtr& op, TnodeContext *tnode_context);
+  CHECKED_STATUS AddOperation(const client::YBqlWriteOpPtr& op, TnodeContext *tnode_context);
 
   // Is this a batch returning status?
   bool IsReturnsStatusBatch() const {
@@ -322,8 +327,12 @@ class Executor : public QLExprExecutor {
   }
 
   //------------------------------------------------------------------------------------------------
-  CHECKED_STATUS UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req);
-  CHECKED_STATUS AddIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req);
+  CHECKED_STATUS UpdateIndexes(const PTDmlStmt *tnode,
+                               QLWriteRequestPB *req,
+                               TnodeContext* tnode_context);
+  CHECKED_STATUS AddIndexWriteOps(const PTDmlStmt *tnode,
+                                  const QLWriteRequestPB& req,
+                                  TnodeContext* tnode_context);
 
   //------------------------------------------------------------------------------------------------
   // Helper class to separate inter-dependent write operations.
