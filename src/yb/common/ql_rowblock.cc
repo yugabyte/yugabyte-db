@@ -22,6 +22,7 @@
 namespace yb {
 
 using std::shared_ptr;
+using std::string;
 
 //----------------------------------------- QL row ----------------------------------------
 QLRow::QLRow(const shared_ptr<const Schema>& schema)
@@ -131,17 +132,15 @@ Status QLRowBlock::Deserialize(const QLClient client, Slice* data) {
   return Status::OK();
 }
 
-Status QLRowBlock::GetRowCount(const QLClient client, const std::string& data, size_t* count) {
+Result<size_t> QLRowBlock::GetRowCount(const QLClient client, const string& data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   int32_t cnt = 0;
   Slice slice(data);
   RETURN_NOT_OK(CQLDecodeNum(sizeof(cnt), NetworkByteOrder::Load32, &slice, &cnt));
-  *count = cnt;
-  return Status::OK();
+  return cnt;
 }
 
-Status QLRowBlock::AppendRowsData(
-    const QLClient client, const std::string& src, std::string* dst) {
+Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, string* dst) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   int32_t src_cnt = 0;
   Slice src_slice(src);

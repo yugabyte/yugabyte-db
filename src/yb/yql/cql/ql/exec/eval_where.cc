@@ -66,7 +66,8 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
                                            const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                            const MCList<JsonColumnOp>& jsoncol_where_ops,
                                            const MCList<PartitionKeyOp>& partition_key_ops,
-                                           const MCList<FuncOp>& func_ops) {
+                                           const MCList<FuncOp>& func_ops,
+                                           TnodeContext* tnode_context) {
   uint64_t max_rows_estimate = std::numeric_limits<uint64_t>::max();
 
   // Setup the lower/upper bounds on the partition key -- if any
@@ -140,10 +141,9 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
   // Then, the executor will use them to produce the partitions that need to be read.
   bool is_multi_partition = false;
   uint64_t partitions_count = 1;
-  TnodeContext& tnode_context = exec_context_->tnode_context();
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    CHECK(col_desc->is_hash()) << "Unexpected non partition column in this context";
+    CHECK(col_desc->is_hash()) << "Unexpected non-partition column in this context";
 
     VLOG(3) << "READ request, column id = " << col_desc->id();
 
@@ -152,7 +152,6 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
         if (!is_multi_partition) {
           QLExpressionPB *col_pb = req->add_hashed_column_values();
           col_pb->set_column_id(col_desc->id());
-
           RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
           RETURN_NOT_OK(EvalExpr(col_pb, QLTableRow::empty_row()));
         } else {
@@ -160,7 +159,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
           col_pb.set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
           RETURN_NOT_OK(EvalExpr(&col_pb, QLTableRow::empty_row()));
-          tnode_context.hash_values_options().push_back({col_pb});
+          tnode_context->hash_values_options().push_back({col_pb});
         }
         break;
       }
@@ -180,14 +179,14 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
         }
 
         std::set<QLValuePB> set_values;
-        for (QLValuePB &value_pb : *col_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
+        for (QLValuePB& value_pb : *col_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
           set_values.insert(std::move(value_pb));
         }
 
         // Adding partition options information to the execution context.
         partitions_count *= set_values.size();
-        tnode_context.hash_values_options().emplace_back();
-        auto& options = tnode_context.hash_values_options().back();
+        tnode_context->hash_values_options().emplace_back();
+        auto& options = tnode_context->hash_values_options().back();
         for (auto& value_pb : set_values) {
           options.emplace_back();
           options.back().set_column_id(col_desc->id());
@@ -205,7 +204,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
   if (!key_where_ops.empty()) {
     // If this is a multi-partition select, set the partitions count in the execution context.
     if (is_multi_partition) {
-      tnode_context.set_partitions_count(partitions_count);
+      tnode_context->set_partitions_count(partitions_count);
     }
     max_rows_estimate = partitions_count;
   }
@@ -251,7 +250,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
   }
 
   // If not all primary keys have '=' or 'IN' conditions the max rows estimate is not reliable.
-  if (!static_cast<const PTSelectStmt*>(tnode_context.tnode())->HasPrimaryKeysSet()) {
+  if (!static_cast<const PTSelectStmt*>(tnode_context->tnode())->HasPrimaryKeysSet()) {
     return std::numeric_limits<uint64_t>::max();
   }
 

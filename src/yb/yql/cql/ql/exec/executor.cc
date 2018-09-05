@@ -168,8 +168,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
   if (tnode == nullptr) {
     return Status::OK();
   }
+  TnodeContext* tnode_context = nullptr;
   if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
-    exec_context_->AddTnode(tnode);
+    tnode_context = exec_context_->AddTnode(tnode);
     if (tnode->IsDml() && static_cast<const PTDmlStmt *>(tnode)->RequiresTransaction()) {
       exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_);
     }
@@ -204,16 +205,16 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
       return ExecPTNode(static_cast<const PTGrantPermission *>(tnode));
 
     case TreeNodeOpcode::kPTSelectStmt:
-      return ExecPTNode(static_cast<const PTSelectStmt *>(tnode));
+      return ExecPTNode(static_cast<const PTSelectStmt *>(tnode), tnode_context);
 
     case TreeNodeOpcode::kPTInsertStmt:
-      return ExecPTNode(static_cast<const PTInsertStmt *>(tnode));
+      return ExecPTNode(static_cast<const PTInsertStmt *>(tnode), tnode_context);
 
     case TreeNodeOpcode::kPTDeleteStmt:
-      return ExecPTNode(static_cast<const PTDeleteStmt *>(tnode));
+      return ExecPTNode(static_cast<const PTDeleteStmt *>(tnode), tnode_context);
 
     case TreeNodeOpcode::kPTUpdateStmt:
-      return ExecPTNode(static_cast<const PTUpdateStmt *>(tnode));
+      return ExecPTNode(static_cast<const PTUpdateStmt *>(tnode), tnode_context);
 
     case TreeNodeOpcode::kPTStartTransaction:
       return ExecPTNode(static_cast<const PTStartTransaction *>(tnode));
@@ -617,7 +618,7 @@ Status Executor::GetOffsetOrLimit(
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
+Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
@@ -646,7 +647,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
                                                        tnode->subscripted_col_where_ops(),
                                                        tnode->json_col_where_ops(),
                                                        tnode->partition_key_ops(),
-                                                       tnode->func_ops());
+                                                       tnode->func_ops(),
+                                                       tnode_context);
   if (PREDICT_FALSE(!max_rows_estimate)) {
     return exec_context_->Error(tnode, max_rows_estimate.status(), ErrorCode::INVALID_ARGUMENTS);
   }
@@ -743,33 +745,28 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     paging_state->set_total_rows_skipped(params.total_rows_skipped());
   }
 
-  // Set the correct consistency level for the operation.
-  if (tnode->is_system()) {
-    // Always use strong consistency for system tables.
-    select_op->set_yb_consistency_level(YBConsistencyLevel::STRONG);
-  } else {
-    select_op->set_yb_consistency_level(params.yb_consistency_level());
-  }
+  // Set the consistency level for the operation. Always use strong consistency for system tables.
+  select_op->set_yb_consistency_level(tnode->is_system() ? YBConsistencyLevel::STRONG
+                                                         : params.yb_consistency_level());
 
   // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
   // start partition here, and then iteratively scan the rest in FetchMoreRows.
   // Otherwise, the request will already have the right hashed column values set.
-  TnodeContext& tnode_context = exec_context_->tnode_context();
-  if (tnode_context.UnreadPartitionsRemaining() > 0) {
-    tnode_context.InitializePartition(select_op->mutable_request(),
-                                      continue_select ? params.next_partition_index() : 0);
+  if (tnode_context->UnreadPartitionsRemaining() > 0) {
+    tnode_context->InitializePartition(select_op->mutable_request(),
+                                       continue_select ? params.next_partition_index() : 0);
 
     // We can optimize to run the ops in parallel (rather than serially) if:
-    //   - the estimated max number of rows is less than req limit (min of page size and CQL limit).
-    //   - there is no offset (which requires passing skipped rows from one request to the next).
+    // - the estimated max number of rows is less than req limit (min of page size and CQL limit).
+    // - there is no offset (which requires passing skipped rows from one request to the next).
     if (*max_rows_estimate <= req->limit() && !req->has_offset()) {
-      RETURN_NOT_OK(AddOperation(select_op));
-      while (tnode_context.UnreadPartitionsRemaining() > 1) {
+      RETURN_NOT_OK(AddOperation(select_op, tnode_context));
+      while (tnode_context->UnreadPartitionsRemaining() > 1) {
         YBqlReadOpPtr op(table->NewQLSelect());
         op->mutable_request()->CopyFrom(select_op->request());
         op->set_yb_consistency_level(select_op->yb_consistency_level());
-        tnode_context.AdvanceToNextPartition(op->mutable_request());
-        RETURN_NOT_OK(AddOperation(op));
+        tnode_context->AdvanceToNextPartition(op->mutable_request());
+        RETURN_NOT_OK(AddOperation(op, tnode_context));
         select_op = op; // Use new op as base for the next one, if any.
       }
       return Status::OK();
@@ -777,7 +774,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Add the operation.
-  return AddOperation(select_op);
+  return AddOperation(select_op, tnode_context);
 }
 
 Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
@@ -790,11 +787,8 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
   // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
   RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
-  size_t current_fetch_row_count = 0;
-  RETURN_NOT_OK(QLRowBlock::GetRowCount(current_result->client(),
-                                        current_result->rows_data(),
-                                        &current_fetch_row_count));
-
+  const size_t current_fetch_row_count =
+      VERIFY_RESULT(QLRowBlock::GetRowCount(current_result->client(), current_result->rows_data()));
   const size_t previous_fetches_row_count = exec_context->params().total_num_rows_read();
   const size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
@@ -817,7 +811,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       return false;
     }
 
-    int64_t limit = limit_pb.value().int32_value() - previous_fetches_row_count;
+    const int64_t limit = limit_pb.value().int32_value() - previous_fetches_row_count;
     if (limit < fetch_limit) {
       fetch_limit = limit;
     }
@@ -900,7 +894,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
+Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_context) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr insert_op(table->NewQLInsert());
@@ -949,12 +943,12 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   insert_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
   // Add the operation.
-  return AddOperation(insert_op);
+  return AddOperation(insert_op, tnode_context);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
+Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_context) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
@@ -1003,12 +997,12 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   delete_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
   // Add the operation.
-  return AddOperation(delete_op);
+  return AddOperation(delete_op, tnode_context);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
+Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr update_op(table->NewQLUpdate());
@@ -1065,7 +1059,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   update_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
 
   // Add the operation.
-  return AddOperation(update_op);
+  return AddOperation(update_op, tnode_context);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1322,106 +1316,15 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       continue;
     }
 
-    bool commit_transaction = exec_context_->HasTransaction() &&
-                              !exec_context_->HasPendingOperations();
-
     // Go through each TnodeContext in an ExecContext and process async results.
     auto& tnode_contexts = exec_context_->tnode_contexts();
     for (auto tnode_itr = tnode_contexts.begin(); tnode_itr != tnode_contexts.end(); ) {
       TnodeContext& tnode_context = *tnode_itr;
-      const TreeNode *tnode = tnode_context.tnode();
 
-      // Go through each op in a TnodeContext and process async results.
-      auto& ops = tnode_context.ops();
-      for (auto op_itr = ops.begin(); op_itr != ops.end(); ) {
-        client::YBqlOpPtr& op = *op_itr;
-
-        // Apply any op that has not been applied and executed.
-        if (!op->response().has_status()) {
-          DCHECK_EQ(op->type(), YBOperation::Type::QL_WRITE);
-          if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(op))) {
-            YBSessionPtr session = exec_context_->HasTransaction()
-                                   ? exec_context_->transactional_session()
-                                   : session_;
-            TRACE("Apply");
-            RETURN_STMT_NOT_OK(session->Apply(op));
-            has_buffered_ops = true;
-          }
-          op_itr++;
-          continue;
-        }
-
-        // If the statement is in a transaction, check the status of the current operation. If it
-        // failed to apply (either because of an execution error or unsatisfied IF condition), quit
-        // the execution and abort the transaction. Also, if this is a batch returning status,
-        // mark all other ops in this statement as done and clear the rows data to make sure only
-        // one status row is returned from this statement.
-        //
-        // Note: For an error response, we only get to this point if using 'RETURNS STATUS AS ROW'.
-        // Otherwise, ProcessAsyncResults() should have failed so we would have returned above
-        // already.
-        if (exec_context_->HasTransaction() &&
-            (op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
-             (op->response().has_applied() && !op->response().applied()))) {
-          exec_context_->AbortTransaction();
-          commit_transaction = false;
-          if (IsReturnsStatusBatch()) {
-            for (auto& tnode_context2 : tnode_contexts) {
-              for (auto& op2 : tnode_context2.ops()) {
-                if (op2 != op) {
-                  op2->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
-                  op2->rows_data().clear();
-                }
-              }
-            }
-          }
-        }
-
-        // If the transaction is ready to commit, apply child transaction results if any.
-        if (commit_transaction) {
-          const QLResponsePB& response = op->response();
-          if (response.has_child_transaction_result()) {
-            const auto& result = response.child_transaction_result();
-            const Status s = exec_context_->ApplyChildTransactionResult(result);
-            if (NeedsRestart(s)) {
-              exec_context_->Reset(client::Restart::kTrue);
-              break;
-            }
-            RETURN_STMT_NOT_OK(s);
-          }
-        }
-
-        // If this is a batch returning status, defer appending the row because we need to return
-        // the results in the user-given order when all statements in the batch finish.
-        if (IsReturnsStatusBatch()) {
-          op_itr++;
-          continue;
-        }
-
-        // Append the row if present.
-        if (!op->rows_data().empty()) {
-          RETURN_STMT_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
-        }
-
-        // For SELECT statement, check if there are more rows to fetch and apply the op as needed.
-        if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-          DCHECK_EQ(op->type(), YBOperation::Type::QL_READ);
-          const auto more_rows = FetchMoreRows(static_cast<const PTSelectStmt *>(tnode),
-                                               std::static_pointer_cast<YBqlReadOp>(op),
-                                               &tnode_context, exec_context_);
-          RETURN_STMT_NOT_OK(more_rows);
-          if (*more_rows) {
-            op->mutable_response()->Clear();
-            TRACE("Apply");
-            RETURN_STMT_NOT_OK(session_->Apply(op));
-            has_buffered_ops = true;
-            op_itr++;
-            continue;
-          }
-        }
-
-        // Remove the op that has completed.
-        op_itr = ops.erase(op_itr);
+      const Result<bool> result = ProcessTnodeResults(&tnode_context);
+      RETURN_STMT_NOT_OK(result);
+      if (*result) {
+        has_buffered_ops = true;
       }
 
       // If this statement is restarted, stop traversing the rest of the statement tnodes.
@@ -1436,6 +1339,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       }
 
       // For SELECT statement, aggregate result sets if needed.
+      const TreeNode *tnode = tnode_context.tnode();
       if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
         RETURN_STMT_NOT_OK(AggregateResultSets(static_cast<const PTSelectStmt *>(tnode)));
       }
@@ -1499,6 +1403,100 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
   }
 }
 
+Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
+  bool has_buffered_ops = false;
+
+  // Go through each op in a TnodeContext and process async results.
+  const TreeNode *tnode = tnode_context->tnode();
+  auto& ops = tnode_context->ops();
+  for (auto op_itr = ops.begin(); op_itr != ops.end(); ) {
+    YBqlOpPtr& op = *op_itr;
+
+    // Apply any op that has not been applied and executed.
+    if (!op->response().has_status()) {
+      DCHECK_EQ(op->type(), YBOperation::Type::QL_WRITE);
+      if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(op))) {
+        YBSessionPtr session = GetSession(exec_context_);
+        TRACE("Apply");
+        RETURN_NOT_OK(session->Apply(op));
+        has_buffered_ops = true;
+      }
+      op_itr++;
+      continue;
+    }
+
+    // If the statement is in a transaction, check the status of the current operation. If it
+    // failed to apply (either because of an execution error or unsatisfied IF condition), quit the
+    // execution and abort the transaction. Also, if this is a batch returning status, mark all
+    // other ops in this statement as done and clear the rows data to make sure only one status row
+    // is returned from this statement.
+    //
+    // Note: For an error response, we only get to this point if using 'RETURNS STATUS AS ROW'.
+    // Otherwise, ProcessAsyncResults() should have failed so we would have returned above already.
+    if (exec_context_->HasTransaction() &&
+        (op->response().status() != QLResponsePB_QLStatus_YQL_STATUS_OK ||
+         (op->response().has_applied() && !op->response().applied()))) {
+      exec_context_->AbortTransaction();
+      if (IsReturnsStatusBatch()) {
+        for (auto& tnode_context2 : exec_context_->tnode_contexts()) {
+          for (auto& op2 : tnode_context2.ops()) {
+            if (op2 != op) {
+              op2->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
+              op2->rows_data().clear();
+            }
+          }
+        }
+      }
+    }
+
+    // If the transaction is ready to commit, apply child transaction results if any.
+    if (exec_context_->HasTransaction() && !exec_context_->HasPendingOperations()) {
+      const QLResponsePB& response = op->response();
+      if (response.has_child_transaction_result()) {
+        const auto& result = response.child_transaction_result();
+        const Status s = exec_context_->ApplyChildTransactionResult(result);
+        if (NeedsRestart(s)) {
+          exec_context_->Reset(client::Restart::kTrue);
+          break;
+        }
+        RETURN_NOT_OK(s);
+      }
+    }
+
+    // If this is a batch returning status, defer appending the row because we need to return the
+    // results in the user-given order when all statements in the batch finish.
+    if (IsReturnsStatusBatch()) {
+      op_itr++;
+      continue;
+    }
+
+    // Append the row if present.
+    if (!op->rows_data().empty()) {
+      RETURN_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
+    }
+
+    // For SELECT statement, check if there are more rows to fetch and apply the op as needed.
+    if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+      const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
+      DCHECK_EQ(op->type(), YBOperation::Type::QL_READ);
+      const auto& read_op = std::static_pointer_cast<YBqlReadOp>(op);
+      if (VERIFY_RESULT(FetchMoreRows(select_stmt, read_op, tnode_context, exec_context_))) {
+        op->mutable_response()->Clear();
+        TRACE("Apply");
+        RETURN_NOT_OK(session_->Apply(op));
+        has_buffered_ops = true;
+        op_itr++;
+        continue;
+      }
+    }
+
+    // Remove the op that has completed.
+    op_itr = ops.erase(op_itr);
+  }
+
+  return has_buffered_ops;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 namespace {
@@ -1553,7 +1551,9 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
 
 } // namespace
 
-Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
+                               QLWriteRequestPB *req,
+                               TnodeContext* tnode_context) {
   // DML with TTL is not allowed if indexes are present.
   if (req->has_ttl()) {
     return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
@@ -1563,7 +1563,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   // them to the list of indexes to be updated from tserver.
   if (!tnode->pk_only_indexes().empty()) {
     if (UpdateIndexesLocally(tnode, *req)) {
-      RETURN_NOT_OK(AddIndexWriteOps(tnode, *req));
+      RETURN_NOT_OK(AddIndexWriteOps(tnode, *req, tnode_context));
     } else {
       for (const auto& index : tnode->pk_only_indexes()) {
         req->add_update_index_ids(index->id());
@@ -1614,7 +1614,9 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
 }
 
 // Add the write operations to update the pk-only indexes.
-Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
+Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
+                                  const QLWriteRequestPB& req,
+                                  TnodeContext* tnode_context) {
   const Schema& schema = tnode->table()->InternalSchema();
   const bool is_upsert = (req.type() == QLWriteRequestPB::QL_STMT_INSERT ||
                           req.type() == QLWriteRequestPB::QL_STMT_UPDATE);
@@ -1656,7 +1658,7 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB
         }
       }
     }
-    RETURN_NOT_OK(AddOperation(index_op));
+    RETURN_NOT_OK(AddOperation(index_op, tnode_context));
   }
 
   return Status::OK();
@@ -1688,16 +1690,16 @@ bool Executor::WriteBatch::Empty() const {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::AddOperation(const YBqlReadOpPtr& op) {
+Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
-  exec_context_->tnode_context().AddOperation(op);
+  tnode_context->AddOperation(op);
 
   TRACE("Apply");
   return session_->Apply(op);
 }
 
-Status Executor::AddOperation(const YBqlWriteOpPtr& op) {
-  exec_context_->tnode_context().AddOperation(op);
+Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext *tnode_context) {
+  tnode_context->AddOperation(op);
 
   // Check for inter-dependency in the current write batch before applying the write operation.
   // Apply it in the transactional session in exec_context for the current statement if there is
@@ -1712,8 +1714,8 @@ Status Executor::AddOperation(const YBqlWriteOpPtr& op) {
   if (op->table()->index_map().empty()) {
     return Status::OK();
   }
-  const auto* dml_stmt = static_cast<const PTDmlStmt*>(exec_context_->tnode_context().tnode());
-  return UpdateIndexes(dml_stmt, op->mutable_request());
+  const auto* dml_stmt = static_cast<const PTDmlStmt*>(tnode_context->tnode());
+  return UpdateIndexes(dml_stmt, op->mutable_request(), tnode_context);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1818,9 +1820,7 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
 }
 
 Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
-  if (result == nullptr) {
-    return Status::OK();
-  }
+  CHECK(result) << "No result to append";
   if (result_ == nullptr) {
     result_ = result;
     return Status::OK();

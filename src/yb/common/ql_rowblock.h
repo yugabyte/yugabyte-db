@@ -114,7 +114,7 @@ class QLRowBlock {
 
   //-------------------------- utility functions for rows data ------------------------------
   // Return row count.
-  static CHECKED_STATUS GetRowCount(QLClient client, const std::string& data, size_t* count);
+  static Result<size_t> GetRowCount(QLClient client, const std::string& data);
 
   // Append rows data. Caller should ensure the column schemas are the same.
   static CHECKED_STATUS AppendRowsData(QLClient client, const std::string& src, std::string* dst);
