@@ -140,6 +140,10 @@ public class ApiUtils {
 
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
+    return getDefaultUserIntent(p);
+  }
+
+  public static UserIntent getDefaultUserIntent(Provider p) {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
