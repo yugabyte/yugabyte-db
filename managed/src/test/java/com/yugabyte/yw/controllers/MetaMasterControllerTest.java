@@ -1,40 +1,91 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import org.junit.Before;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
+import play.test.Helpers;
 
+import javax.inject.Inject;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
+import java.util.concurrent.Executors;
 
 public class MetaMasterControllerTest extends FakeDBApplication {
-  public static final Logger LOG = LoggerFactory.getLogger(MetaMasterControllerTest.class);
+
+  @Inject
+  KubernetesManager mockKubernetesManager;
+
+  Customer defaultCustomer;
+
+  @Override
+  protected Application provideApplication() {
+    ApiHelper mockApiHelper = mock(ApiHelper.class);
+    mockKubernetesManager = mock(KubernetesManager.class);
+    Executors mockExecutors = mock(Executors.class);
+    return new GuiceApplicationBuilder()
+        .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+        .overrides(bind(Executors.class).toInstance(mockExecutors))
+        .build();
+  }
+
+  @Before
+  public void setUp() {
+    defaultCustomer = ModelFactory.testCustomer();
+  }
+
+  // TODO: move this to ModelFactory!
+  private Universe getKuberentesUniverse() {
+    Provider provider = ModelFactory.newProvider(defaultCustomer, kubernetes);
+    UserIntent ui = getDefaultUserIntent(provider);
+    Universe universe = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(ui, true));
+    defaultCustomer.addUniverseUUID(universe.universeUUID);
+    defaultCustomer.save();
+    return universe;
+  }
 
   @Test
   public void testGetWithInvalidUniverse() {
@@ -45,12 +96,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetWithValidUniverse() {
-    Customer customer = ModelFactory.testCustomer();
-    Universe u = createUniverse();
+    Universe u = createUniverse("demo-universe", defaultCustomer.getCustomerId());
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater("host", aws));
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(customer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     // Read the value back.
@@ -89,6 +139,68 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     testServerGetWithValidUniverse(false);
   }
 
+  Map<String, Integer> endpointPort = ImmutableMap.of(
+      "/masters", 7100,
+      "/yqlservers", 9042,
+      "/redisservers", 6379
+  );
+
+  @Test
+  public void testServerAddressForKuberenetesServiceFailure() {
+    Universe universe = getKuberentesUniverse();
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = -1;
+    re.message = "Unknown Error!";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = String.join(",",
+          ImmutableList.of("host-n1:" + endpoint.getValue(),
+              "host-n2:" + endpoint.getValue(),
+              "host-n3:" + endpoint.getValue())
+      );
+
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(expectedHostString, json.asText());
+    });
+  }
+
+  @Test
+  public void testServerAddressForKuberenetesServiceWithPodIP() {
+    Universe universe = getKuberentesUniverse();
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = 0;
+    re.message = "12.13.14.15|";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = "12.13.14.15:" + endpoint.getValue();
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(expectedHostString, json.asText());
+    });
+  }
+
+  @Test
+  public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
+    Universe universe = getKuberentesUniverse();
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = 0;
+    re.message = "12.13.14.15|56.78.90.1";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = "56.78.90.1:" + endpoint.getValue();
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(expectedHostString, json.asText());
+    });
+  }
+
   private void assertRestResult(Result result, boolean expectSuccess, int expectStatus) {
     assertEquals(expectStatus, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -102,20 +214,18 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   private void testServerGetWithInvalidUniverse(boolean isYql) {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
-    Customer customer = ModelFactory.testCustomer();
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+    Result result = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
                                        universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
     assertRestResult(result, false, BAD_REQUEST);
   }
 
   private void testServerGetWithValidUniverse(boolean isYql) {
-    Customer customer = ModelFactory.testCustomer();
-    Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
+    Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host", aws));
+    defaultCustomer.addUniverseUUID(u1.universeUUID);
+    defaultCustomer.save();
 
-    Result r = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+    Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
                                  u1.universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
     assertRestResult(r, true, OK);
   }
