@@ -36,10 +36,10 @@ ExecContext::~ExecContext() {
   Reset(client::Restart::kFalse);
 }
 
-TnodeContext& ExecContext::tnode_context() {
+TnodeContext* ExecContext::AddTnode(const TreeNode *tnode) {
   restart_ = client::Restart::kFalse;
-  CHECK(!tnode_contexts_.empty());
-  return tnode_contexts_.back();
+  tnode_contexts_.emplace_back(tnode);
+  return &tnode_contexts_.back();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -205,7 +205,6 @@ bool TnodeContext::HasPendingOperations() const {
   }
   return false;
 }
-
 
 }  // namespace ql
 }  // namespace yb
