@@ -24,7 +24,7 @@ import org.yb.cql.BaseCQLTest;
 
 import java.util.ArrayList;
 
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCQLSecure extends BaseCQLTest {
