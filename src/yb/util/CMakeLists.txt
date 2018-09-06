@@ -197,7 +197,6 @@ set(UTIL_SRCS
   pstack_watcher.cc
   random_util.cc
   ref_cnt_buffer.cc
-  resettable_heartbeater.cc
   rolling_log.cc
   rw_mutex.cc
   rwc_lock.cc
@@ -362,7 +361,6 @@ ADD_YB_TEST(pstack_watcher-test)
 ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
-ADD_YB_TEST(resettable_heartbeater-test)
 ADD_YB_TEST(result-test)
 ADD_YB_TEST(rle-test)
 ADD_YB_TEST(rolling_log-test)
