@@ -1,0 +1,62 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 82 (0x52)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=YugaByte CA
+        Validity
+            Not Before: Sep  6 18:39:34 2018 GMT
+            Not After : Sep 10 18:39:34 2023 GMT
+        Subject: CN=node.64
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (1024 bit)
+                Modulus:
+                    00:c7:f5:ab:ea:fb:69:9d:85:ec:29:fe:e8:5c:45:
+                    7b:a4:ea:0b:27:11:02:1f:c4:9c:b3:c3:d0:f4:85:
+                    0d:00:49:f4:2d:c5:00:ff:7e:c9:2a:d2:90:8c:a0:
+                    42:17:94:5e:a8:2d:19:f5:8c:59:2e:01:91:07:c5:
+                    2d:9f:4a:d4:5a:43:45:a1:4b:c2:a7:f0:96:21:85:
+                    4c:f9:e1:f3:66:1d:f9:bc:0c:aa:55:21:89:6b:be:
+                    10:60:df:a2:fa:7e:8c:fc:6d:65:ee:8a:ff:6f:4b:
+                    7e:de:da:bf:d1:c3:25:47:b3:b6:a4:d0:38:9e:cd:
+                    75:1d:a2:45:dd:a1:22:a6:b9
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Extended Key Usage: 
+                TLS Web Client Authentication, TLS Web Server Authentication
+            X509v3 Subject Alternative Name: 
+                IP Address:127.0.0.64, IP Address:127.0.0.65
+    Signature Algorithm: sha256WithRSAEncryption
+         6f:84:76:7e:47:78:58:77:92:94:25:b6:58:e2:d6:db:48:df:
+         2e:5b:ad:fd:c3:ab:ce:70:7b:55:25:8a:ab:53:ce:5a:f7:e9:
+         6e:32:ac:6d:db:77:e4:2d:86:40:28:8c:b0:91:d1:fa:01:5c:
+         1b:84:cf:73:0d:89:d1:f5:c1:93:b7:22:4c:2d:04:7a:47:1e:
+         aa:1e:25:e6:16:c7:24:83:c9:90:cd:ec:9c:23:e9:f2:c6:b0:
+         53:e0:5f:18:00:d8:da:1b:9b:7d:53:a5:2c:a8:5a:2e:e7:b8:
+         f9:13:ae:4e:cc:47:0e:4e:7d:fd:47:78:43:49:16:29:fa:bb:
+         58:04:2b:46:a5:09:6e:ae:3f:9f:44:2a:08:af:7f:57:c3:a3:
+         f4:84:84:78:11:69:e8:64:06:b0:64:ef:d7:b3:2e:82:88:b8:
+         87:e7:fc:77:15:2b:b6:58:31:ba:c7:df:ff:5f:2e:2f:7d:dd:
+         3c:fd:f3:5a:53:34:84:4c:11:67:9a:e0:94:5f:11:7b:b2:bb:
+         6c:4f:c9:52:c7:e6:82:ae:af:1a:02:15:18:10:aa:c4:d2:e3:
+         9d:8b:2e:4e:67:0d:be:54:44:5c:1e:dd:87:33:a9:dc:53:45:
+         98:e7:57:b4:6d:88:58:a3:ad:ce:21:2f:0f:d6:06:fa:e5:8a:
+         0e:97:3f:df
+-----BEGIN CERTIFICATE-----
+MIICYjCCAUqgAwIBAgIBUjANBgkqhkiG9w0BAQsFADAWMRQwEgYDVQQDDAtZdWdh
+Qnl0ZSBDQTAeFw0xODA5MDYxODM5MzRaFw0yMzA5MTAxODM5MzRaMBIxEDAOBgNV
+BAMMB25vZGUuNjQwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAMf1q+r7aZ2F
+7Cn+6FxFe6TqCycRAh/EnLPD0PSFDQBJ9C3FAP9+ySrSkIygQheUXqgtGfWMWS4B
+kQfFLZ9K1FpDRaFLwqfwliGFTPnh82Yd+bwMqlUhiWu+EGDfovp+jPxtZe6K/29L
+ft7av9HDJUeztqTQOJ7NdR2iRd2hIqa5AgMBAAGjQzBBMAkGA1UdEwQCMAAwHQYD
+VR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMBMBUGA1UdEQQOMAyHBH8AAECHBH8A
+AEEwDQYJKoZIhvcNAQELBQADggEBAG+Edn5HeFh3kpQltlji1ttI3y5brf3Dq85w
+e1UliqtTzlr36W4yrG3bd+QthkAojLCR0foBXBuEz3MNidH1wZO3IkwtBHpHHqoe
+JeYWxySDyZDN7Jwj6fLGsFPgXxgA2Nobm31TpSyoWi7nuPkTrk7MRw5Off1HeENJ
+Fin6u1gEK0alCW6uP59EKgivf1fDo/SEhHgRaehkBrBk79ezLoKIuIfn/HcVK7ZY
+MbrH3/9fLi993Tz981pTNIRMEWea4JRfEXuyu2xPyVLH5oKurxoCFRgQqsTS452L
+Lk5nDb5URFwe3YczqdxTRZjnV7RtiFijrc4hLw/WBvrlig6XP98=
+-----END CERTIFICATE-----
