@@ -18,8 +18,8 @@ import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNull;
 
 import org.yb.YBTestRunner;
 

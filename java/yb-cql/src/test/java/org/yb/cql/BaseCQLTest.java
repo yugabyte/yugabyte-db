@@ -16,10 +16,10 @@ import com.datastax.driver.core.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;

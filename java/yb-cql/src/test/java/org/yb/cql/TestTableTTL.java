@@ -19,8 +19,8 @@ import org.yb.client.TestUtils;
 
 import java.util.Iterator;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.yb.YBTestRunner;
 

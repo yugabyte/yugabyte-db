@@ -7,7 +7,7 @@ import java.util.*;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.yb.YBTestRunner;
 

@@ -76,3 +76,5 @@ build/python_virtual_env
 .vscode
 
 hs_err_pid*.log
+
+compile_commands.json

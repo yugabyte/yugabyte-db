@@ -35,7 +35,7 @@ import com.google.common.primitives.UnsignedLongs;
 import com.sangupta.murmur.Murmur2;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 /**
  * Test Murmur2 Hash64 returns the expected values for inputs.

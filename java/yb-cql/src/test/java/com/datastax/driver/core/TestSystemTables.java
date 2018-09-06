@@ -23,8 +23,8 @@ import java.util.List;
 import java.util.Set;
 
 import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotEquals;
 
 // This test verifies that 'system.peers' table doesn't return an entry for the node that we're
 // connected to. In addition to this, we also test that the 'system.local' table returns only the

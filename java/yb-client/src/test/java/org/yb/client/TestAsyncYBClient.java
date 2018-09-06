@@ -41,7 +41,7 @@ import org.yb.Common;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 
-import static org.junit.Assert.*;
+import static org.yb.AssertionWrappers.*;
 
 import org.yb.YBTestRunner;
 

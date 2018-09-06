@@ -25,7 +25,7 @@ import org.yb.client.TestUtils;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.fail;
 
 /**
  * A base class for tests using a MiniCluster.

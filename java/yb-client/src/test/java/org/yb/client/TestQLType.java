@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.yb.YBTestRunner;
 
