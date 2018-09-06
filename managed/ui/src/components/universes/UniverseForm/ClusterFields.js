@@ -953,7 +953,7 @@ export default class ClusterFields extends Component {
     }
 
     if (isNonEmptyArray(universeInstanceTypeList)) {
-      universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
+      universeInstanceTypeList.unshift(<option disabled key="" value="">Select</option>);
     }
 
     let placementStatus = <span/>;
