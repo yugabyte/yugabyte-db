@@ -23,7 +23,7 @@ import java.util.List;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.yb.AssertionWrappers.*;
 
 import org.yb.YBTestRunner;
 

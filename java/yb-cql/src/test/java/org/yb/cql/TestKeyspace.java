@@ -20,7 +20,7 @@ import com.datastax.driver.core.Row;
 import org.junit.Test;
 import org.yb.client.TestUtils;
 
-import static org.junit.Assert.*;
+import static org.yb.AssertionWrappers.*;
 
 import org.yb.YBTestRunner;
 

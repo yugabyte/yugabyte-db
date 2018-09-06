@@ -6,8 +6,8 @@ import org.junit.Test;
 import java.util.Iterator;
 
 import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
 
 import org.yb.YBTestRunner;
 

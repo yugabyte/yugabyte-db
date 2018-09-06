@@ -23,9 +23,9 @@ import java.net.InetAddress;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertNull;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.yb.YBTestRunner;
 

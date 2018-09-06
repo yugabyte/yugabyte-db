@@ -22,8 +22,8 @@ import java.math.BigInteger;
 import java.util.*;
 
 import static junit.framework.TestCase.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import org.yb.YBTestRunner;
 

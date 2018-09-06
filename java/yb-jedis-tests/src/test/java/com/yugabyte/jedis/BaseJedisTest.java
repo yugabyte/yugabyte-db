@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.fail;
 
 public abstract class BaseJedisTest extends BaseMiniClusterTest {
 

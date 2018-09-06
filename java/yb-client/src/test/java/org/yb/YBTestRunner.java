@@ -55,15 +55,4 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
     return super.getChildren();
   }
 
-  @Override
-  protected void runChild(FrameworkMethod method, RunNotifier notifier) {
-    LOG.info("RunChild is running for method " + method);
-    try {
-      super.runChild(method, notifier);
-    } catch (AssertionError assertionError) {
-      LOG.error("Assertion failure in test method: " + method, assertionError);
-      throw assertionError;
-    }
-  }
-
 }

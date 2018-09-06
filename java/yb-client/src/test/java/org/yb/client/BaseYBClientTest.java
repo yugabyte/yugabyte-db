@@ -50,7 +50,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.fail;
 
 /**
  * A base class for tests using the the Java YB client.

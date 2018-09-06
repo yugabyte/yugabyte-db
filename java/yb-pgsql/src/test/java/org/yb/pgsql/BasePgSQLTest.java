@@ -32,7 +32,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.LogPrinter;
 
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.fail;
 import static org.yb.client.TestUtils.findFreePort;
 import static org.yb.client.TestUtils.getBaseTmpDir;
 import static org.yb.client.TestUtils.getBinDir;

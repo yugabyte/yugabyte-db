@@ -17,6 +17,7 @@ package org.yb;
 import org.apache.log4j.Appender;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.LogManager;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TestRule;
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Base class for all YB Java tests.
  */
 public class BaseYBTest {
+
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
 
   // Global static variables to keep track of the current test class/method and index (1, 2, 3,

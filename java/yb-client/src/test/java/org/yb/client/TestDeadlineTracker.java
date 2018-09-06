@@ -31,7 +31,7 @@
 //
 package org.yb.client;
 
-import static org.junit.Assert.*;
+import static org.yb.AssertionWrappers.*;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Ticker;

@@ -13,10 +13,10 @@
 package org.yb.cql;
 
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNull;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import java.util.Arrays;
 import java.util.HashSet;

@@ -22,8 +22,8 @@ import org.yb.minicluster.MiniYBDaemon;
 
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 import java.util.Arrays;
 import java.util.HashSet;

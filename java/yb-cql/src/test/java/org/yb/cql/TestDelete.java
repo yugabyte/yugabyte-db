@@ -22,9 +22,9 @@ import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.junit.rules.ExpectedException;
 import org.junit.Rule;

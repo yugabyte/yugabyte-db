@@ -31,8 +31,8 @@
 //
 package org.yb.client;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;

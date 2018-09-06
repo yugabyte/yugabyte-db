@@ -96,7 +96,10 @@
     <hadoop.version>2.7.3</hadoop.version>
     <jedis.version>2.9.0-yb-16</jedis.version>
     <jsr305.version>3.0.1</jsr305.version>
+
+    <junit.groupId>junit</junit.groupId>
     <junit.version>4.12</junit.version>
+
     <log4j.version>1.2.17</log4j.version>
     <mockito-all.version>1.9.0</mockito-all.version>
     <murmur.version>1.0.0</murmur.version>
@@ -366,7 +369,7 @@
         <version>${slf4j.version}</version>
       </dependency>
       <dependency>
-        <groupId>junit</groupId>
+        <groupId>${junit.groupId}</groupId>
         <artifactId>junit</artifactId>
         <version>${junit.version}</version>
       </dependency>
