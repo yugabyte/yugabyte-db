@@ -26,8 +26,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSparkLocality extends BaseCQLTest {

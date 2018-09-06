@@ -30,9 +30,9 @@ import org.yb.minicluster.MiniYBDaemon;
 
 import org.apache.commons.lang3.RandomStringUtils;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.net.InetAddress;

@@ -31,8 +31,8 @@ import org.yb.minicluster.MiniYBDaemon;
 import java.util.*;
 
 import static junit.framework.TestCase.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 public class TestClusterBase extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestClusterBase.class);

@@ -19,8 +19,8 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.cql.BaseCQLTest;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import java.util.HashMap;
 import java.util.Iterator;

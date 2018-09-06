@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.*;
+import static org.yb.AssertionWrappers.*;
 
 import org.yb.YBTestRunner;
 

@@ -18,11 +18,18 @@ public enum MiniYBDaemonType {
   MASTER {
     @Override
     public String shortStr() { return "m"; }
+
+    @Override
+    public String humanReadableName() { return "master"; }
   },
   TSERVER {
     @Override
     public String shortStr() { return "ts"; }
+
+    @Override
+    public String humanReadableName() { return "tablet server"; }
   };
 
   abstract String shortStr();
+  abstract String humanReadableName();
 }

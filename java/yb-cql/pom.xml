@@ -65,7 +65,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>junit</groupId>
+      <groupId>${junit.groupId}</groupId>
       <artifactId>junit</artifactId>
       <scope>test</scope>
     </dependency>

@@ -33,7 +33,7 @@ package org.yb.client;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.fail;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

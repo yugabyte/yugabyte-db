@@ -16,9 +16,9 @@ import java.util.*;
 
 import org.junit.Test;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;

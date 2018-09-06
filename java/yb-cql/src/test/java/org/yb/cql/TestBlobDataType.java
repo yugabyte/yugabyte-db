@@ -20,7 +20,7 @@ import org.junit.Test;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import org.yb.YBTestRunner;
 

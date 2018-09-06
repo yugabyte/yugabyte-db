@@ -36,9 +36,9 @@ import java.util.regex.Pattern;
 
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertNotNull;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import org.yb.YBTestRunner;
 

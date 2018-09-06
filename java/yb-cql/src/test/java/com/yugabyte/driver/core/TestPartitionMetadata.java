@@ -18,8 +18,8 @@ import com.datastax.driver.core.TableMetadata;
 
 import org.yb.cql.BaseCQLTest;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import org.yb.YBTestRunner;
 

@@ -69,6 +69,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int PGSQL_PORT = 5433;
 
+  private static final int[] TSERVER_CLIENT_API_PORTS = new int[] {
+      CQL_PORT, REDIS_PORT, PGSQL_PORT };
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
@@ -249,14 +252,19 @@ public class MiniYBCluster implements AutoCloseable {
   private boolean canUseForTServer(String bindAddress, boolean logException)
       throws IOException {
     if (tserverUsedBindIPs.contains(bindAddress)) {
+      // We previously checked this IP address and we know it is not free.
       return false;
     }
     final InetAddress bindIp = InetAddress.getByName(bindAddress);
-    if (TestUtils.isPortFree(bindIp, CQL_PORT, logException)) {
-      tserverUsedBindIPs.add(bindAddress);
-      return true;
+    for (int clientApiPort : TSERVER_CLIENT_API_PORTS) {
+      if (!TestUtils.isPortFree(bindIp, clientApiPort, logException)) {
+        // One of the ports we need to be free is not free, reject this IP address.
+        return false;
+      }
     }
-    return false;
+    // All ports we care about are free, use this IP address.
+    tserverUsedBindIPs.add(bindAddress);
+    return true;
   }
 
   private String getTabletServerBindAddress() throws IllegalArgumentException, IOException {
@@ -272,10 +280,10 @@ public class MiniYBCluster implements AutoCloseable {
           "in " + NUM_ATTEMPTS + " attempts");
     }
 
-    return pickFirstSuitableIp(true);
+    return pickFirstSuitableIp(MiniYBDaemonType.TSERVER);
   }
 
-  private String pickFirstSuitableIp(boolean tserver) throws IOException {
+  private String pickFirstSuitableIp(MiniYBDaemonType daemonType) throws IOException {
     // We have certificates with names of even IPs only, so we try to use only such IPs.
     int idx = 2;
     for (;;) {
@@ -292,7 +300,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     throw new IOException(String.format(
-        "Cannot find a loopback IP to launch a %s on", tserver ? "tablet server" : "master"));
+        "Cannot find a loopback IP to launch a %s on", daemonType.humanReadableName()));
   }
 
   private String getMasterBindAddress() throws IOException {
@@ -304,7 +312,7 @@ public class MiniYBCluster implements AutoCloseable {
       return "127.0.0." + (1 + rng.nextInt(NUM_LOCALHOSTS_ON_MAC_OS_X - 1));
     }
 
-    return pickFirstSuitableIp(false);
+    return pickFirstSuitableIp(MiniYBDaemonType.MASTER);
   }
 
   /**
