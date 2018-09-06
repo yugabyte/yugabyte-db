@@ -22,6 +22,9 @@ import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.cql.BaseCQLTest;
 
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
 import java.util.ArrayList;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -73,6 +76,7 @@ public class TestCQLSecure extends BaseCQLTest {
   }
 
   private static String certsDir() {
-    return TestUtils.findYbRootDir() + "/build/latest/ent/test_certs";
+    FileSystem fs = FileSystems.getDefault();
+    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../ent/test_certs")).toString();
   }
 }
