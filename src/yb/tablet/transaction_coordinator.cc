@@ -195,6 +195,9 @@ class TransactionState {
   }
 
   void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
+    if (data.state.status() == TransactionStatus::ABORTED) {
+      NotifyAbortWaiters(STATUS(Aborted, "Replication failed"));
+    }
     if (data.mode == ProcessingMode::LEADER) {
       DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
              consensus::OpIdEquals(replicating_->op_id(), data.op_id));
