@@ -35,38 +35,6 @@ using std::vector;
 
 namespace {
 
-// Class to compare selectivity of an index for a SELECT statement.
-class Selectivity {
- public:
-  // Selectivity of the indexed table.
-  Selectivity(MemoryContext *memctx, const PTSelectStmt& tnode);
-  // Selectivity of an index.
-  Selectivity(MemoryContext *memctx, const PTSelectStmt& tnode, const IndexInfo& index_info);
-
-  bool covers_fully() const { return covers_fully_; }
-  const TableId& index_id() const { return index_id_; }
-
-  bool operator>(const Selectivity& other) const;
-
-  string ToString() const;
-
- private:
-  // Analyze selectivity, currently defined as length of longest fully specified prefix and
-  // whether there is a range operator immediately after the prefix.
-  using MCIdToIndexMap = MCUnorderedMap<int, size_t>;
-  void Analyze(MemoryContext *memctx,
-               const PTSelectStmt& tnode,
-               const MCIdToIndexMap& id_to_idx,
-               size_t num_hash_key_columns);
-
-  TableId index_id_;         // Index table id (null for indexed table).
-  bool is_local_ = false;    // Whether the index is local (true for indexed table).
-  size_t hash_length_ = 0;   // Length of hash key in index or indexed table.
-  size_t prefix_length_ = 0; // Length of fully specified prefix in index or indexed table.
-  bool ends_with_range_ = false; // Whether there is a range clause after prefix.
-  bool covers_fully_ = false; // Whether the index covers the read fully (true for indexed table).
-};
-
 // Selectivity of a column operator.
 YB_DEFINE_ENUM(OpSelectivity, (kEqual)(kRange)(kNone));
 
@@ -102,113 +70,132 @@ bool CoversFully(const IndexInfo& index_info, const MCSet<int32>& column_refs) {
   return true;
 }
 
-Selectivity::Selectivity(MemoryContext *memctx, const PTSelectStmt& tnode)
-    : is_local_(true),
-      hash_length_(tnode.table()->schema().num_hash_key_columns()),
-      covers_fully_(true) {
-  const client::YBSchema& schema = tnode.table()->schema();
-  MCIdToIndexMap id_to_idx(memctx);
-  for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    id_to_idx.emplace(schema.ColumnId(i), i);
-  }
-  Analyze(memctx, tnode, id_to_idx, schema.num_hash_key_columns());
-  VLOG(3) << ToString();
-}
-
-Selectivity::Selectivity(MemoryContext *memctx,
-                         const PTSelectStmt& tnode,
-                         const IndexInfo& index_info)
-    : index_id_(index_info.table_id()),
-      is_local_(index_info.is_local()),
-      hash_length_(index_info.hash_column_count()) {
-  MCIdToIndexMap id_to_idx(memctx);
-  for (size_t i = 0; i < index_info.key_column_count(); i++) {
-    id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
-  }
-  Analyze(memctx, tnode, id_to_idx, index_info.hash_column_count());
-
-  // If prefix length is 0, the table is going to be better than the index anyway (because prefix
-  // length 0 means do full index scan), so don't even check whether the index covers the read
-  // fully.
-  if (prefix_length_ > 0) {
-    covers_fully_ = CoversFully(index_info, tnode.column_refs());
-  }
-  VLOG(3) << ToString();
-}
-
-void Selectivity::Analyze(MemoryContext *memctx,
-                          const PTSelectStmt& tnode,
-                          const MCIdToIndexMap& id_to_idx,
-                          size_t num_hash_key_columns) {
-  // The operator on each column, in the order of the columns in the table or index we analyze.
-  MCVector<OpSelectivity> ops(id_to_idx.size(), OpSelectivity::kNone, memctx);
-  for (const ColumnOp& col_op : tnode.key_where_ops()) {
-    const auto iter = id_to_idx.find(col_op.desc()->id());
-    if (iter != id_to_idx.end()) {
-      ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
+// Class to compare selectivity of an index for a SELECT statement.
+class Selectivity {
+ public:
+  // Selectivity of the indexed table.
+  Selectivity(MemoryContext *memctx, const PTSelectStmt& stmt)
+      : is_local_(true),
+        hash_length_(stmt.table()->schema().num_hash_key_columns()),
+        covers_fully_(true) {
+    const client::YBSchema& schema = stmt.table()->schema();
+    MCIdToIndexMap id_to_idx(memctx);
+    for (size_t i = 0; i < schema.num_key_columns(); i++) {
+      id_to_idx.emplace(schema.ColumnId(i), i);
     }
+    Analyze(memctx, stmt, id_to_idx, schema.num_hash_key_columns());
   }
-  for (const ColumnOp& col_op : tnode.where_ops()) {
-    const auto iter = id_to_idx.find(col_op.desc()->id());
-    if (iter != id_to_idx.end()) {
-      ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
+
+  // Selectivity of an index.
+  Selectivity(MemoryContext *memctx, const PTSelectStmt& stmt, const IndexInfo& index_info)
+      : index_id_(index_info.table_id()),
+        is_local_(index_info.is_local()),
+        hash_length_(index_info.hash_column_count()) {
+    MCIdToIndexMap id_to_idx(memctx);
+    for (size_t i = 0; i < index_info.key_column_count(); i++) {
+      id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
+    }
+    Analyze(memctx, stmt, id_to_idx, index_info.hash_column_count());
+
+    // If prefix length is 0, the table is going to be better than the index anyway (because prefix
+    // length 0 means do full index scan), so don't even check whether the index covers the read
+    // fully.
+    if (prefix_length_ > 0) {
+      covers_fully_ = CoversFully(index_info, stmt.column_refs());
     }
   }
 
-  // Now find the prefix length.
-  while (prefix_length_ < ops.size() && ops[prefix_length_] == OpSelectivity::kEqual) {
-    prefix_length_++;
+  bool covers_fully() const { return covers_fully_; }
+
+  const TableId& index_id() const { return index_id_; }
+
+  // Comparison operator to sort the selectivity of an index.
+  bool operator>(const Selectivity& other) const {
+    // If different prefix lengths, the longer one is better.
+    if (prefix_length_ != other.prefix_length_) {
+      return prefix_length_ > other.prefix_length_;
+    }
+
+    // If same prefix lengths, the longer the hash length the better.
+    if (hash_length_ != other.hash_length_) {
+      return hash_length_ > other.hash_length_;
+    }
+
+    // If same prefix and hash lengths, but one ends with a range query and the other does not, the
+    // one that does is better.
+    if (ends_with_range_ != other.ends_with_range_) {
+      return ends_with_range_ > other.ends_with_range_;
+    }
+
+    // If both previous values are the same, the indexed table is better than the index.
+    if (index_id_.empty() != other.index_id_.empty()) {
+      return index_id_.empty() > other.index_id_.empty();
+    }
+
+    // An index that covers the read fully is better than one that does not.
+    if (covers_fully_ != other.covers_fully_) {
+      return covers_fully_ > other.covers_fully_;
+    }
+
+    // If all previous values are the same, a local index (or indexed table) is better than a
+    // non-local index.
+    return is_local_ > other.is_local_;
   }
 
-  // If hash key not fully specified, set prefix length to 0, as we will have to do a full table
-  // scan anyway.
-  if (prefix_length_ < num_hash_key_columns) {
-    prefix_length_ = 0;
-    return;
+  string ToString() const {
+    return strings::Substitute("Selectivity: index_id $0 is_local $1 hash_length $2 "
+                               "prefix_length $3 ends_with_range $4 covers_fully $5", index_id_,
+                               is_local_, hash_length_, prefix_length_, ends_with_range_,
+                               covers_fully_);
   }
 
-  // Now find out if it ends with a range.
-  ends_with_range_ = (prefix_length_ < ops.size()) && ops[prefix_length_] == OpSelectivity::kRange;
-}
+ private:
+  // Analyze selectivity, currently defined as length of longest fully specified prefix and
+  // whether there is a range operator immediately after the prefix.
+  using MCIdToIndexMap = MCUnorderedMap<int, size_t>;
+  void Analyze(MemoryContext *memctx,
+               const PTSelectStmt& stmt,
+               const MCIdToIndexMap& id_to_idx,
+               size_t num_hash_key_columns) {
+    // The operator on each column, in the order of the columns in the table or index we analyze.
+    MCVector<OpSelectivity> ops(id_to_idx.size(), OpSelectivity::kNone, memctx);
+    for (const ColumnOp& col_op : stmt.key_where_ops()) {
+      const auto iter = id_to_idx.find(col_op.desc()->id());
+      if (iter != id_to_idx.end()) {
+        ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
+      }
+    }
+    for (const ColumnOp& col_op : stmt.where_ops()) {
+      const auto iter = id_to_idx.find(col_op.desc()->id());
+      if (iter != id_to_idx.end()) {
+        ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
+      }
+    }
 
-bool Selectivity::operator>(const Selectivity& other) const {
-  // If different prefix lengths, the longer one is better.
-  if (prefix_length_ != other.prefix_length_) {
-    return prefix_length_ > other.prefix_length_;
+    // Now find the prefix length.
+    while (prefix_length_ < ops.size() && ops[prefix_length_] == OpSelectivity::kEqual) {
+      prefix_length_++;
+    }
+
+    // If hash key not fully specified, set prefix length to 0, as we will have to do a full table
+    // scan anyway.
+    if (prefix_length_ < num_hash_key_columns) {
+      prefix_length_ = 0;
+      return;
+    }
+
+    // Now find out if it ends with a range.
+    ends_with_range_ = (prefix_length_ < ops.size()) &&
+                       ops[prefix_length_] == OpSelectivity::kRange;
   }
 
-  // If same prefix lengths, the longer the hash length the better.
-  if (hash_length_ != other.hash_length_) {
-    return hash_length_ > other.hash_length_;
-  }
-
-  // If same prefix and hash lengths, but one ends with a range query and the other does not, the
-  // one that does is better.
-  if (ends_with_range_ != other.ends_with_range_) {
-    return ends_with_range_ > other.ends_with_range_;
-  }
-
-  // If both previous values are the same, the indexed table is better than the index.
-  if (index_id_.empty() != other.index_id_.empty()) {
-    return index_id_.empty() > other.index_id_.empty();
-  }
-
-  // An index that covers the read fully is better than one that does not.
-  if (covers_fully_ != other.covers_fully_) {
-    return covers_fully_ > other.covers_fully_;
-  }
-
-  // If all previous values are the same, a local index (or indexed table) is better than a
-  // non-local index.
-  return is_local_ > other.is_local_;
-}
-
-string Selectivity::ToString() const {
-  return strings::Substitute("Selectivity: index_id $0 is_local $1 hash_length $2 "
-                             "prefix_length $3 ends_with_range $4 covers_fully $5", index_id_,
-                             is_local_, hash_length_, prefix_length_, ends_with_range_,
-                             covers_fully_);
-}
+  TableId index_id_;         // Index table id (null for indexed table).
+  bool is_local_ = false;    // Whether the index is local (true for indexed table).
+  size_t hash_length_ = 0;   // Length of hash key in index or indexed table.
+  size_t prefix_length_ = 0; // Length of fully specified prefix in index or indexed table.
+  bool ends_with_range_ = false; // Whether there is a range clause after prefix.
+  bool covers_fully_ = false; // Whether the index covers the read fully (true for indexed table).
+};
 
 } // namespace
 
@@ -273,6 +260,18 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
 PTSelectStmt::~PTSelectStmt() {
 }
 
+Status PTSelectStmt::LookupIndex(SemContext *sem_context) {
+  VLOG(3) << "Loading table descriptor for index " << index_id_;
+  table_ = sem_context->GetTableDesc(index_id_);
+  if (!table_ || !table_->IsIndex() ||
+      // Only looking for CQL Indexes.
+      (table_->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
+    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
+  }
+  LoadSchema(sem_context, table_, &column_map_);
+  return Status::OK();
+}
+
 CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -304,7 +303,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
     column_refs_.clear();
     static_column_refs_.clear();
 
-    RETURN_NOT_OK(sem_context->LookupIndex(index_id_, loc(), &table_, &table_columns_));
+    RETURN_NOT_OK(LookupIndex(sem_context));
   }
 
   // Analyze clauses in select statements and check that references to columns in selected_exprs
@@ -387,6 +386,11 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
     selectivities.emplace_back(sem_context->PTempMem(), *this, index.second);
   }
   std::sort(selectivities.begin(), selectivities.end(), std::greater<Selectivity>());
+  if (VLOG_IS_ON(3)) {
+    for (const auto& selectivity : selectivities) {
+      VLOG(3) << selectivity.ToString();
+    }
+  }
 
   // Find the best selectivity. For now, we will use an index only if it covers the read fully.
   for (const Selectivity& selectivity : selectivities) {
@@ -412,7 +416,8 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
 CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.
   int key_count = 0;
-  for (const ColumnDesc& desc : table_columns_) {
+  for (const auto pair : column_map_) {
+    const ColumnDesc& desc = pair.second;
     if (desc.is_hash()) {
       if (column_refs_.find(desc.id()) != column_refs_.end()) {
         key_count++;
@@ -535,7 +540,6 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
 CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
   const MCList<PTExpr::SharedPtr>& exprs = selected_exprs();
   selected_schemas_ = make_shared<vector<ColumnSchema>>();
-
   selected_schemas_->reserve(exprs.size());
   for (auto expr : exprs) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {

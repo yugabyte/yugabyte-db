@@ -153,8 +153,8 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
       if (sem_context->sem_state() == nullptr ||
           !sem_context->allowing_column_refs()) {
         return sem_context->Error(this,
-            "Column references are not allowed in this context",
-            ErrorCode::CQL_STATEMENT_INVALID);
+                                  "Column references are not allowed in this context",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       FALLTHROUGH_INTENDED;
     case ExprOperator::kConst: FALLTHROUGH_INTENDED;
@@ -208,7 +208,7 @@ PTLiteralString::~PTLiteralString() {
 
 CHECKED_STATUS PTLiteralString::ToInt64(int64_t *value, bool negate) const {
   auto temp = negate ? util::CheckedStoll(string("-") + value_->c_str())
-                     : util::CheckedStoll(*value_);
+              : util::CheckedStoll(*value_);
   RETURN_NOT_OK(temp);
   *value = *temp;
   return Status::OK();
@@ -508,9 +508,9 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
       if (operand1->expr_op() == ExprOperator::kRef) {
         const PTRef *ref = static_cast<const PTRef *>(operand1.get());
         sem_state->SetExprState(ref->ql_type(),
-            ref->internal_type(),
-            ref->bindvar_name(),
-            ref->desc());
+                                ref->internal_type(),
+                                ref->bindvar_name(),
+                                ref->desc());
       } else {
         sem_state->SetExprState(operand1->ql_type(), operand1->internal_type());
       }
@@ -534,9 +534,9 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
       if (operand1->expr_op() == ExprOperator::kRef) {
         const PTRef *ref = static_cast<const PTRef *>(operand1.get());
         sem_state->SetExprState(ql_type,
-            ref->internal_type(),
-            ref->bindvar_name(),
-            ref->desc());
+                                ref->internal_type(),
+                                ref->bindvar_name(),
+                                ref->desc());
       } else {
         sem_state->SetExprState(ql_type, operand1->internal_type());
       }
@@ -611,7 +611,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
 
     default:
       return sem_context->Error(this, "Operator not supported yet",
-          ErrorCode::CQL_STATEMENT_INVALID);
+                                ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   WhereExprState *where_state = sem_context->where_state();
@@ -724,6 +724,11 @@ CHECKED_STATUS PTOperatorExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
+const ColumnDesc *PTOperatorExpr::GetColumnDesc(const SemContext *sem_context,
+                                                const MCString& col_name) const {
+  return sem_context->current_dml_stmt()->GetColumnDesc(sem_context, col_name);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PTRef::PTRef(MemoryContext *memctx,
@@ -746,7 +751,7 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
     return sem_context->Error(this, "Qualified name not allowed for column reference",
                               ErrorCode::SQL_STATEMENT_INVALID);
   }
-  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -812,7 +817,7 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
-  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -857,9 +862,9 @@ CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) 
 //--------------------------------------------------------------------------------------------------
 
 PTSubscriptedColumn::PTSubscriptedColumn(MemoryContext *memctx,
-             YBLocation::SharedPtr loc,
-             const PTQualifiedName::SharedPtr& name,
-             const PTExprListNode::SharedPtr& args)
+                                         YBLocation::SharedPtr loc,
+                                         const PTQualifiedName::SharedPtr& name,
+                                         const PTExprListNode::SharedPtr& args)
     : PTOperator0(memctx, loc, ExprOperator::kSubColRef, yb::QLOperator::QL_OP_NOOP),
       name_(name),
       args_(args),
@@ -879,7 +884,7 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
-  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -897,8 +902,8 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
       }
 
       sem_state.SetExprState(curr_ytype->keys_type(),
-          client::YBColumnSchema::ToInternalDataType(curr_ytype->keys_type()));
-          RETURN_NOT_OK(arg->Analyze(sem_context));
+                             client::YBColumnSchema::ToInternalDataType(curr_ytype->keys_type()));
+      RETURN_NOT_OK(arg->Analyze(sem_context));
 
       curr_ytype = curr_ytype->values_type();
       curr_itype = client::YBColumnSchema::ToInternalDataType(curr_ytype);
@@ -928,10 +933,9 @@ void PTSubscriptedColumn::PrintSemanticAnalysisResult(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-PTAllColumns::PTAllColumns(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc)
+PTAllColumns::PTAllColumns(MemoryContext *memctx, YBLocation::SharedPtr loc)
     : PTOperator0(memctx, loc, ExprOperator::kRef, yb::QLOperator::QL_OP_NOOP),
-      stmt_(nullptr) {
+      columns_(memctx) {
 }
 
 PTAllColumns::~PTAllColumns() {
@@ -939,27 +943,36 @@ PTAllColumns::~PTAllColumns() {
 
 CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
   // Make sure '*' is used only in 'SELECT *' statement.
-  PTDmlStmt *stmt = sem_context->current_dml_stmt();
+  const PTDmlStmt *stmt = sem_context->current_dml_stmt();
   if (stmt == nullptr ||
       stmt->opcode() != TreeNodeOpcode::kPTSelectStmt ||
-      static_cast<PTSelectStmt*>(stmt)->selected_exprs().size() > 1) {
+      static_cast<const PTSelectStmt*>(stmt)->selected_exprs().size() > 1) {
     return sem_context->Error(loc(), "Cannot use '*' expression in this context",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
-  stmt_ = static_cast<PTSelectStmt*>(stmt);
 
-  // For 'select * ... ' using index only, duplicate the index columns and sort them in the same
-  // order as the table columns so that the selected columns are returned in the proper order.
-  if (stmt_->table()->IsIndex()) {
-    std::unordered_map<int, int> map; // A map of column_id -> indexed_column_id
-    for (const auto& column : stmt_->table()->index_info().columns()) {
+  const auto* select_stmt = static_cast<const PTSelectStmt*>(stmt);
+  columns_.clear();
+  columns_.reserve(select_stmt->column_map().size());
+  for (const auto pair : select_stmt->column_map()) {
+    columns_.emplace_back(pair.second);
+  }
+
+  // For 'select * ... ' using index only, sort them in the same order as the table columns so that
+  // the selected columns are returned in the proper order.
+  if (select_stmt->table()->IsIndex()) {
+    MCUnorderedMap<int, int> map(sem_context->PTempMem()); // Map of column_id -> indexed_column_id
+    for (const auto& column : select_stmt->table()->index_info().columns()) {
       map.emplace(column.column_id, column.indexed_column_id);
     }
-    indexed_table_columns_.emplace(sem_context->PTreeMem());
-    *indexed_table_columns_ = stmt_->table_columns();
-    std::sort(indexed_table_columns_->begin(), indexed_table_columns_->end(),
+    std::sort(columns_.begin(), columns_.end(),
               [&map](const ColumnDesc& a, const ColumnDesc& b) {
                 return map[a.id()] < map[b.id()];
+              });
+  } else {
+    std::sort(columns_.begin(), columns_.end(),
+              [](const ColumnDesc& a, const ColumnDesc& b) {
+                return a.id() < b.id();
               });
   }
 
@@ -971,10 +984,6 @@ CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
   ql_type_ = QLType::Create(DataType::NULL_VALUE_TYPE);
   internal_type_ = InternalType::kListValue;
   return Status::OK();
-}
-
-const MCVector<ColumnDesc>& PTAllColumns::columns() const {
-  return indexed_table_columns_ ? *indexed_table_columns_ : stmt_->table_columns();
 }
 
 //--------------------------------------------------------------------------------------------------

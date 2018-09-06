@@ -255,6 +255,7 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
  private:
+  CHECKED_STATUS LookupIndex(SemContext *sem_context);
   CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
@@ -273,6 +274,7 @@ class PTSelectStmt : public PTDmlStmt {
   //   GROUP BY  <group_by_clause_> HAVING <having_clause_>
   //   ORDER BY  <order_by_clause_>
   //   LIMIT     <limit_clause_>
+  //   OFFSET    <offset_clause_>
   const bool distinct_ = false;
   const PTExprListNode::SharedPtr selected_exprs_;
   const PTTableRefListNode::SharedPtr from_clause_;

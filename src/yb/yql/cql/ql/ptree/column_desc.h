@@ -30,43 +30,24 @@ namespace ql {
 // This class can be used to describe any reference of a column.
 class ColumnDesc {
  public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef std::shared_ptr<ColumnDesc> SharedPtr;
-  typedef std::shared_ptr<const ColumnDesc> SharedPtrConst;
-
-  ColumnDesc()
-      : index_(-1),
-        id_(-1),
-        is_hash_(false),
-        is_primary_(false),
-        is_static_(false),
-        ql_type_(QLType::Create(DataType::UNKNOWN_DATA)),
-        internal_type_(InternalType::VALUE_NOT_SET) {
-  }
-
-  void Init(int index,
-            int id,
-            string name,
-            bool is_hash,
-            bool is_primary,
-            bool is_static,
-            bool is_counter,
-            const std::shared_ptr<QLType>& ql_type,
-            InternalType internal_type) {
-    index_ = index,
-    id_ = id;
-    name_ = name;
-    is_hash_ = is_hash;
-    is_primary_ = is_primary;
-    is_static_ = is_static;
-    is_counter_ = is_counter;
-    ql_type_ = ql_type;
-    internal_type_ = internal_type;
-  }
-
-  bool IsInitialized() const {
-    return (index_ >= 0);
+  ColumnDesc(const int index,
+             const int id,
+             const std::string& name,
+             const bool is_hash,
+             const bool is_primary,
+             const bool is_static,
+             const bool is_counter,
+             const std::shared_ptr<QLType>& ql_type,
+             const InternalType internal_type)
+      : index_(index),
+        id_(id),
+        name_(name),
+        is_hash_(is_hash),
+        is_primary_(is_primary),
+        is_static_(is_static),
+        is_counter_(is_counter),
+        ql_type_(ql_type),
+        internal_type_(internal_type) {
   }
 
   int index() const {
@@ -77,7 +58,7 @@ class ColumnDesc {
     return id_;
   }
 
-  const string& name() const {
+  const std::string& name() const {
     return name_;
   }
 
@@ -97,7 +78,7 @@ class ColumnDesc {
     return is_counter_;
   }
 
-  std::shared_ptr<QLType> ql_type() const {
+  const std::shared_ptr<QLType>& ql_type() const {
     return ql_type_;
   }
 
@@ -106,15 +87,15 @@ class ColumnDesc {
   }
 
  private:
-  int index_;
-  int id_;
-  string name_;
-  bool is_hash_;
-  bool is_primary_;
-  bool is_static_;
-  bool is_counter_;
+  int index_ = -1;
+  int id_ = -1;
+  std::string name_;
+  bool is_hash_ = false;
+  bool is_primary_ = false;
+  bool is_static_ = false;
+  bool is_counter_ = false;
   std::shared_ptr<QLType> ql_type_;
-  InternalType internal_type_;
+  InternalType internal_type_ = InternalType::VALUE_NOT_SET;
 };
 
 }  // namespace ql

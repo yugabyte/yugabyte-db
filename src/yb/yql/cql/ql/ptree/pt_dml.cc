@@ -25,6 +25,8 @@
 namespace yb {
 namespace ql {
 
+DECLARE_bool(allow_index_table_read_write);
+
 using strings::Substitute;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
@@ -41,7 +43,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     using_clause_(using_clause),
     returns_status_(returns_status),
     bind_variables_(memctx),
-    table_columns_(memctx),
+    column_map_(memctx),
     func_ops_(memctx),
     key_where_ops_(memctx),
     where_ops_(memctx),
@@ -59,8 +61,40 @@ PTDmlStmt::~PTDmlStmt() {
 }
 
 Status PTDmlStmt::LookupTable(SemContext *sem_context) {
-  return sem_context->LookupTable(table_name(), table_loc(), IsWriteOp(), &table_, &is_system_,
-                                  &table_columns_);
+  is_system_ = table_name().is_system();
+  if (is_system_ && IsWriteOp() && client::FLAGS_yb_system_namespace_readonly) {
+    return sem_context->Error(table_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
+  }
+
+  VLOG(3) << "Loading table descriptor for " << table_name().ToString();
+  table_ = sem_context->GetTableDesc(table_name());
+  if (!table_ || (table_->IsIndex() && !FLAGS_allow_index_table_read_write) ||
+      // Only looking for CQL tables.
+      (table_->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
+    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
+  }
+  LoadSchema(sem_context, table_, &column_map_);
+  return Status::OK();
+}
+
+void PTDmlStmt::LoadSchema(SemContext *sem_context,
+                           const client::YBTablePtr& table,
+                           MCColumnMap* column_map) {
+  column_map->clear();
+  const client::YBSchema& schema = table->schema();
+  for (size_t idx = 0; idx < schema.num_columns(); idx++) {
+    const client::YBColumnSchema col = schema.Column(idx);
+    column_map->emplace(MCString(col.name().c_str(), sem_context->PSemMem()),
+                        ColumnDesc(idx,
+                                   schema.ColumnId(idx),
+                                   col.name(),
+                                   idx < schema.num_hash_key_columns(),
+                                   idx < schema.num_key_columns(),
+                                   col.is_static(),
+                                   col.is_counter(),
+                                   col.type(),
+                                   client::YBColumnSchema::ToInternalDataType(col.type())));
+  }
 }
 
 // Node semantics analysis.
@@ -71,6 +105,56 @@ Status PTDmlStmt::Analyze(SemContext *sem_context) {
   subscripted_col_args_ = MCMakeShared<MCVector<SubscriptedColumnArg>>(psem_mem);
   json_col_args_ = MCMakeShared<MCVector<JsonColumnArg>>(psem_mem);
   return Status::OK();
+}
+
+const ColumnDesc* PTDmlStmt::GetColumnDesc(const SemContext *sem_context,
+                                           const MCString& col_name) {
+  const auto iter = column_map_.find(col_name);
+  if (iter == column_map_.end()) {
+    return nullptr;
+  }
+
+  const ColumnDesc* column_desc = &iter->second;
+
+  // To indicate that DocDB must read a columm value to execute an expression, the column is added
+  // to the column_refs list.
+  bool reading_column = false;
+
+  switch (opcode()) {
+    case TreeNodeOpcode::kPTSelectStmt:
+      reading_column = true;
+      break;
+    case TreeNodeOpcode::kPTUpdateStmt:
+      if (sem_context->sem_state() != nullptr &&
+          sem_context->processing_set_clause() &&
+          !sem_context->processing_assignee()) {
+        reading_column = true;
+        break;
+      }
+      FALLTHROUGH_INTENDED;
+    case TreeNodeOpcode::kPTInsertStmt:
+    case TreeNodeOpcode::kPTDeleteStmt:
+      if (sem_context->sem_state() != nullptr &&
+          sem_context->processing_if_clause()) {
+        reading_column = true;
+        break;
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (reading_column) {
+    // TODO(neil) Currently AddColumnRef() relies on MCSet datatype to guarantee that we have a
+    // unique list of IDs, but we should take advantage to "symbol table" when collecting data
+    // for execution. Symbol table and "column_read_count_" need to be corrected so that we can
+    // use MCList instead.
+
+    // Indicate that this column must be read for the statement execution.
+    AddColumnRef(*column_desc);
+  }
+
+  return column_desc;
 }
 
 Status PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context) {
