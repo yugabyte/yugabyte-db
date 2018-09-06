@@ -53,22 +53,22 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
   const int num_hash_key_columns = schema.num_hash_key_columns();
 
   if (col_descs != nullptr) {
-    col_descs->resize(num_columns);
+    col_descs->reserve(num_columns);
     if (column_definitions != nullptr) {
       column_definitions->resize(num_columns);
     }
     for (int idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
-      (*col_descs)[idx].Init(idx,
-                             schema.ColumnId(idx),
-                             col.name(),
-                             idx < num_hash_key_columns,
-                             idx < num_key_columns,
-                             col.is_static(),
-                             col.is_counter(),
-                             col.type(),
-                             YBColumnSchema::ToInternalDataType(col.type()));
+      col_descs->emplace_back(idx,
+                              schema.ColumnId(idx),
+                              col.name(),
+                              idx < num_hash_key_columns,
+                              idx < num_key_columns,
+                              col.is_static(),
+                              col.is_counter(),
+                              col.type(),
+                              YBColumnSchema::ToInternalDataType(col.type()));
 
       // Insert the column descriptor, and column definition if requested, to symbol table.
       MCSharedPtr<MCString> col_name = MCMakeShared<MCString>(PSemMem(), col.name().c_str());

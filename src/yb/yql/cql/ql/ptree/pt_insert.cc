@@ -86,7 +86,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
         return sem_context->Error(name, "Qualified name not allowed for column reference",
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
-      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name());
+      const ColumnDesc *col_desc = GetColumnDesc(sem_context, name->last_name());
 
       // Check that the column exists.
       if (col_desc == nullptr) {
@@ -131,8 +131,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     // the argument datatypes are convertible with all columns.
     idx = 0;
     MCList<PTQualifiedName::SharedPtr>::const_iterator iter = columns_->node_list().cbegin();
+    MCColumnMap::const_iterator desc_iter = column_map_.cbegin();
     for (const auto& expr : exprs) {
-      ColumnDesc *col_desc = &table_columns_[idx];
+      const ColumnDesc *col_desc = &desc_iter->second;
 
       // Process values arguments.
       SemState sem_state(sem_context, col_desc->ql_type(), col_desc->internal_type(),
@@ -144,6 +145,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       column_args_->at(idx).Init(col_desc, expr);
       idx++;
       iter++;
+      desc_iter++;
     }
   }
 

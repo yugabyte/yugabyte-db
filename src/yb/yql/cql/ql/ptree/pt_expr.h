@@ -907,6 +907,10 @@ class PTOperatorExpr : public PTExpr {
   // Analyze this operator after all operands were analyzed.
   using PTExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
+
+ protected:
+  // Get the column descriptor from the current DML statement.
+  const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
 };
 
 using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA, PTOperatorExpr>;
@@ -1133,15 +1137,13 @@ class PTAllColumns : public PTOperator0 {
     return "*";
   }
 
-  const MCVector<ColumnDesc>& columns() const;
+  const MCVector<ColumnDesc>& columns() const {
+    return columns_;
+  }
 
  private:
   // Fields that should be resolved by semantic analysis.
-  PTSelectStmt *stmt_;
-
-  // For 'SELECT * ... ' using index only: column descriptors in the order of the indexed table
-  // columns instead of the index columns.
-  boost::optional<MCVector<ColumnDesc>> indexed_table_columns_;
+  MCVector<ColumnDesc> columns_;
 };
 
 //--------------------------------------------------------------------------------------------------

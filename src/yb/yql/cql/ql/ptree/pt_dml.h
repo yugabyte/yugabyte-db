@@ -179,6 +179,9 @@ class PTCollection : public TreeNode {
 
 class PTDmlStmt : public PTCollection {
  public:
+  // Table column name to description map.
+  using MCColumnMap = MCMap<MCString, ColumnDesc>;
+
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTDmlStmt(MemoryContext *memctx,
@@ -197,6 +200,10 @@ class PTDmlStmt : public PTCollection {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+
+  // Find column descriptor. From the context, the column value will be marked to be read if
+  // necessary when executing the QL statement.
+  const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name);
 
   virtual bool IsDml() const override {
     return true;
@@ -217,8 +224,8 @@ class PTDmlStmt : public PTCollection {
     return is_system_;
   }
 
-  const MCVector<ColumnDesc>& table_columns() const {
-    return table_columns_;
+  const MCColumnMap& column_map() const {
+    return column_map_;
   }
 
   int num_columns() const {
@@ -319,8 +326,8 @@ class PTDmlStmt : public PTCollection {
 
   // Add all column refs to be read by DocDB.
   void AddRefForAllColumns() {
-    for (const auto col_desc : table_columns_) {
-      AddColumnRef(col_desc);
+    for (const auto pair : column_map_) {
+      AddColumnRef(pair.second);
     }
   }
 
@@ -386,6 +393,11 @@ class PTDmlStmt : public PTCollection {
   // Lookup table from the metadata database.
   CHECKED_STATUS LookupTable(SemContext *sem_context);
 
+  // Load table schema into symbol table.
+  static void LoadSchema(SemContext *sem_context,
+                         const client::YBTablePtr& table,
+                         MCColumnMap* column_map);
+
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);
 
@@ -424,9 +436,9 @@ class PTDmlStmt : public PTCollection {
   // Is the target table a system table?
   bool is_system_ = false;
 
-  // Target table and columns.
+  // Target table and column name->description map.
   client::YBTablePtr table_;
-  MCVector<ColumnDesc> table_columns_;
+  MCColumnMap column_map_;
 
   // Where operator list.
   // - When reading (SELECT), key_where_ops_ has only HASH (partition) columns.

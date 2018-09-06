@@ -51,7 +51,7 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     return sem_context->Error(lhs_, "Qualified name not allowed for column reference",
                               ErrorCode::SQL_STATEMENT_INVALID);
   }
-  col_desc_ = sem_context->GetColumnDesc(lhs_->last_name());
+  col_desc_ = sem_context->current_dml_stmt()->GetColumnDesc(sem_context, lhs_->last_name());
   if (col_desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
