@@ -102,7 +102,7 @@ class GCPProviderInitView extends Component {
     }
     const credential_input_options = [
       <option key={1} value={"upload_service_account_json"}>{"Upload Service Account config"}</option>,
-      <option key={2} value={"local_service_account"}>{"Use Service Accont on instance"}</option>
+      <option key={2} value={"local_service_account"}>{"Use Service Account on instance"}</option>
     ];
     let uploadConfigField = <span />;
     if (this.state.credentialInputType === "upload_service_account_json") {
