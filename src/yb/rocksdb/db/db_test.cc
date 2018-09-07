@@ -3933,7 +3933,7 @@ TEST_F(DBTest, SharedWriteBuffer) {
 }
 #endif  // ROCKSDB_LITE
 
-TEST_F(DBTest, PurgeInfoLogs) {
+TEST_F(DBTest, DISABLED_PurgeInfoLogs) {
   Options options = CurrentOptions();
   options.keep_log_file_num = 5;
   options.create_if_missing = true;
