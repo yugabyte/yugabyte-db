@@ -133,7 +133,8 @@ class DocWriteBatch {
       const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
+      bool init_marker_ttl = true);
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,

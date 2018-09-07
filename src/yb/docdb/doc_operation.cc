@@ -657,7 +657,8 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         if (*data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
+              doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl,
+              Value::kInvalidUserTimestamp, false /* init_marker_ttl */));
         } else {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
               doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
