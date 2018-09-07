@@ -224,7 +224,10 @@ message RedisNoOpRequestPB {
 // PERSIST, (P)EXPIRE, (P)EXPIREAT
 message RedisSetTtlRequestPB {
   // Expiration time in milliseconds.
-  optional int64 ttl = 1 [default = -1];
+  oneof expiration {
+    int64 ttl = 1 [default = -1]; // For (P)EXPIRE
+    int64 absolute_time = 2; // For (P)EXPIREAT
+  }
 }
 
 // TTL, PTTL

@@ -864,19 +864,45 @@ CHECKED_STATUS ParsePersist(YBRedisWriteOp* op, const RedisClientCommand& args) 
   return Status::OK();
 }
 
+CHECKED_STATUS ParseExpireAt(YBRedisWriteOp* op,
+                           const RedisClientCommand& args,
+                           const bool using_millis) {
+  const auto& key = args[1];
+  auto expiration = VERIFY_RESULT(ParseInt64(args[2], "expiration"));
+  // If the TTL is not positive, we immediately delete.
+  if (expiration <= 0) {
+      op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
+      op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+      op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
+      return Status::OK();
+  }
+  expiration *= using_millis ? 1 : MonoTime::kMillisecondsPerSecond;
+  op->mutable_request()->set_allocated_set_ttl_request(new RedisSetTtlRequestPB());
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_set_ttl_request()->set_absolute_time(expiration);
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseExpireAt(YBRedisWriteOp* op, const RedisClientCommand& args) {
+  return ParseExpireAt(op, args, /* using_millis */ false);
+}
+
+CHECKED_STATUS ParsePExpireAt(YBRedisWriteOp* op, const RedisClientCommand& args) {
+  return ParseExpireAt(op, args, /* using_millis */ true);
+}
+
 CHECKED_STATUS ParseSetEx(YBRedisWriteOp* op,
                           const RedisClientCommand& args,
                           const bool using_millis) {
   const auto& key = args[1];
   const auto value = args[3];
-  auto ttl = ParseInt64(args[2], "TTL");
-  RETURN_NOT_OK(ttl);
-  if (*ttl <= 0) {
+  auto ttl = VERIFY_RESULT(ParseInt64(args[2], "TTL"));
+  if (ttl <= 0) {
     op->mutable_request()->set_allocated_no_op_request(new RedisNoOpRequestPB());
     return Status::OK();
   }
-  *ttl *= using_millis ? 1 : MonoTime::kMillisecondsPerSecond;
-  if (*ttl < kRedisMinTtlMillis || *ttl > kRedisMaxTtlMillis) {
+  ttl *= using_millis ? 1 : MonoTime::kMillisecondsPerSecond;
+  if (ttl < kRedisMinTtlMillis || ttl > kRedisMaxTtlMillis) {
     return STATUS_FORMAT(InvalidCommand,
         "TTL field $0 is not within valid bounds", args[3]);
   }
@@ -884,7 +910,7 @@ CHECKED_STATUS ParseSetEx(YBRedisWriteOp* op,
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
-  op->mutable_request()->mutable_set_request()->set_ttl(*ttl);
+  op->mutable_request()->mutable_set_request()->set_ttl(ttl);
   return Status::OK();
 }
 

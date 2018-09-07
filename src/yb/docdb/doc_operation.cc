@@ -837,10 +837,24 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
   const RedisKeyValuePB& kv = request_.key_value();
 
-  // We only support setting TTLs on top-level keys
+  // We only support setting TTLs on top-level keys.
   if (!kv.subkey().empty()) {
     return STATUS_SUBSTITUTE(Corruption,
                              "Expected no subkeys, got $0", kv.subkey().size());
+  }
+
+  MonoDelta ttl;
+  bool absolute_expiration = request_.set_ttl_request().has_absolute_time();
+
+  // Handle ExpireAt
+  if (absolute_expiration) {
+    int64_t calc_ttl = request_.set_ttl_request().absolute_time() -
+      server::HybridClock::GetPhysicalValueNanos(data.read_time.read) /
+      MonoTime::kNanosecondsPerMillisecond;
+    if (calc_ttl <= 0) {
+      return ApplyDel(data);
+    }
+    ttl = MonoDelta::FromMilliseconds(calc_ttl);
   }
 
   Expiration exp;
@@ -857,7 +871,7 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
-  if (request_.set_ttl_request().ttl() == -1) { // Handle PERSIST.
+  if (!absolute_expiration && request_.set_ttl_request().ttl() == -1) { // Handle PERSIST.
     MonoDelta new_ttl = VERIFY_RESULT(exp.ComputeRelativeTtl(iterator_->read_time().read));
     if (new_ttl.IsNegative() || new_ttl == Value::kMaxTtl) {
       response_.set_int_response(0);
@@ -866,8 +880,10 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
   }
 
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
-  const MonoDelta ttl = request_.set_ttl_request().ttl() == -1 ? Value::kMaxTtl :
+  if (!absolute_expiration) {
+    ttl = request_.set_ttl_request().ttl() == -1 ? Value::kMaxTtl :
       MonoDelta::FromMilliseconds(request_.set_ttl_request().ttl());
+  }
 
   ValueType v_type = ValueTypeFromRedisType(value->type);
   if (v_type == ValueType::kInvalid)

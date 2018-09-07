@@ -3737,6 +3737,108 @@ TEST_F(TestRedisService, TestTtlPrimitive) {
   VerifyCallbacks();
 }
 
+// For testing TestExpireAt
+TEST_F(TestRedisService, TestExpireAt) {
+  std::string k1 = "foo";
+  std::string k2 = "fu";
+  std::string k3 = "phu";
+  std::string value = "bar";
+  int64_t millisecond_error = 500;
+  int64_t second_error = 1;
+  DoRedisTestOk(__LINE__, {"SET", k1, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, std::to_string(std::time(0) + 5)}, 1);
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", k1}, 5, second_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  std::this_thread::sleep_for(2s);
+  DoRedisTestApproxInt(__LINE__, {"TTL", k1}, 3, second_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Setting a new, later expiration.
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, std::to_string(std::time(0) + 7)}, 1);
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", k1}, 7, second_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Checking expected return values after expiration.
+  std::this_thread::sleep_for(8s);
+  CheckExpiredPrimitive(&k1);
+
+  // Again, but with an earlier expiration.
+  DoRedisTestOk(__LINE__, {"SET", k1, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, std::to_string(std::time(0) + 13)}, 1);
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", k1}, 13, second_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Setting a new, earlier expiration.
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, std::to_string(std::time(0) + 5)}, 1);
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", k1}, 5, second_error);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Check that the value expires as expected.
+  std::this_thread::sleep_for(6s);
+  CheckExpiredPrimitive(&k1);
+
+  // Persisting the key and checking expected return values.
+  DoRedisTestOk(__LINE__, {"SET", k1, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, std::to_string(std::time(0) + 3)}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"PERSIST", k1}, 1);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Check that the key and value are still there after a while.
+  std::this_thread::sleep_for(30s);
+  DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
+  DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
+  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+  SyncClient();
+  // Test that setting a zero-valued time properly expires the value.
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k1, "0"}, 1);
+  CheckExpiredPrimitive(&k1);
+  // One more time with a negative expiration time.
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k2, "-7"}, 1);
+  CheckExpiredPrimitive(&k2);
+  // Again with times before the current time.
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k2, std::to_string(std::time(0) - 3)}, 1);
+  CheckExpiredPrimitive(&k2);
+  // Again with the current time.
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k2, std::to_string(std::time(0))}, 1);
+  CheckExpiredPrimitive(&k2);
+  // Test PExpireAt
+  DoRedisTestOk(__LINE__, {"SET", k2, value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"PEXPIREAT", k2, std::to_string(std::time(0) * 1000 + 3200)}, 1);
+  DoRedisTestApproxInt(__LINE__, {"TTL", k2}, 3, second_error);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 3200, 2 * millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(1s);
+  DoRedisTestApproxInt(__LINE__, {"TTL", k2}, 2, second_error);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 2200, 2 * millisecond_error);
+  SyncClient();
+  std::this_thread::sleep_for(3s);
+  CheckExpiredPrimitive(&k2);
+  // Test ExpireAt on nonexistent key
+  DoRedisTestInt(__LINE__, {"EXPIREAT", k3, std::to_string(std::time(0) + 4)}, 0);
+  SyncClient();
+  DoRedisTestNull(__LINE__, {"GET", k3});
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestQuit) {
   DoRedisTestOk(__LINE__, {"SET", "key", "value"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value");
