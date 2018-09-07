@@ -23,7 +23,7 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 On one hand, YugaByte DB's storage and replication architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users. On the other hand, YugaByte DB's multi-model, multi-API and tunable read latency approach is similar to that of [Azure Cosmos DB](https://azure.microsoft.com/en-us/blog/a-technical-overview-of-azure-cosmos-db/).
 
-A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugaByte DB](https://medium.com/p/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db-ce720e07c0fd) goes through the above tradeoffs in more detail.
+A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugaByte DB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/) goes through the above tradeoffs in more detail.
 
 ## Why is a group of YugaByte DB nodes called a universe instead of the more commonly used term clusters?
 
