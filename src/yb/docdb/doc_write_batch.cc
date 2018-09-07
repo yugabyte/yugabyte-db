@@ -400,10 +400,12 @@ Status DocWriteBatch::InsertSubDocument(
     const MonoTime deadline,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
-    UserTimeMicros user_timestamp) {
+    UserTimeMicros user_timestamp,
+    bool init_marker_ttl) {
   if (!value.IsTombstoneOrPrimitive()) {
+    auto key_ttl = init_marker_ttl ? ttl : Value::kMaxTtl;
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(value.value_type()), ttl, user_timestamp),
+        doc_path, Value(PrimitiveValue(value.value_type()), key_ttl, user_timestamp),
         read_ht, deadline, query_id));
   }
   return ExtendSubDocument(doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp);

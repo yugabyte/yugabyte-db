@@ -2094,6 +2094,20 @@ TEST_F(TestRedisService, TestDummyLocal) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestTimeSeriesTtl) {
+  FLAGS_emulate_redis_responses = true;
+  DoRedisTestOk(__LINE__, {"TSADD", "key", "10", "v", "EXPIRE_IN", "5"});
+  SyncClient();
+
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+  DoRedisTestNull(__LINE__, {"TSGET", "key", "10"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "key", "2", "val"});
+  DoRedisTestOk(__LINE__, {"TSADD", "key", "20", "v"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestTimeSeries) {
   // The default value is true, but we explicitly set this here for clarity.
   FLAGS_emulate_redis_responses = true;
