@@ -68,7 +68,7 @@ Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
   latch.Wait();
 
   for (const auto& data : datas) {
-    if (data.resp.has_error()) {
+    if (!data.controller.status().ok() || data.resp.has_error()) {
       continue;
     }
     e->mutable_instance_id()->CopyFrom(data.resp.instance_id());
@@ -77,7 +77,12 @@ Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
     return Status::OK();
   }
 
-  return StatusFromPB(last_data.load(std::memory_order_acquire)->resp.error().status());
+  auto last_data_value = last_data.load(std::memory_order_acquire);
+  if (last_data_value->controller.status().ok()) {
+    return StatusFromPB(last_data_value->resp.error().status());
+  } else {
+    return last_data_value->controller.status();
+  }
 }
 
 const HostPortPB& DesiredHostPort(const TSInfoPB& ts_info, const CloudInfoPB& from) {
