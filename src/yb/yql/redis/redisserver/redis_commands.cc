@@ -125,6 +125,8 @@ namespace redisserver {
     ((persist, Persist, 2, WRITE)) \
     ((expire, Expire, 3, WRITE)) \
     ((pexpire, PExpire, 3, WRITE)) \
+    ((expireat, ExpireAt, 3, WRITE))   \
+    ((pexpireat, PExpireAt, 3, WRITE)) \
     ((ttl, Ttl, 2, READ)) \
     ((pttl, PTtl, 2, READ)) \
     ((setex, SetEx, 4, WRITE)) \
