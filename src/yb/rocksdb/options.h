@@ -1315,6 +1315,9 @@ struct DBOptions {
 
   // Invoked after memtable switched.
   std::shared_ptr<std::function<MemTableFilter()>> mem_table_flush_filter_factory;
+
+  // A prefix for log messages, usually containing the tablet id.
+  std::string log_prefix;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

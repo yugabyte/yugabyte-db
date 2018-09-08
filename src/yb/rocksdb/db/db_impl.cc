@@ -48,6 +48,13 @@
 #include <boost/container/small_vector.hpp>
 
 #include <gflags/gflags.h>
+
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/string_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/fault_injection.h"
+
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
@@ -108,14 +115,10 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_updater.h"
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
-
-#include "yb/util/debug-util.h"
-#include "yb/util/fault_injection.h"
 
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
 DEFINE_bool(flush_rocksdb_on_shutdown, true,
@@ -1588,8 +1591,9 @@ Status DBImpl::FlushMemTableToOutputFile(
       *made_progress = 1;
     }
     VersionStorageInfo::LevelSummaryStorage tmp;
-    LOG_TO_BUFFER(log_buffer, "[%s] Level summary: %s\n", cfd->GetName().c_str(),
-                cfd->current()->storage_info()->LevelSummary(&tmp));
+    YB_LOG_EVERY_N_SECS(INFO, 1)
+        << "[" << cfd->GetName() << "] Level summary: "
+        << cfd->current()->storage_info()->LevelSummary(&tmp);
   }
 
   if (!s.ok() && !s.IsShutdownInProgress() && db_options_.paranoid_checks &&
@@ -2824,8 +2828,7 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
   if (cfd != nullptr) {
     const MutableCFOptions mutable_cf_options =
         *cfd->GetLatestMutableCFOptions();
-    LOG_TO_BUFFER(
-        log_buffer,
+    YB_LOG_EVERY_N_SECS(INFO, 1) << StringPrintf(
         "Calling FlushMemTableToOutputFile with column "
         "family [%s], flush slots available %d, compaction slots allowed %d, "
         "compaction slots scheduled %d",
