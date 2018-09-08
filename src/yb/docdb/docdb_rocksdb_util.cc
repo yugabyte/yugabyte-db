@@ -377,7 +377,8 @@ void InitRocksDBOptions(
   options->create_if_missing = true;
   options->disableDataSync = true;
   options->statistics = statistics;
-  options->info_log = std::make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id));
+  options->log_prefix = Substitute("T $0: ", tablet_id);
+  options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
