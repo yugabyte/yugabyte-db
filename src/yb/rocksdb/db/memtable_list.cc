@@ -260,7 +260,6 @@ void MemTableList::PickMemtablesToFlush(autovector<MemTable*>* ret, const MemTab
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_PICK_MEMTABLES_TO_FLUSH);
   const auto& memlist = current_->memlist_;
-  LOG(INFO) << "Number of memtables: " << memlist.size();
   bool all_memtables_logged = false;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
