@@ -62,6 +62,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
+DECLARE_int32(remote_bootstrap_max_chunk_size);
 
 namespace yb {
 namespace client {
@@ -1423,6 +1424,7 @@ class RemoteBootstrapTest : public QLTransactionTest {
  protected:
   void SetUp() override {
     FLAGS_log_segment_size_bytes = 128;
+    FLAGS_remote_bootstrap_max_chunk_size = 1_KB;
     QLTransactionTest::SetUp();
   }
 };
