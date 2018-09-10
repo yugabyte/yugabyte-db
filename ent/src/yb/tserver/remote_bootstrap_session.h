@@ -16,7 +16,7 @@ class RemoteBootstrapSession : public yb::tserver::RemoteBootstrapSession {
                          std::string session_id,
                          std::string requestor_uuid,
                          FsManager* fs_manager,
-                         const std::atomic<int>* nsessions = nullptr)
+                         const std::atomic<int>* nsessions)
       : super(tablet_peer, session_id, requestor_uuid, fs_manager, nsessions) {}
 
   CHECKED_STATUS InitSnapshotFiles() override;
