@@ -200,7 +200,7 @@ class RemoteBootstrapTest : public YBTabletTest {
 
   virtual void InitSession() {
     session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
-        tablet_peer_, "TestSession", "FakeUUID", fs_manager()));
+        tablet_peer_, "TestSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     ASSERT_OK(session_->Init());
   }
 
