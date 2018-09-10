@@ -112,7 +112,7 @@ Status YBInboundConnectionContext::HandleCall(
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener());
+  auto call = InboundCall::Create<YBInboundCall>(connection, call_processed_listener());
 
   Status s = call->ParseFrom(call_tracker(), call_data);
   if (!s.ok()) {
