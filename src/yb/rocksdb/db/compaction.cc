@@ -29,6 +29,7 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "yb/rocksdb/compaction_filter.h"
@@ -475,9 +476,10 @@ uint64_t Compaction::OutputFilePreallocationSize() {
       preallocation_size += f->fd.GetTotalFileSize();
     }
   }
+  constexpr uint64_t kMaxPreAllocationSize = 1_GB;
   // Over-estimate slightly so we don't end up just barely crossing
   // the threshold
-  return preallocation_size + (preallocation_size / 10);
+  return std::min(kMaxPreAllocationSize, preallocation_size + (preallocation_size / 10));
 }
 
 std::unique_ptr<CompactionFilter> Compaction::CreateCompactionFilter() const {
