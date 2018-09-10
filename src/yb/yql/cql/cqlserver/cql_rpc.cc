@@ -78,9 +78,8 @@ Status CQLConnectionContext::HandleCall(
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = std::make_shared<CQLInboundCall>(connection,
-      call_processed_listener(),
-      ql_session_);
+  auto call = rpc::InboundCall::Create<CQLInboundCall>(
+      connection, call_processed_listener(), ql_session_);
 
   Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
