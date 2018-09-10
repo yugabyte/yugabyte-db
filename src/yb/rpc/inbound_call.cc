@@ -84,7 +84,6 @@ InboundCall::InboundCall(ConnectionPtr conn, CallProcessedListener call_processe
       conn_(std::move(conn)),
       call_processed_listener_(std::move(call_processed_listener)) {
   TRACE_TO(trace_, "Created InboundCall");
-  RecordCallReceived();
 }
 
 InboundCall::~InboundCall() {
@@ -131,7 +130,7 @@ void InboundCall::RecordCallReceived() {
   TRACE_EVENT_ASYNC_BEGIN0("rpc", "InboundCall", this);
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_received.Initialized()) << "Already marked as received";
-  VLOG(4) << "Received call " << ToString();
+  VLOG_WITH_PREFIX(4) << "Received";
   timing_.time_received = MonoTime::Now();
 }
 
@@ -140,7 +139,7 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
   timing_.time_handled = MonoTime::Now();
-  VLOG(4) << "Handling call " << ToString();
+  VLOG_WITH_PREFIX(4) << "Handling";
   incoming_queue_time->Increment(
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
@@ -153,7 +152,7 @@ void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_t
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";
   timing_.time_completed = MonoTime::Now();
-  VLOG(4) << "Completed handling call " << ToString();
+  VLOG_WITH_PREFIX(4) << "Completed handling";
   if (handler_run_time) {
     handler_run_time->Increment((timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
@@ -181,7 +180,7 @@ void InboundCall::QueueResponse(bool is_success) {
 }
 
 std::string InboundCall::LogPrefix() const {
-  return Format("{ InboundCall@$0 } ", this);
+  return Format("$0: ", this);
 }
 
 }  // namespace rpc

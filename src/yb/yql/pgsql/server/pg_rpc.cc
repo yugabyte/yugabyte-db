@@ -121,8 +121,8 @@ CHECKED_STATUS PgConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& 
   DCHECK(reactor->IsCurrentThread());
 
   // Queue the call for execution.
-  auto call = std::make_shared<PgInboundCall>(connection, this, call_processed_listener(),
-                                              command_bytes, instr);
+  auto call = rpc::InboundCall::Create<PgInboundCall>(connection, this, call_processed_listener(),
+                                                      command_bytes, instr);
   Enqueue(std::move(call));
 
   return Status::OK();
@@ -187,8 +187,8 @@ CHECKED_STATUS PgConnectionContext::ProcessStartupPacket(const rpc::ConnectionPt
   if (proto == NEGOTIATE_SSL_CODE && !doneSSL) {
     // Reply that SSL is not supported with "N".
     LOG(INFO) << "Not supporting SSL for now. Returning 'N'";
-    Enqueue(std::make_shared<PgInboundCall>(connection, this, call_processed_listener(),
-                                            command_bytes, "N"));
+    Enqueue(rpc::InboundCall::Create<PgInboundCall>(connection, this, call_processed_listener(),
+                                                    command_bytes, "N"));
     doneSSL = true;
     return Status::OK();
   }

@@ -46,7 +46,7 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   const MonoDelta timeout = controller()->timeout();
   const MonoTime deadline = timeout.Initialized() ? start_ + timeout : MonoTime::Max();
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
-  inbound_call_ = std::make_shared<LocalYBInboundCall>(remote_method(), outbound_call, deadline);
+  inbound_call_ = InboundCall::Create<LocalYBInboundCall>(remote_method(), outbound_call, deadline);
   return inbound_call_;
 }
 
