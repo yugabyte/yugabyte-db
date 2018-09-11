@@ -109,6 +109,19 @@ YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+
+YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
+                            const char *database_name,
+                            const char *table_name,
+                            YBCPgTableDesc *handle);
+
+YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle);
+
+YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
+                             int16_t attr_number,
+                             bool *is_primary,
+                             bool *is_hash);
+
 //--------------------------------------------------------------------------------------------------
 // All DML statements (select, insert, update, delete)
 

@@ -64,7 +64,7 @@ class PgExpr {
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   // Access methods.
-  Opcode op() {
+  Opcode op() const {
     return op_;
   }
 
@@ -156,6 +156,10 @@ class PgColumnRef : public PgExpr {
 
   // Setup ColumnRef expression when constructing statement.
   virtual CHECKED_STATUS Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+
+  int attr_num() const {
+    return attr_num_;
+  }
 
  private:
   int attr_num_;

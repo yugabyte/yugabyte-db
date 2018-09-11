@@ -65,7 +65,7 @@ void PgDmlWrite::PrepareColumns() {
 
   // Because Kudu API requires that primary columns must be listed in their created-order, the slots
   // for primary column bind expressions are allocated here in correct order.
-  for (PgColumn &col : columns_) {
+  for (PgColumn &col : table_desc_->columns()) {
     col.AllocPrimaryBindPB(write_req_);
   }
 }

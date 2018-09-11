@@ -18,8 +18,12 @@ import org.junit.Before;
 
 import java.io.File;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,14 +66,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return 1;
   }
 
-  protected void runInvalidQuery(Statement statement, String stmt) {
-    try {
-      statement.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
-    } catch (SQLException e) {
-      LOG.info("Expected exception", e);
-    }
-  }
+  //------------------------------------------------------------------------------------------------
+  // Postgres process integration.
 
   // TODO Postgres may eventually be integrated into the tserver as a child process.
   // For now doing this here so we can already write tests.
@@ -166,6 +164,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           new ProcessBuilder(postgresExecutable, "-p", portStr, "-h", host);
       procBuilder.environment().putAll(envVars);
       procBuilder.directory(pgDataDir);
+      procBuilder.redirectErrorStream(true);
       postgresProc = procBuilder.start();
     }
 
@@ -283,6 +282,75 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         destroyMiniCluster();
         miniCluster = null;
       }
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Test Utilities
+
+  protected class Row {
+    List<Object> elems = new ArrayList<>();
+
+    Row(Object... args) {
+      Collections.addAll(elems, args);
+    }
+
+    Object get(int index) {
+      return elems.get(index);
+    }
+
+    Integer getInt(int index) {
+      return (Integer) elems.get(index);
+    }
+
+    Long getLong(int index) {
+      return (Long) elems.get(index);
+    }
+
+    Double getDouble(int index) {
+      return (Double) elems.get(index);
+    }
+
+    String getString(int index) {
+      return (String) elems.get(index);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      if (!(obj instanceof Row)) {
+        return false;
+      }
+      Row other = (Row)obj;
+      return elems.equals(other.elems);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(elems);
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Row[");
+      for (int i = 0; i < elems.size(); i++) {
+        if (i > 0) sb.append(',');
+        sb.append(elems.get(i).toString());
+      }
+      sb.append(']');
+      return sb.toString();
+    }
+  }
+
+  protected void runInvalidQuery(Statement statement, String stmt) {
+    try {
+      statement.execute(stmt);
+      fail(String.format("Statement did not fail: %s", stmt));
+    } catch (SQLException e) {
+      LOG.info("Expected exception", e);
     }
   }
 }

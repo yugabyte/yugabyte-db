@@ -43,7 +43,6 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
-
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().
  * These can be OR-ed together.

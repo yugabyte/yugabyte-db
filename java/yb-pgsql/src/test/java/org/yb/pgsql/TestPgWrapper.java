@@ -16,6 +16,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,90 +67,58 @@ public class TestPgWrapper extends BasePgSQLTest {
   }
 
   @Test
+  public void testDatatypes() throws SQLException {
+    LOG.info("START testDatatypes");
+    String[] supported_types = {"smallint", "int", "bigint", "real", "double precision", "text"};
+
+    Statement statement = connection.createStatement();
+
+    StringBuilder sb = new StringBuilder();
+    sb.append("CREATE TABLE test(");
+    // Checking every type is allowed for a column.
+    for (int i = 0; i < supported_types.length; i++) {
+      sb.append("c").append(i).append(" ");
+      sb.append(supported_types[i]);
+      sb.append(", ");
+    }
+
+    sb.append("PRIMARY KEY(");
+    // Checking every type is allowed as primary key.
+    for (int i = 0; i < supported_types.length; i++) {
+      if (i > 0) sb.append(", ");
+      sb.append("c").append(i);
+    }
+    sb.append("))");
+
+    String sql = sb.toString();
+    LOG.info("Creating table. SQL statement: " + sql);
+    statement.execute(sb.toString());
+    LOG.info("END testDatatypes");
+  }
+
+  @Test
   public void testSimpleDML() throws Exception {
     Statement statement = connection.createStatement();
-    statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+    statement.execute("CREATE TABLE test(h bigint, r float, v text, PRIMARY KEY (h, r))");
 
-    statement.execute("INSERT INTO test(h, r, v) VALUES (1, 2, 3)");
-    statement.execute("INSERT INTO test(h, r, v) VALUES (1, 3, 4)");
+    statement.execute("INSERT INTO test(h, r, v) VALUES (1, 2.5, 'abc')");
+    statement.execute("INSERT INTO test(h, r, v) VALUES (1, 3.5, 'def')");
 
-    ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test WHERE h = 1;");
-
-    assertTrue(rs.next());
-    assertEquals(1, rs.getInt("h"));
-    assertEquals(2, rs.getInt("r"));
-    assertEquals(3, rs.getInt("v"));
+    ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test WHERE h = 1");
 
     assertTrue(rs.next());
-    assertEquals(1, rs.getInt("h"));
-    assertEquals(3, rs.getInt("r"));
-    assertEquals(4, rs.getInt("v"));
+    assertEquals(1, rs.getLong("h"));
+    assertEquals(2.5, rs.getDouble("r"));
+    assertEquals("abc", rs.getString("v"));
+
+    assertTrue(rs.next());
+    assertEquals(1, rs.getLong("h"));
+    assertEquals(3.5, rs.getDouble("r"));
+    assertEquals("def", rs.getString("v"));
 
     assertFalse(rs.next());
 
     rs.close();
-    statement.close();
-  }
-
-  @Test
-  public void testJoins() throws Exception {
-    Statement statement = connection.createStatement();
-    statement.execute("CREATE TABLE t1(h int, r int, v int, PRIMARY KEY (h, r))");
-
-    statement.execute("INSERT INTO t1(h, r, v) VALUES (1, 2, 3)");
-    statement.execute("INSERT INTO t1(h, r, v) VALUES (1, 3, 4)");
-    statement.execute("INSERT INTO t1(h, r, v) VALUES (1, 4, 5)");
-
-    statement.execute("CREATE TABLE t2(h int, r int, v2 int, PRIMARY KEY (h, r))");
-
-    statement.execute("INSERT INTO t2(h, r, v2) VALUES (1, 2, 4)");
-    statement.execute("INSERT INTO t2(h, r, v2) VALUES (1, 4, 6)");
-
-    ResultSet rs = statement.executeQuery("SELECT a.h, a.r, a.v, b.v2 FROM " +
-                                              "t1 a LEFT JOIN t2 b " +
-                                              "ON (a.h = b.h and a.r = b.r)" +
-                                              "WHERE a.h = 1 AND a.r IN (2,3);");
-
-    assertTrue(rs.next());
-    assertEquals(1, rs.getInt("h"));
-    assertEquals(2, rs.getInt("r"));
-    assertEquals(3, rs.getInt("v"));
-    assertEquals(4, rs.getInt("v2"));
-
-    assertTrue(rs.next());
-    assertEquals(1, rs.getInt("h"));
-    assertEquals(3, rs.getInt("r"));
-    assertEquals(4, rs.getInt("v"));
-    assertEquals(0, rs.getInt("v2"));
-    assertTrue(rs.wasNull());
-
-    assertFalse(rs.next());
-
-    rs.close();
-    statement.close();
-  }
-
-  @Test
-  public void testBuiltins() throws Exception {
-    LOG.info("Creating table");
-    Statement statement = connection.createStatement();
-    statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
-    LOG.info("Table created, inserting into table");
-    statement.execute("INSERT INTO test(h,r,v) VALUES (floor(1 + 1.5), log(3, 27), ceil(pi()))");
-    LOG.info("Selecting from table");
-    ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test WHERE h = 2;");
-    LOG.info("Fetching next row");
-
-    assertTrue(rs.next());
-    assertEquals(2, rs.getInt("h"));
-    assertEquals(3, rs.getInt("r"));
-    assertEquals(4, rs.getInt("v"));
-
-    assertFalse(rs.next());
-
-    LOG.info("Closing result set");
-    rs.close();
-    LOG.info("Closing statement");
     statement.close();
   }
 }

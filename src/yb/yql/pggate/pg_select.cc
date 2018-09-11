@@ -40,7 +40,7 @@ Status PgSelect::Prepare() {
   RETURN_NOT_OK(LoadTable(false /* for_write */));
 
   // Allocate READ/SELECT operation.
-  PgDocReadOp::SharedPtr doc_op = make_shared<PgDocReadOp>(pg_session_, table_->NewPgsqlSelect());
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());
   read_req_ = doc_op->read_op()->mutable_request();
   PrepareColumns();
 
@@ -56,7 +56,7 @@ void PgSelect::PrepareColumns() {
   // When reading, only values of partition columns are special-cased in protobuf.
   // Because Kudu API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
-  for (PgColumn &col : columns_) {
+  for (PgColumn &col : table_desc_->columns()) {
     col.AllocPartitionBindPB(read_req_);
   }
 }

@@ -34,6 +34,12 @@ extern YBCPgSession ybc_pg_session;
 
 bool		IsYugaByteEnabled();
 
+/*
+ * Given a relation (table) id, returns whether this table is handled by
+ * YugaByte: i.e. it is not a system table or in the template1 database.
+ */
+bool		IsYBSupportedTable(Oid relid);
+
 void		YBReportFeatureUnsupported(const char *err_msg);
 
 /*

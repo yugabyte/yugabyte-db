@@ -189,6 +189,28 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
+                            const char *database_name,
+                            const char *table_name,
+                            YBCPgTableDesc *handle) {
+  return ToYBCStatus(pgapi->GetTableDesc(pg_session, database_name, table_name, handle));
+
+}
+
+YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle) {
+  return ToYBCStatus(pgapi->DeleteTableDesc(handle));
+}
+
+YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
+                             int16_t attr_number,
+                             bool *is_primary,
+                             bool *is_hash) {
+  return ToYBCStatus(pgapi->GetColumnInfo(table_desc,
+      attr_number,
+      is_primary,
+      is_hash));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
