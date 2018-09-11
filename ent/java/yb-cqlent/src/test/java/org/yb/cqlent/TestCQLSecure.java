@@ -24,7 +24,6 @@ import org.yb.cql.BaseCQLTest;
 
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-import java.nio.file.Path;
 import java.util.ArrayList;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -32,14 +31,14 @@ import static org.yb.AssertionWrappers.assertEquals;
 @RunWith(value=YBTestRunner.class)
 public class TestCQLSecure extends BaseCQLTest {
   public TestCQLSecure() {
-    tserverArgs = new ArrayList<String>();
+    tserverArgs = new ArrayList<>();
     tserverArgs.add("--use_client_to_server_encryption=true");
     tserverArgs.add(String.format("--certs_for_client_dir=%s", certsDir()));
-    useRandomIp = false;
+    useIpWithCertificate = true;
   }
 
   @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
+  public static void setUpBeforeClass() {
     LOG.info("TestCQLSecure.setUpBeforeClass is running");
 
     System.setProperty("javax.net.ssl.trustStore", certsDir() + "/client.truststore");
@@ -53,13 +52,11 @@ public class TestCQLSecure extends BaseCQLTest {
   }
 
   @Test
-  public void testInsert() throws Exception {
+  public void testInsert() {
     final int STRING_SIZE = 64;
-    final String errorMessage = "YQL value too long";
     String tableName = "test_insert";
     String create_stmt = String.format(
         "CREATE TABLE %s (h int PRIMARY KEY, c varchar);", tableName);
-    String exceptionString = null;
     session.execute(create_stmt);
     String ins_stmt = String.format("INSERT INTO %s (h, c) VALUES (1, ?);", tableName);
     String value = RandomStringUtils.randomAscii(STRING_SIZE);
