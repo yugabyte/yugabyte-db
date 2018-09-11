@@ -763,6 +763,7 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
       return proxy_->FetchData(req, &resp, &controller);
     }, [&resp]() { return resp.ByteSize(); });
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
+    DCHECK_LE(resp.chunk().data().size(), max_length);
 
     // Sanity-check for corruption.
     RETURN_NOT_OK_PREPEND(VerifyData(offset, resp.chunk()),

@@ -104,7 +104,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
  public:
   RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
-                         FsManager* fs_manager, const std::atomic<int>* nsessions = nullptr);
+                         FsManager* fs_manager, const std::atomic<int>* nsessions);
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.

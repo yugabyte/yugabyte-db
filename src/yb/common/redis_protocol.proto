@@ -36,6 +36,8 @@ message RedisWriteRequestPB {
     RedisInsertRequestPB insert_request = 9;
     RedisPopRequestPB pop_request = 10;
     RedisAddRequestPB add_request = 11;
+    RedisSetTtlRequestPB set_ttl_request = 12;
+    RedisNoOpRequestPB no_op_request = 14;
   }
 
   optional RedisKeyValuePB key_value = 13;
@@ -49,6 +51,7 @@ message RedisReadRequestPB {
     RedisExistsRequestPB exists_request = 4;
     RedisGetRangeRequestPB get_range_request = 5;
     RedisCollectionGetRangeRequestPB get_collection_range_request = 9;
+    RedisGetTtlRequestPB get_ttl_request = 11;
   }
 
   optional RedisKeyValuePB key_value = 6;
@@ -166,7 +169,7 @@ message SortedSetOptionsPB {
 // SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
 message RedisSetRequestPB {
   optional bool expect_ok_response = 1 [ default = false ];
-  optional int64 ttl = 2;                  // Expiry time in milliseconds.
+  optional int64 ttl = 2 [ default = -1]; // Expiration time in milliseconds.
   optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
   optional SortedSetOptionsPB sorted_set_options = 14;
 }
@@ -193,11 +196,11 @@ message RedisGetRequestPB {
     TSGET = 14;
     TSCARD = 16;
     ZSCORE = 17;
+    LLEN = 18;
     UNKNOWN = 99;
   }
 
   optional GetRequestType request_type = 1 [ default = GET ];
-
 }
 
 message RedisCollectionGetRangeRequestPB {
@@ -213,6 +216,25 @@ message RedisCollectionGetRangeRequestPB {
 
   optional GetRangeRequestType request_type = 1 [ default = TSRANGEBYTIME ];
   optional bool with_scores = 2 [ default = false ]; // Used only with ZRANGEBYSCORE, ZREVRANGE.
+}
+
+// No operation.
+message RedisNoOpRequestPB {
+}
+
+// PERSIST, (P)EXPIRE, (P)EXPIREAT
+message RedisSetTtlRequestPB {
+  // Expiration time in milliseconds.
+  oneof expiration {
+    int64 ttl = 1 [default = -1]; // For (P)EXPIRE
+    int64 absolute_time = 2; // For (P)EXPIREAT
+  }
+}
+
+// TTL, PTTL
+message RedisGetTtlRequestPB {
+  // By default, the return value is in milliseconds.
+  optional bool return_seconds = 1 [ default = false ];
 }
 
 // GETSET
@@ -254,8 +276,8 @@ message RedisIncrRequestPB {
 
 // RPUSH, RPUSHX, LPUSH, LPUSHX
 message RedisPushRequestPB {
-  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
-  optional bool assume_exists = 3 [ default = false];
+  optional RedisSide side = 2 [ default = REDIS_SIDE_LEFT ];
+  optional bool check_existence = 3 [ default = false];
 }
 
 // LINSERT
@@ -265,11 +287,11 @@ message RedisInsertRequestPB {
 
 // LPOP, RPOP, SPOP; blocking versions BLPOP etc. currently not supported.
 message RedisPopRequestPB {
-  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
+  optional RedisSide side = 2 [ default = REDIS_SIDE_LEFT ];
   optional int32 count = 3;                  // Count is allowed only when popping from a set.
 }
 
-// SADD, ZADD
+// SADD
 message RedisAddRequestPB {
   // Following options are for ZADD only.
   optional RedisWriteMode mode = 2 [ default = REDIS_WRITEMODE_UPSERT ];

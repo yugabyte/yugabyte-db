@@ -59,6 +59,7 @@ namespace docdb {
     ((kSSForward, '&')) /* ASCII code 38 */ \
     ((kSSReverse, '\'')) /* ASCII code 39 */ \
     ((kRedisSet, '(')) /* ASCII code 40 */ \
+    ((kRedisList, ')')) /* ASCII code 41*/ \
     /* This is the redis timeseries type. */ \
     ((kRedisTS, '+')) /* ASCII code 43 */ \
     ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
@@ -97,6 +98,8 @@ namespace docdb {
     ((kInt32Descending, 'e'))  /* ASCII code 101 */ \
     ((kVarIntDescending, 'f'))  /* ASCII code 102 */ \
     \
+    /* Flag type for merge record flags */ \
+    ((kMergeFlags, 'k')) /* ASCII code 107 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \
@@ -200,11 +203,13 @@ inline bool IsSerializableIntent(IntentType intent) {
 constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
 constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
 
-// kArray is handled slightly differently and hence we only have kObject, kRedisTS and kRedisSet.
+// kArray is handled slightly differently and hence we only have
+// kObject, kRedisTS, kRedisSet, and kRedisList.
 constexpr inline bool IsObjectType(const ValueType value_type) {
   return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
       value_type == ValueType::kRedisSet || value_type == ValueType::kRedisSortedSet ||
-      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse;
+      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse ||
+      value_type == ValueType::kRedisList;
 }
 
 constexpr inline bool IsCollectionType(const ValueType value_type) {
@@ -230,6 +235,14 @@ inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
 
 inline ValueType DecodeValueType(char value_type_byte) {
   return static_cast<ValueType>(value_type_byte);
+}
+
+// Checks if a value is a merge record, meaning it begins with the
+// kMergeFlags value type. Currently, the only merge records supported are
+// TTL records, when the flags value is 0x1. In the future, value
+// merge records may be implemented, such as a +1 merge record for INCR.
+inline bool IsMergeRecord(const rocksdb::Slice& value) {
+  return DecodeValueType(value) == ValueType::kMergeFlags;
 }
 
 }  // namespace docdb

@@ -52,19 +52,21 @@ using yb::util::DecodeDoubleFromKey;
 // at compile time.
 #define IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH \
     case ValueType::kArray: FALLTHROUGH_INTENDED; \
+    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
-    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalid: FALLTHROUGH_INTENDED; \
-    case ValueType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
-    case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
-    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED; \
-    case ValueType::kTtl: FALLTHROUGH_INTENDED; \
-    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED; \
     case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
-    case ValueType::kTombstone: \
-      break
+    case ValueType::kObject: FALLTHROUGH_INTENDED; \
+    case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;            \
+    case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
+    case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
+    case ValueType::kTombstone: FALLTHROUGH_INTENDED; \
+    case ValueType::kTtl: FALLTHROUGH_INTENDED; \
+    case ValueType::kUserTimestamp: \
+  break
 
 namespace yb {
 namespace docdb {
@@ -191,6 +193,7 @@ string PrimitiveValue::ToString() const {
       return "(->)";
     case ValueType::kTombstone:
       return "DEL";
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kArray:
       return "[]";
     case ValueType::kTransactionId:
@@ -199,6 +202,7 @@ string PrimitiveValue::ToString() const {
       return Format("WriteId($0)", int32_val_);
     case ValueType::kIntentType:
       return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
+    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
@@ -377,6 +381,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
@@ -480,6 +485,7 @@ string PrimitiveValue::ToValue() const {
       break;
 
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
+    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
@@ -494,7 +500,6 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kMaxByte:
       break;
   }
-
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
@@ -859,6 +864,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
@@ -998,6 +1004,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalid: FALLTHROUGH_INTENDED;
+    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;

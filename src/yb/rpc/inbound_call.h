@@ -139,6 +139,13 @@ class InboundCall : public RpcCall {
 
   std::string LogPrefix() const override;
 
+  template <class T, class ...Args>
+  static std::shared_ptr<T> Create(Args&&... args) {
+    auto result = std::make_shared<T>(std::forward<Args>(args)...);
+    result->RecordCallReceived();
+    return result;
+  }
+
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
 

@@ -122,6 +122,20 @@ namespace redisserver {
     ((flushall, FlushAll, 1, LOCAL)) \
     ((debugsleep, DebugSleep, 2, LOCAL)) \
     ((cluster, Cluster, -2, CLUSTER)) \
+    ((persist, Persist, 2, WRITE)) \
+    ((expire, Expire, 3, WRITE)) \
+    ((pexpire, PExpire, 3, WRITE)) \
+    ((expireat, ExpireAt, 3, WRITE))   \
+    ((pexpireat, PExpireAt, 3, WRITE)) \
+    ((ttl, Ttl, 2, READ)) \
+    ((pttl, PTtl, 2, READ)) \
+    ((setex, SetEx, 4, WRITE)) \
+    ((psetex, PSetEx, 4, WRITE)) \
+    ((lpop, LPop, 2, WRITE)) \
+    ((lpush, LPush, -3, WRITE)) \
+    ((rpop, RPop, 2, WRITE)) \
+    ((rpush, RPush, -3, WRITE)) \
+    ((llen, LLen, 2, READ)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \

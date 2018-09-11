@@ -162,7 +162,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
       session.reset(new RemoteBootstrapSessionClass(tablet_peer, session_id,
-                                                    requestor_uuid, fs_manager_));
+                                                    requestor_uuid, fs_manager_, &nsessions_));
       RPC_RETURN_NOT_OK(session->Init(),
                         RemoteBootstrapErrorPB::UNKNOWN_ERROR,
                         Substitute("Error initializing remote bootstrap session for tablet $0",
@@ -266,6 +266,8 @@ Status RemoteBootstrapServiceImpl::GetDataFilePiece(
       *error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
   }
+  DCHECK(client_maxlen == 0 || data->size() <= client_maxlen)
+      << "client_maxlen: " << client_maxlen << ", data->size(): " << data->size();
 
   return Status::OK();
 }
@@ -291,8 +293,9 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
 
   uint64_t offset = req->offset();
   VLOG(3) << " rate limiter max len: "  << session->rate_limiter().GetMaxSizeForNextTransmission();
-  int64_t client_maxlen = std::min(static_cast<uint64_t>(req->max_length()),
-                                   session->rate_limiter().GetMaxSizeForNextTransmission());
+  auto rate_limit = session->rate_limiter().GetMaxSizeForNextTransmission();
+  int64_t client_maxlen = rate_limit == 0
+      ? req->max_length() : std::min(static_cast<uint64_t>(req->max_length()), rate_limit);
   const DataIdPB& data_id = req->data_id();
   RemoteBootstrapErrorPB::Code error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
   RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &error_code, session),

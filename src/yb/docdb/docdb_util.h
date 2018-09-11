@@ -106,45 +106,50 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const Value& value,
-      HybridTime hybrid_time);
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
-      HybridTime hybrid_time);
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl);
+      MonoDelta ttl = Value::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl);
+      MonoDelta ttl = Value::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
       const SubDocument& value,
-      const ListExtendOrder extend_order,
-      HybridTime hybrid_time);
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
       const std::vector<int>& indexes,
       const std::vector<SubDocument>& values,
-      const HybridTime& current_time, // Used for reading.
+      const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
-      MonoDelta table_ttl = Value::kMaxTtl,
+      MonoDelta default_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
-      HybridTime hybrid_time);
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   void DocDBDebugDumpToConsole();
 

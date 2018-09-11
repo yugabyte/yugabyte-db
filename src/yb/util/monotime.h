@@ -78,6 +78,7 @@ class MonoDelta {
   bool LessThan(const MonoDelta &rhs) const;
   bool MoreThan(const MonoDelta &rhs) const;
   bool Equals(const MonoDelta &rhs) const;
+  bool IsNegative() const;
   std::string ToString() const;
   double ToSeconds() const;
   int64_t ToMilliseconds() const;
@@ -86,6 +87,7 @@ class MonoDelta {
   std::chrono::steady_clock::duration ToSteadyDuration() const;
 
   MonoDelta& operator+=(const MonoDelta& rhs);
+  MonoDelta& operator-=(const MonoDelta& rhs);
 
   // Update struct timeval to current value of delta, with microsecond accuracy.
   // Note that if MonoDelta::IsPositive() returns true, the struct timeval
@@ -165,6 +167,7 @@ class MonoTime {
   MonoDelta GetDeltaSince(const MonoTime &rhs) const;
   MonoDelta GetDeltaSinceMin() const { return GetDeltaSince(Min()); }
   void AddDelta(const MonoDelta &delta);
+  void SubtractDelta(const MonoDelta &delta);
   bool ComesBefore(const MonoTime &rhs) const;
   std::string ToString() const;
   bool Equals(const MonoTime& other) const;
@@ -210,6 +213,11 @@ inline auto operator+(const std::chrono::time_point<Clock>& lhs, const MonoDelta
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
+}
+
+inline MonoTime& operator -=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
+  lhs.SubtractDelta(rhs);
+  return lhs;
 }
 
 inline MonoTime operator-(const MonoTime& lhs, const MonoDelta& rhs) {

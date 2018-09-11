@@ -80,17 +80,16 @@ bool DocDBCompactionFilter::Filter(int level,
 
   if (is_first_key_value_) {
     CHECK_EQ(0, overwrite_ht_.size());
+    CHECK_EQ(0, expiration_.size());
     is_first_key_value_ = false;
   }
 
   const size_t num_shared_components = prev_subdoc_key_.NumSharedPrefixComponents(subdoc_key);
-
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
   overwrite_ht_.resize(min(overwrite_ht_.size(), num_shared_components));
-
+  expiration_.resize(min(expiration_.size(), num_shared_components));
   const DocHybridTime& ht = subdoc_key.doc_hybrid_time();
-
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
   // truncating the stack to the number of components in the common prefix of previous and current
   // key.
@@ -113,7 +112,9 @@ bool DocDBCompactionFilter::Filter(int level,
   //              deciding to remove this entry because 9 < 10.
   //
   const DocHybridTime prev_overwrite_ht =
-      overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
+    overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
+  const Expiration prev_exp =
+    expiration_.empty() ? Expiration() : expiration_.back();
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
   // was fully overwritten or deleted prior to or at the history cutoff time. The intuition is that
@@ -128,35 +129,47 @@ bool DocDBCompactionFilter::Filter(int level,
   // than prev_overwrite_ht, we'll end up adding more prev_overwrite_ht values to the overwrite
   // hybrid_time stack, and we might as well do that while handling the next key/value pair that
   // does not get cleaned up the same way as this one.
-  if (ht < prev_overwrite_ht) {
-    return true;  // Remove this key/value pair.
+  //
+  // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
+  bool isTtlRow = IsMergeRecord(existing_value);
+  if (ht < prev_overwrite_ht && !isTtlRow) {
+    return true;
   }
 
   const int new_stack_size = subdoc_key.num_subkeys() + 1;
 
   // Every subdocument was fully overwritten at least at the time any of its parents was fully
   // overwritten.
+
   while (overwrite_ht_.size() < new_stack_size - 1) {
     overwrite_ht_.push_back(prev_overwrite_ht);
+    expiration_.push_back(prev_exp);
   }
 
+  Expiration popped_exp = expiration_.empty() ? Expiration() : expiration_.back();
   // This will happen in case previous key has the same document key and subkeys as the current
   // key, and the only difference is in the hybrid_time. We want to replace the hybrid_time at the
   // top of the overwrite_ht stack in this case.
   if (overwrite_ht_.size() == new_stack_size) {
     overwrite_ht_.pop_back();
+    expiration_.pop_back();
   }
-
-  const bool ht_at_or_below_cutoff = ht.hybrid_time() <= history_cutoff_;
+  if (subdoc_key.doc_key() != prev_subdoc_key_.doc_key() ||
+      subdoc_key.subkeys() != prev_subdoc_key_.subkeys()) {
+    within_merge_block_ = false;
+  }
 
   // See if we found a higher hybrid time not exceeding the history cutoff hybrid time at which the
   // subdocument (including a primitive value) rooted at the current key was fully overwritten.
   // In case of ht > history_cutoff_, we just keep the parent document's highest known overwrite
   // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
-  overwrite_ht_.push_back(ht_at_or_below_cutoff ? max(prev_overwrite_ht, ht) : prev_overwrite_ht);
-
-  CHECK_EQ(new_stack_size, overwrite_ht_.size());
+  if (ht.hybrid_time() > history_cutoff_) {
+    prev_subdoc_key_ = std::move(subdoc_key);
+    overwrite_ht_.push_back(prev_overwrite_ht);
+    expiration_.push_back(prev_exp);
+    return false;
+  }
 
   // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
@@ -171,25 +184,47 @@ bool DocDBCompactionFilter::Filter(int level,
       return true;
     }
   }
-
-  prev_subdoc_key_ = std::move(subdoc_key);
-
+  overwrite_ht_.push_back(isTtlRow ? prev_overwrite_ht : max(prev_overwrite_ht, ht));
   ValueType value_type;
-  CHECK_OK(Value::DecodePrimitiveValueType(existing_value, &value_type));
   MonoDelta ttl;
+  CHECK_OK(Value::DecodePrimitiveValueType(existing_value, &value_type, nullptr, &ttl));
+  const Expiration curr_exp(ht.hybrid_time(), ttl);
 
-  // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.
-  CHECK_OK(Value::DecodeTTL(existing_value, &ttl));
+  // If within the merge block.
+  //     If the row is a TTL row, delete it.
+  //     Otherwise, replace it with the cached TTL (i.e., apply merge).
+  // Otherwise,
+  //     If this is a TTL row, cache TTL (start merge block).
+  //     If normal row, compute its ttl and continue.
 
-  bool has_expired = false;
-
-  if (ht_at_or_below_cutoff) {
-    // Only check for expiration if the current hybrid time is at or below history cutoff.
-    // The key could not have possibly expired by history_cutoff_ otherwise.
-    CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, table_ttl_), history_cutoff_,
-                           &has_expired));
+  if (within_merge_block_) {
+    expiration_.push_back(popped_exp);
+  } else if (ht.hybrid_time() >= prev_exp.write_ht &&
+             (curr_exp.ttl != Value::kMaxTtl || isTtlRow)) {
+    expiration_.push_back(curr_exp);
+  } else {
+    expiration_.push_back(prev_exp);
   }
 
+  CHECK_EQ(new_stack_size, overwrite_ht_.size());
+  CHECK_EQ(new_stack_size, expiration_.size());
+  prev_subdoc_key_ = std::move(subdoc_key);
+
+  // If the entry has the TTL flag, delete the entry.
+  if (isTtlRow) {
+    within_merge_block_ = true;
+    return true;
+  }
+
+  // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.
+  bool has_expired = false;
+
+  // Only check for expiration if the current hybrid time is at or below history cutoff.
+  // The key could not have possibly expired by history_cutoff_ otherwise.
+  MonoDelta true_ttl = ComputeTTL(expiration_.back().ttl, table_ttl_);
+  CHECK_OK(HasExpiredTTL(true_ttl == expiration_.back().ttl ?
+                         expiration_.back().write_ht : ht.hybrid_time(),
+                         true_ttl, history_cutoff_, &has_expired));
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
@@ -205,13 +240,25 @@ bool DocDBCompactionFilter::Filter(int level,
     // record might expose earlier values which would be incorrect.
     *value_changed = true;
     *new_value = Value::EncodedTombstone();
-  }
 
+  } else if (within_merge_block_) {
+    *value_changed = true;
+    Value value;
+    CHECK_OK(value.Decode(existing_value));
+
+    if (expiration_.back().ttl != Value::kMaxTtl) {
+      expiration_.back().ttl += MonoDelta::FromMicroseconds(
+          expiration_.back().write_ht.PhysicalDiff(ht.hybrid_time()));
+    }
+    *value.mutable_ttl() = expiration_.back().ttl;
+    *new_value = value.Encode();
+    within_merge_block_ = false;
+  }
   // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  return value_type == ValueType::kTombstone && ht_at_or_below_cutoff && is_major_compaction_;
+  return value_type == ValueType::kTombstone && is_major_compaction_;
 }
 
 const char* DocDBCompactionFilter::Name() const {

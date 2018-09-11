@@ -175,6 +175,31 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "    </tr>\n";
 }
 
+namespace {
+
+constexpr int kHoursPerDay = 24;
+constexpr int kSecondsPerMinute = 60;
+constexpr int kMinutesPerHour = 60;
+constexpr int kSecondsPerHour = kSecondsPerMinute * kMinutesPerHour;
+constexpr int kMinutesPerDay = kMinutesPerHour * kHoursPerDay;
+constexpr int kSecondsPerDay = kSecondsPerHour * kHoursPerDay;
+
+string UptimeString(uint64_t seconds) {
+  int days = seconds / kSecondsPerDay;
+  int hours = (seconds / kSecondsPerHour) - (days * kHoursPerDay);
+  int mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
+
+  std::ostringstream uptime_string_stream;
+  uptime_string_stream << " Uptime: ";
+  if (days > 0) {
+    uptime_string_stream << days << "days, ";
+  }
+  uptime_string_stream << hours << ":" << std::setw(2) << std::setfill('0') << mins;
+  return uptime_string_stream.str();
+}
+
+} // anonymous namespace
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         std::stringstream* output) {
@@ -190,7 +215,8 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
       *output << "    <td>" << time_since_hb << "</td>";
       if (master_->ts_manager()->IsTSLive(desc)) {
-        *output << "    <td style=\"color:Green\">" << kTserverAlive << "</td>";
+        *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
+                UptimeString(desc->uptime_seconds()) << "</td>";
       } else {
         *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
       }

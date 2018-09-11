@@ -45,7 +45,6 @@ set(DOCDB_SRCS
     doc_write_batch.cc
     intent_aware_iterator.cc
     intent.cc
-    internal_doc_iterator.cc
     key_bytes.cc
     lock_batch.cc
     primitive_value.cc

@@ -247,6 +247,16 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
   return true;
 }
 
+void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  tsMetrics_.total_memory_usage = metrics.total_ram_usage();
+  tsMetrics_.total_sst_file_size = metrics.total_sst_file_size();
+  tsMetrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
+  tsMetrics_.read_ops_per_sec = metrics.read_ops_per_sec();
+  tsMetrics_.write_ops_per_sec = metrics.write_ops_per_sec();
+  tsMetrics_.uptime_seconds = metrics.uptime_seconds();
+}
+
 bool TSDescriptor::HasTabletDeletePending() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return !tablets_pending_delete_.empty();

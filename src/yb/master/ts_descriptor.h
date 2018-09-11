@@ -37,6 +37,7 @@
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/master/master.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -61,6 +62,7 @@ namespace master {
 class TSRegistrationPB;
 class TSInformationPB;
 class ReplicationInfoPB;
+class TServerMetricsPB;
 
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
@@ -218,6 +220,13 @@ class TSDescriptor {
     return tsMetrics_.write_ops_per_sec;
   }
 
+  uint64_t uptime_seconds() {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return tsMetrics_.uptime_seconds;
+  }
+
+  void UpdateMetrics(const TServerMetricsPB& metrics);
+
   void ClearMetrics() {
     tsMetrics_.ClearMetrics();
   }
@@ -275,12 +284,15 @@ class TSDescriptor {
 
     double write_ops_per_sec = 0;
 
+    uint64_t uptime_seconds = 0;
+
     void ClearMetrics() {
       total_memory_usage = 0;
       total_sst_file_size = 0;
       uncompressed_sst_file_size = 0;
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
+      uptime_seconds = 0;
     }
   };
 

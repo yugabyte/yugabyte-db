@@ -121,6 +121,7 @@ class Heartbeater::Thread {
   CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
+  uint64_t CalculateUptime();
 
   server::MasterAddressesPtr get_master_addresses() {
     std::lock_guard<std::mutex> l(master_addresses_mtx_);
@@ -182,6 +183,8 @@ class Heartbeater::Thread {
   uint64_t prev_reads_;
   uint64_t prev_writes_;
 
+  MonoTime start_time_;
+
   DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
@@ -220,7 +223,8 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     tserver_metrics_interval_sec_(5),
     prev_tserver_metrics_submission_(MonoTime::Now()),
     prev_reads_(0),
-    prev_writes_(0) {
+    prev_writes_(0),
+    start_time_(MonoTime::Now()) {
   CHECK_NOTNULL(master_addresses_.get());
   CHECK(!master_addresses_->empty());
   VLOG(1) << "Initializing heartbeater thread with master addresses: "
@@ -335,6 +339,13 @@ int Heartbeater::Thread::GetMillisUntilNextHeartbeat() const {
   return FLAGS_heartbeat_interval_ms;
 }
 
+// Calculate Uptime
+uint64_t Heartbeater::Thread::CalculateUptime() {
+  MonoDelta delta = MonoTime::Now().GetDeltaSince(start_time_);
+  uint64_t uptime_seconds = static_cast<uint64_t>(delta.ToSeconds());
+  return uptime_seconds;
+}
+
 Status Heartbeater::Thread::TryHeartbeat() {
   master::TSHeartbeatRequestPB req;
 
@@ -411,11 +422,16 @@ Status Heartbeater::Thread::TryHeartbeat() {
     prev_writes_ = num_writes;
     req.mutable_metrics()->set_read_ops_per_sec(rops_per_sec);
     req.mutable_metrics()->set_write_ops_per_sec(wops_per_sec);
+    uint64_t uptime_seconds = CalculateUptime();
+
+    req.mutable_metrics()->set_uptime_seconds(uptime_seconds);
+
     prev_tserver_metrics_submission_ = MonoTime::Now();
 
     VLOG(4) << "Read Ops per second: " << rops_per_sec;
     VLOG(4) << "Write Ops per second: " << wops_per_sec;
     VLOG(4) << "Total SST File Sizes: "<< total_file_sizes;
+    VLOG(4) << "Uptime seconds: "<< uptime_seconds;
   }
 
   RpcController rpc;

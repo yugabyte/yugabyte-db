@@ -260,9 +260,18 @@ size_t UnsignedVarIntLength(uint64_t v) {
   return result;
 }
 
+void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest) {
+  char buf[kMaxVarIntBufferSize];
+  size_t len = 0;
+  FastEncodeUnsignedVarInt(v, to_uchar_ptr(buf), &len);
+  DCHECK_LE(len, 10);
+  dest->append(buf, len);
+}
+
 void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size) {
   const size_t n = UnsignedVarIntLength(v);
-  *size = n;
+  if (size)
+    *size = n;
 
   size_t i;
   if (n == 10) {
@@ -330,17 +339,26 @@ CHECKED_STATUS FastDecodeUnsignedVarInt(
   return Status::OK();
 }
 
-Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
+Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice) {
   size_t size = 0;
   uint64_t value = 0;
-  auto status = FastDecodeUnsignedVarInt(slice.data(), slice.size(), &value, &size);
+  auto status = FastDecodeUnsignedVarInt(slice->data(), slice->size(), &value, &size);
   if (!status.ok()) {
     return status;
   }
-  if (size != slice.size()) {
-    return STATUS(Corruption, "Slice not fully decoded");
-  }
+  slice->remove_prefix(size);
   return value;
+}
+
+Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
+  Slice s(slice);
+  auto status = FastDecodeUnsignedVarInt(&s);
+  if (!status.ok()) {
+    return status;
+  }
+  if (s.size() != 0)
+    return STATUS(Corruption, "Slice not fully decoded.");
+  return Status::OK();
 }
 
 }  // namespace util

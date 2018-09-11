@@ -114,7 +114,7 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = std::make_shared<RedisInboundCall>(
+  auto call = rpc::InboundCall::Create<RedisInboundCall>(
       connection, data->size(), call_processed_listener());
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);

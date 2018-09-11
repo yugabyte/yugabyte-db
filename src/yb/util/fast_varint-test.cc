@@ -379,7 +379,7 @@ TEST(FastVarIntTest, Unsigned) {
   };
   std::sort(encoded_values.begin(), encoded_values.end(), compare_slices);
   for (size_t i = 0; i != kTotalValues; ++i) {
-    auto decoded_value = FastDecodeUnsignedVarInt(encoded_values[i]);
+    auto decoded_value = FastDecodeUnsignedVarInt(&encoded_values[i]);
     ASSERT_OK(decoded_value);
     ASSERT_EQ(values[i], *decoded_value);
   }

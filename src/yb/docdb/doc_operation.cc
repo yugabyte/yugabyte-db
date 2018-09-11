@@ -63,6 +63,28 @@ using yb::bfql::TSOpcode;
 // Redis support.
 //--------------------------------------------------------------------------------------------------
 
+// A simple conversion from RedisDataTypes to ValueTypes
+// Note: May run into issues if we want to support ttl on individual set elements,
+// as they are represented by ValueType::kNull.
+ValueType ValueTypeFromRedisType(RedisDataType dt) {
+  switch(dt) {
+  case RedisDataType::REDIS_TYPE_STRING:
+    return ValueType::kString;
+  case RedisDataType::REDIS_TYPE_SET:
+    return ValueType::kRedisSet;
+  case RedisDataType::REDIS_TYPE_HASH:
+    return ValueType::kObject;
+  case RedisDataType::REDIS_TYPE_SORTEDSET:
+    return ValueType::kRedisSortedSet;
+  case RedisDataType::REDIS_TYPE_TIMESERIES:
+    return ValueType::kRedisTS;
+  case RedisDataType::REDIS_TYPE_LIST:
+    return ValueType::kRedisList;
+  default:
+    return ValueType::kInvalid;
+  }
+}
+
 void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
   paths->push_back(DocPath::DocPathFromRedisKey(request_.key_value().hash_code(),
                                                 request_.key_value().key()));
@@ -134,7 +156,8 @@ Result<RedisDataType> GetRedisValueType(
     IntentAwareIterator* iterator,
     const RedisKeyValuePB &key_value_pb,
     DocWriteBatch* doc_write_batch = nullptr,
-    int subkey_index = kNilSubkeyIndex) {
+    int subkey_index = kNilSubkeyIndex,
+    bool always_override = false) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
@@ -155,12 +178,12 @@ Result<RedisDataType> GetRedisValueType(
   }
   SubDocument doc;
   bool doc_found = false;
-
   // Use the cached entry if possible to determine the value type.
   boost::optional<DocWriteBatchCache::Entry> cached_entry;
   if (doc_write_batch) {
     cached_entry = doc_write_batch->LookupCache(encoded_subdoc_key);
   }
+
   if (cached_entry) {
     doc_found = true;
     doc = SubDocument(cached_entry->value_type);
@@ -169,7 +192,7 @@ Result<RedisDataType> GetRedisValueType(
     // support for Redis.
     GetSubDocumentData data = { encoded_subdoc_key, &doc, &doc_found };
     data.return_type_only = true;
-
+    data.exp.always_override = always_override;
     RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr,
         SeekFwdSuffices::kFalse));
   }
@@ -190,6 +213,8 @@ Result<RedisDataType> GetRedisValueType(
       return REDIS_TYPE_TIMESERIES;
     case ValueType::kRedisSortedSet:
       return REDIS_TYPE_SORTEDSET;
+    case ValueType::kRedisList:
+      return REDIS_TYPE_LIST;
     case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       return REDIS_TYPE_STRING;
@@ -203,7 +228,9 @@ Result<RedisDataType> GetRedisValueType(
 Result<RedisValue> GetRedisValue(
     IntentAwareIterator* iterator,
     const RedisKeyValuePB &key_value_pb,
-    int subkey_index = kNilSubkeyIndex) {
+    int subkey_index = kNilSubkeyIndex,
+    bool always_override = false,
+    Expiration* exp = nullptr) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
@@ -227,12 +254,20 @@ Result<RedisValue> GetRedisValue(
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
-
+  data.exp.always_override = always_override;
   RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
-
   if (!doc_found) {
     return RedisValue{REDIS_TYPE_NONE};
   }
+
+  bool has_expired = false;
+  CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
+                         iterator->read_time().read, &has_expired));
+  if (has_expired)
+    return RedisValue{REDIS_TYPE_NONE};
+
+  if (exp)
+    *exp = data.exp;
 
   if (!doc.IsPrimitive()) {
     switch (doc.value_type()) {
@@ -244,13 +279,16 @@ Result<RedisValue> GetRedisValue(
         return RedisValue{REDIS_TYPE_SORTEDSET};
       case ValueType::kRedisSet:
         return RedisValue{REDIS_TYPE_SET};
+      case ValueType::kRedisList:
+        return RedisValue{REDIS_TYPE_LIST};
       default:
         return STATUS_SUBSTITUTE(IllegalState, "Invalid value type: $0",
                                  static_cast<int>(doc.value_type()));
     }
   }
 
-  return RedisValue{REDIS_TYPE_STRING, doc.GetString()};
+  auto val = RedisValue{REDIS_TYPE_STRING, doc.GetString(), data.exp};
+  return val;
 }
 
 YB_STRONGLY_TYPED_BOOL(VerifySuccessIfMissing);
@@ -530,6 +568,8 @@ Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
   switch (request_.request_case()) {
     case RedisWriteRequestPB::RequestCase::kSetRequest:
       return ApplySet(data);
+    case RedisWriteRequestPB::RequestCase::kSetTtlRequest:
+      return ApplySetTtl(data);
     case RedisWriteRequestPB::RequestCase::kGetsetRequest:
       return ApplyGetSet(data);
     case RedisWriteRequestPB::RequestCase::kAppendRequest:
@@ -548,6 +588,9 @@ Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
       return ApplyPop(data);
     case RedisWriteRequestPB::RequestCase::kAddRequest:
       return ApplyAdd(data);
+    // TODO: Cut this short in doc_operation.
+    case RedisWriteRequestPB::RequestCase::kNoOpRequest:
+      return Status::OK();
     case RedisWriteRequestPB::RequestCase::REQUEST_NOT_SET: break;
   }
   return STATUS(Corruption,
@@ -564,11 +607,12 @@ Result<RedisDataType> RedisWriteOperation::GetValueType(
 }
 
 Result<RedisValue> RedisWriteOperation::GetValue(
-    const DocOperationApplyData& data, int subkey_index) {
+    const DocOperationApplyData& data, int subkey_index, Expiration* ttl) {
   if (!iterator_) {
     InitializeIterator(data);
   }
-  return GetRedisValue(iterator_.get(), request_.key_value(), subkey_index);
+  return GetRedisValue(iterator_.get(), request_.key_value(),
+                       subkey_index, /* always_override */ false, ttl);
 }
 
 Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
@@ -613,10 +657,10 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         if (*data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              doc_path, kv_entries, redis_query_id(), ttl));
+              doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
         } else {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-              doc_path, kv_entries, redis_query_id(), ttl));
+              doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
         }
         break;
       }
@@ -750,10 +794,10 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           RETURN_NOT_OK(kv_entries.ConvertToRedisSortedSet());
           if (*data_type == REDIS_TYPE_NONE) {
                 RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                doc_path, kv_entries, redis_query_id(), ttl));
+                    doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
           } else {
                 RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                doc_path, kv_entries, redis_query_id(), ttl));
+                    doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
           }
         }
         response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -790,22 +834,84 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
     }
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         doc_path, Value(PrimitiveValue(kv.value(0)), ttl),
-        redis_query_id()));
+        data.read_time, data.deadline, redis_query_id()));
   }
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
+}
+
+Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
+  const RedisKeyValuePB& kv = request_.key_value();
+
+  // We only support setting TTLs on top-level keys.
+  if (!kv.subkey().empty()) {
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Expected no subkeys, got $0", kv.subkey().size());
+  }
+
+  MonoDelta ttl;
+  bool absolute_expiration = request_.set_ttl_request().has_absolute_time();
+
+  // Handle ExpireAt
+  if (absolute_expiration) {
+    int64_t calc_ttl = request_.set_ttl_request().absolute_time() -
+      server::HybridClock::GetPhysicalValueNanos(data.read_time.read) /
+      MonoTime::kNanosecondsPerMillisecond;
+    if (calc_ttl <= 0) {
+      return ApplyDel(data);
+    }
+    ttl = MonoDelta::FromMilliseconds(calc_ttl);
+  }
+
+  Expiration exp;
+  auto value = GetValue(data, kNilSubkeyIndex, &exp);
+  RETURN_NOT_OK(value);
+
+  if (value->type == REDIS_TYPE_TIMESERIES) { // This command is not supported.
+    return STATUS_SUBSTITUTE(InvalidCommand,
+        "Redis data type $0 not supported in EXPIRE and PERSIST commands", value->type);
+  }
+
+  if (value->type == REDIS_TYPE_NONE) { // Key does not exist.
+    response_.set_int_response(0);
+    return Status::OK();
+  }
+
+  if (!absolute_expiration && request_.set_ttl_request().ttl() == -1) { // Handle PERSIST.
+    MonoDelta new_ttl = VERIFY_RESULT(exp.ComputeRelativeTtl(iterator_->read_time().read));
+    if (new_ttl.IsNegative() || new_ttl == Value::kMaxTtl) {
+      response_.set_int_response(0);
+      return Status::OK();
+    }
+  }
+
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  if (!absolute_expiration) {
+    ttl = request_.set_ttl_request().ttl() == -1 ? Value::kMaxTtl :
+      MonoDelta::FromMilliseconds(request_.set_ttl_request().ttl());
+  }
+
+  ValueType v_type = ValueTypeFromRedisType(value->type);
+  if (v_type == ValueType::kInvalid)
+    return STATUS(Corruption, "Invalid value type.");
+
+  RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+      doc_path, Value(PrimitiveValue(v_type), ttl, Value::kInvalidUserTimestamp, Value::kTtlFlag),
+      data.read_time, data.deadline, redis_query_id()));
+  response_.set_int_response(1);
   return Status::OK();
 }
 
 Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
   const RedisKeyValuePB& kv = request_.key_value();
 
-  auto value = GetValue(data);
-  RETURN_NOT_OK(value);
-
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
         "Getset kv should have 1 value, found $0", kv.value_size());
   }
+
+  auto value = GetValue(data);
+  RETURN_NOT_OK(value);
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
       VerifySuccessIfMissing::kTrue)) {
@@ -816,7 +922,7 @@ Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
 
   return data.doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(kv.value(0))), redis_query_id());
+      Value(PrimitiveValue(kv.value(0))), data.read_time, data.deadline, redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
@@ -841,8 +947,14 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(value->value.length());
 
+  // TODO: update the TTL with the write time rather than read time,
+  // or store the expiration.
   return data.doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), Value(PrimitiveValue(value->value)),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
+      Value(PrimitiveValue(value->value),
+            VERIFY_RESULT(value->exp.ComputeRelativeTtl(iterator_->read_time().read))),
+      data.read_time,
+      data.deadline,
       redis_query_id());
 }
 
@@ -948,7 +1060,8 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
 
   if (num_keys != 0) {
     DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
-    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(doc_path, values, redis_query_id()));
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(doc_path, values,
+        data.read_time, data.deadline, redis_query_id()));
   }
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -983,9 +1096,12 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(value->value.length());
 
+  // TODO: update the TTL with the write time rather than read time,
+  // or store the expiration.
+  Value new_val = Value(PrimitiveValue(value->value),
+        VERIFY_RESULT(value->exp.ComputeRelativeTtl(iterator_->read_time().read)));
   return data.doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(value->value)), redis_query_id());
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), new_val, std::move(iterator_));
 }
 
 Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
@@ -1036,7 +1152,6 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
     response_.set_error_message("Increment would overflow");
     return Status::OK();
   }
-
   new_value = old_value + incr;
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(new_value);
@@ -1048,14 +1163,52 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
     PrimitiveValue subkey_value;
     RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(0), kv.type(), &subkey_value));
     kv_entries.SetChild(subkey_value, SubDocument(new_pvalue));
-    return data.doc_write_batch->ExtendSubDocument(doc_path, kv_entries, redis_query_id());
+    return data.doc_write_batch->ExtendSubDocument(
+        doc_path, kv_entries, data.read_time, data.deadline, redis_query_id());
   } else {  // kv.type() == REDIS_TYPE_STRING
-    return data.doc_write_batch->SetPrimitive(doc_path, Value(new_pvalue), redis_query_id());
+    // TODO: update the TTL with the write time rather than read time,
+    // or store the expiration.
+    Value new_val = Value(new_pvalue,
+        VERIFY_RESULT(value->exp.ComputeRelativeTtl(iterator_->read_time().read)));
+    return data.doc_write_batch->SetPrimitive(doc_path, new_val, std::move(iterator_));
   }
 }
 
 Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
-  return STATUS(NotSupported, "Redis operation has not been implemented");
+  const RedisKeyValuePB& kv = request_.key_value();
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+  if (data_type != REDIS_TYPE_LIST && data_type != REDIS_TYPE_NONE) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response_.set_error_message(wrong_type_message);
+    return Status::OK();
+  }
+
+  SubDocument list;
+  int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv)) + kv.value_size();
+  list.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(PrimitiveValue(card)));
+
+  SubDocument elements(request_.push_request().side() == REDIS_SIDE_LEFT ?
+                   ListExtendOrder::PREPEND : ListExtendOrder::APPEND);
+  for (auto val : kv.value()) {
+    elements.AddListElement(SubDocument(PrimitiveValue(val)));
+  }
+  list.SetChild(PrimitiveValue(ValueType::kArray), std::move(elements));
+  RETURN_NOT_OK(list.ConvertToRedisList());
+
+  if (data_type == REDIS_TYPE_NONE) {
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), list,
+        data.read_time, data.deadline, redis_query_id()));
+  } else {
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+        DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), list,
+        data.read_time, data.deadline, redis_query_id()));
+  }
+
+  response_.set_int_response(card);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
 }
 
 Status RedisWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
@@ -1063,7 +1216,49 @@ Status RedisWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
-  return STATUS(NotSupported, "Redis operation has not been implemented");
+  const RedisKeyValuePB& kv = request_.key_value();
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+
+  if (!VerifyTypeAndSetCode(kv.type(), data_type, &response_, VerifySuccessIfMissing::kTrue)) {
+    // We already set the error code in the function.
+    return Status::OK();
+  }
+
+  SubDocument list;
+  int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), kv));
+
+  if (!card) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NIL);
+    return Status::OK();
+  }
+
+  std::vector<int> indices;
+  std::vector<SubDocument> new_value = {SubDocument(PrimitiveValue(ValueType::kTombstone))};
+  std::vector<std::string> value;
+
+  if (request_.pop_request().side() == REDIS_SIDE_LEFT) {
+    indices.push_back(1);
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+        data.read_time, data.deadline, redis_query_id(), Direction::kForward, 0, &value));
+  } else {
+    indices.push_back(card);
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+        data.read_time, data.deadline, redis_query_id(), Direction::kBackward, card + 1, &value));
+  }
+
+  list.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(PrimitiveValue(--card)));
+  RETURN_NOT_OK(list.ConvertToRedisList());
+  RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+        doc_path, list, data.read_time, data.deadline, redis_query_id()));
+
+  if (value.size() != 1)
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Expected one popped value, got $0", value.size());
+
+  response_.set_string_response(value[0]);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
 }
 
 Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
@@ -1106,9 +1301,11 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
   Status s;
 
   if (*data_type == REDIS_TYPE_NONE) {
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(doc_path, set_entries, redis_query_id()));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        doc_path, set_entries, data.read_time, data.deadline, redis_query_id()));
   } else {
-    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(doc_path, set_entries, redis_query_id()));
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+        doc_path, set_entries, data.read_time, data.deadline, redis_query_id()));
   }
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -1135,6 +1332,8 @@ Status RedisReadOperation::Execute() {
   switch (request_.request_case()) {
     case RedisReadRequestPB::RequestCase::kGetRequest:
       return ExecuteGet();
+    case RedisReadRequestPB::RequestCase::kGetTtlRequest:
+      return ExecuteGetTtl();
     case RedisReadRequestPB::RequestCase::kStrlenRequest:
       return ExecuteStrLen();
     case RedisReadRequestPB::RequestCase::kExistsRequest:
@@ -1169,8 +1368,8 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   // support for Redis.
   GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
 
-  // TODO: change this to include lists when implementing.
-  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet;
+  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet ||
+                                value_type == ValueType::kRedisList;
   bool return_array_response = add_keys || add_values;
 
   if (has_cardinality_subkey) {
@@ -1383,8 +1582,52 @@ Result<RedisDataType> RedisReadOperation::GetValueType(int subkey_index) {
                            nullptr /* doc_write_batch */, subkey_index);
 }
 
+Result<RedisValue> RedisReadOperation::GetOverrideValue(int subkey_index) {
+  return GetRedisValue(iterator_.get(), request_.key_value(),
+                       subkey_index, /* always_override */ true);
+}
+
 Result<RedisValue> RedisReadOperation::GetValue(int subkey_index) {
-  return GetRedisValue(iterator_.get(), request_.key_value(), subkey_index);
+    return GetRedisValue(iterator_.get(), request_.key_value(), subkey_index);
+}
+
+Status RedisReadOperation::ExecuteGetTtl() {
+  const RedisKeyValuePB& kv = request_.key_value();
+  if (!kv.has_key()) {
+    return STATUS(Corruption, "Expected KeyValuePB");
+  }
+  // We currently only support getting and setting TTL on top level keys.
+  if (!kv.subkey().empty()) {
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Expected no subkeys, got $0", kv.subkey().size());
+  }
+
+  bool doc_found = false;
+  Expiration exp;
+  auto encoded_doc_key = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
+  RETURN_NOT_OK(GetTtl(encoded_doc_key.AsSlice(), iterator_.get(), &doc_found, &exp));
+
+  if (!doc_found) {
+    response_.set_int_response(-2);
+    return Status::OK();
+  }
+
+  if (exp.ttl.Equals(Value::kMaxTtl)) {
+    response_.set_int_response(-1);
+    return Status::OK();
+  }
+
+  MonoDelta ttl = VERIFY_RESULT(exp.ComputeRelativeTtl(iterator_->read_time().read));
+  if (ttl.IsNegative()) {
+    // The value has expired.
+    response_.set_int_response(-2);
+    return Status::OK();
+  }
+
+  response_.set_int_response(request_.get_ttl_request().return_seconds() ?
+                             (int64_t) std::round(ttl.ToSeconds()) :
+                             ttl.ToMilliseconds());
+  return Status::OK();
 }
 
 Status RedisReadOperation::ExecuteGet() {
@@ -1411,9 +1654,19 @@ Status RedisReadOperation::ExecuteGet() {
     case RedisGetRequestPB_GetRequestType_HGET: {
       auto type = GetValueType();
       RETURN_NOT_OK(type);
+      // TODO: this is primarily glue for the Timeseries bug where the parent
+      // may get compacted due to an outdated TTL even though the children
+      // have longer TTL's and thus still exist. When fixing, take note that
+      // GetValueType finds the value type of the parent, so if the parent
+      // does not have the maximum TTL, it will return REDIS_TYPE_NONE when it
+      // should not.
+      if (expected_type == REDIS_TYPE_TIMESERIES && *type == REDIS_TYPE_NONE) {
+        *type = expected_type;
+      }
       // If wrong type, we set the error code in the response.
       if (VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
-        auto value = GetValue();
+        auto value = request_type == RedisGetRequestPB_GetRequestType_TSGET ?
+            GetOverrideValue() : GetValue();
         RETURN_NOT_OK(value);
         if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
             VerifySuccessIfMissing::kTrue)) {
@@ -1534,6 +1787,8 @@ Status RedisReadOperation::ExecuteGet() {
       return ExecuteHGetAllLikeCommands(ValueType::kRedisTS, false, false);
     case RedisGetRequestPB_GetRequestType_ZCARD:
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSortedSet, false, false);
+    case RedisGetRequestPB_GetRequestType_LLEN:
+      return ExecuteHGetAllLikeCommands(ValueType::kRedisList, false, false);
     case RedisGetRequestPB_GetRequestType_UNKNOWN: {
       return STATUS(InvalidCommand, "Unknown Get Request not supported");
     }
@@ -2013,7 +2268,8 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
       SubDocument::FromQLValuePB(result.value(), column.sorting_type(),
                                  TSOpcode::kScalarInsert);
   RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-      sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+    sub_path, sub_doc, data.read_time, data.deadline,
+    request_.query_id(), ttl, user_timestamp));
 
   // Update the current row as well so that we can accumulate the result of multiple json
   // operations and write the final value.
@@ -2048,19 +2304,20 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           ColumnSchema::SortingType::kNotSpecified);
       sub_path->AddSubKey(pv);
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          *sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+          *sub_path, sub_doc, data.read_time, data.deadline,
+          request_.query_id(), ttl, user_timestamp));
       break;
     }
     case LIST: {
-      MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
+      MonoDelta default_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
           MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
           MonoDelta::kMax;
 
       // At YQL layer list indexes start at 0, but internally we start at 1.
       int index = column_value.subscript_args(0).value().int32_value() + 1;
-      RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(
-          *sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
-          table_ttl, ttl));
+      RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
+          *sub_path, {index}, {sub_doc}, data.read_time, data.deadline, request_.query_id(),
+          default_ttl, ttl));
       break;
     }
     default: {
@@ -2088,7 +2345,8 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   switch (write_instr) {
     case TSOpcode::kScalarInsert:
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+              sub_path, sub_doc, data.read_time, data.deadline,
+              request_.query_id(), ttl, user_timestamp));
       break;
     case TSOpcode::kMapExtend:
     case TSOpcode::kSetExtend:
@@ -2096,17 +2354,15 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
     case TSOpcode::kSetRemove:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-          sub_path, sub_doc, request_.query_id(), ttl));
+            sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
+    case TSOpcode::kListPrepend:
+          sub_doc.SetExtendOrder(ListExtendOrder::PREPEND_BLOCK);
+          FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-          sub_path, sub_doc, ListExtendOrder::APPEND, request_.query_id(), ttl));
-      break;
-    case TSOpcode::kListPrepend:
-          RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-          RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-          sub_path, sub_doc, ListExtendOrder::PREPEND, request_.query_id(), ttl));
+              sub_path, sub_doc, data.read_time, data.deadline, request_.query_id(), ttl));
       break;
     case TSOpcode::kListRemove:
       // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
@@ -2115,7 +2371,8 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
       // from EvalQLExpressionPB should be uncommented to enable this optimization.
           RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+              sub_path, sub_doc, data.read_time, data.deadline,
+              request_.query_id(), ttl, user_timestamp));
       break;
     default:
       LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
@@ -2136,7 +2393,6 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     Schema static_projection, non_static_projection;
     RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, &existing_row));
     RETURN_NOT_OK(EvalCondition(request_.if_expr().condition(), existing_row, &should_apply));
-
     // Set the response accordingly.
     response_->set_applied(should_apply);
     if (!should_apply && request_.else_error()) {
@@ -2172,6 +2428,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
   const MonoDelta ttl =
       request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+
   const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
       request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
 
@@ -2207,7 +2464,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-            sub_path, value, request_.query_id()));
+            sub_path, value, data.read_time, data.deadline, request_.query_id()));
       }
 
       for (const auto& column_value : request_.column_values()) {
@@ -2262,7 +2519,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                                   : pk_doc_path_->encoded_doc_key(),
               PrimitiveValue(column_id));
           RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
-                                                           request_.query_id(), user_timestamp));
+              data.read_time, data.deadline, request_.query_id(), user_timestamp));
           if (update_indexes_) {
             new_row.ClearValue(column_id);
           }
@@ -2311,7 +2568,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           if (match) {
             const DocKey& row_key = iterator.row_key();
             const DocPath row_path(row_key.Encode());
-            RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch));
+            RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch, data.read_time, data.deadline));
             if (update_indexes_) {
               liveness_column_exists_ = iterator.LivenessColumnExists();
               RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
@@ -2321,7 +2578,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
       } else {
         // Otherwise, delete the referenced row (all columns).
-        RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch));
+        RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch,
+                                data.read_time, data.deadline));
         if (update_indexes_) {
           RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
         }
@@ -2335,7 +2593,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
-Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch) {
+Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+                                   const ReadHybridTime& read_ht, const MonoTime deadline) {
   if (request_.has_user_timestamp_usec()) {
     // If user_timestamp is provided, we need to add a tombstone for each individual
     // column in the schema since we don't want to analyze this on the read path.
@@ -2343,6 +2602,8 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
       const DocPath sub_path(row_path.encoded_doc_key(),
                              PrimitiveValue(schema_.column_id(i)));
       RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,
+                                                  read_ht,
+                                                  deadline,
                                                   request_.query_id(),
                                                   request_.user_timestamp_usec()));
     }
@@ -2352,10 +2613,12 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
         row_path.encoded_doc_key(),
         PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
+                                                read_ht,
+                                                deadline,
                                                 request_.query_id(),
                                                 request_.user_timestamp_usec()));
   } else {
-    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(row_path));
+    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(row_path, read_ht, deadline));
   }
 
   return Status::OK();
@@ -2798,7 +3061,8 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
     const DocPath sub_path(range_doc_path_->encoded_doc_key(),
                            PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
     const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
-    RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(sub_path, value, request_.stmt_id()));
+    RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+        sub_path, value, data.read_time, data.deadline, request_.stmt_id()));
   }
 
   for (const auto& column_value : request_.column_values()) {
@@ -2824,7 +3088,7 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
     // Inserting into specified column.
     DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, sub_doc, request_.stmt_id(), ttl, user_timestamp));
+        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
   }
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);

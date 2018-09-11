@@ -29,22 +29,31 @@ class Value {
  public:
   Value() : primitive_value_(),
             ttl_(kMaxTtl),
-            user_timestamp_(kInvalidUserTimestamp) {
+            user_timestamp_(kInvalidUserTimestamp),
+            merge_flags_(0) {
   }
 
   explicit Value(PrimitiveValue primitive_value,
                  MonoDelta ttl = kMaxTtl,
-                 UserTimeMicros user_timestamp = kInvalidUserTimestamp)
+                 UserTimeMicros user_timestamp = kInvalidUserTimestamp,
+                 uint64_t merge_flags = 0)
       : primitive_value_(primitive_value),
         ttl_(ttl),
-        user_timestamp_(user_timestamp) {
+        user_timestamp_(user_timestamp),
+        merge_flags_(merge_flags) {
   }
 
+  static const uint64_t kTtlFlag = 0x1;
+
   static const MonoDelta kMaxTtl;
+  // kResetTtl is useful for CQL when zero TTL indicates no TTL.
+  static const MonoDelta kResetTtl;
   static const int64_t kInvalidUserTimestamp;
   static constexpr int kBytesPerInt64 = sizeof(int64_t);
 
   MonoDelta ttl() const { return ttl_; }
+
+  MonoDelta* mutable_ttl() { return &ttl_; }
 
   UserTimeMicros user_timestamp() const { return user_timestamp_; }
 
@@ -58,12 +67,25 @@ class Value {
 
   const PrimitiveValue primitive_value() const { return primitive_value_; }
 
+  const uint64_t merge_flags() const { return merge_flags_; }
+
+  // Consume the merge_flags portion of the slice if it exists and return it.
+  static CHECKED_STATUS DecodeMergeFlags(rocksdb::Slice* slice, uint64_t* merge_flags);
+
+  // A version that doesn't mutate the slice.
+  static CHECKED_STATUS DecodeMergeFlags(const rocksdb::Slice& slice, uint64_t* merge_flags) {
+    rocksdb::Slice value_copy = slice;
+    return DecodeMergeFlags(&value_copy, merge_flags);
+  }
+
   // Consume the Ttl portion of the slice if it exists and return it.
   static CHECKED_STATUS DecodeTTL(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
 
   // A version that doesn't mutate the slice.
   static CHECKED_STATUS DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
     rocksdb::Slice value_copy = rocksdb_value;
+    uint64_t merge_flags;
+    RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
     return DecodeTTL(&value_copy, ttl);
   }
 
@@ -76,9 +98,14 @@ class Value {
 
   void EncodeAndAppend(std::string* value_bytes) const;
 
-  // Decodes the ValueType of the primitive value stored in the given RocksDB value.
-  static CHECKED_STATUS DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
-                                                 ValueType* value_type);
+  // Decodes the ValueType of the primitive value stored in the
+  // given RocksDB value and any other values before it.
+  static CHECKED_STATUS DecodePrimitiveValueType(
+      const rocksdb::Slice& rocksdb_value,
+      ValueType* value_type,
+      uint64_t* merge_flags = nullptr,
+      MonoDelta* ttl = nullptr,
+      int64_t* user_timestamp = nullptr);
 
   // Return the user timestamp portion from a slice that points to the RocksDB value.
   static CHECKED_STATUS DecodeUserTimestamp(const rocksdb::Slice& rocksdb_value,
@@ -91,7 +118,6 @@ class Value {
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to
   // the timestamp.
   static CHECKED_STATUS DecodeUserTimestamp(rocksdb::Slice* slice, UserTimeMicros* user_timestamp);
-
   PrimitiveValue primitive_value_;
 
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded
@@ -101,6 +127,11 @@ class Value {
 
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
   UserTimeMicros user_timestamp_;
+
+  // A place to store various merge flags; in particular, the MERGE flag currently used for TTL.
+  // 0x1 = TTL-only entry
+  // 0x3 = Value-only entry (potentially)
+  uint64_t merge_flags_;
 
   // If this value was written using a transaction,
   // this field stores the original intent doc hybrid time.

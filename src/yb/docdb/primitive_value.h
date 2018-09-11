@@ -37,6 +37,11 @@
 namespace yb {
 namespace docdb {
 
+// Used for extending a list.
+// PREPEND prepends the arguments one by one (PREPEND a b c) will prepend [c b a] to the list,
+// while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
+  YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
+
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
 
@@ -367,6 +372,10 @@ class PrimitiveValue {
 
   bool operator!=(const PrimitiveValue& other) const { return !(*this == other); }
 
+  ListExtendOrder GetExtendOrder() const {
+    return extend_order_;
+  }
+
   int64_t GetTtl() const {
     return ttl_seconds_;
   }
@@ -384,6 +393,10 @@ class PrimitiveValue {
     ttl_seconds_ = ttl_seconds;
   }
 
+  void SetExtendOrder(const ListExtendOrder extend_order) const {
+    extend_order_ = extend_order;
+  }
+
   void SetWriteTime(const int64_t write_time) {
     write_time_ = write_time;
   }
@@ -396,6 +409,12 @@ class PrimitiveValue {
   // Column attributes.
   int64_t ttl_seconds_ = -1;
   int64_t write_time_ = kUninitializedWriteTime;
+
+  // TODO: make PrimitiveValue extend SubDocument and put this field
+  // in SubDocument.
+  // This field gives the extension order of elements of a list and
+  // is applicable only to SubDocuments of type kArray.
+  mutable ListExtendOrder extend_order_ = ListExtendOrder::APPEND;
 
   ValueType type_;
 

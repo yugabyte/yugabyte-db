@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <chrono>
 
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/db_iter.h"
@@ -66,6 +67,12 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_util.h"
+
+#include "yb/util/logging.h"
+
+DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
+    "Used for a temporary workaround for http://bit.ly/ybissue437. How long to wait (ms) in case "
+    "we could not flush any memtables, usually due to filters preventing us from doing so.");
 
 namespace rocksdb {
 
@@ -142,8 +149,16 @@ Status FlushJob::Run(FileMetaData* file_meta) {
   autovector<MemTable*> mems;
   cfd_->imm()->PickMemtablesToFlush(&mems, mem_table_flush_filter_);
   if (mems.empty()) {
-    LOG_TO_BUFFER(log_buffer_, "[%s] Nothing in memtable to flush",
-                cfd_->GetName().c_str());
+    // A temporary workaround for repeated "Nothing in memtable to flush" messages in a
+    // transactional workload due to the flush filter preventing us from flushing any memtables in
+    // the provisional records RocksDB.
+    //
+    // See https://github.com/yugabyte/yugabyte-db/issues/437 for more details.
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << db_options_.log_prefix
+        << "[" << cfd_->GetName() << "] Nothing in memtable to flush.";
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        FLAGS_rocksdb_nothing_in_memtable_to_flush_sleep_ms));
     return Status::OK();
   }
 

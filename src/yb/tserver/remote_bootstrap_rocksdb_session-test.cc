@@ -34,7 +34,7 @@ TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
   {
     scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession>
         temp_session(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
-            tablet_peer_, "TestTempSession", "FakeUUID", fs_manager()));
+            tablet_peer_, "TestTempSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     CHECK_OK(temp_session->Init());
     checkpoint_dir = temp_session->checkpoint_dir_;
     ASSERT_FALSE(checkpoint_dir.empty());

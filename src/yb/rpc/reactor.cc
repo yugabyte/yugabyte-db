@@ -527,9 +527,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   }
 
   auto context = messenger_->connection_context_factory_->Create();
+  auto& allocator = context->Allocator();
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(), conn_id.remote(), std::move(*sock),
-      &context->Allocator(), context->BufferLimit()));
+      &allocator, context->BufferLimit() + allocator.block_size()));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(

@@ -20,6 +20,8 @@
 #include "yb/docdb/value.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/util/enums.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/docdb/intent_aware_iterator.h"
 
 namespace rocksdb {
 class DB;
@@ -29,7 +31,29 @@ namespace yb {
 namespace docdb {
 
 class KeyValueWriteBatchPB;
-class InternalDocIterator;
+class IntentAwareIterator;
+
+struct LazyIterator {
+  std::function<std::unique_ptr<IntentAwareIterator>()>* creator;
+  std::unique_ptr<IntentAwareIterator> iterator;
+
+  explicit LazyIterator(std::function<std::unique_ptr<IntentAwareIterator>()>* c)
+    : iterator(nullptr) {
+    creator = c;
+  }
+
+  explicit LazyIterator(std::unique_ptr<IntentAwareIterator> i) {
+    iterator = std::move(i);
+  }
+
+  ~LazyIterator() {}
+
+  IntentAwareIterator* Iterator() {
+    if (!iterator)
+      iterator = (*creator)();
+    return iterator.get();
+  }
+};
 
 // This controls whether "init markers" are required at all intermediate levels.
 YB_DEFINE_ENUM(InitMarkerBehavior,
@@ -40,9 +64,6 @@ YB_DEFINE_ENUM(InitMarkerBehavior,
                // This is used in CQL. Existence of "a.b.c" implies existence of "a" and "a.b",
                // unless there are delete markers / TTL expiration involved.
                (kOptional));
-
-// Used for extending a list.
-YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND))
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix or write (set) or delete operations. It may read from RocksDB while
@@ -55,18 +76,41 @@ class DocWriteBatch {
                          InitMarkerBehavior init_marker_behavior,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
+  Status SeekToKeyPrefix(LazyIterator* doc_iter, bool has_ancestor = false);
+  Status SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_ancestor);
+
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const Value& value,
+      const DocPath& doc_path,
+      const Value& value,
+      LazyIterator* doc_iter);
+
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const Value& value,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
+      const Value& value,
+      std::unique_ptr<IntentAwareIterator> intent_iter) {
+    LazyIterator iter(std::move(intent_iter));
+    return SetPrimitive(doc_path, value, &iter);
+  }
+
+
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
       const PrimitiveValue& value,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
-    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp), query_id);
+    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp),
+                        read_ht, deadline, query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -76,6 +120,8 @@ class DocWriteBatch {
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -83,6 +129,8 @@ class DocWriteBatch {
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -90,25 +138,50 @@ class DocWriteBatch {
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
       const SubDocument& value,
-      ListExtendOrder extend_order = ListExtendOrder::APPEND,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
-  // 'indexes' must be sorted. List indexes are not zero indexed, the first element is list[1].
+  // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
-      const std::vector<int>& indexes,
+      const std::vector<int>& indices,
       const std::vector<SubDocument>& values,
-      const HybridTime& current_time,
+      const ReadHybridTime& read_ht,
+      const MonoTime deadline,
       const rocksdb::QueryId query_id,
-      MonoDelta table_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl);
+      const Direction dir = Direction::kForward,
+      const int64_t start_index = 0,
+      std::vector<string>* results = nullptr,
+      MonoDelta default_ttl = Value::kMaxTtl,
+      MonoDelta write_ttl = Value::kMaxTtl,
+      bool is_cql = false);
+
+  CHECKED_STATUS ReplaceCqlInList(
+      const DocPath &doc_path,
+      const std::vector<int>& indices,
+      const std::vector<SubDocument>& values,
+      const ReadHybridTime& read_ht,
+      const MonoTime deadline,
+      const rocksdb::QueryId query_id,
+      MonoDelta default_ttl = Value::kMaxTtl,
+      MonoDelta write_ttl = Value::kMaxTtl) {
+    return ReplaceInList(doc_path, indices, values, read_ht, deadline, query_id,
+                         Direction::kForward, /* start index */ 0, /* results */ nullptr,
+                         default_ttl, write_ttl, /* is_cql */ true);
+  }
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
+      const MonoTime deadline = MonoTime::kMax,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
+    return SetPrimitive(doc_path, PrimitiveValue::kTombstone,
+                        read_ht, deadline, query_id, user_timestamp);
+  }
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -143,13 +216,13 @@ class DocWriteBatch {
   CHECKED_STATUS SetPrimitiveInternal(
       const DocPath& doc_path,
       const Value& value,
-      InternalDocIterator *doc_iter,
+      LazyIterator* doc_iter,
       bool is_deletion,
       int num_subkeys);
 
   // Handle the user provided timestamp during writes.
   Result<bool> SetPrimitiveInternalHandleUserTimestamp(const Value &value,
-                                                       InternalDocIterator* doc_iter);
+                                                       LazyIterator* doc_iter);
 
   bool required_init_markers() {
     return init_marker_behavior_ == InitMarkerBehavior::kRequired;
@@ -167,7 +240,10 @@ class DocWriteBatch {
   std::atomic<int64_t>* monotonic_counter_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 
-  int num_rocksdb_seeks_;
+  // Taken from internal_doc_iterator
+  KeyBytes key_prefix_;
+  bool subdoc_exists_ = true;
+  DocWriteBatchCache::Entry current_entry_;
 };
 
 }  // namespace docdb

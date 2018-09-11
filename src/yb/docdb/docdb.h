@@ -32,10 +32,8 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/intent.h"
-#include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/value.h"
@@ -322,16 +320,20 @@ class IndexBound {
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
   GetSubDocumentData(
-      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr)
+    const Slice& subdoc_key, SubDocument* result_,
+    bool* doc_found_ = nullptr, MonoDelta default_ttl = Value::kMaxTtl)
       : subdocument_key(subdoc_key),
         result(result_),
-        doc_found(doc_found_) {}
+        doc_found(doc_found_),
+        exp(default_ttl) {}
 
   Slice subdocument_key;
   SubDocument* result;
   bool* doc_found;
 
-  MonoDelta table_ttl = Value::kMaxTtl;
+  // The TTL and hybrid time are return values external to the SubDocument
+  // which occasionally need to be accessed for TTL calculation.
+  mutable Expiration exp;
   bool return_type_only = false;
 
   // Represent bounds on the first and last subkey to be considered.
@@ -351,7 +353,7 @@ struct GetSubDocumentData {
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
     GetSubDocumentData result(subdoc_key, result_, doc_found_);
-    result.table_ttl = table_ttl;
+    result.exp = exp;
     result.return_type_only = return_type_only;
     result.low_subkey = low_subkey;
     result.high_subkey = high_subkey;
@@ -362,16 +364,38 @@ struct GetSubDocumentData {
   }
 
   std::string ToString() const {
-    return Format("{ subdocument_key: $0 table_ttl: $1 return_type_only: $2 low_subkey: $3 "
-                      "high_subkey: $4 }",
-                  SubDocKey::DebugSliceToString(subdocument_key), table_ttl, return_type_only,
-                  *low_subkey, *high_subkey);
+    return Format("{ subdocument_key: $0 ttl: $1 write_time: $2 return_type_only: $3 "
+                      "low_subkey: $4 high_subkey: $5 }",
+                  SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
+                  exp.write_ht, return_type_only, *low_subkey, *high_subkey);
   }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
   return out << data.ToString();
 }
+
+// If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
+// max_overwrite_time, we update max_overwrite_time, and result_value (unless it is nullptr).
+// If there is a TTL with write time later than the write time in expiration, it is updated with
+// the new write time and TTL, unless its value is kMaxTTL.
+// When the TTL found is kMaxTTL and it is not a merge record, then it is assumed not to be
+// explicitly set. Because it does not override the default table ttl, exp, which was initialized
+// to the table ttl, is not updated.
+// Observe that exp updates based on the first record found, while max_overwrite_time updates
+// based on the first non-merge record found.
+// This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
+// also.
+// Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
+// time.
+// TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
+// It could be a simple value as well, not necessarily kTombstone or kObject.
+yb::Status FindLastWriteTime(
+    IntentAwareIterator* iter,
+    const Slice& key_without_ht,
+    DocHybridTime* max_overwrite_time,
+    Expiration* exp,
+    Value* result_value = nullptr);
 
 // Indicates if we can get away by only seeking forward, or if we must do a regular seek.
 YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
@@ -408,6 +432,12 @@ yb::Status GetSubDocument(
     const TransactionOperationContextOpt& txn_op_context,
     MonoTime deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
+
+// This retrieves the TTL for a key.
+yb::Status GetTtl(const Slice& encoded_subdoc_key,
+                  IntentAwareIterator* iter,
+                  bool* doc_found,
+                  Expiration* exp);
 
 YB_STRONGLY_TYPED_BOOL(IncludeBinary);
 YB_DEFINE_ENUM(StorageDbType, (kRegular)(kIntents));
