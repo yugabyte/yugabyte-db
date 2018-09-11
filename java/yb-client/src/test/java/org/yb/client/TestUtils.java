@@ -533,6 +533,12 @@ public class TestUtils {
         methodNameAndParameters);
   }
 
+  public static void logAndSleepMs(int ms, String msg) throws InterruptedException {
+    LOG.info("Sleeping for " + ms + " milliseconds: " + msg);
+    Thread.sleep(ms);
+    LOG.info("Finished sleeping for " + ms + " milliseconds: " + msg);
+  }
+
   public static class CommandResult {
     public final String cmd;
     public final int exitCode;
