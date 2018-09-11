@@ -52,7 +52,7 @@ PgUpdate::~PgUpdate() {
 
 void PgUpdate::AllocWriteRequest() {
   // Allocate WRITE operation.
-  PgDocWriteOp::SharedPtr doc_op = make_shared<PgDocWriteOp>(pg_session_, table_->NewPgsqlUpdate());
+  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlUpdate());
   write_req_ = doc_op->write_op()->mutable_request();
 
   // Preparation complete.

@@ -16,11 +16,14 @@
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
 
 #include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {
@@ -61,9 +64,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropTable(const client::YBTableName& name);
 
   // API for read and write database content.
-  CHECKED_STATUS LoadTable(const client::YBTableName& table_name, bool for_write,
-                           std::shared_ptr<client::YBTable>* table, vector<PgColumn>* col_descs,
-                           int* key_col_count, int* partition_col_count);
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const client::YBTableName& name, bool for_write);
 
   // Apply the given operation.
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);

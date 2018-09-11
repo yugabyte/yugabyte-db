@@ -51,7 +51,7 @@ PgInsert::~PgInsert() {
 
 void PgInsert::AllocWriteRequest() {
   // Allocate WRITE operation.
-  PgDocWriteOp::SharedPtr doc_op = make_shared<PgDocWriteOp>(pg_session_, table_->NewPgsqlInsert());
+  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlInsert());
   write_req_ = doc_op->write_op()->mutable_request();
 
   // Preparation complete.

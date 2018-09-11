@@ -22,7 +22,6 @@ set(PGGATE_SRCS
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc
-    pg_insert.cc
     pg_api_example.cc
     pg_dml.cc
     pg_dml_write.cc
@@ -32,7 +31,8 @@ set(PGGATE_SRCS
     pg_select.cc
     pg_expr.cc
     pg_column.cc
-    pg_doc_op.cc)
+    pg_doc_op.cc
+    pg_tabledesc.cc)
 
 set(PGGATE_LIBS
     yb_util

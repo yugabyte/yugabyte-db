@@ -52,7 +52,7 @@ PgDelete::~PgDelete() {
 
 void PgDelete::AllocWriteRequest() {
   // Allocate WRITE operation.
-  PgDocWriteOp::SharedPtr doc_op = make_shared<PgDocWriteOp>(pg_session_, table_->NewPgsqlDelete());
+  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlDelete());
   write_req_ = doc_op->write_op()->mutable_request();
 
   // Preparation complete.

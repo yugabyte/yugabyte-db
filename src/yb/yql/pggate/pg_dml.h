@@ -81,12 +81,7 @@ class PgDml : public PgStatement {
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
   client::YBTableName table_name_;
-  std::shared_ptr<client::YBTable> table_;
-
-  // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
-  std::vector<PgColumn> columns_;
-  int key_col_count_;
-  int partition_col_count_;
+  PgTableDesc::ScopedRefPtr table_desc_;
 
   // Postgres targets of statements. These are either selected or returned expressions.
   std::vector<PgExpr*> targets_;
