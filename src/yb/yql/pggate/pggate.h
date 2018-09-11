@@ -146,6 +146,18 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
+  CHECKED_STATUS GetTableDesc(PgSession *pg_session,
+                              const char *database_name,
+                              const char *table_name,
+                              PgTableDesc **handle);
+
+  CHECKED_STATUS DeleteTableDesc(PgTableDesc *handle);
+
+  CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
+                               int16_t attr_number,
+                               bool *is_primary,
+                               bool *is_hash);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);

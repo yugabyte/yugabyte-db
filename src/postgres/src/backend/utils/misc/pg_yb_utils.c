@@ -29,6 +29,9 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "catalog/pg_database.h"
 
 #include "pg_yb_utils.h"
 
@@ -41,6 +44,21 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return ybc_pg_session != NULL && IsNormalProcessingMode();
+}
+
+bool
+IsYBSupportedTable(Oid relid)
+{
+	/* Support all tables except the template database and
+	 * all system tables (i.e. from system schemas) */
+	Relation relation = RelationIdGetRelation(relid);
+	char *schema = get_namespace_name(relation->rd_rel->relnamespace);
+	bool is_supported = MyDatabaseId != TemplateDbOid &&
+						strcmp(schema, "pg_catalog") != 0 &&
+						strcmp(schema, "information_schema") != 0 &&
+						strncmp(schema, "pg_toast", 8) != 0;
+	RelationClose(relation);
+	return is_supported;
 }
 
 void

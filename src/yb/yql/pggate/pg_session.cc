@@ -107,55 +107,17 @@ shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& t
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::LoadTable(const YBTableName& name,
-                            const bool write_table,
-                            shared_ptr<YBTable> *table,
-                            vector<PgColumn>* columns,
-                            int* num_key_columns,
-                            int* num_partition_columns) {
-
-  *table = nullptr;
-  shared_ptr<YBTable> pg_table;
-
+Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const YBTableName& name,
+                                                       const bool write_table) {
   VLOG(3) << "Loading table descriptor for " << name.ToString();
-  pg_table = GetTableDesc(name);
-  if (pg_table == nullptr) {
+  shared_ptr<YBTable> table = GetTableDesc(name);
+  if (table == nullptr) {
     return STATUS_FORMAT(NotFound, "Table $0 does not exist", name.ToString());
   }
-  if (pg_table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
-    return STATUS(InvalidArgument, "Cannot access non-postgres table");
+  if (table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
+    return STATUS(InvalidArgument, "Cannot access non-postgres table through the PostgreSQL API");
   }
-
-  const YBSchema& schema = pg_table->schema();
-  const int num_columns = schema.num_columns();
-  if (num_key_columns != nullptr) {
-    *num_key_columns = schema.num_key_columns();
-  }
-  if (num_partition_columns != nullptr) {
-    *num_partition_columns = schema.num_hash_key_columns();
-  }
-
-  if (columns != nullptr) {
-    columns->resize(num_columns);
-    for (int idx = 0; idx < num_columns; idx++) {
-      // Find the column descriptor.
-      const YBColumnSchema col = schema.Column(idx);
-
-      // TODO(neil) Considering index columns by attr_num instead of ID.
-      ColumnDesc *desc = (*columns)[idx].desc();
-      desc->Init(idx,
-                 schema.ColumnId(idx),
-                 col.name(),
-                 idx < *num_partition_columns,
-                 idx < *num_key_columns,
-                 col.order() /* attr_num */,
-                 col.type(),
-                 YBColumnSchema::ToInternalDataType(col.type()));
-    }
-  }
-
-  *table = pg_table;
-  return Status::OK();
+  return make_scoped_refptr<PgTableDesc>(table);
 }
 
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
