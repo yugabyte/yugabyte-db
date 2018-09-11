@@ -160,7 +160,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
-          << "      <th>Status</th>\n"
+          << "      <th>Status & Uptime</th>\n"
           << "      <th>Load (Num Tablets)</th>\n"
           << "      <th>Leader Count</br>(Num Tablets)</th>\n"
           << "      <th>RAM Used</th>\n"
@@ -190,7 +190,7 @@ string UptimeString(uint64_t seconds) {
   int mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
 
   std::ostringstream uptime_string_stream;
-  uptime_string_stream << " Uptime: ";
+  uptime_string_stream << " ";
   if (days > 0) {
     uptime_string_stream << days << "days, ";
   }
