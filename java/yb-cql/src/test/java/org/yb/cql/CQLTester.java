@@ -77,7 +77,7 @@ public class CQLTester extends BaseCQLTest
 
   protected void createIndex(String keyspace, String query)
   {
-    String fullQuery = String.format(query, keyspace + "_" + createIndexName(), keyspace + "." + currentTable());
+    String fullQuery = String.format(query, createIndexName(), keyspace + "." + currentTable());
     final long startTimeMs = System.currentTimeMillis();
     session.execute(fullQuery);
     long elapsedTimeMs = System.currentTimeMillis() - startTimeMs;
@@ -168,12 +168,12 @@ public class CQLTester extends BaseCQLTest
   protected Object map(Object...values)
   {
     if (values.length % 2 != 0)
-        throw new IllegalArgumentException("Invalid number of arguments, got " + values.length);
+      throw new IllegalArgumentException("Invalid number of arguments, got " + values.length);
 
     int size = values.length / 2;
     Map m = new LinkedHashMap(size);
     for (int i = 0; i < size; i++)
-        m.put(values[2 * i], values[(2 * i) + 1]);
+      m.put(values[2 * i], values[(2 * i) + 1]);
     return m;
   }
 
@@ -258,8 +258,7 @@ public class CQLTester extends BaseCQLTest
                 ImmutableSet<Integer> expIntSet = (ImmutableSet<Integer>)expected[j];
                 setValue = intSet.stream().map(String::valueOf).collect(Collectors.joining(","));
                 LOG.info("Row[{}, {}] = {}", i, j, setValue);
-                assertEquals(intSet.size(), expIntSet.size());
-                assertTrue(intSet.containsAll(expIntSet));
+                assertTrue(intSet.equals(expIntSet));
                 break;
 
               case VARCHAR:
@@ -268,8 +267,7 @@ public class CQLTester extends BaseCQLTest
                 ImmutableSet<String> expStrSet = (ImmutableSet<String>)expected[j];
                 setValue = strSet.stream().map(String::valueOf).collect(Collectors.joining(","));
                 LOG.info("Row[{}, {}] = {}", i, j, setValue);
-                assertEquals(strSet.size(), expStrSet.size());
-                assertTrue(strSet.containsAll(expStrSet));
+                assertTrue(strSet.equals(expStrSet));
                 break;
 
               default:

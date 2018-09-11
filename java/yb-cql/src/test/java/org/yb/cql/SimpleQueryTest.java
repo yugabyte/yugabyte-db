@@ -17,6 +17,7 @@
 */
 package org.yb.cql;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class SimpleQueryTest extends CQLTester
@@ -333,6 +334,7 @@ public class SimpleQueryTest extends CQLTester
   }
 
   @Test
+  @Ignore ("Disabled for issue #465")
   public void testStaticColumns() throws Throwable
   {
     createTable("CREATE TABLE %s (k text, t int, s text static, v text, PRIMARY KEY (k, t));");
@@ -376,12 +378,12 @@ public class SimpleQueryTest extends CQLTester
     assertRows(execute("SELECT * FROM %s WHERE k = ? AND t = ?", "key1", 2),
       row("key1", 2, "st5", "foo2"));
 
-    displayRows(execute("SELECT * FROM %s WHERE k = ? AND t = ? ORDER BY t DESC", "key1", 2));
     assertRows(execute("SELECT * FROM %s WHERE k = ? AND t = ? ORDER BY t DESC", "key1", 2),
       row("key1", 2, "st5", "foo2"));
   }
 
   @Test
+  @Ignore ("Disabled for issue #466")
   public void testDistinct() throws Throwable
   {
     createTable("CREATE TABLE %s (k text, t int, v text, PRIMARY KEY (k, t));");
@@ -393,17 +395,11 @@ public class SimpleQueryTest extends CQLTester
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 4, "foo4");
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 5, "foo5");
 
-    displayRows(execute("SELECT DISTINCT k FROM %s"));
     assertRows(execute("SELECT DISTINCT k FROM %s"),
       row("key1"),
       row("key2")
     );
   }
-
-/*
-* The inidividual tests that follow are currently commented out. They will be
-* enabled in a subsequent pull request after they have been tested.
-*/
 
   @Test
   public void collectionDeletionTest() throws Throwable
@@ -460,7 +456,6 @@ public class SimpleQueryTest extends CQLTester
   public void test2ndaryIndexBug() throws Throwable
   {
     createTable("CREATE TABLE %s (k int, c1 int, c2 int, v int, PRIMARY KEY(k, c1, c2)) WITH transactions = { 'enabled' : true };");
-    // createTable("CREATE TABLE %s (k int, c1 int, c2 int, v int, PRIMARY KEY(k, c1, c2))");
 
     execute("CREATE INDEX v_idx ON %s(v)");
 
@@ -487,9 +482,7 @@ public class SimpleQueryTest extends CQLTester
 
     execute("INSERT INTO %s (id, id2, age, extra) VALUES (?, ?, ?, ?)", 1, 1, 1, 1);
     execute("INSERT INTO %s (id, id2, age, extra) VALUES (?, ?, ?, ?)", 2, 2, 2, 2);
-    displayRows(execute("SELECT * FROM %s"));
     execute("UPDATE %s SET age=? WHERE id=?", 3, 3);
-    displayRows(execute("SELECT * FROM %s"));
 
     assertRows(execute("SELECT * FROM %s"),
       row(1, 1, 1, 1),
@@ -524,7 +517,6 @@ public class SimpleQueryTest extends CQLTester
   public void testSStableTimestampOrdering() throws Throwable
   {
     createTable("CREATE TABLE %s (k1 int, v1 int, v2 int, PRIMARY KEY (k1))");
-    // disableCompaction();
 
     // sstable1
     execute("INSERT INTO %s(k1,v1,v2) VALUES(1,1,1)  USING TIMESTAMP 5");
