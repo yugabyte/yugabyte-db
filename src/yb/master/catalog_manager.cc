@@ -2945,6 +2945,22 @@ void CatalogManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles) {
   }
 }
 
+vector<string> CatalogManager::DirectMemberOf(const RoleName& role) {
+  vector<string> roles;
+  for (const auto& e : roles_map_) {
+    auto l = e.second->LockForRead();
+    const auto& pb = l->data().pb;
+    for (const auto& member_of : pb.member_of()) {
+      if (member_of == role) {
+        roles.push_back(pb.role());
+        // No need to keep checking the rest of the members.
+        break;
+      }
+    }
+  }
+  return roles;
+}
+
 NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   boost::shared_lock<LockType> l(lock_);
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
@@ -3728,6 +3744,43 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
     s = STATUS(NotFound,
         Substitute("Role $0 does not exist", req->name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  // Find all the roles where req->name() is part of the member_of list since we will need to remove
+  // the role we are deleting from those lists.
+  auto direct_member_of = DirectMemberOf(req->name());
+  for (const auto& role_name : direct_member_of) {
+    auto role = FindPtrOrNull(roles_map_, role_name);
+    if (role == nullptr) {
+      continue;
+    }
+    role->mutable_metadata()->StartMutation();
+    auto metadata = &role->mutable_metadata()->mutable_dirty()->pb;
+
+    // Create a new list that contains all the original roles in member_of with the exception of
+    // the role we are deleting.
+    vector<string> member_of_new_list;
+    for (const auto& member_of : metadata->member_of()) {
+      if (member_of != req->name()) {
+        member_of_new_list.push_back(member_of);
+      }
+    }
+
+    // Remove the role we are deleting from the list member_of.
+    metadata->clear_member_of();
+    for (auto member_of : member_of_new_list) {
+      metadata->add_member_of(std::move(member_of));
+    }
+
+    // Update sys-catalog with the new member_of list for this role.
+    s = sys_catalog_->UpdateItem(role.get());
+    if (!s.ok()) {
+      LOG(ERROR) << "Unable to remove role " << req->name()
+                 << " from member_of list for role " << role_name;
+      role->mutable_metadata()->AbortMutation();
+    } else {
+      role->mutable_metadata()->CommitMutation();
+    }
   }
 
   auto l = role->LockForWrite();

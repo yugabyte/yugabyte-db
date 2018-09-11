@@ -158,7 +158,6 @@ TEST_F(TestQLPermission, TestGrantAll) {
   CreateRole(processor, role_name);
   CreateRole(processor, role_name_2);
 
-
   const string canonical_resource_keyspaces = "data";
   const string grant_stmt = GrantAllKeyspaces("SELECT", role_name);
   std::vector<string> permissions_keyspaces = { "SELECT" };
@@ -517,7 +516,6 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   // Create role14, role_name preserves capitalization
   EXEC_VALID_STMT(CreateStmt(role12));
 
-
   // Verify that all 'CREATE TABLE' statements fail for tables that have already been created.
 
   EXEC_DUPLICATE_CREATE_ROLE_STMT(CreateStmt(role1));
@@ -529,7 +527,6 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   EXEC_DUPLICATE_CREATE_ROLE_STMT(CreateStmt(role7));
   EXEC_DUPLICATE_CREATE_ROLE_STMT(CreateStmt(role8));
   EXEC_DUPLICATE_CREATE_ROLE_STMT(CreateStmt(role12));
-
 
   // Verify that all 'CREATE TABLE IF EXISTS' statements succeed for tables that have already been
   // created.
@@ -574,7 +571,6 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   const string role2 = "\"manager2\";";
   const string role3 = "'manager3';";
 
-
   EXEC_VALID_STMT(CreateStmt(role1));        // Create role
   EXEC_VALID_STMT(CreateStmt(role2));        // Create role
   EXEC_VALID_STMT(CreateStmt(role3));        // Create role
@@ -589,13 +585,47 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   EXEC_INVALID_STMT_MSG(DropStmt(role2), "Role Not Found");
   EXEC_INVALID_STMT_MSG(DropStmt(role3), "Role Not Found");
 
-
   EXEC_VALID_STMT(DropIfExistsStmt(role1));   // Check if exists
   EXEC_VALID_STMT(DropIfExistsStmt(role2));   // Check if exists
   EXEC_VALID_STMT(DropIfExistsStmt(role3));   // Check if exists
 
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(DropStmt(role1), "Unauthorized");
+}
+
+// Test that whenever we remove a role, this role is removed from the member_of field of all the
+// other roles.
+TEST_F(TestQLRole, TestQLDroppedRoleIsRemovedFromMemberOfField) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS (CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor* processor = GetQLProcessor();
+
+  // Valid Create Role Statements
+  const string role1 = "r1";
+  const string role2 = "r2";
+  const string role3 = "r3";
+
+  EXEC_VALID_STMT(CreateStmt(role1));        // Create role
+  EXEC_VALID_STMT(CreateStmt(role2));        // Create role
+  EXEC_VALID_STMT(CreateStmt(role3));        // Create role
+
+  GrantRole(processor, role1, role2);
+  std::unordered_set<string> roles ( {role1} );
+  CheckGrantedRoles(processor, role2, roles);
+
+  GrantRole(processor, role1, role3);
+  CheckGrantedRoles(processor, role3, roles);
+
+  // Check all variants of rolename
+  EXEC_VALID_STMT(DropStmt(role1));          // Drop role
+
+  roles = {};
+  CheckGrantedRoles(processor, role2, roles);
+
+  roles = {};
+  CheckGrantedRoles(processor, role3, roles);
 }
 
 } // namespace ql
