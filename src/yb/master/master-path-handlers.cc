@@ -214,15 +214,17 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "  <tr>\n";
       *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
       *output << "    <td>" << time_since_hb << "</td>";
+      bool is_dead = false;
       if (master_->ts_manager()->IsTSLive(desc)) {
         *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
                 UptimeString(desc->uptime_seconds()) << "</td>";
       } else {
+        is_dead = true;
         *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
       }
 
-      *output << "    <td>" << desc->num_live_replicas() << "</td>";
-      *output << "    <td>" << desc->leader_count() << "</td>";
+      *output << "    <td>" << (is_dead ? 0 : desc->num_live_replicas()) << "</td>";
+      *output << "    <td>" << (is_dead ? 0 : desc->leader_count()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable
                                (desc->total_memory_usage()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable
@@ -310,8 +312,9 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     // Determine the table category.
     if (IsSystemTable(*table)) {
       // Skip system tables if we should.
-      if (skip_system_tables)
+      if (skip_system_tables) {
         continue;
+      }
       table_cat = kSystemTable;
     } else if (!table->indexed_table_id().empty()) {
       table_cat = kIndexTable;
@@ -333,6 +336,10 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
+    if (skip_system_tables && table_type_[i] == "System") {
+      continue;
+    }
+
     (*output) << "<div class='panel panel-default'>\n"
               << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
               << " Tables</h2></div>\n";
@@ -658,24 +665,36 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
 
   for (const ServerEntryPB& master : masters) {
     if (master.has_error()) {
-      Status error = StatusFromPB(master.error());
+      string error = StatusFromPB(master.error()).ToString();
       *output << "  <tr>\n";
-      *output << Substitute("    <td colspan=2><font color='red'><b>$0</b></font></td>\n",
-                            EscapeForHtmlToString(error.ToString()));
+      const string kErrStart = "peer ([";
+      const string kErrEnd = "])";
+      size_t start_pos = error.find(kErrStart);
+      size_t end_pos = error.find(kErrEnd);
+      if (start_pos != string::npos && end_pos != string::npos && (start_pos < end_pos)) {
+        start_pos = start_pos + kErrStart.length();
+        string host_port = error.substr(start_pos, end_pos - start_pos);
+        *output << "<td><font color='red'>" << EscapeForHtmlToString(host_port)
+                << "</font></td>\n";
+        *output << "<td><font color='red'>" << RaftPeerPB_Role_Name(RaftPeerPB::UNKNOWN_ROLE)
+                << "</font></td>\n";
+      }
+      *output << Substitute("    <td colspan=2><font color='red'><b>ERROR: $0</b></font></td>\n",
+                              EscapeForHtmlToString(error));
       *output << "  </tr>\n";
       continue;
     }
+    auto reg = master.registration();
     string host_port = Substitute("$0:$1",
-                                  master.registration().http_addresses(0).host(),
-                                  master.registration().http_addresses(0).port());
-    string reg_text = RegistrationToHtml(master.registration(), host_port);
+                                  reg.http_addresses(0).host(), reg.http_addresses(0).port());
+    string reg_text = RegistrationToHtml(reg, host_port);
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
-    string raft_role = master.has_role() ?  RaftPeerPB_Role_Name(master.role()) : "N/A";
-    string cloud = master.registration().cloud_info().placement_cloud();
-    string region = master.registration().cloud_info().placement_region();
-    string zone = master.registration().cloud_info().placement_zone();
+    string raft_role = master.has_role() ? RaftPeerPB_Role_Name(master.role()) : "N/A";
+    string cloud = reg.cloud_info().placement_cloud();
+    string region = reg.cloud_info().placement_region();
+    string zone = reg.cloud_info().placement_zone();
 
     *output << "  <tr>\n"
             << "    <td>" << reg_text << "</td>\n"
