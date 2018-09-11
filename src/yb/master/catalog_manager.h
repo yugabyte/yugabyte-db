@@ -970,6 +970,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 
+  // Find all the roles for which 'role' is a member of the list 'member_of'.
+  std::vector<std::string> DirectMemberOf(const RoleName& role);
+
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 
