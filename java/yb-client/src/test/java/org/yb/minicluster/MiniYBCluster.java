@@ -48,6 +48,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -81,8 +82,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
 
-  // We expect that 127.0.0.1 - 127.0.0.254 might be present on macOS as loopback IPs.
-  private static final int NUM_LOCALHOSTS_ON_MAC_OS_X = 254;
+  // We expect that 127.0.0.1 - 127.0.0.254 are present on macOS as loopback IPs.
+  private static final int MIN_LOCALHOST_IP_ON_MACOS = 2;
+  private static final int MAX_LOCALHOST_IP_ON_MACOS = 254;
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
@@ -120,10 +122,11 @@ public class MiniYBCluster implements AutoCloseable {
   private final String testClassName;
 
   /**
-   * This is used to prevent trying to launch two tservers on the same loopback IP. However, this is
-   * not static, so if we launch multiple mini-clusters in the same test, they could clash on IPs.
+   * This is used to prevent trying to launch two daemons on the same loopback IP. However, this
+   * only works with the same test process.
    */
-  private final Set<String> tserverUsedBindIPs = new HashSet<>();
+  private static final ConcurrentSkipListSet<String> usedBindIPs =
+      new ConcurrentSkipListSet<>();
 
   // These are used to assign master/tserver indexes used in the logs (the "m1", "ts2", etc.
   // prefixes).
@@ -136,7 +139,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   private int numShardsPerTserver;
 
-  private boolean useRandomIp;
+  public static boolean DEFAULT_USE_IP_WITH_CERTIFICATE = false;
+
+  private boolean useIpWithCertificate = DEFAULT_USE_IP_WITH_CERTIFICATE;
 
   /**
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
@@ -155,11 +160,11 @@ public class MiniYBCluster implements AutoCloseable {
                 List<List<String>> tserverArgs,
                 int numShardsPerTserver,
                 String testClassName,
-                boolean useRandomIp) throws Exception {
+                boolean useIpWithCertificate) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
     this.numShardsPerTserver = numShardsPerTserver;
-    this.useRandomIp = useRandomIp;
+    this.useIpWithCertificate = useIpWithCertificate;
 
     startCluster(numMasters, numTservers, masterArgs, tserverArgs);
     startSyncClient();
@@ -232,14 +237,11 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * @return string representation of localhost IP.
+   * @return the string representation of a random localhost IP.
    */
   private String getRandomBindAddressOnLinux() throws IllegalArgumentException {
     assert(TestUtils.IS_LINUX);
-    // On Linux we can use 127.x.y.z, so let's pick deterministic random-ish values based on the
-    // current process's pid and server index.
-    //
-    // In case serverIndex is -1, pick random addresses.
+    // On Linux we can use 127.x.y.z, so let's just pick a random address.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
     final Random rng = TestUtils.getRandomGenerator();
     for (int i = 0; i < 3; ++i) {
@@ -249,70 +251,81 @@ public class MiniYBCluster implements AutoCloseable {
     return randomLoopbackIp.toString();
   }
 
-  private boolean canUseForTServer(String bindAddress, boolean logException)
-      throws IOException {
-    if (tserverUsedBindIPs.contains(bindAddress)) {
-      // We previously checked this IP address and we know it is not free.
+  private boolean canUseBindIP(String bindIP, boolean logException) throws IOException {
+    if (usedBindIPs.contains(bindIP)) {
+      // We are using this bind IP for a daemon already.
       return false;
     }
-    final InetAddress bindIp = InetAddress.getByName(bindAddress);
+
+    final InetAddress bindIp = InetAddress.getByName(bindIP);
     for (int clientApiPort : TSERVER_CLIENT_API_PORTS) {
       if (!TestUtils.isPortFree(bindIp, clientApiPort, logException)) {
         // One of the ports we need to be free is not free, reject this IP address.
         return false;
       }
     }
-    // All ports we care about are free, use this IP address.
-    tserverUsedBindIPs.add(bindAddress);
-    return true;
+
+    // All ports we care about are free, let's try to use this IP address.
+    return usedBindIPs.add(bindIP);
   }
 
-  private String getTabletServerBindAddress() throws IllegalArgumentException, IOException {
-    if (TestUtils.IS_LINUX && useRandomIp) {
-      final int NUM_ATTEMPTS = 1000;
-      for (int i = 1; i <= NUM_ATTEMPTS; ++i) {
-        String randomBindAddress = getRandomBindAddressOnLinux();
-        if (canUseForTServer(randomBindAddress, i == NUM_ATTEMPTS)) {
-          return randomBindAddress;
-        }
-      }
-      throw new IOException("Could not find a loopback IP where port " + CQL_PORT + " is free " +
-          "in " + NUM_ATTEMPTS + " attempts");
+  private String getDaemonBindAddress(MiniYBDaemonType daemonType) throws IOException {
+    if (TestUtils.IS_LINUX && !useIpWithCertificate) {
+      return pickFreeRandomBindIpOnLinux(daemonType);
     }
 
-    return pickFirstSuitableIp(MiniYBDaemonType.TSERVER);
-  }
-
-  private String pickFirstSuitableIp(MiniYBDaemonType daemonType) throws IOException {
-    // We have certificates with names of even IPs only, so we try to use only such IPs.
-    int idx = 2;
-    for (;;) {
-      String bindAddress = "127.0.0." + idx;
-      idx += 2;
-      boolean last = idx > NUM_LOCALHOSTS_ON_MAC_OS_X;
-      // Since this check is quite strict, we could also use it for master.
-      if (canUseForTServer(bindAddress, last)) {
-        return bindAddress;
-      }
-      if (last) {
-        break;
-      }
-    }
-
-    throw new IOException(String.format(
-        "Cannot find a loopback IP to launch a %s on", daemonType.humanReadableName()));
+    return pickFreeBindIpOnlyVaryingLastByte(daemonType);
   }
 
   private String getMasterBindAddress() throws IOException {
-    if (useRandomIp) {
-      if (TestUtils.IS_LINUX) {
-        return getRandomBindAddressOnLinux();
+    return getDaemonBindAddress(MiniYBDaemonType.MASTER);
+  }
+
+  private String getTabletServerBindAddress() throws IOException {
+    return getDaemonBindAddress(MiniYBDaemonType.TSERVER);
+  }
+
+  private String pickFreeRandomBindIpOnLinux(MiniYBDaemonType daemonType) throws IOException {
+    final int MAX_NUM_ATTEMPTS = 1000;
+    for (int i = 1; i <= MAX_NUM_ATTEMPTS; ++i) {
+      String randomBindAddress = getRandomBindAddressOnLinux();
+      if (canUseBindIP(randomBindAddress, i == MAX_NUM_ATTEMPTS)) {
+        return randomBindAddress;
       }
-      final Random rng = TestUtils.getRandomGenerator();
-      return "127.0.0." + (1 + rng.nextInt(NUM_LOCALHOSTS_ON_MAC_OS_X - 1));
+    }
+    throw new IOException("Could not find a loopback IP of the form 127.x.y.z for a " +
+        daemonType.humanReadableName() + " in " + MAX_NUM_ATTEMPTS + " attempts");
+  }
+
+  private String getLoopbackIpWithLastByte(int lastByte) {
+    return "127.0.0." + lastByte;
+  }
+
+  private String pickFreeBindIpOnlyVaryingLastByte(MiniYBDaemonType daemonType) throws IOException {
+    List<Integer> lastIpBytes = new ArrayList<>();
+    // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
+    final int lastIpByteStep = useIpWithCertificate ? 2 : 1;
+    for (int lastIpByte = 2; lastIpByte <= 254; lastIpByte += lastIpByteStep) {
+      if (!usedBindIPs.contains(getLoopbackIpWithLastByte(lastIpByte))) {
+        lastIpBytes.add(lastIpByte);
+      }
     }
 
-    return pickFirstSuitableIp(MiniYBDaemonType.MASTER);
+    Collections.shuffle(lastIpBytes);
+
+    for (int i = lastIpBytes.size() - 1; i >= 0; --i) {
+      String bindAddress = getLoopbackIpWithLastByte(lastIpBytes.get(i));
+      if (canUseBindIP(bindAddress, i == 0)) {
+        return bindAddress;
+      }
+    }
+
+    Collections.sort(lastIpBytes);
+    throw new IOException(String.format(
+        "Cannot find a loopback IP of the form 127.0.0.x to launch a %s on. " +
+            "Considered options: %s.",
+        daemonType.humanReadableName(),
+        lastIpBytes));
   }
 
   /**
@@ -501,8 +514,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
     pathsToDelete.add(dataDirPath);
 
-    // Sleep for some time to let the shell master to get initialized and running.
-    Thread.sleep(5000);
+    TestUtils.logAndSleepMs(5000, "let the shell master get initialized and running");
 
     return masterHostPort;
   }
@@ -736,7 +748,7 @@ public class MiniYBCluster implements AutoCloseable {
     assert(redisContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), REDIS_PORT)));
     assert(pgsqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), PGSQL_PORT)));
     destroyDaemonAndWait(ts);
-    tserverUsedBindIPs.remove(hostPort.getHostText());
+    usedBindIPs.remove(hostPort.getHostText());
   }
 
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {

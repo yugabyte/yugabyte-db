@@ -793,7 +793,12 @@ build_yb_java_code_filter_save_output() {
     if [[ $has_local_output == "true" ]]; then
       rm -f "$java_build_output_path" # cleaning up
     fi
-    log "Java build finished with exit code $mvn_exit_code" # useful for searching in console output
+    if [[ $mvn_exit_code -eq 0 ]]; then
+      log "Java build SUCCEEDED"
+    else
+      # Useful for searching in console output.
+      log "Java build FAILED: could not find 'BUILD SUCCESS' in Maven output"
+    fi
     return $mvn_exit_code
   fi
   set -e +x
