@@ -162,7 +162,7 @@ struct ReplayState {
   // persistent sequence number), we remember the hybrid time of that entry in this field.
   // We guarantee that we'll either see that entry or a latter entry we know is committed into Raft
   // during log replay. This is crucial for properly setting safe time at bootstrap.
-  HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
+  HybridTime max_committed_hybrid_time = HybridTime::kMin;
 };
 
 ReplayState::ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id)
@@ -551,15 +551,6 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
     //
     // Also see the other place where we update state->committed_op_id in the end of this function.
     state->UpdateCommittedOpId(replicate.id());
-
-    // We also update the MVCC safe time to make sure this committed entry is visible to readers
-    // as every committed entry should be. Unlike the committed op id, though, we can't just update
-    // the safe time here, as this entry could be overwritten by a later entry with a later term but
-    // an earlier hybrid time (TODO: would that still be possible when we have leader leases?).
-    // Instead, we only keep the last value of hybrid time of the entry at this index, and update
-    // safe time based on it in the end. We do require that we keep at least one committed entry
-    // in the log, though.
-    state->rocksdb_last_entry_hybrid_time = HybridTime(replicate.hybrid_time());
   }
 
   // Append the replicate message to the log as is
@@ -662,6 +653,7 @@ Status TabletBootstrap::HandleEntryPair(ReplayState* state, LogEntryPB* replicat
           "Failed to play $0 request. ReplicateMsg: { $1 }",
           OperationType_Name(op_type), *replicate));
     }
+    state->max_committed_hybrid_time.MakeAtLeast(HybridTime(replicate->hybrid_time()));
   }
 
   return Status::OK();
@@ -701,6 +693,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   intents_op_id.set_term(flushed_op_id.intents.term);
   intents_op_id.set_index(flushed_op_id.intents.index);
   ReplayState state(regular_op_id, intents_op_id);
+  state.max_committed_hybrid_time = VERIFY_RESULT(tablet_->MaxPersistentHybridTime());
 
   LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
                         << state.regular_stored_op_id.ShortDebugString() << "/"
@@ -772,7 +765,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       << "Last: " << state.prev_op_id.ShortDebugString()
       << ", committed: " << state.committed_op_id;
 
-  tablet_->mvcc_manager()->SetLastReplicated(state.rocksdb_last_entry_hybrid_time);
+  tablet_->mvcc_manager()->SetLastReplicated(state.max_committed_hybrid_time);
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;
 
