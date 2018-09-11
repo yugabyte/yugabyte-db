@@ -409,6 +409,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // First for regular records and second for intents.
   Result<DocDbOpIds> MaxPersistentOpId() const;
 
+  // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
+  Result<HybridTime> MaxPersistentHybridTime() const;
+
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
 
