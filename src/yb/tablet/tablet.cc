@@ -1454,6 +1454,24 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId() const {
   return result;
 }
 
+Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
+  HybridTime result = HybridTime::kMin;
+  auto temp = regular_db_->GetFlushedFrontier();
+  if (temp) {
+    result.MakeAtLeast(down_cast<docdb::ConsensusFrontier*>(temp.get())->hybrid_time());
+  }
+  if (intents_db_) {
+    temp = intents_db_->GetFlushedFrontier();
+    if (temp) {
+      result.MakeAtLeast(down_cast<docdb::ConsensusFrontier*>(temp.get())->hybrid_time());
+    }
+  }
+  return result;
+}
+
 Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {
     case TableType::PGSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
