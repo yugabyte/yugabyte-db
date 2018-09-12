@@ -52,7 +52,7 @@ class CreateKubernetesConfiguration extends Component {
       ];
       self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypes);
     };
-    this.props.onSubmit();
+    self.props.onSubmit(true);
   }
 
   uploadConfig = (uploadFile) => {

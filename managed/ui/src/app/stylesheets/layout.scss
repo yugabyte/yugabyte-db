@@ -48,6 +48,15 @@ legend {
   border: none !important;
 }
 
+.no-padding {
+  padding: none !important;
+}
+
+.no-side-padding {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
 .full-height {
   position: absolute;
   height: 100%;
