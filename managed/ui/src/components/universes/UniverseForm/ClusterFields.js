@@ -20,7 +20,8 @@ import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from "../../.
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
   'aws': 'c4.2xlarge',
-  'gcp': 'n1-standard-1'
+  'gcp': 'n1-standard-1',
+  'kubernetes': 'small'
 };
 
 
@@ -940,6 +941,16 @@ export default class ClusterFields extends Component {
           );
         });
       }
+    } else if (currentProviderCode === "kubernetes")  {
+      universeInstanceTypeList =
+        cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
+          return (
+            <option key={instanceTypeItem.instanceTypeCode}
+                    value={instanceTypeItem.instanceTypeCode}>
+              {instanceTypeItem.instanceTypeName || instanceTypeItem.instanceTypeCode } ({instanceTypeItem.numCores} {instanceTypeItem.numCores>1 ? "cores" : "core"}, {instanceTypeItem.memSizeGB}GB RAM)
+            </option>
+          );
+        });
     } else {
       universeInstanceTypeList =
         cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
@@ -950,10 +961,6 @@ export default class ClusterFields extends Component {
             </option>
           );
         });
-    }
-
-    if (isNonEmptyArray(universeInstanceTypeList)) {
-      universeInstanceTypeList.unshift(<option disabled key="" value="">Select</option>);
     }
 
     let placementStatus = <span/>;
@@ -986,7 +993,6 @@ export default class ClusterFields extends Component {
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
       <option key={idx} value={item}>{item}</option>
     ));
-
 
     let accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
     if (_.isObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
