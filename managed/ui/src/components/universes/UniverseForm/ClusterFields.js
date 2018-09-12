@@ -1020,23 +1020,32 @@ export default class ClusterFields extends Component {
                 <Field name={`${clusterType}.provider`} type="select" component={YBSelectWithLabel} label="Provider"
                         onInputChanged={this.providerChanged} options={universeProviderList} readOnlySelect={isFieldReadOnly}/>
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
-                       label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
+                      label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
+                { clusterType === "async"
+                  ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
+                      label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                      minVal={Number(this.state.replicationFactor)}/>,
+                    <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
+                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />]
+                  : null
+                }
               </div>
 
-              <Row>
-                <div className="form-right-aligned-labels">
-                  <Col lg={5}>
-                    <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                           label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                           minVal={Number(this.state.replicationFactor)}/>
-                  </Col>
-                  <Col lg={7} className="button-group-row">
-                    <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={clusterType === "async" ? [1, 2, 3, 4, 5, 6, 7] : [1, 3, 5, 7] }
-                           label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
-                  </Col>
-                </div>
-              </Row>
-
+              { clusterType !== "async" &&
+                <Row>
+                  <div className="form-right-aligned-labels">
+                    <Col lg={5}>
+                      <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
+                            label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                            minVal={Number(this.state.replicationFactor)}/>
+                    </Col>
+                    <Col lg={7} className="button-group-row">
+                      <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
+                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
+                    </Col>
+                  </div>
+                </Row>
+              }
             </Col>
             <Col md={6} className={"universe-az-selector-container"}>
               {azSelectorTable}
