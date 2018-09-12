@@ -43,8 +43,8 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   }
   RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
 
-  QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
-  QLResultSet resultset;
+  const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
+  QLResultSet resultset(&rsrow_desc, &result->rows_data);
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       QLStorage(), deadline, read_time, schema, query_schema, &resultset, &result->restart_read_ht);
@@ -63,15 +63,7 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   RETURN_NOT_OK(CreatePagingStateForRead(
       ql_read_request, resultset.rsrow_count(), &result->response));
 
-  // TODO(neil) The clients' request should indicate what encoding method should be used. When
-  // multi-shard is used to process more complicated queries, proxy-server might prefer a different
-  // encoding. For now, we'll call CQLSerialize() without checking encoding method.
   result->response.set_status(QLResponsePB::YQL_STATUS_OK);
-  TRACE("Start Serialize");
-  RETURN_NOT_OK(resultset.CQLSerialize(ql_read_request.client(),
-                                       rsrow_desc,
-                                       &result->rows_data));
-  TRACE("Done Serialize");
   return Status::OK();
 }
 

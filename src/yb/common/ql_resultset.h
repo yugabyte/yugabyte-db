@@ -2,9 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //
 // This module defines the ResultSet that QL database returns to a query request.
-// ResultSet is a set of rows of data that is returned by a query request, and each of selected row
-// is name "rsrow" in our code. We don't call "rsrow" tuple to avoid conflict with TUPLE datatype
-// in Apache Cassandra.
+// QLResultSet is a set of rows of data that is returned by a query request.
 // - Within our code, we call it "rsrow" instead of row to distinguish between selected-rows and
 //   rows of a table in the database.
 // - Similarly, we use "rscol" in place of "column".
@@ -13,6 +11,9 @@
 // NOTE:
 // - This should be merged or shared a super class with ql_rowblock.cc.
 // - This will be done in the next diff. We don't do this now to avoid large code modifications.
+// - For optimization, columns and rows are serialized (in CQL wire format) directly for return to
+//   call. If there is a need to manipulate the rows before return, QLResultSet should be changed to
+//   an interface with multiple implementations for different use-cases.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_COMMON_QL_RESULTSET_H_
@@ -28,19 +29,17 @@ class QLRSRowDesc {
  public:
   class RSColDesc {
    public:
-    RSColDesc() {
+    explicit RSColDesc(const QLRSColDescPB& desc_pb)
+        : name_(desc_pb.name()), ql_type_(QLType::FromQLTypePB(desc_pb.ql_type())) {
     }
-    RSColDesc(const string& name, const QLType::SharedPtr& ql_type)
-        : name_(name), ql_type_(ql_type) {
-    }
-    const string& name() {
+    const std::string& name() const {
       return name_;
     }
-    const QLType::SharedPtr& ql_type() {
+    const QLType::SharedPtr& ql_type() const {
       return ql_type_;
     }
    private:
-    string name_;
+    std::string name_;
     QLType::SharedPtr ql_type_;
   };
 
@@ -60,57 +59,27 @@ class QLRSRowDesc {
 };
 
 //--------------------------------------------------------------------------------------------------
-// A rsrow represents the values of a row in the resultset.
-class QLRSRow {
- public:
-  explicit QLRSRow(int32_t rscol_count);
-  QLRSRow(QLRSRow&& other) : rscols_(std::move(other.rscols_)) { }
-  virtual ~QLRSRow();
-
-  const std::vector<QLValue>& rscols() const {
-    return rscols_;
-  }
-
-  size_t rscol_count() const { return rscols_.size(); }
-
-  QLValue *rscol(int32_t index) {
-    return &rscols_[index];
-  }
-
-  CHECKED_STATUS CQLSerialize(const QLClient& client,
-                              const QLRSRowDesc& rsrow_desc,
-                              faststring* buffer) const;
-
- private:
-  std::vector<QLValue> rscols_;
-};
-
-// A set of rsrows.
+// A set of rows.
 class QLResultSet {
  public:
   typedef std::shared_ptr<QLResultSet> SharedPtr;
 
   // Constructor and destructor.
-  QLResultSet();
+  QLResultSet(const QLRSRowDesc* rsrow_desc, faststring* rows_data);
   virtual ~QLResultSet();
 
-  const std::vector<QLRSRow>& rsrows() const {
-    return rsrows_;
-  }
+  // Allocate a new row at the end of result set.
+  void AllocateRow();
 
-  // Allocate a new rsrow and append it to the end of result set.
-  QLRSRow *AllocateRSRow(int32_t rscol_count);
+  // Append a column to the last row in the result set.
+  void AppendColumn(size_t index, const QLValue& value);
 
   // Row count
-  size_t rsrow_count() const { return rsrows_.size(); }
-
-  // Serialization routines with CQL encoding format.
-  CHECKED_STATUS CQLSerialize(const QLClient& client,
-                              const QLRSRowDesc& rsrow_desc,
-                              faststring* buffer) const;
+  size_t rsrow_count() const;
 
  private:
-  std::vector<QLRSRow> rsrows_;
+  const QLRSRowDesc* rsrow_desc_ = nullptr;
+  faststring* rows_data_ = nullptr;
 };
 
 } // namespace yb

@@ -153,7 +153,8 @@ static inline void CQLEncodeLength(const int32_t length, faststring* buffer) {
   buffer->append(&byte_value, sizeof(byte_value));
 }
 
-// Encode a 32-bit length into the buffer. Caller should ensure the buffer size is at least 4 bytes.
+// Encode a 32-bit length into the buffer without extending the buffer. Caller should ensure the
+// buffer size is at least 4 bytes.
 static inline void CQLEncodeLength(const int32_t length, void* buffer) {
   NetworkByteOrder::Store32(buffer, static_cast<uint32_t>(length));
 }
@@ -224,13 +225,26 @@ static inline void CQLFinishCollection(int32_t start_pos, faststring* buffer) {
     }                                                       \
   } while (0)
 
+static inline Result<int32_t> CQLDecodeLength(Slice* data) {
+  RETURN_NOT_ENOUGH(data, sizeof(int32_t));
+  const auto len = static_cast<int32_t>(NetworkByteOrder::Load32(data->data()));
+  data->remove_prefix(sizeof(int32_t));
+  return len;
+}
+
+// Decode a 32-bit length from the buffer without consuming the buffer. Caller should ensure the
+// buffer size is at least 4 bytes.
+static inline int32_t CQLDecodeLength(const void* buffer) {
+  return static_cast<int32_t>(NetworkByteOrder::Load32(buffer));
+}
+
 // Decode a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
 // <converter> converts the number from network byte-order to machine order and <data_type>
 // is the coverter's return type. The converter's return type <data_type> is unsigned while
 // <num_type> may be signed or unsigned.
 template<typename num_type, typename data_type>
 static inline CHECKED_STATUS CQLDecodeNum(
-    size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
+    const size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
 
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
   if (len != sizeof(num_type)) {
@@ -250,7 +264,7 @@ static inline CHECKED_STATUS CQLDecodeNum(
 // is the coverter's return type. The converter's return type <data_type> is an integer type.
 template<typename float_type, typename data_type>
 static inline CHECKED_STATUS CQLDecodeFloat(
-    size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
+    const size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
   // Make sure float and double are exactly sizeof uint32_t and uint64_t.
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
   data_type bval = 0;
