@@ -2912,12 +2912,12 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
 CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
                                                   QLResultSet *resultset) {
-  int column_count = request_.selected_exprs().size();
-  QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
-
+  resultset->AllocateRow();
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
+    QLValue value;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, &value));
+    resultset->AppendColumn(rscol_index, value);
     rscol_index++;
   }
 
@@ -2940,10 +2940,10 @@ CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
 
 CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
                                                   QLResultSet *resultset) {
+  resultset->AllocateRow();
   int column_count = request_.selected_exprs().size();
-  QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
-    *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];
+    resultset->AppendColumn(rscol_index, aggr_result_[rscol_index]);
   }
   return Status::OK();
 }

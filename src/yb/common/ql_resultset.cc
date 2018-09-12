@@ -14,9 +14,8 @@ namespace yb {
 
 QLRSRowDesc::QLRSRowDesc(const QLRSRowDescPB& desc_pb) {
   rscol_descs_.reserve(desc_pb.rscol_descs().size());
-  for (auto rscol_desc_pb : desc_pb.rscol_descs()) {
-    rscol_descs_.emplace_back(rscol_desc_pb.name(),
-                              QLType::FromQLTypePB(rscol_desc_pb.ql_type()));
+  for (const auto& rscol_desc_pb : desc_pb.rscol_descs()) {
+    rscol_descs_.emplace_back(rscol_desc_pb);
   }
 }
 
@@ -25,45 +24,24 @@ QLRSRowDesc::~QLRSRowDesc() {
 
 //--------------------------------------------------------------------------------------------------
 
-QLRSRow::QLRSRow(int32_t rscol_count) : rscols_(rscol_count) {
-}
-
-QLRSRow::~QLRSRow() {
-}
-
-CHECKED_STATUS QLRSRow::CQLSerialize(const QLClient& client,
-                                     const QLRSRowDesc& rsrow_desc,
-                                     faststring* buffer) const {
-  DCHECK_EQ(rsrow_desc.rscol_count(), rscol_count()) << "Wrong count of fields in result set";
-  int idx = 0;
-  for (auto rscol_desc : rsrow_desc.rscol_descs()) {
-    rscols_[idx].Serialize(rscol_desc.ql_type(), client, buffer);
-    idx++;
-  }
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-QLResultSet::QLResultSet() {
+QLResultSet::QLResultSet(const QLRSRowDesc* rsrow_desc, faststring* rows_data)
+    : rsrow_desc_(rsrow_desc), rows_data_(rows_data) {
+  CQLEncodeLength(0, rows_data_);
 }
 
 QLResultSet::~QLResultSet() {
 }
 
-QLRSRow *QLResultSet::AllocateRSRow(int32_t rscol_count) {
-  rsrows_.emplace_back(rscol_count);
-  return &rsrows_.back();
+void QLResultSet::AllocateRow() {
+  CQLEncodeLength(CQLDecodeLength(rows_data_->data()) + 1, rows_data_->data());
 }
 
-CHECKED_STATUS QLResultSet::CQLSerialize(const QLClient& client,
-                                         const QLRSRowDesc& rsrow_desc,
-                                         faststring* buffer) const {
-  CQLEncodeLength(rsrows_.size(), buffer);
-  for (const auto& rsrow : rsrows_) {
-    RETURN_NOT_OK(rsrow.CQLSerialize(client, rsrow_desc, buffer));
-  }
-  return Status::OK();
+void QLResultSet::AppendColumn(const size_t index, const QLValue& value) {
+  value.Serialize(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, rows_data_);
+}
+
+size_t QLResultSet::rsrow_count() const {
+  return CQLDecodeLength(rows_data_->data());
 }
 
 } // namespace yb
