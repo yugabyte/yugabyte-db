@@ -149,8 +149,7 @@ export default class ClusterFields extends Component {
         if (isNonEmptyString(formValues[clusterType].provider)) {
           this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
-          this.setState({instanceTypeSelected: formValues[clusterType].instanceTypeSelected});
-          this.setDeviceInfo(formValues[clusterType].instanceTypeSelected, this.props.cloud.instanceTypes.data);
+          this.setState({instanceTypeSelected: formValues[clusterType].instanceType});
 
           if (formValues[clusterType].spotPrice && formValues[clusterType].spotPrice > 0) {
             this.setState({useSpotPrice: true, spotPrice: formValues[clusterType].spotPrice});
