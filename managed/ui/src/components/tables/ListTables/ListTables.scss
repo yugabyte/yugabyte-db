@@ -83,3 +83,9 @@
 .react-bs-container-body{
     overflow: inherit !important;
 }
+
+.middle-aligned-table {
+  td, th {
+    vertical-align: middle !important;
+  }
+}
