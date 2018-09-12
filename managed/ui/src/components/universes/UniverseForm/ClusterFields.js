@@ -1025,7 +1025,7 @@ export default class ClusterFields extends Component {
                       label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
                       minVal={Number(this.state.replicationFactor)}/>,
                     <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
-                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />]
+                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
                   : null
                 }
               </div>
@@ -1040,7 +1040,8 @@ export default class ClusterFields extends Component {
                     </Col>
                     <Col lg={7} className="button-group-row">
                       <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
+                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
+
                     </Col>
                   </div>
                 </Row>
