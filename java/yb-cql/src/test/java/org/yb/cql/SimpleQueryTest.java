@@ -383,7 +383,6 @@ public class SimpleQueryTest extends CQLTester
   }
 
   @Test
-  @Ignore ("Disabled for issue #466")
   public void testDistinct() throws Throwable
   {
     createTable("CREATE TABLE %s (k text, t int, v text, PRIMARY KEY (k, t));");
@@ -396,8 +395,8 @@ public class SimpleQueryTest extends CQLTester
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key2", 5, "foo5");
 
     assertRows(execute("SELECT DISTINCT k FROM %s"),
-      row("key1"),
-      row("key2")
+      row("key2"),
+      row("key1")
     );
   }
 
