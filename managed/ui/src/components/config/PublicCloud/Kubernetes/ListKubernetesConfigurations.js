@@ -17,8 +17,9 @@ export default class ListKubernetesConfigurations extends Component {
   }
 
   render() {
-    const { providers, type } = this.props;
+    const { providers, deleteProviderConfig, type } = this.props;
 
+    const self = this;
     const formatConfigPath = function(item, row) {
       return (
         <FlexContainer>
@@ -31,6 +32,13 @@ export default class ListKubernetesConfigurations extends Component {
         </FlexContainer>
       );
     };
+    const actionList = function(item, row) {
+      return (
+        <Button bsClass="btn btn-default btn-config pull-right" onClick={deleteProviderConfig.bind(self, row.uuid)}>
+          Delete Configuration
+        </Button>
+      );
+    };
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === type);
 
     return (
@@ -40,7 +48,7 @@ export default class ListKubernetesConfigurations extends Component {
             <h2 className="table-container-title pull-left">{providerTypeMetadata.name} configs</h2>
             <FlexContainer className="pull-right">
               <FlexShrink>
-                <Button bsClass="btn btn-orange" onClick={this.props.onCreate}>
+                <Button bsClass="btn btn-orange btn-config" onClick={this.props.onCreate}>
                   Create Config
                 </Button>
               </FlexShrink>
@@ -49,7 +57,7 @@ export default class ListKubernetesConfigurations extends Component {
 
         }
         body={
-          <BootstrapTable data={providers} pagination={true} className="backup-list-table">
+          <BootstrapTable data={providers} pagination={true} className="backup-list-table middle-aligned-table">
             <TableHeaderColumn dataField="uuid" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="name" dataSort
                               columnClassName="no-border name-column" className="no-border">
@@ -71,8 +79,12 @@ export default class ListKubernetesConfigurations extends Component {
                               columnClassName="no-border name-column" className="no-border">
               Config Path
             </TableHeaderColumn>
+            <TableHeaderColumn dataField="configActions" dataFormat={actionList}
+                              columnClassName="no-border name-column no-side-padding" className="no-border">
+            </TableHeaderColumn>
           </BootstrapTable>
         }
+        noBackground
       />
     );
   }

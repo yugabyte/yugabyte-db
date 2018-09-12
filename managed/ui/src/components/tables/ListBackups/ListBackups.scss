@@ -2,9 +2,11 @@
 
 @import "_style/colors.scss";
 
-.backup-list-table .storage-cell {
-  overflow: visible;
-  white-space: normal;
-  width: 270px;
-  word-wrap: break-word;
+.backup-list-table {
+  .storage-cell {
+    overflow: visible;
+    white-space: normal;
+    width: 270px;
+    word-wrap: break-word;
+  }
 }
