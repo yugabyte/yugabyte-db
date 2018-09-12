@@ -134,21 +134,17 @@ Status QLRowBlock::Deserialize(const QLClient client, Slice* data) {
 
 Result<size_t> QLRowBlock::GetRowCount(const QLClient client, const string& data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
-  int32_t cnt = 0;
   Slice slice(data);
-  RETURN_NOT_OK(CQLDecodeNum(sizeof(cnt), NetworkByteOrder::Load32, &slice, &cnt));
-  return cnt;
+  return VERIFY_RESULT(CQLDecodeLength(&slice));
 }
 
 Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, string* dst) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
-  int32_t src_cnt = 0;
   Slice src_slice(src);
-  RETURN_NOT_OK(CQLDecodeNum(sizeof(src_cnt), NetworkByteOrder::Load32, &src_slice, &src_cnt));
+  const int32_t src_cnt = VERIFY_RESULT(CQLDecodeLength(&src_slice));
   if (src_cnt > 0) {
-    int32_t dst_cnt = 0;
     Slice dst_slice(*dst);
-    RETURN_NOT_OK(CQLDecodeNum(sizeof(dst_cnt), NetworkByteOrder::Load32, &dst_slice, &dst_cnt));
+    int32_t dst_cnt = VERIFY_RESULT(CQLDecodeLength(&dst_slice));
     if (dst_cnt == 0) {
       *dst = src;
     } else {

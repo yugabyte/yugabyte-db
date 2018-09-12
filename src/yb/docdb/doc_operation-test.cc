@@ -205,21 +205,23 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
     const Schema& query_schema = row_block.schema();
-    QLRSRowDescPB *rsrow_desc = ql_read_req.mutable_rsrow_desc();
+    QLRSRowDescPB *rsrow_desc_pb = ql_read_req.mutable_rsrow_desc();
     for (int32_t i = 0; i <= 3 ; i++) {
       ql_read_req.add_selected_exprs()->set_column_id(i);
       ql_read_req.mutable_column_refs()->add_ids(i);
 
       auto col = query_schema.column_by_id(ColumnId(i));
       EXPECT_OK(col);
-      QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+      QLRSColDescPB *rscol_desc = rsrow_desc_pb->add_rscol_descs();
       rscol_desc->set_name(col->name());
       col->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(doc_db());
-    QLResultSet resultset;
+    const QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
+    faststring rows_data;
+    QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
     EXPECT_OK(read_op.Execute(
         ql_storage, MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(read_time),
@@ -227,10 +229,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
-    for (const auto& rsrow : resultset.rsrows()) {
-      QLRow& row = row_block.Extend();
-      row.SetColumnValues(rsrow.rscols());
-    }
+    Slice data(rows_data.data(), rows_data.size());
+    EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
   }
 };
