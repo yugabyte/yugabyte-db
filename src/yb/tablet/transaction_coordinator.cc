@@ -107,7 +107,7 @@ class TransactionStateContext {
 
 std::string BuildLogPrefix(const std::string& parent_log_prefix, const TransactionId& id) {
   auto id_string = boost::uuids::to_string(id);
-  return parent_log_prefix.substr(0, parent_log_prefix.length() - 2) + "ID " + id_string + ": ";
+  return parent_log_prefix.substr(0, parent_log_prefix.length() - 2) + " ID " + id_string + ": ";
 }
 
 // TransactionState keeps state of single transaction.
@@ -127,7 +127,7 @@ class TransactionState {
   ~TransactionState() {
     DCHECK(abort_waiters_.empty());
     DCHECK(request_queue_.empty());
-    DCHECK(replicating_ == nullptr);
+    DCHECK(replicating_ == nullptr) << Format("Replicating: $0", static_cast<void*>(replicating_));
   }
 
   // Id of transaction.
@@ -180,6 +180,8 @@ class TransactionState {
 
   // Applies new state to transaction.
   CHECKED_STATUS ProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
+    VLOG_WITH_PREFIX(4)
+        << Format("ProcessReplicated: $0, replicating: $1", data.mode, replicating_);
     if (data.mode == ProcessingMode::LEADER) {
       DCHECK(replicating_ == nullptr || consensus::OpIdEquals(replicating_->op_id(), data.op_id));
       replicating_ = nullptr;
@@ -195,6 +197,7 @@ class TransactionState {
   }
 
   void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
+    VLOG_WITH_PREFIX(4) << Format("ProcessAborted: $0, replicating: $1", data.mode, replicating_);
     if (data.state.status() == TransactionStatus::ABORTED) {
       NotifyAbortWaiters(STATUS(Aborted, "Replication failed"));
     }
@@ -208,7 +211,7 @@ class TransactionState {
 
   // Clear requests of this transaction.
   void ClearRequests(const Status& status) {
-    VLOG_WITH_PREFIX(1) << "ClearRequests: " << status;
+    VLOG_WITH_PREFIX(4) << Format("ClearRequests: $0, replicating: $1", status, replicating_);
     if (replicating_ != nullptr) {
       replicating_->completion_callback()->CompleteWithStatus(status);
       replicating_ = nullptr;
@@ -393,6 +396,7 @@ class TransactionState {
       return;
     }
 
+    VLOG_WITH_PREFIX(4) << Format("DoHandle, replicating = $0", replicating_);
     replicating_ = request.get();
     auto submitted = context_.SubmitUpdateTransaction(std::move(request));
     CHECK(submitted);
@@ -425,6 +429,7 @@ class TransactionState {
       request_queue_.push_back(std::move(request));
     } else {
       replicating_ = request.get();
+      VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
       if (!context_.SubmitUpdateTransaction(std::move(request))) {
         // Was not able to submit update transaction, for instance we are not leader.
         // So we are not replicating.

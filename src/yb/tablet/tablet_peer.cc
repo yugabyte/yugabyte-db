@@ -301,24 +301,22 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-void TabletPeer::Shutdown() {
+bool TabletPeer::StartShutdown() {
+  LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
-  LOG(INFO) << "Initiating TabletPeer shutdown for tablet: " << tablet_id_;
   if (tablet_) {
     tablet_->SetShutdownRequestedFlag();
   }
 
   {
     TabletStatePB state = state_.load(std::memory_order_acquire);
-    if (state == TabletStatePB::QUIESCING || state == TabletStatePB::SHUTDOWN) {
-      WaitUntilShutdown();
-      return;
-    }
-    while (!state_.compare_exchange_strong(state, TabletStatePB::QUIESCING,
-                                           std::memory_order_acq_rel)) {
+    for (;;) {
       if (state == TabletStatePB::QUIESCING || state == TabletStatePB::SHUTDOWN) {
-        WaitUntilShutdown();
-        return;
+        return false;
+      }
+      if (state_.compare_exchange_strong(
+          state, TabletStatePB::QUIESCING, std::memory_order_acq_rel)) {
+        break;
       }
     }
   }
@@ -330,8 +328,14 @@ void TabletPeer::Shutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  if (consensus_) consensus_->Shutdown();
+  if (consensus_) {
+    consensus_->Shutdown();
+  }
 
+  return true;
+}
+
+void TabletPeer::CompleteShutdown() {
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
       Substitute("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
@@ -347,7 +351,7 @@ void TabletPeer::Shutdown() {
   }
 
   if (VLOG_IS_ON(1)) {
-    VLOG(1) << "TabletPeer: tablet " << tablet_id() << " shut down!";
+    VLOG_WITH_PREFIX(1) << "Shut down!";
   }
 
   if (tablet_) {
@@ -362,6 +366,7 @@ void TabletPeer::Shutdown() {
     consensus_.reset();
     prepare_thread_.reset();
     tablet_.reset();
+    DCHECK_EQ(state_.load(std::memory_order_acquire), TabletStatePB::QUIESCING);
     state_.store(TabletStatePB::SHUTDOWN, std::memory_order_release);
   }
 }
@@ -369,6 +374,14 @@ void TabletPeer::Shutdown() {
 void TabletPeer::WaitUntilShutdown() {
   while (state_.load(std::memory_order_acquire) != TabletStatePB::SHUTDOWN) {
     SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+}
+
+void TabletPeer::Shutdown() {
+  if (StartShutdown()) {
+    CompleteShutdown();
+  } else {
+    WaitUntilShutdown();
   }
 }
 
@@ -455,6 +468,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
     }
   }
   if (!status.ok()) {
+    operation->Finish(Operation::ABORTED);
     operation->state()->completion_callback()->CompleteWithStatus(status);
   }
 }
@@ -744,7 +758,7 @@ Status TabletPeer::StartReplicaOperation(
 void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   auto driver = NewReplicaOperationDriver(nullptr);
   if (!driver.ok()) {
-    LOG(ERROR) << "Failed to create operation driver to set propagated hybrid time";
+    LOG_WITH_PREFIX(ERROR) << "Failed to create operation driver to set propagated hybrid time";
     return;
   }
   (**driver).SetPropagatedSafeTime(ht, tablet_->mvcc_manager());
@@ -804,8 +818,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   std::lock_guard<simple_spinlock> l(state_change_lock_);
 
   if (state() != TabletStatePB::RUNNING) {
-    LOG(WARNING) << "Not registering maintenance operations for " << tablet_
-                 << ": tablet not in RUNNING state";
+    LOG_WITH_PREFIX(WARNING) << "Not registering maintenance operations: tablet not RUNNING";
     return;
   }
 

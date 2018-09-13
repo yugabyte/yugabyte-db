@@ -459,7 +459,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  VLOG(1) << "UpdateTransaction: " << req->ShortDebugString();
+  VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
+          << ", context: " << context.ToString();
 
   TabletServerErrorPB::Code error_code;
   auto status = req->state().status() == CLEANUP

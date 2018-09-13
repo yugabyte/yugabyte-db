@@ -492,7 +492,9 @@ Status TSTabletManager::CreateNewTablet(
     const boost::optional<IndexInfo>& index_info,
     RaftConfigPB config,
     TabletPeerPtr *tablet_peer) {
-  CHECK_EQ(state(), MANAGER_RUNNING);
+  if (state() != MANAGER_RUNNING) {
+    return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
+  }
   CHECK(IsRaftConfigMember(server_->instance_pb().permanent_uuid(), config));
 
   for (int i = 0; i < config.peers_size(); ++i) {
@@ -986,7 +988,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   }
 }
 
-void TSTabletManager::Shutdown() {
+void TSTabletManager::StartShutdown() {
   async_client_init_->Shutdown();
 
   if(background_task_) {
@@ -1022,11 +1024,16 @@ void TSTabletManager::Shutdown() {
   // Take a snapshot of the peers list -- that way we don't have to hold
   // on to the lock while shutting them down, which might cause a lock
   // inversion. (see KUDU-308 for example).
-  TabletPeers peers_to_shutdown;
-  GetTabletPeers(&peers_to_shutdown);
+  for (const TabletPeerPtr& peer : GetTabletPeers()) {
+    if (peer->StartShutdown()) {
+      shutting_down_peers_.push_back(peer);
+    }
+  }
+}
 
-  for (const TabletPeerPtr& peer : peers_to_shutdown) {
-    peer->Shutdown();
+void TSTabletManager::CompleteShutdown() {
+  for (const TabletPeerPtr& peer : shutting_down_peers_) {
+    peer->CompleteShutdown();
   }
 
   // Shut down the apply pool.
@@ -1044,10 +1051,6 @@ void TSTabletManager::Shutdown() {
 
   {
     std::lock_guard<RWMutex> l(lock_);
-    // We don't expect anyone else to be modifying the map after we start the
-    // shut down process.
-    CHECK_EQ(tablet_map_.size(), peers_to_shutdown.size())
-      << "Map contents changed during shutdown!";
     tablet_map_.clear();
     table_data_assignment_map_.clear();
     table_wal_assignment_map_.clear();

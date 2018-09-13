@@ -162,7 +162,7 @@ class TestPeerProxy : public PeerProxy {
       // Drop the lock before submitting to the pool, since the callback itself may
       // destroy this instance.
     }
-    CHECK_OK(pool_->SubmitFunc(callback));
+    WARN_NOT_OK(pool_->SubmitFunc(callback), "Submit failed");
   }
 
   virtual void RegisterCallbackAndRespond(Method method, const rpc::ResponseCallback& callback) {
@@ -464,23 +464,24 @@ class LocalTestPeerProxy : public TestPeerProxy {
         peers_(peers),
         miss_comm_(false) {}
 
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
-                           RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
-                           rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) override {
+  void UpdateAsync(const ConsensusRequestPB* request,
+                   RequestTriggerMode trigger_mode,
+                   ConsensusResponsePB* response,
+                   rpc::RpcController* controller,
+                   const rpc::ResponseCallback& callback) override {
     RegisterCallback(kUpdate, callback);
     CHECK_OK(pool_->SubmitFunc(
         std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request, response)));
   }
 
-  virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
-                                         VoteResponsePB* response,
-                                         rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) override {
+  void RequestConsensusVoteAsync(const VoteRequestPB* request,
+                                 VoteResponsePB* response,
+                                 rpc::RpcController* controller,
+                                 const rpc::ResponseCallback& callback) override {
     RegisterCallback(kRequestVote, callback);
-    CHECK_OK(pool_->SubmitFunc(
-        std::bind(&LocalTestPeerProxy::SendVoteRequest, this, request, response)));
+    WARN_NOT_OK(
+        pool_->SubmitFunc(std::bind(&LocalTestPeerProxy::SendVoteRequest, this, request, response)),
+        "Submit failed");
   }
 
   template<class Response>
@@ -495,7 +496,6 @@ class LocalTestPeerProxy : public TestPeerProxy {
                              const Response& response_temp,
                              Response* final_response,
                              Method method) {
-
     bool miss_comm_copy;
     {
       std::lock_guard<simple_spinlock> lock(lock_);

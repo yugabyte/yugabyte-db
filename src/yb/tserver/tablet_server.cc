@@ -121,7 +121,6 @@ namespace tserver {
 TabletServer::TabletServer(const TabletServerOptions& opts)
     : RpcAndWebServerBase(
           "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
-      initted_(false),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
@@ -215,7 +214,7 @@ Status TabletServer::ValidateMasterAddressResolution() const {
 }
 
 Status TabletServer::Init() {
-  CHECK(!initted_);
+  CHECK(!initted_.load(std::memory_order_acquire));
 
   // Validate that the passed master address actually resolves.
   // We don't validate that we can connect at this point -- it should
@@ -231,7 +230,7 @@ Status TabletServer::Init() {
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
-  initted_ = true;
+  initted_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
@@ -287,7 +286,7 @@ Status TabletServer::RegisterServices() {
 }
 
 Status TabletServer::Start() {
-  CHECK(initted_);
+  CHECK(initted_.load(std::memory_order_acquire));
 
   AutoInitServiceFlags();
   RETURN_NOT_OK(RegisterServices());
@@ -309,15 +308,17 @@ Status TabletServer::Start() {
 void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shutting down...";
 
-  if (initted_) {
+  bool expected = true;
+  if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
     maintenance_manager_->Shutdown();
     WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
     {
       std::lock_guard<simple_spinlock> l(lock_);
       tablet_server_service_ = nullptr;
     }
+    tablet_manager_->StartShutdown();
     RpcAndWebServerBase::Shutdown();
-    tablet_manager_->Shutdown();
+    tablet_manager_->CompleteShutdown();
   }
 
   LOG(INFO) << "TabletServer shut down complete. Bye!";
