@@ -61,22 +61,22 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 ## How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](/quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools. 
+[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools.
 
-[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
 A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/product/compare/).
 
 ## How does YugaByte DB compare to other SQL and NoSQL databases?
 
-See [YugaByte DB in Comparison](/comparisons/)
+See [YugaByte DB in Comparison](../../comparisons/)
 
-- [Apache Cassandra](/comparisons/cassandra/)
-- [MongoDB](/comparisons/mongodb/)
-- [Redis](/comparisons/redis/)
-- [Apache HBase](/comparisons/hbase/)
-- [Google Cloud Spanner](/comparisons/google-spanner/)
-- [Azure Cosmos DB](/comparisons/azure-cosmos/)
+- [Apache Cassandra](../../comparisons/cassandra/)
+- [MongoDB](../../comparisons/mongodb/)
+- [Redis](../../comparisons/redis/)
+- [Apache HBase](../../comparisons/hbase/)
+- [Google Cloud Spanner](../../comparisons/google-spanner/)
+- [Azure Cosmos DB](../../comparisons/azure-cosmos/)
 
 ## Why not use a Redis cluster alongside a sharded SQL cluster?
 

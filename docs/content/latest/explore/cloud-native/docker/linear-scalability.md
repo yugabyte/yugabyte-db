@@ -5,7 +5,7 @@ If you have a previously running local universe, destroy it using the following.
 ```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```
-Start a new local cluster. By default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](/architecture/concepts/sharding/)(aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table. 
+Start a new local cluster. By default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](../../../architecture/concepts/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 
 ```{.sh .copy .separator-dollar}
@@ -27,7 +27,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --value_size 4096
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](/quick-start/run-sample-apps/).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../../quick-start/run-sample-apps/).
 
 ```sh
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |

@@ -24,7 +24,7 @@ As an example scenario, let us assume the following.
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
 
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](/admin/yb-master/). 
+- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-master \

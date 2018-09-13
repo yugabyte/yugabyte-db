@@ -55,7 +55,7 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 
 ## What are the OS requirements and permissions to run the YugaByte DB data nodes?
 
-Prerequisites for the YugaByte DB data nodes are listed [here](/deploy/multi-node-cluster/#prerequisites).
+Prerequisites for the YugaByte DB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
 
 ## How are the build artifacts packaged and stored for YugaByte DB Enterprise?
 

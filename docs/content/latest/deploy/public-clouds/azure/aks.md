@@ -160,4 +160,4 @@ $ az group delete --name yb-eastus-resource
 
 ## Advanced Kubernetes Deployment
 
-More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](/deploy/kubernetes/) section.
+More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](../../../deploy/kubernetes/) section.

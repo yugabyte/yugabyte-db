@@ -20,9 +20,9 @@ YugaByte DB is designed to support transactions at the following isolation level
 - Snapshot Isolation (currently supported)
 - Serializable (work in progress)
 
-You can [read more about transactions](/architecture/transactions/) in our architecture docs.
+You can [read more about transactions](../../../architecture/transactions/) in our architecture docs.
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

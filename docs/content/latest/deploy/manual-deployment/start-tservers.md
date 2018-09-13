@@ -24,7 +24,7 @@ As an example scenario, let us assume the following.
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
 
-- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](/admin/yb-tserver/). 
+- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-tserver \

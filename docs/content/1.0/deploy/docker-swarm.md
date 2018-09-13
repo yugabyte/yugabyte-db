@@ -239,7 +239,7 @@ Use HELP for help.
 cqlsh> 
 ```
 
-- Follow the test instructions as noted in [Quick Start](/quick-start/test-cassandra/).
+- Follow the test instructions as noted in [Quick Start](../../quick-start/test-cassandra/).
 
 ### YEDIS API
 
@@ -256,7 +256,7 @@ I0515 19:54:48.952378    39 client.cc:1208] Created table system_redis.redis of 
 I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' created.
 ```
 
-- Follow the test instructions as noted in [Quick Start](/quick-start/test-redis/).
+- Follow the test instructions as noted in [Quick Start](../../quick-start/test-redis/).
 
 ### PostgreSQL API
 
@@ -281,7 +281,7 @@ Type "help" for help.
 root=> 
 ```
 
-- Follow the test instructions as noted in [Quick Start](/quick-start/test-postgresql/).
+- Follow the test instructions as noted in [Quick Start](../../quick-start/test-postgresql/).
 
 ## 6. Test fault-tolerance with node failure
 

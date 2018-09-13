@@ -18,8 +18,8 @@ YugaByte DB consists of two distributed services - the YB-Master service and the
 ## Basics
 
 - YugaByte DB works on a variety of OSes. For production workloads, the recommended OS is **Centos 7.x** or **RHEL 7.x**.
-- Set the appropriate [system limits using `ulimit`](/deploy/manual-deployment/system-config/#setting-ulimits/) on each node running a YugaByte DB process.
-- Use [ntp](/deploy/manual-deployment/system-config/#ntp/) to synchronize time among the machines.
+- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits/) on each node running a YugaByte DB process.
+- Use [ntp](../manual-deployment/system-config/#ntp/) to synchronize time among the machines.
 
 
 ## Replication
@@ -37,7 +37,7 @@ You would first need to choose a replication factor. You would need at least as 
 - Number of YB-TServer processes running in the cluster should not be less than the replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Specify the replication factor using the `--replication_factor` when bringing up the YB-Master processes.
 
-See the [yb-master command reference](/admin/yb-master/) for more information.
+See the [yb-master command reference](../../admin/yb-master/) for more information.
 
 ## Hardware Requirements
 

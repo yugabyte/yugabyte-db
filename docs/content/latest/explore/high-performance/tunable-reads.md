@@ -17,7 +17,7 @@ With YugaByte DB, you can choose different consistency levels for performing rea
 ## Bounded Staleness
 YugaByte DB also allows you to specify the maximum staleness of data when reading from tablet followers. This means that if the follower hasn't heard from the leader for the specified amount of time, the read request will be forwarded to the leader. This is particularly useful when the tablet follower is located far away from the tablet leader. To enable this feature, you will need to create your cluster with the custom tserver flag `max_stale_read_bound_time_ms`. See [Creating a local cluster with custom flags](../../../admin/yb-ctl/#creating-a-local-cluster-with-custom-flags) for instructions on how to do this.
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

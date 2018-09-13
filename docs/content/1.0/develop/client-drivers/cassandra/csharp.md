@@ -2,7 +2,7 @@
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](/quick-start/test-cassandra/).
+- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app
