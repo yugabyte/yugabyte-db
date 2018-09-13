@@ -142,8 +142,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // the first tablet whose bootstrap failed.
   CHECKED_STATUS WaitForAllBootstrapsToFinish();
 
-  // Shut down all of the tablets, gracefully flushing before shutdown.
-  void Shutdown();
+  // Starts shutdown process.
+  void StartShutdown();
+  // Completes shutdown process and waits for it's completeness.
+  void CompleteShutdown();
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
@@ -458,6 +460,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   tablet::TabletOptions tablet_options_;
 
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
+
+  TabletPeers shutting_down_peers_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

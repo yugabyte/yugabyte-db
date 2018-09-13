@@ -52,6 +52,10 @@ void Operation::Start() {
   DoStart();
 }
 
+std::string Operation::LogPrefix() const {
+  return Format("$0: ", this);
+}
+
 OperationState::OperationState(Tablet* tablet)
     : tablet_(tablet),
       completion_clbk_(new OperationCompletionCallback()),
@@ -80,6 +84,10 @@ void OperationState::TrySetHybridTimeFromClock() {
   if (!hybrid_time_.is_valid()) {
     hybrid_time_ = tablet_->clock()->Now();
   }
+}
+
+std::string OperationState::LogPrefix() const {
+  return Format("$0: ", this);
 }
 
 OperationCompletionCallback::OperationCompletionCallback()

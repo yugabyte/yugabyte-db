@@ -25,6 +25,8 @@
 #include "yb/util/format.h"
 #include "yb/util/thread.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace rpc {
 
@@ -56,6 +58,15 @@ class IoThreadPool::Impl {
   }
 
   void Join() {
+    auto deadline = std::chrono::steady_clock::now() + 15s;
+    while (!io_service_.stopped()) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        LOG(ERROR) << "Io service failed to stop";
+        io_service_.stop();
+        break;
+      }
+      std::this_thread::sleep_for(10ms);
+    }
     for (auto& thread : threads_) {
       if (thread.joinable()) {
         thread.join();

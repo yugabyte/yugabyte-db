@@ -100,7 +100,6 @@ Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                                     ThreadPoolToken* raft_pool_token,
                                     PeerProxyPtr proxy,
                                     Consensus* consensus) {
-
   auto new_peer = std::make_shared<Peer>(
       peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus);
   RETURN_NOT_OK(new_peer->Init());
