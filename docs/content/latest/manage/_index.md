@@ -40,6 +40,18 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cluster-health/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <div class="title">Health checking and alerts</div>
+      </div>
+      <div class="body">
+        Setup automatic cluster health checking and error reporting.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="diagnostics-reporting/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />

@@ -21,4 +21,14 @@ Note that the AWS Account Name should be unique for each instance of YugaWare in
 
 ![AWS Configured Successfully](/images/ee/aws-setup/configure-aws-3.png)
 
+Finally, before we can proceed to creating a universe, let us check that you can actually spin up EC2 instances with the default AMIs we use. Our reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). Visit that link while logged into your AWS account and click the top-right `Continue to Subscribe` button.
+
+If you are not already subscribed and have thus not accepted the `Terms and Conditions`, then you should see something like this:
+
+![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
+
+If so, please click the `Accept Terms` button and wait for the page to switch to a successful state. You should see the following once the operation completes, or if you had already previously subscribed and accepted the terms:
+
+![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
+
 Now we are ready to create a YugaByte DB universe on AWS.
