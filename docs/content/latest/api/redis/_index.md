@@ -41,6 +41,8 @@ Command | Description |
 [`DEL`](del/) | Delete keys from a database |
 [`ECHO`](echo/) | Output messages |
 [`EXISTS`](exists/) | Check if the keys are present |
+[`EXPIRE`](expire/) | Set key timeout in seconds |
+[`EXPIREAT`](expireat/) | Set key timeout as timestamp |
 [`FLUSHALL`](flushall/) | Delete all keys from all databases |
 [`FLUSHDB`](flushdb/) | Delete all keys from a database |
 [`CREATEDB`](createdb/) | Create a new yedis database |
@@ -65,6 +67,9 @@ Command | Description |
 [`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a Yugabyte YEDIS API server |
 [`MGET`](mget/) | Read multiple keys |
 [`MSET`](mset/) | Write multiple key values |
+[`PEXPIRE`](expire/) | Set key timeout in milliseconds |
+[`PEXPIREAT`](expireat/) | Set key timeout as timestamp in milliseconds |
+[`PTTL`](pttl/) | Get time to live for key in milliseconds |
 [`ROLE`](role/) | Read role of a node |
 [`SADD`](sadd/) | Add entries to a set |
 [`SCARD`](scard/) | Read the number of entries in a set |
@@ -81,6 +86,7 @@ Command | Description |
 [`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range |
 [`TSREM`](tsrem/) | Delete a time series entry |
 [`TSREVRANGEBYTIME`](tsrevrangebytime/) | Retrieve time series entries for a given time range ordered from newest to oldest |
+[`TTL`](ttl/) | Get time to live for key in seconds |
 [`ZADD`](zadd/) | Add a sorted set entry |
 [`ZCARD`](zcard/) | Get cardinality of a sorted set |
 [`ZRANGE`](zrange/) | Retrieve sorted set entries for given index range
