@@ -122,6 +122,8 @@ class Operation {
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
 
+  std::string LogPrefix() const;
+
   virtual ~Operation() {}
 
  private:
@@ -191,6 +193,8 @@ class OperationState {
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
+
+  std::string LogPrefix() const;
 
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);

@@ -5983,7 +5983,9 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req,
   TableInfo::TabletInfoMap::const_iterator it, it_end;
   if (req->has_partition_key_start()) {
     it = tablet_map_.upper_bound(req->partition_key_start());
-    --it;
+    if (it != tablet_map_.begin()) {
+      --it;
+    }
   } else {
     it = tablet_map_.begin();
   }

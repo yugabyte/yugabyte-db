@@ -369,8 +369,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       return;
     }
     auto request_id = context_.NextRequestIdUnlocked();
+    auto shared_self = shared_from_this();
     lock->unlock();
-    SendStatusRequest(client, request_id);
+    SendStatusRequest(client, request_id, shared_self);
   }
 
   void Abort(client::YBClient* client,
@@ -418,7 +419,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     }
   }
 
-  void SendStatusRequest(client::YBClient* client, int64_t serial_no) {
+  void SendStatusRequest(
+      client::YBClient* client, int64_t serial_no, const RunningTransactionPtr& shared_self) {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
@@ -430,7 +432,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
             client,
             &req,
             std::bind(&RunningTransaction::StatusReceived, this, client, _1, _2, serial_no,
-                      shared_from_this())),
+                      shared_self)),
         &get_status_handle_);
   }
 
@@ -502,7 +504,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       }
     }
     if (new_request_id >= 0) {
-      SendStatusRequest(client, new_request_id);
+      SendStatusRequest(client, new_request_id, shared_self);
     }
     NotifyWaiters(serial_no, time_of_status, transaction_status, status_waiters);
   }
@@ -615,6 +617,12 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 };
 
 } // namespace
+
+std::string TransactionApplyData::ToString() const {
+  return Format(
+      "{ mode: $0 transacton_id: $1 op_id: $2 commit_ht: $3 log_ht: $4 status_tablet: $5}",
+      mode, transaction_id, op_id, commit_ht, log_ht, status_tablet);
+}
 
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
@@ -780,7 +788,15 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       std::lock_guard<std::mutex> lock(mutex_);
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
-      FindOrLoad(data.transaction_id, "pre apply"s);
+      auto it = FindOrLoad(data.transaction_id, "pre apply"s);
+      if (it == transactions_.end()) {
+        // This situation is normal and could be caused by 2 scenarios:
+        // 1) Write batch failed, but originator doesn't know that.
+        // 2) Failed to notify status tablet that we applied transaction.
+        LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
+        NotifyAppliedUnlocked(data);
+        return Status::OK();
+      }
     }
 
     CHECK_OK(applier_.ApplyIntents(data));
@@ -788,41 +804,42 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = FindOrLoad(data.transaction_id, "apply"s);
-      if (it == transactions_.end()) {
-        // This situation is normal and could be caused by 2 scenarios:
-        // 1) Write batch failed, but originator doesn't know that.
-        // 2) Failed to notify status tablet that we applied transaction.
-        LOG_WITH_PREFIX(WARNING) << "Apply of unknown transaction: " << data.transaction_id;
-      } else {
+      if (it != transactions_.end()) {
         if (!RemoveUnlocked(it)) {
           (**it).SetLocalCommitTime(data.commit_ht);
         }
       }
-      if (data.mode == ProcessingMode::LEADER) {
-        tserver::UpdateTransactionRequestPB req;
-        req.set_tablet_id(data.status_tablet);
-        auto& state = *req.mutable_state();
-        state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
-        state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
-        state.add_tablets(participant_context_.tablet_id());
-
-        auto handle = rpcs_.Prepare();
-        if (handle != rpcs_.InvalidHandle()) {
-          *handle = UpdateTransaction(
-              TransactionRpcDeadline(),
-              nullptr /* remote_tablet */,
-              client(),
-              &req,
-              [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-                participant_context_.UpdateClock(propagated_hybrid_time);
-                rpcs_.Unregister(handle);
-                LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
-              });
-          (**handle).SendRpc();
-        }
-      }
+      NotifyAppliedUnlocked(data);
     }
     return Status::OK();
+  }
+
+  void NotifyAppliedUnlocked(const TransactionApplyData& data) {
+    VLOG_WITH_PREFIX(4) << Format("NotifyAppliedUnlocked($0)", data);
+
+    if (data.mode == ProcessingMode::LEADER) {
+      tserver::UpdateTransactionRequestPB req;
+      req.set_tablet_id(data.status_tablet);
+      auto& state = *req.mutable_state();
+      state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
+      state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
+      state.add_tablets(participant_context_.tablet_id());
+
+      auto handle = rpcs_.Prepare();
+      if (handle != rpcs_.InvalidHandle()) {
+        *handle = UpdateTransaction(
+            TransactionRpcDeadline(),
+            nullptr /* remote_tablet */,
+            client(),
+            &req,
+            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
+              participant_context_.UpdateClock(propagated_hybrid_time);
+              rpcs_.Unregister(handle);
+              LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
+            });
+        (**handle).SendRpc();
+      }
+    }
   }
 
   CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data) {

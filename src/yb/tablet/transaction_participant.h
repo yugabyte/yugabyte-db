@@ -60,6 +60,8 @@ struct TransactionApplyData {
   HybridTime commit_ht;
   HybridTime log_ht;
   TabletId status_tablet;
+
+  std::string ToString() const;
 };
 
 // Interface to object that should apply intents in RocksDB when transaction is applying.

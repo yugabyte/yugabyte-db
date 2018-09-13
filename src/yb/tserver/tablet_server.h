@@ -161,7 +161,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   CHECKED_STATUS ValidateMasterAddressResolution() const;
 
-  bool initted_;
+  std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
   Atomic32 fail_heartbeats_for_tests_;

@@ -122,8 +122,12 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // in the consensus configuration.
   CHECKED_STATUS Start(const consensus::ConsensusBootstrapInfo& info);
 
-  // Shutdown this tablet peer.
-  // If a shutdown is already in progress, blocks until that shutdown is complete.
+  // Starts shutdown process.
+  // Returns true if shutdown was just initiated, false if shutdown was already running.
+  MUST_USE_RESULT bool StartShutdown();
+  // Completes shutdown process and waits for it's completeness.
+  void CompleteShutdown();
+
   void Shutdown();
 
   // Check that the tablet is in a RUNNING state.
