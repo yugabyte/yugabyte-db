@@ -25,6 +25,18 @@ public class KubernetesManager {
 
   private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}";
 
+  public ShellProcessHandler.ShellResponse createNamespace(UUID providerUUID, String universePrefix) {
+    List<String> commandList = ImmutableList.of("kubectl",  "create",
+        "namespace", universePrefix);
+    return execCommand(providerUUID, commandList);
+  }
+
+  public ShellProcessHandler.ShellResponse applySecret(UUID providerUUID, String universePrefix, String pullSecret) {
+    List<String> commandList = ImmutableList.of("kubectl",  "create",
+        "-f", pullSecret, "--namespace", universePrefix);
+    return execCommand(providerUUID, commandList);
+  }
+
   public ShellProcessHandler.ShellResponse helmInit(UUID providerUUID) {
     Provider provider = Provider.get(providerUUID);
     Map<String, String> config = provider.getConfig();

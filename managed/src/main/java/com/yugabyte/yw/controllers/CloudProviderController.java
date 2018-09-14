@@ -203,6 +203,7 @@ public class CloudProviderController extends AuthenticatedController {
 
   private void updateKubeConfig(Provider provider, Map<String, String> config) {
     String kubeConfigFile = null;
+    String pullSecretFile = null;
     try {
       kubeConfigFile = accessManager.createKubernetesConfig(
           provider.uuid, config
@@ -211,11 +212,29 @@ public class CloudProviderController extends AuthenticatedController {
       LOG.error(e.getMessage());
       throw new RuntimeException("Unable to create Kube Config file.");
     }
+    if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
+      if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
+        try {
+          pullSecretFile = accessManager.createPullSecret(
+              provider.uuid, config
+          );
+        } catch (IOException e) {
+          LOG.error(e.getMessage());
+          throw new RuntimeException("Unable to create Pull Secret file.");
+        }
+      }
+    }
     // Remove the kubeconfig file related configs from provider config.
     config.remove("KUBECONFIG_NAME");
     config.remove("KUBECONFIG_CONTENT");
     // Update the KUBECONFIG variable with file path.
+
+    config.remove("KUBECONFIG_PULL_SECRET_NAME");
+    config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
     config.put("KUBECONFIG", kubeConfigFile);
+    if (pullSecretFile != null) {
+      config.put("KUBECONFIG_PULL_SECRET", pullSecretFile);
+    }
     provider.setConfig(config);
     provider.save();
   }

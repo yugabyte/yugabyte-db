@@ -220,5 +220,24 @@ public class AccessManager extends DevopsBase {
 
     return configFile.toAbsolutePath().toString();
   }
+
+  public String createPullSecret(UUID providerUUID, Map<String, String> config) throws IOException {
+    // Grab the kubernetes config file name and file content and create the physical file.
+    String pullSecretFileName = config.remove("KUBECONFIG_PULL_SECRET_NAME");
+    String pullSecretFileContent = config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
+    if (pullSecretFileName == null) {
+      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_NAME data in the provider config.");
+    } else if (pullSecretFileContent == null) {
+      throw new RuntimeException("Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
+    }
+    String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
+    Path pullSecretFile = Paths.get(pullSecretFilePath, pullSecretFileName);
+    if (Files.exists(pullSecretFile)) {
+      throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
+    }
+    Files.write(pullSecretFile, pullSecretFileContent.getBytes());
+
+    return pullSecretFile.toAbsolutePath().toString();
+  }
 }
 

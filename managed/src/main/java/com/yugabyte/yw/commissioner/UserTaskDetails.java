@@ -99,6 +99,12 @@ public class UserTaskDetails {
     // Restoring Table Backup
     RestoringTableBackup,
 
+    // Create Namespace for Kubectl.
+    CreateNamespace,
+
+    // Apply Pull Secret.
+    ApplySecret,
+
     // Initialize Kubernetes cluster
     HelmInit,
 
