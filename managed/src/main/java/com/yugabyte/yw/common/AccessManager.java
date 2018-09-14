@@ -193,13 +193,13 @@ public class AccessManager extends DevopsBase {
     }
     return response;
   }
-  
+
   public String createCredentialsFile(UUID providerUUID, JsonNode credentials)
-  		throws IOException {
-  	ObjectMapper mapper = new ObjectMapper();
-  	String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
-  	mapper.writeValue(new File(credentialsFilePath), credentials);
-  	return credentialsFilePath;
+      throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
+    String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
+    mapper.writeValue(new File(credentialsFilePath), credentials);
+    return credentialsFilePath;
   }
 
   public String createKubernetesConfig(UUID providerUUID, Map<String, String> config) throws IOException {

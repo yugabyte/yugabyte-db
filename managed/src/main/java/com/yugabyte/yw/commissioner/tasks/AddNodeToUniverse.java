@@ -84,10 +84,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         createServerInfoTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-        // Reset the current node info since it was respawned.
-        currentNode = universe.getNode(taskParams().nodeName);
-        node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
       }
 
       // Bring up any masters, as needed.
@@ -132,6 +128,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(node, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Wait for load to balance.
       createWaitForLoadBalanceTask()

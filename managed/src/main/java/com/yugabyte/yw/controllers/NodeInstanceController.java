@@ -166,14 +166,12 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.expectedUniverseVersion = universe.version;
       taskParams.nodeName = nodeName;
       NodeActionType nodeAction = formData.get().nodeAction;
-      Cluster cluster = null;
       if (nodeAction == NodeActionType.ADD) {
-        cluster = Universe.getCluster(universe, nodeName);
-        taskParams.clusters.add(cluster);
+        taskParams.clusters = universe.getUniverseDetails().clusters;
       }
-      LOG.info("{} Node {} in universe={}/cluster={} : name={} at version={}.",
+      LOG.info("{} Node {} in universe={}: name={} at version={}.",
                nodeAction.toString(false), nodeName, universe.universeUUID,
-               cluster != null ? cluster.uuid : "null", universe.name, universe.version);
+	       universe.name, universe.version);
 
       UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
       CustomerTask.create(customer, universe.universeUUID,
