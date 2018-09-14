@@ -52,17 +52,13 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/resettable_heartbeater.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/status.h"
 
 namespace yb {
 class HostPort;
 class ThreadPoolToken;
-
-namespace rpc {
-class Messenger;
-class PeriodicTimer;
-}
 
 namespace log {
 class Log;
@@ -127,8 +123,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
  public:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        PeerProxyPtr proxy, PeerMessageQueue* queue,
-       ThreadPoolToken* raft_pool_token, Consensus* consensus,
-       std::shared_ptr<rpc::Messenger> messenger);
+       ThreadPoolToken* raft_pool_token, Consensus* consensus);
 
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
@@ -170,8 +165,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
       PeerMessageQueue* queue,
       ThreadPoolToken* raft_pool_token,
       PeerProxyPtr proxy,
-      Consensus* consensus,
-      std::shared_ptr<rpc::Messenger> messenger);
+      Consensus* consensus);
 
   uint64_t failed_attempts() {
     std::lock_guard<simple_spinlock> l(peer_lock_);
@@ -248,7 +242,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
-  std::shared_ptr<rpc::PeriodicTimer> heartbeater_;
+  ResettableHeartbeater heartbeater_;
 
   // Thread pool used to construct requests to this peer.
   ThreadPoolToken* raft_pool_token_;
@@ -265,7 +259,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   mutable simple_spinlock peer_lock_;
   State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
-  std::shared_ptr<rpc::Messenger> messenger_;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for

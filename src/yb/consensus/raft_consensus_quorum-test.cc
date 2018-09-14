@@ -745,20 +745,17 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderHeartbeats) {
   int repl0_init_count = counter_hook_rpl0->num_pre_update_calls();
   int repl1_init_count = counter_hook_rpl1->num_pre_update_calls();
 
-  // Now wait for about 4 times the heartbeat period the counters
-  // should have increased between 3 to 8 times.
-  //
-  // Why the variance? Heartbeat timing is jittered such that the period
-  // between heartbeats can be anywhere from half the interval to the full interval.
+  // Now wait for about 4 times the hearbeat period the counters
+  // should have increased 3/4 times.
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms * 4));
 
   int repl0_final_count = counter_hook_rpl0->num_pre_update_calls();
   int repl1_final_count = counter_hook_rpl1->num_pre_update_calls();
 
   ASSERT_GE(repl0_final_count - repl0_init_count, 3);
-  ASSERT_LE(repl0_final_count - repl0_init_count, 8);
+  ASSERT_LE(repl0_final_count - repl0_init_count, 4);
   ASSERT_GE(repl1_final_count - repl1_init_count, 3);
-  ASSERT_LE(repl1_final_count - repl1_init_count, 8);
+  ASSERT_LE(repl1_final_count - repl1_init_count, 4);
 
   VerifyLogs(2, 0, 1);
 }
