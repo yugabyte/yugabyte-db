@@ -15,7 +15,6 @@ libraryDependencies ++= Seq(
   filters,
   "org.mockito" % "mockito-core" % "1.10.19",
   "org.mindrot" % "jbcrypt" % "0.3m",
-  "mysql" % "mysql-connector-java" % "5.1.27",
   "org.postgresql" % "postgresql" % "9.4.1208",
   "commons-io" % "commons-io" % "2.4",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
