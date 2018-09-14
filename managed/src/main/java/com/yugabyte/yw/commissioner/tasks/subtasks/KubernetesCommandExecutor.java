@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.Application;
 import play.api.Play;
@@ -36,6 +37,8 @@ import java.util.regex.Pattern;
 
 public class KubernetesCommandExecutor extends AbstractTaskBase {
   public enum CommandType {
+    CREATE_NAMESPACE,
+    APPLY_SECRET,
     HELM_INIT,
     HELM_INSTALL,
     HELM_DELETE,
@@ -44,6 +47,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     public String getSubTaskGroupName() {
       switch (this) {
+        case CREATE_NAMESPACE:
+          return UserTaskDetails.SubTaskGroupType.CreateNamespace.name();
+        case APPLY_SECRET:
+          return UserTaskDetails.SubTaskGroupType.ApplySecret.name();
         case HELM_INIT:
           return UserTaskDetails.SubTaskGroupType.HelmInit.name();
         case HELM_INSTALL:
@@ -94,6 +101,15 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   public void run() {
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
+      case CREATE_NAMESPACE:
+        kubernetesManager.createNamespace(taskParams().providerUUID, taskParams().nodePrefix);
+        break;
+      case APPLY_SECRET:
+        String pullSecret = this.getPullSecret();
+        if (pullSecret != null) {
+          kubernetesManager.applySecret(taskParams().providerUUID, taskParams().nodePrefix, pullSecret);  
+        }
+        break;
       case HELM_INIT:
         kubernetesManager.helmInit(taskParams().providerUUID);
         break;
@@ -167,6 +183,17 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     return String.format("%s-%d", isMaster ? "yb-master": "yb-tserver", nodeIdx - 1);
   }
 
+  private String getPullSecret() {
+    Provider provider = Provider.get(taskParams().providerUUID);
+    if (provider != null) {
+      Map<String, String> config = provider.getConfig();
+      if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
+        return config.get("KUBECONFIG_PULL_SECRET");
+      }  
+    }
+    return null;
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
@@ -174,6 +201,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     overrides =(HashMap<String, Object>) yaml.load(
         application.resourceAsStream("k8s-expose-all.yml")
     );
+
+    Provider provider = Provider.get(taskParams().providerUUID);
+    Map<String, String> config = provider.getConfig();
 
     Universe u = Universe.get(taskParams().universeUUID);
     // TODO: This only takes into account primary cluster for Kuberentes, we need to
@@ -212,8 +242,19 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit)
     ));
 
+    Map<String, Object> imageInfo = new HashMap<>();
     // Override image tag based on ybsoftwareversion.
-    overrides.put("Image", ImmutableMap.of("tag", userIntent.ybSoftwareVersion));
+    imageInfo.put("tag", userIntent.ybSoftwareVersion);
+    if (config.containsKey("KUBECONFIG_IMAGE_REGISTRY")) {
+      imageInfo.put("repository", config.get("KUBECONFIG_IMAGE_REGISTRY"));
+      imageInfo.put("tag", "latest");
+    }
+    if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
+      imageInfo.put("pullSecretName", config.get("KUBECONFIG_IMAGE_PULL_SECRET_NAME"));
+    }
+    overrides.put("Image", imageInfo);
+
+
 
     // Override num of tserver replicas based on num nodes 
     // and num of master replicas based on replication factor.

@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.APPLY_SECRET;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INIT;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INSTALL;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.POD_INFO;
@@ -82,12 +84,16 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.CreateTable,
       TaskType.UniverseUpdateSucceeded);
 
 
   List<JsonNode> KUBERNETES_CREATE_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
+      Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INIT.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -134,6 +140,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   public void testCreateKubernetesUniverseSuccess() {
     setupUniverse(/* Create Masters */ false);
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    when(mockKubernetesManager.createNamespace(any(), any())).thenReturn(response);
+    when(mockKubernetesManager.applySecret(any(), any(), any())).thenReturn(response);
     when(mockKubernetesManager.helmInit(any())).thenReturn(response);
     when(mockKubernetesManager.helmInstall(any(), any(), any())).thenReturn(response);
     response.message =
@@ -164,8 +172,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedPullSecretFile = ArgumentCaptor.forClass(String.class);
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
+    verify(mockKubernetesManager, times(1)).createNamespace(expectedUniverseUUID.capture(),
+        expectedNodePrefix.capture());
     verify(mockKubernetesManager, times(1)).helmInit(defaultProvider.uuid);
     verify(mockKubernetesManager, times(1)).helmInstall(expectedUniverseUUID.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
