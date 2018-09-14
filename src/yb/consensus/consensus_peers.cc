@@ -52,6 +52,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/periodic.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -90,6 +91,7 @@ using log::Log;
 using log::LogEntryBatch;
 using std::shared_ptr;
 using rpc::Messenger;
+using rpc::PeriodicTimer;
 using rpc::RpcController;
 using strings::Substitute;
 
@@ -99,36 +101,53 @@ Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                                     PeerMessageQueue* queue,
                                     ThreadPoolToken* raft_pool_token,
                                     PeerProxyPtr proxy,
-                                    Consensus* consensus) {
+                                    Consensus* consensus,
+                                    std::shared_ptr<rpc::Messenger> messenger) {
   auto new_peer = std::make_shared<Peer>(
-      peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus);
+      peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus,
+      std::move(messenger));
   RETURN_NOT_OK(new_peer->Init());
   return Result<PeerPtr>(std::move(new_peer));
 }
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
-    PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus)
+    PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus,
+    std::shared_ptr<rpc::Messenger> messenger)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
       proxy_(std::move(proxy)),
       queue_(queue),
-      heartbeater_(
-          peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
-          std::bind(&Peer::SignalRequest, this, RequestTriggerMode::kAlwaysSend)),
       raft_pool_token_(raft_pool_token),
-      consensus_(consensus) {}
+      consensus_(consensus),
+      messenger_(std::move(messenger)) {}
 
 void Peer::SetTermForTest(int term) {
   response_.set_responder_term(term);
 }
 
 Status Peer::Init() {
-  std::lock_guard<simple_spinlock> lock(peer_lock_);
-  queue_->TrackPeer(peer_pb_.permanent_uuid());
-  RETURN_NOT_OK(heartbeater_.Start());
-  state_ = kPeerStarted;
+  {
+    std::lock_guard<simple_spinlock> lock(peer_lock_);
+    queue_->TrackPeer(peer_pb_.permanent_uuid());
+  }
+  // Capture a weak_ptr reference into the functor so it can safely handle
+  // outliving the peer.
+  std::weak_ptr<Peer> w = shared_from_this();
+  heartbeater_ = PeriodicTimer::Create(
+      messenger_,
+      [w]() {
+        if (auto p = w.lock()) {
+          Status s = p->SignalRequest(RequestTriggerMode::kAlwaysSend);
+        }
+      },
+      MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
+  heartbeater_->Start();
+  {
+    std::lock_guard<simple_spinlock> lock(peer_lock_);
+    state_ = kPeerStarted;
+  }
   return Status::OK();
 }
 
@@ -273,7 +292,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
   // If we're actually sending ops there's no need to heartbeat for a while, reset the heartbeater.
   if (req_has_ops) {
-    heartbeater_.Reset();
+    heartbeater_->Snooze();
   }
 
   MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
@@ -422,7 +441,9 @@ string Peer::LogPrefix() const {
 }
 
 void Peer::Close() {
-  WARN_NOT_OK(heartbeater_.Stop(), "Could not stop heartbeater");
+  if (heartbeater_) {
+    heartbeater_->Stop();
+  }
 
   // If the peer is already closed return.
   {
