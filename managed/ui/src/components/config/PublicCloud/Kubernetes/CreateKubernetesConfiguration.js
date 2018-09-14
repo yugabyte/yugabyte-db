@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBTextInputWithLabel, YBSelect, YBDropZone } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
 import { REGION_METADATA, KUBERNETES_PROVIDERS } from 'config';
 import { withRouter } from 'react-router';
 import { YBPanelItem } from '../../../panels';
@@ -21,19 +21,41 @@ class CreateKubernetesConfiguration extends Component {
     };
   }
 
+  readUploadedFileAsText = (inputFile, isRequired) => {
+    const fileReader = new FileReader();
+    return new Promise((resolve, reject) => {
+      fileReader.onloadend = () => {
+        resolve(fileReader.result);
+      };
+      // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
+      if (isDefinedNotNull(inputFile)) {
+        fileReader.readAsText(inputFile);
+      }
+      if (!isRequired && !isDefinedNotNull(inputFile)) {
+        resolve(null);
+      }
+    });
+  };
+
   createProviderConfig = vals => {
     const self = this;
     const kubeConfigFile = vals.kubeConfig;
+    const pullSecretFile = vals.pullSecret;
     const providerName = vals.accountName;
-    const reader = new FileReader();
-    reader.readAsText(kubeConfigFile);
-    // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
-    reader.onloadend = function () {
+    const readerConfig = this.readUploadedFileAsText(kubeConfigFile, true);
+    const readerSecret = this.readUploadedFileAsText(pullSecretFile, false);
+
+    // Catch all onload events for configs
+    Promise.all([readerConfig, readerSecret]).then(configs => {
       const providerConfig = {
-        "KUBECONFIG_CONTENT": reader.result,
+        "KUBECONFIG_CONTENT": configs[0],
         "KUBECONFIG_NAME": kubeConfigFile.name,
         "KUBECONFIG_PROVIDER": self.props.type,
-        "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount
+        "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount,
+        "KUBECONFIG_IMAGE_REGISTRY": vals.imageRegistry,
+        "KUBECONFIG_IMAGE_PULL_SECRET_NAME": vals.imagePullSecretName,
+        "KUBECONFIG_PULL_SECRET_NAME": pullSecretFile && pullSecretFile.name,
+        "KUBECONFIG_PULL_SECRET_CONTENT": configs[1]
       };
       const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
       const zoneData = [vals.zoneLabel.replace(" ", "-")];
@@ -51,12 +73,18 @@ class CreateKubernetesConfiguration extends Component {
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]}
       ];
       self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypes);
-    };
-    self.props.onSubmit(true);
+    }, reason => {
+      console.warn("File Upload gone wrong. "+reason);
+    });
+    this.props.onSubmit(true);
   }
 
   uploadConfig = (uploadFile) => {
     this.setState({kubeConfig: uploadFile});
+  }
+
+  uploadPullSecret = (uploadFile) => {
+    this.setState({pullSecret: uploadFile});
   }
 
   render() {
@@ -64,6 +92,10 @@ class CreateKubernetesConfiguration extends Component {
     let kubeConfigFileName = "";
     if (isNonEmptyObject(this.state.kubeConfig)) {
       kubeConfigFileName = this.state.kubeConfig.name;
+    }
+    let pullSecretFileName = "";
+    if (isNonEmptyObject(this.state.pullSecret)) {
+      pullSecretFileName = this.state.pullSecret.name;
     }
     const regionOptions = REGION_METADATA.map((region) => {
       return (<option value={region.code} key={region.code}>{region.name}</option>);
@@ -138,6 +170,44 @@ class CreateKubernetesConfiguration extends Component {
                                className={"kube-provider-input-field"}/>
                       </Col>
                     </Row>
+
+                    <Row className="config-provider-row">
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Image Registry</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field name="imageRegistry" placeHolder="Optional Image Registry"
+                               component={YBTextInputWithLabel}
+                               insetError={true}
+                               className={"kube-provider-input-field"}/>
+                      </Col>
+                    </Row>
+                    <Row className="config-provider-row">
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Pull Secret File</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field name="pullSecret" component={YBDropZone}
+                          className="upload-file-button"
+                          onChange={this.uploadPullSecret}
+                          title={"Upload Pull Secret file"}/>
+                      </Col>
+                      <Col lg={4}>
+                        <div className="file-label">{pullSecretFileName}</div>
+                      </Col>
+                    </Row>
+                    <Row className="config-provider-row">
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Image Pull Secret Name</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field name="imagePullSecretName" placeHolder="Optional Image Pull Secret Name"
+                               component={YBTextInputWithLabel}
+                               insetError={true}
+                               className={"kube-provider-input-field"}/>
+                      </Col>
+                    </Row>
+
                   </Col>
                 </Row>
               </div>
