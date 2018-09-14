@@ -102,7 +102,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.numNodes = numNodes;
       userIntent.provider = provider.code;
       userIntent.regionList = regionList;
-      userIntent.instanceType = "m3.medium";
+      userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       userIntent.ybSoftwareVersion = "0.0.1";
       userIntent.accessKeyCode = "akc";
       userIntent.providerType = CloudType.aws;
@@ -233,7 +233,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         details.ip = "10.255." + azIndex + "." + i;
         details.region = r.code;
         details.zone = az.code;
-        details.instanceType = "test_instance_type";
+        details.instanceType = ApiUtils.UTIL_INST_TYPE;
         details.nodeName = "test_name";
         NodeInstance.create(az.uuid, details);
       }
@@ -274,6 +274,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.replicationFactor = rf;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.universeName = t.univName;
     return userIntent;
@@ -426,7 +427,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       udtp.universeUUID = univUuid;
       primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES - 2;
-      primaryCluster.userIntent.instanceType = "m3.medium";
+      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
@@ -549,7 +550,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         primaryCluster.uuid, CREATE);
     Set<NodeDetails> nodes = ud.getNodesInCluster(ud.getPrimaryCluster().uuid);
     for (NodeDetails node : nodes) {
-      assertEquals("m3.medium", node.cloudInfo.instance_type);
+      assertEquals(ApiUtils.UTIL_INST_TYPE, node.cloudInfo.instance_type);
     }
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(0, PlacementInfoUtil.getNumMasters(nodes));
@@ -880,7 +881,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Cluster primaryCluster = udtp.getPrimaryCluster();
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       udtp.universeUUID = univUuid;
-      primaryCluster.userIntent.instanceType = "m3.medium";
+      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       Map<UUID, Integer> azToNum = PlacementInfoUtil.getAzUuidToNumNodes(udtp.nodeDetailsSet);

@@ -118,6 +118,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     TaskType.ModifyBlackList,
     TaskType.AnsibleDestroyServer,
     TaskType.SetNodeState,
+    TaskType.SwamperTargetsFileUpdate,
     TaskType.UniverseUpdateSucceeded
   );
 
@@ -127,6 +128,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("state", "Decommissioned")),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of())
   );
 

@@ -93,6 +93,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -61,6 +61,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
     ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
@@ -102,6 +103,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       TaskType.WaitForServer,
       TaskType.SetNodeState,
       TaskType.UpdatePlacementInfo,
+      TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded
   );
 
@@ -110,6 +112,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -144,6 +147,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.name;
     taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
     PlacementInfoUtil.updateUniverseDefinition(taskParams, defaultCustomer.getCustomerId(),

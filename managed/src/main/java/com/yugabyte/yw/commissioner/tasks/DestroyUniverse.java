@@ -48,7 +48,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
                                   cluster.userIntent.providerType, cluster.userIntent.provider,
                                   cluster.userIntent.universeName)
-	    .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
       // Create tasks to destroy the existing nodes.

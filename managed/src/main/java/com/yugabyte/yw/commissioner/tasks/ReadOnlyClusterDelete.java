@@ -67,6 +67,9 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
                                 cluster.userIntent.universeName)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
