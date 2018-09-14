@@ -76,6 +76,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
@@ -110,6 +111,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.universeName = defaultUniverse.name;
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     readOnlyCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(readOnlyCluster);
     PlacementInfoUtil.updateUniverseDefinition(taskParams, defaultCustomer.getCustomerId(),
@@ -128,10 +130,12 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       TaskType.AnsibleDestroyServer,
       TaskType.ReadOnlyClusterDelete,
       TaskType.UpdatePlacementInfo,
+      TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded
   );
 
   List<JsonNode> CLUSTER_DELETE_TASK_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),

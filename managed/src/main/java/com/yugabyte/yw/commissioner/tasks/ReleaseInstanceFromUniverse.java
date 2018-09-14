@@ -92,6 +92,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                                 userIntent.provider, userIntent.universeName)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);

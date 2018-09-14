@@ -26,6 +26,8 @@ import com.yugabyte.yw.models.helpers.TableDetails;
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
+  public static String UTIL_INST_TYPE = "m3.medium";
+
   public static Universe.UniverseUpdater mockUniverseUpdater() {
     return mockUniverseUpdater("host", null);
   }
@@ -180,7 +182,7 @@ public class ApiUtils {
     node.cloudInfo.region = "test-region";
     node.cloudInfo.subnet_id = "subnet-" + idx;
     node.cloudInfo.private_ip = "host-n" + idx;
-    node.cloudInfo.instance_type = "c3-large";
+    node.cloudInfo.instance_type = UTIL_INST_TYPE;
     node.isTserver = true;
     node.state = state;
     node.isMaster = isMaster;
