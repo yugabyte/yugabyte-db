@@ -13,7 +13,7 @@ export default class YBDropZone extends Component {
     const { input, title, meta: { touched, error } } = this.props;
     return (
       <Fragment>
-        <div className={`form-group ${ touched && error ? 'has-error' : ''}`}>
+        <div className={`form-group file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
           <Dropzone
             className={this.props.className}
             name={this.props.name}
@@ -21,12 +21,9 @@ export default class YBDropZone extends Component {
             >
             <p>{title}</p>
           </Dropzone>
-          { touched && error &&
-            <span className="help-block standard-error">{error}</span>}
+          {touched && error && <span className="help-block standard-error">{error}</span>}
+          {input.value && <span className="drop-zone-file">{input.value.name}</span>}
         </div>
-        {input.value  && (
-          <span className="drop-zone-file"> {input.value.name}</span>
-        )}
       </Fragment>
     );
   }
