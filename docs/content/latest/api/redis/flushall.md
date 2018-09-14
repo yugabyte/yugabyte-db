@@ -15,6 +15,8 @@ aliases:
 <b>`FLUSHALL`</b><br>
 This command deletes all keys from all databases.
 
+This functionality can be disabled by setting the yb-tserver gflag `yedis_enable_flush` to `false`.
+
 ## Return Value
 Returns status string.
 
