@@ -504,10 +504,9 @@ Status Tablet::OpenKeyValueTablet() {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
 
-    if (FLAGS_tablet_do_compaction_cleanup_for_intents) {
-      rocksdb_options.compaction_filter_factory =
-          std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this);
-    }
+    rocksdb_options.compaction_filter_factory =
+        FLAGS_tablet_do_compaction_cleanup_for_intents ?
+        std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this) : nullptr;
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
