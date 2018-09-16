@@ -24,6 +24,11 @@ Revision history for pgTAP
   and fixed the tests to match this new functionality.
 * Removed tests that only ran on 8.0, support for which was discontinued in
   v0.90.0.
+* Removed `test/sql/run*` tests that intentionally fail from the `test` target
+  in the Makefile. It's not meaningful to test them via `pg_prove`; they must
+  instead be tested by `make installcheck`, so their output can be compared
+  against output that varies by PostgreSQL version. Thanks to Jim Nasby for
+  the report (#172).
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------

@@ -199,7 +199,8 @@ installcheck: test/setup.sql
 
 # In addition to installcheck, one can also run the tests through pg_prove.
 test: test/setup.sql
-	pg_prove --pset tuples_only=1 $(TESTS)
+	# Filter-out tests that intentionally fail. They should be tested by installcheck.
+	pg_prove --pset tuples_only=1 $(filter-out test/sql/run%,$(TESTS))
 
 html:
 	multimarkdown doc/pgtap.mmd > doc/pgtap.html

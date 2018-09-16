@@ -61,8 +61,8 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION whatever.testplpgsqldie() RETURNS SETOF TEXT AS $$
 BEGIN
-    RETURN NEXT pass( 'plpgsql simple' );
-    RETURN NEXT pass( 'plpgsql simple 2' );
+    RETURN NEXT pass( 'plpgsql simple' );   -- Won't appear in results.
+    RETURN NEXT pass( 'plpgsql simple 2' ); -- Won't appear in results.
     INSERT INTO whatever.foo VALUES(1);
     RETURN NEXT is( MAX(id), 1, 'Should be a 1 in the test table') FROM whatever.foo;
     IF pg_version_num() >= 90300 THEN
