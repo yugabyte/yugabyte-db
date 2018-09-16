@@ -12,7 +12,7 @@ Revision history for pgTAP
 * Changed the diagnostic output of extra and missing values from the `*_are()`
   functions to sort the extra and missing values. Fixes a test failure on
   PostgreSQL 10, and generally makes the diagnostics more deterministic and
-  easier to read and. Thanks to Michael Glaesemann for the report (#158)!
+  easier to read. Thanks to Michael Glaesemann for the report (#158)!
 * Fixed an issue on PostgreSQL 11, where the `pg_class.relhaspkey` column has
   been removed. The primary key testing functions now refer to
   `pg_index.indisprimary`, instead. Thanks to Keith Fiske for the report
@@ -20,15 +20,15 @@ Revision history for pgTAP
 * Fixed an issue on PostgreSQL 11, where the `pg_proc.proisagg` column has
   been replaced with the more generically useful `pg_proc.prokind`. Thanks to
   Keith Fiske for the report (#174)!
-* Documented that a bar `RECORD` can be passed to `row_eq()` on PostgreSQL 11,
+* Documented that a `RECORD` can be passed to `row_eq()` on PostgreSQL 11,
   and fixed the tests to match this new functionality.
 * Removed tests that only ran on 8.0, support for which was discontinued in
   v0.90.0.
-* Removed `test/sql/run*` tests that intentionally fail from the `test` target
-  in the Makefile. It's not meaningful to test them via `pg_prove`; they must
-  instead be tested by `make installcheck`, so their output can be compared
-  against output that varies by PostgreSQL version. Thanks to Jim Nasby for
-  the report (#172).
+* Removed `test/sql/run*` tests, which intentionally fail, from the `test`
+  target in the `Makefile`. It's not meaningful to test them via `pg_prove`;
+  they must instead be tested by `make installcheck`, so their output can be
+  compared against output that varies by PostgreSQL version. Thanks to Jim Nasby
+  for the report (#172).
 * Fixed a bug where `have_fk()` would fail if the table had no primary key.
   Thanks to @bigmodem for the report! (#171).
 

@@ -4,8 +4,9 @@ pgTAP Release Management
 Here are the steps to take to make a release of pgTAP:
 
 *   Test on all supported PostgreSQL versions, starting with the latest version
-    (10) and moving backward in order (9.6, 9.5, 9.4, etc.). For each version,
-    ensure that:
+    (10) and moving backward in order (9.6, 9.5, 9.4, etc.).
+    [pgenv](https://github.com/theory/pgenv/) is a handy tool for installing and
+    switching between versions. For each version, ensure that:
 
     +   Patches apply cleanly (try to eliminate Hunk warnings for patches to
         `pgtap.sql` itself, usually by fixing line numbers)
@@ -14,15 +15,15 @@ Here are the steps to take to make a release of pgTAP:
 
     +   `ALTER EXTENSION pgtap UPDATE;` works on 9.1 and higher.
 
-    +   `CREATE EXTENSION pgtap;` works on 9.1 and higer.
+    +   `CREATE EXTENSION pgtap;` works on 9.1 and higher.
 
     +   All tests pass in `make installcheck` (on 8.1, move the pgtap source
-        dir into the postgres source contrib directory and run
+        dir into the postgres source `contrib` directory and run
         `make NO_PGXS=1 installcheck`)
 
-*   If you've made any significant changes, test all supported version again in
-    foreward order (8.1, 8.2, 8.3, etc.) to make sure the changes didn't break
-    any later versions.
+*   If you've made any significant changes while testing versions backward, test
+    them again in forward order (8.1, 8.2, 8.3, etc.) to make sure the changes
+    didn't break any later versions.
 
 *   Review the documentation in `doc/pgtap.mmd`, and make any necessary changes,
     including to the list of PostgreSQL version-compatibility notes at the end
