@@ -83,7 +83,7 @@ Here are the steps to take to make a release of pgTAP:
 *   Commit the timestamp and tag it:
 
          git ci -m 'Timestamp v0.98.0.'
-         git tag -am 'Tag v0.98.0.' v0.98.0
+         git tag -sm 'Tag v0.98.0.' v0.98.0
 
 *   Package the source and submit to [PGXN](http://manager.pgxn.org/).
 
@@ -96,15 +96,8 @@ Here are the steps to take to make a release of pgTAP:
         git push
         git push --tags
 
-*   Ask one of the nice folks at [PGX](https://pgexperts.com/) to pull the
-    changes into [their fork](https://github.com/pgexperts/pgtap); It's their
-    repo that serves [pgxn.org](http://pgxn.org/). Once it's merged, check
-    that the changes to the
-    [documentation page](http://pgxn.org/documentation.html) were properly
-    updated.
-
-*   Increment the version to kick off development for the next release. The
-    version should be added to the `Changes` file, and incremented in the
+*   Increment the minor version to kick off development for the next release.
+    The version should be added to the `Changes` file, and incremented in the
     following files:
 
     +   `META.json` (including for the three parts of the `provides` section)
@@ -115,7 +108,7 @@ Here are the steps to take to make a release of pgTAP:
 
 *   Commit that change and push it.
 
-        git ci -m 'Increment to v0.99.0.'
+        git ci -m 'Increment to v0.98.1.'
         git push
 
 *   Start hacking on the next version!
