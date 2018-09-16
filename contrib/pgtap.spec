@@ -48,6 +48,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Sun Sep 16 2018 David E. Wheeler <david@justatheory.com> 0.99.0-1
+- Update to v0.99.0.
+
 * Mon Nov 6 2017 David E. Wheeler <david@justatheory.com> 0.98.0-1
 - Update to v0.98.0.
 - Added pgTAP harness Perl module requirement.

@@ -40,7 +40,7 @@ Here are the steps to take to make a release of pgTAP:
     Perl module installed), then checkout the `gh-pages` branch and make these
     changes:
 
-    +   Open `documentatoin.html` and delete all the lines between these "DOC"
+    +   Open `documentation.html` and delete all the lines between these "DOC"
         comments, until the main div looks like this:
 
             <div id="main">
