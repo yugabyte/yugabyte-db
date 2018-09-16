@@ -1236,7 +1236,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
 
   // On TSAN builds, we need to be a little bit less churny in order to make
   // any progress at all.
-  ts_flags.push_back(Format("--raft_heartbeat_interval_ms=$0", NonTsanVsTsan(5, 1)));
+  ts_flags.push_back(Format("--raft_heartbeat_interval_ms=$0", NonTsanVsTsan(5, 25)));
   ts_flags.push_back("--never_fsync");
   if (with_latency) {
     ts_flags.push_back("--consensus_inject_latency_ms_in_notifications=50");
