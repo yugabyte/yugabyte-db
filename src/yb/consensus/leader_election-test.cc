@@ -33,6 +33,7 @@
 #include "yb/consensus/leader_election.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -46,8 +47,14 @@
 #include "yb/util/test_util.h"
 
 namespace yb {
+
+namespace rpc {
+class Messenger;
+} // namespace rpc
+
 namespace consensus {
 
+using std::shared_ptr;
 using std::string;
 using std::unordered_map;
 using std::vector;
@@ -101,6 +108,10 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
       }
     }
     used_peer_proxy_.clear();
+  }
+
+  shared_ptr<rpc::Messenger> messenger() const override {
+    return shared_ptr<rpc::Messenger>();
   }
 
  private:
