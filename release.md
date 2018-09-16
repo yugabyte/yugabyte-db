@@ -3,6 +3,12 @@ pgTAP Release Management
 
 Here are the steps to take to make a release of pgTAP:
 
+*   Review and fix any open bugs in the
+    [issue tracker](https://github.com/theory/pgtap/issues).
+
+*   Review and merge any appropriate
+    [pull requests](https://github.com/theory/pgtap/pulls).
+
 *   Test on all supported PostgreSQL versions, starting with the latest version
     (10) and moving backward in order (9.6, 9.5, 9.4, etc.).
     [pgenv](https://github.com/theory/pgenv/) is a handy tool for installing and
