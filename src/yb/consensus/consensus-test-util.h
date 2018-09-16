@@ -52,6 +52,7 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/messenger.h"
 #include "yb/server/clock.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
@@ -72,6 +73,7 @@ namespace yb {
 namespace consensus {
 
 using log::Log;
+using rpc::Messenger;
 using strings::Substitute;
 
 inline ReplicateMsgPtr CreateDummyReplicate(int term,
@@ -387,13 +389,19 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
  public:
   NoOpTestPeerProxyFactory() {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
+    messenger_ = CHECK_RESULT(rpc::MessengerBuilder("test").Build());
   }
 
   PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override {
     return std::make_unique<NoOpTestPeerProxy>(pool_.get(), peer_pb);
   }
 
+  std::shared_ptr<rpc::Messenger> messenger() const override {
+    return messenger_;
+  }
+
   gscoped_ptr<ThreadPool> pool_;
+  std::shared_ptr<rpc::Messenger> messenger_;
 };
 
 typedef std::unordered_map<std::string, std::shared_ptr<RaftConsensus> > TestPeerMap;
@@ -592,6 +600,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   explicit LocalTestPeerProxyFactory(TestPeerMapManager* peers)
     : peers_(peers) {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
+    messenger_ = CHECK_RESULT(rpc::MessengerBuilder("test").Build());
   }
 
   PeerProxyPtr NewProxy(const consensus::RaftPeerPB& peer_pb) override {
@@ -605,8 +614,13 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     return proxies_;
   }
 
+  std::shared_ptr<rpc::Messenger> messenger() const override {
+    return messenger_;
+  }
+
  private:
   gscoped_ptr<ThreadPool> pool_;
+  std::shared_ptr<rpc::Messenger> messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
   vector<LocalTestPeerProxy*> proxies_;
