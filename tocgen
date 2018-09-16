@@ -1,4 +1,8 @@
-#!/usr/bin/env perl -n -pi
+#!/usr/bin/env perl
+
+use English;
+$INPLACE_EDIT=1;
+
 
 our $prevn;
 
@@ -7,33 +11,38 @@ BEGIN {
     print STDERR "<h1>Contents</h1>\n<ul>\n";
 }
 
-if (m{
-    <h([123])\s+id="           # 1. hn
-       ([^"]+)                 # 3. id
-    ">
-    (                          # 4. header
-        (<code>[^(]+)?.+?      # 5. label
-    )
-    </h\1>
-}x) {
-    my ($hn, $id, $val, $label) = ($1, $2, $3, $4);
+while (<>)
+{
+        if (m{
+            <h([123])\s+id="           # 1. hn
+               ([^"]+)                 # 3. id
+            ">
+            (                          # 4. header
+                (<code>[^(]+)?.+?      # 5. label
+            )
+            </h\1>
+        }x) {
+            my ($hn, $id, $val, $label) = ($1, $2, $3, $4);
 
-    if ($prevn) {
-        if ($hn != $prevn) {
-            print STDERR $hn > $prevn
-                ? $hn - $prevn > 1
-                ? "<ul><li><ul>" : "<ul>\n" : $prevn - $hn > 1
-                ? "</li></ul></li></ul></li>\n" : "</li></ul></li>\n";
-            $prevn = $hn;
-        } else {
-            print STDERR "</li>\n"
+            if ($prevn) {
+                if ($hn != $prevn) {
+                    print STDERR $hn > $prevn
+                        ? $hn - $prevn > 1
+                        ? "<ul><li><ul>" : "<ul>\n" : $prevn - $hn > 1
+                        ? "</li></ul></li></ul></li>\n" : "</li></ul></li>\n";
+                    $prevn = $hn;
+                } else {
+                    print STDERR "</li>\n"
+                }
+            } else {
+                $prevn = $hn;
+            }
+            print STDERR qq{<li><a href="#$id">$val</a>};
+
+            $_ = qq{<h$hn id="$id">$val</h$hn>\n};
         }
-    } else {
-        $prevn = $hn;
-    }
-    print STDERR qq{<li><a href="#$id">$val</a>};
-
-    $_ = qq{<h$hn id="$id">$val</h$hn>\n};
 }
+continue
+{print}
 
 END { print STDERR "</li>\n</ul>\n" }
