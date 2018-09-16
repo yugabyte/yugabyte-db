@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -2487,7 +2487,7 @@
+@@ -2483,7 +2483,7 @@
               || p.prorettype::regtype AS returns,
             p.prolang     AS langoid,
             p.proisstrict AS is_strict,
@@ -9,7 +9,7 @@
             p.prosecdef   AS is_definer,
             p.proretset   AS returns_set,
             p.provolatile::char AS volatility,
-@@ -5651,7 +5651,7 @@
+@@ -5647,7 +5647,7 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME, NAME, NAME[] )
  RETURNS BOOLEAN AS $$
@@ -18,7 +18,7 @@
        FROM tap_funky
       WHERE schema = $1
         AND name   = $2
-@@ -5660,12 +5660,12 @@
+@@ -5656,12 +5656,12 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME, NAME )
  RETURNS BOOLEAN AS $$
@@ -33,7 +33,7 @@
        FROM tap_funky
       WHERE name = $1
         AND args = array_to_string($2, ',')
-@@ -5674,7 +5674,7 @@
+@@ -5670,7 +5670,7 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME )
  RETURNS BOOLEAN AS $$

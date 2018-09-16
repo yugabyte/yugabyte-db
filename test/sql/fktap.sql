@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(128);
+SELECT plan(132);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
@@ -17,7 +17,7 @@ CREATE TABLE public.fk (
 );
 
 CREATE TABLE public.pk2 (
-    num int NOT NULL,
+    num int NOT NULL UNIQUE,
     dot int NOT NULL,
     PRIMARY KEY (num, dot)
 );
@@ -25,7 +25,7 @@ CREATE TABLE public.pk2 (
 CREATE TABLE public.fk2 (
     pk2_num int NOT NULL,
     pk2_dot int NOT NULL,
-    FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
+    FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2(num, dot)
 );
 
 CREATE TABLE public.fk3(
@@ -36,6 +36,15 @@ CREATE TABLE public.fk3(
     foo_id INT NOT NULL,
     FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
 );
+
+CREATE TABLE public.pk3(
+    id INT UNIQUE
+);
+
+CREATE TABLE public.fk4 (
+    id INT REFERENCES pk3(id)
+);
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -52,6 +61,20 @@ SELECT * FROM check_test(
     'true',
     'has_fk( table, description )',
     'fk should have an fk'
+);
+
+SELECT * FROM check_test(
+    has_fk( 'fk4', 'fk4 should have an fk' ),
+    'true',
+    'has_fk( table4, description )',
+    'fk4 should have an fk'
+);
+
+SELECT * FROM check_test(
+    has_fk( 'public', 'fk4', 'fk4 should have an fk' ),
+    'true',
+    'has_fk( schema, table4, description )',
+    'fk4 should have an fk'
 );
 
 SELECT * FROM check_test(

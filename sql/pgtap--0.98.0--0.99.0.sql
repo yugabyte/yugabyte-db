@@ -160,3 +160,30 @@ CREATE OR REPLACE FUNCTION _agg ( NAME )
 RETURNS BOOLEAN AS $$
     SELECT kind = 'a' FROM tap_funky WHERE name = $1 AND is_visible;
 $$ LANGUAGE SQL;
+
+-- _hasc( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, NAME, CHAR )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c      ON c.relnamespace = n.oid
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+             WHERE n.nspname = $1
+               AND c.relname = $2
+               AND x.contype = $3
+    );
+$$ LANGUAGE sql;
+
+-- _hasc( table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, CHAR )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+             WHERE pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND x.contype = $2
+    );
+$$ LANGUAGE sql;

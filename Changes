@@ -29,6 +29,8 @@ Revision history for pgTAP
   instead be tested by `make installcheck`, so their output can be compared
   against output that varies by PostgreSQL version. Thanks to Jim Nasby for
   the report (#172).
+* Fixed a bug where `have_fk()` would fail if the table had no primary key.
+  Thanks to @bigmodem for the report! (#171).
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------
