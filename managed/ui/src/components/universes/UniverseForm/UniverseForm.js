@@ -195,11 +195,20 @@ class UniverseForm extends Component {
           return {name: tserverFlag.name, value: tserverFlag.value};
         });
       } else {
-        clusterIntent.tserverGFlags = formValues.primary.tserverGFlags.filter((tserverFlag) => {
-          return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-        }).map((tserverFlag) => {
-          return {name: tserverFlag.name, value: tserverFlag.value};
-        });
+        if (isDefinedNotNull(formValues.primary)) {
+          clusterIntent.tserverGFlags = formValues.primary.tserverGFlags.filter((tserverFlag) => {
+            return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+          }).map((tserverFlag) => {
+            return {name: tserverFlag.name, value: tserverFlag.value};
+          });
+        } else {
+          const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent.tserverGFlags;
+          const tserverGFlags = [];
+          Object.entries(existingTserverGFlags).forEach(
+            ([key, value]) => tserverGFlags.push({'name': key, 'value': value})
+          );
+          clusterIntent.tserverGFlags = tserverGFlags;
+        }
       }
       return clusterIntent;
     };
