@@ -96,14 +96,14 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
 
   HybridTime ht1 = clock_->Now();
   manager_.AddPending(&ht1);
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime());
+  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(HybridTime::kMax));
 
   HybridTime ht2;
   manager_.AddPending(&ht2);
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime());
+  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(HybridTime::kMax));
 
   manager_.Replicated(ht1);
-  ASSERT_EQ(ht2.Decremented(), manager_.SafeTime());
+  ASSERT_EQ(ht2.Decremented(), manager_.SafeTime(HybridTime::kMax));
 
   manager_.Replicated(ht2);
   auto now = clock_->Now();
@@ -121,7 +121,7 @@ TEST_F(MvccTest, Abort) {
     manager_.Aborted(hts[i]);
   }
   for (size_t i = 0; i < hts.size(); i += 2) {
-    ASSERT_EQ(hts[i].Decremented(), manager_.SafeTime());
+    ASSERT_EQ(hts[i].Decremented(), manager_.SafeTime(HybridTime::kMax));
     manager_.Replicated(hts[i]);
   }
   auto now = clock_->Now();

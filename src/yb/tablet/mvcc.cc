@@ -43,7 +43,7 @@ namespace tablet {
 // SafeTimeWithSource
 // ------------------------------------------------------------------------------------------------
 
-std::string SafeTimeWithSource::ToString() {
+std::string SafeTimeWithSource::ToString() const {
   return Format("{ safe_time: $0 source: $1 }", safe_time, source);
 }
 
@@ -134,7 +134,7 @@ void MvccManager::AddPending(HybridTime* ht) {
       std::max({
           max_safe_time_returned_with_lease_.safe_time,
           max_safe_time_returned_without_lease_.safe_time,
-          max_safe_time_returned_for_follower_,
+          max_safe_time_returned_for_follower_.safe_time,
           last_replicated_,
           last_ht_in_queue});
 
@@ -143,17 +143,20 @@ void MvccManager::AddPending(HybridTime* ht) {
       std::ostringstream ss;
 #define LOG_INFO_FOR_HT_LOWER_BOUND(t) \
              "\n  " << EXPR_VALUE_FOR_LOG(t) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(*ht < t) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(static_cast<int64_t>(ht->ToUint64() - t.ToUint64())) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(ht->PhysicalDiff(t)) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(*ht < t.safe_time) \
+          << "\n  " << EXPR_VALUE_FOR_LOG( \
+                           static_cast<int64_t>(ht->ToUint64() - t.safe_time.ToUint64())) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(ht->PhysicalDiff(t.safe_time)) \
           << "\n  "
 
       ss << LogPrefix() << ": new operation's hybrid time too low: " << *ht
-         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_with_lease_.safe_time)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_without_lease_.safe_time)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_with_lease_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_without_lease_)
          << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_for_follower_)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(last_replicated_)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(last_ht_in_queue)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(
+                (SafeTimeWithSource{last_replicated_, SafeTimeSource::kUnknown}))
+         << LOG_INFO_FOR_HT_LOWER_BOUND(
+                (SafeTimeWithSource{last_ht_in_queue, SafeTimeSource::kUnknown}))
          << "\n  " << EXPR_VALUE_FOR_LOG(is_follower_side)
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
@@ -247,12 +250,18 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
 HybridTime MvccManager::SafeTimeForFollower(
     HybridTime min_allowed, MonoTime deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
-  HybridTime result;
+  SafeTimeWithSource result;
   auto predicate = [this, &result, min_allowed] {
     // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
     // could be greater than propagated_safe_time_.
-    result = std::max(propagated_safe_time_, last_replicated_);
-    return result >= min_allowed;
+    if (propagated_safe_time_ > last_replicated_) {
+      result.safe_time = propagated_safe_time_;
+      result.source = SafeTimeSource::kPropagated;
+    } else {
+      result.safe_time = last_replicated_;
+      result.source = SafeTimeSource::kLastReplicated;
+    }
+    return result.safe_time >= min_allowed;
   };
   if (deadline == MonoTime::kMax) {
     cond_.wait(lock, predicate);
@@ -260,10 +269,13 @@ HybridTime MvccManager::SafeTimeForFollower(
     return HybridTime::kInvalid;
   }
   VLOG_WITH_PREFIX(1) << "SafeTimeForFollower(" << min_allowed
-                      << "), result = " << result;
-  CHECK_GE(result, max_safe_time_returned_for_follower_) << LogPrefix();
+                      << "), result = " << result.ToString();
+  CHECK_GE(result.safe_time, max_safe_time_returned_for_follower_.safe_time)
+      << LogPrefix() << "result: " << result.ToString()
+      << ", max_safe_time_returned_for_follower_: "
+      << max_safe_time_returned_for_follower_.ToString();
   max_safe_time_returned_for_follower_ = result;
-  return result;
+  return result.safe_time;
 }
 
 HybridTime MvccManager::SafeTime(HybridTime min_allowed,
@@ -281,10 +293,9 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   CHECK(ht_lease.is_valid());
   CHECK_LE(min_allowed, ht_lease) << LogPrefix();
 
-  bool has_lease = false;
-  if (ht_lease.GetPhysicalValueMicros() < kMaxHybridTimePhysicalMicros) {
+  const bool has_lease = ht_lease.GetPhysicalValueMicros() < kMaxHybridTimePhysicalMicros;
+  if (has_lease) {
     max_ht_lease_seen_ = std::max(ht_lease, max_ht_lease_seen_);
-    has_lease = true;
   }
 
   HybridTime result;

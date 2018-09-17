@@ -46,15 +46,16 @@
 namespace yb {
 namespace tablet {
 
-// Allows us to keep track of how a particular value of safe time was replicated, for sanity
+// Allows us to keep track of how a particular value of safe time was obtained, for sanity
 // checking purposes.
-YB_DEFINE_ENUM(SafeTimeSource, (kUnknown)(kNow)(kNextInQueue)(kHybridTimeLease));
+YB_DEFINE_ENUM(SafeTimeSource,
+               (kUnknown)(kNow)(kNextInQueue)(kHybridTimeLease)(kPropagated)(kLastReplicated));
 
 struct SafeTimeWithSource {
   HybridTime safe_time = HybridTime::kMin;
   SafeTimeSource source = SafeTimeSource::kUnknown;
 
-  std::string ToString();
+  std::string ToString() const;
 };
 
 // MvccManager is used to track operations.
@@ -119,10 +120,6 @@ class MvccManager {
     return SafeTime(HybridTime::kMin /* min_allowed */, MonoTime::kMax /* deadline */, ht_lease);
   }
 
-  HybridTime SafeTime() const {
-    return SafeTime(HybridTime::kMax);
-  }
-
   HybridTime SafeTimeForFollower(HybridTime min_allowed, MonoTime deadline) const;
 
   // Returns time of last replicated operation.
@@ -163,7 +160,7 @@ class MvccManager {
 
   mutable SafeTimeWithSource max_safe_time_returned_with_lease_;
   mutable SafeTimeWithSource max_safe_time_returned_without_lease_;
-  mutable HybridTime max_safe_time_returned_for_follower_ = HybridTime::kMin;
+  mutable SafeTimeWithSource max_safe_time_returned_for_follower_ { HybridTime::kMin };
 };
 
 }  // namespace tablet
