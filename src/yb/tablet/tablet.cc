@@ -1245,8 +1245,9 @@ CHECKED_STATUS Tablet::RemoveIntents(const TransactionIdSet& transactions) {
   return intents_db_->Write(write_options, &intents_write_batch);
 }
 
-HybridTime Tablet::ApplierSafeTime() {
-  return mvcc_manager()->SafeTime();
+HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) {
+  // We could not use mvcc_ directly, because correct lease should be passed to it.
+  return SafeTime(RequireLease::kTrue, min_allowed, deadline);
 }
 
 Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,

@@ -252,25 +252,11 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
 
     // The calls to RequestStatusAt would have updated the local clock of the participant.
     // Wait for the propagated time to reach the current hybrid time.
-    HybridTime safetime;
-    const MicrosTime kMinSleepUs = 10000;
-    const MicrosTime kMaxSleepUs = 100000;
-    const MicrosTime kMaxTotalSleepUs = 10000000;
-    MicrosTime total_sleep_time = 0;
-    while (now >= (safetime = applier_->ApplierSafeTime())) {
-      if (total_sleep_time > kMaxTotalSleepUs) {
-        LOG(WARNING) << "Tablet application did not catch up in : " << kMaxTotalSleepUs <<
-                     " microseconds";
-        return;
-      }
-      MicrosTime difference_us = now.GetPhysicalValueMicros() - safetime.GetPhysicalValueMicros();
-      if (difference_us < kMinSleepUs) {
-        difference_us = kMinSleepUs;
-      } else if (difference_us > kMaxSleepUs) {
-        difference_us = kMaxSleepUs;
-      }
-      SleepFor(MonoDelta::FromMicroseconds(difference_us));
-      total_sleep_time += difference_us;
+    const MonoDelta kMaxTotalSleep = 10s;
+    auto safetime = applier_->ApplierSafeTime(now, MonoTime::Now() + kMaxTotalSleep);
+    if (!safetime) {
+      LOG(WARNING) << "Tablet application did not catch up in: " << kMaxTotalSleep;
+      return;
     }
 
     for (const TransactionId transactionId : transactions_to_cleanup_) {
@@ -686,22 +672,21 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id, "metadata"s);
-    if (it == transactions_.end()) {
+    auto lock_and_iterator = LockAndFindOrLoad(id, "metadata"s);
+    if (!lock_and_iterator.found()) {
       return boost::none;
     }
-    return (**it).metadata();
+    return lock_and_iterator.transaction().metadata();
   }
 
   boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
       const TransactionId& id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id, "metadata with write id"s);
-    if (it == transactions_.end()) {
+    auto lock_and_iterator = LockAndFindOrLoad(id, "metadata with write id"s);
+    if (!lock_and_iterator.found()) {
       return boost::none;
     }
-    return std::make_pair((**it).metadata(), (**it).last_write_id());
+    auto& transaction = lock_and_iterator.transaction();
+    return std::make_pair(transaction.metadata(), transaction.last_write_id());
   }
 
   void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value) {
@@ -715,15 +700,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(*request.id, "status"s);
-    if (it == transactions_.end()) {
-      lock.unlock();
+    auto lock_and_iterator = LockAndFindOrLoad(*request.id, "status"s);
+    if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
       return;
     }
-    (**it).RequestStatusAt(client(), request, &lock);
+    lock_and_iterator.transaction().RequestStatusAt(client(), request, &lock_and_iterator.lock);
   }
 
   // Registers request, giving him newly allocated id and returning this id.
@@ -765,14 +748,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id, "abort"s);
-    if (it == transactions_.end()) {
-      lock.unlock();
+    auto lock_and_iterator = LockAndFindOrLoad(id, "abort"s);
+    if (!lock_and_iterator.found()) {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
-    (**it).Abort(client(), std::move(callback), &lock);
+    lock_and_iterator.transaction().Abort(client(), std::move(callback), &lock_and_iterator.lock);
   }
 
   void Cleanup(TransactionIdSet&& set,
@@ -785,37 +766,36 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
-      auto it = FindOrLoad(data.transaction_id, "pre apply"s);
-      if (it == transactions_.end()) {
+      auto lock_and_iterator = LockAndFindOrLoad(data.transaction_id, "pre apply"s);
+      if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
         // 2) Failed to notify status tablet that we applied transaction.
         LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
-        NotifyAppliedUnlocked(data);
+        NotifyApplied(data);
         return Status::OK();
+      } else {
+        lock_and_iterator.transaction().SetLocalCommitTime(data.commit_ht);
       }
     }
 
     CHECK_OK(applier_.ApplyIntents(data));
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto it = FindOrLoad(data.transaction_id, "apply"s);
-      if (it != transactions_.end()) {
-        if (!RemoveUnlocked(it)) {
-          (**it).SetLocalCommitTime(data.commit_ht);
-        }
+      auto lock_and_iterator = LockAndFindOrLoad(data.transaction_id, "apply"s);
+      if (lock_and_iterator.found()) {
+        RemoveUnlocked(lock_and_iterator.iterator);
       }
-      NotifyAppliedUnlocked(data);
     }
+
+    NotifyApplied(data);
     return Status::OK();
   }
 
-  void NotifyAppliedUnlocked(const TransactionApplyData& data) {
-    VLOG_WITH_PREFIX(4) << Format("NotifyAppliedUnlocked($0)", data);
+  void NotifyApplied(const TransactionApplyData& data) {
+    VLOG_WITH_PREFIX(4) << Format("NotifyApplied($0)", data);
 
     if (data.mode == ProcessingMode::LEADER) {
       tserver::UpdateTransactionRequestPB req;
@@ -916,11 +896,26 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return false;
   }
 
-  // TODO(dtxn) unlock during load
-  Transactions::const_iterator FindOrLoad(const TransactionId& id, const std::string& reason) {
-    auto it = transactions_.find(id);
-    if (it != transactions_.end()) {
-      return it;
+  struct LockAndFindOrLoadResult {
+    std::unique_lock<std::mutex> lock;
+    Transactions::const_iterator iterator;
+
+    bool found() const {
+      return lock.owns_lock();
+    }
+
+    RunningTransaction& transaction() const {
+      return **iterator;
+    }
+  };
+
+  LockAndFindOrLoadResult LockAndFindOrLoad(const TransactionId& id, const std::string& reason) {
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      auto it = transactions_.find(id);
+      if (it != transactions_.end()) {
+        return LockAndFindOrLoadResult{std::move(lock), it};
+      }
     }
 
     LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id << ", for: " << reason;
@@ -934,20 +929,20 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     iter->Seek(key.AsSlice());
     if (!iter->Valid() || iter->key() != key.data()) {
       LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id;
-      return it;
+      return LockAndFindOrLoadResult{};
     }
     TransactionMetadataPB metadata_pb;
 
     if (!metadata_pb.ParseFromArray(iter->value().cdata(), iter->value().size())) {
       LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
                               << iter->value().ToDebugHexString();
-      return it;
+      return LockAndFindOrLoadResult{};
     }
 
     auto metadata = TransactionMetadata::FromPB(metadata_pb);
     if (!metadata.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Loaded bad metadata: " << metadata.status();
-      return it;
+      return LockAndFindOrLoadResult{};
     }
 
     key.AppendValueType(docdb::ValueType::kMaxByte);
@@ -981,10 +976,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       iter->Prev();
     }
 
-    it = transactions_.insert(std::make_shared<RunningTransaction>(
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = transactions_.insert(std::make_shared<RunningTransaction>(
         std::move(*metadata), next_write_id, this)).first;
 
-    return it;
+    return LockAndFindOrLoadResult{std::move(lock), it};
   }
 
   client::YBClient* client() const {

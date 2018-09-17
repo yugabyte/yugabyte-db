@@ -237,7 +237,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) override;
 
-  HybridTime ApplierSafeTime() override;
+  HybridTime ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) override;
 
   // Finish the Prepare phase of a write transaction.
   //

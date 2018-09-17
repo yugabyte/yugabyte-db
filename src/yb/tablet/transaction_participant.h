@@ -70,7 +70,7 @@ class TransactionIntentApplier {
   virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
   virtual CHECKED_STATUS RemoveIntents(const TransactionId& transaction_id) = 0;
   virtual CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) = 0;
-  virtual HybridTime ApplierSafeTime() = 0;
+  virtual HybridTime ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) = 0;
 
  protected:
   ~TransactionIntentApplier() {}

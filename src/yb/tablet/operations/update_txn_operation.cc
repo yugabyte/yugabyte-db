@@ -70,7 +70,7 @@ Status UpdateTxnOperation::Apply() {
 }
 
 string UpdateTxnOperation::ToString() const {
-  return Format("UpdateTxnOperation [state=$0]", state()->ToString());
+  return Format("UpdateTxnOperation { state: $0 type: $1 }", *state(), type());
 }
 
 void UpdateTxnOperation::Finish(OperationResult result) {
