@@ -8,15 +8,12 @@ namespace master {
 namespace enterprise {
 
 class CatalogManager;
-class TSDescriptor;
 
 } // namespace enterprise
 } // namespace master
 } // namespace yb
 
 #include "../../../../src/yb/master/master.h"
-
-#include "yb/master/dns_manager.h"
 
 namespace yb {
 
@@ -37,19 +34,11 @@ class Master : public yb::master::Master {
   Master(const Master&) = delete;
   void operator=(const Master&) = delete;
 
-  // Periodically updates tservers endpoints in DNS if list of live tservers changed.
-  void OnTSHeartbeat(
-      const std::vector<std::shared_ptr<yb::master::TSDescriptor>>& live_tservers) override;
-
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
-  DnsManager dns_manager_;
-  // The last time when DNS manager was called to update list of tserver hosts if needed.
-  std::atomic<MonoTime> last_dns_sync_{MonoTime::Min()};
-  std::atomic<bool> dns_sync_in_progress_{false};
   std::unique_ptr<rpc::SecureContext> secure_context_;
 };
 
