@@ -59,14 +59,27 @@ ProcessingMode UpdateTxnOperation::mode() const {
 
 Status UpdateTxnOperation::Apply() {
   auto* state = this->state();
-  TransactionCoordinator::ReplicatedData data = {
-      mode(),
-      state->tablet(),
-      *state->request(),
-      state->op_id(),
-      state->hybrid_time()
-  };
-  return transaction_coordinator().ProcessReplicated(data);
+  // APPLYING is handled separately, because it is received for transactions not managed by
+  // this tablet as a transaction status tablet, but tablets that are involved in the data
+  // path (receive write intents) for this transaction.
+  if (state->request()->status() == TransactionStatus::APPLYING) {
+    TransactionParticipant::ReplicatedData data = {
+        mode(),
+        *state->request(),
+        state->op_id(),
+        state->hybrid_time(),
+        false /* already_applied */
+    };
+    return state->tablet()->transaction_participant()->ProcessReplicated(data);
+  } else {
+    TransactionCoordinator::ReplicatedData data = {
+        mode(),
+        *state->request(),
+        state->op_id(),
+        state->hybrid_time()
+    };
+    return transaction_coordinator().ProcessReplicated(data);
+  }
 }
 
 string UpdateTxnOperation::ToString() const {
@@ -74,7 +87,8 @@ string UpdateTxnOperation::ToString() const {
 }
 
 void UpdateTxnOperation::Finish(OperationResult result) {
-  if (result == OperationResult::ABORTED) {
+  if (result == OperationResult::ABORTED &&
+      state()->tablet()->transaction_coordinator()) {
     LOG_WITH_PREFIX(INFO) << "Aborted";
     TransactionCoordinator:: AbortedData data = {
       mode(),

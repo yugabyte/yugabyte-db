@@ -92,8 +92,6 @@ class LogReader;
 // might hold references to these classes to execute the callbacks after each write.
 class Log : public RefCountedThreadSafe<Log> {
  public:
-  class LogFaultHooks;
-
   static const Status kLogShutdownStatus;
 
   // Opens or continues a log and sets 'log' to the newly built Log.
@@ -223,8 +221,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns this Log's FsManager.
   FsManager* GetFsManager();
 
-  void SetLogFaultHooksForTests(const std::shared_ptr<LogFaultHooks> &hooks) {
-    log_hooks_ = hooks;
+  void ListenPostAppend(std::function<void()> listener) {
+    post_append_listener_ = std::move(listener);
   }
 
   // Set the schema for the _next_ log segment.
@@ -431,7 +429,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
 
-  std::shared_ptr<LogFaultHooks> log_hooks_;
+  // Listener that will be invoked after new entry was appended to the log.
+  std::function<void()> post_append_listener_;
 
   // Used in tests delay writing log entries.
   std::atomic<std::chrono::nanoseconds> sleep_duration_{std::chrono::nanoseconds(0)};
@@ -540,24 +539,6 @@ class LogEntryBatch {
   LogEntryState state_ = kEntryInitialized;
 
   DISALLOW_COPY_AND_ASSIGN(LogEntryBatch);
-};
-
-class Log::LogFaultHooks {
- public:
-
-  // Executed immediately before returning from Log::Sync() at *ALL* times.
-  virtual CHECKED_STATUS PostSync() { return Status::OK(); }
-
-  // Iff fsync is enabled, executed immediately after call to fsync.
-  virtual CHECKED_STATUS PostSyncIfFsyncEnabled() { return Status::OK(); }
-
-  // Emulate a slow disk where the filesystem has decided to synchronously flush a full buffer.
-  virtual CHECKED_STATUS PostAppend() { return Status::OK(); }
-
-  virtual CHECKED_STATUS PreClose() { return Status::OK(); }
-  virtual CHECKED_STATUS PostClose() { return Status::OK(); }
-
-  virtual ~LogFaultHooks() {}
 };
 
 }  // namespace log

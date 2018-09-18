@@ -557,8 +557,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
     // We don't update the last segment offset here anymore. This is done on the Sync() method to
     // guarantee that we only try to read what we have persisted in disk.
 
-    if (log_hooks_) {
-      RETURN_NOT_OK_PREPEND(log_hooks_->PostAppend(), "PostAppend hook failed");
+    if (post_append_listener_) {
+      post_append_listener_();
     }
   }
 
@@ -662,18 +662,10 @@ Status Log::Sync() {
       periodic_sync_unsynced_bytes_ = 0;
       LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
         RETURN_NOT_OK(active_segment_->Sync());
-
-        if (log_hooks_) {
-          RETURN_NOT_OK_PREPEND(log_hooks_->PostSyncIfFsyncEnabled(),
-                                "PostSyncIfFsyncEnabled hook failed");
-        }
       }
     }
   }
 
-  if (log_hooks_) {
-    RETURN_NOT_OK_PREPEND(log_hooks_->PostSync(), "PostSync hook failed");
-  }
   // Update the reader on how far it can read the active segment.
   reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
 
@@ -904,9 +896,6 @@ Status Log::Close() {
   std::lock_guard<percpu_rwlock> l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
-      if (log_hooks_) {
-        RETURN_NOT_OK_PREPEND(log_hooks_->PreClose(), "PreClose hook failed");
-      }
       RETURN_NOT_OK(Sync());
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
@@ -917,10 +906,6 @@ Status Log::Close() {
       log_index_.reset();
       reader_.reset();
 
-      if (log_hooks_) {
-        RETURN_NOT_OK_PREPEND(log_hooks_->PostClose(),
-                              "PostClose hook failed");
-      }
       return Status::OK();
 
     case kLogClosed:
