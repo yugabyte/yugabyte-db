@@ -33,16 +33,10 @@ set(MASTER_PROTO_LIBS_EXTENSIONS
   master_backup_proto
   PARENT_SCOPE)
 
-set(MASTER_LIBS_EXTENSIONS
-  aws-cpp-sdk-core
-  aws-cpp-sdk-route53
-  PARENT_SCOPE)
-
 set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_snapshot_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_ts_rpc_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/catalog_manager_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/dns_manager.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/master_backup_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/master_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cluster_balance.cc
