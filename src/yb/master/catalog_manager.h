@@ -1608,6 +1608,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SystemTablesHandler sys_tables_handler_;
 
+  std::vector<PermissionType> all_permissions_ = {
+      PermissionType::ALTER_PERMISSION, PermissionType::AUTHORIZE_PERMISSION,
+      PermissionType::CREATE_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
+      PermissionType::DROP_PERMISSION, PermissionType::MODIFY_PERMISSION,
+      PermissionType::SELECT_PERMISSION
+  };
+
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
