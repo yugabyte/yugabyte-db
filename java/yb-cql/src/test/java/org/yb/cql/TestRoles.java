@@ -17,6 +17,7 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.exceptions.SyntaxError;
 
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -36,8 +37,21 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   private String[] role = new String[10];
 
   // Permissions in the same order as in catalog_manager.cc.
-  private static final List<String> p =
-      Arrays.asList("ALTER", "DESCRIBE", "CREATE", "MODIFY", "DROP", "SELECT", "AUTHORIZE");
+  private static final List<String> ALL_PERMISSIONS =
+      Arrays.asList("ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT");
+
+  private static final List<String> ALL_PERMISSIONS_EXCEPT_DESCRIBE =
+      Arrays.asList("ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT");
+
+  private static final String DESCRIBE_SYNTAX_ERROR_MSG =
+      "Resource type DataResource does not support any of the requested permissions";
+
+  private Session s;
+
+  @Before
+  public void setupSession() {
+    s = getDefaultSession();
+  }
 
   private void CreateRoles(int n) throws Exception {
     StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
@@ -50,7 +64,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   }
 
   private void assertRoleGranted(String role, List<String> memberOf) {
-    Session s = getDefaultSession();
     List<Row> rows = s.execute(
         String.format("SELECT * FROM system_auth.roles WHERE role = '%s';", role)).all();
     assertEquals(1, rows.size());
@@ -66,7 +79,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   }
 
   private void assertPermissionsGranted(String role, String resource, List<String> permissions) {
-    Session s = getDefaultSession();
     String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
                                 "WHERE role = '%s' and resource = '%s';", role, resource);
     List<Row> rows = s.execute(stmt).all();
@@ -140,8 +152,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Create the roles.
     CreateRoles(2);
 
-    Session s = getDefaultSession();
-
     // Grant role[1] to role[0].
     s.execute(GrantStmt(role[1], role[0]));
 
@@ -152,8 +162,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   public void testGrantRoleCircularReference() throws Exception {
     // Create the roles.
     CreateRoles(4);
-
-    Session s = getDefaultSession();
 
     // Grant role[1] to role[0].
     s.execute(GrantStmt(role[1], role[0]));
@@ -188,8 +196,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Create one role.
     CreateRoles(1);
 
-    Session s = getDefaultSession();
-
     // Try to grant a role that doesn't exist to role[0].
     String invalidRole = "invalid_role";
     thrown.expect(InvalidQueryException.class);
@@ -202,8 +208,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Create a role.
     CreateRoles(1);
 
-    Session s = getDefaultSession();
-
     // Try to grant role[0] to role[0]. It should fail.
     thrown.expect(InvalidQueryException.class);
     s.execute(GrantStmt(role[0], role[0]));
@@ -214,7 +218,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Create the roles.
     CreateRoles(4);
 
-    Session s = getDefaultSession();
     s.execute(GrantStmt(role[1], role[0]));
     s.execute(GrantStmt(role[2], role[0]));
     s.execute(GrantStmt(role[3], role[0]));
@@ -231,8 +234,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   public void testRevokeRoleFromItself() throws Exception {
     // Create the roles.
     CreateRoles(2);
-
-    Session s = getDefaultSession();
 
     // Grant role[1] to role[0].
     s.execute(GrantStmt(role[1], role[0]));
@@ -251,7 +252,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Create the roles.
    CreateRoles(2);
 
-    Session s = getDefaultSession();
     s.execute(GrantStmt(role[1], role[0]));
     assertRoleGranted(role[0], Arrays.asList(role[1]));
 
@@ -265,26 +265,25 @@ public class TestRoles extends BaseAuthenticationCQLTest {
   }
 
   private void testGrantRevoke(String resourceName, String canonicalResource,
-     GrantRevokeStmt grantStmt, GrantRevokeStmt revokeStmt) throws Exception {
+      GrantRevokeStmt grantStmt, GrantRevokeStmt revokeStmt, List<String> allPermissions)
+      throws Exception {
 
-    Session s = getDefaultSession();
+    s.execute(grantStmt.get(allPermissions.get(0), resourceName, role[0]));
+    assertPermissionsGranted(role[0], canonicalResource, Arrays.asList(allPermissions.get(0)));
 
-    s.execute(grantStmt.get(p.get(0), resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, Arrays.asList(p.get(0)));
-
-    s.execute(revokeStmt.get(p.get(0), resourceName, role[0]));
+    s.execute(revokeStmt.get(allPermissions.get(0), resourceName, role[0]));
     assertPermissionsGranted(role[0], canonicalResource, Arrays.asList());
 
     // Grant all the permissions one by one.
     List<String> grantedPermissions = new ArrayList<>();
-    for (String permission: p) {
+    for (String permission: allPermissions) {
       s.execute(grantStmt.get(permission, resourceName, role[0]));
       grantedPermissions.add(permission);
       assertPermissionsGranted(role[0], canonicalResource, grantedPermissions);
     }
 
     // Revoke all the permissions one by one.
-    for (String permission: p) {
+    for (String permission: allPermissions) {
       LOG.info("Revoking permission " + permission);
       s.execute(revokeStmt.get(permission, resourceName, role[0]));
       grantedPermissions.remove(0);
@@ -293,7 +292,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     // Grant all the permissions at once.
     s.execute(grantStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, p);
+    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
 
     // Revoke all the permissions at once.
     s.execute(revokeStmt.get("ALL", resourceName, role[0]));
@@ -301,28 +300,30 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     // Grant all the permissions at once.
     s.execute(grantStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, p);
+    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
 
     // Revoke one of the permissions in the middle.
     s.execute(revokeStmt.get("CREATE", resourceName, role[0]));
     List<String> permissions = new ArrayList<>();
-    permissions.addAll(p);
-    permissions.remove(2);
+    permissions.addAll(allPermissions);
+    permissions.remove(permissions.indexOf("CREATE"));
     assertPermissionsGranted(role[0], canonicalResource, permissions);
 
-    // Revoke another permission in the middle.
-    s.execute(revokeStmt.get("DESCRIBE", resourceName, role[0]));
-    permissions.remove(1);
-    assertPermissionsGranted(role[0], canonicalResource, permissions);
+    if (permissions.contains("DESCRIBE")) {
+      // Revoke another permission in the middle.
+      s.execute(revokeStmt.get("DESCRIBE", resourceName, role[0]));
+      permissions.remove(permissions.indexOf("DESCRIBE"));
+      assertPermissionsGranted(role[0], canonicalResource, permissions);
+    }
 
     // Revoke the first permission.
     s.execute(revokeStmt.get("ALTER", resourceName, role[0]));
-    permissions.remove(0);
+    permissions.remove(permissions.indexOf("ALTER"));
     assertPermissionsGranted(role[0], canonicalResource, permissions);
 
     // Revoke the last permission.
     s.execute(revokeStmt.get("AUTHORIZE", resourceName, role[0]));
-    permissions.remove(permissions.size() - 1);
+    permissions.remove(permissions.indexOf("AUTHORIZE"));
     assertPermissionsGranted(role[0], canonicalResource, permissions);
   }
 
@@ -338,7 +339,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionKeyspaceStmt(permission, resource, role),
         (String permission, String resource, String role) ->
-            RevokePermissionKeyspaceStmt(permission, resource, role));
+            RevokePermissionKeyspaceStmt(permission, resource, role),
+        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
   }
 
   @Test
@@ -357,7 +359,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionTableStmt(permission, resource, role),
         (String permission, String resource, String role) ->
-            RevokePermissionTableStmt(permission, resource, role));
+            RevokePermissionTableStmt(permission, resource, role),
+        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
   }
 
   @Test
@@ -368,7 +371,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionRoleStmt(permission, resource, role),
         (String permission, String resource, String role) ->
-            RevokePermissionRoleStmt(permission, resource, role));
+            RevokePermissionRoleStmt(permission, resource, role),
+        ALL_PERMISSIONS);
   }
 
   @Test
@@ -381,7 +385,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionAllRolesStmt(permission, role),
         (String permission, String resource, String role) ->
-            RevokePermissionAllRolesStmt(permission, role));
+            RevokePermissionAllRolesStmt(permission, role),
+        ALL_PERMISSIONS);
   }
 
   @Test
@@ -399,19 +404,21 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionAllKeyspacesStmt(permission, role),
         (String permission, String resource, String role) ->
-            RevokePermissionAllKeyspacesStmt(permission, role));
+            RevokePermissionAllKeyspacesStmt(permission, role),
+        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
   }
 
   // If the statement is "ON ALL KEYSPACES" or "ON ALL ROLES" resource name should be an empty
   // string so we don't run a statement with an invalid resource since it will be ignored and will
   // not throw the expected exception.
   private void testInvalidGrantRevoke(String resourceName, String canonicalResource,
-      GrantRevokeStmt grantStmt, GrantRevokeStmt revokeStmt) throws Exception {
+      GrantRevokeStmt grantStmt, GrantRevokeStmt revokeStmt, List<String> allPermissions)
+      throws Exception {
 
-    Session s = getDefaultSession();
     // Grant all the permissions at once.
-    s.execute(grantStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, p);
+    String st = grantStmt.get("ALL", resourceName, role[0]);
+    s.execute(st);
+    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
 
     // Test invalid statements.
     thrown.expect(SyntaxError.class);
@@ -419,12 +426,12 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     thrown.expect(InvalidQueryException.class);
     s.execute(grantStmt.get("ALL", resourceName, "invalid_role"));
-    assertPermissionsGranted(role[0], canonicalResource, p);
+    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
 
     if (!resourceName.isEmpty()) {
       thrown.expect(InvalidQueryException.class);
       s.execute(grantStmt.get("ALL", "invalid_resource", role[0]));
-      assertPermissionsGranted(role[0], canonicalResource, p);
+      assertPermissionsGranted(role[0], canonicalResource, allPermissions);
     }
 
     thrown.expect(SyntaxError.class);
@@ -433,12 +440,12 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     if (!resourceName.isEmpty()) {
       // This shouldn't return an error. It should just be ignored.
       s.execute(revokeStmt.get("ALL", "invalid_resource", role[0]));
-      assertPermissionsGranted(role[0], canonicalResource, p);
+      assertPermissionsGranted(role[0], canonicalResource, allPermissions);
     }
 
     // This shouldn't return an error. It should just be ignored.
     s.execute(revokeStmt.get("ALL", resourceName, "invalid_role"));
-    assertPermissionsGranted(role[0], canonicalResource, p);
+    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
   }
 
   @Test
@@ -457,7 +464,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionTableStmt(permission, resource, role),
         (String permission, String resource, String role) ->
-            RevokePermissionTableStmt(permission, resource, role));
+            RevokePermissionTableStmt(permission, resource, role),
+        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
   }
 
   @Test
@@ -468,7 +476,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionRoleStmt(permission, resource, role),
         (String permission, String resource, String role) ->
-            RevokePermissionRoleStmt(permission, resource, role));
+            RevokePermissionRoleStmt(permission, resource, role),
+        ALL_PERMISSIONS);
   }
 
   @Test
@@ -481,7 +490,8 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionAllRolesStmt(permission, role),
         (String permission, String resource, String role) ->
-            RevokePermissionAllRolesStmt(permission, role));
+            RevokePermissionAllRolesStmt(permission, role),
+        ALL_PERMISSIONS);
   }
 
   @Test
@@ -499,7 +509,150 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         (String permission, String resource, String role) ->
             GrantPermissionAllKeyspacesStmt(permission, role),
         (String permission, String resource, String role) ->
-            RevokePermissionAllKeyspacesStmt(permission, role));
+            RevokePermissionAllKeyspacesStmt(permission, role),
+        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
   }
 
+  private void expectDescribeSyntaxError(String stmt) {
+    thrown.expect(SyntaxError.class);
+    thrown.expectMessage(DESCRIBE_SYNTAX_ERROR_MSG);
+    s.execute(stmt);
+  }
+
+  @Test
+  public void testDescribePermissions() throws Exception {
+    CreateRoles(10);
+
+    // Create a keyspace.
+    String keyspace = "test_describe_permissions_keyspace";
+    createKeyspace(keyspace);
+
+    useKeyspace(keyspace);
+
+    // Create a table.
+    String table = "test_describe_permissions_table";
+    createTable(table);
+
+    final String DESCRIBE = "DESCRIBE";
+
+    // Grant describe on a keyspace.
+    expectDescribeSyntaxError(GrantPermissionKeyspaceStmt(DESCRIBE, keyspace, role[0]));
+
+    // Revoke describe on a keyspace.
+    expectDescribeSyntaxError(RevokePermissionKeyspaceStmt(DESCRIBE, keyspace, role[0]));
+
+    // Grant describe on a keyspace.
+    expectDescribeSyntaxError(GrantPermissionKeyspaceStmt(DESCRIBE, keyspace, role[0]));
+
+    // Revoke describe on a keyspace.
+    expectDescribeSyntaxError(RevokePermissionKeyspaceStmt(DESCRIBE, keyspace, role[0]));
+
+    // Grant describe on a keyspace that doesn't exist. It should fail with a syntax error.
+    expectDescribeSyntaxError(
+        GrantPermissionKeyspaceStmt(DESCRIBE, "some_keyspace", role[0]));
+
+    // Revoke describe on a keyspace that doesn't exist. It should fail with a syntax error.
+    expectDescribeSyntaxError(
+        RevokePermissionKeyspaceStmt(DESCRIBE, "some_keyspace", role[0]));
+
+    // Grant describe on a kesypace to a role that doesn't exist.
+    expectDescribeSyntaxError(GrantPermissionKeyspaceStmt(DESCRIBE, keyspace, "some_role"));
+
+    // Revoke describe on a kesypace from a role that doesn't exist.
+    expectDescribeSyntaxError(RevokePermissionKeyspaceStmt(DESCRIBE, keyspace, "some_role"));
+
+    // Grant describe on a keyspace that doesn't exist. It should fail with a syntax error.
+    expectDescribeSyntaxError(
+        GrantPermissionKeyspaceStmt(DESCRIBE, "some_keyspace", role[0]));
+
+    // Revoke describe on a keyspace that doesn't exist. It should fail with a syntax error.
+    expectDescribeSyntaxError(
+        RevokePermissionKeyspaceStmt(DESCRIBE, "some_keyspace", role[0]));
+
+    // Grant describe on a keyspace that doesn't exist to a role that doesn't exist.
+    expectDescribeSyntaxError(
+        GrantPermissionKeyspaceStmt(DESCRIBE, "some_keyspace", "some_role"));
+
+    // Revoke describe on a keyspace that doesn't exist from a role that doesn't exist.
+    expectDescribeSyntaxError(
+        RevokePermissionKeyspaceStmt(DESCRIBE, "some_keyspace", "some_role"));
+
+    // Grant describe on all keyspaces.
+    expectDescribeSyntaxError(GrantPermissionAllKeyspacesStmt(DESCRIBE, role[0]));
+
+    // Revoke describe on all keyspaces.
+    expectDescribeSyntaxError(RevokePermissionAllKeyspacesStmt(DESCRIBE, role[0]));
+
+    // Grant describe on all keyspaces to a role that doesn't exist.
+    expectDescribeSyntaxError(GrantPermissionAllKeyspacesStmt(DESCRIBE, "some_role"));
+
+    // Revoke describe on all keyspaces from a role that doesn't exist.
+    expectDescribeSyntaxError(RevokePermissionAllKeyspacesStmt(DESCRIBE, "some_role"));
+
+    // Grant describe on a table.
+    expectDescribeSyntaxError(GrantPermissionTableStmt(DESCRIBE, table, role[0]));
+
+    // Revoke describe on a table.
+    expectDescribeSyntaxError(RevokePermissionTableStmt(DESCRIBE, table, role[0]));
+
+    // Grant describe on a table that doesn't exist.
+    expectDescribeSyntaxError(GrantPermissionTableStmt(DESCRIBE, "some_table", role[0]));
+
+    // Revoke describe on a table that doesn't exist.
+    expectDescribeSyntaxError(RevokePermissionTableStmt(DESCRIBE, "some_table", role[0]));
+
+    // Grant describe on a table to a role that doesn't exist.
+    expectDescribeSyntaxError(GrantPermissionTableStmt(DESCRIBE, table, "some_role"));
+
+    // Revoke describe on a table from a role that doesn't exist.
+    expectDescribeSyntaxError(RevokePermissionTableStmt(DESCRIBE, table, "some_role"));
+
+    // Grant describe on a table that doesn't exist to a role that doesn't exist.
+    expectDescribeSyntaxError(
+        GrantPermissionTableStmt(DESCRIBE, "some_table", "some_role"));
+
+    // Revoke describe on a table that doesn't exist from a role that doesn't exist.
+    expectDescribeSyntaxError(
+        RevokePermissionTableStmt(DESCRIBE, "some_table", "some_role"));
+
+    final List<String> DESCRIBE_LIST = Arrays.asList(DESCRIBE);
+
+    // Grant describe on a role.
+    String canonicalResource = "roles/" + role[2];
+    s.execute(GrantPermissionRoleStmt(DESCRIBE, role[2], role[1]));
+    assertPermissionsGranted(role[1], canonicalResource, DESCRIBE_LIST);
+
+    // Revoke describe on a role.
+    s.execute(RevokePermissionRoleStmt(DESCRIBE, role[2], role[1]));
+    assertPermissionsGranted(role[1], canonicalResource, new ArrayList<>());
+
+    // Grant describe on all roles.
+    canonicalResource = "roles";
+    s.execute(GrantPermissionAllRolesStmt(DESCRIBE, role[3]));
+    assertPermissionsGranted(role[3], canonicalResource, DESCRIBE_LIST);
+
+    // Revoke describe on all roles.
+    s.execute(RevokePermissionAllRolesStmt(DESCRIBE, role[3]));
+    assertPermissionsGranted(role[3], canonicalResource, new ArrayList<>());
+
+    final String ALL = "ALL";
+
+    // Grant ALL on a role.
+    canonicalResource = "roles/" + role[4];
+    s.execute(GrantPermissionRoleStmt(ALL, role[4], role[5]));
+    assertPermissionsGranted(role[5], canonicalResource, ALL_PERMISSIONS);
+
+    // Revoke ALL on a role.
+    s.execute(RevokePermissionRoleStmt(ALL, role[4], role[5]));
+    assertPermissionsGranted(role[5], canonicalResource, new ArrayList<>());
+
+    // Grant ALL on all roles.
+    canonicalResource = "roles";
+    s.execute(GrantPermissionAllRolesStmt(ALL, role[6]));
+    assertPermissionsGranted(role[6], canonicalResource, ALL_PERMISSIONS);
+
+    // Revoke ALL on all roles.
+    s.execute(RevokePermissionAllRolesStmt(ALL, role[6]));
+    assertPermissionsGranted(role[6], canonicalResource, new ArrayList<>());
+  }
 }

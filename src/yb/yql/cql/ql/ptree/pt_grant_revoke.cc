@@ -29,7 +29,7 @@ using std::to_string;
 using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
-// GRANT Role Statement
+// GRANT Role Statement.
 
 PTGrantRevokeRole::PTGrantRevokeRole(MemoryContext* memctx,
                          YBLocation::SharedPtr loc,
@@ -102,7 +102,29 @@ CHECKED_STATUS PTGrantRevokePermission::Analyze(SemContext* sem_context) {
   }
 
   permission_ = iterator->second;
-  // Processing the role name
+
+  // Check that the DESCRIBE permission is only granted on a role or on all roles.
+  // This check should be done before anything else.
+  switch (resource_type_) {
+    case ResourceType::ALL_KEYSPACES: FALLTHROUGH_INTENDED;
+    case ResourceType::KEYSPACE: FALLTHROUGH_INTENDED;
+    case ResourceType::TABLE:
+      if (permission_ == PermissionType::DESCRIBE_PERMISSION) {
+        // Match apache cassandra's error message.
+        return sem_context->Error(loc(),
+            "Resource type DataResource does not support any of the requested permissions",
+            ErrorCode::SYNTAX_ERROR);
+      }
+      break;
+
+      // Only ROLE and ALL_ROLES can be granted DESCRIBE permission.
+    case ResourceType::ROLE: FALLTHROUGH_INTENDED;
+    case ResourceType::ALL_ROLES:
+      break;
+
+  }
+
+  // Processing the role name.
   RETURN_NOT_OK(role_name_->AnalyzeName(sem_context, OBJECT_ROLE));
   switch (resource_type_) {
     case ResourceType::KEYSPACE: {
@@ -122,9 +144,9 @@ CHECKED_STATUS PTGrantRevokePermission::Analyze(SemContext* sem_context) {
       RETURN_NOT_OK(complete_resource_name_->AnalyzeName(sem_context, OBJECT_ROLE));
       break;
     }
-    default : {
+    case ResourceType::ALL_KEYSPACES: FALLTHROUGH_INTENDED;
+    case ResourceType::ALL_ROLES:
       break;
-    }
   }
 
   PrintSemanticAnalysisResult(sem_context);

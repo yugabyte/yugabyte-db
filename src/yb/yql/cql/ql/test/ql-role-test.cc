@@ -49,6 +49,13 @@ using std::string;
     ASSERT_FALSE(s.ToString().find(msg) == string::npos);               \
   } while (false)
 
+static const char invalid_grant_describe_error_msg[] =
+    "Resource type DataResource does not support any of the requested permissions";
+static const std::vector<string> all_permissions =
+    {"ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT"};
+static const std::vector<string> all_permissions_minus_describe =
+    {"ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT"};
+
 class TestQLPermission : public QLTestBase {
  public:
   TestQLPermission() : QLTestBase() {
@@ -249,7 +256,6 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
   TestQLProcessor* processor = GetQLProcessor();
-  // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
   CreateRole(processor, role_name);
@@ -258,6 +264,8 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
 
   const string grant_stmt = GrantKeyspace("SELECT",  keyspace1, role_name);
   std::vector<string> permissions = { "SELECT" };
+
+  // Ensure permission granted to proper role.
   GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions,
                                  role_name);
 
@@ -292,20 +300,16 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   const string revoke_invalid_stmt = GrantKeyspace("ALTER", keyspace2, role_name);
   EXEC_INVALID_STMT_MSG(revoke_invalid_stmt, "Resource Not Found");
 
-  // Grant all the permissions.
+  // Grant ALL permissions.
   const string role_name_2 = "test_role_2";
   CreateRole(processor, role_name_2);
   const string grant_stmt5 = GrantKeyspace("ALL",  keyspace1, role_name_2);
-  std::vector<string> permissions_2 =
-      { "ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT" };
-  GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource, permissions_2,
-                                 role_name_2);
+  GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource,
+                                 all_permissions_minus_describe, role_name_2);
 
   // Revoke all the permissions.
   const auto revoke_all_stmt = RevokeKeyspace("ALL", keyspace1, role_name_2);
-  permissions_2.clear();
-  GrantRevokePermissionAndVerify(processor, revoke_all_stmt, canonical_resource, permissions_2,
-                                 role_name_2);
+  GrantRevokePermissionAndVerify(processor, revoke_all_stmt, canonical_resource, {}, role_name_2);
 
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
@@ -317,7 +321,6 @@ TEST_F(TestQLPermission, TestGrantToRole) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
   TestQLProcessor* processor = GetQLProcessor();
-  // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
 
@@ -327,12 +330,19 @@ TEST_F(TestQLPermission, TestGrantToRole) {
   const string canonical_resource = "roles/" + role_name_2;
   const string grant_stmt = GrantRole("AUTHORIZE", role_name_2, role_name);
   std::vector<string> permissions = { "AUTHORIZE" };
+
+  // Ensure permission granted to proper role.
   GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions, role_name);
 
-  // Resource (role) not present
+  // Grant ALL permissions.
+  const string grant_stmt2 = GrantRole("ALL", role_name_2, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt2, canonical_resource, all_permissions,
+                                 role_name);
+
+  // Resource (role) not present.
   const string role_name_3 = "test_role_3";
-  const string grant_stmt2 = GrantRole("DROP", role_name_3, role_name);
-  EXEC_INVALID_STMT_MSG(grant_stmt2, "Resource Not Found");
+  const string grant_stmt3 = GrantRole("DROP", role_name_3, role_name);
+  EXEC_INVALID_STMT_MSG(grant_stmt3, "Resource Not Found");
 
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
@@ -343,7 +353,7 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
   TestQLProcessor* processor = GetQLProcessor();
-  // Ensure permission granted to proper role.
+
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
   const string table1 = "table1";
@@ -352,9 +362,14 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   CreateKeyspace(processor, keyspace1);
   CreateTable(processor, keyspace1, table1);
 
-  const string canonical_resource = "data/keyspace1/table1";
-  const string grant_stmt = GrantTable("MODIFY", "keyspace1.table1", role_name);
+  const string canonical_resource = "data/" + keyspace1 + "/" + table1;
+  const string table_name = keyspace1 + "." + table1;
+
+  // Simple grant.
+  const string grant_stmt = GrantTable("MODIFY", table_name, role_name);
   std::vector<string> permissions = { "MODIFY" };
+
+  // Ensure permission granted to proper role.
   GrantRevokePermissionAndVerify(processor, grant_stmt, canonical_resource, permissions, role_name);
 
   // Grant with keyspace not provided.
@@ -386,9 +401,90 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   permissions = {};
   GrantRevokePermissionAndVerify(processor, revoke, canonical_resource, permissions, role_name);
 
+  // Grant ALL permissions and verify that DESCRIBE is not granted.
+  const string grant_stmt5 = GrantTable("ALL", table_name, role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource,
+                                 all_permissions_minus_describe, role_name);
+
   FLAGS_use_cassandra_authentication = false;
   EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_MSG(grant_stmt3, "Unauthorized");
+}
+
+TEST_F(TestQLPermission, TestGrantDescribe) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+
+  const string role1 = "test_role1";
+  const string role2 = "test_role2";
+  const string role3 = "test_role3";
+  const string role4 = "test_role4";
+  const string role5 = "test_role5";
+  const string keyspace = "keyspace1";
+  const string table = "table1";
+
+  CreateRole(processor, role1);
+  CreateRole(processor, role2);
+  CreateRole(processor, role3);
+  CreateRole(processor, role4);
+  CreateRole(processor, role5);
+  CreateKeyspace(processor, keyspace);
+  CreateTable(processor, keyspace, table);
+
+  const string canonical_resource = "data/" + keyspace + "/" + table;
+  const string table_name = keyspace + "." + table;
+
+  // Grant DESCRIBE on a table. It should fail.
+  const string grant_stmt = GrantTable("DESCRIBE", table_name, role1);
+  EXEC_INVALID_STMT_MSG(grant_stmt, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a table that doesn't exist. It should fail with a syntax error.
+  const string grant_on_invalid_table = GrantTable("DESCRIBE", "invalid_table", role1);
+  EXEC_INVALID_STMT_MSG(grant_on_invalid_table, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a table to a role that doesn't exist. It should fail with a syntax error.
+  const string grant_on_table_to_invalid_role = GrantTable("DESCRIBE", table_name, "some_role");
+  EXEC_INVALID_STMT_MSG(grant_on_table_to_invalid_role, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a keyspace. It shold fail.
+  const string grant_stmt2 = GrantKeyspace("DESCRIBE", keyspace, role1);
+  EXEC_INVALID_STMT_MSG(grant_stmt2, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a keyspace that doesn't exist. It should fail with a syntax error.
+  const string grant_on_invalid_keyspace = GrantKeyspace("DESCRIBE", "some_keyspace", role1);
+  EXEC_INVALID_STMT_MSG(grant_on_invalid_keyspace, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a keyspace to a role that doesn't exist. It should fail with a syntax error.
+  const string grant_on_keyspace_to_invalid_role = GrantKeyspace("DESCRIBE", keyspace, "some_role");
+  EXEC_INVALID_STMT_MSG(grant_on_keyspace_to_invalid_role, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on all keyspaces. It should fail.
+  const string grant_on_all_keyspaces = GrantAllKeyspaces("DESCRIBE", role1);
+  EXEC_INVALID_STMT_MSG(grant_on_all_keyspaces, invalid_grant_describe_error_msg);
+
+  // Grant DESCRIBE on a role. It should succeed.
+  const string grant_stmt3 = GrantRole("DESCRIBE", role2, role1);
+  std::vector<string> permissions = {"DESCRIBE"};
+  auto canonical_resource2 = "roles/" + role2;
+  GrantRevokePermissionAndVerify(processor, grant_stmt3, canonical_resource2, permissions,
+                                 role1);
+
+  // Grant DESCRIBE on all roles. It should succeed.
+  const string grant_on_all_roles = GrantAllRoles("DESCRIBE", role3);
+  GrantRevokePermissionAndVerify(processor, grant_on_all_roles, "roles", permissions, role3);
+
+
+  // Grant ALL on a role. It should succeed and all the roles should be granted.
+  const string grant_all_on_a_role = GrantRole("ALL", role4, role1);
+  GrantRevokePermissionAndVerify(processor, grant_all_on_a_role, "roles/" + role4,
+                                 all_permissions, role1);
+
+  // Grant ALL on all roles. It should succeed and all the roles should be granted.
+  const string grant_all_on_all_roles = GrantAllRoles("ALL", role5);
+  GrantRevokePermissionAndVerify(processor, grant_all_on_all_roles, "roles", all_permissions,
+                                 role5);
 }
 
 class TestQLRole : public QLTestBase {
