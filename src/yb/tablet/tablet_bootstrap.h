@@ -44,6 +44,8 @@ namespace tablet {
 struct ReplayState;
 class WriteOperationState;
 
+YB_STRONGLY_TYPED_BOOL(AlreadyApplied);
+
 // Bootstraps an existing tablet by opening the metadata from disk, and rebuilding soft state by
 // playing log segments. A bootstrapped tablet can then be added to an existing consensus
 // configuration as a LEARNER, which will bring its state up to date with the rest of the consensus
@@ -111,7 +113,8 @@ class TabletBootstrap {
 
   void PlayWriteRequest(consensus::ReplicateMsg* replicate_msg);
 
-  CHECKED_STATUS PlayUpdateTransactionRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayUpdateTransactionRequest(
+      consensus::ReplicateMsg* replicate_msg, AlreadyApplied already_applied);
 
   CHECKED_STATUS PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
 

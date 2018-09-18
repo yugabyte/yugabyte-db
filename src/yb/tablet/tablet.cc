@@ -366,12 +366,11 @@ Tablet::Tablet(
                                                                     &*unique_index_key_schema_));
   }
 
-  // TODO(dtxn) Create coordinator only for status tablets
-  if (transaction_coordinator_context) {
+  if (transaction_coordinator_context &&
+      metadata_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata->fs_manager()->uuid(),
         transaction_coordinator_context,
-        transaction_participant_.get(),
         metrics_->expired_transactions.get());
   }
 
@@ -396,18 +395,19 @@ Status Tablet::Open() {
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       RETURN_NOT_OK(OpenKeyValueTablet());
-      break;
-    default:
-      LOG(FATAL) << "Cannot open tablet " << tablet_id() << " with unknown table type "
-                 << table_type_;
+      state_ = kBootstrapping;
+      return Status::OK();
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      state_ = kBootstrapping;
+      return Status::OK();
   }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
 
-  state_ = kBootstrapping;
   return Status::OK();
 }
 
 Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
-  LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
+  LOG_WITH_PREFIX(INFO) << "Creating RocksDB database in dir " << db_dir;
 
   // Create the directory table-uuid first.
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(DirName(db_dir)),
@@ -467,6 +467,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
   return false;
 }
 
+std::string Tablet::LogPrefix() const {
+  return Format("T $0: ", tablet_id());
+}
+
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
@@ -490,8 +494,8 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb::DB* db = nullptr;
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
   if (!rocksdb_open_status.ok()) {
-    LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
-               << rocksdb_open_status.ToString();
+    LOG_WITH_PREFIX(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
+                           << rocksdb_open_status;
     if (db != nullptr) {
       delete db;
     }
@@ -500,9 +504,11 @@ Status Tablet::OpenKeyValueTablet() {
   regular_db_.reset(db);
 
   if (transaction_participant_) {
+    LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
     rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
+    rocksdb_options.listeners.clear();
 
     rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
@@ -517,7 +523,8 @@ Status Tablet::OpenKeyValueTablet() {
   if (transaction_participant_) {
     transaction_participant_->SetDB(intents_db_.get());
   }
-  LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir << ", obj: " << db;
+  LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir
+                        << ", obj: " << db;
   return Status::OK();
 }
 
@@ -535,7 +542,7 @@ void Tablet::Shutdown() {
 
   auto op_pause = PauseReadWriteOperations();
   if (!op_pause.ok()) {
-    LOG(WARNING) << Substitute("Tablet $0: failed to shut down", tablet_id());
+    LOG_WITH_PREFIX(WARNING) << "Failed to shut down: " << op_pause.status();
     return;
   }
 
@@ -571,7 +578,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  VLOG(2) << "Created new Iterator on " << tablet_id();
+  VLOG_WITH_PREFIX(2) << "Created new Iterator";
 
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema()->GetMappedReadProjection(projection, mapped_projection.get()));
@@ -634,10 +641,10 @@ Status Tablet::CreateCheckpoint(const std::string& dir) {
   }
 
   if (!status.ok()) {
-    LOG(WARNING) << "Create checkpoint status: " << status;
+    LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
     return STATUS_FORMAT(IllegalState, "Unable to create checkpoint: $0", status);
   }
-  LOG(INFO) << "Checkpoint created in " << dir;
+  LOG_WITH_PREFIX(INFO) << "Checkpoint created in " << dir;
 
   last_rocksdb_checkpoint_dir_ = dir;
 
@@ -659,8 +666,8 @@ void Tablet::PrepareTransactionWriteBatch(
   if (!metadata_with_write_id) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    LOG(INFO) << "Transaction metadata missing: " << transaction_id
-              << ", looks like it was just aborted";
+    LOG_WITH_PREFIX(INFO) << "Transaction metadata missing: " << transaction_id
+                          << ", looks like it was just aborted";
     return;
   }
 
@@ -706,8 +713,8 @@ void Tablet::WriteBatch(const rocksdb::UserFrontiers* frontiers,
   flush_stats_->AboutToWriteToDb(hybrid_time);
   auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
-    LOG(FATAL) << "Failed to write a batch with " << write_batch->Count() << " operations"
-               << " into RocksDB: " << rocksdb_write_status;
+    LOG_WITH_PREFIX(FATAL) << "Failed to write a batch with " << write_batch->Count()
+                           << " operations into RocksDB: " << rocksdb_write_status;
   }
 }
 
@@ -1156,6 +1163,11 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
       WriteOperation::StartSynchronization(std::move(operation), status);
       return;
     }
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
+      operation->state()->completion_callback()->CompleteWithStatus(
+          STATUS(NotSupported, "Transaction status table does not support write"));
+      return;
+    }
   }
 
   FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
@@ -1171,7 +1183,7 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
     intents_db_->Flush(options);
   }
 
-  if (HasFlags(flags, FlushFlags::kRegular)) {
+  if (HasFlags(flags, FlushFlags::kRegular) && regular_db_) {
     options.wait = mode == FlushMode::kSync;
     regular_db_->Flush(options);
   }
@@ -1279,22 +1291,23 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
 
     // If the current version >= new version, there is nothing to do.
     if (metadata_->schema_version() >= operation_state->schema_version()) {
-      LOG(INFO) << "Already running schema version " << metadata_->schema_version()
-                << " got alter request for version " << operation_state->schema_version();
+      LOG_WITH_PREFIX(INFO)
+          << "Already running schema version " << metadata_->schema_version()
+          << " got alter request for version " << operation_state->schema_version();
       return Status::OK();
     }
 
-    LOG(INFO) << "Alter schema from " << schema()->ToString()
-              << " version " << metadata_->schema_version()
-              << " to " << operation_state->schema()->ToString()
-              << " version " << operation_state->schema_version();
+    LOG_WITH_PREFIX(INFO) << "Alter schema from " << schema()->ToString()
+                          << " version " << metadata_->schema_version()
+                          << " to " << operation_state->schema()->ToString()
+                          << " version " << operation_state->schema_version();
     DCHECK(schema_lock_.is_locked());
 
     // Find out which columns have been deleted in this schema change, and add them to metadata.
     for (const auto& col : schema()->column_ids()) {
       if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
         DeletedColumn deleted_col(col, clock_->Now());
-        LOG(INFO) << "Column " << col.ToString() << " recorded as deleted.";
+        LOG_WITH_PREFIX(INFO) << "Column " << col.ToString() << " recorded as deleted.";
         metadata_->AddDeletedColumn(deleted_col);
       }
     }
@@ -1346,7 +1359,7 @@ Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
   const Status s = regular_db_->SetFlushedFrontier(frontier.Clone());
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
-    LOG(WARNING) << status;
+    LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
   DCHECK_EQ(frontier, *regular_db_->GetFlushedFrontier());
@@ -1362,6 +1375,11 @@ Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
 }
 
 Status Tablet::Truncate(TruncateOperationState *state) {
+  if (metadata_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // We use only Raft log for transaction status table.
+    return Status::OK();
+  }
+
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
@@ -1388,7 +1406,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     s = intents_status;
   }
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
+    LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
   }
 
@@ -1396,7 +1414,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
   s = OpenKeyValueTablet();
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Failed to create a new db: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Failed to create a new db: " << s;
     return s;
   }
 
@@ -1405,9 +1423,9 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   frontier.set_hybrid_time(state->hybrid_time());
   RETURN_NOT_OK(SetFlushedFrontier(frontier));
 
-  LOG(INFO) << "Created new db for truncated tablet " << tablet_id();
-  LOG(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", new=" << regular_db_->GetLatestSequenceNumber();
+  LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
+  LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
+                        << ", new=" << regular_db_->GetLatestSequenceNumber();
   return Status::OK();
 }
 
@@ -1428,6 +1446,10 @@ void Tablet::UpdateMonotonicCounter(int64_t value) {
 ////////////////////////////////////////////////////////////
 
 Result<bool> Tablet::HasSSTables() const {
+  if (!regular_db_) {
+    return false;
+  }
+
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1439,6 +1461,10 @@ Result<bool> Tablet::HasSSTables() const {
 Result<DocDbOpIds> Tablet::MaxPersistentOpId() const {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
+
+  if (!regular_db_) {
+    return DocDbOpIds{yb::OpId(), yb::OpId()};
+  }
 
   DocDbOpIds result;
   auto temp = regular_db_->GetFlushedFrontier();
@@ -1457,6 +1483,10 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId() const {
 Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
+
+  if (!regular_db_) {
+    return HybridTime::kMin;
+  }
 
   HybridTime result = HybridTime::kMin;
   auto temp = regular_db_->GetFlushedFrontier();
@@ -1478,6 +1508,8 @@ Status Tablet::DebugDump(vector<string> *lines) {
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       DocDBDebugDump(lines);
+      return Status::OK();
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
       return Status::OK();
   }
   FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
@@ -1600,8 +1632,8 @@ HybridTime Tablet::DoGetSafeTime(
     ht_lease = HybridTime::kMax;
   }
   if (min_allowed > ht_lease) {
-    LOG(DFATAL) << "Read request hybrid time after leader lease: " << min_allowed << ", "
-                << ht_lease;
+    LOG_WITH_PREFIX(DFATAL)
+        << "Read request hybrid time after leader lease: " << min_allowed << ", " << ht_lease;
     return HybridTime::kInvalid;
   }
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
@@ -1648,7 +1680,9 @@ void ForceRocksDBCompact(rocksdb::DB* db) {
 } // namespace
 
 void Tablet::ForceRocksDBCompactInTest() {
-  ForceRocksDBCompact(regular_db_.get());
+  if (regular_db_) {
+    ForceRocksDBCompact(regular_db_.get());
+  }
   if (intents_db_) {
     intents_db_->Flush(rocksdb::FlushOptions());
     ForceRocksDBCompact(intents_db_.get());

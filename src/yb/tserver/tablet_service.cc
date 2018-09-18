@@ -475,7 +475,12 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
+  if (req->state().status() == TransactionStatus::APPLYING ||
+      req->state().status() == TransactionStatus::CLEANUP) {
+    tablet_peer->tablet()->transaction_participant()->Handle(std::move(state));
+  } else {
+    tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
+  }
 }
 
 void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB* req,
@@ -1155,6 +1160,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
       }
       return ReadHybridTime();
     }
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return STATUS(NotSupported, "Transaction status table does not support read");
   }
   FATAL_INVALID_ENUM_VALUE(TableType, tablet->table_type());
 }

@@ -619,7 +619,7 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
       return PlayNoOpRequest(replicate);
 
     case consensus::UPDATE_TRANSACTION_OP:
-      return PlayUpdateTransactionRequest(replicate);
+      return PlayUpdateTransactionRequest(replicate, AlreadyApplied::kFalse);
 
     // Unexpected cases:
     case consensus::SNAPSHOT_OP:
@@ -639,8 +639,19 @@ Status TabletBootstrap::HandleEntryPair(ReplayState* state, LogEntryPB* replicat
   const auto op_type = replicate_entry->replicate().op_type();
 
   int64_t flushed_index;
-  if (op_type == consensus::WRITE_OP &&
-      replicate_entry->replicate().write_request().write_batch().has_transaction()) {
+  if (op_type == consensus::UPDATE_TRANSACTION_OP) {
+    if (replicate->transaction_state().status() == TransactionStatus::APPLYING) {
+      auto index = replicate->id().index();
+      if (index <= state->regular_stored_op_id.index() &&
+          index > state->intents_stored_op_id.index()) {
+        // We are in a state when committed intents were applied and flushed to regular DB, but
+        // intents store was not flushed.
+        return PlayUpdateTransactionRequest(replicate, AlreadyApplied::kTrue);
+      }
+    }
+    flushed_index = state->regular_stored_op_id.index();
+  } else if (op_type == consensus::WRITE_OP &&
+             replicate->write_request().write_batch().has_transaction()) {
     flushed_index = state->intents_stored_op_id.index();
   } else {
     flushed_index = state->regular_stored_op_id.index();
@@ -856,7 +867,8 @@ Status TabletBootstrap::PlayTruncateRequest(ReplicateMsg* replicate_msg) {
   return Status::OK();
 }
 
-Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg) {
+Status TabletBootstrap::PlayUpdateTransactionRequest(
+    ReplicateMsg* replicate_msg, AlreadyApplied already_applied) {
   DCHECK(replicate_msg->has_hybrid_time());
 
   UpdateTxnOperationState operation_state(
@@ -864,18 +876,26 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
   operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
-  auto transaction_coordinator = tablet_->transaction_coordinator();
-
-  TransactionCoordinator::ReplicatedData replicated_data = {
-      ProcessingMode::NON_LEADER,
-      tablet_.get(),
-      *operation_state.request(),
-      operation_state.op_id(),
-      operation_state.hybrid_time()
-  };
-  RETURN_NOT_OK(transaction_coordinator->ProcessReplicated(replicated_data));
-
-  return Status::OK();
+  if (operation_state.request()->status() == TransactionStatus::APPLYING) {
+    auto transaction_participant = tablet_->transaction_participant();
+    TransactionParticipant::ReplicatedData replicated_data = {
+        ProcessingMode::NON_LEADER,
+        *operation_state.request(),
+        operation_state.op_id(),
+        operation_state.hybrid_time(),
+        already_applied
+    };
+    return transaction_participant->ProcessReplicated(replicated_data);
+  } else {
+    auto transaction_coordinator = tablet_->transaction_coordinator();
+    TransactionCoordinator::ReplicatedData replicated_data = {
+        ProcessingMode::NON_LEADER,
+        *operation_state.request(),
+        operation_state.op_id(),
+        operation_state.hybrid_time()
+    };
+    return transaction_coordinator->ProcessReplicated(replicated_data);
+  }
 }
 
 void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {

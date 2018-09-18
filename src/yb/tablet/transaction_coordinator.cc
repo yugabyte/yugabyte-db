@@ -41,7 +41,6 @@
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
 #include "yb/tserver/service_util.h"
@@ -63,8 +62,6 @@ DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0 * yb::kTimeMultipli
               "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
               "fractional.");
 DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
-DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
-              "Probability to ignore APPLYING update in tests.");
 DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
 
@@ -561,9 +558,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
  public:
   Impl(const std::string& permanent_uuid,
        TransactionCoordinatorContext* context,
-       TransactionParticipant* transaction_participant,
        Counter* expired_metric)
-      : context_(*context), transaction_participant_(transaction_participant),
+      : context_(*context),
         expired_metric_(*expired_metric),
         log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
   }
@@ -647,19 +643,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       return std::move(id.status());
     }
 
-    // APPLY is handled separately, because it is received for transactions not managed by
-    // this tablet as a transaction status tablet, but tablets that are involved in the data
-    // path (receive write intents) for this transaction.
-    if (data.state.status() == TransactionStatus::APPLYING) {
-      // data.state.tablets contains only status tablet.
-      DCHECK_EQ(data.state.tablets_size(), 1);
-      DCHECK(transaction_participant_);
-      HybridTime commit_time(data.state.commit_hybrid_time());
-      return transaction_participant_->ProcessApply(
-          { data.mode, *id, data.op_id, commit_time, data.hybrid_time,
-            data.state.tablets(0) });
-    }
-
     PostponedLeaderActions actions;
     Status result;
     {
@@ -729,25 +712,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (!id.ok()) {
       LOG(WARNING) << "Failed to decode id from " << state.ShortDebugString() << ": " << id;
       request->completion_callback()->CompleteWithStatus(id.status());
-      return;
-    }
-
-    if (state.status() == TransactionStatus::APPLYING) {
-      if (RandomActWithProbability(GetAtomicFlag(
-          &FLAGS_transaction_ignore_applying_probability_in_tests))) {
-        request->completion_callback()->CompleteWithStatus(Status::OK());
-        return;
-      }
-      context_.SubmitUpdateTransaction(std::move(request));
-      return;
-    }
-
-    if (state.status() == TransactionStatus::CLEANUP) {
-      HybridTime commit_time(state.commit_hybrid_time());
-      TransactionApplyData data = {
-          ProcessingMode::LEADER, *id, request->op_id(), commit_time, commit_time, std::string()};
-      Status status = transaction_participant_->ProcessCleanup(data);
-      request->completion_callback()->CompleteWithStatus(Status::OK());
       return;
     }
 
@@ -958,7 +922,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   TransactionCoordinatorContext& context_;
-  TransactionParticipant* transaction_participant_;
   Counter& expired_metric_;
   const std::string log_prefix_;
 
@@ -978,9 +941,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
 TransactionCoordinator::TransactionCoordinator(const std::string& permanent_uuid,
                                                TransactionCoordinatorContext* context,
-                                               TransactionParticipant* transaction_participant,
                                                Counter* expired_metric)
-    : impl_(new Impl(permanent_uuid, context, transaction_participant, expired_metric)) {
+    : impl_(new Impl(permanent_uuid, context, expired_metric)) {
 }
 
 TransactionCoordinator::~TransactionCoordinator() {

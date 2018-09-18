@@ -202,6 +202,11 @@ struct TransactionMetadata {
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
   void ToPB(TransactionMetadataPB* dest) const;
+
+  std::string ToString() const {
+    return Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 }",
+                  transaction_id, isolation, status_tablet, priority);
+  }
 };
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);

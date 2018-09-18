@@ -63,6 +63,8 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/tablet_options.h"
@@ -519,6 +521,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
   // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
   CHECKED_STATUS SetFlushedFrontier(const docdb::ConsensusFrontier& value);
+
+  std::string LogPrefix() const;
 
   // Lock protecting schema_ and key_schema_.
   //

@@ -247,7 +247,8 @@ class QLTransactionTest : public KeyValueTableTest {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
-        if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+        if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+            peer->tablet()->transaction_coordinator()) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
         }
       }
@@ -284,11 +285,12 @@ class QLTransactionTest : public KeyValueTableTest {
                 return participant->TEST_GetNumRunningTransactions() == 0;
               },
               deadline,
-              "Wait empty running transactions");
+              "Wait until no transactions are running");
           if (!status.ok()) {
             LOG(ERROR) << Format(
-                "Server: $0, tablet: $1",
-                server->permanent_uuid(), peer->tablet()->tablet_id());
+                "Server: $0, tablet: $1, transactions: $2",
+                server->permanent_uuid(), peer->tablet()->tablet_id(),
+                participant->TEST_GetNumRunningTransactions());
             has_bad = true;
           }
         }
@@ -1403,6 +1405,7 @@ TEST_F(QLTransactionTest, ChangeLeader) {
       for (const auto& peer : peers) {
         if (peer->consensus() &&
             peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+            peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
           req.set_tablet_id(peer->tablet_id());
@@ -1488,7 +1491,7 @@ TEST_F(QLTransactionTest, FlushIntents) {
 
   VerifyData(2);
 
-  ASSERT_OK(cluster_->FlushTablets(tablet::FlushFlags::kIntents));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
   cluster_->Shutdown();
   ASSERT_OK(cluster_->StartSync());
 

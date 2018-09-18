@@ -80,7 +80,9 @@ class MiniTabletServer {
   CHECKED_STATUS WaitStarted();
 
   void Shutdown();
-  CHECKED_STATUS FlushTablets(tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+  CHECKED_STATUS FlushTablets(
+      tablet::FlushMode mode = tablet::FlushMode::kSync,
+      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

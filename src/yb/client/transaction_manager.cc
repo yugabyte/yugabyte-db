@@ -132,7 +132,7 @@ class PickStatusTabletTask {
         if (status.ok()) {
           std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
           table_creator->num_tablets(tablets);
-          table_creator->table_type(client::YBTableType::REDIS_TABLE_TYPE);
+          table_creator->table_type(client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
           table_creator->table_name(kTransactionTableName);
           status = table_creator->Create();
           LOG_IF(DFATAL, !status.ok() && !status.IsAlreadyPresent())
