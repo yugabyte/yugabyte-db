@@ -3547,19 +3547,20 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
         }
       }
     } else {
+      // ALL permissions.
       // TODO (Bristy) : Add different permissions for different resources based on role names.
       // For REVOKE ALL we clear all the permissions and do nothing else.
       current_resource->clear_permissions();
 
       if (!req->revoke()) {
-        std::vector<PermissionType> all_permissions(7);
-        all_permissions = {PermissionType::ALTER_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
-                           PermissionType::CREATE_PERMISSION, PermissionType::MODIFY_PERMISSION,
-                           PermissionType::DROP_PERMISSION, PermissionType::SELECT_PERMISSION,
-                           PermissionType::AUTHORIZE_PERMISSION};
-
-        for (int i = 0; i < all_permissions.size(); i++) {
-          current_resource->add_permissions(all_permissions[i]);
+        for (const auto& permission : all_permissions_) {
+          if (permission == PermissionType::DESCRIBE_PERMISSION &&
+              req->resource_type() != ResourceType::ROLE &&
+              req->resource_type() != ResourceType::ALL_ROLES) {
+            // Describe permission should only be granted to the role resource.
+            continue;
+          }
+          current_resource->add_permissions(permission);
         }
       }
     }
