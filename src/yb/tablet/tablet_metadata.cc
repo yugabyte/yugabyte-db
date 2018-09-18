@@ -525,6 +525,10 @@ Status TabletMetadata::ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) co
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager_->env(), path, superblock),
       Substitute("Could not load tablet metadata from $0", path));
+  if (superblock->table_type() == TableType::REDIS_TABLE_TYPE &&
+      superblock->table_name() == "transactions") {
+    superblock->set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  }
   return Status::OK();
 }
 

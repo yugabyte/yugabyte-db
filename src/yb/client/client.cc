@@ -214,11 +214,14 @@ static TableType ClientToPBTableType(YBTableType table_type) {
       return TableType::REDIS_TABLE_TYPE;
     case YBTableType::PGSQL_TABLE_TYPE:
       return TableType::PGSQL_TABLE_TYPE;
-    default:
-      LOG(FATAL) << "Unknown value for YBTableType: " << table_type;
-      // Returns a dummy value to avoid compilation warning.
-      return TableType::DEFAULT_TABLE_TYPE;
+    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return TableType::TRANSACTION_STATUS_TABLE_TYPE;
+    case YBTableType::UNKNOWN_TABLE_TYPE:
+      break;
   }
+  FATAL_INVALID_ENUM_VALUE(YBTableType, table_type);
+  // Returns a dummy value to avoid compilation warning.
+  return TableType::DEFAULT_TABLE_TYPE;
 }
 
 void InitLogging() {
@@ -1215,7 +1218,10 @@ Status YBTableCreator::Create() {
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
   // and manage its memory withing here.
   std::unique_ptr<YBSchema> redis_schema;
-  if (data_->table_type_ == TableType::REDIS_TABLE_TYPE) {
+  // We create dummy schema for transaction status table, redis schema is quite lightweight for
+  // this purpose.
+  if (data_->table_type_ == TableType::REDIS_TABLE_TYPE ||
+      data_->table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
     redis_schema.reset(new YBSchema());
     YBSchemaBuilder b;

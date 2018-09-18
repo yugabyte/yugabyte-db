@@ -59,6 +59,8 @@
 
 #include "yb/rocksdb/db/memtable.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -626,16 +628,19 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   int64_t last_committed_write_index = tablet_->last_committed_write_index();
-  auto max_persistent_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
-  int64_t max_persistent_index = max_persistent_op_id.regular.index;
-  if (max_persistent_op_id.intents && max_persistent_op_id.intents < max_persistent_op_id.regular) {
-    max_persistent_index = max_persistent_op_id.intents.index;
-  }
-  // Check whether we had writes after last persistent entry.
-  // Note that last_committed_write_index could be zero if logs were cleaned before restart.
-  // So correct check is 'less', and NOT 'not equals to'.
-  if (max_persistent_index < last_committed_write_index) {
-    *min_index = std::min(*min_index, max_persistent_index);
+  if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    auto max_persistent_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+    int64_t max_persistent_index = max_persistent_op_id.regular.index;
+    if (max_persistent_op_id.intents
+        && max_persistent_op_id.intents < max_persistent_op_id.regular) {
+      max_persistent_index = max_persistent_op_id.intents.index;
+    }
+    // Check whether we had writes after last persistent entry.
+    // Note that last_committed_write_index could be zero if logs were cleaned before restart.
+    // So correct check is 'less', and NOT 'not equals to'.
+    if (max_persistent_index < last_committed_write_index) {
+      *min_index = std::min(*min_index, max_persistent_index);
+    }
   }
 
   // We keep at least one committed operation in the log so that we can always recover safe time

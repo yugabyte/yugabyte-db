@@ -891,26 +891,5 @@ TEST_F(TabletServerTest, TestChecksumScan) {
   ASSERT_EQ(first_crc, resp.checksum());
 }
 
-class DelayFsyncLogHook : public log::Log::LogFaultHooks {
- public:
-  DelayFsyncLogHook() : log_latch1_(1), test_latch1_(1) {}
-
-  Status PostAppend() override {
-    test_latch1_.CountDown();
-    log_latch1_.Wait();
-    log_latch1_.Reset(1);
-    return Status::OK();
-  }
-
-  void Continue() {
-    test_latch1_.Wait();
-    log_latch1_.CountDown();
-  }
-
- private:
-  CountDownLatch log_latch1_;
-  CountDownLatch test_latch1_;
-};
-
 } // namespace tserver
 } // namespace yb

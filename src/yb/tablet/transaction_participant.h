@@ -49,9 +49,16 @@ namespace yb {
 class HybridTime;
 class TransactionMetadataPB;
 
+namespace tserver {
+
+class TransactionStatePB;
+
+}
+
 namespace tablet {
 
 class TransactionIntentApplier;
+class UpdateTxnOperationState;
 
 struct TransactionApplyData {
   ProcessingMode mode;
@@ -85,6 +92,7 @@ class TransactionParticipantContext {
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
+  virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) = 0;
 
  protected:
   ~TransactionParticipantContext() {}
@@ -114,11 +122,22 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
-  void Cleanup(TransactionIdSet &&set) override;
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
+
+  void Cleanup(TransactionIdSet&& set) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 
-  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data);
+  // Used to pass arguments to ProcessReplicated.
+  struct ReplicatedData {
+    ProcessingMode mode;
+    const tserver::TransactionStatePB& state;
+    const consensus::OpId& op_id;
+    HybridTime hybrid_time;
+    bool already_applied;
+  };
+
+  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(rocksdb::DB* db);
 

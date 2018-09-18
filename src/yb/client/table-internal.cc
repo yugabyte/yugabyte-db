@@ -68,11 +68,14 @@ static Status PBToClientTableType(
     case TableType::PGSQL_TABLE_TYPE:
       *client_table_type = YBTableType::PGSQL_TABLE_TYPE;
       return Status::OK();
-    default:
-      *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
-      return STATUS(InvalidArgument, strings::Substitute(
-        "Invalid table type from master response: $0", table_type_from_pb));
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      *client_table_type = YBTableType::TRANSACTION_STATUS_TABLE_TYPE;
+      return Status::OK();
   }
+
+  *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
+  return STATUS(InvalidArgument, strings::Substitute(
+    "Invalid table type from master response: $0", table_type_from_pb));
 }
 
 YBTable::Data::Data(shared_ptr<YBClient> client, Info info)

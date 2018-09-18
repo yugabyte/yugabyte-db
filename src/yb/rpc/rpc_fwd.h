@@ -59,6 +59,7 @@ class RpcController;
 class RpcService;
 class Rpcs;
 class Protocol;
+class Scheduler;
 class ServicePoolImpl;
 class Stream;
 class ThreadPool;

@@ -54,7 +54,6 @@ class TransactionStatePB;
 namespace tablet {
 
 class TransactionIntentApplier;
-class TransactionParticipant;
 class UpdateTxnOperationState;
 
 // Get current transaction timeout.
@@ -92,14 +91,12 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         TransactionParticipant* transaction_participant,
                          Counter* expired_metric);
   ~TransactionCoordinator();
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     ProcessingMode mode;
-    TransactionIntentApplier* applier;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;

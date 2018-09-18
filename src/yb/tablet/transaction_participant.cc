@@ -37,11 +37,14 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/tablet.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
 
@@ -50,6 +53,8 @@ using namespace std::placeholders;
 
 DEFINE_uint64(transaction_delay_status_reply_usec_in_tests, 0,
               "For tests only. Delay handling status reply by specified amount of usec.");
+DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
+              "Probability to ignore APPLYING update in tests.");
 
 namespace yb {
 namespace tablet {
@@ -381,6 +386,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
             &req,
             std::bind(&RunningTransaction::AbortReceived, this, _1, _2, shared_from_this())),
         &abort_handle_);
+  }
+
+  std::string ToString() const {
+    return metadata_.ToString();
   }
 
  private:
@@ -756,6 +765,67 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     lock_and_iterator.transaction().Abort(client(), std::move(callback), &lock_and_iterator.lock);
   }
 
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state) {
+    if (state->request()->status() == TransactionStatus::APPLYING) {
+      if (RandomActWithProbability(GetAtomicFlag(
+          &FLAGS_transaction_ignore_applying_probability_in_tests))) {
+        state->completion_callback()->CompleteWithStatus(Status::OK());
+        return;
+      }
+      participant_context_.SubmitUpdateTransaction(std::move(state));
+      return;
+    }
+
+    if (state->request()->status() == TransactionStatus::CLEANUP) {
+      auto id = FullyDecodeTransactionId(state->request()->transaction_id());
+      if (!id.ok()) {
+        state->completion_callback()->CompleteWithStatus(id.status());
+        return;
+      }
+      TransactionApplyData data = {
+          ProcessingMode::LEADER, *id, consensus::OpId(), HybridTime(), HybridTime(),
+          std::string() };
+      WARN_NOT_OK(ProcessCleanup(data, false /* force_remove */),
+                  "Process cleanup failed");
+      state->completion_callback()->CompleteWithStatus(Status::OK());
+      return;
+    }
+
+    auto status = STATUS_FORMAT(
+        InvalidArgument, "Unexpected status in transaction participant Handle: $0", *state);
+    LOG(DFATAL) << status;
+    state->completion_callback()->CompleteWithStatus(status);
+  }
+
+  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+    if (data.state.status() == TransactionStatus::APPLYING) {
+      auto id = FullyDecodeTransactionId(data.state.transaction_id());
+      if (!id.ok()) {
+        return id.status();
+      }
+      // data.state.tablets contains only status tablet.
+      if (data.state.tablets_size() != 1) {
+        return STATUS_FORMAT(InvalidArgument,
+                             "Expected only one table during APPLYING, state received: $0",
+                             data.state);
+      }
+      HybridTime commit_time(data.state.commit_hybrid_time());
+      TransactionApplyData apply_data = {
+          data.mode, *id, data.op_id, commit_time, data.hybrid_time, data.state.tablets(0) };
+      if (!data.already_applied) {
+        return ProcessApply(apply_data);
+      } else {
+        return ProcessCleanup(apply_data, true /* force_remove */);
+      }
+    }
+
+    auto status = STATUS_FORMAT(
+        InvalidArgument, "Unexpected status in transaction participant ProcessReplicated: $0, $1",
+        data.op_id, data.state);
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   void Cleanup(TransactionIdSet&& set,
                TransactionParticipant* transactionParticipant) {
     std::shared_ptr<CleanupAbortsTask> cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
@@ -776,9 +846,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
         NotifyApplied(data);
         return Status::OK();
-      } else {
-        lock_and_iterator.transaction().SetLocalCommitTime(data.commit_ht);
       }
+
+      lock_and_iterator.transaction().SetLocalCommitTime(data.commit_ht);
     }
 
     CHECK_OK(applier_.ApplyIntents(data));
@@ -822,16 +892,19 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
   }
 
-  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data) {
+  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data, bool force_remove) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(data.transaction_id);
       if (it == transactions_.end()) {
-        return Status::OK();
-      }
-      if (!RemoveUnlocked(it)) {
-        VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
-                            << data.transaction_id;
+        if (!force_remove) {
+          return Status::OK();
+        }
+      } else {
+        if (!RemoveUnlocked(it)) {
+          VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue : "
+                              << data.transaction_id;
+        }
       }
     }
 
@@ -852,6 +925,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   size_t TEST_GetNumRunningTransactions() {
     std::lock_guard<std::mutex> lock(mutex_);
+    VLOG(4) << "Transactions: " << yb::ToString(transactions_);
     return transactions_.size();
   }
 
@@ -1063,6 +1137,10 @@ void TransactionParticipant::Abort(const TransactionId& id,
   return impl_->Abort(id, std::move(callback));
 }
 
+void TransactionParticipant::Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  impl_->Handle(std::move(request));
+}
+
 void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
 }
@@ -1071,8 +1149,8 @@ CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& 
   return impl_->ProcessApply(data);
 }
 
-CHECKED_STATUS TransactionParticipant::ProcessCleanup(const TransactionApplyData& data) {
-  return impl_->ProcessCleanup(data);
+Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {
+  return impl_->ProcessReplicated(data);
 }
 
 void TransactionParticipant::SetDB(rocksdb::DB* db) {
