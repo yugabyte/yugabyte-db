@@ -68,7 +68,6 @@ struct RpcServerOptions;
 namespace master {
 
 class CatalogManager;
-class TSDescriptor;
 class TSManager;
 class MasterPathHandlers;
 class FlushManager;
@@ -149,9 +148,6 @@ class Master : public server::RpcAndWebServerBase {
 
   // Returns the number of system tables (used only for testing currently).
   size_t NumSystemTables() const;
-
-  // Called by MasterService on every TS heartbeat.
-  virtual void OnTSHeartbeat(const std::vector<std::shared_ptr<TSDescriptor>>& live_tservers) {}
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
