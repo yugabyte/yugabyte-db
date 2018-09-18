@@ -87,7 +87,6 @@ class Builder:
             ]
 
         self.dependencies += [
-            build_definitions.aws_sdk_cpp.AwsSdkCppDependency(),
             build_definitions.protobuf.ProtobufDependency(),
             build_definitions.crypt_blowfish.CryptBlowfishDependency(),
             build_definitions.tacopie.TacopieDependency(),
