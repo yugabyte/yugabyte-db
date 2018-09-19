@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include <errno.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -72,6 +73,10 @@ PG_FUNCTION_INFO_V1(utl_file_tmpdir);
 		(errcode(ERRCODE_RAISE_EXCEPTION), \
 		 errmsg("%s", msg), \
 		 errdetail("%s", detail)))
+
+#define STRERROR_EXCEPTION(msg) \
+	do { char *strerr = strerror(errno); CUSTOM_EXCEPTION(msg, strerr); } while(0);
+
 
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "Used file handle isn't valid.")
 
@@ -181,11 +186,11 @@ IO_EXCEPTION(void)
 		case ENAMETOOLONG:
 		case ENOENT:
 		case ENOTDIR:
-			CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
+			STRERROR_EXCEPTION(INVALID_PATH);
 			break;
 
 		default:
-			CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
+			STRERROR_EXCEPTION(INVALID_OPERATION);
 	}
 }
 
@@ -400,7 +405,7 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 				break;
 
 			default:
-				CUSTOM_EXCEPTION(READ_ERROR, strerror(errno));
+				STRERROR_EXCEPTION(READ_ERROR);
 				break;
 		}
 
@@ -503,7 +508,7 @@ do_flush(FILE *f)
 		if (errno == EBADF)
 			CUSTOM_EXCEPTION(INVALID_OPERATION, "File is not an opened, or is not open for writing");
 		else
-			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+			STRERROR_EXCEPTION(WRITE_ERROR);
 	}
 }
 
@@ -527,7 +532,7 @@ do_flush(FILE *f)
 			CUSTOM_EXCEPTION(INVALID_OPERATION, "file descriptor isn't valid for writing"); \
 			break; \
 		default: \
-			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno)); \
+			STRERROR_EXCEPTION(WRITE_ERROR); \
 	}
 
 /* encode(t, encoding) */
@@ -798,7 +803,7 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 				if (errno == EBADF)
 					CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File is not an opened");
 				else
-					CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+					STRERROR_EXCEPTION(WRITE_ERROR);
 			}
 			slots[i].file = NULL;
 			slots[i].id = INVALID_SLOTID;
@@ -839,7 +844,7 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
 				if (errno == EBADF)
 					CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File is not an opened");
 				else
-					CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+					STRERROR_EXCEPTION(WRITE_ERROR);
 			}
 			slots[i].file = NULL;
 			slots[i].id = INVALID_SLOTID;
