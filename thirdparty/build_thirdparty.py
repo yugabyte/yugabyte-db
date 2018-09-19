@@ -305,7 +305,7 @@ class Builder:
         if hasattr(dep, 'extra_downloads'):
             for extra in dep.extra_downloads:
                 archive_path = os.path.join(self.tp_download_dir, extra.archive_name)
-                log("Fetching extra url: {}".format(extra.archive_name))
+                log("Downloading {} from {}".format(extra.archive_name, extra.download_url))
                 self.ensure_file_downloaded(extra.download_url, archive_path)
                 output_path = os.path.join(src_path, extra.dir)
                 self.extract_archive(archive_path, output_path)
@@ -353,22 +353,31 @@ class Builder:
         self.filename2checksum = {}
         with open(checksum_file, 'rt') as inp:
             for line in inp:
-                sum, fname = line.strip().split(None, 1)
+                line = line.strip()
+                if not line:
+                    continue
+                sum, fname = line.split(None, 1)
                 if not re.match('^[0-9a-f]{64}$', sum):
                     fatal("Invalid checksum: '{}' for archive name: '{}' in {}. Expected to be a "
                                   "SHA-256 sum (64 hex characters)."
                                   .format(sum, fname, checksum_file))
                 self.filename2checksum[fname] = sum
 
-    def ensure_file_downloaded(self, url, path):
-        filename = os.path.basename(path)
+    def get_expected_checksum(self, filename):
         if filename not in self.filename2checksum:
             fatal("No expected checksum provided for {}".format(filename))
+        return self.filename2checksum[filename]
+
+    def ensure_file_downloaded(self, url, path):
+        filename = os.path.basename(path)
 
         mkdir_if_missing(self.tp_download_dir)
 
-        expected_checksum = self.filename2checksum[filename]
         if os.path.exists(path):
+            # We check the filename against our checksum map only if the file exists. This is done
+            # so that we would still download the file even if we don't know the checksum, making it
+            # easier to add new third-party dependencies.
+            expected_checksum = self.get_expected_checksum(filename)
             if self.verify_checksum(path, expected_checksum):
                 log("No need to re-download {}: checksum already correct".format(filename))
                 return
@@ -383,6 +392,9 @@ class Builder:
             subprocess.check_call([self.curl_path, '-o', path, '--location', url])
         if not os.path.exists(path):
             fatal("Downloaded '{}' but but unable to find '{}'".format(url, path))
+        if filename not in self.filename2checksum:
+            fatal("No expected checksum provided for {}".format(filename))
+        expected_checksum = self.get_expected_checksum(filename)
         if not self.verify_checksum(path, expected_checksum):
             fatal("File '{}' has wrong checksum after downloading from '{}'. "
                           "Has {}, but expected: {}"
