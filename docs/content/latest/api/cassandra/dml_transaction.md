@@ -2,7 +2,6 @@
 title: TRANSACTION
 summary: Make changes to multiple rows in a transaction
 description: TRANSACTION
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: api-cassandra

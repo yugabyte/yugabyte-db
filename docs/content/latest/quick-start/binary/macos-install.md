@@ -11,19 +11,18 @@ $ python --version
 Python 2.7.10
 ```
 
-c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc are 1048576. Edit
-/etc/sysctl.conf on High Sierra if necessary
+c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc are 1048576. Edit `/etc/sysctl.conf` on High Sierra if necessary.
 
 ## Download
 
 Download the YugaByte DB CE package as shown below.
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.7.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.1.0.0-darwin.tar.gz
 ```
 
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-1.0.7.0-darwin.tar.gz && cd yugabyte-1.0.7.0/
+$ tar xvfz yugabyte-ce-1.1.0.0-darwin.tar.gz && cd yugabyte-1.1.0.0/
 ```
 
 ## Configure
