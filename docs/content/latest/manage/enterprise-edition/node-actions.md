@@ -1,7 +1,7 @@
 ---
-title: Node Status and Actions
-linkTitle: Node Status and Actions
-description: Node Status and Actions
+title: Node Status & Actions
+linkTitle: Node Status & Actions
+description: Node Status & Actions
 aliases:
   - /manage/enterprise-edition/node-actions/
 menu:
