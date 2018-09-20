@@ -19,6 +19,8 @@
 
 namespace yb {
 
+const std::string kTransactionsTableName = "transactions";
+
 namespace {
 
 // Makes transaction id from its binary representation.
