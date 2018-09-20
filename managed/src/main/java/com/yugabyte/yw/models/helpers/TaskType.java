@@ -31,6 +31,8 @@ public enum TaskType {
 
   EditUniverse("EditUniverse"),
 
+  EditKubernetesUniverse("EditKubernetesUniverse"),
+
   ImportIntoTable("ImportIntoTable"),
 
   UpgradeUniverse("UpgradeUniverse"),
@@ -121,7 +123,9 @@ public enum TaskType {
   
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
-  KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor");
+  KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),
+
+  KubernetesWaitForPod("subtasks.KubernetesWaitForPod");
 
   private String relativeClassPath;
 

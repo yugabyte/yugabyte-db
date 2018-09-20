@@ -271,9 +271,14 @@ public class UniverseController extends AuthenticatedController {
       }
       updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
 
+      TaskType taskType = TaskType.EditUniverse;
+      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+        taskType = TaskType.EditKubernetesUniverse;
+      }
+
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
-      UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
                universe.universeUUID, universe.name, taskUUID);
 
