@@ -247,7 +247,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     imageInfo.put("tag", userIntent.ybSoftwareVersion);
     if (config.containsKey("KUBECONFIG_IMAGE_REGISTRY")) {
       imageInfo.put("repository", config.get("KUBECONFIG_IMAGE_REGISTRY"));
-      imageInfo.put("tag", "latest");
     }
     if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
       imageInfo.put("pullSecretName", config.get("KUBECONFIG_IMAGE_PULL_SECRET_NAME"));

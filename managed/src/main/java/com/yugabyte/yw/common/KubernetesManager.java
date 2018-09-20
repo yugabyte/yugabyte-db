@@ -45,6 +45,14 @@ public class KubernetesManager {
     }
     List<String> commandList = ImmutableList.of("helm",  "init",
         "--service-account",  config.get("KUBECONFIG_SERVICE_ACCOUNT"), "--upgrade", "--wait");
+    if (config.containsKey("KUBECONFIG_NAMESPACE")) {
+      if (config.get("KUBECONFIG_NAMESPACE") != null) {
+        String namespace = config.get("KUBECONFIG_NAMESPACE");
+        commandList = ImmutableList.of("helm",  "init",
+            "--service-account",  config.get("KUBECONFIG_SERVICE_ACCOUNT"), "--tiller-namespace", namespace,
+            "--upgrade", "--wait");
+      }
+    }
     return execCommand(providerUUID, commandList);
   }
 
@@ -53,8 +61,18 @@ public class KubernetesManager {
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
       throw new RuntimeException("Helm Package path not provided.");
     }
+    Provider provider = Provider.get(providerUUID);
+    Map<String, String> config = provider.getConfig();
     List<String> commandList = ImmutableList.of("helm",  "install",
         helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile, "--wait");
+    if (config.containsKey("KUBECONFIG_NAMESPACE")) {
+      if (config.get("KUBECONFIG_NAMESPACE") != null) {
+        String namespace = config.get("KUBECONFIG_NAMESPACE");
+        commandList = ImmutableList.of("helm",  "install",
+            helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile,
+            "--tiller-namespace", namespace, "--wait");
+      }
+    }
     return execCommand(providerUUID, commandList);
   }
 

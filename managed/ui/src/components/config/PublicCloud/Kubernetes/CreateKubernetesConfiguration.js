@@ -52,6 +52,7 @@ class CreateKubernetesConfiguration extends Component {
         "KUBECONFIG_NAME": kubeConfigFile.name,
         "KUBECONFIG_PROVIDER": self.props.type,
         "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount,
+        "KUBECONFIG_NAMESPACE": vals.namespace,
         "KUBECONFIG_IMAGE_REGISTRY": vals.imageRegistry,
         "KUBECONFIG_IMAGE_PULL_SECRET_NAME": vals.imagePullSecretName,
         "KUBECONFIG_PULL_SECRET_NAME": pullSecretFile && pullSecretFile.name,
@@ -150,6 +151,19 @@ class CreateKubernetesConfiguration extends Component {
                                className={"kube-provider-input-field"}/>
                       </Col>
                     </Row>
+
+                    <Row className="config-provider-row">
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Namespace</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field name="namespace" placeHolder="Optional Yugaware Namespace"
+                               component={YBTextInputWithLabel}
+                               insetError={true}
+                               className={"kube-provider-input-field"}/>
+                      </Col>
+                    </Row>
+
                     <Row className="config-provider-row">
                       <Col lg={3}>
                         <div className="form-item-custom-label">Region</div>
