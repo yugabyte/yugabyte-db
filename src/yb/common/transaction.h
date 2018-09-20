@@ -219,6 +219,8 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 
 MonoTime TransactionRpcDeadline();
 
+extern const std::string kTransactionsTableName;
+
 } // namespace yb
 
 #endif // YB_COMMON_TRANSACTION_H

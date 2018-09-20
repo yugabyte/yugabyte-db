@@ -24,6 +24,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/transaction.h"
+
 DEFINE_uint64(transaction_table_num_tablets, 24,
               "Automatically create transaction table with specified number of tablets if missing. "
               "0 to disable.");
@@ -33,7 +35,7 @@ namespace client {
 
 namespace {
 
-const YBTableName kTransactionTableName("system", "transactions");
+const YBTableName kTransactionTableName("system", yb::kTransactionsTableName);
 
 // Idle - initial state, don't know actual state of table.
 // Exists - table exists.

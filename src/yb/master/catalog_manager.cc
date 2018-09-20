@@ -274,7 +274,12 @@ class TableLoader : public Visitor<PersistentTableInfo> {
     // Setup the table info.
     TableInfo *table = new TableInfo(table_id);
     auto l = table->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
+    auto& pb = l->mutable_data()->pb;
+    pb.CopyFrom(metadata);
+
+    if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kTransactionsTableName) {
+      pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+    }
 
     // Add the table to the IDs map and to the name map (if the table is not deleted).
     catalog_manager_->table_ids_map_[table->id()] = table;
