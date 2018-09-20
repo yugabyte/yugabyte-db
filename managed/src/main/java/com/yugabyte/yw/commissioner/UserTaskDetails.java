@@ -111,6 +111,9 @@ public class UserTaskDetails {
     // Install YugaByte helm chart.
     HelmInstall,
 
+    // Update number of nodes k8s
+    UpdateNumNodes,
+
     // Delete YugaByte helm chart.
     HelmDelete,
 
@@ -118,7 +121,10 @@ public class UserTaskDetails {
     KubernetesVolumeDelete,
 
     // Fetch the Kubernetes pod information.
-    KubernetesPodInfo
+    KubernetesPodInfo,
+
+    // Wait for Kubernetes pod deployment
+    KubernetesWaitForPod
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -256,6 +262,10 @@ public class UserTaskDetails {
       case KubernetesVolumeDelete:
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
+        break;
+      case KubernetesWaitForPod:
+        title = "Wait for Kubernetes pod to run";
+        description = "Wait for Kubernetes pod to run";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -41,6 +42,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     APPLY_SECRET,
     HELM_INIT,
     HELM_INSTALL,
+    UPDATE_NUM_NODES,
     HELM_DELETE,
     VOLUME_DELETE,
     POD_INFO;
@@ -55,6 +57,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.HelmInit.name();
         case HELM_INSTALL:
           return UserTaskDetails.SubTaskGroupType.HelmInstall.name();
+        case UPDATE_NUM_NODES:
+          return UserTaskDetails.SubTaskGroupType.UpdateNumNodes.name();  
         case HELM_DELETE:
           return UserTaskDetails.SubTaskGroupType.HelmDelete.name();
         case VOLUME_DELETE:
@@ -117,6 +121,12 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         String overridesFile = this.generateHelmOverride();
         kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
         break;
+      case UPDATE_NUM_NODES:
+        int numNodes = this.getNumNodes();
+        if (numNodes > 0) {
+          kubernetesManager.updateNumNodes(taskParams().providerUUID, taskParams().nodePrefix, numNodes);  
+        }
+        break;
       case HELM_DELETE:
         kubernetesManager.helmDelete(taskParams().providerUUID, taskParams().nodePrefix);
         break;
@@ -144,30 +154,29 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       pod.put("privateIP", statusNode.get("podIP").asText());
       pods.set(podSpec.path("hostname").asText(), pod);
     }
-
+    
     Universe.UniverseUpdater updater = universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      Set<NodeDetails> defaultNodes = universeDetails.nodeDetailsSet;
+      NodeDetails defaultNode = defaultNodes.iterator().next();
       Set<NodeDetails> nodeDetailsSet = new HashSet<>();
-      universeDetails.nodeDetailsSet.forEach(((NodeDetails nodeDetails) -> {
-        if (nodeDetails.isMaster) {
-          String masterPodName = nodeNameToPodName(nodeDetails.nodeName, true);
-          NodeDetails masterPod = nodeDetails.clone();
-          JsonNode pod = pods.get(masterPodName);
-          masterPod.nodeName = masterPodName;
-          masterPod.state = NodeDetails.NodeState.Live;
-          masterPod.cloudInfo.private_ip = pod.get("privateIP").asText();
-          masterPod.isTserver = false;
-          nodeDetailsSet.add(masterPod);
+      Iterator<Map.Entry<String, JsonNode>> iter = pods.fields();
+      while (iter.hasNext()) {
+        NodeDetails nodeDetail = defaultNode.clone();
+        Map.Entry<String, JsonNode> pod = iter.next();
+        String hostname = pod.getKey();
+        JsonNode podVals = pod.getValue();
+        if (hostname.contains("master")) {
+          nodeDetail.isTserver = false;
         }
-        NodeDetails tserverPod = nodeDetails.clone();
-        String tserverPodName = nodeNameToPodName(nodeDetails.nodeName, false);
-        JsonNode pod = pods.get(tserverPodName);
-        tserverPod.nodeName = tserverPodName;
-        tserverPod.cloudInfo.private_ip = pod.get("privateIP").asText();
-        tserverPod.state = NodeDetails.NodeState.Live;
-        tserverPod.isMaster = false;
-        nodeDetailsSet.add(tserverPod);
-      }));
+        else {
+          nodeDetail.isMaster = false;
+        }
+        nodeDetail.cloudInfo.private_ip = podVals.get("privateIP").asText();
+        nodeDetail.state = NodeDetails.NodeState.Live;
+        nodeDetail.nodeName = hostname;
+        nodeDetailsSet.add(nodeDetail);
+      }
       universeDetails.nodeDetailsSet = nodeDetailsSet;
       universe.setUniverseDetails(universeDetails);
     };
@@ -192,6 +201,17 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       }  
     }
     return null;
+  }
+
+  private int getNumNodes() {
+    Provider provider = Provider.get(taskParams().providerUUID);
+    if (provider != null) {
+      Universe u = Universe.get(taskParams().universeUUID);
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          u.getUniverseDetails().getPrimaryCluster().userIntent;
+      return userIntent.numNodes;
+    }
+    return -1;
   }
 
   private String generateHelmOverride() {

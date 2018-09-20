@@ -82,10 +82,22 @@ public class KubernetesManager {
     return execCommand(providerUUID, commandList);
   }
 
+  public ShellProcessHandler.ShellResponse getPodStatus(UUID providerUUID, String universePrefix, String podName) {
+    List<String> commandList = ImmutableList.of("kubectl",  "get", "pod", "--namespace", universePrefix,
+        "-o", "json", podName);
+    return execCommand(providerUUID, commandList);
+  }
+
   public ShellProcessHandler.ShellResponse getServiceIPs(UUID providerUUID, String universePrefix, boolean isMaster) {
     String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
     List<String> commandList = ImmutableList.of("kubectl",  "get", "svc", serviceName, "--namespace", universePrefix,
         "-o", "jsonpath=" + SERVICE_INFO_JSONPATH);
+    return execCommand(providerUUID, commandList);
+  }
+
+  public ShellProcessHandler.ShellResponse updateNumNodes(UUID providerUUID, String universePrefix, int numNodes) {
+    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "scale", "statefulset",
+        "yb-tserver", "--replicas=" + numNodes);
     return execCommand(providerUUID, commandList);
   }
 
