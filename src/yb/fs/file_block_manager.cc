@@ -244,6 +244,8 @@ class FileWritableBlock : public WritableBlock {
 
   Status FlushDataAsync() override;
 
+  Status Sync() override;
+
   size_t BytesAppended() const override;
 
   State state() const override;
@@ -333,6 +335,18 @@ Status FileWritableBlock::FlushDataAsync() {
   }
 
   state_ = FLUSHING;
+  return Status::OK();
+}
+
+Status FileWritableBlock::Sync() {
+  DCHECK(state_ == CLEAN || state_ == DIRTY || state_ == FLUSHING)
+      << "Invalid state: " << state_;
+  if (state_ == DIRTY) {
+    VLOG(3) << "Flushing block " << id();
+    RETURN_NOT_OK(writer_->Flush(WritableFile::FLUSH_SYNC));
+    state_ = CLEAN;
+  }
+
   return Status::OK();
 }
 
