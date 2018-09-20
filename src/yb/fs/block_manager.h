@@ -139,6 +139,7 @@ class WritableBlock : public Block {
   //
   // Data may not be written to the block after FlushDataAsync() is called.
   virtual CHECKED_STATUS FlushDataAsync() = 0;
+  virtual CHECKED_STATUS Sync() = 0;
 
   // Returns the number of bytes successfully appended via Append().
   virtual size_t BytesAppended() const = 0;
