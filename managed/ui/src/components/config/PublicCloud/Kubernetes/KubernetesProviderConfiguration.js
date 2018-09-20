@@ -20,7 +20,7 @@ class KubernetesProviderConfiguration extends Component {
   }
 
   toggleListView = (value) => {
-    if (isDefinedNotNull(value)) {
+    if (typeof(value) === typeof(true)) {
       this.setState({listView: value});
     } else {
       this.setState({listView: !this.state.listView});
