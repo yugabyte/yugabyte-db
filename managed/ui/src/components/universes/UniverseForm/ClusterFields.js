@@ -1061,10 +1061,38 @@ export default class ClusterFields extends Component {
             <Col md={12}>
               <h4>Instance Configuration</h4>
             </Col>
+          </Row>
+          <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.instanceType`} component={YBSelectWithLabel} label="Instance Type"
                        options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} readOnlySelect={isInstanceTypeReadOnly}/>
+              </div>
+            </Col>
+            <Col sm={12} md={12} lg={6}> 
+              {deviceDetail &&
+                <div className="form-right-aligned-labels">
+                  <div className="form-inline-controls">
+                    <div className="form-group universe-form-instance-info">
+                      <label className="form-item-label form-item-label-shrink">Volume Info</label>
+                      {deviceDetail}
+                    </div>
+                  </div>
+                  <div className="form-inline-controls">
+                    <div className="form-group universe-form-instance-info">
+                      {iopsField}
+                    </div>
+                  </div>
+                  <div className="form-inline-controls">
+                    <div className="form-group universe-form-instance-info">
+                      {ebsTypeSelector}
+                    </div>
+                  </div>
+                </div>
+              }
+            </Col>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
                 {spotPriceToggle}
                 {spotPriceField}
                 {assignPublicIP}
@@ -1072,26 +1100,6 @@ export default class ClusterFields extends Component {
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>
-            {deviceDetail &&
-            <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels form-inline-controls">
-                <div className="form-group universe-form-instance-info">
-                  <label className="form-item-label form-item-label-shrink">Volume Info</label>
-                  {deviceDetail}
-                </div>
-              </div>
-              <div className="form-right-aligned-labels form-inline-controls">
-                <div className="form-group universe-form-instance-info">
-                  {iopsField}
-                </div>
-              </div>
-              <div className="form-right-aligned-labels form-inline-controls">
-                <div className="form-group universe-form-instance-info">
-                  {ebsTypeSelector}
-                </div>
-              </div>
-            </Col>
-            }
           </Row>
         </div>
         <div className="form-section">
