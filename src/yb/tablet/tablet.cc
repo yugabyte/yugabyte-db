@@ -1337,7 +1337,7 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     }
 
     // If the current schema and the new one are equal, there is nothing to do.
-    if (same_schema) {
+    if (!same_schema) {
       return metadata_->Flush();
     }
   }
