@@ -272,7 +272,8 @@ public class UniverseController extends AuthenticatedController {
       updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
 
       TaskType taskType = TaskType.EditUniverse;
-      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+      if (primaryCluster != null &&
+          primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
         taskType = TaskType.EditKubernetesUniverse;
       }
 
