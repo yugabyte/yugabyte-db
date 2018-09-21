@@ -181,6 +181,7 @@
   .form-group-shrinked {
     label {
       min-width: 0;
+      white-space: nowrap;
       margin-left: 0 !important;
     }
   }
