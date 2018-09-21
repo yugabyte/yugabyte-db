@@ -68,10 +68,10 @@ class DataCenterConfiguration extends Component {
                 <AzureProviderConfigurationContainer />
               </Tab>
               <Tab eventKey="pks" title={pksTabContent} key="pks-tab" unmountOnExit={true}>
-                <KubernetesProviderConfigurationContainer type="pks" />
+                <KubernetesProviderConfigurationContainer type="pks" params={this.props.params} />
               </Tab>
               <Tab eventKey="gke" title={gkeTabContent} key="gke-tab" unmountOnExit={true}>
-                <KubernetesProviderConfigurationContainer type="gke" />
+                <KubernetesProviderConfigurationContainer type="gke" params={this.props.params} />
               </Tab>
               <Tab eventKey="onprem" title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
                 <OnPremConfigurationContainer params={this.props.params} />
