@@ -25,7 +25,7 @@ const mapDispatchToProps = (dispatch) => {
         if (response.payload.status === 200) {
           const providerUUID = response.payload.data.uuid;
           instanceTypes.forEach((instanceTypeData) => {
-            console.log(instanceTypeData);
+            // console.log(instanceTypeData); Ram's debug
             dispatch(createInstanceType("kubernetes", providerUUID, instanceTypeData)).then((response) => {
               dispatch(createInstanceTypeResponse(response.payload));
             });

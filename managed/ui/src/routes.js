@@ -78,6 +78,7 @@ export default (store) => {
         <Route path="/config" component={DataCenterConfiguration}>
           <Route path="/config/:tab" component={DataCenterConfiguration} />
           <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
+          <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts}/>
         <Route path="/help" component={Help}/>

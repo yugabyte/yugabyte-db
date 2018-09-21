@@ -25,14 +25,18 @@ export class YBTextInput extends Component {
       if (isFunction(onValueChanged)) {
         onValueChanged(event.target.value);
       }
-      self.props.input.onChange(event.target.value);
+      if(isDefinedNotNull(self.props.input) && isFunction(self.props.input.onChange)) {
+        self.props.input.onChange(event.target.value);
+      }
     }
 
     function onBlur(event) {
-      if (isFunction(normalizeOnBlur)) {
-        self.props.input.onBlur(normalizeOnBlur(event.target.value));
-      } else {
-        self.props.input.onBlur(event.target.value);
+      if(isDefinedNotNull(self.props.input) && isFunction(self.props.input.onBlur)) {
+        if (isFunction(normalizeOnBlur)) {
+          self.props.input.onBlur(normalizeOnBlur(event.target.value));
+        } else {
+          self.props.input.onBlur(event.target.value);
+        }
       }
     }
 
