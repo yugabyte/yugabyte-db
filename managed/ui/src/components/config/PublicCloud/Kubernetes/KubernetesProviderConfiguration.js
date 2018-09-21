@@ -28,7 +28,7 @@ class KubernetesProviderConfiguration extends Component {
   }
 
   render() {
-    const { providers, regions, type } = this.props;
+    const { providers, regions, type, params: {uuid} } = this.props;
 
     if (getPromiseState(providers).isLoading() ||
         getPromiseState(providers).isInit()) {
@@ -49,6 +49,8 @@ class KubernetesProviderConfiguration extends Component {
         "region": region.name,
         "zones": region.zones.map((zone) => zone.name).join(", "),
         "configPath": providerData.config['KUBECONFIG'],
+        "namespace": providerData.config['KUBECONFIG_NAMESPACE'],
+        "serviceAccount": providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],
         "type": providerTypeMetadata && providerTypeMetadata.name
       };
     }).filter(Boolean);
@@ -58,6 +60,7 @@ class KubernetesProviderConfiguration extends Component {
         <ListKubernetesConfigurations
           providers={configuredProviderData}
           onCreate={this.toggleListView}
+          activeProviderUUID={uuid}
           deleteProviderConfig={this.props.deleteProviderConfig}
           type={type} />
       );
