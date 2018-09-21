@@ -113,31 +113,30 @@ class AlterTableRandomized : public YBTest {
   shared_ptr<YBClient> client_;
 };
 
-struct RowState {
-  // We use this special value to denote NULL values.
-  // We ensure that we never insert or update to this value except in the case of NULLable columns.
-  static const int32_t kNullValue = 0xdeadbeef;
-  vector<pair<string, int32_t>> cols;
+typedef std::vector<std::pair<std::string, int32_t>> Row;
 
-  string ToString() const {
-    string ret = "{ ";
-    typedef pair<string, int32_t> entry;
-    bool first = true;
-    for (const entry& e : cols) {
-      if (!first) {
-        ret.append(", ");
-      }
-      first = false;
-      if (e.second == kNullValue) {
-        ret += "null";
-      } else {
-        SubstituteAndAppend(&ret, "int32:$0", e.second);
-      }
+// We use this special value to denote NULL values.
+// We ensure that we never insert or update to this value except in the case of NULLable columns.
+const int32_t kNullValue = 0xdeadbeef;
+
+std::string RowToString(const Row& row) {
+  string ret = "{ ";
+  bool first = true;
+  for (const auto& e : row) {
+    if (!first) {
+      ret.append(", ");
     }
-    ret += " }";
-    return ret;
+    first = false;
+    if (e.second == kNullValue) {
+      ret += "null";
+    } else {
+      SubstituteAndAppend(&ret, "int32:$0", e.second);
+    }
   }
-};
+  ret += " }";
+
+  return ret;
+}
 
 struct TableState {
   TableState() {
@@ -145,13 +144,9 @@ struct TableState {
     col_nullable_.push_back(false);
   }
 
-  ~TableState() {
-    STLDeleteValues(&rows_);
-  }
-
   void GenRandomRow(int32_t key, int32_t seed,
                     vector<pair<string, int32_t>>* row) {
-    if (seed == RowState::kNullValue) {
+    if (seed == kNullValue) {
       seed++;
     }
     row->clear();
@@ -159,7 +154,7 @@ struct TableState {
     for (int i = 1; i < col_names_.size(); i++) {
       int32_t val;
       if (col_nullable_[i] && seed % 2 == 1) {
-        val = RowState::kNullValue;
+        val = kNullValue;
       } else {
         val = seed;
       }
@@ -167,38 +162,32 @@ struct TableState {
     }
   }
 
-  bool Insert(const vector<pair<string, int32_t>>& data) {
+  bool Insert(const Row& data) {
     DCHECK_EQ("key", data[0].first);
     int32_t key = data[0].second;
-    if (ContainsKey(rows_, key)) return false;
 
-    auto r = new RowState;
-    r->cols = data;
-    rows_[key] = r;
-    return true;
+    return rows_.emplace(key, data).second;
   }
 
   bool Update(const vector<pair<string, int32_t>>& data) {
     DCHECK_EQ("key", data[0].first);
     int32_t key = data[0].second;
-    if (!ContainsKey(rows_, key)) return false;
+    auto it = rows_.find(key);
+    if (it == rows_.end()) return false;
 
-    RowState* r = rows_[key];
-    r->cols = data;
+    it->second = data;
     return true;
   }
 
   void Delete(int32_t row_key) {
-    RowState* r = EraseKeyReturnValuePtr(&rows_, row_key);
-    CHECK(r) << "row key " << row_key << " not found";
-    delete r;
+    CHECK(rows_.erase(row_key)) << "row key " << row_key << " not found";
   }
 
   void AddColumnWithDefault(const string& name, int32_t def, bool nullable) {
     col_names_.push_back(name);
     col_nullable_.push_back(nullable);
-    for (entry& e : rows_) {
-      e.second->cols.push_back(make_pair(name, def));
+    for (auto& e : rows_) {
+      e.second.emplace_back(name, def);
     }
   }
 
@@ -207,25 +196,22 @@ struct TableState {
     int index = col_it - col_names_.begin();
     col_names_.erase(col_it);
     col_nullable_.erase(col_nullable_.begin() + index);
-    for (entry& e : rows_) {
-      e.second->cols.erase(e.second->cols.begin() + index);
+    for (auto& e : rows_) {
+      e.second.erase(e.second.begin() + index);
     }
   }
 
   int32_t GetRandomRowKey(int32_t rand) {
     CHECK(!rows_.empty());
-    int idx = rand % rows_.size();
-    map<int32_t, RowState*>::const_iterator it = rows_.begin();
-    for (int i = 0; i < idx; i++) {
-      ++it;
-    }
+    auto it = rows_.begin();
+    std::advance(it, rand % rows_.size());
     return it->first;
   }
 
   void ToStrings(vector<string>* strs) {
     strs->clear();
-    for (const entry& e : rows_) {
-      strs->push_back(e.second->ToString());
+    for (const auto& e : rows_) {
+      strs->push_back(RowToString(e.second));
     }
   }
 
@@ -236,8 +222,7 @@ struct TableState {
   // Has the same length as col_names_.
   vector<bool> col_nullable_;
 
-  typedef pair<const int32_t, RowState*> entry;
-  map<int32_t, RowState*> rows_;
+  std::map<int32_t, Row> rows_;
 };
 
 struct MirrorTable {
@@ -259,22 +244,27 @@ struct MirrorTable {
   bool TryInsert(int32_t row_key, int32_t rand) {
     vector<pair<string, int32_t>> row;
     ts_.GenRandomRow(row_key, rand, &row);
-    Status s = DoRealOp(row, INSERT);
-    if (s.IsAlreadyPresent()) {
-      CHECK(!ts_.Insert(row)) << "real table said already-present, fake table succeeded";
+    return TryInsert(row);
+  }
+
+  bool TryInsert(const Row& row) {
+    if (!ts_.Insert(row)) {
       return false;
     }
+
+    Status s = DoRealOp(row, INSERT);
     CHECK_OK(s);
 
-    CHECK(ts_.Insert(row));
     return true;
   }
 
   void DeleteRandomRow(uint32_t rand) {
     if (ts_.rows_.empty()) return;
-    int32_t row_key = ts_.GetRandomRowKey(rand);
-    vector<pair<string, int32_t>> del;
-    del.push_back(make_pair("key", row_key));
+    DeleteRow(ts_.GetRandomRowKey(rand));
+  }
+
+  void DeleteRow(int32_t row_key) {
+    Row del = {{"key", row_key}};
     ts_.Delete(row_key);
     CHECK_OK(DoRealOp(del, DELETE));
   }
@@ -287,9 +277,9 @@ struct MirrorTable {
     update.push_back(make_pair("key", row_key));
     for (int i = 1; i < num_columns(); i++) {
       int32_t val = rand * i;
-      if (val == RowState::kNullValue) val++;
+      if (val == kNullValue) val++;
       if (ts_.col_nullable_[i] && val % 2 == 1) {
-        val = RowState::kNullValue;
+        val = kNullValue;
       }
       update.push_back(make_pair(ts_.col_names_[i], val));
     }
@@ -310,18 +300,19 @@ struct MirrorTable {
   }
 
   void AddAColumn(const string& name) {
-    int32_t default_value = random();
     bool nullable = random() % 2 == 1;
+    return AddAColumn(name, nullable);
+  }
 
+  void AddAColumn(const string& name, bool nullable) {
     // Add to the real table.
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
-    default_value = RowState::kNullValue;
     table_alterer->AddColumn(name)->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
 
     // Add to the mirror state.
-    ts_.AddColumnWithDefault(name, default_value, nullable);
+    ts_.AddColumnWithDefault(name, kNullValue, nullable);
   }
 
   void DropAColumn(const string& name) {
@@ -366,41 +357,48 @@ struct MirrorTable {
   };
 
   Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
+    auto deadline = MonoTime::Now() + 15s;
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeout(15s);
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    auto op = CreateOp(table, op_type);
-    auto* const req = op->mutable_request();
-    bool first = true;
-    auto schema = table->schema();
-    for (const auto& d : data) {
-      if (first) {
-        req->add_hashed_column_values()->mutable_value()->set_int32_value(d.second);
-        first = false;
-        continue;
-      }
-      auto column_value = req->add_column_values();
-      for (size_t i = 0; i < schema.num_columns(); ++i) {
-        if (schema.Column(i).name() == d.first) {
-          column_value->set_column_id(schema.ColumnId(i));
-          auto value = column_value->mutable_expr()->mutable_value();
-          if (d.second != RowState::kNullValue) {
-            value->set_int32_value(d.second);
+    for (;;) {
+      auto op = CreateOp(table, op_type);
+      auto* const req = op->mutable_request();
+      bool first = true;
+      auto schema = table->schema();
+      for (const auto& d : data) {
+        if (first) {
+          req->add_hashed_column_values()->mutable_value()->set_int32_value(d.second);
+          first = false;
+          continue;
+        }
+        auto column_value = req->add_column_values();
+        for (size_t i = 0; i < schema.num_columns(); ++i) {
+          if (schema.Column(i).name() == d.first) {
+            column_value->set_column_id(schema.ColumnId(i));
+            auto value = column_value->mutable_expr()->mutable_value();
+            if (d.second != kNullValue) {
+              value->set_int32_value(d.second);
+            }
+            break;
           }
-          break;
         }
       }
-    }
-    RETURN_NOT_OK(session->Apply(op));
-    Status s = session->Flush();
-    if (s.ok()) {
-      return s;
-    }
+      auto s = session->ApplyAndFlush(op);
+      if (s.ok()) {
+        if (op->response().status() == QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH &&
+            MonoTime::Now() < deadline) {
+          continue;
+        }
+        CHECK(op->succeeded()) << op->response().ShortDebugString();
+        return s;
+      }
 
-    client::CollectedErrors errors = session->GetPendingErrors();
-    CHECK_EQ(errors.size(), 1);
-    return errors[0]->status();
+      client::CollectedErrors errors = session->GetPendingErrors();
+      CHECK_EQ(errors.size(), 1);
+      return errors[0]->status();
+    }
   }
 
   shared_ptr<YBqlWriteOp> CreateOp(const shared_ptr<YBTable>& table, OpType op_type) {
@@ -476,6 +474,23 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
   // we also expect all of the replicas to agree with each other.
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+}
+
+TEST_F(AlterTableRandomized, AddDropRestart) {
+  MirrorTable t(client_);
+  ASSERT_OK(t.Create());
+
+  t.AddAColumn("value", true);
+  for (int key = 1; key != 20; ++key) {
+    LOG(INFO) << "================================================================================";
+    auto column = Format("c_$0", key);
+    t.AddAColumn(column, true);
+    t.TryInsert({{ "key", key }, { "value", 666 }, { column, 1111 }});
+    t.DropAColumn(column);
+    RestartTabletServer(0);
+    t.DeleteRow(key);
+    ASSERT_NO_FATALS(t.Verify());
+  }
 }
 
 }  // namespace yb
