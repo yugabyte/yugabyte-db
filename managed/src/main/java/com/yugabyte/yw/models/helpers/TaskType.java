@@ -37,6 +37,8 @@ public enum TaskType {
 
   UpgradeUniverse("UpgradeUniverse"),
 
+  UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
+
   DeleteNodeFromUniverse("DeleteNodeFromUniverse"),
 
   StopNodeInUniverse("StopNodeInUniverse"),
