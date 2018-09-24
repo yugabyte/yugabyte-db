@@ -124,7 +124,10 @@ public class UserTaskDetails {
     KubernetesPodInfo,
 
     // Wait for Kubernetes pod deployment
-    KubernetesWaitForPod
+    KubernetesWaitForPod,
+
+    // Upgrade existing helm chart.
+    HelmUpgrade
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -250,6 +253,10 @@ public class UserTaskDetails {
       case HelmInstall:
         title = "Kubernetes Helm Charts Install";
         description = "Install Kubernetes Helm Charts";
+        break;
+      case HelmUpgrade:
+        title = "Kubernetes Helm Charts Update";
+        description = "Update Kubernetes Helm Charts";
         break;
       case KubernetesPodInfo:
         title = "Fetch Kubernetes Pods Information";

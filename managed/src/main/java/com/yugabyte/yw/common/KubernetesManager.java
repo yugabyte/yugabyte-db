@@ -95,6 +95,17 @@ public class KubernetesManager {
     return execCommand(providerUUID, commandList);
   }
 
+  public ShellProcessHandler.ShellResponse helmUpgrade(UUID providerUUID, String universePrefix, String overridesFile) {
+    String helmPackagePath = appConfig.getString("yb.helm.package");
+    if (helmPackagePath == null || helmPackagePath.isEmpty()) {
+      throw new RuntimeException("Helm Package path not provided.");
+    }
+    List<String> commandList = ImmutableList.of("helm",  "upgrade",  "-f", overridesFile, "--namespace", universePrefix,
+        universePrefix, helmPackagePath,  "--wait");
+    LOG.info(String.join(" ", commandList));
+    return execCommand(providerUUID, commandList);
+  }
+
   public ShellProcessHandler.ShellResponse updateNumNodes(UUID providerUUID, String universePrefix, int numNodes) {
     List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "scale", "statefulset",
         "yb-tserver", "--replicas=" + numNodes);

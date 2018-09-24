@@ -42,6 +42,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     APPLY_SECRET,
     HELM_INIT,
     HELM_INSTALL,
+    HELM_UPGRADE,
     UPDATE_NUM_NODES,
     HELM_DELETE,
     VOLUME_DELETE,
@@ -57,6 +58,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.HelmInit.name();
         case HELM_INSTALL:
           return UserTaskDetails.SubTaskGroupType.HelmInstall.name();
+        case HELM_UPGRADE:
+          return UserTaskDetails.SubTaskGroupType.HelmUpgrade.name();
         case UPDATE_NUM_NODES:
           return UserTaskDetails.SubTaskGroupType.UpdateNumNodes.name();  
         case HELM_DELETE:
@@ -95,6 +98,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
+    public String ybSoftwareVersion = null;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -103,6 +107,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
   @Override
   public void run() {
+    String overridesFile;
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
@@ -118,8 +123,12 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         kubernetesManager.helmInit(taskParams().providerUUID);
         break;
       case HELM_INSTALL:
-        String overridesFile = this.generateHelmOverride();
+        overridesFile = this.generateHelmOverride();
         kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        break;
+      case HELM_UPGRADE:
+        overridesFile = this.generateHelmOverride();
+        kubernetesManager.helmUpgrade(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
@@ -168,9 +177,11 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         JsonNode podVals = pod.getValue();
         if (hostname.contains("master")) {
           nodeDetail.isTserver = false;
+          nodeDetail.isMaster = true;
         }
         else {
           nodeDetail.isMaster = false;
+          nodeDetail.isTserver = true;
         }
         nodeDetail.cloudInfo.private_ip = podVals.get("privateIP").asText();
         nodeDetail.state = NodeDetails.NodeState.Live;
@@ -264,7 +275,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     Map<String, Object> imageInfo = new HashMap<>();
     // Override image tag based on ybsoftwareversion.
-    imageInfo.put("tag", userIntent.ybSoftwareVersion);
+    String imageTag = taskParams().ybSoftwareVersion == null ? userIntent.ybSoftwareVersion : taskParams().ybSoftwareVersion;
+    imageInfo.put("tag", imageTag);
     if (config.containsKey("KUBECONFIG_IMAGE_REGISTRY")) {
       imageInfo.put("repository", config.get("KUBECONFIG_IMAGE_REGISTRY"));
     }

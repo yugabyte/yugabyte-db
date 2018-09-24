@@ -677,7 +677,12 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Found universe {} : name={} at version={}.",
         universe.universeUUID, universe.name, universe.version);
 
-      UUID taskUUID = commissioner.submit(TaskType.UpgradeUniverse, taskParams);
+      TaskType taskType = TaskType.UpgradeUniverse;
+      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+        taskType = TaskType.UpgradeKubernetesUniverse;
+      }
+
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted upgrade universe for {} : {}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
 
