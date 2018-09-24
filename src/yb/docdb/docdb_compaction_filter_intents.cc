@@ -91,7 +91,7 @@ bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key
     }
     HybridTime start_time = metadata->start_time;
     if (GetCurrentTimeMicros() - start_time.GetPhysicalValueMicros() >
-        FLAGS_aborted_intent_cleanup_ms) {
+        FLAGS_aborted_intent_cleanup_ms * 1000) {
       AddToSet(*result);
     }
   }
