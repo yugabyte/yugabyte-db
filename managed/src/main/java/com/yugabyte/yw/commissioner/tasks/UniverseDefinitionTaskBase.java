@@ -518,4 +518,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                                          cluster.userIntent.replicationFactor);
     }
   }
+
+  public void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType) {
+    createKubernetesExecutorTask(commandType, null);    
+  }
+
+  public void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType, String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
+    params.providerUUID = UUID.fromString(
+        primary.userIntent.provider);
+    params.commandType = commandType;
+    params.nodePrefix = taskParams().nodePrefix;
+    params.universeUUID = taskParams().universeUUID;
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+  }
 }

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -15,7 +14,6 @@ import org.yb.Common;
 import org.yb.client.YBClient;
 
 import java.util.Set;
-import java.util.UUID;
 
 public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateKubernetesUniverse.class);
@@ -70,21 +68,5 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
-  }
-
-  private void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
-    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
-    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
-    params.providerUUID = UUID.fromString(
-        primary.userIntent.provider);
-    params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
-    params.universeUUID = taskParams().universeUUID;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 }
