@@ -38,6 +38,7 @@ Flag | Mandatory | Default | Description
 `--fs_wal_dirs`| N | Same value as `--fs_data_dirs` | The directory where the `yb-tserver` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
 `--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-tserver` log files.  
 `--rpc_bind_addresses`| N |`0.0.0.0:9100` | Comma-separated list of addresses to bind to for RPC connections.
+`--webserver_interface`| N |`0.0.0.0` | Address to bind for server UI access.
 `--webserver_port`| N | `7000` | Monitoring web server port
 `--webserver_doc_root`| N | The `www` directory in the YugaByte DB home directory | Monitoring web server home
 `--cql_proxy_bind_address`| N | `0.0.0.0:9042` | YCQL API bind address

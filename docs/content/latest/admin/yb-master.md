@@ -39,6 +39,7 @@ Flag | Mandatory | Default | Description
 `--fs_wal_dirs`| N | Same value as `--fs_data_dirs` | The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
 `--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-master` log files.  
 `--rpc_bind_addresses`| N |`0.0.0.0:7100` | Comma-separated list of addresses to bind to for RPC connections.
+`--webserver_interface`| N |`0.0.0.0` | Address to bind for server UI access.
 `--webserver_port`| N | `7000` | Monitoring web server port
 `--webserver_doc_root`| N | The `www` directory in the YugaByte DB home directory | Monitoring web server home
 `--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
