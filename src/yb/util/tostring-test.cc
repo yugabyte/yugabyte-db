@@ -26,6 +26,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 // We should use namespace other than yb::ToString to check how does ToString works
@@ -33,9 +34,6 @@ namespace yb {
 namespace util_test {
 
 using yb::ToString;
-
-class ToStringTest : public YBTest {
-};
 
 namespace {
 
@@ -67,7 +65,7 @@ void CheckPointer(const std::string& tail, const T& t) {
 
 } // namespace
 
-TEST_F(ToStringTest, TestNumber) {
+TEST(ToStringTest, TestNumber) {
   CheckInt<int>(1984);
   CheckInt<int16>(2349);
   CheckInt<uint32_t>(23984296);
@@ -76,7 +74,7 @@ TEST_F(ToStringTest, TestNumber) {
   CheckInt<int8_t>(45);
 }
 
-TEST_F(ToStringTest, TestCollection) {
+TEST(ToStringTest, TestCollection) {
   const std::string expected = "[1, 2, 3, 4, 5]";
   std::vector<int> v = {1, 2, 3, 4, 5};
   ASSERT_EQ(expected, ToString(v));
@@ -94,7 +92,7 @@ TEST_F(ToStringTest, TestCollection) {
   ASSERT_EQ("{" + expected + ", " + expected + "}", ToString(pair));
 }
 
-TEST_F(ToStringTest, TestMap) {
+TEST(ToStringTest, TestMap) {
   std::map<int, std::string> m = {{1, "one"}, {2, "two"}, {3, "three"}};
   ASSERT_EQ("[{1, one}, {2, two}, {3, three}]", ToString(m));
 
@@ -113,7 +111,7 @@ TEST_F(ToStringTest, TestMap) {
   ASSERT_EQ(1, match_count);
 }
 
-TEST_F(ToStringTest, TestPointer) {
+TEST(ToStringTest, TestPointer) {
   const char* some_text = "some text";
 
   ASSERT_EQ(some_text, ToString(some_text));
@@ -151,7 +149,7 @@ class WithShortDebugString {
 class WithShortDebugStringChild : public WithShortDebugString {
 };
 
-TEST_F(ToStringTest, TestCustomIntrusive) {
+TEST(ToStringTest, TestCustomIntrusive) {
   scoped_refptr<ToStringable> ptr(new ToStringable);
   scoped_refptr<ToStringableChild> child_ptr(new ToStringableChild);
   ASSERT_EQ("ToStringable", ToString(*ptr));
@@ -172,7 +170,7 @@ std::string ToString(ToStringableNonIntrusive) {
   return "ToStringableNonIntrusive";
 }
 
-TEST_F(ToStringTest, TestCustomNonIntrusive) {
+TEST(ToStringTest, TestCustomNonIntrusive) {
   std::vector<ToStringableNonIntrusive> v(2);
   ASSERT_EQ("ToStringableNonIntrusive", ToString(v[0]));
   ASSERT_EQ("[ToStringableNonIntrusive, ToStringableNonIntrusive]", ToString(v));
@@ -199,13 +197,22 @@ std::ostream& operator<<(std::ostream& out, const ToStringableAndOutputable& out
   return out << "operator<<";
 }
 
-TEST_F(ToStringTest, LexicalCast) {
+TEST(ToStringTest, LexicalCast) {
   std::vector<Outputable> v = { Outputable(1), Outputable(2) };
 
   ASSERT_EQ("Outputable(1)", ToString(v[0]));
   ASSERT_EQ("[Outputable(1), Outputable(2)]", ToString(v));
   ASSERT_EQ("ToString", ToString(ToStringableAndOutputable()));
   ASSERT_EQ("0.000s", ToString(MonoDelta::kZero));
+}
+
+TEST(ToStringTest, Uuid) {
+  const auto id = Uuid::Generate();
+  auto str = to_string(id);
+  std::vector<boost::uuids::uuid> vec = {id};
+
+  ASSERT_EQ(ToString(id), str);
+  ASSERT_EQ(ToString(vec), ToString(std::vector<std::string>{str}));
 }
 
 } // namespace util_test

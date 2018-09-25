@@ -199,61 +199,28 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
  public:
   CleanupAbortsTask(TransactionIntentApplier* applier,
                      TransactionIdSet&& transactions_to_cleanup,
-                     TransactionParticipant* transaction_participant)
-      : applier_(applier), transactions_to_cleanup_(transactions_to_cleanup),
-        transaction_participant_(transaction_participant) {}
+                     TransactionParticipantContext* participant_context,
+                     TransactionStatusManager* status_manager)
+      : applier_(applier), transactions_to_cleanup_(std::move(transactions_to_cleanup)),
+        participant_context_(*participant_context),
+        status_manager_(*status_manager) {}
 
   void Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task) {
     retain_self_ = cleanup_task;
   }
 
   void Run() override {
-    HybridTime now = transaction_participant_->context()->Now();
-    CountDownLatch latch(transactions_to_cleanup_.size());
-    TransactionStatusManager *status_manager = transaction_participant_;
+    size_t initial_number_of_transactions = transactions_to_cleanup_.size();
 
-    for (const TransactionId& transactionId : transactions_to_cleanup_) {
-      VLOG(1) << "Checking if transaction needs to be cleaned up: " << transactionId;
+    FilterTransactions();
 
-      // If transaction is committed, no action required
-      auto commit_time = status_manager->LocalCommitTime(transactionId);
-      if (commit_time.is_valid()) {
-        if (commit_time.GetPhysicalValueMicros() <
-            now.GetPhysicalValueMicros() - (FLAGS_aborted_intent_cleanup_ms * 1000)) {
-          LOG(WARNING) << "Transaction Id: " << transactionId << " committed too long ago.";
-        }
-        std::lock_guard<std::mutex> guard(mutex_);
-        transactions_to_cleanup_.erase(transactionId);
-        latch.CountDown();
-        continue;
-      }
-
-      // Get transaction status
-      StatusRequest request = {
-          &transactionId,
-          now,
-          now,
-          0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
-          // So we cannot accept status with time >= read_ht and < global_limit_ht.
-          [transactionId, this, &latch](Result<TransactionStatusResult> result) {
-            // Best effort
-            // Status of abort will result in cleanup of intents
-            if (result.ok() && (result->status == TransactionStatus::ABORTED)) {
-              VLOG(3) << "Transaction being cleaned " << transactionId << ".";
-            } else {
-              std::lock_guard<std::mutex> guard(mutex_);
-              this->transactions_to_cleanup_.erase(transactionId);
-            }
-            latch.CountDown();
-          }
-      };
-      status_manager->RequestStatusAt(request);
+    if (transactions_to_cleanup_.empty()) {
+      LOG(INFO) << "Nothing to cleanup of " << initial_number_of_transactions << " transactions";
+      return;
     }
 
-    latch.Wait();
-
     // Update now to reflect time on the coordinator
-    now = transaction_participant_->context()->Now();
+    auto now = participant_context_.Now();
 
     // The calls to RequestStatusAt would have updated the local clock of the participant.
     // Wait for the propagated time to reach the current hybrid time.
@@ -264,21 +231,20 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
       return;
     }
 
-    for (const TransactionId transactionId : transactions_to_cleanup_) {
+    for (const TransactionId transaction_id : transactions_to_cleanup_) {
       // If transaction is committed, no action required
       // TODO(dtxn) : Do batch processing of transactions,
       // because LocalCommitTime will acquire lock per each call.
-      auto commit_time = status_manager->LocalCommitTime(transactionId);
+      auto commit_time = status_manager_.LocalCommitTime(transaction_id);
       if (commit_time.is_valid()) {
-        transactions_to_cleanup_.erase(transactionId);
+        transactions_to_cleanup_.erase(transaction_id);
       }
     }
 
     WARN_NOT_OK(applier_->RemoveIntents(transactions_to_cleanup_),
                 "RemoveIntents for transaction cleanup in compaction failed.");
-    if (transactions_to_cleanup_.size() > 0) {
-      LOG(INFO) << "Number of aborted transactions cleaned up:" << transactions_to_cleanup_.size();
-    }
+    LOG(INFO) << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()
+              << " of " << initial_number_of_transactions;
   }
 
   void Done(const Status& status) override {
@@ -291,11 +257,73 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
   }
 
  private:
+  void FilterTransactions() {
+    size_t left_wait = transactions_to_cleanup_.size();
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    auto now = participant_context_.Now();
+    auto tid = std::this_thread::get_id();
+
+    for (const TransactionId& transaction_id : transactions_to_cleanup_) {
+      VLOG(1) << "Checking if transaction needs to be cleaned up: " << transaction_id;
+
+      // If transaction is committed, no action required
+      auto commit_time = status_manager_.LocalCommitTime(transaction_id);
+      if (commit_time.is_valid()) {
+        auto warning_time = commit_time.AddMilliseconds(FLAGS_aborted_intent_cleanup_ms);
+        if (now >= warning_time) {
+          LOG(WARNING) << "Transaction Id: " << transaction_id << " committed too long ago.";
+        }
+        erased_transactions_.push_back(transaction_id);
+        --left_wait;
+        continue;
+      }
+
+      static const std::string kRequestReason = "cleanup"s;
+      // Get transaction status
+      StatusRequest request = {
+          &transaction_id,
+          now,
+          now,
+          0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
+          // So we cannot accept status with time >= read_ht and < global_limit_ht.
+          &kRequestReason,
+          MustExist::kFalse,
+          [transaction_id, this, &left_wait, tid](Result<TransactionStatusResult> result) {
+            std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+            if (tid != std::this_thread::get_id()) {
+              lock.lock();
+            }
+            // Best effort
+            // Status of abort will result in cleanup of intents
+            if (result.ok() && (result->status == TransactionStatus::ABORTED)) {
+              VLOG(3) << "Transaction being cleaned " << transaction_id << ".";
+            } else {
+              this->erased_transactions_.push_back(transaction_id);
+            }
+            if (--left_wait == 0) {
+              cond_.notify_one();
+            }
+          }
+      };
+      status_manager_.RequestStatusAt(request);
+    }
+
+    cond_.wait(lock, [&left_wait] { return left_wait == 0; });
+
+    for (const auto& transaction_id : erased_transactions_) {
+      transactions_to_cleanup_.erase(transaction_id);
+    }
+  }
+
   TransactionIntentApplier* applier_;
   TransactionIdSet transactions_to_cleanup_;
-  TransactionParticipant* transaction_participant_;
+  TransactionParticipantContext& participant_context_;
+  TransactionStatusManager& status_manager_;
   std::shared_ptr<CleanupAbortsTask> retain_self_;
   std::mutex mutex_;
+  std::condition_variable cond_;
+  std::vector<TransactionId> erased_transactions_;
 };
 
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -709,7 +737,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFindOrLoad(*request.id, "status"s);
+    auto lock_and_iterator = LockAndFindOrLoad(*request.id, *request.reason, request.must_exist);
     if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
@@ -826,12 +854,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return status;
   }
 
-  void Cleanup(TransactionIdSet&& set,
-               TransactionParticipant* transactionParticipant) {
-    std::shared_ptr<CleanupAbortsTask> cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
-        &applier_, std::move(set), transactionParticipant);
-    cleanup_aborts_task->Prepare(cleanup_aborts_task);
-    transactionParticipant->context()->thread_pool().Enqueue(cleanup_aborts_task.get());
+  void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
+    auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
+        &applier_, std::move(set), &participant_context_, status_manager);
+    if (participant_context_.thread_pool().Enqueue(cleanup_aborts_task.get())) {
+      cleanup_aborts_task->Prepare(cleanup_aborts_task);
+    }
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -983,7 +1011,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
   };
 
-  LockAndFindOrLoadResult LockAndFindOrLoad(const TransactionId& id, const std::string& reason) {
+  LockAndFindOrLoadResult LockAndFindOrLoad(const TransactionId& id, const std::string& reason,
+                                            MustExist must_exist = MustExist::kTrue) {
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
@@ -1002,7 +1031,11 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
                                              rocksdb::kDefaultQueryId);
     iter->Seek(key.AsSlice());
     if (!iter->Valid() || iter->key() != key.data()) {
-      LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id;
+      if (must_exist) {
+        LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
+      } else {
+        LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
+      }
       return LockAndFindOrLoadResult{};
     }
     TransactionMetadataPB metadata_pb;

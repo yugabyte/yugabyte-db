@@ -23,8 +23,6 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/tti/has_type.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_io.hpp>
 
 #include "yb/gutil/strings/numbers.h"
 
@@ -51,6 +49,23 @@ struct SupportsOutputToStream {
   static constexpr bool value =
       sizeof(Test(nullptr, static_cast<const CleanedT*>(nullptr))) == sizeof(Yes);
 };
+
+#define HAS_FREE_FUNCTION(function) \
+  template <class T> \
+  struct BOOST_PP_CAT(HasFreeFunction_, function) { \
+    typedef int Yes; \
+    typedef struct { Yes array[2]; } No; \
+    typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT; \
+    \
+    template <class U> \
+    static auto Test(const U* u) -> decltype(function(*u), Yes(0)) {} \
+    static No Test(...) {} \
+    \
+    static constexpr bool value = \
+        sizeof(Test(static_cast<const CleanedT*>(nullptr))) == sizeof(Yes); \
+  };
+
+HAS_FREE_FUNCTION(to_string);
 
 } // namespace yb_tostring
 
@@ -214,7 +229,13 @@ class IsCollection : public has_type_const_iterator<
 };
 
 template <class T>
-typename std::enable_if<IsCollection<T>::value,
+typename std::enable_if<yb_tostring::HasFreeFunction_to_string<T>::value,
+                        std::string>::type ToString(const T& value) {
+  return to_string(value);
+}
+
+template <class T>
+typename std::enable_if<IsCollection<T>::value && !yb_tostring::HasFreeFunction_to_string<T>::value,
                         std::string>::type ToString(const T& value) {
   return CollectionToString(value);
 }
@@ -284,6 +305,17 @@ std::string ToString(const std::tuple<Args...>& tuple) {
   return result;
 }
 
+template<class Rep, class Period>
+std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
+  int64_t milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+  int64_t seconds = milliseconds / 1000;
+  milliseconds -= seconds * 1000;
+  return StringPrintf("%" PRId64 ".%03" PRId64 "s", seconds, milliseconds);
+}
+
+std::string ToString(const std::chrono::steady_clock::time_point& time_point);
+std::string ToString(const std::chrono::system_clock::time_point& time_point);
+
 template <class Collection>
 std::string CollectionToString(const Collection& collection) {
   std::string result = "[";
@@ -298,21 +330,6 @@ std::string CollectionToString(const Collection& collection) {
   }
   result += "]";
   return result;
-}
-
-template<class Rep, class Period>
-std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
-  int64_t milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-  int64_t seconds = milliseconds / 1000;
-  milliseconds -= seconds * 1000;
-  return StringPrintf("%" PRId64 ".%03" PRId64 "s", seconds, milliseconds);
-}
-
-std::string ToString(const std::chrono::steady_clock::time_point& time_point);
-std::string ToString(const std::chrono::system_clock::time_point& time_point);
-
-inline std::string ToString(const boost::uuids::uuid& uuid) {
-  return boost::uuids::to_string(uuid);
 }
 
 } // namespace yb
