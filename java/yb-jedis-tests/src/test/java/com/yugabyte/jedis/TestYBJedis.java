@@ -33,6 +33,7 @@ import org.yb.YBParameterizedTestRunner;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.Tuple;
 
 import static com.yugabyte.jedis.BaseJedisTest.JedisClientType.JEDISCLUSTER;
 import static junit.framework.TestCase.assertEquals;
@@ -85,6 +86,72 @@ public class TestYBJedis extends BaseJedisTest {
 
     try {
       double d = jedis_client.zscore("ts_key", "v0");
+    } catch (Exception e) {
+      assertTrue(e.getMessage().contains(
+          "WRONGTYPE Operation against a key holding the wrong kind of value"));
+      return;
+    }
+    assertTrue(false);
+  }
+
+  @Test
+  public void testZRangeByScore() throws Exception {
+    Map<String, Double> pairs = new HashMap<String, Double>();
+    pairs.put("v_min", -Double.MAX_VALUE);
+    pairs.put("v_neg", -5.0);
+    pairs.put("v0", 0.0);
+    pairs.put("v1", 1.0);
+    pairs.put("v2", 2.5);
+    pairs.put("v_max", Double.MAX_VALUE);
+
+    assertEquals(6L, jedis_client.zadd("z_key", pairs).longValue());
+    Set<String> values = new HashSet<String>(
+        Arrays.asList("v_min", "v_neg", "v0", "v1", "v2", "v_max"));
+    assertEquals(values, jedis_client.zrangeByScore(
+        "z_key", Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY));
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf"));
+
+    Set<Tuple> valuesScores = new HashSet<Tuple>(
+        Arrays.asList(new Tuple("v_min", -Double.MAX_VALUE)));
+    assertEquals(valuesScores, jedis_client.zrangeByScoreWithScores("z_key", "-inf", "(-5.0"));
+
+    valuesScores = new HashSet<Tuple>(Arrays.asList(new Tuple("v_max", Double.MAX_VALUE)));
+    assertEquals(valuesScores, jedis_client.zrangeByScoreWithScores("z_key", "(2.5", "+inf"));
+
+    values = new HashSet<String>(Arrays.asList("v_neg", "v0", "v1", "v2"));
+    assertEquals(values, jedis_client.zrangeByScore("z_key", -5.0, 2.5));
+
+    values = new HashSet<String>(Arrays.asList("v_neg", "v0"));
+    // offset = 1, the element to start scanning from once we have done our scan.
+    // limit = 2, the number of elements to return.
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf", 1, 2));
+
+    valuesScores = new HashSet<Tuple>(
+        Arrays.asList(new Tuple("v0", 0.0), new Tuple("v1", 1.0), new Tuple("v2", 2.5)));
+    assertEquals(valuesScores, jedis_client.zrangeByScoreWithScores("z_key","-inf", "+inf", 2, 3));
+
+    // Queries with either negative offset or 0 limit returns empty list.
+    values = new HashSet<String>();
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf", -1, 6));
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf", 1, 0));
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf", -1, -1));
+
+    // Queries with positive offset and limit either negative or larger than length
+    // just scans from offset till the end.
+    values = new HashSet<String>(Arrays.asList("v2", "v_max"));
+    assertEquals(values, jedis_client.zrangeByScore(
+        "z_key",Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 4, 100));
+    assertEquals(values, jedis_client.zrangeByScore("z_key","-inf", "+inf", 4, -3));
+
+    // Key that doesn't exist returns empty list.
+    values = new HashSet<String>();
+    assertEquals(values, jedis_client.zrangeByScore("key_not_exists","-inf", "+inf"));
+
+    // Key of different type returns error.
+    TSValuePairs tsPairs = new TSValuePairs((1));
+    assertEquals("OK", jedis_client.tsadd("ts_key", tsPairs.pairs));
+    try {
+      jedis_client.zrangeByScore("ts_key", "-inf", "+inf");
     } catch (Exception e) {
       assertTrue(e.getMessage().contains(
           "WRONGTYPE Operation against a key holding the wrong kind of value"));
