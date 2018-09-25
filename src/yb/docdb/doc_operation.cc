@@ -1437,6 +1437,11 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
 
       if (request_type == RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE) {
+        auto type = VERIFY_RESULT(GetValueType());
+        auto expected_type = REDIS_TYPE_SORTEDSET;
+        if (!VerifyTypeAndSetCode(expected_type, type, &response_, VerifySuccessIfMissing::kTrue)) {
+          return Status::OK();
+        }
         auto encoded_doc_key = DocKey::EncodedFromRedisKey(
             request_.key_value().hash_code(), request_.key_value().key());
         PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
@@ -1466,6 +1471,32 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
+
+        IndexBound low_index;
+        IndexBound high_index;
+        if(request_.has_range_request_limit()) {
+          int32_t offset = request_.index_range().lower_bound().index();
+          int32_t limit = request_.range_request_limit();
+
+          if (offset < 0 || limit == 0) {
+            // Return an empty response.
+            response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+            RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(),
+                                               AddResponseValuesGeneric,
+                                               &response_, /* add_keys */
+                                               true, /* add_values */
+                                               true));
+            return Status::OK();
+          }
+
+          low_index = IndexBound(offset, true /* is_lower */);
+          data.low_index = &low_index;
+          if (limit > 0) {
+            // Only define upper bound if limit is positive.
+            high_index = IndexBound(offset + limit - 1, false /* is_lower */);
+            data.high_index = &high_index;
+          }
+        }
         RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesSortedSets,
             data, ValueType::kObject, request_, &response_,
             /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
