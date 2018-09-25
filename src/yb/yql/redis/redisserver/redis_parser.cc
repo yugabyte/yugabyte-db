@@ -686,39 +686,50 @@ CHECKED_STATUS ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand
 
 CHECKED_STATUS ParseWithScores(const Slice& slice, RedisCollectionGetRangeRequestPB* request) {
   if(!boost::iequals(slice.ToBuffer(), kWithScores)) {
-    return STATUS(InvalidArgument, "unexpected argument $0", slice.ToBuffer());
+    return STATUS_SUBSTITUTE(InvalidArgument, "unexpected argument $0", slice.ToBuffer());
   }
   request->set_with_scores(true);
   return Status::OK();
 }
 
-CHECKED_STATUS ParseZRangeByScore(YBRedisReadOp* op, const RedisClientCommand& args) {
-  if (args.size() <= 5) {
-    op->mutable_request()->set_allocated_get_collection_range_request(
-        new RedisCollectionGetRangeRequestPB());
-    op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
-        RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE);
-
-    const auto& key = args[1];
-    RETURN_NOT_OK(ParseTsSubKeyBound(
-    args[2],
-    op->mutable_request()->mutable_subkey_range()->mutable_lower_bound(),
-    RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
-    RETURN_NOT_OK(ParseTsSubKeyBound(
-    args[3],
-    op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
-    RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
-    op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
-    if (args.size() == 5) {
-      RETURN_NOT_OK(ParseWithScores(
-      args[4],
-      op->mutable_request()->mutable_get_collection_range_request()));
+CHECKED_STATUS ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientCommand& args) {
+  int i = 4;
+  while (i < args.size()) {
+    string upper_arg;
+    ToUpperCase(args[i].ToBuffer(), &upper_arg);
+    if (upper_arg == "LIMIT") {
+      auto offset = VERIFY_RESULT(ParseInt64(args[++i], "offset"));
+      auto limit = VERIFY_RESULT(ParseInt64(args[++i], "limit"));
+      op->mutable_request()->mutable_index_range()->mutable_lower_bound()->set_index(offset);
+      op->mutable_request()->set_range_request_limit(limit);
+    } else if (upper_arg == "WITHSCORES") {
+      op->mutable_request()->mutable_get_collection_range_request()->set_with_scores(true);
+    } else {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument $0", args[i].ToBuffer());
     }
-    return Status::OK();
-  } else {
-    return STATUS(InvalidArgument, "Expected at most 5 arguments, found $0",
-                  std::to_string(args.size()));
+    i++;
   }
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseZRangeByScore(YBRedisReadOp* op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_get_collection_range_request(
+      new RedisCollectionGetRangeRequestPB());
+  op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE);
+
+  const auto& key = args[1];
+  RETURN_NOT_OK(ParseTsSubKeyBound(
+  args[2],
+  op->mutable_request()->mutable_subkey_range()->mutable_lower_bound(),
+  RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
+  RETURN_NOT_OK(ParseTsSubKeyBound(
+  args[3],
+  op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
+  RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
+  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+
+  return ParseRangeByScoreOptions(op, args);
 }
 
 CHECKED_STATUS ParseIndexBasedQuery(

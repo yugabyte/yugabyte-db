@@ -313,8 +313,8 @@ class IndexBound {
   static const IndexBound& Empty();
 
  private:
-  const int64 index_;
-  const bool is_lower_bound_;
+  int64 index_;
+  bool is_lower_bound_;
 };
 
 // Pass data to GetSubDocument function.
