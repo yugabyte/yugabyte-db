@@ -14,8 +14,10 @@
 #ifndef YB_UTIL_STRONGLY_TYPED_UUID_H
 #define YB_UTIL_STRONGLY_TYPED_UUID_H
 
-#include <boost/uuid/uuid.hpp>
 #include <boost/optional.hpp>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 
 #include "yb/util/result.h"
@@ -45,7 +47,7 @@ class StronglyTypedUuid {
   boost::uuids::uuid operator * () const {
     CHECK(uuid_);
     return uuid_.get();
-  };
+  }
 
   // Converts a string to a StronglyTypedUuid, if such a conversion exists.
   // The empty string maps to undefined.

@@ -40,9 +40,10 @@
 #include <string>
 #include <limits>
 
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status.h"
-#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -148,6 +149,10 @@ class HybridTime {
   HybridTime AddMicroseconds(MicrosTime micros) const {
     if (is_special()) return *this;
     return HybridTime(v + (micros << kBitsForLogicalComponent));
+  }
+
+  HybridTime AddMilliseconds(int64_t millis) const {
+    return AddMicroseconds(millis * MonoTime::kMicrosecondsPerMillisecond);
   }
 
   // Sets this hybrid time from 'value'

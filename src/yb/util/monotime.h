@@ -135,12 +135,18 @@ inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
 // clock, the monotime does not change.
 class MonoTime {
  public:
-  static constexpr int64_t kNanosecondsPerSecond = 1000000000L;
-  static constexpr int64_t kNanosecondsPerMillisecond = 1000000L;
   static constexpr int64_t kNanosecondsPerMicrosecond = 1000L;
-
-  static constexpr int64_t kMicrosecondsPerSecond = 1000000L;
+  static constexpr int64_t kMicrosecondsPerMillisecond = 1000L;
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
+
+  static constexpr int64_t kNanosecondsPerMillisecond =
+      kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
+
+  static constexpr int64_t kMicrosecondsPerSecond =
+      kMillisecondsPerSecond * kMicrosecondsPerMillisecond;
+
+  static constexpr int64_t kNanosecondsPerSecond =
+      kNanosecondsPerMillisecond * kMillisecondsPerSecond;
 
   static const MonoTime kMin;
   static const MonoTime kMax;
