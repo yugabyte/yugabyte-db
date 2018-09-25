@@ -34,7 +34,7 @@
 DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");
 
-DEFINE_int32(aborted_intent_cleanup_max_batch_size, 1000, // Cleanup 10000 transactions at a time
+DEFINE_int32(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
              "Number of transactions to collect for possible cleanup.");
 
 using std::shared_ptr;
@@ -48,8 +48,50 @@ namespace docdb {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBIntentsCompactionFilter::DocDBIntentsCompactionFilter(tablet::Tablet* tablet)
-    : tablet_(tablet) {}
+namespace {
+
+class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
+ public:
+  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet)
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now()) {
+  }
+
+  ~DocDBIntentsCompactionFilter() override;
+
+  bool Filter(int level,
+              const rocksdb::Slice& key,
+              const rocksdb::Slice& existing_value,
+              std::string* new_value,
+              bool* value_changed) const override {
+    return const_cast<DocDBIntentsCompactionFilter*>(this)->DoFilter(level, key,
+              existing_value, new_value, value_changed);
+  }
+
+  const char* Name() const override;
+
+  TransactionIdSet& transactions_to_cleanup() {
+    return transactions_to_cleanup_;
+  }
+
+  void AddToSet(const TransactionId& transaction_id);
+
+ private:
+  bool DoFilter(int level,
+                const rocksdb::Slice& key,
+                const rocksdb::Slice& existing_value,
+                std::string* new_value,
+                bool* value_changed);
+  tablet::Tablet* const tablet_;
+  const HybridTime compaction_start_time_;
+
+  TransactionIdSet transactions_to_cleanup_;
+  int rejected_transactions_ = 0;
+
+  // We use this to only log a message that the filter is being used once on the first call to
+  // the Filter function.
+  bool filter_usage_logged_ = false;
+};
+
 
 DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
   VLOG(3) << "DocDB intents compaction filter is being deleted";
@@ -89,18 +131,17 @@ bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key
       LOG(ERROR) << "Could not decode Transaction metadata: " << result.status();
       return false;
     }
-    HybridTime start_time = metadata->start_time;
-    if (GetCurrentTimeMicros() - start_time.GetPhysicalValueMicros() >
-        FLAGS_aborted_intent_cleanup_ms * 1000) {
+    auto cleanup_time = metadata->start_time.AddMilliseconds(FLAGS_aborted_intent_cleanup_ms);
+    if (compaction_start_time_ >= cleanup_time) {
       AddToSet(*result);
     }
   }
   return false;
 }
 
-void DocDBIntentsCompactionFilter::AddToSet(TransactionId transactionId) {
+void DocDBIntentsCompactionFilter::AddToSet(const TransactionId& transaction_id) {
   if (transactions_to_cleanup_.size() <= FLAGS_aborted_intent_cleanup_max_batch_size) {
-    transactions_to_cleanup_.insert(transactionId);
+    transactions_to_cleanup_.insert(transaction_id);
   } else {
     rejected_transactions_++;
   }
@@ -110,6 +151,8 @@ const char* DocDBIntentsCompactionFilter::Name() const {
   return "DocDBIntentsCompactionFilter";
 }
 
+} // namespace
+
 // ------------------------------------------------------------------------------------------------
 
 DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet)
@@ -117,7 +160,7 @@ DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(tablet:
 
 DocDBIntentsCompactionFilterFactory::~DocDBIntentsCompactionFilterFactory() {}
 
-unique_ptr<CompactionFilter> DocDBIntentsCompactionFilterFactory::CreateCompactionFilter(
+std::unique_ptr<CompactionFilter> DocDBIntentsCompactionFilterFactory::CreateCompactionFilter(
     const CompactionFilter::Context& context) {
   return std::make_unique<DocDBIntentsCompactionFilter>(tablet_);
 }

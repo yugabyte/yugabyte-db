@@ -90,6 +90,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
 
   TransactionStatusResult txn_status;
   BackoffWaiter waiter(deadline_.ToSteadyTimePoint(), 50ms /* max_wait */);
+  static const std::string kRequestReason = "get commit time"s;
   for(;;) {
     std::promise<Result<TransactionStatusResult>> txn_status_promise;
     auto future = txn_status_promise.get_future();
@@ -98,7 +99,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     };
     txn_status_manager_->RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
-              callback});
+              &kRequestReason, MustExist::kTrue, callback});
     future.wait();
     auto txn_status_result = future.get();
     if (txn_status_result.ok()) {
