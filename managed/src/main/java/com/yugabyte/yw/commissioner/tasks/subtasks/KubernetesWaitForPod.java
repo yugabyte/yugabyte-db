@@ -64,6 +64,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String podName = null;
+    public int waitTime = 60;
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
@@ -85,9 +86,14 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
           }
           status = waitForPod();
           count++;
-        } while (status.equals("Pending") || count < 10);
+        } while (!status.equals("Running") && count < 10);
         if (count > 10) {
           throw new RuntimeException("Pod creation taking too long");
+        }
+        try {
+          TimeUnit.SECONDS.sleep(taskParams().waitTime);
+        } catch (InterruptedException ex) {
+          // Do nothing
         }
         break;
     }
