@@ -127,7 +127,10 @@ public class UserTaskDetails {
     KubernetesWaitForPod,
 
     // Upgrade existing helm chart.
-    HelmUpgrade
+    HelmUpgrade,
+
+    // Upgrade pod in Kubernetes.
+    KubernetesUpgradePod
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -273,6 +276,10 @@ public class UserTaskDetails {
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
+        break;
+      case KubernetesUpgradePod:
+        title = "Upgrade Kubernetes Pod";
+        description = "Upgrade Kubernetes Pod";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

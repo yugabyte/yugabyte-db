@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
@@ -66,8 +67,24 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
           LOG.info("Upgrading software version to {} in universe {}",
                    taskParams().ybSoftwareVersion, universe.name);
           
-          createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_UPGRADE, taskParams().ybSoftwareVersion);
-          
+          for (int partition = userIntent.replicationFactor - 1; partition >= 0; partition--) {
+            createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+                taskParams().ybSoftwareVersion, ServerType.MASTER,
+                partition);
+            createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+                String.format("yb-master-%d", partition), taskParams().sleepAfterMasterRestartMillis / 1000);
+          }
+          for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
+            createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+                taskParams().ybSoftwareVersion, ServerType.TSERVER,
+                partition);
+            createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+                String.format("yb-tserver-%d", partition), taskParams().sleepAfterTServerRestartMillis / 1000);
+          }
+          createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
+
+          createSwamperTargetUpdateTask(false);
+
           didUpgradeUniverse = true;
           break;
       }
