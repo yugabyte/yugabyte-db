@@ -35,24 +35,27 @@ public class LogPrinter {
   private final Thread thread;
   private final AtomicBoolean stopRequested = new AtomicBoolean(false);
   private final Object stopper = new Object();
-  private final String streamName;
 
   private boolean stopped = false;
 
   private static final boolean LOG_PRINTER_DEBUG = false;
 
   // A mechanism to wait for a line in the log that says that the server is starting.
-  private final Object serverStartEventMonitor = new Object();
-  private boolean sawServerStarting = false;
+  private LogErrorListener errorListener;
 
-  public LogPrinter(String streamName, InputStream stream, String logPrefix) {
-    this.streamName = streamName;
+  public LogPrinter(InputStream stream, String logPrefix) {
+    this(stream, logPrefix, null);
+  }
+
+  public LogPrinter(InputStream stream, String logPrefix, LogErrorListener errorListener) {
     this.stream = stream;
 
     this.logPrefix = logPrefix;
     this.thread = new Thread(() -> runThread());
+    this.errorListener = errorListener;
+
     thread.setDaemon(true);
-    thread.setName(streamName + " log printer for " + logPrefix.trim());
+    thread.setName("Log printer for " + logPrefix.trim());
     thread.start();
   }
 
@@ -61,13 +64,16 @@ public class LogPrinter {
       String line;
       BufferedReader in = new BufferedReader(new InputStreamReader(stream));
       if (LOG_PRINTER_DEBUG) {
-        LOG.info("Starting " + streamName + " log printer with prefix " + logPrefix);
+        LOG.info("Starting log printer with prefix " + logPrefix);
       }
       try {
         while (!stopRequested.get()) {
           while ((line = in.readLine()) != null) {
-            handleLine(line);
+            if (errorListener != null) {
+              errorListener.handleLine(line);
+            }
             System.out.println(logPrefix + line);
+            System.out.flush();
           }
           // Sleep for a short time and give the child process a chance to generate more output.
           Thread.sleep(10);
@@ -76,7 +82,7 @@ public class LogPrinter {
         // This probably means we're stopping, OK to ignore.
       }
       if (LOG_PRINTER_DEBUG) {
-        LOG.info("Finished" + streamName + " log printer with prefix " + logPrefix);
+        LOG.info("Finished log printer with prefix " + logPrefix);
       }
       in.close();
     } catch (Exception e) {
@@ -105,36 +111,9 @@ public class LogPrinter {
         stopper.wait();
       }
     }
-  }
-
-  /** Additional processing on a log line */
-  private void handleLine(String line) {
-    synchronized (serverStartEventMonitor) {
-      if (sawServerStarting)
-        return;
+    if (errorListener != null) {
+      errorListener.reportErrorsAtEnd();
     }
-    if (line.contains("RPC server started.")) {
-      synchronized (serverStartEventMonitor) {
-        sawServerStarting = true;
-        serverStartEventMonitor.notifyAll();
-      }
-    }
-  }
-
-  public void waitForServerStartingLogLine(long deadlineMs) throws InterruptedException {
-    long timeoutMs = deadlineMs - System.currentTimeMillis();
-    synchronized (serverStartEventMonitor) {
-      long timeLeftMs = deadlineMs - System.currentTimeMillis();
-      while (timeLeftMs > 0 && !sawServerStarting) {
-        serverStartEventMonitor.wait(timeLeftMs);
-      }
-      if (!sawServerStarting) {
-        throw new RuntimeException(
-            "Timed out waiting for a 'server starting' message to appear. " +
-                "Waited for " + timeoutMs + ". Log prefix: " + logPrefix);
-      }
-    }
-
   }
 
 }

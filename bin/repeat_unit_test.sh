@@ -83,7 +83,8 @@ fi
 positional_args=()
 more_test_args=""
 log_dir=""
-declare -i parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM
+declare -i default_parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM
+declare -i parallelism=0
 declare -i iteration=0
 declare -i num_iter=1000
 keep_all_logs=false
@@ -214,6 +215,10 @@ else
   gtest_filter_info="gtest_filter is not set, running all tests in the test program"
 fi
 
+# -------------------------------------------------------------------------------------------------
+# End of argument parsing
+# -------------------------------------------------------------------------------------------------
+
 if [[ $test_filter != "all_tests" ]]; then
   gtest_filter_arg="--gtest_filter=$test_filter"
 fi
@@ -226,7 +231,6 @@ if ! "$is_java_test"; then
           "BUILD_ROOT ('$BUILD_ROOT')"
   fi
 fi
-
 
 timestamp=$( get_timestamp_for_filenames )
 if [[ -z $log_dir ]]; then
@@ -346,6 +350,18 @@ $RANDOM.$RANDOM.$RANDOM.$$
 else
   # $iteration is 0
   # This is the top-level invocation spawning parallel execution of many iterations.
+
+  if [[ $build_type == "tsan" ]]; then
+    default_parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM_TSAN
+  else
+    default_parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM
+  fi
+
+  if [[ $parallelism -eq 0 ]]; then
+    parallelism=$default_parallelism
+    log "Using test parallelism of $parallelism by default (build type: $build_type)"
+  fi
+
   if [[ -n $yb_compiler_type_from_env ]]; then
     log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."
   fi

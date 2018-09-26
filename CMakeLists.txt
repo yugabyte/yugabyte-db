@@ -906,6 +906,8 @@ if (YB_INSTRUMENT_FUNCTIONS)
   # Need to escape parentheses and pipe in the regex.
   # add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=src/\\(yb\\|postgres\\)/")
   add_cxx_flags("-DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=^postgres_build/")
+  # Some functions in PostgreSQL are detected as not returning anything in this mode.
+  add_cxx_flags("-Wno-error=return-type")
 endif()
 
 # If we still don't know what kind of linking to perform, choose based on

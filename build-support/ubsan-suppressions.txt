@@ -6,7 +6,7 @@
 # Here is a copy-and-paste for convenience:
 # https://gist.githubusercontent.com/mbautin/fb08c1864783cfa410c16caf7c1b4833/raw
 
-# It looks like in the suppression files we should use the last argument out of the three  arguments
+# It looks like in the suppression files we should use the last argument out of the three arguments
 # to the UBSAN_CHECK macro. Here is a list for convenience.
 #
 # alignment
@@ -34,6 +34,8 @@
 # vla-bound
 # vptr
 
+# Also keep in mind that some of these warnings can only be suppressed if the code is compiled with
+# the appropriate -fsanitize-recover=... option (e.g. -fsanitize-recover=shift-base).
 # -------------------------------------------------------------------------------------------------
 # UBSAN issues in the AWS C++ SDK.
 # -------------------------------------------------------------------------------------------------
@@ -67,3 +69,11 @@ alignment:snappy::SnappyDecompressor::DecompressAllTags
 
 # https://goo.gl/AaE3P5
 pointer-overflow:google::*::DumpStackFrameInfo*
+
+# src/postgres/src/port/erand48.c
+signed-integer-overflow:_dorand48
+signed-integer-overflow:pg_erand48
+signed-integer-overflow:erand48.c
+
+# https://gist.githubusercontent.com/mbautin/8939d2a6e22156fbf61daaeb986f169e/raw
+shift-base:pglz_compress

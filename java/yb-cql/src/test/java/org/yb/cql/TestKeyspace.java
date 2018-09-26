@@ -25,6 +25,7 @@ import static org.yb.AssertionWrappers.*;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.yb.util.RandomNumberUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestKeyspace extends BaseCQLTest {
@@ -92,7 +93,7 @@ public class TestKeyspace extends BaseCQLTest {
   // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
   // beginning of the test.
   private static String getRandomKeyspaceName() {
-    return "test_keyspace_" + TestUtils.randomNonNegNumber();
+    return "test_keyspace_" + RandomNumberUtil.randomNonNegNumber();
   }
 
   @Test
@@ -425,7 +426,7 @@ public class TestKeyspace extends BaseCQLTest {
 
     // Table1 name: "a" . "b.c"
     // Table2 name: "a.b" . "c"
-    final long randomId = TestUtils.randomNonNegNumber();
+    final long randomId = RandomNumberUtil.randomNonNegNumber();
     final String keyspaceName1 = "a" + randomId;
     final String keyspaceName2 = "a" + randomId + ".b";
     final String longTableName1 = "\"" + keyspaceName1 + "\"." + "\"b.c\""; // Table1.

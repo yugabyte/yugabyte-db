@@ -162,6 +162,10 @@ Options:
   --run-java-test-methods-separately, --rjtms
     Run each Java test (test method or a parameterized instantiation of a test method) separately
     as its own top-level Maven invocation, writing output to a separate file.
+  --rebuild-postgres
+    Clean and rebuild PostgeSQL code
+  --sanitizers-enable-coredump
+    When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -240,12 +244,16 @@ print_report() {
       echo "YUGABYTE BUILD SUMMARY"
       thick_horizontal_line
       print_report_line "%s" "Build type" "${build_type:-undefined}"
+      if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
+        print_report_line "%s" "C/C++ compiler" "$YB_COMPILER_TYPE"
+      fi
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if ! is_mac; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
       fi
+
       set +u
       local make_targets_str="${make_targets[*]}"
       set -u
@@ -823,6 +831,13 @@ while [[ $# -gt 0 ]]; do
     --run-java-test-methods-separately|--rjtms)
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     ;;
+    --rebuild-postgres)
+      clean_postgres=true
+      make_targets+=( postgres )
+    ;;
+    --sanitizers-enable-coredump)
+      export YB_SANITIZERS_ENABLE_COREDUMP=1
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -830,6 +845,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+set_use_ninja
 handle_predefined_build_root
 
 unset cmake_opts
@@ -1013,8 +1029,8 @@ if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
 elif "$clean_postgres"; then
-  log "Removing 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
-  ( set -x; rm -rf "$BUILD_ROOT/postgres_build" "$BUILD_ROOT/postgres" )
+  log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
+  ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
 fi
 
 mkdir_safe "$BUILD_ROOT"
