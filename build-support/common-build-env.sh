@@ -365,6 +365,7 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
+  set_use_ninja
   if [[ ${1:-} == "--no-readonly" ]]; then
     local -r make_build_root_readonly=false
     shift
@@ -1142,6 +1143,20 @@ using_linuxbrew() {
   fi
 }
 
+set_use_ninja() {
+  if [[ -z ${YB_USE_NINJA:-} ]]; then
+    if which ninja &>/dev/null; then
+      export YB_USE_NINJA=1
+    elif using_linuxbrew; then
+      local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
+      if [[ -f $yb_ninja_path ]]; then
+        export YB_USE_NINJA=1
+        export YB_NINJA_PATH=$yb_ninja_path
+      fi
+    fi
+  fi
+}
+
 using_ninja() {
   if [[ ${YB_USE_NINJA:-} == "1" ]]; then
     return 0
@@ -1366,7 +1381,7 @@ configure_remote_compilation() {
   # Automatically set YB_REMOTE_COMPILATION in an NFS GCP environment.
   if [[ ${YB_REMOTE_COMPILATION:-auto} == "auto" ]]; then
     if is_running_on_gcp && is_src_root_on_nfs; then
-      log "Automatically enabling reomte compilation (running in an NFS GCP environment). " \
+      log "Automatically enabling remote compilation (running in an NFS GCP environment). " \
           "Use YB_REMOTE_COMPILATION=0 (or the --no-remote ybd option) to disable this behavior."
       YB_REMOTE_COMPILATION=1
     else
@@ -1560,6 +1575,8 @@ handle_predefined_build_root() {
           "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
 
+  set_use_ninja
+
   if [[ -z ${YB_EDITION:-} ]]; then
     export YB_EDITION=$_edition
     if ! "$handle_predefined_build_root_quietly"; then
@@ -1569,6 +1586,7 @@ handle_predefined_build_root() {
     fatal "Edition from the build root ('$_edition' from '$predefined_build_root') " \
           "does not match YB_EDITION ('$YB_EDITION')."
   fi
+
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.

@@ -33,8 +33,8 @@
 #include "executor/ybcExpr.h"
 
 YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null) {
-	YBCPgExpr expr;
-  switch (type_id)
+	YBCPgExpr expr = NULL;
+	switch (type_id)
 	{
 		case BOOLOID:
 		case BYTEAOID:
@@ -141,7 +141,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 }
 
 YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num) {
-	YBCPgExpr expr;
+	YBCPgExpr expr = NULL;
 	HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, &expr));
 	return expr;
 }

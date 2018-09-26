@@ -74,6 +74,7 @@
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "commands/user.h"
+#include "commands/typecmds.h"
 #include "executor/executor.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"

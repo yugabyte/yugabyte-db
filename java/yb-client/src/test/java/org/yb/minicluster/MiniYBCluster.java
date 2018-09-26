@@ -38,6 +38,7 @@ import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.RandomNumberUtil;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -243,7 +244,7 @@ public class MiniYBCluster implements AutoCloseable {
     assert(TestUtils.IS_LINUX);
     // On Linux we can use 127.x.y.z, so let's just pick a random address.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
-    final Random rng = TestUtils.getRandomGenerator();
+    final Random rng = RandomNumberUtil.getRandomGenerator();
     for (int i = 0; i < 3; ++i) {
       // Do not use 0 or 255 for IP components.
       randomLoopbackIp.append("." + (1 + rng.nextInt(254)));
@@ -640,7 +641,7 @@ public class MiniYBCluster implements AutoCloseable {
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
                          redisWebPort, pgsqlWebPort, dataDirPath);
-    logPrinters.addAll(daemon.getLogPrinters());
+    logPrinters.add(daemon.getLogPrinter());
 
     Thread.sleep(300);
     try {
@@ -660,7 +661,7 @@ public class MiniYBCluster implements AutoCloseable {
     String[] command = daemon.getCommandLine();
     LOG.info("Restarting process: {}", Joiner.on(" ").join(command));
     daemon = daemon.restart();
-    logPrinters.addAll(daemon.getLogPrinters());
+    logPrinters.add(daemon.getLogPrinter());
 
     Process proc = daemon.getProcess();
     Thread.sleep(300);
@@ -701,25 +702,55 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Restarted mini cluster");
   }
 
-  private void processCoreFile(MiniYBDaemon daemon) throws Exception {
-    final int pid = daemon.getPid();
-    final File coreFile = new File("core." + pid);
-    if (coreFile.exists()) {
-      LOG.warn("Found core file '{}' from {}", coreFile.getAbsolutePath(), daemon.toString());
-      Process analyzeCoreFileScript = new ProcessBuilder().command(Arrays.asList(new String[]{
-          TestUtils.findYbRootDir() + "/build-support/analyze_core_file.sh",
-          "--core",
-          coreFile.getAbsolutePath(),
-          "--executable",
-          daemon.getCommandLine()[0]
-      })).inheritIO().start();
-      analyzeCoreFileScript.waitFor();
-      if (coreFile.delete()) {
-        LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
-      } else {
-        LOG.warn("Failed to delete core file at '{}'", coreFile.getAbsolutePath());
+  public static void processCoreFile(int pid,
+                                     String executablePath,
+                                     String programDescription,
+                                     File coreFileDir,
+                                     boolean tryWithoutPid) throws Exception {
+    List<String> coreFileNames = new ArrayList<String>();
+    coreFileNames.add("core." + pid);
+    if (tryWithoutPid) {
+      coreFileNames.add("core");
+    }
+    for (String coreBasename : coreFileNames) {
+      final File coreFile =
+          coreFileDir == null ? new File(coreBasename) : new File(coreFileDir, coreBasename);
+      if (coreFile.exists()) {
+        LOG.warn("Found core file '{}' from {}", coreFile.getAbsolutePath(), programDescription);
+        String analysisScript = TestUtils.findYbRootDir() + "/build-support/analyze_core_file.sh";
+        List<String> analysisArgs = Arrays.asList(
+            analysisScript,
+            "--core",
+            coreFile.getAbsolutePath(),
+            "--executable",
+            executablePath
+        );
+        LOG.warn("Analyzing core file using the command: " + analysisArgs);
+        ProcessBuilder procBuilder = new ProcessBuilder().command(analysisArgs);
+        procBuilder.redirectErrorStream(true);
+        Process analysisProcess = procBuilder.start();
+
+        LogPrinter logPrinter = new LogPrinter(analysisProcess.getInputStream(), "    ");
+        analysisProcess.waitFor();
+        logPrinter.stop();
+
+        if (analysisProcess.exitValue() != 0) {
+          LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
+              analysisProcess.exitValue());
+        } else {
+          if (coreFile.delete()) {
+            LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
+          } else {
+            LOG.warn("Failed to delete core file at '{}'", coreFile.getAbsolutePath());
+          }
+        }
       }
     }
+  }
+
+  private void processCoreFile(MiniYBDaemon daemon) throws Exception {
+    processCoreFile(daemon.getPid(), daemon.getCommandLine()[0], daemon.toString(),
+        /* coreFileDir */ null, /* tryWithoutPid */ false);
   }
 
   private void destroyDaemon(MiniYBDaemon daemon) throws Exception {
@@ -850,6 +881,7 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public String getMasterAddresses() {
     return masterAddresses;
+
   }
 
   /**

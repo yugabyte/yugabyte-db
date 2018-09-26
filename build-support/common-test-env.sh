@@ -83,6 +83,7 @@ readonly SANITIZER_COMMON_OPTIONS=""
 declare -i -r MIN_REPEATED_TEST_PARALLELISM=1
 declare -i -r MAX_REPEATED_TEST_PARALLELISM=100
 declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM=4
+declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM_TSAN=1
 
 readonly MVN_COMMON_SKIPPED_OPTIONS_IN_TEST=(
   -Dmaven.javadoc.skip
@@ -1045,6 +1046,9 @@ set_sanitizer_runtime_options() {
     TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
     TSAN_OPTIONS+=" history_size=7"
     TSAN_OPTIONS+=" external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
+    if [[ ${YB_SANITIZERS_ENABLE_COREDUMP:-0} == "1" ]]; then
+      TSAN_OPTIONS+=" disable_coredump=false"
+    fi
     export TSAN_OPTIONS
   fi
 

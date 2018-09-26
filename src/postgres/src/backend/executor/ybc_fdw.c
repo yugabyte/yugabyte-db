@@ -57,6 +57,7 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+#include "executor/ybcExpr.h"
 
 /* ----------------------------------------------------------------------------- */
 /*  Planner/Optimizer functions */
@@ -174,7 +175,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	char	   *dbname = get_database_name(MyDatabaseId);
 	char	   *schemaname = get_namespace_name(relation->rd_rel->relnamespace);
 	char	   *tablename = NameStr(relation->rd_rel->relname);
-	YbcFdwExecutionState *ybc_state;
+	YbcFdwExecutionState *ybc_state = NULL;
 	ListCell   *lc;
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
@@ -212,8 +213,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 					if (bms_is_member(col_desc->varattno - FirstLowInvalidHeapAttributeNumber,
 									  relation->rd_pkattr))
 					{
-						YBCPgExpr ybc_expr = YBCNewConstant(ybc_state->handle, INT4OID, col_val->constvalue,
-																								false);
+						YBCPgExpr ybc_expr = YBCNewConstant(
+							ybc_state->handle, INT4OID, col_val->constvalue, false);
 						HandleYBStatus(YBCPgDmlBindColumn(ybc_state->handle, col_desc->varattno, ybc_expr));
 					}
 				}
@@ -235,8 +236,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	}
 	PG_CATCH();
 	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-		ybc_state->handle = NULL;
+		if (ybc_state != NULL) {
+			HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
+			ybc_state->handle = NULL;
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -259,7 +262,8 @@ ybcIterateForeignScan(ForeignScanState *node)
 	PG_TRY();
 	{
 		// Fetch one row.
-		HandleYBStatus(YBCPgDmlFetch(ybc_state->handle, slot->tts_values, slot->tts_isnull, &has_data));
+		HandleYBStatus(YBCPgDmlFetch(ybc_state->handle, (uint64_t*) slot->tts_values,
+			slot->tts_isnull, &has_data));
 
 		/* If we have result(s) update the tuple slot. */
 		if (has_data)

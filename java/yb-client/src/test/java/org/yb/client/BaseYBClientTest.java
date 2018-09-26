@@ -32,7 +32,6 @@
 package org.yb.client;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
@@ -45,10 +44,8 @@ import org.yb.Type;
 import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.yb.AssertionWrappers.fail;
 
