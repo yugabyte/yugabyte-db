@@ -44,17 +44,9 @@ public class ConfForTesting {
     return isStringTrue(System.getProperty(systemPropertyName), defaultValue);
   }
 
-  /**
-   * @return whether the outer layer of the test framework runs every test method separately as
-   *         a mvn invocation with the correct -Dtest=... value.
-   */
-  public static boolean runningTestMethodsSeparately() {
-    return isEnvVarTrue("YB_RUN_JAVA_TEST_METHODS_SEPARATELY", false);
-  }
-
   public static boolean usePerTestLogFiles() {
     // Don't create per-test-method logs if we're told only one test method is invoked at a time.
-    return isEnvVarTrue("YB_JAVA_PER_TEST_LOG_FILES", !runningTestMethodsSeparately());
+    return isEnvVarTrue("YB_JAVA_PER_TEST_LOG_FILES", false);
   }
 
   public static boolean gzipPerTestMethodLogs() {

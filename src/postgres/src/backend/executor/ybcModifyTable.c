@@ -46,7 +46,7 @@ YBCExecuteInsert(Relation relationDesc, TupleDesc tupleDesc, HeapTuple tuple)
 
 	char	   *tablename = NameStr(relationDesc->rd_rel->relname);
 
-	YBCPgStatement ybc_stmt;
+	YBCPgStatement ybc_stmt = NULL;
 
 	PG_TRY();
 	{

@@ -24,6 +24,9 @@
  *-------------------------------------------------------------------------
  */
 
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "postgres.h"
 #include "miscadmin.h"
 
@@ -79,6 +82,9 @@ YBInitPostgresBackend(
 	{
 		YBCInitPgGate();
 
+		if (ybc_pg_session != NULL) {
+			YBCLogFatal("Double initialization of ybc_pg_session");
+		}
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
@@ -102,7 +108,7 @@ YBInitPostgresBackend(
 void
 YBOnPostgresBackendShutdown()
 {
-	YBCLogInfo("YBOnPostgresBackendShutdown called");
+	YBCLogInfo("YBOnPostgresBackendShutdown called for pid %d", getpid());
 	static bool shutdown_done = false;
 
 	if (shutdown_done)
@@ -114,5 +120,7 @@ YBOnPostgresBackendShutdown()
 		YBCPgDestroySession(ybc_pg_session);
 		ybc_pg_session = NULL;
 	}
+	YBCDestroyPgGate();
 	shutdown_done = true;
+	YBCLogInfo("YBOnPostgresBackendShutdown completed for pid %d", getpid());
 }

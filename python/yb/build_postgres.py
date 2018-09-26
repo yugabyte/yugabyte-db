@@ -11,6 +11,8 @@ import argparse
 import re
 import sys
 import multiprocessing
+import subprocess
+import json
 
 from subprocess import check_call
 
@@ -26,17 +28,21 @@ REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and
 ALLOW_REMOTE_COMPILATION = False
 
 
-def adjust_error_on_warning_flag(flag, allow_error_on_warning):
+def adjust_error_on_warning_flag(flag, step, language):
     """
-    Adjust a given compiler flag according to whether we want to allow any flags that turn warnings
-    into errors. We disable these flags during the configure step.
+    Adjust a given compiler flag according to whether this is for configure or make.
     """
-    if flag == '-Werror':
-        # Skip this flag altogether, whether these are the flags for configure or make. PostgreSQL
-        # code is not warning-free.
+    assert language in ('c', 'c++')
+    assert step in ('configure', 'make')
+    if language == 'c' and flag in ('-Wreorder', '-Wnon-virtual-dtor'):
+        # Skip C++-only flags.
         return None
 
-    if allow_error_on_warning:
+    if flag == '-Werror' and step == 'configure':
+        # Skip this flag altogether during the configure step.
+        return None
+
+    if step == 'make':
         # No changes.
         return flag
 
@@ -47,12 +53,14 @@ def adjust_error_on_warning_flag(flag, allow_error_on_warning):
     return flag
 
 
-def filter_compiler_flags(compiler_flags, allow_error_on_warning):
+def filter_compiler_flags(compiler_flags, step, language):
     """
     This function optionaly removes flags that turn warnings into errors.
     """
+    assert language in ('c', 'c++')
+    assert step in ('configure', 'make')
     adjusted_flags = [
-        adjust_error_on_warning_flag(flag, allow_error_on_warning)
+        adjust_error_on_warning_flag(flag, step, language)
         for flag in compiler_flags.split()
     ]
     return ' '.join([
@@ -131,6 +139,12 @@ class PostgresBuilder:
             raise RuntimeError(
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
+        self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
+        # This allows to skip the time-consuming compile commands file generation if it already
+        # exists during debugging of this script.
+        self.export_compile_commands_lazily = \
+            os.environ.get('YB_EXPORT_COMPILE_COMMANDS_LAZILY') == '1'
+
     def adjust_cflags_in_makefile(self):
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
         new_makefile_lines = []
@@ -178,7 +192,35 @@ class PostgresBuilder:
             '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
             '-DUSE_SSE42_CRC32C=1',
+            '-std=c11',
+            '-Werror=implicit-function-declaration',
+            '-Werror=int-conversion',
         ]
+
+        if step == 'make':
+            additional_c_cxx_flags += [
+                '-Wall',
+                '-Werror',
+                '-Wno-error=unused-function'
+            ]
+
+            if self.compiler_type == 'clang':
+                additional_c_cxx_flags += [
+                    '-Wno-error=builtin-requires-header'
+                ]
+            if self.build_type == 'release':
+                if self.compiler_type == 'clang':
+                    additional_c_cxx_flags += [
+                        '-Wno-error=array-bounds',
+                        '-Wno-error=gnu-designator'
+                    ]
+                if self.compiler_type == 'gcc':
+                    additional_c_cxx_flags += ['-Wno-error=strict-overflow']
+            if self.build_type == 'asan':
+                additional_c_cxx_flags += [
+                    '-fsanitize-recover=signed-integer-overflow',
+                    '-fsanitize-recover=shift-base'
+                ]
 
         # Tell gdb to pretend that we're compiling the code in the $YB_SRC_ROOT/src/postgres
         # directory.
@@ -196,7 +238,8 @@ class PostgresBuilder:
         for var_name in ['CFLAGS', 'CXXFLAGS']:
             os.environ[var_name] = filter_compiler_flags(
                     os.environ.get(var_name, '') + ' ' + ' '.join(additional_c_cxx_flags),
-                    allow_error_on_warning=(step == 'make'))
+                    step,
+                    language='c' if var_name == 'CFLAGS' else 'c++')
         if step == 'make':
             self.adjust_cflags_in_makefile()
 
@@ -289,6 +332,7 @@ class PostgresBuilder:
 
         # We get readline-related errors in ASAN/TSAN, so let's disable readline there.
         if self.build_type in ['asan', 'tsan']:
+            # TODO: do we still need this limitation?
             configure_cmd_line += ['--without-readline']
 
         if self.build_type != 'release':
@@ -339,22 +383,29 @@ class PostgresBuilder:
 
         # Create a script allowing to easily run "make" from the build directory with the right
         # environment.
-        make_script_content = "#!/usr/bin/env bash\n"
+        env_script_content = ''
         for env_var_name in [
                 'YB_SRC_ROOT', 'YB_BUILD_ROOT', 'YB_BUILD_TYPE', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS',
                 'PATH']:
             env_var_value = os.environ[env_var_name]
             if env_var_value is None:
                 raise RuntimeError("Expected env var %s to be set" % env_var_name)
-            make_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
-        make_script_content += 'make "$@"\n'
+            env_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
+
+        compile_commands_files = []
 
         for work_dir in [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib')]:
             with WorkDirContext(work_dir):
                 # Create a script to run Make easily with the right environment.
                 make_script_path = 'make.sh'
                 with open(make_script_path, 'w') as out_f:
-                    out_f.write(make_script_content)
+                    out_f.write(
+                        '#!/usr/bin/env bash\n'
+                        '. "${BASH_SOURCE%/*}"/env.sh\n'
+                        'make "$@"\n')
+                with open('env.sh', 'w') as out_f:
+                    out_f.write(env_script_content)
+
                 run_program(['chmod', 'u+x', make_script_path])
 
                 # Actually run Make.
@@ -365,6 +416,89 @@ class PostgresBuilder:
                 make_install_result = run_program(['make', 'install'])
                 write_program_output_to_file('make_install', make_install_result, work_dir)
                 logging.info("Successfully ran make in the %s directory", work_dir)
+
+                if self.export_compile_commands:
+                    logging.info("Generating the compilation database in directory '%s'", work_dir)
+
+                    compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
+                    os.environ['YB_PG_SKIP_CONFIG_STATUS'] = '1'
+                    if (not os.path.exists(compile_commands_path) or
+                            not self.export_compile_commands_lazily):
+                        run_program(['compiledb', 'make', '-n'], capture_output=False)
+                    del os.environ['YB_PG_SKIP_CONFIG_STATUS']
+
+                    if not os.path.exists(compile_commands_path):
+                        raise RuntimeError("Failed to generate compilation database at: %s" %
+                                           compile_commands_path)
+                    compile_commands_files.append(compile_commands_path)
+
+        if self.export_compile_commands:
+            self.combine_compile_commands(compile_commands_files)
+
+    def combine_compile_commands(self, compile_commands_files):
+        """
+        Combine compilation commands files from main and contrib subtrees of PostgreSQL, patch them
+        so that they point to the original source directory, and concatenate with the main
+        compilation commands file.
+        """
+        new_compile_commands = []
+        for compile_commands_path in compile_commands_files:
+            with open(compile_commands_path) as compile_commands_file:
+                new_compile_commands += json.load(compile_commands_file)
+
+        new_compile_commands = [
+            self.postprocess_pg_compile_command(item)
+            for item in new_compile_commands
+        ]
+
+        # Add the top-level compile commands file without any changes.
+        with open(os.path.join(self.build_root, 'compile_commands.json')) as compile_commands_file:
+            new_compile_commands += json.load(compile_commands_file)
+
+        output_path = os.path.join(self.build_root, 'combined_compile_commands.json')
+        with open(output_path, 'w') as compile_commands_output_file:
+            json.dump(new_compile_commands, compile_commands_output_file, indent=2)
+        logging.info("Wrote the compilation commands file to: %s", output_path)
+
+    def postprocess_pg_compile_command(self, compile_command_item):
+        directory = compile_command_item['directory']
+        command = compile_command_item['command']
+        file_path = compile_command_item['file']
+
+        if directory.startswith(self.pg_build_root + '/'):
+            new_directory = os.path.join(YB_SRC_ROOT, 'src', 'postgres',
+                                         os.path.relpath(directory, self.pg_build_root))
+            # Some files only exist in the postgres build directory. We don't switch the work
+            # directory of the compiler to the original source directory in those cases.
+            if (not os.path.isabs(file_path) and
+                    not os.path.isfile(os.path.join(new_directory, file_path))):
+                new_directory = directory
+
+        new_args = []
+        for arg in command.split():
+            added = False
+            if arg.startswith('-I'):
+                include_path = arg[2:]
+                if not os.path.isabs(include_path):
+                    new_include_path = os.path.join(new_directory, include_path)
+                    if os.path.isdir(new_include_path):
+                        new_args.append('-I' + new_include_path)
+                        added = True
+
+            if not added:
+                new_args.append(arg)
+        new_command = ' '.join(new_args)
+
+        if not os.path.isabs(file_path):
+            new_file_path = os.path.join(new_directory, file_path)
+            if not os.path.isfile(new_file_path):
+                new_file_path = file_path
+
+        return {
+            'directory': new_directory,
+            'command': new_command,
+            'file': new_file_path
+        }
 
     def run(self):
         if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):

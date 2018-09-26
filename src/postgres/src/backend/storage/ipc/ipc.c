@@ -31,6 +31,7 @@
 #include "storage/ipc.h"
 #include "tcop/tcopprot.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * This flag is set during proc_exit() to change ereport()'s behavior,
@@ -137,6 +138,8 @@ proc_exit(int code)
 		chdir(gprofDirName);
 	}
 #endif
+
+	YBOnPostgresBackendShutdown();
 
 	elog(DEBUG3, "exit(%d)", code);
 

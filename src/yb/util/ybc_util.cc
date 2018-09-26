@@ -41,9 +41,23 @@ Status InitInternal(const char* argv0) {
     gflags::ParseCommandLineFlags(&argc, &argv_ptr, /* remove_flags */ false);
   }
 
+  // Also allow overriding flags on the command line using the appropriate environment variables.
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+  for (auto& flag_info : flag_infos) {
+    string env_var_name = "FLAGS_" + flag_info.name;
+    const char* env_var_value = getenv(env_var_name.c_str());
+    if (env_var_value) {
+      LOG(INFO) << "Setting flag " << flag_info.name << " to the value of the env var "
+                << env_var_name << ": " << env_var_value;
+      google::SetCommandLineOption(flag_info.name.c_str(), env_var_value);
+    }
+  }
+
   RETURN_NOT_OK(CheckCPUFlags());
   yb::InitGoogleLoggingSafeBasic(argv0);
-  google::InstallFailureSignalHandler();
+  // Not calling google::InstallFailureSignalHandler() here to avoid interfering with PostgreSQL's
+  // own signal handling.
   return Status::OK();
 }
 
