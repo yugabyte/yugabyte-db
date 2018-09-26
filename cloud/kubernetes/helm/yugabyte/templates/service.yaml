@@ -88,9 +88,6 @@ spec:
           requests:
             storage: {{ $root.Values.persistentVolume.storage }}
     {{- end }}
-  {{ if $root.Values.waitTime }}
-  minReadySeconds: {{ $root.Values.waitTime }}
-  {{ end }}
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
