@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -99,6 +100,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String ybSoftwareVersion = null;
+    public ServerType serverType = ServerType.EITHER;
+    public int rollingUpgradePartition = 0;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -285,7 +288,18 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     overrides.put("Image", imageInfo);
 
-
+    Map<String, Object> partition = new HashMap<>();
+    if (taskParams().serverType == ServerType.TSERVER) {
+      partition.put("tserver", taskParams().rollingUpgradePartition);
+      partition.put("master", userIntent.replicationFactor);
+    }
+    else if (taskParams().serverType == ServerType.MASTER) {
+      partition.put("tserver", userIntent.numNodes);
+      partition.put("master", taskParams().rollingUpgradePartition); 
+    }
+    if (!partition.isEmpty()) {
+      overrides.put("partition", partition);
+    }
 
     // Override num of tserver replicas based on num nodes 
     // and num of master replicas based on replication factor.

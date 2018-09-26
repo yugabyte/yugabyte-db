@@ -520,10 +520,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType) {
-    createKubernetesExecutorTask(commandType, null);    
+    createKubernetesExecutorTaskForServerType(commandType, null, ServerType.EITHER, 0);    
   }
 
-  public void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType, String ybSoftwareVersion) {
+  public void createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType commandType,
+                                        String ybSoftwareVersion, ServerType serverType,
+                                        int partition) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
@@ -535,10 +537,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (ybSoftwareVersion != null) {
       params.ybSoftwareVersion = ybSoftwareVersion;
     }
+    params.rollingUpgradePartition = partition;
+    params.serverType = serverType;
     KubernetesCommandExecutor task = new KubernetesCommandExecutor();
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+  }
+
+  public void createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType commandType, String podName, int waitTime) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
+    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
+    params.providerUUID = UUID.fromString(primary.userIntent.provider);
+    params.commandType = commandType;
+    params.nodePrefix = taskParams().nodePrefix;
+    params.universeUUID = taskParams().universeUUID;
+    params.podName = podName;
+    params.waitTime = waitTime;
+    KubernetesWaitForPod task = new KubernetesWaitForPod();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.KubernetesWaitForPod);
   }
 }
