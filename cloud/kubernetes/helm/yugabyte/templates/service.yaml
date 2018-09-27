@@ -90,7 +90,7 @@ spec:
     {{- end }}
 
   updateStrategy:
-    type: RollingUpdate
+    type: {{ $root.Values.updateStrategy.type }}
   selector:
     matchLabels:
       app: "{{ .label }}"
@@ -128,6 +128,10 @@ spec:
       - name: "{{ .label }}"
         image: "{{ $root.Values.Image.repository }}:{{ $root.Values.Image.tag }}"
         imagePullPolicy: {{ $root.Values.Image.pullPolicy }}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "sleep {{ $root.Values.updateStrategy.waitTime }}"]
         env:
         - name: POD_IP
           valueFrom:
