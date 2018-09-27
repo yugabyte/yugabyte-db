@@ -1,4 +1,4 @@
-CREATE TABLE part_config (
+CREATE TABLE @extschema@.part_config (
     parent_table text NOT NULL
     , control text NOT NULL
     , partition_type text NOT NULL
@@ -33,7 +33,7 @@ SELECT pg_catalog.pg_extension_config_dump('part_config', '');
 
 
 -- FK set deferrable because create_parent() & create_sub_parent() inserts to this table before part_config
-CREATE TABLE part_config_sub (
+CREATE TABLE @extschema@.part_config_sub (
     sub_parent text 
     , sub_partition_type text NOT NULL
     , sub_control text NOT NULL
@@ -68,12 +68,12 @@ ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT control_constraint_col_ch
 ALTER TABLE @extschema@.part_config ADD CONSTRAINT retention_schema_not_empty_chk CHECK (retention_schema <> '');
 ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT retention_schema_not_empty_chk CHECK (sub_retention_schema <> '');
 
-CREATE TABLE custom_time_partitions (
+CREATE TABLE @extschema@.custom_time_partitions (
     parent_table text NOT NULL
     , child_table text NOT NULL
     , partition_range tstzrange NOT NULL
     , PRIMARY KEY (parent_table, child_table));
-CREATE INDEX custom_time_partitions_partition_range_idx ON custom_time_partitions USING gist (partition_range);
+CREATE INDEX custom_time_partitions_partition_range_idx ON @extschema@.custom_time_partitions USING gist (partition_range);
 SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
 
 /*
@@ -112,7 +112,7 @@ CREATE OR REPLACE VIEW @extschema@.table_privs AS
  * Check for valid config values for automatic maintenance
  * (not boolean to allow future values)
  */
-CREATE FUNCTION check_automatic_maintenance_value (p_automatic_maintenance text) RETURNS boolean
+CREATE FUNCTION @extschema@.check_automatic_maintenance_value (p_automatic_maintenance text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
     AS $$
 DECLARE
@@ -158,7 +158,7 @@ CHECK (@extschema@.check_epoch_type(sub_epoch));
 /*
  * Check for valid config table partition types
  */
-CREATE OR REPLACE FUNCTION check_partition_type (p_type text) RETURNS boolean
+CREATE OR REPLACE FUNCTION @extschema@.check_partition_type (p_type text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
     AS $$
 DECLARE

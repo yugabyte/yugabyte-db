@@ -1,5 +1,5 @@
-CREATE FUNCTION apply_cluster(p_parent_schema text, p_parent_tablename text, p_child_schema text, p_child_tablename text) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER 
+CREATE FUNCTION @extschema@.apply_cluster(p_parent_schema text, p_parent_tablename text, p_child_schema text, p_child_tablename text) RETURNS void
+    LANGUAGE plpgsql
 AS $$
 DECLARE
     v_new_search_path   text := '@extschema@,pg_temp';
@@ -69,3 +69,4 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path
 
 END;
 $$;
+

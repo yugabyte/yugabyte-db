@@ -2,11 +2,11 @@
 
 import argparse, psycopg2, signal, sys, time
 
-partman_version = "3.0.0"
+partman_version = "4.0.0"
 
 parser = argparse.ArgumentParser(description="This script calls either undo_partition(), undo_partition_time(), undo_partition_id(), or undo_partition_native() depending on the value given for --type. A commit is done at the end of each --interval and/or emptied partition. Returns the total number partitions and rows undone. Automatically stops when last child table is empty.", epilog="NOTE: To help avoid heavy load and contention during the undo, autovacuum is turned off for the entire partition set and all child tables when this script is run. When the undo is complete, autovacuum is set back to its default for the parent. Any child tables left behind will still have it turned off.")
 parser.add_argument('-p','--parent', help="Parent table of the partition set. (Required)")
-parser.add_argument('-t','--type', choices=["time","id","native",], help="""Type of partitioning. Valid values are "time", "id", and "native". Not setting this argument will use undo_partition() and work on any non-native parent/child table set. HOWEVER note that doing this causes data to be COPIED, not moved. See documentation on undo_partition() for more info.""")
+parser.add_argument('-t','--type', choices=["partman","native",], help="""Type of partitioning. Valid values are "partman" for old, trigger-based partition sets or "native" for natively partitioned sets. """)
 parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket). Note that two connections are required if allowing autovacuum to be turned off.""")
 parser.add_argument('-i','--interval', help="Value that is passed on to the undo partitioning function as p_batch_interval. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given. If -t value is not set, interval cannot be smaller than the partition interval and an entire partition is copied each batch.")
 parser.add_argument('-b','--batch', type=int, default=0, help="How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and undo at most -b partition(s).  Script commits at the end of each individual batch. (NOT passed as p_batch_count to undo function). If not set, all data will be moved to the parent table in a single run of the script.")
@@ -64,12 +64,15 @@ def reset_autovacuum(partman_schema, quoted_parent_table):
     global is_autovac_off
     vacuum_conn = create_conn()
     cur = vacuum_conn.cursor()
-    query = "ALTER TABLE " + quoted_parent_table + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
-    if not args.quiet:
-        print("Attempting to reset autovacuum for old parent table...")
-    if args.debug:
-        print(cur.mogrify(query))
-    cur.execute(query)
+    # Parameter doesn't exist on native parent tables
+    if args.type == "partman":
+        query = "ALTER TABLE " + quoted_parent_table + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
+        if not args.quiet:
+            print("Attempting to reset autovacuum for old parent table...")
+        if args.debug:
+            print(cur.mogrify(query))
+        cur.execute(query)
+
     # Do not use show_partitions() so that this can work on non-pg_partman partition sets
     # query = "SELECT partition_schemaname, partition_tablename FROM " + partman_schema + ".show_partitions(%s)"
     query = """
@@ -109,12 +112,15 @@ def turn_off_autovacuum(partman_schema, quoted_parent_table):
     global is_autovac_off
     vacuum_conn = create_conn()
     cur = vacuum_conn.cursor()
-    query = "ALTER TABLE " + quoted_parent_table + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
-    if not args.quiet:
-        print("Attempting to turn off autovacuum for partition set...")
-    if args.debug:
-        print(cur.mogrify(query))
-    cur.execute(query)
+    # Parameter doesn't exist on native parent tables
+    if args.type == "partman":
+        query = "ALTER TABLE " + quoted_parent_table + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+        if not args.quiet:
+            print("Attempting to turn off autovacuum for partition set...")
+        if args.debug:
+            print(cur.mogrify(query))
+        cur.execute(query)
+
     # Do not use show_partitions() so that this can work on non-pg_partman partition sets
     # query = "SELECT partition_schemaname, partition_tablename FROM " + partman_schema + ".show_partitions(%s)"
     query = """
@@ -159,16 +165,10 @@ def undo_partition_data(conn, partman_schema):
         keep_table = True
 
     query = "SELECT partitions_undone, rows_undone FROM " + partman_schema + ".undo_partition"
-    if args.type != None:
-        query += "_" + args.type
 
     query += "(p_parent_table := %s, p_keep_table := %s, p_lock_wait := %s "
     if args.interval != None:
-        if args.type == None:
-            # Non type undo has no interval parameter
-            pass
-        else:
-            query += ", p_batch_interval := %s "
+        query += ", p_batch_interval := %s "
     if args.type == "native":
         if args.native_target == None:
             print("""--native_target must be set if --type is set to "native" """)
@@ -183,10 +183,7 @@ def undo_partition_data(conn, partman_schema):
         #    li = [args.parent, keep_table, args.lockwait]
         li = [args.parent, keep_table, args.lockwait]
         if args.interval != None:
-            if args.type == None:
-                pass
-            else:
-                li.append(args.interval)
+            li.append(args.interval)
         if args.type == "native":
             li.append(args.native_target)
         if args.debug:
@@ -254,6 +251,10 @@ if __name__ == "__main__":
     if args.parent.find(".") < 0:
         print("ERROR: Parent table must be schema qualified")
         sys.exit(2)
+
+    if args.type == "native" and args.native_target == None:
+            print("""--native_target must be set if --type is set to "native" """)
+            sys.exit(2)
 
     is_autovac_off = False
     signal.signal(signal.SIGINT, signal_handler)

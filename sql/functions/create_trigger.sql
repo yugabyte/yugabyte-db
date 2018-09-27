@@ -1,5 +1,5 @@
-CREATE FUNCTION create_trigger(p_parent_table text) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE OR REPLACE FUNCTION @extschema@.create_trigger(p_parent_table text) RETURNS void
+    LANGUAGE plpgsql
     AS $$
 DECLARE
 

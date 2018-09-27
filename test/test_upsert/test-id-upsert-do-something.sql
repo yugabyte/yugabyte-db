@@ -207,11 +207,11 @@ SELECT drop_partition_id('partman_test.id_taptest_table', p_retention_schema := 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 doesn''t exists anymore');
 SELECT has_table('partman_retention_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 got moved to new schema');
 
-SELECT undo_partition_id('partman_test.id_taptest_table', p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 does not exist');
 
 -- Test keeping the reset of the tables
-SELECT undo_partition_id('partman_test.id_taptest_table', 10);
+SELECT undo_partition('partman_test.id_taptest_table', 10);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[30], 'Check count from parent table after undo');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000030', 'Check id_taptest_table_p3000000030 still exists');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p3000000030', 'Check child table had its data removed id_taptest_table_p3000000030');

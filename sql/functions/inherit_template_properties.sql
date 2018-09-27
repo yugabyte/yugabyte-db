@@ -1,14 +1,16 @@
-CREATE FUNCTION inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION @extschema@.inherit_template_properties (p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS boolean
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
 v_child_relkind         char;
 v_child_schema          text;
 v_child_tablename       text;
+v_dupe_found            boolean := false;
 v_fk_list               record;
 v_index_list            record;
 v_inherit_fk            boolean;
+v_parent_index_list     record;
 v_parent_oid            oid;
 v_parent_table          text;
 v_sql                   text;
@@ -20,6 +22,7 @@ BEGIN
 /*
  * Function to inherit the properties of the template table to newly created child tables.
  * Currently used for PostgreSQL 10 to inherit indexes and FKs since that is not natively available
+ * For PG11, used to inherit non-partition-key unique indexes & primary keys
  */
 
 SELECT parent_table, template_table, inherit_fk
@@ -67,8 +70,7 @@ AND c.relname = split_part(v_template_table, '.', 2)::name;
     END IF;
 
 -- Index creation (Required for all indexes in PG10. Only for non-unique, non-partition key indexes in PG11)
--- TODO Add check here for PG11 to only allow unique, non-partition key indexes on template
-IF current_setting('server_version_num')::int > 100000 AND current_setting('server_version_num')::int < 110000 THEN
+IF current_setting('server_version_num')::int >= 100000 THEN
     FOR v_index_list IN 
         SELECT
         array_to_string(regexp_matches(pg_get_indexdef(indexrelid), ' USING .*'),',') AS statement
@@ -89,6 +91,44 @@ IF current_setting('server_version_num')::int > 100000 AND current_setting('serv
         AND i.indisvalid
         ORDER BY 1
     LOOP
+        IF current_setting('server_version_num')::int >= 110000 THEN
+            FOR v_parent_index_list IN 
+                SELECT
+                array_to_string(regexp_matches(pg_get_indexdef(indexrelid), ' USING .*'),',') AS statement
+                , i.indisprimary
+                , ( SELECT array_agg( a.attname ORDER by x.r )
+                    FROM pg_catalog.pg_attribute a
+                    JOIN ( SELECT k, row_number() over () as r
+                            FROM unnest(i.indkey) k ) as x
+                    ON a.attnum = x.k AND a.attrelid = i.indrelid
+                ) AS indkey_names
+                FROM pg_catalog.pg_index i
+                WHERE i.indrelid = v_parent_oid
+                AND i.indisvalid
+                ORDER BY 1
+            LOOP
+
+                IF v_parent_index_list.indisprimary AND v_index_list.indisprimary THEN
+                    IF v_parent_index_list.indkey_names = v_index_list.indkey_names THEN
+                        RAISE DEBUG 'Ignoring duplicate primary key on template table: % ', v_index_list.indkey_names;
+                        v_dupe_found := true;
+                        CONTINUE; -- only continue within this nested loop
+                    END IF;
+                END IF;
+
+                IF v_parent_index_list.statement = v_index_list.statement THEN
+                    RAISE DEBUG 'Ignoring duplicate index on template table: %', v_index_list.statement;
+                    v_dupe_found := true;
+                    CONTINUE; -- only continue within this nested loop
+                END IF;
+
+            END LOOP; -- end parent index loop
+        END IF; -- End PG11 check
+
+        IF v_dupe_found = true THEN
+            -- Only used in PG11 and should skip trying to create indexes that already existed on the parent
+            CONTINUE;
+        END IF;
 
         IF v_index_list.indisprimary THEN
             v_sql := format('ALTER TABLE %I.%I ADD PRIMARY KEY (%s)'
@@ -117,19 +157,20 @@ END IF;
 -- End index creation
 
 -- Foreign key creation (PG10 only)
--- TODO Add check in for PG11 to not allow FK inheritance from template
-IF v_inherit_fk THEN
-    FOR v_fk_list IN 
-        SELECT pg_get_constraintdef(con.oid) AS constraint_def
-        FROM pg_catalog.pg_constraint con
-        JOIN pg_catalog.pg_class c ON con.conrelid = c.oid
-        WHERE c.oid = v_template_oid
-        AND contype = 'f'
-    LOOP
-        v_sql := format('ALTER TABLE %I.%I ADD %s', v_child_schema, v_child_tablename, v_fk_list.constraint_def);
-        RAISE DEBUG 'Create FK: %', v_sql;
-        EXECUTE v_sql;
-    END LOOP;
+IF current_setting('server_version_num')::int >= 100000 AND current_setting('server_version_num')::int < 110000 THEN
+    IF v_inherit_fk THEN
+        FOR v_fk_list IN 
+            SELECT pg_get_constraintdef(con.oid) AS constraint_def
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class c ON con.conrelid = c.oid
+            WHERE c.oid = v_template_oid
+            AND contype = 'f'
+        LOOP
+            v_sql := format('ALTER TABLE %I.%I ADD %s', v_child_schema, v_child_tablename, v_fk_list.constraint_def);
+            RAISE DEBUG 'Create FK: %', v_sql;
+            EXECUTE v_sql;
+        END LOOP;
+    END IF;
 END IF;
 -- End foreign key creation
 
@@ -144,5 +185,4 @@ RETURN true;
 
 END
 $$;
-
 

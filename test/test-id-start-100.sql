@@ -112,15 +112,15 @@ SELECT has_table('partman_test', 'id_taptest_table_p150', 'Check id_taptest_tabl
 SELECT has_table('partman_test', 'id_taptest_table_p160', 'Check id_taptest_table_p140 still exists');
 SELECT has_table('partman_test', 'id_taptest_table_p170', 'Check id_taptest_table_p140 still exists');
 SELECT has_table('partman_test', 'id_taptest_table_p180', 'Check id_taptest_table_p180 still exists');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p60', ARRAY[10], 'Check count from id_taptest_table_p60');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p70', ARRAY[10], 'Check count from id_taptest_table_p70');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p80', ARRAY[10], 'Check count from id_taptest_table_p80');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p90', ARRAY[10], 'Check count from id_taptest_table_p90');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p100', ARRAY[10], 'Check count from id_taptest_table_p100');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p110', ARRAY[10], 'Check count from id_taptest_table_p110');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p120', ARRAY[10], 'Check count from id_taptest_table_p120');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p130', ARRAY[10], 'Check count from id_taptest_table_p130');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p140', ARRAY[6], 'Check count from id_taptest_table_p140');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p60', ARRAY[0], 'Check count from id_taptest_table_p60');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p70', ARRAY[0], 'Check count from id_taptest_table_p70');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p80', ARRAY[0], 'Check count from id_taptest_table_p80');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p90', ARRAY[0], 'Check count from id_taptest_table_p90');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p100', ARRAY[0], 'Check count from id_taptest_table_p100');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p110', ARRAY[0], 'Check count from id_taptest_table_p110');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p120', ARRAY[0], 'Check count from id_taptest_table_p120');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p130', ARRAY[0], 'Check count from id_taptest_table_p130');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p140', ARRAY[0], 'Check count from id_taptest_table_p140');
 
 SELECT * FROM finish();
 ROLLBACK;

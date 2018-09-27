@@ -126,7 +126,7 @@ SELECT table_owner_is ('partman_test', 'id_taptest_table_12345678901234567890123
 SELECT table_owner_is ('partman_test', 'id_taptest_table_123456789012345678901234567890123456789012_p60', 'partman_owner', 'Check that ownership change worked for id_taptest_table_123456789012345678901234567890123456789012_p60');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_123456789012345678901234567890123456789012_p70', 'partman_owner', 'Check that ownership change worked for id_taptest_table_123456789012345678901234567890123456789012_p70');
 
-SELECT undo_partition_id('partman_test.id_taptest_table_123456789012345678901234567890123456789012345', 10);
+SELECT undo_partition('partman_test.id_taptest_table_123456789012345678901234567890123456789012345', 10);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table_123456789012345678901234567890123456789012345', ARRAY[49], 'Check count from parent table after undo');
 SELECT has_table('partman_test', 'id_taptest_table_1234567890123456789012345678901234567890123_p0', 'Check id_taptest_table_1234567890123456789012345678901234567890123_p0 still exists');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_1234567890123456789012345678901234567890123_p0', 'Check child table had its data removed id_taptest_table_1234567890123456789012345678901234567890123_p0');

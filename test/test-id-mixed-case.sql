@@ -377,15 +377,15 @@ SELECT hasnt_table('Partman_test', 'ID-taptest_Table_p40000_p49000', 'Check ID-t
 SELECT has_table('Partman_test', 'ID-taptest_Table_p50000', 'Check ID-taptest_Table_p50000 still exists after maintenance');
 SELECT has_table('Partman_test', 'ID-taptest_Table_p50000_p50000', 'Check ID-taptest_Table_p50000_p50000 still exists after maintenance');
 
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p50000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p60000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p70000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p80000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p90000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p100000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p110000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table_p120000', 20, p_keep_table := false);
-SELECT undo_partition_id('Partman_test.ID-taptest_Table', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p50000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p60000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p70000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p80000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p90000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p100000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p110000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table_p120000', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.ID-taptest_Table', 20, p_keep_table := false);
 
 SELECT hasnt_table('Partman_test', 'ID-taptest_Table_p50000', 'Check ID-taptest_Table_p50000 does not exist');
 SELECT hasnt_table('Partman_test', 'ID-taptest_Table_p50000_p50000', 'Check ID-taptest_Table_p50000_p50000 does not exist');

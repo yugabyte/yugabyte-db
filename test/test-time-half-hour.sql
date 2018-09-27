@@ -369,7 +369,7 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trun
     'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
-SELECT undo_partition_time('partman_test.time_taptest_table', 20);
+SELECT undo_partition('partman_test.time_taptest_table', 20);
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'30 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 

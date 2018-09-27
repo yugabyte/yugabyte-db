@@ -1,11 +1,12 @@
-CREATE FUNCTION partition_data_id(p_parent_table text
+CREATE FUNCTION @extschema@.partition_data_id(p_parent_table text
         , p_batch_count int DEFAULT 1
         , p_batch_interval bigint DEFAULT NULL
         , p_lock_wait numeric DEFAULT 0
         , p_order text DEFAULT 'ASC'
-        , p_analyze boolean DEFAULT true) 
+        , p_analyze boolean DEFAULT true
+        , p_source_table text DEFAULT NULL) 
     RETURNS bigint
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql
     AS $$
 DECLARE
 
@@ -21,8 +22,10 @@ v_new_search_path           text := '@extschema@,pg_temp';
 v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
+v_parent_tablename_real     text;
 v_partition_interval        bigint;
 v_partition_id              bigint[];
+v_partition_type            text;
 v_rowcount                  bigint;
 v_sql                       text;
 v_start_control             bigint;
@@ -34,16 +37,21 @@ BEGIN
  */
 
 SELECT partition_interval::bigint
+    , partition_type
     , control
     , epoch
 INTO v_partition_interval
+    , v_partition_type
     , v_control
     , v_epoch
 FROM @extschema@.part_config 
-WHERE parent_table = p_parent_table
-AND partition_type = 'partman';
+WHERE parent_table = p_parent_table;
 IF NOT FOUND THEN
-    RAISE EXCEPTION 'ERROR: No entry in part_config found for non-native partitioning for given table:  %', p_parent_table;
+    RAISE EXCEPTION 'ERROR: No entry in part_config found for given table:  %', p_parent_table;
+END IF;
+
+IF v_partition_type = 'native' AND p_source_table IS NULL THEN
+    RAISE EXCEPTION 'Partitioning data for a native partition set requires the p_source_table parameter to be set.';
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
@@ -55,6 +63,22 @@ SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_pa
 
 IF v_control_type <> 'id' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
     RAISE EXCEPTION 'Control column for given partition set is not id/serial based or epoch flag is set for time-based partitioning.';
+END IF;
+
+-- Replace the parent variables with the source variables if using source table for child table data
+IF p_source_table IS NOT NULL THEN
+    v_parent_tablename_real := v_parent_tablename; -- Preserve for use later
+    v_parent_schema := NULL;
+    v_parent_tablename := NULL;
+
+    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+    FROM pg_catalog.pg_tables
+    WHERE schemaname = split_part(p_source_table, '.', 1)::name
+    AND tablename = split_part(p_source_table, '.', 2)::name;
+
+    IF v_parent_tablename IS NULL THEN
+        RAISE EXCEPTION 'Given source table does not exist in system catalogs: %', p_source_table;
+    END IF;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -125,7 +149,7 @@ FOR i IN 1..p_batch_count LOOP
     END IF;
 
     PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id, p_analyze);
-    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_min_partition_id::text, TRUE);
+    v_current_partition_name := @extschema@.check_name_length(COALESCE(v_parent_tablename_real, v_parent_tablename), v_min_partition_id::text, TRUE);
 
     EXECUTE format('WITH partition_data AS (
                         DELETE FROM ONLY %I.%I WHERE %I >= %s AND %I < %s RETURNING *)
@@ -147,7 +171,9 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP;
 
-PERFORM @extschema@.create_function_id(p_parent_table);
+IF v_partition_type = 'partman' THEN
+    PERFORM @extschema@.create_function_id(p_parent_table);
+END IF;
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 

@@ -3,9 +3,9 @@
 PG Partition Manager
 ====================
 
-pg_partman is an extension to create and manage both time-based and serial-based table partition sets. Native partitioning in PostgreSQL 10 is supported as of pg_partman v3.0.1. Note that all the features of trigger-based partitioning are not yet supported in native, but performance in both reads & writes is significantly better.
+pg_partman is an extension to create and manage both time-based and serial-based table partition sets. Native partitioning in PostgreSQL 10 is supported as of pg_partman v3.0.1 and much more extensively as of 4.0.0 along with PostgreSQL 11. Note that all the features of trigger-based partitioning are not yet supported in native, but performance in both reads & writes is significantly better.
 
-Child table creation is all managed by the extension itself. For non-native, trigger function maintenance is also handled. For non-native partitioning, tables with existing data can have their data partitioned in easily managed smaller batches. For native partitioning, the creation of a new partitioned set is required and data will have to be migrated over separately. 
+Child table creation is all managed by the extension itself. For non-native, trigger function maintenance is also handled. For non-native partitioning, tables with existing data can have their data partitioned in easily managed smaller batches. For native partitioning, the creation of a new partitioned parent must be done first and the data migrated over after setup is complete.
 
 Optional retention policy can automatically drop partitions no longer needed for both native and non-native partitioning.
 
@@ -13,8 +13,9 @@ A background worker (BGW) process is included to automatically run partition mai
 
 All bug reports, feature requests and general questions can be directed to the Issues section on Github. Please feel free to post here no matter how minor you may feel your issue or question may be. - https://github.com/pgpartman/pg_partman/issues
 
-If you're looking for a partitioning system that handles any range type beyond just time & serial, the new native partitioning features in PostgreSQL 10 are likely the best method for the foreseeable future. If this is something critical to your environment, start planning your upgrades now!
+If you're looking for a partitioning system that handles any range type beyond just time & serial, the new native partitioning features in PostgreSQL 10+ are likely the best method for the foreseeable future. If this is something critical to your environment, start planning your upgrades now!
 
+If you're still trying to evaluate whether partitioning is a good choice for your environment, keep an eye on the HypoPG project. Version 2 will have a hypothetical partitioning feature that will let you evaluate different partitioning schemes without requiring you to actually partition your data. I may see about integrating this feature into pg_partman once it is available. - https://hypopg.readthedocs.io
 
 INSTALLATION
 ------------
@@ -46,11 +47,19 @@ Log into PostgreSQL and run the following commands. Schema is optional (but reco
     CREATE SCHEMA partman;
     CREATE EXTENSION pg_partman SCHEMA partman;
 
-Functions must either be run as a superuser or you can set the ownership of the extension functions to a superuser role and they will also work (SECURITY DEFINER is set).
+As of version 4.0.0, the privileges required to run pg_partman have been reduced greatly. Superuser is still required to install pg_partman and a superuser must still own the extension objects for things to fully run. But the functions with SECURITY DEFINER (ie, run as a superuser) are very minimal, and in a future update, will be completely optional. It is recommended that a dedicated role is created for running pg_partman functions and to be the owner of all partition sets that pg_partman maintains. At a minimum this role will need the following privileges (assuming pg_partman is installed to the "partman" schema):
+
+    CREATE ROLE partman WITH LOGIN;
+    GRANT ALL ON ALL TABLES IN SCHEMA partman TO partman;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO partman;
+    GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO partman;  -- PG11+ only
+    GRANT ALL ON SCHEMA my_partition_schema TO partman;
+
+If you need the role to also be able to create schemas, you will need to grant create on the database as well. In general this shouldn't be required as long as you give the above role CREATE privileges on any pre-existing schemas that will contain partition sets.
+
+    GRANT CREATE ON DATABASE mydb TO partman;
 
 I've received many requests for being able to install this extension on Amazon RDS. RDS does not support third-party extension management outside of the ones it has approved and provides itself. Therefore, I cannot provide support for running this extension in RDS if the limitations are RDS related. If you'd like to see this extension available there, please send an email to rds-postgres-extensions-request@amazon.com requesting that they include it. The more people that do so, the more likely it will happen!
-
-Version 1.8.8 of pg_partman is still available on github if you're running a version of PostgreSQL older than 9.4. Note however that no further updates (bug fixes, features, etc) are being released for the 1.x series. If you encounter any issues, please plan for upgrading your database to 9.4+ so that you can use the 2.x series of pg_partman.  
 
 UPGRADE
 -------
@@ -61,7 +70,7 @@ Run "make install" same as above to put the script files and libraries in place.
 
 If you are doing a pg_dump/restore and you've upgraded pg_partman in place from previous versions, it is recommended you use the --column-inserts option when dumping and/or restoring pg_partman's configuration tables. This is due to ordering of the configuration columns possibly being different (upgrades just add the columns onto the end, whereas the default of a new install may be different).
 
-If upgrading from 1.x to 2.x or greater, please carefully read all intervening version notes in the CHANGELOG, especially those for 2.0.0 and 3.0.1. There are additional instructions for updating your trigger functions to the newer version and other important considerations for the update.
+If upgrading between any major versions of pg_partman (1.x -> 2.x, 2.x -> 3.x, etc), please carefully read all intervening version notes in the CHANGELOG, especially those notes for the major version. There are often additional instructions (Ex. updating trigger functions) and other important considerations for the updates.
 
 EXAMPLE
 -------

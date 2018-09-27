@@ -342,7 +342,7 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_T
     'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
 
 -- Currently unable to do drop_partition test reliably for quarterly due to differing month lengths (sometimes drops 2 partitions instead of 1)
-SELECT undo_partition_time('partman_test.time_taptest_table', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[159], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q')||' does not exist');

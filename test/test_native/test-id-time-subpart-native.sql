@@ -1,6 +1,8 @@
 -- ########## NATIVE ID PARENT / TIME SUBPARENT TESTS ##########
 -- Additional tests: no pg_jobmon
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
+    -- Test that FK and normal index on PG11 uses parent and <=PG10 uses template
+    -- Can be used to test nonsuperuser is working
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -24,9 +26,23 @@ CREATE TABLE partman_test.id_taptest_table (
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.id_taptest_table INCLUDING ALL);
 -- Template table
 CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
+
+-- Primary keys do not work on native in PG11 if the partition key isn't included. 
+-- While col1 is the partition key on the top level, subpartition is time and it won't work there
 ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
-ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
-CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+
+DO $pg11_objects_check$
+BEGIN
+IF current_setting('server_version_num')::int >= 110000 THEN
+    -- Create on parent table
+    CREATE INDEX ON partman_test.id_taptest_table (col3);
+    ALTER TABLE partman_test.id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
+ELSE
+    -- Create on template table
+    CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+    ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
+END IF;
+END $pg11_objects_check$;
 
 SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', '{"col3"}', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
@@ -399,7 +415,6 @@ SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMES
 SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
 
-
 -- No time data has been inserted for p30 and higher, so no more partitions should be created for them
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
@@ -490,21 +505,21 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIM
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
-SELECT undo_partition_native('partman_test.id_taptest_table_p10', 'partman_test.undo_taptest', 20, p_keep_table := false); 
+SELECT undo_partition('partman_test.id_taptest_table_p10', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false); 
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
-SELECT undo_partition_native('partman_test.id_taptest_table_p20', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p20', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
-SELECT undo_partition_native('partman_test.id_taptest_table_p30', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p30', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
-SELECT undo_partition_native('partman_test.id_taptest_table_p40', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p40', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
-SELECT undo_partition_native('partman_test.id_taptest_table_p50', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p50', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
-SELECT undo_partition_native('partman_test.id_taptest_table_p60', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p60', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 
 
-SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[11], 'Check count from target of undo_partition_native');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[11], 'Check count from target of undo_partition');
 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' does not exist');
@@ -626,7 +641,7 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
 -- Check top parent is still empty
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that top parent table has not had any data moved to it');
 -- This should return zero since above subpartitioning should have removed all data
-SELECT results_eq('SELECT rows_undone::int FROM undo_partition_native(''partman_test.id_taptest_table'', ''partman_test.undo_taptest'', 20, p_keep_table := false)', ARRAY[0], 'Check that undoing top table partition returns zero rows');
+SELECT results_eq('SELECT rows_undone::int FROM undo_partition(''partman_test.id_taptest_table'', 20, p_target_table := ''partman_test.undo_taptest'', p_keep_table := false)', ARRAY[0], 'Check that undoing top table partition returns zero rows');
 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 does not exist');

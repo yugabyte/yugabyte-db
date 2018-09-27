@@ -5,7 +5,7 @@ SELECT set_config('search_path','partman_reindex_test, partman, public',false);
 
 SELECT plan(1);
 
-SELECT undo_partition_id('partman_reindex_test.test_reindex', 20, p_keep_table := false);
+SELECT undo_partition('partman_reindex_test.test_reindex', 20, p_keep_table := false);
 DROP SCHEMA IF EXISTS partman_reindex_test CASCADE;
 
 SELECT pass('Cleanup Done');

@@ -268,7 +268,7 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_123456789012345678901
 SELECT table_owner_is ('partman_test', 'time_taptest_table_123456789012345678901234567890123456_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_123456789012345678901234567890123456_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'));
 
-SELECT undo_partition_time('partman_test.time_taptest_table_1234567890123456789012345678901234567890', 20);
+SELECT undo_partition('partman_test.time_taptest_table_1234567890123456789012345678901234567890', 20);
 SELECT has_table('partman_test', 'time_taptest_table_123456789012345678901234567890123456_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 
     'Check time_taptest_table_123456789012345678901234567890123456_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q')||' still exists');
 SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_123456789012345678901234567890123456_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 

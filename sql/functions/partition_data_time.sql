@@ -1,12 +1,13 @@
-CREATE FUNCTION partition_data_time(
+CREATE FUNCTION @extschema@.partition_data_time(
         p_parent_table text
         , p_batch_count int DEFAULT 1
         , p_batch_interval interval DEFAULT NULL
         , p_lock_wait numeric DEFAULT 0
         , p_order text DEFAULT 'ASC'
-        , p_analyze boolean DEFAULT true) 
+        , p_analyze boolean DEFAULT true
+        , p_source_table text DEFAULT NULL)
     RETURNS bigint
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
@@ -24,14 +25,15 @@ v_new_search_path           text := '@extschema@,pg_temp';
 v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
+v_parent_tablename_real     text;
 v_partition_expression      text;
 v_partition_interval        interval;
 v_partition_suffix          text;
 v_partition_timestamp       timestamptz[];
+v_partition_type            text;
 v_rowcount                  bigint;
 v_start_control             timestamptz;
 v_total_rows                bigint := 0;
-v_type                      text;
 
 BEGIN
 /*
@@ -43,16 +45,19 @@ SELECT partition_type
     , control
     , datetime_string
     , epoch
-INTO v_type
+INTO v_partition_type
     , v_partition_interval
     , v_control
     , v_datetime_string
     , v_epoch
 FROM @extschema@.part_config 
-WHERE parent_table = p_parent_table
-AND partition_type IN ('partman', 'time-custom');
+WHERE parent_table = p_parent_table;
 IF NOT FOUND THEN
-    RAISE EXCEPTION 'ERROR: No entry in part_config found for non-native partitioning for given table:  %', p_parent_table;
+    RAISE EXCEPTION 'ERROR: No entry in part_config found for given table:  %', p_parent_table;
+END IF;
+
+IF v_partition_type = 'native' AND p_source_table IS NULL THEN
+    RAISE EXCEPTION 'Partitioning data for a native partition set requires the p_source_table parameter to be set.';
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
@@ -64,6 +69,22 @@ SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_pa
 IF v_control_type <> 'time' THEN 
     IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
         RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
+    END IF;
+END IF;
+
+-- Replace the parent variables with the source variables if using source table for child table data
+IF p_source_table IS NOT NULL THEN
+    v_parent_tablename_real := v_parent_tablename; -- Preserve for use later
+    v_parent_schema := NULL;
+    v_parent_tablename := NULL;
+
+    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+    FROM pg_catalog.pg_tables
+    WHERE schemaname = split_part(p_source_table, '.', 1)::name
+    AND tablename = split_part(p_source_table, '.', 2)::name;
+
+    IF v_parent_tablename IS NULL THEN
+        RAISE EXCEPTION 'Given source table does not exist in system catalogs: %', p_source_table;
     END IF;
 END IF;
 
@@ -96,7 +117,7 @@ FOR i IN 1..p_batch_count LOOP
         EXIT;
     END IF;
 
-    IF v_type = 'partman' THEN
+    IF v_partition_type = 'partman' THEN
         CASE
             WHEN v_partition_interval = '15 mins' THEN
                 v_min_partition_timestamp := date_trunc('hour', v_start_control) + 
@@ -117,7 +138,7 @@ FOR i IN 1..p_batch_count LOOP
             WHEN v_partition_interval = '1 year' THEN
                 v_min_partition_timestamp := date_trunc('year', v_start_control);
         END CASE;
-    ELSIF v_type = 'time-custom' THEN
+    ELSIF v_partition_type IN ('time-custom', 'native') THEN
         SELECT child_start_time INTO v_min_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition
             , v_partition_interval::text
             , p_parent_table);
@@ -193,7 +214,7 @@ FOR i IN 1..p_batch_count LOOP
     PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
     -- This suffix generation code is in create_partition_time() as well
     v_partition_suffix := to_char(v_min_partition_timestamp, v_datetime_string);
-    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
+    v_current_partition_name := @extschema@.check_name_length(COALESCE(v_parent_tablename_real, v_parent_tablename), v_partition_suffix, TRUE);
 
     EXECUTE format('WITH partition_data AS (
                         DELETE FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L RETURNING *)
@@ -213,7 +234,9 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP; 
 
-PERFORM @extschema@.create_function_time(p_parent_table);
+IF v_partition_type IN ('partman', 'time-custom') THEN
+    PERFORM @extschema@.create_function_time(p_parent_table);
+END IF;
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
@@ -221,4 +244,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

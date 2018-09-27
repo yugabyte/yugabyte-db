@@ -1,5 +1,5 @@
-CREATE FUNCTION run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void 
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION @extschema@.run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void 
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
@@ -8,13 +8,16 @@ ex_detail                       text;
 ex_hint                         text;
 ex_message                      text;
 v_adv_lock                      boolean;
+v_analyze                       boolean;
 v_check_subpart                 int;
 v_control_type                  text;
 v_create_count                  int := 0;
 v_current_partition             text;
 v_current_partition_id          bigint;
 v_current_partition_timestamp   timestamptz;
+v_default_tablename             text;
 v_drop_count                    int := 0;
+v_is_default                    text;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
@@ -28,6 +31,7 @@ v_new_search_path               text := '@extschema@,pg_temp';
 v_next_partition_id             bigint;
 v_next_partition_timestamp      timestamptz;
 v_old_search_path               text;
+v_parent_exists                 text;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_partition_expression          text;
@@ -58,7 +62,7 @@ BEGIN
  * Also manages dropping old partitions if the retention option is set.
  * If p_parent_table is passed, will only run run_maintenance() on that one table (no matter what the configuration table may have set for it)
  * Otherwise, will run on all tables in the config table with p_automatic_maintenance() set to true.
- * For large partition sets, running analyze can cause maintenance to take longer than expected. Can set p_analyze to false to avoid a forced analyze run.
+ * For large partition sets, running analyze can cause maintenance to take longer than expected. Can set p_analyze to false to avoid a forced analyze run on PG versions before 11. 11+ does not analyze by default anymore.
  * Be aware that constraint exclusion may not work properly until an analyze on the partition set is run. 
  */
 
@@ -108,6 +112,13 @@ LOOP
 
     CONTINUE WHEN v_row.undo_in_progress;
 
+    -- When sub-partitioning, retention may drop tables that were already put into the query loop values. 
+    -- Check if they still exist in part_config before continuing
+    v_parent_exists := NULL;
+    SELECT parent_table INTO v_parent_exists FROM @extschema@.part_config WHERE parent_table = v_row.parent_table;
+    RAISE DEBUG 'Parent table possibly removed from part_config by retenion';
+    CONTINUE WHEN v_parent_exists IS NULL;
+    
     -- Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
     -- Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.
     -- This way at least provides a consistent way to check that I know will run. If anyone can get a working constraint/trigger, please help!
@@ -121,12 +132,40 @@ LOOP
         END IF;
     END IF;
 
+    -- Shouldn't need to analyze tables for most statistics for native sets on PG11+ by default anymore
+    IF p_analyze IS NULL THEN
+        IF v_row.partition_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+            v_analyze := false;
+        ELSE
+            v_analyze := true;
+        END IF;
+    END IF;
+
     SELECT n.nspname, c.relname
     INTO v_parent_schema, v_parent_tablename 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE n.nspname = split_part(v_row.parent_table, '.', 1)::name
     AND c.relname = split_part(v_row.parent_table, '.', 2)::name;
+
+    -- Used below to see if there's any data in the parent (<=PG10) or default (PG11+) child table.
+    IF v_row.partition_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+        -- Always returns the default partition first if it exists
+        SELECT partition_tablename INTO v_default_tablename 
+        FROM @extschema@.show_partitions(v_row.parent_table, p_include_default := true) LIMIT 1;
+
+        SELECT pg_get_expr(relpartbound, v_row.parent_table::regclass) INTO v_is_default 
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname = v_parent_schema
+        AND c.relname = v_default_tablename;
+
+        IF v_is_default != 'DEFAULT' THEN
+            v_default_tablename := v_parent_tablename;
+        END IF;
+    ELSE
+        v_default_tablename := v_parent_tablename;
+    END IF;
 
     SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_row.control);
 
@@ -166,8 +205,8 @@ LOOP
             -- For infinite_time_partitions, don't bother getting the max value in the partitions
             v_current_partition_timestamp = CURRENT_TIMESTAMP;
         ELSE 
-            FOR v_row_max_time IN
-                SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(v_row.parent_table, 'DESC')
+             FOR v_row_max_time IN
+               SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(v_row.parent_table, 'DESC')
             LOOP
                 EXECUTE format('SELECT max(%s)::text FROM %I.%I'
                                     , v_partition_expression
@@ -182,9 +221,9 @@ LOOP
             END LOOP;
         END IF; -- end infinite time check
 
-        -- Check for values in the parent table. If they are there and greater than all child values, use that instead
+        -- Check for values in the parent/default table. If they are there and greater than all child values, use that instead
         -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in parent, but new tables will be created
-        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_parent_tablename) INTO v_max_time_parent;
+        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_parent;
         IF p_debug THEN
             RAISE NOTICE 'run_maint: v_current_partition_timestamp: %, v_max_time_parent: %', v_current_partition_timestamp, v_max_time_parent;
         END IF;
@@ -242,7 +281,7 @@ LOOP
 
             v_last_partition_created := @extschema@.create_partition_time(v_row.parent_table
                                                         , ARRAY[v_next_partition_timestamp]
-                                                        , p_analyze
+                                                        , v_analyze
                                                         , p_debug := p_debug); 
             IF v_last_partition_created THEN
                 v_create_count := v_create_count + 1;
@@ -268,6 +307,7 @@ LOOP
 
         -- Loop through child tables starting from highest to get current max value in partition set
         -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
+
         FOR v_row_max_id IN
             SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(v_row.parent_table, 'DESC')
         LOOP
@@ -280,9 +320,9 @@ LOOP
                 EXIT;
             END IF;
         END LOOP;
-        -- Check for values in the parent table. If they are there and greater than all child values, use that instead
+        -- Check for values in the parent/default table. If they are there and greater than all child values, use that instead
         -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in parent, but new tables will be created
-        EXECUTE format('SELECT max(%I) FROM ONLY %I.%I', v_row.control, v_parent_schema, v_parent_tablename) INTO v_max_id_parent;
+        EXECUTE format('SELECT max(%I) FROM ONLY %I.%I', v_row.control, v_parent_schema, v_default_tablename) INTO v_max_id_parent;
         IF v_max_id_parent > v_current_partition_id THEN
             SELECT suffix_id INTO v_current_partition_id FROM @extschema@.show_partition_name(v_row.parent_table, v_max_id_parent::text);
         END IF;
@@ -316,7 +356,7 @@ LOOP
                 EXIT;
             END IF;
             v_next_partition_id := v_next_partition_id + v_row.partition_interval::bigint;
-            v_last_partition_created := @extschema@.create_partition_id(v_row.parent_table, ARRAY[v_next_partition_id], p_analyze);
+            v_last_partition_created := @extschema@.create_partition_id(v_row.parent_table, ARRAY[v_next_partition_id], v_analyze);
             IF v_last_partition_created THEN
                 v_create_count := v_create_count + 1;
                 IF v_row.partition_type <> 'native' THEN

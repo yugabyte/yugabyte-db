@@ -1,3 +1,58 @@
+4.0.0
+-- Initial release to provide support PostgreSQL 11. All PG11 functionality is subject to change before its final stable release.
+
+-- IMPORTANT POSTGRESQL 11 UPGRADE STEPS
+    -- All foreign keys, any non-unique indexes, and any unique indexes that include the partition key must be created on the actual parent table and removed from the template table for those property inheritances to continue working. Foreign key inheritance from the template table no longer works at all.
+    -- Any unique indexes or primary keys that do not include the partition column must still use the template table in order to be inherited to child tables.
+    -- Indexes defined on the parent will take precidence over those defined on the template table. Duplicate indexes should not happen. If they do, please report this as a bug. 
+
+-- Note that if this version is installed on PG10 and older, the procedures will not be created. A migration script to update pg_partman to include those will be made available once PG11 stable has been released.
+
+-- Major change in privilege/security of this extension. SECURITY DEFINER is no longer in use to cause most of pg_partman's functions to run as the owner of the called function. This is mostly due to the requirements to support PROCEDUREs in PG11, but it's also generally a better idea for security in the long run.
+    -- It is recommended to create a dedicated role for pg_partman maintenance runs and give it the privileges outlined in the setup section of the top level README.
+    -- The role running maintenance must now have permissions to create tables in the target schema. If you start seeing permission errors after upgrading, this is most likely what needs to be fixed.
+    -- The role running maintenance must now always be the owner of the tables it is managing. This shouldn't be too drastic of a change since previously it was making the maintenace function owner the owner of the partitioned tables. However, if you've changed partition table ownership after initial creation, you may run into issues until you set the pg_partman role as the owner.
+    -- If you are using logical replication, the partman maintenance role must be the owner of the publication in use.
+    -- As a bonus, the ALTER DEFAULT PRIVILEGES feature should now be much easier to use since you have a dedicated role for maintaining partitions. Check the documentation for this feature so that you can set any read/write privileges you want new partition sets to have at the time they are initially created.
+    -- Two functions retain their SECURITY DEFINER status: 
+        -- check_name_length() - Used inside the trigger function and I don't want to break existing installations. It's an IMMUTABLE function so the security implications aren't that great.
+        -- apply_privileges() - Requires access to pg_authid & also potentially changes object ownership.
+    -- If you're using pg_jobmon, privileges for that extension are managed independently of pg_partman. See that extension's documentation for privileges it requires.    
+
+-- For PostgreSQL 11+, started conversion of some python scripts into PROCEDUREs that are now installed within the database. Scripts are still available for pre-11 versions, but will be phased out as soon as PG10 is no longer under support.
+    -- Note that the user that calls these procedures must have permissions to write to the partition set and create/drop partitions in the set. 
+    -- partition_data.py script is now the partition_data_proc() PROCEDURE.
+    -- undo_partition.py script is now the undo_partition_proc() PROCEDURE. 
+    -- reapply_constraints.py is now the reapply_constraints_proc() PROCEDURE.
+    -- reapply_foreign_keys.py not converted since it's not needed for PG11+. Foreign keys can be applied to the parent and will automatically be inherited.
+    -- reapply_indexes.py was not converted yet because concurrent index creation is not yet possible inside a PROCEDURE.
+    -- Unable to turn autovacuum off/on reliably in PROCEDURE as was previously done with python scripts. If autovac is an issue when (un)partitioning large tables, recommend manually disabling it.
+
+-- Consolidated undo_partition_time(), undo_partition_id(), and undo_partition_native() functions into a single undo_partition() function.
+-- The old undo_partition() function that just copied data from child tables to the parent has been removed. The only utility this really had was a possible way to support undoing partition sets not maintained by pg_partman. With native partitioning now in place, its continued usability is now questionable and it was also causing confusion since people were using it and not the previous ones specialized for pg_partman. Can incorporate back in if someone can provide a further beneficial use case.
+
+-- For PG11+, a DEFAULT partition is automatically created as part of the partition set to handle any data that does not have a matching child table. 
+    -- It's just given a _default suffix on the existing parent table name.
+    -- Support within pg_partman for moving data out of the default partition is not included in 4.0.0, but will be included in a future release.
+    -- New parameter to show_partitions() can include the DEFAULT in its output, but it's not output unless specifically requested since it's not commonly needed in internal code where it's mostly used.
+
+-- For native partitioning, added option to give a "source" table to the partition_data*() functions that is different from the parent table of the partition set. This assists with partitioning an existing table to a natively partitioned table.
+
+-- For PostgreSQL 11+, run_maintenance_proc() has been added and should cause much less contention when running against many large partition sets in a single call.
+    -- For PG11+, this is the preferred maintenance method to run over the old run_maintenance() function. The old one will continue to work for the next few major releases, but please update all pg_partman maintenence calls in your environment to use the new procedure.
+    
+-- Simplified --type argument for undo_partition.py script for PG versions 10 and below. Similar to create_parent(), values are now 'partman' or 'native'.
+
+-- Maintenance that creates new partitions on PG11+ and is using native partitioning will no longer analyze the partition sets by default. This should greatly cut down on maintenance run time and contention issues. If you're noticing any odd query plans, especially if you're using additionally configured constraints, you may need to schedule some manual analyzes or you can set the p_analyze parameter in either the function or procedure call to "true".
+
+-- Fixed bug in run_maintenance() with subpartitioning where it would throw an error if retention dropped one of the parent tables undergoing maintenance.
+
+-- Fixed template table inheritance for PG10 not working on minor version PostgreSQL 10.0 (but you really shouldn't be running this version anymore).
+
+-- Fixed compilation errors for background worker against PostgreSQL 11.
+
+
+
 3.2.1
 -- Fix bug with inheriting indexes from template tables with native partitioning. Was throwing syntax error related to format() function. Thanks to iwarford on github for reporting the issue (Github Issue #223).
 

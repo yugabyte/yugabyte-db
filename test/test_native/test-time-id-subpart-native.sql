@@ -625,18 +625,18 @@ SELECT is_empty('SELECT parent_table FROM part_config WHERE parent_table = ''tim
         'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||'_p120 was removed from part_config');
 
 -- First undo all subpartitions
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'8 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
-SELECT undo_partition_native('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'8 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||'_p0', 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||'_p0 exists');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||'_p20', 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||'_p20 exists');
@@ -769,7 +769,7 @@ SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_tabl
 --SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD'), ARRAY[31], 'Check data got move to partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD') );
 --SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), ARRAY[31], 'Check data got move to partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD') );
 
-SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[248], 'Check count from target of undo_partition_native');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[248], 'Check count from target of undo_partition');
 
 --Unable to undo_partition any further because col1 is duplicated in child tables, but parent key has it as a primary key. So done testing! :D
 

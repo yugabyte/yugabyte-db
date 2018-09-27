@@ -1,5 +1,5 @@
 -- ########## TIME DAILY TESTS ##########
--- Other tests: With OIDS, run_maintenance(p_analyze := false), check that maintenance catches up if tables are missing, full return from undo_partition_time()
+-- Other tests: With OIDS, run_maintenance(p_analyze := false), check that maintenance catches up if tables are missing, full return from undo_partition()
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -547,9 +547,9 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' got moved to new schema');
 
-SELECT results_eq('SELECT partitions_undone::int, rows_undone::int FROM undo_partition_time(''partman_test.time_taptest_table'', 20, p_keep_table := false)'
+SELECT results_eq('SELECT partitions_undone::int, rows_undone::int FROM undo_partition(''partman_test.time_taptest_table'', 20, p_keep_table := false)'
     , $$VALUES(15, 118)$$
-    , 'Check that undo_partition_time() returns expected values for undoing all tables');
+    , 'Check that undo_partition() returns expected values for undoing all tables');
 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 

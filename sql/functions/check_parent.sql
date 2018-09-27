@@ -1,14 +1,10 @@
-/*
- * Function to monitor for data getting inserted into parent tables managed by extension
- */
-CREATE FUNCTION check_parent(p_exact_count boolean DEFAULT true) RETURNS SETOF @extschema@.check_parent_table
-    LANGUAGE plpgsql STABLE SECURITY DEFINER 
+CREATE FUNCTION @extschema@.check_parent(p_exact_count boolean DEFAULT true) RETURNS SETOF @extschema@.check_parent_table
+    LANGUAGE plpgsql STABLE
+    SET search_path = @extschema@,pg_temp
     AS $$
 DECLARE
 
 v_count             bigint = 0;
-v_new_search_path   text := '@extschema@,pg_temp';
-v_old_search_path   text;
 v_row               record;
 v_schemaname        text;
 v_tablename         text;
@@ -16,9 +12,9 @@ v_sql               text;
 v_trouble           @extschema@.check_parent_table%rowtype;
 
 BEGIN
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+/*
+ * Function to monitor for data getting inserted into parent tables managed by extension
+ */
 
 FOR v_row IN 
     SELECT parent_table FROM @extschema@.part_config
@@ -45,8 +41,6 @@ LOOP
     v_count := 0;
 
 END LOOP;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN;
 

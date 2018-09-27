@@ -412,12 +412,12 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIM
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
-SELECT undo_partition_time('partman_test.id_taptest_table_p10', 20, p_keep_table := false); 
-SELECT undo_partition_time('partman_test.id_taptest_table_p20', 20, p_keep_table := false);
-SELECT undo_partition_time('partman_test.id_taptest_table_p30', 20, p_keep_table := false);
-SELECT undo_partition_time('partman_test.id_taptest_table_p40', 20, p_keep_table := false);
-SELECT undo_partition_time('partman_test.id_taptest_table_p50', 20, p_keep_table := false);
-SELECT undo_partition_time('partman_test.id_taptest_table_p60', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p10', 20, p_keep_table := false); 
+SELECT undo_partition('partman_test.id_taptest_table_p20', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p30', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p40', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p50', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table_p60', 20, p_keep_table := false);
 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' does not exist');
@@ -539,7 +539,7 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
 -- Check top parent is still empty
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that top parent table has not had any data moved to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p10', ARRAY[10], 'Check count from subparent table');
-SELECT results_eq('SELECT rows_undone::int FROM undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false);', ARRAY[11], 'Check undo partition_id returns correct number of rows');
+SELECT results_eq('SELECT rows_undone::int FROM undo_partition(''partman_test.id_taptest_table'', 20, p_keep_table := false);', ARRAY[11], 'Check undo_partition returns correct number of rows');
 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 does not exist');

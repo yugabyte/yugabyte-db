@@ -1,5 +1,5 @@
-CREATE FUNCTION create_function_time(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION @extschema@.create_function_time(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
@@ -375,4 +375,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

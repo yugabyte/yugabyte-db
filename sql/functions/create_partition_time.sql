@@ -1,6 +1,6 @@
-CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
+CREATE FUNCTION @extschema@.create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
 RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql
     AS $$
 DECLARE
 
@@ -179,6 +179,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         v_sql := v_sql || ' UNLOGGED';
     END IF;
     -- Close parentheses on LIKE are below due to differing requirements of native subpartitioning
+    -- Same INCLUDING list is used in create_parent()
     v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
                                 , v_parent_schema
                                 , v_partition_name

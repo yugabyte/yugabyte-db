@@ -335,7 +335,7 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_123456789012345678901
     'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'));
 
 -- Currently unable to do drop_partition test reliably for monthly due to differing month lengths (sometimes drops 2 partitions instead of 1)
-SELECT undo_partition_time('partman_test.time_taptest_table_123456789012345678901234567890123457890', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_123456789012345678901234567890123457890', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123457890', ARRAY[159], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM')||' does not exist');

@@ -173,10 +173,10 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_tab
 SELECT has_table('partman_retention_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 got moved to new schema');
 
 -- Has to run twice because second time around is when it sees the partition is empty & drops it
-SELECT undo_partition_id('partman_test.id_taptest_table', 2, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table', 2, p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 does not exist');
 
-SELECT undo_partition_id('partman_test.id_taptest_table', 10, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table', 10, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[30], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p40 does not exist');

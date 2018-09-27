@@ -1,4 +1,4 @@
-CREATE FUNCTION create_parent(
+CREATE OR REPLACE FUNCTION @extschema@.create_parent(
     p_parent_table text
     , p_control text
     , p_type text
@@ -16,7 +16,7 @@ CREATE FUNCTION create_parent(
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean 
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
@@ -30,6 +30,7 @@ v_count                         int := 1;
 v_control_type                  text;
 v_control_exact_type            text;
 v_datetime_string               text;
+v_default_partition             text;
 v_higher_control_type           text;
 v_higher_parent_control         text;
 v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
@@ -48,6 +49,7 @@ v_parent_partition_id           bigint;
 v_parent_partition_timestamp    timestamptz;
 v_parent_schema                 text;
 v_parent_tablename              text;
+v_parent_tablespace             text;
 v_part_col                      text;
 v_part_type                     text;
 v_partition_time                timestamptz;
@@ -69,6 +71,7 @@ v_time_interval                 interval;
 v_top_datetime_string           text;
 v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
 v_top_parent_table              text := split_part(p_parent_table, '.', 2);
+v_unlogged                      char;
 
 BEGIN
 /*
@@ -88,9 +91,11 @@ IF p_upsert <> '' THEN
     END IF;
 END IF;
 
-SELECT n.nspname, c.relname INTO v_parent_schema, v_parent_tablename
+SELECT n.nspname, c.relname, t.spcname, c.relpersistence
+INTO v_parent_schema, v_parent_tablename, v_parent_tablespace, v_unlogged
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+LEFT OUTER JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
 WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
 AND c.relname = split_part(p_parent_table, '.', 2)::name;
     IF v_parent_tablename IS NULL THEN
@@ -449,6 +454,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , v_template_schema||'.'||v_template_tablename
         , p_publications); 
 
+    RAISE DEBUG 'create_parent: v_partition_time_array: %', v_partition_time_array;
+
     v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
 
     IF v_last_partition_created = false THEN 
@@ -600,6 +607,7 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , p_publications); 
 
     v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
+
     IF v_last_partition_created = false THEN
         -- This can happen with subpartitioning when future or past partitions prevent child creation because they're out of range of the parent
         -- See if it's actually a subpartition of a parent id partition
@@ -653,6 +661,30 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
     END IF; -- End v_last_partition_created IF
 
 END IF; -- End IF id
+
+IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+    -- Add default partition to native sets in PG11+
+
+    v_default_partition := @extschema@.check_name_length(v_parent_tablename, '_default', FALSE);
+    v_sql := 'CREATE'; 
+    IF v_unlogged = 'u' THEN
+        v_sql := v_sql ||' UNLOGGED';
+    END IF;
+    -- Same INCLUDING list is used in create_partition_*()
+    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS)'
+        , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
+    EXECUTE v_sql;
+    v_sql := format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I DEFAULT'
+        , v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition);
+    EXECUTE v_sql;
+
+    IF v_parent_tablespace IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_default_partition, v_parent_tablespace);
+    END IF;
+
+    -- NOTE: Privileges currently not automatically inherited for native
+    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition, v_job_id);
+END IF;
 
 IF p_type <> 'native' THEN
     IF v_jobmon_schema IS NOT NULL  THEN

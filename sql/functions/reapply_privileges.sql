@@ -1,8 +1,5 @@
-/*
- * Function to re-apply ownership & privileges on all child tables in a partition set using parent table as reference
- */
-CREATE FUNCTION reapply_privileges(p_parent_table text) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION @extschema@.reapply_privileges(p_parent_table text) RETURNS void
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 
@@ -21,6 +18,10 @@ v_row               record;
 v_step_id           bigint;
 
 BEGIN
+
+/*
+ * Function to re-apply ownership & privileges on all child tables in a partition set using parent table as reference
+ */
 
 SELECT jobmon INTO v_jobmon FROM @extschema@.part_config WHERE parent_table = p_parent_table;
 IF v_jobmon IS NULL THEN

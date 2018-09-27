@@ -264,7 +264,7 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trun
 SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'));
 
-SELECT undo_partition_time('partman_test.time_taptest_table', 20);
+SELECT undo_partition('partman_test.time_taptest_table', 20);
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI')||' still exists');
 SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 

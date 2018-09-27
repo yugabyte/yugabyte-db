@@ -18,7 +18,7 @@ CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text)
         , sub_trigger_exception_handling boolean
         , sub_upsert text
         , sub_trigger_return_null boolean)
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE sql STABLE
     SET search_path = @extschema@,pg_temp
 AS $$
 /*
@@ -65,5 +65,4 @@ AS $$
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;
 $$;
-
 

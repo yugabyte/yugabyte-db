@@ -328,7 +328,7 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_1234567890123456789012345
 SELECT has_table('partman_retention_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' got moved to new schema');
 
-SELECT undo_partition_time('partman_test.time_taptest_table_123456789012345678901234567890123457890', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_123456789012345678901234567890123457890', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123457890', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' does not exist');

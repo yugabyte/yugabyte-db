@@ -1,4 +1,4 @@
-CREATE FUNCTION check_name_length (p_object_name text, p_suffix text DEFAULT NULL, p_table_partition boolean DEFAULT FALSE) RETURNS text
+CREATE FUNCTION @extschema@.check_name_length (p_object_name text, p_suffix text DEFAULT NULL, p_table_partition boolean DEFAULT FALSE) RETURNS text
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
     AS $$
 DECLARE
@@ -9,7 +9,7 @@ BEGIN
  * Truncate the name of the given object if it is greater than the postgres default max (63 characters).
  * Also appends given suffix and schema if given and truncates the name so that the entire suffix will fit.
  * Returns original name (with suffix if given) if it doesn't require truncation
- * Given security definer since it's called by the trigger functions
+ * Retains SECURITY DEFINER since it is called by trigger functions and did not want to break installations prior to 4.0.0
  */
 
 IF p_table_partition IS TRUE AND (p_suffix IS NULL) THEN

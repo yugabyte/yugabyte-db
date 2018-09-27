@@ -1,5 +1,5 @@
-CREATE FUNCTION check_control_type(p_parent_schema text, p_parent_tablename text, p_control text) RETURNS TABLE (general_type text, exact_type text) 
-    LANGUAGE sql STABLE SECURITY DEFINER
+CREATE FUNCTION @extschema@.check_control_type(p_parent_schema text, p_parent_tablename text, p_control text) RETURNS TABLE (general_type text, exact_type text) 
+    LANGUAGE sql STABLE
 AS $$
 /* 
  * Return column type for given table & column in that table
@@ -21,4 +21,5 @@ SELECT CASE
     AND c.relname = p_parent_tablename::name
     AND a.attname = p_control::name
 $$;
+
 

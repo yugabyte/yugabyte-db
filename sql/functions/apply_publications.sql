@@ -1,5 +1,5 @@
-CREATE FUNCTION apply_publications(p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER 
+CREATE FUNCTION @extschema@.apply_publications(p_parent_table text, p_child_schema text, p_child_tablename text) RETURNS void
+    LANGUAGE plpgsql 
 AS $$
 DECLARE
     v_publications      text[];
@@ -25,5 +25,4 @@ END LOOP;
 
 END;
 $$;
-
 

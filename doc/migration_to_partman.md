@@ -1,7 +1,7 @@
 Migrating An Existing Partition Set to PG Partition Manager
 ===========================================================
 
-This document is an aid for migrating an existing partitioned table set to using pg_partman. Please note that at this time, this guide is only for non-native partitioning. The easiest way to migrate to a natively partitioned table is to create a brand new table and copy/move the data. 
+This document is an aid for migrating an existing partitioned table set to using pg_partman. Please note that at this time, this guide is only for non-native, trigger-baed partitioning. Documentation for native partitioning is in the works, but it will be mostly focused on PostgreSQL 11 since 10 was very limited in its partitioning support. For now, the easiest way to migrate to a natively partitioned table is to create a brand new table and copy/move the data. 
 
 pg_partman does not support having child table names that do not match its naming convention. I've tried to implement that several times, but it's too difficult to support in a general manner and just ends up hindering development or breaking a feature. Your situation likely isn't exactly like the ones below, but this should at least provide guidance on what is required. 
 

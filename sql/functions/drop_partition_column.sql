@@ -1,8 +1,5 @@
-/*
- * Function to ensure a column is dropped in all child tables, no matter when it was created
- */
-CREATE FUNCTION drop_partition_column(p_parent_table text, p_column text) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION @extschema@.drop_partition_column(p_parent_table text, p_column text) RETURNS void
+    LANGUAGE plpgsql
     AS $$
 DECLARE
 
@@ -12,7 +9,9 @@ v_parent_tablename  text;
 v_row               record;
 
 BEGIN
-
+/*
+ * Function to ensure a column is dropped in all child tables, no matter when it was created
+ */
 SELECT c.oid, n.nspname, c.relname INTO v_parent_oid, v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -39,4 +38,5 @@ END LOOP;
 
 END
 $$;
+
 

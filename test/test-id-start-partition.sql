@@ -78,7 +78,7 @@ SELECT drop_partition_id('partman_test.id_taptest_table', p_retention_schema := 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p160', 'Check id_taptest_table_p160 doesn''t exists anymore');
 SELECT has_table('partman_retention_test', 'id_taptest_table_p160', 'Check id_taptest_table_p160 got moved to new schema');
 
-SELECT undo_partition_id('partman_test.id_taptest_table', 10, p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table', 10, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[36], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p170', 'Check id_taptest_table_p170 doesn''t exists anymore');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p180', 'Check id_taptest_table_p180 doesn''t exists anymore');

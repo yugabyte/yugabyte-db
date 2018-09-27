@@ -395,7 +395,14 @@ void pg_partman_bgw_run_maint(Datum arg) {
     }
 
     elog(DEBUG1, "Before run_maint initialize connection for db %s", dbname);
+
+    #if (PG_VERSION_NUM < 110000)
     BackgroundWorkerInitializeConnection(dbname, pg_partman_bgw_role);
+    #endif
+    #if (PG_VERSION_NUM >= 110000)
+    BackgroundWorkerInitializeConnection(dbname, pg_partman_bgw_role, 0);
+    #endif
+    
     elog(DEBUG1, "After run_maint initialize connection for db %s", dbname);
 
     initStringInfo(&buf);

@@ -384,7 +384,7 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('c
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'300 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'300 years'::interval, 'YYYY')||' got moved to new schema');
 
-SELECT undo_partition_time('partman_test.time_taptest_table', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY'), 
     'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY')||' does not exist');

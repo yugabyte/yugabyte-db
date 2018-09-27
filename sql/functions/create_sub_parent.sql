@@ -1,4 +1,4 @@
-CREATE FUNCTION create_sub_parent(
+CREATE FUNCTION @extschema@.create_sub_parent(
     p_top_parent text
     , p_control text
     , p_type text
@@ -14,7 +14,7 @@ CREATE FUNCTION create_sub_parent(
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql 
     AS $$
 DECLARE
 

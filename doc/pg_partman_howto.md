@@ -1,9 +1,9 @@
-Example Guide On Setting Up Partitioning
+Example Guide On Setting Up Trigger-based Partitioning
 ========================================
 
 This HowTo guide will show you some examples of how to set up both simple, single level partitioning as well as multi-level sub-partitioning. It will also show you how to partition data out of a table that has existing data (see **Sub-partition ID->ID->ID**) and undo the partitioning of an existing partition set. For more details on what each function does and the additional features in this extension, please see the **pg_partman.md** documentation file. The examples in this document assume you are running at least v3.0.1 of pg_partman. If you need a howto for a previous version, please see an older release available on github. 
 
-Note that all examples here are for non-native partitioning. Once PostgreSQL 10 is released, I will try to add any updates that may be necessary for native partitioning examples.
+Note that all examples here are for non-native, trigger-based partitioning. Documentation for native partitioning is in the works, but it will mostly be centered around PostgreSQL 11 since 10 was very limited in its partitioning support.
 
 ### Simple Time Based: 1 Partition Per Day
 ```

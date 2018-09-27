@@ -389,7 +389,7 @@ SELECT has_table('partman_retention_test', 'time_taptest_table_12345678901234567
 --SELECT has_table('partman_retention_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 
 --    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' got moved to new schema. This test may fail around the year boundary. See comment in tests for different test to try.');
 
-SELECT undo_partition_time('partman_test.time_taptest_table_123456789012345678901234567890123456780', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table_123456789012345678901234567890123456780', 20, p_keep_table := false);
 /* This test may fail around the end of the year. If so, swap to the commented out one below */
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123456780', ARRAY[129], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
 

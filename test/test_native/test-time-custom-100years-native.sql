@@ -16,10 +16,20 @@ CREATE ROLE partman_owner;
 
 CREATE TABLE partman_test.time_taptest_table (col1 int, col2 text, col3 timestamptz NOT NULL DEFAULT now()) PARTITION BY RANGE (col3);
 CREATE TABLE partman_test.time_taptest_table_template (LIKE partman_test.time_taptest_table INCLUDING ALL);
--- TODO change back to parent table when fixed in future pg version
 ALTER TABLE partman_test.time_taptest_table_template ADD PRIMARY KEY (col1);
-CREATE INDEX ON partman_test.time_taptest_table_template (col3);
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.time_taptest_table INCLUDING ALL);
+
+DO $pg11_objects_check$
+BEGIN
+IF current_setting('server_version_num')::int >= 110000 THEN
+    -- Create on parent table
+    CREATE INDEX ON partman_test.time_taptest_table (col3);
+ELSE
+    -- Create on template table
+    CREATE INDEX ON partman_test.time_taptest_table_template (col3);
+END IF;
+END $pg11_objects_check$;
+
 
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
@@ -385,7 +395,7 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('c
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'300 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'300 years'::interval, 'YYYY')||' got moved to new schema');
 
-SELECT undo_partition_native('partman_test.time_taptest_table', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[118], 'Check count from target table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY'), 
     'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY')||' does not exist');

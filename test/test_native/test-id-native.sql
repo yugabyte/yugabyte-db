@@ -1,6 +1,7 @@
 -- ########## ID DYNAMIC TESTS ##########
 -- Additional tests: turn off pg_jobmon logging, UNLOGGED, PUBLIC role, start with higher number, inherit FK
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
+    -- Tests that foreign keys and normal indexes for PG10 use the template and for PG11 they use the parent. Also since this is id partitioning, we can use the partition key for primary key, so that should work from parent on PG11 as well.
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -18,12 +19,6 @@ CREATE ROLE partman_owner;
 CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
 INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 
--- Add back when native partitioning supports indexes/fks
---CREATE UNLOGGED TABLE partman_test.id_taptest_table (
---    col1 bigint primary key
---    , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2)
---    , col3 timestamptz DEFAULT now());
-
 CREATE UNLOGGED TABLE partman_test.id_taptest_table (
     col1 bigint 
     , col2 text not null default 'stuff'
@@ -34,10 +29,23 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic, PU
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 -- Template table
 CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
-ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
-ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
-CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+-- Regular unique indexes do not work on native in PG11 if the partition key isn't included
 CREATE UNIQUE INDEX ON partman_test.template_id_taptest_table (col4);
+
+DO $pg11_objects_check$
+BEGIN
+IF current_setting('server_version_num')::int >= 110000 THEN
+    -- Create on parent table
+    ALTER TABLE partman_test.id_taptest_table ADD PRIMARY KEY (col1);
+    ALTER TABLE partman_test.id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
+    CREATE INDEX ON partman_test.id_taptest_table (col3);
+ELSE
+    -- Create on template table
+    ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
+    ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
+    CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+END IF;
+END $pg11_objects_check$;
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', p_jobmon := false, p_start_partition := '3000000000', p_template_table := 'partman_test.template_id_taptest_table');
 
@@ -180,11 +188,11 @@ SELECT drop_partition_id('partman_test.id_taptest_table', p_retention_schema := 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 doesn''t exists anymore');
 SELECT has_table('partman_retention_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 got moved to new schema');
 
-SELECT undo_partition_native('partman_test.id_taptest_table', 'partman_test.undo_taptest', p_keep_table := false);
+SELECT undo_partition('partman_test.id_taptest_table', p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 does not exist');
 
 -- Test keeping the rest of the tables
-SELECT undo_partition_native('partman_test.id_taptest_table', 'partman_test.undo_taptest', 10);
+SELECT undo_partition('partman_test.id_taptest_table', 10, p_target_table := 'partman_test.undo_taptest');
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.undo_taptest', ARRAY[19], 'Check count from parent table after undo');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000030', 'Check id_taptest_table_p3000000030 still exists');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p3000000030', 'Check child table had its data removed id_taptest_table_p3000000030');

@@ -695,51 +695,52 @@ SELECT hasnt_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMES
     'After retention Check Time-taptest-Table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' does not exist');
 SELECT hasnt_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'2 weeks'::interval, 'IYYY"w"IW'), 
     'After retention Check Time-taptest-Table_'||to_char(CURRENT_TIMESTAMP-'2 weeks'::interval, 'IYYY"w"IW')||' does not exist');
-
 -- Undo daily for each week
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'1 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'2 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'7 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'8 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'9 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
-SELECT undo_partition_time('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'10 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'1 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'2 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'7 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'8 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'9 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'10 weeks'::interval, 'IYYY"w"IW'), 20, p_keep_table := false);
 
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'1 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'1 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 1 week old parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'1 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||''')',
+
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||'"''::regclass',
             'Check that current parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 weeks'::interval, 'IYYY"w"IW')||''')',
+
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 1 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'2 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'2 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 2 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'2 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 3 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 4 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 5 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 6 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'7 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'7 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 7 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'7 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'8 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'8 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 8 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'8 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'9 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'9 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 9 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'9 weeks'::interval, 'IYYY"w"IW')||' table has no children');
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'10 weeks'::interval, 'IYYY"w"IW')||''')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'10 weeks'::interval, 'IYYY"w"IW')||'"''::regclass',
             'Check that 10 week future parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'10 weeks'::interval, 'IYYY"w"IW')||' table has no children');
 
 
 -- Undo weekly 
-SELECT undo_partition_time('Partman_test.Time-taptest-Table', 20, p_keep_table := false);
+SELECT undo_partition('Partman_test.Time-taptest-Table', 20, p_keep_table := false);
 
-SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table'')',
+SELECT is_empty('SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent::regclass = ''"Partman_test"."Time-taptest-Table"''::regclass',
             'Check that parent Time-taptest-Table table has no children');
 
 SELECT is_empty('SELECT * FROM part_config WHERE parent_table LIKE ''Partman_test.Time-taptest-Table''',

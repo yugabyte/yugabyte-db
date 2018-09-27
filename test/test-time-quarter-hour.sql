@@ -634,7 +634,7 @@ SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(date_
     'Check time_taptest_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0)-'45 mins'::interval, 'YYYY_MM_DD_HH24MI')||' got moved to new schema');
 
-SELECT undo_partition_time('partman_test.time_taptest_table', 20, p_keep_table := false);
+SELECT undo_partition('partman_test.time_taptest_table', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0), 'YYYY_MM_DD_HH24MI'), 
