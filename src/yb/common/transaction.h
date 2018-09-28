@@ -29,6 +29,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/uuid.h"
 
 namespace rocksdb {
@@ -77,12 +78,16 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 
+YB_STRONGLY_TYPED_BOOL(MustExist);
+
 // Used by RequestStatusAt.
 struct StatusRequest {
   const TransactionId* id;
   HybridTime read_ht;
   HybridTime global_limit_ht;
   int64_t serial_no;
+  const std::string* reason;
+  MustExist must_exist;
   TransactionStatusCallback callback;
 };
 

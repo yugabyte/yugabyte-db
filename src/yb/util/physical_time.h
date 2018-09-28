@@ -60,6 +60,10 @@ class MockClock : public PhysicalClock {
 
 const PhysicalClockPtr& WallClock();
 
+#if !defined(__APPLE__)
+const PhysicalClockPtr& AdjTimeClock();
+#endif
+
 } // namespace yb
 
 #endif // YB_UTIL_PHYSICAL_TIME_H

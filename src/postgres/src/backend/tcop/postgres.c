@@ -76,6 +76,7 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
+#include "pg_yb_utils.h"
 
 /* ----------------
  *		global variables

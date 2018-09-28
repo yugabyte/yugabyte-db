@@ -60,4 +60,4 @@ fi
 ensure_file_exists "$core_file_path"
 ensure_file_exists "$executable_path"
 
-analyze_existing_core_file "$core_file_path" "$executable_path"
+analyze_existing_core_file "$core_file_path" "$executable_path" 2>&1

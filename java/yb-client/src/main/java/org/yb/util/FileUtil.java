@@ -17,7 +17,9 @@ package org.yb.util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class FileUtil {
 
@@ -30,6 +32,20 @@ public class FileUtil {
         LOG.warn("Could not delete " + filePath + " even though it is empty");
       }
     }
+  }
+
+  public static List<String> readLinesFrom(File f) throws IOException {
+    if (!f.exists()) {
+      return new ArrayList<>();
+    }
+    BufferedReader reader = new BufferedReader(new InputStreamReader(
+        new FileInputStream(f)));
+    List<String> lines = new ArrayList<>();
+    String line;
+    while ((line = reader.readLine()) != null) {
+      lines.add(line);
+    }
+    return lines;
   }
 
 }

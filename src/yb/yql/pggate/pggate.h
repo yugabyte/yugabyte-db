@@ -56,8 +56,7 @@ class PggateOptions : public yb::server::ServerBaseOptions {
 class PgApiImpl {
  public:
   PgApiImpl();
-  virtual ~PgApiImpl() {
-  }
+  virtual ~PgApiImpl();
 
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.

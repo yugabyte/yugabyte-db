@@ -24,7 +24,9 @@ namespace pggate {
 //--------------------------------------------------------------------------------------------------
 namespace {
 
-std::unique_ptr<pggate::PgApiImpl> pgapi;
+// Using a raw pointer here to fully control object initialization and destruction.
+pggate::PgApiImpl* pgapi;
+std::atomic<bool> pgapi_shutdown_done;
 
 } // anonymous namespace
 
@@ -34,13 +36,18 @@ std::unique_ptr<pggate::PgApiImpl> pgapi;
 extern "C" {
 
 void YBCInitPgGate() {
-  CHECK(pgapi.get() == nullptr) << __PRETTY_FUNCTION__ << " can only be called once";
-  pgapi = std::make_unique<pggate::PgApiImpl>();
+  CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+  pgapi = new pggate::PgApiImpl();
   LOG(INFO) << "PgGate open";
 }
 
 void YBCDestroyPgGate() {
+  if (pgapi_shutdown_done.exchange(true)) {
+    LOG(FATAL) << __PRETTY_FUNCTION__ << " can only be called once";
+  }
+  delete pgapi;
   pgapi = nullptr;
+  LOG(INFO) << __PRETTY_FUNCTION__ << " finished";
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {

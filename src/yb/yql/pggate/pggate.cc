@@ -50,23 +50,13 @@ PggateOptions::PggateOptions() {
   server_type = "tserver";
   rpc_opts.default_port = kDefaultPort;
   rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
+
   if (FLAGS_pggate_proxy_bind_address.empty()) {
     FLAGS_pggate_proxy_bind_address = strings::Substitute("0.0.0.0:$0",
                                                           PggateOptions::kDefaultPort);
   }
   rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
   master_addresses_flag = FLAGS_pggate_master_addresses;
-
-  const char* master_addresses_env_var_value = getenv("FLAGS_pggate_master_addresses");
-  if (master_addresses_env_var_value && strlen(master_addresses_env_var_value) > 0) {
-    if (!master_addresses_flag.empty()) {
-      CHECK_EQ(master_addresses_flag, master_addresses_env_var_value)
-          << "--pggate_master_addresses and the FLAGS_pggate_master_addresses env var are set to "
-          << "different values: on the command line we have " << FLAGS_pggate_master_addresses
-          << " but in the env var we have " << master_addresses_env_var_value;
-    }
-    master_addresses_flag = master_addresses_env_var_value;
-  }
 
   server::MasterAddresses master_addresses;
   // TODO: we might have to allow setting master_replication_factor similarly to how it is done
@@ -91,6 +81,9 @@ PgApiImpl::PgApiImpl()
                          &pggate_options_,
                          metric_entity_,
                          mem_tracker_) {
+}
+
+PgApiImpl::~PgApiImpl() {
 }
 
 //--------------------------------------------------------------------------------------------------

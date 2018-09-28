@@ -38,10 +38,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
+import org.yb.util.RandomNumberUtil;
 
 import java.io.*;
 import java.lang.reflect.Field;
-
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,31 +66,16 @@ public class TestUtils {
       System.getProperty("os.name").toLowerCase().equals("linux");
 
   private static final long startTimeMillis = System.currentTimeMillis();
-  private static Random randomGenerator;
+
+  private static final String defaultTestTmpDir =
+      "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
+          new Random().nextInt();
 
   // The amount of time to wait for in addition to the ttl specified.
   private static final long WAIT_FOR_TTL_EXTENSION_MS = 100;
 
-  private static String NONBLOCKING_RANDOM_DEVICE = "/dev/urandom";
-
   private static PrintStream defaultStdOut = System.out;
   private static PrintStream defaultStdErr = System.err;
-
-  static {
-    long seed = System.nanoTime();
-    if (new File(NONBLOCKING_RANDOM_DEVICE).exists()) {
-      try {
-        InputStream in = new FileInputStream(NONBLOCKING_RANDOM_DEVICE);
-        for (int i = 0; i < 64; ++i) {
-          seed = seed * 37 + in.read();
-        }
-        in.close();
-      } catch (IOException ex) {
-        LOG.warn("Failed to read from " + NONBLOCKING_RANDOM_DEVICE + " to seed random generator");
-      }
-    }
-    randomGenerator = new Random(seed);
-  }
 
   public static final int MIN_PORT_TO_USE = 10000;
   public static final int MAX_PORT_TO_USE = 32768;
@@ -260,8 +245,7 @@ public class TestUtils {
   public static String getBaseTmpDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
-      testTmpDir = "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
-          randomGenerator.nextInt();
+      testTmpDir = defaultTestTmpDir;
     }
     File f = new File(testTmpDir);
     f.mkdirs();
@@ -401,9 +385,9 @@ public class TestUtils {
   public static int findFreePort(String bindInterface) throws IOException {
     final InetAddress bindIp = InetAddress.getByName(bindInterface);
     final int MAX_ATTEMPTS = 1000;
+    Random rng = RandomNumberUtil.getRandomGenerator();
     for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
-      final int port = MIN_PORT_TO_USE +
-          randomGenerator.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
+      final int port = MIN_PORT_TO_USE + rng.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
       if (!isReservedPort(bindIp, port) && isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {
         reservePort(bindIp, port);
         return port;
@@ -478,6 +462,10 @@ public class TestUtils {
     return isTSAN() ? tsanValue : nonTsanValue;
   }
 
+  public static String nonTsanVsTsan(String nonTsanValue, String tsanValue) {
+    return isTSAN() ? tsanValue : nonTsanValue;
+  }
+
   /** @return a timeout multiplier to apply in tests based on the build type */
   public static double getTimeoutMultiplier() {
     return isTSAN() ? 3.0 : 1.0;
@@ -493,14 +481,6 @@ public class TestUtils {
     return (long) (timeout * TestUtils.getTimeoutMultiplier());
   }
 
-  public static Random getRandomGenerator() {
-    return randomGenerator;
-  }
-
-  public static int randomNonNegNumber() {
-    return randomGenerator.nextInt(Integer.MAX_VALUE);
-  }
-
   /**
    * Waits for the given ttl (in msec) to expire.
    * @param ttl the ttl (in msec) to wait for expiry.
@@ -508,23 +488,6 @@ public class TestUtils {
    */
   public static void waitForTTL(long ttl) throws Exception {
     Thread.sleep(ttl + WAIT_FOR_TTL_EXTENSION_MS);
-  }
-
-  public static String joinLinesForLogging(List<String> lines) {
-    if (lines.isEmpty()) {
-      return "";
-    }
-    StringBuilder sb = new StringBuilder();
-    boolean firstLine = true;
-    for (String line : lines) {
-      if (firstLine) {
-        firstLine = false;
-      } else {
-        sb.append("\n");
-      }
-      sb.append("    " + line);
-    }
-    return sb.toString();
   }
 
   public static void reportCollectedTest(
@@ -539,80 +502,6 @@ public class TestUtils {
     LOG.info("Finished sleeping for " + ms + " milliseconds: " + msg);
   }
 
-  public static class CommandResult {
-    public final String cmd;
-    public final int exitCode;
-    public final List<String> stdoutLines;
-    public final List<String> stderrLines;
-
-    public CommandResult(
-        String cmd, int exitCode, List<String> stdoutLines, List<String> stderrLines) {
-      this.cmd = cmd;
-      this.exitCode = exitCode;
-      this.stdoutLines = stdoutLines;
-      this.stderrLines = stderrLines;
-    }
-
-    public boolean isSuccess() {
-      return exitCode == 0;
-    }
-
-    public void logErrorOutput() {
-      if (!stderrLines.isEmpty()) {
-        LOG.warn("Standard error output from command {{ " + cmd + " }}" +
-            (exitCode == 0 ? "" : " (exit code: " + exitCode + "):\n" +
-                joinLinesForLogging(stderrLines)));
-      }
-    }
-  }
-
-  public static List<String> readLinesFrom(File f) throws IOException {
-    if (!f.exists()) {
-      return new ArrayList<>();
-    }
-    BufferedReader reader = new BufferedReader(new InputStreamReader(
-        new FileInputStream(f)));
-    List<String> lines = new ArrayList<>();
-    String line;
-    while ((line = reader.readLine()) != null) {
-      lines.add(line);
-    }
-    return lines;
-  }
-
-  public static CommandResult runShellCommand(String cmd) throws IOException {
-    File outputFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stdout_"  +
-        randomNonNegNumber() + ".txt");
-    File errorFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stderr_"  +
-        randomNonNegNumber() + ".txt");
-    try {
-
-      Process process = new ProcessBuilder().command(Arrays.asList(new String[]{
-          "bash", "-c", cmd
-      })).redirectOutput(outputFile).redirectError(errorFile).start();
-      int exitCode;
-      try {
-        exitCode = process.waitFor();
-      } catch (InterruptedException ex) {
-        throw new IOException("Interrupted while trying to run command: " + cmd, ex);
-      }
-      return new CommandResult(
-          cmd,
-          exitCode,
-          readLinesFrom(outputFile),
-          readLinesFrom(errorFile));
-    } catch (IOException ex) {
-      LOG.error("Exception while running command: " + cmd, ex);
-      throw ex;
-    } finally {
-      if (outputFile.exists()) {
-        outputFile.delete();
-      }
-      if (errorFile.exists()) {
-        errorFile.delete();
-      }
-    }
-  }
 
   public static String getTestReportFilePrefix() {
     Class testClass;
@@ -653,4 +542,5 @@ public class TestUtils {
     System.setOut(defaultStdOut);
     System.setErr(defaultStdErr);
   }
+
 }

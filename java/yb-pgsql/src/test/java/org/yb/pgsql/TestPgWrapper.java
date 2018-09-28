@@ -17,6 +17,8 @@ import org.junit.Test;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -28,6 +30,7 @@ import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgWrapper extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgWrapper.class);
 
   @Test
   public void testSimpleDDL() throws Exception {
@@ -61,7 +64,6 @@ public class TestPgWrapper extends BasePgSQLTest {
 
     statement.close();
   }
-
 
   @Test
   public void testSimpleDML() throws Exception {
@@ -129,12 +131,14 @@ public class TestPgWrapper extends BasePgSQLTest {
 
   @Test
   public void testBuiltins() throws Exception {
+    LOG.info("Creating table");
     Statement statement = connection.createStatement();
     statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
-
+    LOG.info("Table created, inserting into table");
     statement.execute("INSERT INTO test(h,r,v) VALUES (floor(1 + 1.5), log(3, 27), ceil(pi()))");
-
+    LOG.info("Selecting from table");
     ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test WHERE h = 2;");
+    LOG.info("Fetching next row");
 
     assertTrue(rs.next());
     assertEquals(2, rs.getInt("h"));
@@ -143,7 +147,9 @@ public class TestPgWrapper extends BasePgSQLTest {
 
     assertFalse(rs.next());
 
+    LOG.info("Closing result set");
     rs.close();
+    LOG.info("Closing statement");
     statement.close();
   }
 }

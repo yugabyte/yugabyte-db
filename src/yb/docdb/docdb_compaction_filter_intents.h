@@ -30,47 +30,6 @@
 namespace yb {
 namespace docdb {
 
-class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
- public:
-  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet);
-
-  ~DocDBIntentsCompactionFilter() override;
-  bool Filter(int level,
-              const rocksdb::Slice& key,
-              const rocksdb::Slice& existing_value,
-              std::string* new_value,
-              bool* value_changed) const override {
-    return const_cast<DocDBIntentsCompactionFilter*>(this)->DoFilter(level, key,
-              existing_value, new_value, value_changed);
-  }
-  const char* Name() const override;
-
-  TransactionIdSet& transactions_to_cleanup() {
-    return transactions_to_cleanup_;
-  }
-
-  void AddToSet(TransactionId transactionId);
-
-  void Cleanup(TransactionId transactionId);
-
- private:
-  bool DoFilter(int level,
-                const rocksdb::Slice& key,
-                const rocksdb::Slice& existing_value,
-                std::string* new_value,
-                bool* value_changed);
-  tablet::Tablet* tablet_;
-  TransactionIdSet transactions_to_cleanup_;
-  int rejected_transactions_ = 0;
-
-  // We use this to only log a message that the filter is being used once on the first call to
-  // the Filter function.
-  bool filter_usage_logged_ = false;
-
-  // Default TTL of table.
-  MonoDelta table_ttl_;
-};
-
 class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
   explicit DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet);
@@ -79,7 +38,7 @@ class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFact
       const rocksdb::CompactionFilter::Context& context) override;
   const char* Name() const override;
  private:
-  tablet::Tablet* tablet_;
+  tablet::Tablet* const tablet_;
 };
 
 }  // namespace docdb

@@ -27,6 +27,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 
+using namespace std::literals;
 using namespace std::placeholders;
 
 namespace yb {
@@ -247,6 +248,7 @@ class ConflictResolver {
   }
 
   void FetchTransactionStatuses() {
+    static const std::string kRequestReason = "conflict resolution"s;
     CountDownLatch latch(transactions_.size());
     for (auto& i : transactions_) {
       auto& transaction = i;
@@ -256,6 +258,8 @@ class ConflictResolver {
         context_.GetHybridTime(),
         0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
+        &kRequestReason,
+        MustExist::kTrue,
         [&transaction, &latch](Result<TransactionStatusResult> result) {
           if (result.ok()) {
             transaction.ProcessStatus(*result);

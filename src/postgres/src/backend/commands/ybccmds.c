@@ -93,7 +93,7 @@ YBCAlterDatabase(Oid dboid, const char *dbname)
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 {
-	YBCPgStatement handle;
+	YBCPgStatement handle = NULL;
 	ListCell   *listptr;
 	int			attnum;
 

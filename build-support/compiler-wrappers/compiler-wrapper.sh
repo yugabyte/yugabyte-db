@@ -28,6 +28,7 @@ set -euo pipefail
 # build issues.
 readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
+declare -i -r MAX_INPUT_FILES_TO_SHOW=20
 
 # -------------------------------------------------------------------------------------------------
 # Common functions
@@ -203,6 +204,7 @@ is_pb_cc=false
 
 rpath_found=false
 num_output_files_found=0
+has_yb_c_files=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -230,6 +232,11 @@ while [[ $# -gt 0 ]]; do
             instrument_functions=true
           fi
         fi
+        if [[ $1 =~ ^(.*/|)[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
+          # We will use this later to add custom compilation flags to PostgreSQL source files that
+          # we contributed, e.g. for stricter error checking.
+          has_yb_c_files=true
+      fi
       fi
     ;;
     -Wl,-rpath,*)
@@ -248,6 +255,7 @@ while [[ $# -gt 0 ]]; do
         export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
       fi
     ;;
+
     *)
     ;;
   esac
@@ -282,11 +290,19 @@ if [[ $local_build_only == "false" &&
   trap remote_build_exit_handler EXIT
 
   current_dir=$PWD
-  declare -i attempt=1
+  declare -i attempt=0
   declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while [[ $attempt -lt 100 ]]; do
+    let attempt+=1
+    set +e
     build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
+    if [[ $? -ne 0 ]]; then
+      set -e
+      log "shuf failed, trying again"
+      continue
+    fi
+    set -e
     if [[ -z $build_worker_name ]]; then
       let no_worker_count+=1
       if [[ $no_worker_count -ge 100 ]]; then
@@ -328,7 +344,6 @@ Fatal error: can't create .*: Stale file handle|\
       if [[ $sleep_deciseconds -lt 9 ]]; then
         let sleep_deciseconds+=1
       fi
-      let attempt+=1
       continue
     fi
     flush_stderr_file
@@ -395,6 +410,8 @@ local_build_exit_handler() {
               tail -n +2 "$stderr_path"
               echo
               if [[ ${#input_files[@]} -gt 0 ]]; then
+                declare -i num_files_shown=0
+                declare -i num_files_skipped=0
                 echo "Input files:"
                 for input_file in "${input_files[@]}"; do
                   # Only resolve paths for files that exists (and therefore are more likely to
@@ -402,9 +419,16 @@ local_build_exit_handler() {
                   if [[ -f "/usr/bin/realpath" && -e "$input_file" ]]; then
                     input_file=$( realpath "$input_file" )
                   fi
-                  echo "  $input_file"
+                  let num_files_shown+=1
+                  if [[ $num_files_shown -lt $MAX_INPUT_FILES_TO_SHOW ]]; then
+                    echo "  $input_file"
+                  else
+                    let num_files_skipped+=1
+                  fi
                 done
-                echo
+                if [[ $num_files_skipped -gt 0 ]]; then
+                  echo "  ($num_files_skipped files skipped)"
+                fi
                 echo "Output file (from -o): $output_file"
               fi
 
@@ -508,6 +532,11 @@ if "$instrument_functions"; then
   fi
 fi
 
+if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+  # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
+  # that we had to disable by default in build_postgres.py.
+  cmd+=( -Werror=unused-function )
+fi
 set_build_env_vars
 
 # Make RPATHs relative whenever possible. This is an effort towards being able to relocate the
@@ -552,6 +581,21 @@ trap local_build_exit_handler EXIT
 # commands we are running on the machine and decide whether to run compiler locally or remotely
 # based on that.
 cmd+=( -DYB_LOCAL_C_CXX_COMPILER_CMD )
+
+if [[ ${YB_GENERATE_COMPILATION_CMD_FILES:-0} == "1" &&
+      -n $output_file &&
+      $output_file == *.o ]]; then
+  IFS=$'\n'
+  echo "
+directory: $PWD
+output_file: $output_file
+compiler: $compiler_executable
+arguments:
+${cmd[*]}
+">"${output_file%.o}.cmd.txt"
+fi
+  unset IFS
+
 set +e
 
 ( set -x; "${cmd[@]}" ) 2>"$stderr_path"
