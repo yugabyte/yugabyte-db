@@ -64,9 +64,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         editCluster(universe, cluster);
       }
 
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -194,6 +191,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Update the blacklist servers on master leader.
     createPlacementInfoTask(tserversToBeRemoved)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+    // Update the swamper target file.
+    createSwamperTargetUpdateTask(false /* removeFile */);
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
