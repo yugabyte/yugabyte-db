@@ -83,4 +83,16 @@ If you want to create a shared LoadBalancer endpoint for all the services (YQL, 
 helm install yugabyte expose-all-shared.yaml --namespace yb-demo --name yb-demo --wait
 ```
 
+### Software upgrade
+If you want to upgrade the software version of the YugaByte DB you can do that in a rolling fashion, run the following command
+```
+First you would need to upgrade the masters
+kubectl set image statefulset yb-master yb-master=yugabytedb/yugabyte:<new version> --namespace yb-demo
+kubectl rollout status statefulset/yb-master --namespace yb-demo
+
+And then upgrade the tservers
+kubectl set image statefulset yb-tserver yb-master=yugabytedb/yugabyte:<new version> --namespace yb-demo
+kubectl rollout status statefulset/yb-tserver --namespace yb-demo
+```
+
 Follow the instructions on the NOTES section.

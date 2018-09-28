@@ -26,6 +26,10 @@ replicas:
   master: 3
   tserver: 3
 
+updateStrategy:
+    type: RollingUpdate
+    waitTime: 60
+
 PodManagementPolicy: Parallel
 
 serviceEndpoints:
