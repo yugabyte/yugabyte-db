@@ -1286,63 +1286,56 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_st
 Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
-  {
-    bool same_schema = schema()->Equals(*operation_state->schema());
 
-    // If the current version >= new version, there is nothing to do.
-    if (metadata_->schema_version() >= operation_state->schema_version()) {
-      LOG_WITH_PREFIX(INFO)
-          << "Already running schema version " << metadata_->schema_version()
-          << " got alter request for version " << operation_state->schema_version();
-      return Status::OK();
-    }
+  // If the current version >= new version, there is nothing to do.
+  if (metadata_->schema_version() >= operation_state->schema_version()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Already running schema version " << metadata_->schema_version()
+        << " got alter request for version " << operation_state->schema_version();
+    return Status::OK();
+  }
 
-    LOG_WITH_PREFIX(INFO) << "Alter schema from " << schema()->ToString()
-                          << " version " << metadata_->schema_version()
-                          << " to " << operation_state->schema()->ToString()
-                          << " version " << operation_state->schema_version();
-    DCHECK(schema_lock_.is_locked());
+  LOG_WITH_PREFIX(INFO) << "Alter schema from " << schema()->ToString()
+                        << " version " << metadata_->schema_version()
+                        << " to " << operation_state->schema()->ToString()
+                        << " version " << operation_state->schema_version();
+  DCHECK(schema_lock_.is_locked());
 
-    // Find out which columns have been deleted in this schema change, and add them to metadata.
-    for (const auto& col : schema()->column_ids()) {
-      if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
-        DeletedColumn deleted_col(col, clock_->Now());
-        LOG_WITH_PREFIX(INFO) << "Column " << col.ToString() << " recorded as deleted.";
-        metadata_->AddDeletedColumn(deleted_col);
-      }
-    }
-
-    metadata_->SetSchema(*operation_state->schema(), operation_state->schema_version());
-    if (operation_state->has_new_table_name()) {
-      metadata_->SetTableName(operation_state->new_table_name());
-      if (metric_entity_) {
-        metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
-      }
-    }
-
-    // Clear old index table metadata cache.
-    metadata_cache_ = boost::none;
-
-    // Update the index info.
-    metadata_->SetIndexMap(std::move(operation_state->index_map()));
-
-    // Create transaction manager and index table metadata cache for secondary index update.
-    if (!metadata_->index_map().empty()) {
-      if (metadata_->schema().table_properties().is_transactional() && !transaction_manager_) {
-        transaction_manager_.emplace(client_future_.get(),
-                                     scoped_refptr<server::Clock>(clock_),
-                                     local_tablet_filter_);
-      }
-      metadata_cache_.emplace(client_future_.get());
-    }
-
-    // If the current schema and the new one are equal, there is nothing to do.
-    if (!same_schema) {
-      return metadata_->Flush();
+  // Find out which columns have been deleted in this schema change, and add them to metadata.
+  for (const auto& col : schema()->column_ids()) {
+    if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+      DeletedColumn deleted_col(col, clock_->Now());
+      LOG_WITH_PREFIX(INFO) << "Column " << col.ToString() << " recorded as deleted.";
+      metadata_->AddDeletedColumn(deleted_col);
     }
   }
 
-  return Status::OK();
+  metadata_->SetSchema(*operation_state->schema(), operation_state->schema_version());
+  if (operation_state->has_new_table_name()) {
+    metadata_->SetTableName(operation_state->new_table_name());
+    if (metric_entity_) {
+      metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
+    }
+  }
+
+  // Clear old index table metadata cache.
+  metadata_cache_ = boost::none;
+
+  // Update the index info.
+  metadata_->SetIndexMap(std::move(operation_state->index_map()));
+
+  // Create transaction manager and index table metadata cache for secondary index update.
+  if (!metadata_->index_map().empty()) {
+    if (metadata_->schema().table_properties().is_transactional() && !transaction_manager_) {
+      transaction_manager_.emplace(client_future_.get(),
+                                   scoped_refptr<server::Clock>(clock_),
+                                   local_tablet_filter_);
+    }
+    metadata_cache_.emplace(client_future_.get());
+  }
+
+  // Flush the updated schema metadata to disk.
+  return metadata_->Flush();
 }
 
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
