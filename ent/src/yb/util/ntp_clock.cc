@@ -15,7 +15,9 @@
 
 namespace yb {
 
-NtpClock::NtpClock() : impl_(WallClock()) {}
+#if !defined(__APPLE__)
+NtpClock::NtpClock() : impl_(AdjTimeClock()) {}
+#endif
 
 NtpClock::NtpClock(PhysicalClockPtr impl) : impl_(std::move(impl)) {}
 
