@@ -33,7 +33,7 @@ DEFINE_int64(redis_rpc_memory_limit, 0, "Redis RPC memory limit");
 namespace yb {
 namespace redisserver {
 
-RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
+RedisServer::RedisServer(const RedisServerOptions& opts, tserver::TabletServer* tserver)
     : RpcAndWebServerBase(
           "RedisServer", opts, "yb.redisserver",
           MemTracker::CreateTracker(

@@ -32,20 +32,21 @@ class RedisServer : public server::RpcAndWebServerBase {
   static const uint16_t kDefaultPort = 6379;
   static const uint16_t kDefaultWebPort = 11000;
 
-  explicit RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver);
+  explicit RedisServer(const RedisServerOptions& opts, tserver::TabletServer* tserver);
 
   CHECKED_STATUS Start();
 
   using server::RpcAndWebServerBase::Shutdown;
 
-  const tserver::TabletServer* tserver() const { return tserver_; }
+  tserver::TabletServer* tserver() const { return tserver_; }
+
   const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
   const RedisServerOptions& opts() const { return opts_; }
 
  private:
   RedisServerOptions opts_;
-  const tserver::TabletServer* const tserver_;
+  tserver::TabletServer* const tserver_;
 
   DISALLOW_COPY_AND_ASSIGN(RedisServer);
 };

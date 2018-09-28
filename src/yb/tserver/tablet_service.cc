@@ -1411,6 +1411,13 @@ void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::Publish(
+    const PublishRequestPB* req, PublishResponsePB* resp, rpc::RpcContext context) {
+  rpc::Publisher* publisher = server_->GetPublisher();
+  resp->set_num_clients_forwarded_to(publisher ? (*publisher)(req->channel(), req->message()) : 0);
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {

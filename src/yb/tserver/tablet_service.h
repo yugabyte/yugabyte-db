@@ -69,6 +69,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
 
+  void Publish(
+      const PublishRequestPB* req, PublishResponsePB* resp, rpc::RpcContext context) override;
+
   void ListTablets(const ListTabletsRequestPB* req,
                    ListTabletsResponsePB* resp,
                    rpc::RpcContext context) override;

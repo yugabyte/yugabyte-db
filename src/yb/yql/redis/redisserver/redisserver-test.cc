@@ -209,6 +209,11 @@ class TestRedisService : public RedisTableTestBase {
               << "Expected: " << yb::ToString(expected) << std::endl
               << " Replies: " << reply.ToString();
           for (size_t i = 0; i < expected.size(); i++) {
+            DVLOG(3) << "Checking " << replies[i].ToString();
+            if (expected[i].get_type() == RedisReplyType::kString &&
+                expected[i].as_string() == "IGNORED") {
+              continue;
+            }
             ASSERT_EQ(expected[i], replies[i]) << "Originator: " << __FILE__ << ":" << line
                                                << ", i: " << i;
           }
@@ -1804,23 +1809,13 @@ TEST_F(TestRedisService, TestMonitor) {
   // Responses are of the format
   // <TS> {<db-id> <client-ip>:<port>} "CMD" "ARG1" ....
   // We will check for the responses to end in "CMD" "ARG1"
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck1"}, "\"PING\" \"cmd2\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
-                                             {"PING", "mc1-ck2"}, response_ending);
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck3"}, "\"PING\" \"mc1-ck1\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, "\"PING\" \"cmd2\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, response_ending);
   SyncClient();
 
   UseClient(mc2);
   // Check the responses for monitor on mc2.
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
-                                             {"PING", "mc2-ck1"}, response_ending);
-
-  // Since the redis client here forced us to send "PING" above to check for responses for mc1, we
-  // should see those as well.
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck2"}, "\"PING\" \"mc1-ck1\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck3"}, "\"PING\" \"mc1-ck2\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck4"}, "\"PING\" \"mc1-ck3\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck5"}, "\"PING\" \"mc2-ck1\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, response_ending);
   SyncClient();
 
   // Check number of monitoring clients.
@@ -1859,67 +1854,721 @@ TEST_F(TestRedisService, TestMonitor) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSubscribe) {
-  expected_no_sessions_ = true;
-  shared_ptr<RedisClient> sc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> sc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> sc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> pc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> pc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-
+void TestSubscribe(
+    TestRedisService* tester,
+    shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
+    shared_ptr<RedisClient> pc1,  // Used for Publish
+    shared_ptr<RedisClient> pc2) {
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2";
 
-  // TODO: Fix the expected number of channels subscribed to. (1, 2, 1, 2)
-  UseClient(sc1);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic1),
-                               RedisReply(0)});
-  SyncClient();
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
 
-  UseClient(sc2);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic2),
-                               RedisReply(0)});
-  SyncClient();
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->SyncClient();
 
-  UseClient(sc3);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic1),
-                               RedisReply(0)});
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic2),
-                               RedisReply(0)});
-  SyncClient();
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
 
-  UseClient(pc1);
-  DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
-  SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+  tester->SyncClient();
 
-  UseClient(pc2);
-  DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
-  SyncClient();
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(2),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg1 to topic 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
+  tester->SyncClient();
+
+  // Now send msg2 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
 
   // Verify the received messages.
-  UseClient(sc1);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestUnsubscribe(
+    TestRedisService* tester,
+    shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
+    shared_ptr<RedisClient> pc1,  // Used for Publish
+    shared_ptr<RedisClient> pc2) {
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3", msg4 = "msg4";
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(3),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(3)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // sc1 will unsubscribe from topic1. Will still be subscribed to topic2.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "unsubscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->SyncClient();
+
+  // sc2 will unsubscribe from all topics. Will still be subscribed to none.
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "unsubscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg1 to topic 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 1);
+  tester->SyncClient();
+
+  // Now send msg2 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received messages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  // sc3 will unsubscribe from all topics. sc1 will still be subscribed to topic2.
+  tester->UseClient(sc3);
+  // Redis does not specify a particular order. So, the following two messages
+  // could be in received in either order.
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE"}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                                  RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                     RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg3 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg3}, 1);
+  tester->SyncClient();
+
+  // No one should receive the message except sc1.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg3});
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  // sc1 will unsubscribe from topic2. No one left subscribed to any topic.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE"}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                                  RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg4 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg4}, 0);
+  tester->SyncClient();
+
+  // No one should receive the message.
+  tester->UseClient(sc1);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestPSubscribe(
+    TestRedisService* tester,
+    shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
+    shared_ptr<RedisClient> pc1,  // Used for Publish
+    shared_ptr<RedisClient> pc2) {
+  const string pattern1 = "t*1", pattern2 = "t*2", common_pattern = "t*";
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2";
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"PSUBSCRIBE", pattern1},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 1);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern2), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", common_pattern},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, common_pattern), RedisReply(1)});
+  tester->SyncClient();
+
+  // Now send msg1 to pattern 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
+  tester->SyncClient();
+
+  // Now send msg2 to pattern 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received messages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern1, topic1, msg1});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestPUnsubscribe(
+    TestRedisService* tester,
+    shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
+    shared_ptr<RedisClient> pc1,  // Used for Publish
+    shared_ptr<RedisClient> pc2) {
+  const string pattern1 = "to*1", pattern2 = "to*2";
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3";
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  // sc1 will punsubscribe from pattern2. Will still be psubscribed to pattern1.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe", pattern1},
+      {RedisReply(RedisReplyType::kString, "punsubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->SyncClient();
+
+  // sc2 will punsubscribe from all patterns. Will still be psubscribed to none.
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "punsubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(0)});
+  tester->SyncClient();
+
+  // Now send msg1 to pattern 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 1);
+  tester->SyncClient();
+
+  // Now send msg2 to pattern 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received pmessages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern1, topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  // sc3 will punsubscribe from all patterns.
+  tester->UseClient(sc3);
+  // Redis does not specify a particular order. So, the following two messages
+  // could be in received in either order.
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe"}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                                   RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                     RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 1);
+    tester->SyncClient();
+  }
+
+  // Now send msg3 to pattern 2. only sc1 receives it.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg3}, 1);
+  tester->SyncClient();
+
+  // No one should receive the message.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg3});
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->SyncClient();
+
+  // Get sc1 to also punsubscribe from pattern 2. No one is subscribed to any patterns anymore.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe"}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                                   RedisReply(RedisReplyType::kString, pattern2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+// Utility for testing various combination(s).
+YB_DEFINE_ENUM(SubOrUnsub, (kSubscribe)(kUnsubscribe));
+YB_DEFINE_ENUM(PatternOrChannel, (kChannel)(kPattern));
+YB_DEFINE_ENUM(LocalOrCluster, (kLocal)(kCluster));
+
+class TestRedisServiceExternal : public TestRedisService {
+ protected:
+  void TestPubSub(LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype);
+
+ private:
+  bool use_external_mini_cluster() override { return true; }
+};
+
+void TestRedisServiceExternal::TestPubSub(
+    LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype) {
+  shared_ptr<RedisClient> ps0, sc1, sc2, sc3, pc1, pc2;
+
+  if (ltype == LocalOrCluster::kLocal) {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    auto host0 = ts0->bind_host();
+    auto port0 = ts0->redis_rpc_port();
+
+    sc1 = std::make_shared<RedisClient>(host0, port0);
+    sc2 = std::make_shared<RedisClient>(host0, port0);
+    sc3 = std::make_shared<RedisClient>(host0, port0);
+    pc1 = std::make_shared<RedisClient>(host0, port0);
+    pc2 = std::make_shared<RedisClient>(host0, port0);
+    ps0 = std::make_shared<RedisClient>(host0, port0);
+  } else {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    auto host0 = ts0->bind_host();
+    auto port0 = ts0->redis_rpc_port();
+    auto ts1 = external_mini_cluster()->tablet_server(1);
+    auto host1 = ts1->bind_host();
+    auto port1 = ts1->redis_rpc_port();
+
+    sc1 = std::make_shared<RedisClient>(host0, port0);
+    sc2 = std::make_shared<RedisClient>(host1, port1);
+    sc3 = std::make_shared<RedisClient>(host0, port0);
+    pc1 = std::make_shared<RedisClient>(host0, port0);
+    pc2 = std::make_shared<RedisClient>(host1, port1);
+    ps0 = nullptr;  // Diabled. PubSub monitoring only queries the local proxy.
+  }
+
+  if (stype == SubOrUnsub::kSubscribe) {
+    if (ptype == PatternOrChannel::kChannel) {
+      TestSubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    } else {
+      TestPSubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    }
+  } else {
+    if (ptype == PatternOrChannel::kChannel) {
+      TestUnsubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    } else {
+      TestPUnsubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    }
+  }
+}
+
+TEST_F(TestRedisServiceExternal, TestSubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestSubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestUnsubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestUnsubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestPSubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPSubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPUnsubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
+  expected_no_sessions_ = true;
+  const string topic1 = "topic1";
+  const string value = "value";
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
   SyncClient();
 
-  UseClient(sc2);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  DoRedisTestExpectError(__LINE__, {"SET", "foo", value});
   SyncClient();
 
-  UseClient(sc3);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
   SyncClient();
 
-  UseClient(nullptr);
-  VerifyCallbacks();
+  DoRedisTestOk(__LINE__, {"QUIT"});
+  SyncClient();
 }
 
 TEST_F(TestRedisService, TestAuth) {
