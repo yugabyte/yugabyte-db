@@ -332,6 +332,7 @@ message RedisResponsePB {
     bytes string_response = 3;
     RedisArrayPB array_response = 4;
     bytes status_response = 5;
+    bytes encoded_response = 7;
   }
 
   optional bytes error_message = 6;

@@ -82,13 +82,14 @@ class ConnectionContextWithQueue : public ConnectionContextBase {
     return processed_call_count_.load(std::memory_order_acquire);
   }
 
+  void Shutdown(const Status& status) override;
+
  private:
   void AssignConnection(const ConnectionPtr& conn) override;
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle(std::string* reason_not_idle = nullptr) override;
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
   void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
-  void Shutdown(const Status& status) override;
 
   void CallProcessed(InboundCall* call);
   void FlushOutboundQueue(Connection* conn);

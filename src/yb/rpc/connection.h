@@ -58,6 +58,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/object_pool.h"

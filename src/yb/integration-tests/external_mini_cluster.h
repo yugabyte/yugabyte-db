@@ -628,6 +628,9 @@ class ExternalTabletServer : public ExternalDaemon {
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
   }
+  uint16_t redis_rpc_port() const {
+    return redis_rpc_port_;
+  }
 
   // CQL addresses.
   uint16_t cql_rpc_port() const {

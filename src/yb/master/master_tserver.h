@@ -34,6 +34,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
+  rpc::Publisher* GetPublisher() override { return nullptr; }
 
   CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;

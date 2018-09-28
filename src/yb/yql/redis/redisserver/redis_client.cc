@@ -105,6 +105,9 @@ class RedisClient::Impl {
         args.push_back(word.c_str());
         arg_lens.push_back(word.size());
       }
+      if (args.empty()) {
+        continue;
+      }
       if (redisAppendCommandArgv(context_, args.size(), args.data(), arg_lens.data()) != REDIS_OK) {
         NotifyDisconnected();
         Free();

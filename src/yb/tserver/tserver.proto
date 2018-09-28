@@ -346,3 +346,12 @@ message GetMasterAddressesResponsePB {
   optional TabletServerErrorPB error = 1;
   optional string master_addresses = 2;
 }
+
+message PublishRequestPB {
+  required bytes channel = 1;
+  required bytes message = 2;
+}
+
+message PublishResponsePB {
+  required int32 num_clients_forwarded_to = 1;
+}
