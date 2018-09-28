@@ -104,10 +104,6 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 //  Class RetryingTSRpcTask.
 // ============================================================================
 
-namespace {
-constexpr int64_t kUnscheduledTaskId = -1;
-} // anonymous namespace
-
 RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
                                      ThreadPool* callback_pool,
                                      gscoped_ptr<TSPicker> replica_picker,
@@ -118,7 +114,6 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
     table_(table),
     start_ts_(MonoTime::Now()),
     attempt_(0),
-    reactor_task_id_(kUnscheduledTaskId),
     state_(MonitoredTaskState::kWaiting) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
@@ -315,7 +310,7 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
 
 void RetryingTSRpcTask::AbortIfScheduled() {
   auto reactor_task_id = reactor_task_id_.load(std::memory_order_acquire);
-  if (reactor_task_id != kUnscheduledTaskId) {
+  if (reactor_task_id != rpc::kInvalidTaskId) {
     master_->messenger()->AbortOnReactor(reactor_task_id);
   }
 }

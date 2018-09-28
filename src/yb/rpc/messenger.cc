@@ -489,13 +489,13 @@ Status Messenger::QueueEventOnAllReactors(ServerEventListPtr server_event) {
   return Status::OK();
 }
 
-void Messenger::RemoveScheduledTask(int64_t id) {
+void Messenger::RemoveScheduledTask(ScheduledTaskId id) {
   CHECK_GT(id, 0);
   std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
   scheduled_tasks_.erase(id);
 }
 
-void Messenger::AbortOnReactor(int64_t task_id) {
+void Messenger::AbortOnReactor(ScheduledTaskId task_id) {
   DCHECK(!reactors_.empty());
   CHECK_GT(task_id, 0);
 
@@ -513,7 +513,7 @@ void Messenger::AbortOnReactor(int64_t task_id) {
   }
 }
 
-int64_t Messenger::ScheduleOnReactor(
+ScheduledTaskId Messenger::ScheduleOnReactor(
     StatusFunctor func, MonoDelta when, const shared_ptr<Messenger>& msgr) {
   DCHECK(!reactors_.empty());
 
@@ -529,7 +529,7 @@ int64_t Messenger::ScheduleOnReactor(
     chosen = reactors_[rand() % reactors_.size()];
   }
 
-  int64_t task_id = 0;
+  ScheduledTaskId task_id = 0;
   if (msgr != nullptr) {
     task_id = next_task_id_.fetch_add(1);
   }
@@ -548,7 +548,7 @@ int64_t Messenger::ScheduleOnReactor(
     scheduled_tasks_.erase(task_id);
   }
 
-  return -1;
+  return kInvalidTaskId;
 }
 
 void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {

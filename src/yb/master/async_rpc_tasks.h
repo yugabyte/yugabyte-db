@@ -187,7 +187,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
 
-  std::atomic<int64_t> reactor_task_id_;
+  std::atomic<rpc::ScheduledTaskId> reactor_task_id_{rpc::kInvalidTaskId};
 
  private:
   // Returns true if we should impose a limit in the number of retries for this task type.
