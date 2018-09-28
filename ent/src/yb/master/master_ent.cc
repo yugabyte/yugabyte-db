@@ -30,9 +30,11 @@ Master::~Master() {
 }
 
 Status Master::RegisterServices() {
+#if !defined(__APPLE__)
   server::HybridClock::RegisterProvider(NtpClock::Name(), [] {
     return std::make_shared<NtpClock>();
   });
+#endif
 
   std::unique_ptr<ServiceIf> master_backup_service(new MasterBackupServiceImpl(this));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_backup_svc_queue_length,

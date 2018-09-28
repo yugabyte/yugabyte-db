@@ -32,9 +32,11 @@ TabletServer::~TabletServer() {
 }
 
 Status TabletServer::RegisterServices() {
+#if !defined(__APPLE__)
   server::HybridClock::RegisterProvider(NtpClock::Name(), [] {
     return std::make_shared<NtpClock>();
   });
+#endif
 
   std::unique_ptr<ServiceIf> backup_service(
       new TabletServiceBackupImpl(tablet_manager_.get(), metric_entity()));

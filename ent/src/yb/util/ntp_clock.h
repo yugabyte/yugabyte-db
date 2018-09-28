@@ -18,9 +18,21 @@
 
 namespace yb {
 
+// NtpClock uses provided physical clock to implement alternative logic of calculating
+// Now and MaxGlobalTime.
+//
+// Now - max_error is subtracted from time_point of original clock.
+// MaxGlobalTime - is calculated as time_point + time.max_error * 2.
+//
+// So it is guaranteed that Now().time_point is never after real current time and
+// MaxGlobalTime is never before real current time.
+//
+// By default NtpClock uses AdjTimeClock.
 class NtpClock : public PhysicalClock {
  public:
+#if !defined(__APPLE__)
   NtpClock();
+#endif
   explicit NtpClock(PhysicalClockPtr impl);
 
   Result<PhysicalTime> Now() override;
