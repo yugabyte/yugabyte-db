@@ -148,6 +148,14 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMetricIndexes metric);
 
+  void SetPublisher(rpc::Publisher service) {
+    publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
+  }
+
+  rpc::Publisher* GetPublisher() override {
+    return publish_service_ptr_.get();
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -172,6 +180,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Manager for tablets which are available on this server.
   gscoped_ptr<TSTabletManager> tablet_manager_;
+
+  // Used to forward redis pub/sub messages to the redis pub/sub handler
+  yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
   // Thread responsible for heartbeating to the master.
   gscoped_ptr<Heartbeater> heartbeater_;

@@ -20,7 +20,8 @@ namespace yb {
 namespace redisserver {
 
 // With regards to the Redis Protocol, kString is Bulk String and kStatus is Simple String
-YB_DEFINE_ENUM(RedisReplyType, (kString)(kStatus)(kArray)(kError)(kInteger)(kNull));
+// kIgnore is to be used for assertions, where we do not exactly care about the reply.
+YB_DEFINE_ENUM(RedisReplyType, (kString)(kStatus)(kArray)(kError)(kInteger)(kNull)(kIgnore));
 
 // Class stores redis reply.
 // Redis reply consists of type and value.
@@ -59,6 +60,11 @@ class RedisReply {
 
   int64_t as_integer() const {
     return int_;
+  }
+
+  static RedisReply Ignored() {
+    static RedisReply kIgnoreReply(RedisReplyType::kIgnore, "");
+    return kIgnoreReply;
   }
 
   const std::vector<RedisReply>& as_array() const {

@@ -131,6 +131,13 @@ size_t RedisConnectionContext::BufferLimit() {
   return FLAGS_redis_max_read_buffer_size;
 }
 
+void RedisConnectionContext::Shutdown(const Status& status) {
+  if (cleanup_hook_) {
+    cleanup_hook_();
+  }
+  rpc::ConnectionContextWithQueue::Shutdown(status);
+}
+
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
                                    size_t weight_in_bytes,
                                    CallProcessedListener call_processed_listener)
@@ -279,6 +286,8 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
       } else {
         out = SerializeArray(redis_response.array_response().elements(), out);
       }
+    } else if (redis_response.has_encoded_response()) {
+      out = SerializeEncoded(redis_response.encoded_response(), out);
     } else {
       out = SerializeEncoded(kOkResponse, out);
     }
