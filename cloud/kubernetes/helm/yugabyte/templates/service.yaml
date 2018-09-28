@@ -88,6 +88,7 @@ spec:
           requests:
             storage: {{ $root.Values.persistentVolume.storage }}
     {{- end }}
+
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
