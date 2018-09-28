@@ -88,9 +88,17 @@ spec:
           requests:
             storage: {{ $root.Values.persistentVolume.storage }}
     {{- end }}
-
+  {{ if $root.Values.waitTime }}
+  minReadySeconds: {{ $root.Values.waitTime }}
+  {{ end }}
   updateStrategy:
     type: RollingUpdate
+    rollingUpdate:
+      {{ if eq .name "yb-masters" }}
+      partition: {{ $root.Values.Partition.master }}
+      {{ else }}
+      partition: {{ $root.Values.Partition.tserver }}
+      {{ end }}
   selector:
     matchLabels:
       app: "{{ .label }}"
