@@ -105,6 +105,9 @@ typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
 
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
+typedef int64_t ScheduledTaskId;
+const ScheduledTaskId kInvalidTaskId = -1;
+
 } // namespace rpc
 } // namespace yb
 

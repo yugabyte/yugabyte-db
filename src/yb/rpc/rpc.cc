@@ -121,7 +121,7 @@ Status RpcRetrier::DelayedRetry(
   attempt_num_++;
 
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
-  while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {
+  while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kScheduling)) {
     if (expected_state == RpcRetrierState::kFinished) {
       auto result = STATUS_FORMAT(IllegalState, "Retry of finished command: $0", rpc);
       LOG(WARNING) << result;
@@ -138,6 +138,19 @@ Status RpcRetrier::DelayedRetry(
   task_id_ = messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms),
       messenger_);
+
+  // Scheduling state can be changed only in this method, so we expected both
+  // exchanges below to succeed.
+  expected_state = RpcRetrierState::kScheduling;
+  if (task_id_.load(std::memory_order_acquire) == kInvalidTaskId) {
+    auto result = STATUS_FORMAT(IllegalState, "Failed to schedule: $0", rpc);
+    LOG(WARNING) << result;
+    CHECK(state_.compare_exchange_strong(
+        expected_state, RpcRetrierState::kFinished, std::memory_order_acq_rel));
+    return result;
+  }
+  CHECK(state_.compare_exchange_strong(
+      expected_state, RpcRetrierState::kWaiting, std::memory_order_acq_rel));
   return Status::OK();
 }
 
@@ -146,10 +159,18 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
 
   RpcRetrierState expected_state = RpcRetrierState::kWaiting;
   bool run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);
-  if (!run && expected_state == RpcRetrierState::kIdle) {
+  // There is very rare case when we get here before switching from scheduling to waiting state.
+  // It happens only during shutdown, when it invoked soon after we scheduled retry.
+  // So we are doing busy wait here, to avoid overhead in general case.
+  while (!run && expected_state == RpcRetrierState::kScheduling) {
+    expected_state = RpcRetrierState::kWaiting;
     run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);
+    if (run) {
+      break;
+    }
+    std::this_thread::sleep_for(1ms);
   }
-  task_id_ = -1;
+  task_id_ = kInvalidTaskId;
   if (!run) {
     rpc->Finished(STATUS_FORMAT(
         Aborted, "$0 aborted: $1", rpc->ToString(), yb::rpc::ToString(expected_state)));
@@ -187,7 +208,14 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
 }
 
 RpcRetrier::~RpcRetrier() {
-  DCHECK_EQ(-1, task_id_);
+  auto task_id = task_id_.load(std::memory_order_acquire);
+  auto state = state_.load(std::memory_order_acquire);
+
+  LOG_IF(
+      DFATAL,
+      (kInvalidTaskId != task_id) ||
+          (RpcRetrierState::kFinished != state && RpcRetrierState::kIdle != state))
+      << "Destroying RpcRetrier in invalid state: " << ToString();
 }
 
 void RpcRetrier::Abort() {
@@ -203,7 +231,7 @@ void RpcRetrier::Abort() {
   }
   for (;;) {
     auto task_id = task_id_.load(std::memory_order_acquire);
-    if (task_id == -1) {
+    if (task_id == kInvalidTaskId) {
       break;
     }
     messenger_->AbortOnReactor(task_id);

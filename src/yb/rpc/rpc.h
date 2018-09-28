@@ -78,7 +78,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
   ~RpcCommand() {}
 };
 
-YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kWaiting)(kFinished));
+YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kScheduling)(kWaiting)(kFinished));
 YB_DEFINE_ENUM(BackoffStrategy, (kLinear)(kExponential));
 YB_STRONGLY_TYPED_BOOL(RetryWhenBusy);
 
@@ -173,7 +173,7 @@ class RpcRetrier {
   // Errors from the server take precedence over timeout errors.
   Status last_error_;
 
-  std::atomic<int64_t> task_id_{-1};
+  std::atomic<ScheduledTaskId> task_id_{kInvalidTaskId};
 
   std::atomic<RpcRetrierState> state_{RpcRetrierState::kIdle};
 

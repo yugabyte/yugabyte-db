@@ -205,19 +205,19 @@ class Messenger : public ProxyContext {
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                  DumpRunningRpcsResponsePB* resp);
 
-  void RemoveScheduledTask(int64_t task_id);
+  void RemoveScheduledTask(ScheduledTaskId task_id);
 
   // This method will run 'func' with an ABORT status argument. It's not guaranteed that the task
   // will cancel because TimerHandler could run before this method.
-  void AbortOnReactor(int64_t task_id);
+  void AbortOnReactor(ScheduledTaskId task_id);
 
   // Run 'func' on a reactor thread after 'when' time elapses.
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  int64_t ScheduleOnReactor(StatusFunctor func,
-                            MonoDelta when,
-                            const std::shared_ptr<Messenger>& msgr = nullptr);
+  ScheduledTaskId ScheduleOnReactor(StatusFunctor func,
+                                    MonoDelta when,
+                                    const std::shared_ptr<Messenger>& msgr = nullptr);
 
   std::string name() const {
     return name_;
@@ -332,12 +332,12 @@ class Messenger : public ProxyContext {
   std::shared_ptr<Messenger> retain_self_;
 
   // Id that will be assigned to the next task that is scheduled on the reactor.
-  std::atomic<uint64_t> next_task_id_ = {1};
+  std::atomic<ScheduledTaskId> next_task_id_ = {1};
   std::atomic<uint64_t> num_connections_accepted_ = {0};
 
   std::mutex mutex_scheduled_tasks_;
 
-  std::unordered_map<int64_t, std::shared_ptr<DelayedTask>> scheduled_tasks_;
+  std::unordered_map<ScheduledTaskId, std::shared_ptr<DelayedTask>> scheduled_tasks_;
 
   // Flag that we have at least on address with artificially broken connectivity.
   std::atomic<bool> has_broken_connectivity_ = {false};
