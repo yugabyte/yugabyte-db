@@ -93,9 +93,9 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       {{ if eq .name "yb-masters" }}
-      partition: {{ $root.Values.updateStrategy.masterPartition }}
+      partition: {{ $root.Values.partition.master }}
       {{ else }}
-      partition: {{ $root.Values.updateStrategy.tserverPartition }}
+      partition: {{ $root.Values.partition.tserver }}
       {{ end }}
   selector:
     matchLabels:

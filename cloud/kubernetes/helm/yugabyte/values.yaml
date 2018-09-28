@@ -26,9 +26,9 @@ replicas:
   master: 3
   tserver: 3
 
-updateStrategy:
-  masterPartition: 3
-  tserverPartition: 3
+partition:
+  master: 3
+  tserver: 3
 
 PodManagementPolicy: Parallel
 
