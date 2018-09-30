@@ -110,6 +110,10 @@ DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 100_MB,
              "the total limit will be 2 * remote_boostrap_rate_limit_bytes_per_sec because a "
              "tserver or master can act both as a sender and receiver at the same time.");
 
+DEFINE_int32(bytes_remote_bootstrap_durable_write_mb, 8,
+             "Explicitly call fsync after downloading the specified amount of data in MB "
+             "during a remote bootstrap session. If 0 fsync() is not called.");
+
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
   RETURN_NOT_OK_PREPEND(UnwindRemoteError(status, controller), msg)
@@ -560,6 +564,12 @@ Status RemoteBootstrapClient::DownloadWALs() {
     ++counter;
   }
 
+  if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
+    // Persist directory so that recently downloaded files are accessible.
+    RETURN_NOT_OK_PREPEND(fs_manager_->env()->SyncDir(wal_table_top_dir),
+                          Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
+  }
+
   downloaded_wal_ = true;
   return Status::OK();
 }
@@ -640,6 +650,10 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
     LOG(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
     RETURN_NOT_OK(fs_manager_->env()->RenameFile(intents_tmp_dir, intents_dir));
   }
+  if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
+    // Persist directory so that recently downloaded files are accessible.
+    RETURN_NOT_OK(fs_manager_->env()->SyncDir(rocksdb_dir));
+  }
   new_superblock_.swap(new_sb);
   downloaded_rocksdb_files_ = true;
   return Status::OK();
@@ -718,6 +732,8 @@ Status RemoteBootstrapClient::DownloadBlock(const BlockId& old_block_id,
 template<class Appendable>
 Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
                                            Appendable* appendable) {
+  // For periodic sync, indicates number of bytes which need to be sync'ed.
+  size_t periodic_sync_unsynced_bytes = 0;
   uint64_t offset = 0;
   int32_t max_length = std::min(FLAGS_remote_bootstrap_max_chunk_size,
                                 FLAGS_rpc_max_message_size - kBytesReservedForMessageHeaders);
@@ -778,6 +794,13 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
       done = true;
     }
     offset += resp.chunk().data().size();
+    if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
+      periodic_sync_unsynced_bytes += resp.chunk().data().size();
+      if (periodic_sync_unsynced_bytes > FLAGS_bytes_remote_bootstrap_durable_write_mb * 1_MB) {
+        RETURN_NOT_OK(appendable->Sync());
+        periodic_sync_unsynced_bytes = 0;
+      }
+    }
   }
 
   VLOG(2) << "Transmission rate: " << rate_limiter->GetRate();
