@@ -1095,6 +1095,111 @@ RETURNS TEXT AS $$
     SELECT hasnt_view( $1, 'View ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
+
+
+/******************** INHERITANCE ***********************************************/
+
+
+/*
+ * Internal function to test if the specified table in the
+ * specified schema does have an inheritance chain.
+ * Returns true or false
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME, NAME )
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS(
+     SELECT true
+     FROM pg_catalog.pg_namespace n
+     JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+     WHERE c.relkind = 'r'
+     AND   n.nspname = $1
+     AND   c.relname = $2
+     AND   c.relhassubclass = true
+  );
+$$ LANGUAGE SQL;
+
+
+/*
+ * Internal function to test if a specific table
+ * in the search_path has a inheritance chain.
+ * Returns true or false.
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+           SELECT true
+           FROM pg_catalog.pg_class c
+           WHERE c.relkind = 'r'
+           AND pg_catalog.pg_table_is_visible( c.oid )
+           AND   c.relname = $1
+           AND   c.relhassubclass = true
+    );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( schema, table, description )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+       SELECT ok( _inherited( $1,   -- schema
+                              $2 ), -- table
+                 $3 );              -- error message
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT has_inherited_tables( $1,  -- schema
+                                     $2,  -- table
+                                     format( 'Table(s) inherit from table %I.%I', $1, $2 ) );
+$$ LANGUAGE SQL;
+
+
+-- has_inherited_tables( table, description )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, TEXT )
+RETURNS TEXT AS $$
+       SELECT ok( _inherited( $1 ),  -- table
+                  $2 );              -- description
+$$ LANGUAGE SQL;
+
+
+-- has_inherited_tables( table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME )
+RETURNS TEXT AS $$
+        SELECT has_inherited_tables( $1::NAME, -- table
+                                     format( 'Table(s) inherit from table %I', $1 ) );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+       SELECT ok( NOT _inherited( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _inherited( $1, $2 ),
+                   format( 'Table %I.%I cannot have inherited tables', $1, $2 ) );
+$$ LANGUAGE SQL;
+
+
+-- hasnt_inherited_tables( table, description )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, TEXT )
+RETURNS TEXT AS $$
+       SELECT ok( NOT _inherited( $1 ), $2 );
+$$ LANGUAGE SQL;
+
+
+
+-- hasnt_inherited_tables( table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _inherited( $1 ),
+               format( 'Table %I cannot have inherited tables', $1 ) );
+$$ LANGUAGE SQL;
+
+
+/**************************************************************************/
+
 -- has_sequence( schema, sequence, description )
 CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
