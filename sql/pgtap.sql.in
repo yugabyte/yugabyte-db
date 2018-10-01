@@ -1198,6 +1198,166 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 
+
+
+/*
+* Internal function to test if the qualified table is aprent of
+* the other qualified table.
+*/
+CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS(
+     SELECT true
+     FROM pg_catalog.pg_inherits i
+     WHERE i.inhrelid = ( SELECT c1.oid
+                          FROM pg_catalog.pg_class c1
+                          JOIN pg_catalog.pg_namespace n1
+                          ON   c1.relnamespace = n1.oid
+                          WHERE c1.relname = $4
+                          AND   n1.nspname = $3 )
+     AND i.inhparent = ( SELECT c2.oid
+                         FROM pg_catalog.pg_class c2
+                         JOIN pg_catalog.pg_namespace n2
+                         ON   c2.relnamespace = n2.oid
+                         WHERE c2.relname = $2
+                         AND   n2.nspname = $1 )
+  );
+
+$$ LANGUAGE SQL;
+
+
+/*
+ * Internal function to check if not-qualified tables
+ * within the search_path are connected by an inheritance chain.
+ */
+CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME )
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS(
+      SELECT true
+      FROM pg_catalog.pg_inherits i
+      WHERE i.inhrelid = ( SELECT c1.oid
+                           FROM pg_catalog.pg_class c1
+                           WHERE c1.relname = $2
+                           AND   pg_catalog.pg_table_is_visible( c1.oid ) )
+      AND i.inhparent = ( SELECT c2.oid
+                          FROM pg_catalog.pg_class c2
+                          WHERE c2.relname = $1
+                          AND   pg_catalog.pg_table_is_visible( c2.oid ) )
+  );
+$$ LANGUAGE SQL;
+
+
+
+
+
+-- is_parent_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT ok( _parent_of( $1, $2, $3, $4 ),
+                   $5 );
+$$ LANGUAGE SQL;
+
+-- is_child_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $3, $4, $1, $2, $5 );
+$$ LANGUAGE SQL;
+
+-- is_parent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $1, $2,
+                             $3, $4,
+                             format( 'Table %I.%I is parent of %I.%I', $1, $2, $3, $4 ) );
+$$ LANGUAGE SQL;
+
+-- is_child_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $3, $4, $1, $2 );
+$$ LANGUAGE SQL;
+
+-- is_parent_of( table, table, description )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT ok( _parent_of( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- is_child_of( table, table, description )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $2, $1, $3 );
+$$ LANGUAGE SQL;
+
+-- is_parent_of( table, table )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT ok( _parent_of( $1, $2 ),
+                   format( 'Table %I is parent of %I', $1, $2 ) );
+$$ LANGUAGE SQL;
+
+-- is_child_of( table, table )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $2, $1 );
+$$ LANGUAGE SQL;
+
+
+-- isnt_parent_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _parent_of( $1, $2, $3, $4 ),
+                   $5 );
+$$ LANGUAGE SQL;
+
+-- isnt_child_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $3, $4, $1, $2, $5 );
+$$ LANGUAGE SQL;
+
+-- isnt_parent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $1, $2,
+                              $3, $4,
+                              format( 'Table %I.%I is not parent of %I.%I', $1, $2, $3, $4 ) );
+$$LANGUAGE SQL;
+
+
+-- isnt_child_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $3, $4, $1, $2 );
+$$LANGUAGE SQL;
+
+
+-- isnt_parent_of( table, table, description )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _parent_of( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+
+-- isnt_child_of( table, table, description )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $2, $1, $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_parent_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _parent_of( $1, $2 ),
+                   format( 'Table %I is not parent of %I', $1, $2 ) );
+$$ LANGUAGE SQL;
+
+-- isnt_child_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $2, $1 );
+$$ LANGUAGE SQL;
+
 /**************************************************************************/
 
 -- has_sequence( schema, sequence, description )

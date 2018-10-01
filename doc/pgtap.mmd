@@ -2927,6 +2927,158 @@ exist".
 This function is the inverse of `has_view()`. The test passes if the
 specified materialized view does *not* exist.
 
+### `has_inherited_tables()`
+
+    SELECT has_inherited_tables( :schema, :table, :description );
+    SELECT has_inherited_tables( :schema, :table );
+    SELECT has_inherited_tables( :table, :description );
+    SELECT has_inherited_tables( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to search for the table that has children.
+
+`:table`
+: Name of the table that must have children.
+
+`:description
+: A description of the test.
+
+This function checks that the specified table has at least one other table that
+inherits from it.
+
+### `hasnt_inherited_tables()`
+
+    SELECT hasnt_inherited_tables( :schema, :table, :description );
+    SELECT hasnt_inherited_tables( :schema, :table );
+    SELECT hasnt_inherited_tables( :table, :description );
+    SELECT hasnt_inherited_tables( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to search for the table that must not have children.
+
+`:table`
+: Name of the table that must not have children.
+
+`:description
+: A description of the test.
+
+This function checks that the specified table has no tables inheriting from it.
+It is the opposite of the function `has_inherited_tables()`.
+
+### `is_parent_of()`
+
+    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :description );
+    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
+    SELECT is_parent_of( :parent_table, :child_table, :description );
+    SELECT is_parent_of( :parent_table, :child_table );
+
+**Parameters**
+
+`:parent_schema`
+: Name of the schema in which the parent table must be found.
+
+`:parent_table`
+: Name of the table that plays the parent role.
+
+`:child_schema`
+: Name of the schema in which the child table must be.
+
+`:child_table`
+: Name of the table that is supposed to be child of the other one.
+
+`:description`
+: Description of the test.
+
+This function checks if the table marked as "parent" is effectively a table from which the "child" table
+inherits from, that is there is an inheritance chain between the two tables.
+
+
+### `isnt_parent_of()`
+
+    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :description );
+    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
+    SELECT isnt_parent_of( :parent_table, :child_table, :description );
+    SELECT isnt_parent_of( :parent_table, :child_table );
+
+**Parameters**
+
+`:parent_schema`
+: Name of the schema in which the parent table must be found.
+
+`:parent_table`
+: Name of the table that plays the parent role.
+
+`:child_schema`
+: Name of the schema in which the child table must be.
+
+`:child_table`
+: Name of the table that is supposed to be child of the other one.
+
+`:description`
+: Description of the test.
+
+This function ensures that the table marked as "parent" is not a table from which "child" inherits from, that
+is there is not an inheritance chain between the two tables.
+The function does the opposite of `is_parent_of()`.
+
+
+### `is_child_of()`
+
+    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :description );
+    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
+    SELECT is_child_of( :child_table,  :parent_table, :description );
+    SELECT is_child_of( :child_table,  :parent_table );
+
+**Parameters**
+
+`:parent_schema`
+: Name of the schema in which the parent table must be found.
+
+`:parent_table`
+: Name of the table that plays the parent role.
+
+`:child_schema`
+: Name of the schema in which the child table must be.
+
+`:child_table`
+: Name of the table that is supposed to be child of the other one.
+
+`:description`
+: Description of the test.
+
+This function does the same of `is_parent_of()`, with swapped arguments.
+
+
+### `isnt_child_of()`
+
+    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :description );
+    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
+    SELECT isnt_child_of( :child_table,  :parent_table, :description );
+    SELECT isnt_child_of( :child_table,  :parent_table );
+
+**Parameters**
+
+`:parent_schema`
+: Name of the schema in which the parent table must be found.
+
+`:parent_table`
+: Name of the table that plays the parent role.
+
+`:child_schema`
+: Name of the schema in which the child table must be.
+
+`:child_table`
+: Name of the table that is supposed to be child of the other one.
+
+`:description`
+: Description of the test.
+
+This function does the same of `isnt_parent_of()`, with swapped arguments.
+
 ### `has_sequence()` ###
 
     SELECT has_sequence( :schema, :sequence, :description );

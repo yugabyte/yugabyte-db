@@ -1,7 +1,7 @@
 \unset ECHO
 --\i test/setup.sql
 
-SELECT plan( 4 );
+SELECT plan( 14 );
 
 -- Create inherited tables
 CREATE TABLE public.parent( id INT PRIMARY KEY );
@@ -43,6 +43,72 @@ SELECT * FROM check_test(
 );
 
 
+
+
+SELECT * FROM check_test(
+       is_parent_of( 'hide', 'h_parent', 'hide', 'h_child' )
+       , true -- expected value
+       , 'hide.h_parent is father of hide.h_child'
+);
+
+SELECT * FROM check_test(
+       is_parent_of( 'parent', 'child' )
+       , true -- expected value
+       , 'child inherits from parent'
+);
+
+
+SELECT * FROM check_test(
+       is_parent_of( 'hide', 'h_parent', 'public', 'child' )
+       , false -- expected value
+       , 'hide.h_parent is not father of public.child'
+);
+
+SELECT * FROM check_test(
+       is_parent_of( 'public', 'parent', 'public', 'child' )
+       , true -- expected value
+       , 'public.parent is not father of public.child'
+);
+
+
+
+SELECT * FROM check_test(
+       isnt_child_of( 'hide', 'h_parent', 'public', 'child' )
+       , true -- expected value
+       , 'hide.h_parent is not father of public.child'
+);
+
+SELECT * FROM check_test(
+       isnt_parent_of( 'parent', 'child' )
+       , false -- expected value
+       , 'parent is not father of public.child'
+);
+
+
+SELECT * FROM check_test(
+       isnt_child_of( 'parent', 'child' )
+       , true -- expected value
+       , 'parent is not child'
+);
+
+SELECT * FROM check_test(
+       isnt_child_of( 'child', 'parent' )
+       , false -- expected value
+       , 'child inherits from parent'
+);
+
+
+SELECT * FROM check_test(
+       isnt_child_of( 'hide', 'h_parent', 'hide', 'h_child' )
+       , true -- expected value
+       , 'hide.h_parent is not child of hide.h_child'
+);
+
+SELECT * FROM check_test(
+       isnt_child_of( 'hide', 'h_child', 'hide', 'h_parent' )
+       , false -- expected value
+       , 'hide.h_child inherits from hide.h_parent'
+);
 
 
 
