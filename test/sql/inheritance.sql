@@ -1,16 +1,18 @@
 \unset ECHO
 --\i test/setup.sql
 
-SELECT plan( 14 );
+SELECT plan( 16 );
 
 -- Create inherited tables
 CREATE TABLE public.parent( id INT PRIMARY KEY );
-CREATE TABLE public.child(  id INT PRIMARY KEY ) INHERITS ( public.parent );
+CREATE TABLE public.child1(  id INT PRIMARY KEY ) INHERITS ( public.parent );
+CREATE TABLE public.child2(  id INT PRIMARY KEY ) INHERITS ( public.child1 );
 
 -- Create inherited tables in another schema
 CREATE SCHEMA hide;
 CREATE TABLE hide.h_parent( id INT PRIMARY KEY );
-CREATE TABLE hide.h_child(  id INT PRIMARY KEY ) INHERITS ( hide.h_parent );
+CREATE TABLE hide.h_child1(  id INT PRIMARY KEY ) INHERITS ( hide.h_parent );
+CREATE TABLE hide.h_child2(  id INT PRIMARY KEY ) INHERITS ( hide.h_child1 );
 
 
 -- test has_inhereted_tables
@@ -22,9 +24,9 @@ SELECT * FROM check_test(
 
 -- test hasnt_inherited_tables
 SELECT * FROM check_test(
-       hasnt_inherited_tables( 'hide'::name, 'h_child'::name )
+       hasnt_inherited_tables( 'hide'::name, 'h_child2'::name )
        , true  -- expected value
-       , 'hide.h_child is supposed not to have children'
+       , 'hide.h_child2 is not supposed to have children'
 );
 
 
@@ -37,77 +39,89 @@ SELECT * FROM check_test(
 
 -- test hasnt_inherited_tables
 SELECT * FROM check_test(
-       hasnt_inherited_tables( 'child'::name )
+       hasnt_inherited_tables( 'child2'::name )
        , true  -- expected value
-       , 'public.child is supposed not to have children'
+       , 'public.child2 is supposed not to have children'
 );
 
 
 
 
 SELECT * FROM check_test(
-       is_parent_of( 'hide', 'h_parent', 'hide', 'h_child' )
+       is_parent_of( 'hide'::name, 'h_parent'::name, 'hide'::name, 'h_child1'::name, 1 )
        , true -- expected value
-       , 'hide.h_parent is father of hide.h_child'
+       , 'hide.h_parent direct is father of hide.h_child1'
 );
 
 SELECT * FROM check_test(
-       is_parent_of( 'parent', 'child' )
+       is_parent_of( 'hide', 'h_child1', 'hide', 'h_child2', 1 )
        , true -- expected value
-       , 'child inherits from parent'
+       , 'hide.h_child1 direct is father of hide.h_child2'
+);
+
+SELECT * FROM check_test(
+       is_parent_of( 'hide', 'h_parent', 'hide', 'h_child2', 2 )
+       , true -- expected value
+       , 'hide.h_parent is father of hide.h_child2'
+);
+
+SELECT * FROM check_test(
+       is_parent_of( 'parent', 'child1' )
+       , true -- expected value
+       , 'child1 inherits from parent'
 );
 
 
 SELECT * FROM check_test(
-       is_parent_of( 'hide', 'h_parent', 'public', 'child' )
+       is_parent_of( 'hide'::name, 'h_parent'::name, 'public'::name, 'child1'::name )
        , false -- expected value
-       , 'hide.h_parent is not father of public.child'
+       , 'hide.h_parent is not father of public.child1'
 );
 
 SELECT * FROM check_test(
-       is_parent_of( 'public', 'parent', 'public', 'child' )
+       is_parent_of( 'public'::name, 'parent'::name, 'public'::name, 'child1'::name )
        , true -- expected value
-       , 'public.parent is not father of public.child'
+       , 'public.parent is not father of public.child1'
 );
 
 
 
 SELECT * FROM check_test(
-       isnt_child_of( 'hide', 'h_parent', 'public', 'child' )
+       isnt_child_of( 'hide'::name, 'h_parent'::name, 'public'::name, 'child1'::name )
        , true -- expected value
-       , 'hide.h_parent is not father of public.child'
+       , 'hide.h_parent is not father of public.child1'
 );
 
 SELECT * FROM check_test(
-       isnt_parent_of( 'parent', 'child' )
+       isnt_parent_of( 'parent', 'child1' )
        , false -- expected value
-       , 'parent is not father of public.child'
+       , 'parent is not father of public.child1'
 );
 
 
 SELECT * FROM check_test(
-       isnt_child_of( 'parent', 'child' )
+       isnt_child_of( 'parent', 'child1' )
        , true -- expected value
-       , 'parent is not child'
+       , 'parent is not child1'
 );
 
 SELECT * FROM check_test(
-       isnt_child_of( 'child', 'parent' )
+       isnt_child_of( 'child1', 'parent' )
        , false -- expected value
-       , 'child inherits from parent'
+       , 'child1 inherits from parent'
 );
 
 
 SELECT * FROM check_test(
-       isnt_child_of( 'hide', 'h_parent', 'hide', 'h_child' )
+       isnt_child_of( 'hide'::name, 'h_parent'::name, 'hide'::name, 'h_child1'::name )
        , true -- expected value
-       , 'hide.h_parent is not child of hide.h_child'
+       , 'hide.h_parent is not child of hide.h_child1'
 );
 
 SELECT * FROM check_test(
-       isnt_child_of( 'hide', 'h_child', 'hide', 'h_parent' )
+       isnt_child_of( 'hide'::name, 'h_child1'::name, 'hide'::name, 'h_parent'::name )
        , false -- expected value
-       , 'hide.h_child inherits from hide.h_parent'
+       , 'hide.h_child1 inherits from hide.h_parent'
 );
 
 
