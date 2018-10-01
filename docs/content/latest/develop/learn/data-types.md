@@ -1,8 +1,14 @@
 ---
-title: Data Types
-linkTitle: Data Types
+title: 3. Data Types
+linkTitle: 3. Data Types
+description: Data Types
 aliases:
   - /develop/learn/data-types/
+menu:
+  latest:
+    identifier: data-types
+    parent: learn
+    weight: 565
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

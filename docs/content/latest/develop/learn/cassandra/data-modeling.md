@@ -1,5 +1,7 @@
 
-## Keyspaces, tables, rows and columns
+This page documents data modeling with YugaByte DB’s [Cassandra compatible YCQL API](../../../api/cassandra).
+
+## Keyspaces, Tables, Rows and Columns
 
 ### Keyspaces
 
@@ -55,7 +57,7 @@ When creating a table, the primary key of the table must be specified in additio
 
 There are two types of primary keys, and they are described below.
 
-### Partition key columns (required)
+### Partition Key Columns (Required)
 
 Such tables have *simple primary keys*. One or more columns of a table can be made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
 
@@ -72,7 +74,7 @@ In the case of the `users` table, we can make `user_id` column the only primary 
 | tablet-17 | 1007     | James     | Bond     |
 
 
-### Clustering key columns (optional)
+### Clustering Key Columns (Optional)
 
 The clustering columns specify the order in which the column data is sorted and stored on disk for a given unique partition key value. More than one clustering column can be specified, and the columns are sorted in the order they are declared in the clustering column. It is also possible to control the sort order (ascending or descending sort) for these columns. Note that the sort order respects the data type.
 
@@ -95,5 +97,120 @@ Note that if we had made both `author` and `book_title` partition key columns, w
 - The partition key columns are also often referred to as its  *hash columns*. This is because an internal hash function is used to distribute data items across tablets based on their partition key values.
 
 - The clustering key columns are also referred to as its **range columns**. This is because rows with the same partition key are stored on disk in sorted order by the clustering key value.
+
+
+## Secondary Indexes
+
+A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugaByte DB's secondary index support is documented in detail [here](../../../api/cassandra/ddl_create_index/).
+
+### Benefits of Secondary Indexes
+
+Secondary indexes can be used to speed up queries and to enforce uniqueness of values in a column.
+
+#### Speed up Queries
+
+The predominant use of a secondary index is to make lookups by some column values efficient. Let us take an example of a users table, where user_id is the primary key. Suppose we want to lookup user_id by the email of the user efficiently. You can achieve this as follows.
+
+```{.sh .copy .separator-gt}
+cqlsh> CREATE KEYSPACE example;
+```
+```{.sh .copy .separator-gt}
+cqlsh> CREATE TABLE example.users(
+         user_id    bigint PRIMARY KEY,
+         firstname  text,
+         lastname   text,
+         email      text
+       ) WITH transactions = { 'enabled' : true };
+```
+```{.sh .copy .separator-gt}
+cqlsh> CREATE INDEX user_by_email ON example.users (email)
+         INCLUDE (firstname, lastname);
+```
+
+Next let us insert some data.
+
+```{.sh .copy .separator-gt}
+cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
+       VALUES (1, 'James', 'Bond', 'bond@yb.com');
+```
+
+```{.sh .copy .separator-gt}
+cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
+       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
+```
+
+You can now query the table by the email of a user efficiently as follows.
+
+```{.sh .copy .separator-gt}
+cqlsh> SELECT * FROM example.users WHERE email='bond@yb.com';
+```
+
+Read more about using secondary indexes to speed up queries in this quick guide to YugaByte DB secondary indexes.
+
+### Enforce Uniqueness of Column Values 
+
+In some cases, you would need to ensure that duplicate values cannot be inserted in a column of a table. You can achieve this in YugaByte DB by creating a unique secondary index, where the application does not want duplicate values to be inserted into a column. 
+
+```{.sh .copy .separator-gt}
+cqlsh> CREATE KEYSPACE example;
+```
+```{.sh .copy .separator-gt}
+cqlsh> CREATE TABLE example.users(
+         user_id    bigint PRIMARY KEY,
+         firstname  text,
+         lastname   text,
+         email      text
+       ) WITH transactions = { 'enabled' : true };
+```
+```{.sh .copy .separator-gt}
+cqlsh> CREATE UNIQUE INDEX unique_emails ON example.users (email);
+```
+
+Inserts would succeed as long as the email is unique.
+```{.sh .copy .separator-gt}
+cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
+       VALUES (1, 'James', 'Bond', 'bond@yb.com');
+```
+```{.sh .copy .separator-gt}
+cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
+       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
+```
+
+But upon inserting a duplicate email, we get an error.
+
+```{.sh .copy .separator-gt}
+cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
+       VALUES (3, 'Fake', 'Bond', 'bond@yb.com');
+```
+```sh
+InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index unique_emails
+```
+
+## Documents
+
+Documents are the most common way for storing, retrieving, and managing semi-structured data. Unlike the traditional relational data model, the document data model is not restricted to a rigid schema of rows and columns. The schema can be changed easily  thus helping application developers write business logic faster than ever before. Instead of columns with names and data types that are used in a relational model, a document contains a description of the data type and the value for that description. Each document can have the same or different structure. Even nested document structures are possible where one or more sub-documents are embedded inside a larger document. 
+
+Databases commonly support document data management through the use of a JSON data type. [JSON.org](http://www.json.org/) defines JSON (JavaScript Object Notation) to be a lightweight data-interchange format. It’s easy for humans to read and write. it’s easy for machines to parse and generate. JSON has four simple data types.
+
+- string
+- number
+- boolean 
+- null (or empty)
+
+In addition, it has two core complex data types.
+
+- Collection of name-value pairs which is realized as an object, hash table, dictionary or something similar depending on the language.
+- Ordered list of values which is realized as an array, vector, list or sequence depending on the language.
+
+Document data models are best fit for applications requiring a flexible schema and fast data access. E.g. nested documents enable applications to store related pieces of information in the same database record in a denormalized manner. As a result, applications can issue fewer queries and updates to complete common operations. 
+
+
+### Comparison with Apache Cassandra’s JSON Support
+
+[Apache Cassandra’s JSON](http://cassandra.apache.org/doc/latest/cql/json.html) support can be misleading for many developers. CQL allows SELECT and INSERT statements to include the JSON keyword. The SELECT output will now be available in the JSON format and the INSERT inputs can now be specified in the JSON format. However, this “JSON” support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Since there is no native JSON data type in CQL, the schema doesn’t have any knowledge of the JSON provided by the user. This means the schema definition doesn’t change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier. 
+
+With YugaByte DB’s native JSON support using the [`JSONB`](../data-types/#jsonb) data type, application developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.
+
+
 
 

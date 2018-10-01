@@ -1,6 +1,6 @@
 ---
-title: 5. Batch Operations
-linkTitle: 5. Batch Operations
+title: 6. Batch Operations
+linkTitle: 6. Batch Operations
 description: Batch Operations
 aliases:
   - /develop/learn/batch-operations/

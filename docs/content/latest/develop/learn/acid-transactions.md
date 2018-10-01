@@ -1,6 +1,6 @@
 ---
-title: 3. ACID Transactions
-linkTitle: 3. ACID Transactions
+title: 4. ACID Transactions
+linkTitle: 4. ACID Transactions
 description: ACID Transactions
 aliases:
   - /develop/learn/acid-transactions/
@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: acid-transactions
     parent: learn
-    weight: 565
+    weight: 566
 ---
 
 A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.

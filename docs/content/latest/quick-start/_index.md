@@ -33,7 +33,7 @@ YugaByte DB Community Edition plus:
   - Production support
 </div>
 </div>
-<a href="https://www.yugabyte.com/about/contact/" target="_blank" class="btn cta-button">
+<a href="https://www.yugabyte.com/contact-sales/" target="_blank" class="btn cta-button">
   Contact Us
 </a>
 {{< /hero >}}

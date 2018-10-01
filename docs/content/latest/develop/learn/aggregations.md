@@ -1,6 +1,6 @@
 ---
-title: 4. Aggregations
-linkTitle: 4. Aggregations
+title: 5. Aggregations
+linkTitle: 5. Aggregations
 description: Aggregations
 aliases:
   - /develop/learn/aggregations/

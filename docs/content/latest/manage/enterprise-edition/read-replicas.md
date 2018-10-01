@@ -2,6 +2,7 @@
 title: Read Replicas
 linkTitle: Read Replicas
 description: Read Replicas
+beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: manage-read-replicas
@@ -45,7 +46,7 @@ Once the universe is created, you should see something like this in the universe
 
 ![Universe Overview](/images/ee/universe-overview.png)
 
-Note how we have a distinguished primary and read replica cluster defined, designated by the yellow and green silos respectively. 
+Note how we have a distinguished primary and read replica cluster defined, designated by the yellow and green groups respectively. 
 
 ### Universe nodes
 
