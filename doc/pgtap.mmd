@@ -2971,9 +2971,11 @@ It is the opposite of the function `has_inherited_tables()`.
 
 ### `is_parent_of()`
 
-    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :description );
+    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth, :description );
+    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth );
     SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
-    SELECT is_parent_of( :parent_table, :child_table, :description );
+    SELECT is_parent_of( :parent_table, :child_table, :depth, :description );
+    SELECT is_parent_of( :parent_table, :child_table, :depth );
     SELECT is_parent_of( :parent_table, :child_table );
 
 **Parameters**
@@ -2993,15 +2995,21 @@ It is the opposite of the function `has_inherited_tables()`.
 `:description`
 : Description of the test.
 
+`:depth`
+: The position in the inheritance chain of the child table, by default 1 (a direct child).
+
 This function checks if the table marked as "parent" is effectively a table from which the "child" table
-inherits from, that is there is an inheritance chain between the two tables.
+inherits from, that is there is an inheritance chain between the two tables. The depth argument
+allows to specifiy at which position in the inheritance chain the child table must be found.
 
 
 ### `isnt_parent_of()`
 
-    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :description );
+    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth, :description );
+    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth );
     SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
-    SELECT isnt_parent_of( :parent_table, :child_table, :description );
+    SELECT isnt_parent_of( :parent_table, :child_table, :depth, :description );
+    SELECT isnt_parent_of( :parent_table, :child_table, :depth );
     SELECT isnt_parent_of( :parent_table, :child_table );
 
 **Parameters**
@@ -3021,6 +3029,9 @@ inherits from, that is there is an inheritance chain between the two tables.
 `:description`
 : Description of the test.
 
+`:depth`
+: The position within the inheritance chain where the child table is expected to be (by default 1).
+
 This function ensures that the table marked as "parent" is not a table from which "child" inherits from, that
 is there is not an inheritance chain between the two tables.
 The function does the opposite of `is_parent_of()`.
@@ -3028,9 +3039,11 @@ The function does the opposite of `is_parent_of()`.
 
 ### `is_child_of()`
 
+    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth, :description );
     SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :description );
     SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
-    SELECT is_child_of( :child_table,  :parent_table, :description );
+    SELECT is_child_of( :child_table,  :parent_table, :depth, :description );
+    SELECT is_child_of( :child_table,  :parent_table, :depth );
     SELECT is_child_of( :child_table,  :parent_table );
 
 **Parameters**
@@ -3050,14 +3063,19 @@ The function does the opposite of `is_parent_of()`.
 `:description`
 : Description of the test.
 
+`:depth`
+: The position where the child table is expected to be in the inheritance chain (by default 1 for a direct son).
+
 This function does the same of `is_parent_of()`, with swapped arguments.
 
 
 ### `isnt_child_of()`
 
-    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :description );
+    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth, :description );
+    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth );
     SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
-    SELECT isnt_child_of( :child_table,  :parent_table, :description );
+    SELECT isnt_child_of( :child_table,  :parent_table, :depth, :description );
+    SELECT isnt_child_of( :child_table,  :parent_table, :depth );
     SELECT isnt_child_of( :child_table,  :parent_table );
 
 **Parameters**
@@ -3076,6 +3094,10 @@ This function does the same of `is_parent_of()`, with swapped arguments.
 
 `:description`
 : Description of the test.
+
+`:depth`
+: The position where the inheriting table is expected to be along the inheritance chain with respect to the
+parent table (by default 1 for a direct child).
 
 This function does the same of `isnt_parent_of()`, with swapped arguments.
 

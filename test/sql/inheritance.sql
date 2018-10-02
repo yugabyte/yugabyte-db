@@ -1,18 +1,18 @@
-\unset ECHO
+--\unset ECHO
 --\i test/setup.sql
-
-SELECT plan( 16 );
+BEGIN;
+SELECT plan( 17 );
 
 -- Create inherited tables
 CREATE TABLE public.parent( id INT PRIMARY KEY );
-CREATE TABLE public.child1(  id INT PRIMARY KEY ) INHERITS ( public.parent );
-CREATE TABLE public.child2(  id INT PRIMARY KEY ) INHERITS ( public.child1 );
+CREATE TABLE public.child1( id INT PRIMARY KEY ) INHERITS ( public.parent );
+CREATE TABLE public.child2( id INT PRIMARY KEY ) INHERITS ( public.child1 );
 
 -- Create inherited tables in another schema
 CREATE SCHEMA hide;
 CREATE TABLE hide.h_parent( id INT PRIMARY KEY );
-CREATE TABLE hide.h_child1(  id INT PRIMARY KEY ) INHERITS ( hide.h_parent );
-CREATE TABLE hide.h_child2(  id INT PRIMARY KEY ) INHERITS ( hide.h_child1 );
+CREATE TABLE hide.h_child1( id INT PRIMARY KEY ) INHERITS ( hide.h_parent );
+CREATE TABLE hide.h_child2( id INT PRIMARY KEY ) INHERITS ( hide.h_child1 );
 
 
 -- test has_inhereted_tables
@@ -48,7 +48,14 @@ SELECT * FROM check_test(
 
 
 SELECT * FROM check_test(
-       is_parent_of( 'hide'::name, 'h_parent'::name, 'hide'::name, 'h_child1'::name, 1 )
+       is_parent_of( 'hide', 'h_parent', 'hide', 'h_child1', 1, 'Test hide.h_parent->hide.h_child1' )
+       , true -- expected value
+       , 'hide.h_parent direct is father of hide.h_child1'
+);
+
+
+SELECT * FROM check_test(
+       is_parent_of( 'hide', 'h_parent', 'hide', 'h_child1', 1 )
        , true -- expected value
        , 'hide.h_parent direct is father of hide.h_child1'
 );
