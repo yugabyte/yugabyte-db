@@ -88,7 +88,7 @@ enum DataType {
   TYPEARGS = 20;
   USER_DEFINED_TYPE = 21;
   FROZEN = 22;
-  DATE = 23;  // TODO(Mihnea) Support date & time.
+  DATE = 23;
   TIME = 24;
   JSONB = 25;
 

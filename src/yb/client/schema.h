@@ -109,6 +109,10 @@ class YBColumnSchema {
         return InternalType::kStringValue;
       case TIMESTAMP:
         return InternalType::kTimestampValue;
+      case DATE:
+        return InternalType::kDateValue;
+      case TIME:
+        return InternalType::kTimeValue;
       case INET:
         return InternalType::kInetaddressValue;
       case JSONB:
@@ -139,8 +143,6 @@ class YBColumnSchema {
         return InternalType::VALUE_NOT_SET;
 
       case TYPEARGS: FALLTHROUGH_INTENDED;
-      case DATE: FALLTHROUGH_INTENDED;
-      case TIME: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
       case UINT16: FALLTHROUGH_INTENDED;
       case UINT32: FALLTHROUGH_INTENDED;
