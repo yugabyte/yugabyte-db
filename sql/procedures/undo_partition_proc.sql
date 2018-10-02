@@ -1,4 +1,4 @@
-CREATE PROCEDURE @extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lockwait int DEFAULT 0, p_lockwait_tries int DEFAULT 10, p_quiet boolean DEFAULT false) 
+CREATE PROCEDURE @extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false) 
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -70,7 +70,7 @@ END IF;
 */
 
 v_sql := format('SELECT partitions_undone, rows_undone FROM %I.undo_partition (%L, p_keep_table := %L, p_lock_wait := %L'
-        , '@extschema@', p_parent_table, p_keep_table, p_lockwait);
+        , '@extschema@', p_parent_table, p_keep_table, p_lock_wait);
 IF p_interval IS NOT NULL THEN
     v_sql := v_sql || format(', p_batch_interval := %L', p_interval);
 END IF;
@@ -90,7 +90,7 @@ LOOP
         v_lockwait_count := 0;
     ELSE
         v_lockwait_count := v_lockwait_count + 1;
-        IF v_lockwait_count > p_lockwait_tries THEN
+        IF v_lockwait_count > p_lock_wait_tries THEN
             RAISE EXCEPTION 'Quitting due to inability to get lock on next batch of rows to be moved';
         END IF;
     END IF;

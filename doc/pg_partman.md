@@ -112,6 +112,11 @@ As a note for people that were not aware, you can name arguments in function cal
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
  * p_control - the column that the partitioning will be based on. Must be a time or integer based column.
  * p_type - one of the following values to set the partitioning type that will be used:
+    + **native**
+        - Use the native partitioning methods that are built into PostgreSQL 10+.
+        - For PG11+, it is highly recommended that native partitioning be used over trigger-based partitioning. PG10 is still lacking significant features for native partitioning, so please see notes above for more info.
+        - Provides significantly better write & read performance than "partman" partitioning. 
+        - Child table creation is kept up to date by running `run_maintenance(_proc)`. There is no trigger maintenance.
     + **partman**
         - Create a trigger-based partition set using pg_partman's method of partitioning.
         - Whether it is time or serial based is determined by the control column's data type and if the p_epoch flag is set.
@@ -120,10 +125,6 @@ As a note for people that were not aware, you can name arguments in function cal
         - Inserts to the parent table outside the optimize_trigger window will go to the proper child table if it exists, but performance will be degraded due to the higher overhead of handling that condition.
         - If the child table does not exist for the value given, the row will go to the parent. 
         - Child table creation & trigger function is kept up to date by the `run_maintenance()` function.
-    + **native**
-        - Use the native partitioning methods that are built into PostgreSQL 10+.
-        - Provides significantly better write & read performance than "partman" partitioning, but does not have as much feature support. See notes above for more info.
-        - Child table creation is kept up to date by the `run_maintenance()`. There is no trigger maintenance.
  * `p_interval` - the time or integer range interval for each partition. No matter the partitioning type, value must be given as text. The generic intervals of "yearly -> quarter-hour" are for time partitioning and giving one of these explicit values when using pg_partman's trigger-based partitioning will allow significantly better performance than using an arbitrary time interval. For native partitioning, any interval value is valid and will have the same performance which is always better than trigger-based.
     + *yearly*          - One partition per year 
     + *quarterly*       - One partition per yearly quarter. Partitions are named as YYYYqQ (ex: 2012q4)
@@ -198,7 +199,8 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_source_table` - This option can be used when you need to move data into a natively partitioned set. Pass a schema qualified tablename to this parameter and any data in that table will be MOVED to the partition set designated by p_parent_table, creating any child tables as needed.  
 * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
-*`partition_data_proc (p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_source_table text DEFAULT NULL, p_order text DEFAULT 'ASC', p_lockwait int DEFAULT 0, p_lockwait_tries int DEFAULT 10, p_quiet boolean DEFAULT false)`*
+
+*`partition_data_proc (p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_source_table text DEFAULT NULL, p_order text DEFAULT 'ASC', p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false)`*
 
  * A procedure that can partition data in distinct commit batches to avoid long running transactions and data contention issues.
  * Only works with PostgreSQL 11+
@@ -209,6 +211,8 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_wait` - Cause the procedure to pause for a given number of seconds between commits (batches) to reduce write load
  * `p_source_table` - Same as the p_source_table option in the called partitioning function.
  * `p_order` - Allows you to specify the order that data is migrated from the parent/default to the children, either ascending (ASC) or descending (DESC). Default is ASC.
+ * `p_lock_wait` - Parameter passed directly through to the underlying partition_data_*() function. Number of seconds to wait on rows that may be locked by another transaction. Default is to wait forever (0).
+ * `p_lock_wait_tries` - Parameter to set how many times the procedure will attempt waiting the amount of time set for p_lock_wait. Default is 10 tries. 
  * `p_quiet` - Procedures cannot return values, so by default it emmits NOTICE's to show progress. Set this option to silence these notices.
 
 *`create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
@@ -268,7 +272,7 @@ As a note for people that were not aware, you can name arguments in function cal
 *`run_maintenance_proc(p_wait int DEFAULT 0, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)`*
 
  * For PG11+, this is the preferred method to run partition maintenance vs directly calling the run_maintenance() function.
- * This procedure can be called instead of the `run_maintenance()` function to cause PostgreSQL to commit after each partition set's maintenance has finished. This reduces contention issues with long running transactions when there are many partition sets to maintain.
+ * This procedure can be called instead of the `run_maintenance()` function to cause PostgreSQL to commit after each partition set's maintenance has finished. This greatly reduces contention issues with long running transactions when there are many partition sets to maintain.
  * `p_wait` - How many seconds to wait between each partition set's maintenance run. Defaults to 0.
  * `p_analyze` - See p_analyze option in run_maintenance.
 
@@ -376,7 +380,7 @@ undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interva
  * Returns the number of partitions undone and the number of rows moved to the parent table. The partitions undone value returns -1 if a problem is encountered.
 
 
-*`undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lockwait int DEFAULT 0, p_lockwait_tries int DEFAULT 10, p_quiet boolean DEFAULT false)`*
+*`@extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false)`*
 
  * A procedure that can un-partition data in distinct commit batches to avoid long running transactions and data contention issues.
  * Only works with PostgreSQL 11+
@@ -387,6 +391,8 @@ undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interva
  * `p_wait` - Cause the procedure to pause for a given number of seconds between commits (batches) to reduce write load
  * `p_target_table` - Same as the p_target_table option in the undo_partition() function.
  * `p_keep_table` - Same as the p_keep_table option in the undo_partition() function.
+ * `p_lock_wait` - Parameter passed directly through to the underlying partition_data_*() function. Number of seconds to wait on rows that may be locked by another transaction. Default is to wait forever (0).
+ * `p_lock_wait_tries` - Parameter to set how many times the procedure will attempt waiting the amount of time set for p_lock_wait. Default is 10 tries. 
  * `p_quiet` - Procedures cannot return values, so by default it emmits NOTICE's to show progress. Set this option to silence these notices.
 
 
