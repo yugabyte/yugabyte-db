@@ -56,7 +56,7 @@ class DateTimeInputFormat : public DateTimeFormatBase {
                       const std::vector<std::regex>& regexes,
                       int input_precision);
   int input_precision() const;
-  std::vector<std::regex> regexes() const;
+  const std::vector<std::regex>& regexes() const;
 
  private:
   std::vector<std::regex> regexes_;
@@ -82,12 +82,15 @@ class DateTime {
   static DateTimeOutputFormat CqlDateTimeOutputFormat;
 
   static Result<Timestamp> TimestampFromString(
-      const string& str,
+      const std::string& str,
       const DateTimeInputFormat input_format = CqlDateTimeInputFormat);
   static Timestamp TimestampFromInt(int64_t val,
                                     DateTimeInputFormat input_format = CqlDateTimeInputFormat);
   static std::string TimestampToString(
       Timestamp timestamp, DateTimeOutputFormat output_format = CqlDateTimeOutputFormat);
+
+  static Result<uint32_t> DateFromString(const std::string& str);
+  static Result<int64_t> TimeFromString(const std::string& str);
 
   static tz_ptr_type GetSystemTimezone();
   static tz_ptr_type GetUtcTimezone();

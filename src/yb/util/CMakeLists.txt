@@ -238,6 +238,7 @@ if(NOT APPLE)
 endif()
 
 set(UTIL_LIBS
+  boost_date_time
   boost_system
   boost_thread
   crcutil

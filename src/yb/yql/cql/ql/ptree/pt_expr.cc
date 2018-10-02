@@ -257,15 +257,22 @@ CHECKED_STATUS PTLiteralString::ToString(string *value) const {
 }
 
 CHECKED_STATUS PTLiteralString::ToTimestamp(int64_t *value) const {
-  auto ts = DateTime::TimestampFromString(value_->c_str());
-  RETURN_NOT_OK(ts);
-  *value = ts->ToInt64();
+  *value = VERIFY_RESULT(DateTime::TimestampFromString(value_->c_str())).ToInt64();
+  return Status::OK();
+}
+
+CHECKED_STATUS PTLiteralString::ToDate(uint32_t *value) const {
+  *value = VERIFY_RESULT(DateTime::DateFromString(value_->c_str()));
+  return Status::OK();
+}
+
+CHECKED_STATUS PTLiteralString::ToTime(int64_t *value) const {
+  *value = VERIFY_RESULT(DateTime::TimeFromString(value_->c_str()));
   return Status::OK();
 }
 
 CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
-  RETURN_NOT_OK(value->FromString(value_->c_str()));
-  return Status::OK();
+  return value->FromString(value_->c_str());
 }
 
 //--------------------------------------------------------------------------------------------------

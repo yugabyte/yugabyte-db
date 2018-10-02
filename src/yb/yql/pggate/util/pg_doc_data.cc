@@ -81,6 +81,8 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBoolValue:
     case InternalType::kBinaryValue:
     case InternalType::kTimestampValue:
+    case InternalType::kDateValue:
+    case InternalType::kTimeValue:
     case InternalType::kDecimalValue:
     case InternalType::kVarintValue:
     case InternalType::kInetaddressValue:

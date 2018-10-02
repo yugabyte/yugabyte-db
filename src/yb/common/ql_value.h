@@ -113,6 +113,14 @@ class QLValue {
     DCHECK(pb_.has_timestamp_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.timestamp_value();
   }
+  virtual uint32_t date_value() const {
+    CHECK(pb_.has_date_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.date_value();
+  }
+  virtual int64_t time_value() const {
+    CHECK(pb_.has_time_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.time_value();
+  }
   virtual const std::string& binary_value() const {
     CHECK(pb_.has_binary_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.binary_value();
@@ -231,6 +239,12 @@ class QLValue {
   }
   virtual void set_timestamp_value(int64_t val) {
     pb_.set_timestamp_value(val);
+  }
+  virtual void set_date_value(uint32_t val) {
+    pb_.set_date_value(val);
+  }
+  virtual void set_time_value(int64_t val) {
+    pb_.set_time_value(val);
   }
   virtual void set_binary_value(const std::string& val) {
     pb_.set_binary_value(val);

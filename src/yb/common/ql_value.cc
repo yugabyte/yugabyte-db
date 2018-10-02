@@ -44,8 +44,6 @@ DEFINE_int32(yql_max_value_size, 64_MB,
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
   case TUPLE: FALLTHROUGH_INTENDED;     \
   case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case DATE: FALLTHROUGH_INTENDED;      \
-  case TIME: FALLTHROUGH_INTENDED;      \
   case UNKNOWN_DATA
 
 #define QL_INVALID_TYPES_IN_SWITCH     \
@@ -144,6 +142,8 @@ const string QLValue::ToCQLString(const InternalType& internal_type) {
     case InternalType::kSetValue: return "set";
     case InternalType::kUuidValue: return "uuid";
     case InternalType::kTimeuuidValue: return "timeuuid";
+    case InternalType::kDateValue: return "date";
+    case InternalType::kTimeValue: return "time";
     case InternalType::kFrozenValue: return "frozen";
   }
   LOG (FATAL) << "Invalid datatype: " << internal_type;
@@ -191,6 +191,8 @@ int QLValue::CompareTo(const QLValue& other) const {
       return GenericCompare(uuid_value(), other.uuid_value());
     case InternalType::kTimeuuidValue:
       return GenericCompare(timeuuid_value(), other.timeuuid_value());
+    case InternalType::kDateValue: return GenericCompare(date_value(), other.date_value());
+    case InternalType::kTimeValue: return GenericCompare(time_value(), other.time_value());
     case QLValuePB::kFrozenValue: {
       return Compare(frozen_value(), other.frozen_value());
     }
@@ -234,6 +236,14 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
     }
     case QLValue::InternalType::kTimestampValue: {
       YBPartition::AppendIntToKey<int64, uint64>(value_pb.timestamp_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kDateValue: {
+      YBPartition::AppendIntToKey<uint32, uint32>(value_pb.date_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kTimeValue: {
+      YBPartition::AppendIntToKey<int64, uint64>(value_pb.time_value(), bytes);
       break;
     }
     case QLValue::InternalType::kStringValue: {
@@ -360,6 +370,14 @@ void QLValue::Serialize(
                                               DateTime::kInternalPrecision,
                                               DateTime::CqlDateTimeInputFormat.input_precision());
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
+      return;
+    }
+    case DATE: {
+      CQLEncodeNum(NetworkByteOrder::Store32, date_value(), buffer);
+      return;
+    }
+    case TIME: {
+      CQLEncodeNum(NetworkByteOrder::Store64, time_value(), buffer);
       return;
     }
     case INET: {
@@ -576,6 +594,18 @@ Status QLValue::Deserialize(
       set_timestamp_value(value);
       return Status::OK();
     }
+    case DATE: {
+      uint32_t value = 0;
+      RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load32, data, &value));
+      set_date_value(value);
+      return Status::OK();
+    }
+    case TIME: {
+      int64_t value = 0;
+      RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
+      set_time_value(value);
+      return Status::OK();
+    }
     case INET: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
@@ -755,6 +785,8 @@ string QLValue::ToString() const {
       return "varint: " + varint_value().ToString();
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
+    case InternalType::kDateValue: return "date:" + to_string(date_value());
+    case InternalType::kTimeValue: return "time:" + to_string(time_value());
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
     case InternalType::kJsonbValue: return "jsonb:" + FormatBytesAsStr(jsonb_value());
     case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
@@ -888,6 +920,8 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value());
+    case QLValuePB::kDateValue: return GenericCompare(lhs.date_value(), rhs.date_value());
+    case QLValuePB::kTimeValue: return GenericCompare(lhs.time_value(), rhs.time_value());
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case QLValuePB::kInetaddressValue:
       return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
@@ -948,6 +982,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value_pb());
+    case QLValuePB::kDateValue: return GenericCompare(lhs.date_value(), rhs.date_value());
+    case QLValuePB::kTimeValue: return GenericCompare(lhs.time_value(), rhs.time_value());
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case QLValuePB::kInetaddressValue:
       return GenericCompare(QLValue(lhs).inetaddress_value(), rhs.inetaddress_value());

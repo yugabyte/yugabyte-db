@@ -134,6 +134,14 @@ class KeyBytes {
     util::AppendInt32ToKey(x, &data_);
   }
 
+  void AppendUInt32(uint32_t x) {
+    AppendUInt32ToKey(x, &data_);
+  }
+
+  void AppendDescendingUInt32(int32_t x) {
+    AppendUInt32ToKey(~x, &data_);
+  }
+
   void AppendIntentType(IntentType intent_type) {
     data_.push_back(static_cast<char>(intent_type));
   }

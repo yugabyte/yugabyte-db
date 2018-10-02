@@ -586,7 +586,7 @@ using namespace yb::ql;
                           CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE
                           CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-                          DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
+                          DATA_P DATE DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
                           DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P
                           DELIMITER DELIMITERS DESC DESCRIBE DICTIONARY DISABLE_P DISCARD
                           DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
@@ -4777,11 +4777,14 @@ ConstDatetime:
   | TIMESTAMP '(' Iconst ')' opt_timezone {
     PARSER_UNSUPPORTED(@1);
   }
+  | DATE {
+    $$ = MAKE_NODE(@1, PTDate);
+  }
   | TIME '(' Iconst ')' opt_timezone {
     PARSER_UNSUPPORTED(@1);
   }
-  | TIME opt_timezone {
-    PARSER_UNSUPPORTED(@1);
+  | TIME {
+    $$ = MAKE_NODE(@1, PTTime);
   }
 ;
 
@@ -5149,6 +5152,7 @@ col_name_keyword:
   | CHARACTER { $$ = $1; }
   | COALESCE { $$ = $1; }
   | COUNTER { $$ = $1; }
+  | DATE { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
   | DOUBLE_P { $$ = $1; }

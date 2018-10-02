@@ -1231,6 +1231,12 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::TIMESTAMP:
       id = Id::TIMESTAMP;
       return;
+    case DataType::DATE:
+      id = Id::DATE;
+      return;
+    case DataType::TIME:
+      id = Id::TIME;
+      return;
     case DataType::INET:
       id = Id::INET;
       return;
@@ -1282,8 +1288,6 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-    case DataType::DATE: FALLTHROUGH_INTENDED;
-    case DataType::TIME: FALLTHROUGH_INTENDED;
 
     case DataType::UINT8:  FALLTHROUGH_INTENDED;
     case DataType::UINT16: FALLTHROUGH_INTENDED;

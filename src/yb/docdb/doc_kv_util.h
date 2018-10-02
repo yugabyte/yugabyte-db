@@ -64,6 +64,12 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
   dest->append(buf, sizeof(buf));
 }
 
+inline void AppendUInt32ToKey(uint32_t val, std::string* dest) {
+  char buf[sizeof(uint32_t)];
+  BigEndian::Store32(buf, val);
+  dest->append(buf, sizeof(buf));
+}
+
 inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
   yb::util::FastAppendSignedVarIntToStr(val.rep(), dest);
 }

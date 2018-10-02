@@ -59,7 +59,7 @@ DateTimeInputFormat::DateTimeInputFormat(const time_type epoch_start,
       input_precision_(input_precision) {
 }
 
-vector<regex> DateTimeInputFormat::regexes() const {
+const vector<regex>& DateTimeInputFormat::regexes() const {
   return regexes_;
 }
 
@@ -83,7 +83,7 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
   std::smatch m;
   bool matched = false;
   // trying first regex to match from the format
-  for (auto reg : input_format.regexes()) {
+  for (const auto& reg : input_format.regexes()) {
     matched = std::regex_match(str, m, reg);
     if (matched)
       break;
@@ -123,6 +123,53 @@ Timestamp DateTime::TimestampFromInt(const int64_t val, const DateTimeInputForma
   int input_precision = input_format.input_precision();
   int64_t adj_val = AdjustPrecision(val, input_precision, kInternalPrecision);
   return Timestamp(adj_val);
+}
+
+Result<uint32_t> DateTime::DateFromString(const std::string& str) {
+  // Regex for date format "yyyy-mm-dd"
+  static const regex date_format("(-?\\d{1,7})-(\\d{1,2})-(\\d{1,2})");
+  std::smatch m;
+  if (!std::regex_match(str, m, date_format)) {
+    return STATUS(InvalidArgument, "Invalid date format");
+  }
+  const int year = stoi(m.str(1));
+  const int month = stoi(m.str(2));
+  const int day = stoi(m.str(3));
+  if (month < 1 || month > 12) {
+    return STATUS(InvalidArgument, "Invalid month");
+  }
+  if (day < 1 || day > 31) {
+    return STATUS(InvalidArgument, "Invalid day of month");
+  }
+  try {
+    static const date epoch(1970, 1, 1);
+    return (date(year, month, day) - epoch).days() + 0x80000000;
+  } catch (std::exception& e) {
+    return STATUS(InvalidArgument, "Invalid date", e.what());
+  }
+}
+
+Result<int64_t> DateTime::TimeFromString(const std::string& str) {
+  // Regex for time format "hh:mm:ss[.fffffffff]"
+  static const regex time_format("(\\d{2}):(\\d{2}):(\\d{2})(\\.(\\d{0,9}))?");
+  std::smatch m;
+  if (!std::regex_match(str, m, time_format)) {
+    return STATUS(InvalidArgument, "Invalid time format");
+  }
+  const int64_t hour = stoi(m.str(1));
+  const int64_t minute = stoi(m.str(2));
+  const int64_t second = stoi(m.str(3));
+  const int64_t nano_sec = m.str(5).empty() ? 0 : (stoi(m.str(5)) * pow(10, 9 - m.str(5).size()));
+  if (hour < 0 || hour > 23) {
+    return STATUS(InvalidArgument, "Invalid hour");
+  }
+  if (minute < 0 || minute > 59) {
+    return STATUS(InvalidArgument, "Invalid minute");
+  }
+  if (second < 0 || second > 59) {
+    return STATUS(InvalidArgument, "Invalid second");
+  }
+  return ((hour * 60 + minute) * 60 + second) * 1000000000 + nano_sec;
 }
 
 int64_t DateTime::AdjustPrecision(int64_t val,

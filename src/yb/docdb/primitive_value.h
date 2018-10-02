@@ -242,6 +242,7 @@ class PrimitiveValue {
   static PrimitiveValue SystemColumnId(ColumnId column_id);
   static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
+  static PrimitiveValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue IntentTypeValue(IntentType intent_type);
   static PrimitiveValue Jsonb(const std::string& json);
@@ -294,6 +295,11 @@ class PrimitiveValue {
   int32_t GetInt32() const {
     DCHECK(ValueType::kInt32 == type_ || ValueType::kInt32Descending == type_);
     return int32_val_;
+  }
+
+  uint32_t GetUInt32() const {
+    DCHECK(ValueType::kUInt32 == type_ || ValueType::kUInt32Descending == type_);
+    return uint32_val_;
   }
 
   int64_t GetInt64() const {
@@ -421,6 +427,7 @@ class PrimitiveValue {
   // TODO: do we have to worry about alignment here?
   union {
     int32_t int32_val_;
+    uint32_t uint32_val_;
     int64_t int64_val_;
     uint16_t uint16_val_;
     DocHybridTime hybrid_time_val_;

@@ -15,6 +15,7 @@ package com.yugabyte.driver.core.policies;
 import com.google.common.reflect.TypeToken;
 import org.junit.Test;
 
+import com.datastax.driver.core.LocalDate;
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
@@ -265,6 +266,27 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
       assertEquals(set, row.getSet("h2", Double.class));
       assertEquals(list, row.getList("h3", new TypeToken<Set<String>>() {}));
       assertEquals(udt, row.getUDTValue("h4"));
+    }
+
+    // Test hash key composed of date and time.
+    {
+      session.execute("create table t6 (h1 date, h2 time, primary key ((h1, h2)));");
+
+      // Insert a row with random hash column values.
+      LocalDate h1 = LocalDate.fromDaysSinceEpoch(rand.nextInt());
+      long h2 = rand.nextLong();
+      LOG.info("h1 = " + h1 + ", h2 = " + h2);
+      BoundStatement stmt = session.prepare("insert into t6 (h1, h2) values (?, ?);").bind(h1, h2);
+      session.execute(stmt);
+
+      // Select the row back using the hash key value and verify the row.
+      Row row = session.execute("select * from t6 where token(h1, h2) = ?;",
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
+      assertNotNull(row);
+      assertEquals(h1, row.getDate("h1"));
+      assertEquals(h2, row.getTime("h2"));
+
+      session.execute("drop table t6;");
     }
   }
 
