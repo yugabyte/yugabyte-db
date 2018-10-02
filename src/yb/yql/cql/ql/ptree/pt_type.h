@@ -279,6 +279,8 @@ using PTTimeUuid = PTSimpleType<InternalType::kTimeuuidValue, DataType::TIMEUUID
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
 using PTTimestamp = PTSimpleType<InternalType::kTimestampValue, DataType::TIMESTAMP>;
+using PTDate = PTSimpleType<InternalType::kDateValue, DataType::DATE>;
+using PTTime = PTSimpleType<InternalType::kTimeValue, DataType::TIME>;
 
 //--------------------------------------------------------------------------------------------------
 // Collection types.

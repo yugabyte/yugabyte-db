@@ -230,6 +230,8 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
     case QLValue::InternalType::kDecimalValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kTimestampValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kDateValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kTimeValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kInetaddressValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kJsonbValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kUuidValue: FALLTHROUGH_INTENDED;

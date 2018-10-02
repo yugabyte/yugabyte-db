@@ -35,6 +35,8 @@ PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
     case DataType::DOUBLE: return PTDouble::MakeShared(memctx);
     case DataType::BINARY: return PTBlob::MakeShared(memctx);
     case DataType::TIMESTAMP: return PTTimestamp::MakeShared(memctx);
+    case DataType::DATE: return PTDate::MakeShared(memctx);
+    case DataType::TIME: return PTTime::MakeShared(memctx);
     case DataType::DECIMAL: return PTDecimal::MakeShared(memctx);
     case DataType::VARINT: return PTVarInt::MakeShared(memctx);
     case DataType::INET: return PTInet::MakeShared(memctx);
@@ -50,8 +52,6 @@ PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
       // TODO: support conversion of complex type from ql_type to PT type.
       return nullptr;
 
-    case DataType::DATE: FALLTHROUGH_INTENDED;
-    case DataType::TIME: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
     case DataType::UINT8: FALLTHROUGH_INTENDED;

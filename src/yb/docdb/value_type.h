@@ -81,6 +81,7 @@ namespace docdb {
     ((kColumnId, 'K'))  /* ASCII code 75 */ \
     ((kDoubleDescending, 'L'))  /* ASCII code 76 */ \
     ((kFloatDescending, 'M')) /* ASCII code 77 */ \
+    ((kUInt32, 'O'))  /* ASCII code 78 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
@@ -97,6 +98,7 @@ namespace docdb {
     ((kDecimalDescending, 'd'))  /* ASCII code 100 */ \
     ((kInt32Descending, 'e'))  /* ASCII code 101 */ \
     ((kVarIntDescending, 'f'))  /* ASCII code 102 */ \
+    ((kUInt32Descending, 'g'))  /* ASCII code 103 */ \
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \

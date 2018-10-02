@@ -725,6 +725,8 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
 
   CHECKED_STATUS ToString(std::string *value) const;
   CHECKED_STATUS ToTimestamp(int64_t *value) const;
+  CHECKED_STATUS ToDate(uint32_t *value) const;
+  CHECKED_STATUS ToTime(int64_t *value) const;
 
   CHECKED_STATUS ToInetaddress(InetAddress *value) const;
 };
