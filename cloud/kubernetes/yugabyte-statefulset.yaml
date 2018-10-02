@@ -91,12 +91,19 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         command:
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs=/mnt/data0"
-          - "--rpc_bind_addresses=$(POD_IP)"
+          - "--rpc_bind_addresses=$(POD_IP):7100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-masters:7100"
+          - "--use_private_ip=never"
           - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
           - "--master_replication_factor=3"
+          - "--logtostderr"
         ports:
         - containerPort: 7000
           name: master-ui
@@ -191,11 +198,24 @@ spec:
       - name: yb-tserver
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
+        env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
         command:
           - "/home/yugabyte/bin/yb-tserver"
           - "--fs_data_dirs=/mnt/data0"
+          - "--rpc_bind_addresses=$(POD_IP):9100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-tservers:9100"
+          - "--use_private_ip=never"
           - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
           - "--tserver_master_replication_factor=3"
+          - "--logtostderr"
         ports:
         - containerPort: 9000
           name: tserver-ui
