@@ -1142,7 +1142,8 @@ CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
 RETURNS TEXT AS $$
        SELECT ok( _inherited( $1,   -- schema
                               $2 ), -- table
-                  coalesce( $3, format( 'Table %I.%I has children', $1, $2 ) ) );
+                  coalesce( $3,
+                            'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' must have children' ) );
 $$ LANGUAGE SQL;
 
 
@@ -1159,7 +1160,8 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
 RETURNS TEXT AS $$
        SELECT ok( NOT _inherited( $1, $2 ),
-                  coalesce( $3, format( 'Table %I.%I does not have children', $1, $2 ) ) );
+                  coalesce( $3,
+                          'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) 'must not have children' ) );
 $$ LANGUAGE SQL;
 
 
@@ -1168,7 +1170,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, TEXT DEFAULT NULL )
 RETURNS TEXT AS $$
        SELECT ok( NOT _inherited( $1 ),
-                  coalesce( $2, format( 'Table %I does not have children', $1 ) ) );
+                  coalesce( $2, 'Table ' || quote_idente( $1 ) || 'must not have children' ) );
 $$ LANGUAGE SQL;
 
 
@@ -1281,8 +1283,8 @@ CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, 
 RETURNS TEXT AS $$
         SELECT ok( _parent_of( $1, $2, $3, $4, $5 ),
                    coalesce( $6,
-                             format( 'Table %I.%I is a %s-parent of %I.%I', $1, $2, $5, $3, $4 ) )
-                       );
+                             'Table ' || quote_idente( $1 ) || '.' || quote_idente( $2 )
+                             || ' is a ' || $5 || '-parent of ' || quote_idente( $3 ) || '.' || quote_idente( $4 ) );
 $$ LANGUAGE SQL;
 
 
@@ -1294,8 +1296,8 @@ CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, T
 RETURNS TEXT AS $$
         SELECT is_parent_of( $3, $4, $1, $2, $5,
                coalesce( $6,
-                        format( 'Table %I.%I is a %s-child of %I.%I', $1, $2, $5, $3, $4 ) )
-        );
+                        'Table ' || quote_idente( $1 ) || '.' || quote_idente( $2 )
+                        || ' is a ' || $5 || '-child of ' || quote_idente( $3 ) || '.' || quote_idente( $4 ) );
 $$ LANGUAGE SQL;
 
 
