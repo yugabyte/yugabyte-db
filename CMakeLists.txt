@@ -786,17 +786,20 @@ elseif (USING_LINUXBREW AND IS_CLANG)
   ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
 
   execute_process(COMMAND "${LINUXBREW_DIR}/bin/brew" list --versions gcc
-                  COMMAND tr -d '\n'
-                  COMMAND tail -c 5
-                  OUTPUT_VARIABLE LINUXBREW_GCC_VERSION
-                  ERROR_VARIABLE LINUXBREW_GCC_VERSION_ERROR)
+                  OUTPUT_VARIABLE LINUXBREW_GCC_VERSION_OUTPUT
+                  ERROR_VARIABLE LINUXBREW_GCC_VERSION_ERROR OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_STRIP_TRAILING_WHITESPACE)
+  string(REGEX REPLACE "gcc[ ]+(.*)$" "\\1" LINUXBREW_GCC_VERSION "${LINUXBREW_GCC_VERSION_OUTPUT}")
+  string(REGEX REPLACE "^(.*)_[^_]+$" "\\1" LINUXBREW_GCC_MAJOR_VERSION "${LINUXBREW_GCC_VERSION}")
 
   message("Brew GCC version: ${LINUXBREW_GCC_VERSION}")
   set(LINUXBREW_CXX_INCLUDE_DIR
-      "${LINUXBREW_DIR}/Cellar/gcc/${LINUXBREW_GCC_VERSION}/include/c++/${LINUXBREW_GCC_VERSION}")
-  if(NOT IS_DIRECTORY ${LINUXBREW_CXX_INCLUDE_DIR})
-    message(FATAL_ERROR "Missing libstdc++ directory: ${LINUXBREW_CXX_INCLUDE_DIR}, "
-                        "fetching gcc version error: ${LINUXBREW_GCC_VERSION_ERROR}")
+      "${LINUXBREW_DIR}/Cellar/gcc/${LINUXBREW_GCC_VERSION}/include/c++/\
+${LINUXBREW_GCC_MAJOR_VERSION}")
+  if (NOT IS_DIRECTORY ${LINUXBREW_CXX_INCLUDE_DIR})
+    message(FATAL_ERROR "Fetching gcc version stdout: \n${LINUXBREW_GCC_VERSION_OUTPUT}\n\
+Fetching gcc version stderr: \n${LINUXBREW_GCC_VERSION_ERROR}\n\
+GCC include dir tried: ${LINUXBREW_CXX_INCLUDE_DIR}")
   endif()
   include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR})
   include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR}/backward)
