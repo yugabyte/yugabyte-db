@@ -386,8 +386,8 @@ export default class ClusterFields extends Component {
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
-      updateFormField(`${clusterType}.diskIops`, null);
-      updateFormField(`${clusterType}.ebsType`, volumeDetail.volumeType === "EBS" ? "GP2" : null);
+      updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
+      updateFormField(`${clusterType}.ebsType`, volumeDetail.ebsType);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
       this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
@@ -787,6 +787,9 @@ export default class ClusterFields extends Component {
 
     if (isNonEmptyObject(deviceInfo)) {
       if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
+        const isInAws = this.getCurrentProvider(self.state.providerSelected).code === 'aws';
+        const fixedVolumeInfo = self.state.volumeType === 'SSD';
+
         const isIoType = deviceInfo.ebsType === 'IO1';
         if (isIoType) {
           iopsField = (
@@ -800,20 +803,18 @@ export default class ClusterFields extends Component {
             </span>
           );
         }
-        const isInGcp = this.getCurrentProvider(self.state.providerSelected).code === "gcp";
-        const isInAws = this.getCurrentProvider(self.state.providerSelected).code === "aws";
         const numVolumes = (
           <span className="volume-info-field volume-info-count">
             <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
                    label="Number of Volumes" onInputChanged={self.numVolumesChanged}
-                   readOnly={isIoType || isFieldReadOnly} />
+                   readOnly={fixedVolumeInfo || isFieldReadOnly} />
           </span>
         );
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput}
                    label="Volume Size" valueFormat={volumeTypeFormat}
-                   readOnly={isInGcp || isIoType || isFieldReadOnly} />
+                   readOnly={fixedVolumeInfo || isFieldReadOnly} />
           </span>
         );
         deviceDetail = (
