@@ -99,6 +99,8 @@ namespace docdb {
     ((kInt32Descending, 'e'))  /* ASCII code 101 */ \
     ((kVarIntDescending, 'f'))  /* ASCII code 102 */ \
     ((kUInt32Descending, 'g'))  /* ASCII code 103 */ \
+    ((kTrueDescending, 'h'))  /* ASCII code 104 */ \
+    ((kFalseDescending, 'i'))  /* ASCII code 105 */ \
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \

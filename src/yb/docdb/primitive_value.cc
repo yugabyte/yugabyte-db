@@ -105,9 +105,11 @@ string PrimitiveValue::ToString() const {
       return "SSforward";
     case ValueType::kSSReverse:
       return "SSreverse";
-    case ValueType::kFalse:
+    case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending:
       return "false";
-    case ValueType::kTrue:
+    case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending:
       return "true";
     case ValueType::kInvalid:
       return "invalid";
@@ -235,6 +237,8 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kSSReverse: return;
     case ValueType::kFalse: return;
     case ValueType::kTrue: return;
+    case ValueType::kFalseDescending: return;
+    case ValueType::kTrueDescending: return;
 
     case ValueType::kString:
       key_bytes->AppendString(str_val_);
@@ -388,6 +392,8 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
@@ -551,6 +557,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kLowest:
       type_ref = value_type;
@@ -895,6 +903,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisList: FALLTHROUGH_INTENDED;
@@ -1193,9 +1203,11 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte: return true;
@@ -1267,6 +1279,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTrueDescending: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte:
@@ -1410,10 +1424,11 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       // zero-encoding for keys (since zero-bytes could be common for binary)
       return PrimitiveValue(value.binary_value(), sort_order);
     case QLValuePB::kBoolValue:
-      if (sort_order != SortOrder::kAscending) {
-        LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";
-      }
-      return PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse);
+      return PrimitiveValue(sort_order == SortOrder::kDescending
+                            ? (value.bool_value() ? ValueType::kTrueDescending
+                                                  : ValueType::kFalseDescending)
+                            : (value.bool_value() ? ValueType::kTrue
+                                                  : ValueType::kFalse));
     case QLValuePB::kTimestampValue:
       return PrimitiveValue(QLValue(value).timestamp_value(), sort_order);
     case QLValuePB::kDateValue:
@@ -1498,7 +1513,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       ql_value->set_varint_value(primitive_value.GetVarInt());
       return;
     case BOOL:
-      ql_value->set_bool_value((primitive_value.value_type() == ValueType::kTrue));
+      ql_value->set_bool_value(primitive_value.value_type() == ValueType::kTrue ||
+                               primitive_value.value_type() == ValueType::kTrueDescending);
       return;
     case TIMESTAMP:
       ql_value->set_timestamp_value(primitive_value.GetTimestamp().ToInt64());

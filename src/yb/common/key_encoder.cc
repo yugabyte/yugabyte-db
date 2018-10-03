@@ -30,11 +30,12 @@
 // under the License.
 //
 
-#include <boost/noncopyable.hpp>
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <boost/noncopyable.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
@@ -62,6 +63,7 @@ class EncoderResolver {
 
  private:
   EncoderResolver<Buffer>() {
+    AddMapping<BOOL>();
     AddMapping<UINT8>();
     AddMapping<INT8>();
     AddMapping<UINT16>();
