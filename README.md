@@ -65,23 +65,8 @@ pgAudit versions relate to PostgreSQL major versions as follows:
 
 ## Compile and Install
 
-Clone the PostgreSQL repository:
-```
-git clone https://github.com/postgres/postgres.git
-```
-Checkout `REL_11_STABLE` branch:
-```
-git checkout REL_11_STABLE
-```
-Make PostgreSQL:
-```
-./configure
-make install -s
-```
-Change to the `contrib` directory:
-```
-cd contrib
-```
+pgAudit can be compiled against an installed copy of PostgreSQL with development packages using `PGXS`.
+
 Clone the pgAudit extension:
 ```
 git clone https://github.com/pgaudit/pgaudit.git
@@ -90,18 +75,19 @@ Change to pgAudit directory:
 ```
 cd pgaudit
 ```
-Checkout `REL_11_STABLE` branch (note that during development the stable branch may not exist):
+Checkout `REL_11_STABLE` branch (note that the stable branch may not exist for unreleased versions of PostgreSQL):
 ```
 git checkout REL_11_STABLE
 ```
 Build pgAudit and run regression tests:
 ```
-make -s check
+make check USE_PGXS=1
 ```
 Install pgAudit:
 ```
-make install
+make install USE_PGXS=1
 ```
+Detailed instructions can be found in `test/Vagrantfile`.
 
 ## Settings
 
