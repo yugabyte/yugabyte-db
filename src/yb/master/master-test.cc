@@ -605,18 +605,6 @@ TEST_F(MasterTest, TestCatalog) {
   }
 }
 
-TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
-  const char *kTableName = "testtb";
-
-  {
-    const Schema kTableSchema({ ColumnSchema("key", BOOL) }, 1);
-    Status s = CreateTable(kTableName, kTableSchema);
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(),
-        "Invalid datatype for primary key column");
-  }
-}
-
 // Regression test for KUDU-253/KUDU-592: crash if the schema passed to CreateTable
 // is invalid.
 TEST_F(MasterTest, TestCreateTableInvalidSchema) {

@@ -55,23 +55,24 @@ public class TestCollectionTypes extends BaseCQLTest {
   @Test
   public void testCreateTable() throws Exception {
     // Types that can valid keys (and therefore also map keys or set elements)
-    Set<String> validKeyTypes = new HashSet<>();
-    validKeyTypes.add("tinyint");
-    validKeyTypes.add("smallint");
-    validKeyTypes.add("int");
-    validKeyTypes.add("bigint");
-    validKeyTypes.add("varchar");
-    validKeyTypes.add("timestamp");
-    validKeyTypes.add("inet");
-    validKeyTypes.add("uuid");
-    validKeyTypes.add("timeuuid");
-    validKeyTypes.add("blob");
-    validKeyTypes.add("float");
-    validKeyTypes.add("double");
+    List<String> validKeyTypes = Arrays.asList("tinyint",
+                                               "smallint",
+                                               "int",
+                                               "bigint",
+                                               "varchar",
+                                               "timestamp",
+                                               "inet",
+                                               "uuid",
+                                               "timeuuid",
+                                               "blob",
+                                               "float",
+                                               "double",
+                                               "date",
+                                               "time",
+                                               "boolean");
 
     // Types that cannot be keys but can be valid collection elements (map values or list elems)
-    Set<String> nonKeyTypes = new HashSet<>();
-    nonKeyTypes.add("boolean");
+    List<String> nonKeyTypes = Arrays.asList();
 
     //------------------------------------------------------------------------------------------
     // Testing Valid Create Table Statements

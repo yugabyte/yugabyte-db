@@ -30,13 +30,14 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_KEYENCODER_H
-#define YB_COMMON_KEYENCODER_H
+#ifndef YB_COMMON_KEY_ENCODER_H
+#define YB_COMMON_KEY_ENCODER_H
 
 #include <arpa/inet.h>
-#include <climits>
 #include <nmmintrin.h>
 #include <string.h>
+
+#include <climits>
 
 #include "yb/common/types.h"
 #include "yb/gutil/endian.h"
@@ -133,9 +134,9 @@ struct KeyEncoderTraits<Type,
   }
 
   static CHECKED_STATUS DecodeKeyPortion(Slice* encoded_key,
-                                 bool is_last,
-                                 Arena* arena,
-                                 uint8_t* cell_ptr) {
+                                         bool is_last,
+                                         Arena* arena,
+                                         uint8_t* cell_ptr) {
     if (PREDICT_FALSE(encoded_key->size() < sizeof(cpp_type))) {
       return STATUS(InvalidArgument, "key too short", encoded_key->ToDebugString());
     }
@@ -254,9 +255,9 @@ struct KeyEncoderTraits<BINARY, Buffer> {
   }
 
   static CHECKED_STATUS DecodeKeyPortion(Slice* encoded_key,
-                                 bool is_last,
-                                 Arena* arena,
-                                 uint8_t* cell_ptr) {
+                                         bool is_last,
+                                         Arena* arena,
+                                         uint8_t* cell_ptr) {
     if (is_last) {
       Slice* dst_slice = reinterpret_cast<Slice *>(cell_ptr);
       if (PREDICT_FALSE(!arena->RelocateSlice(*encoded_key, dst_slice))) {
@@ -357,6 +358,33 @@ struct KeyEncoderTraits<BINARY, Buffer> {
   }
 };
 
+template<typename Buffer>
+struct KeyEncoderTraits<BOOL, Buffer> {
+
+  static const DataType key_type = BOOL;
+
+  static void Encode(const void* key, Buffer* dst) {
+    dst->push_back(*reinterpret_cast<const bool*>(key) ? 1 : 0);
+  }
+
+  static void EncodeWithSeparators(const void* key, bool is_last, Buffer* dst) {
+    Encode(key, dst);
+  }
+
+  static CHECKED_STATUS DecodeKeyPortion(Slice* encoded_key,
+                                         bool is_last,
+                                         Arena* arena,
+                                         uint8_t* cell_ptr) {
+    if (PREDICT_FALSE(encoded_key->size() < sizeof(char))) {
+      return STATUS(InvalidArgument, "key too short", encoded_key->ToDebugString());
+    }
+
+    *cell_ptr = *encoded_key->data();
+    encoded_key->remove_prefix(sizeof(char));
+    return Status::OK();
+  }
+};
+
 // Forward declaration is necessary for friend declaration in KeyEncoder.
 template<typename Buffer>
 class EncoderResolver;
@@ -389,9 +417,9 @@ class KeyEncoder {
   // of the composite key.
   // Any indirect data (eg strings) are allocated out of 'arena'.
   CHECKED_STATUS Decode(Slice* encoded_key,
-                bool is_last,
-                Arena* arena,
-                uint8_t* cell_ptr) const {
+                        bool is_last,
+                        Arena* arena,
+                        uint8_t* cell_ptr) const {
     return decode_key_portion_func_(encoded_key, is_last, arena, cell_ptr);
   }
 
@@ -399,9 +427,9 @@ class KeyEncoder {
   friend class EncoderResolver<Buffer>;
   template<typename EncoderTraitsClass>
   explicit KeyEncoder(EncoderTraitsClass t)
-    : encode_func_(EncoderTraitsClass::Encode),
-      encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
-      decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
+      : encode_func_(EncoderTraitsClass::Encode),
+        encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
+        decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
   }
 
   typedef void (*EncodeFunc)(const void* key, Buffer* dst);
@@ -410,7 +438,7 @@ class KeyEncoder {
   const EncodeWithSeparatorsFunc encode_with_separators_func_;
 
   typedef Status (*DecodeKeyPortionFunc)(Slice* enc_key, bool is_last,
-                                       Arena* arena, uint8_t* cell_ptr);
+                                         Arena* arena, uint8_t* cell_ptr);
   const DecodeKeyPortionFunc decode_key_portion_func_;
 
  private:
@@ -424,4 +452,4 @@ extern const bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
 
-#endif
+#endif // YB_COMMON_KEY_ENCODER_H
