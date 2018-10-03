@@ -18,10 +18,19 @@ menu:
       Terraform
     </a>
   </li>
+  <li>
+    <a href="#manual-deployment" class="nav-link" id="manual-deployment-tab" data-toggle="tab" role="tab" aria-controls="manual-deployment" aria-selected="true">
+      <i class="icon-shell"></i>
+      Manual Deployment
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
   <div id="terraform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="terraform-tab">
     {{% includeMarkdown "aws/terraform.md" /%}}
+  </div>
+   <div id="manual-deployment" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-deployment-tab">
+    {{% includeMarkdown "aws/manual-deployment.md" /%}}
   </div>
 </div>

@@ -60,7 +60,7 @@ At this point, these 2 new nodes are added into the cluster but are not taking a
 Let us now update the placement policy, instructing the YB-Master to place data in the new regions.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0	.0.2:7100,127.0.0.3:7100 \
+$ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     modify_placement_info aws.us-west-2.us-west-2a,aws.us-east-1.us-east-1a,aws.ap-northeast-1.ap-northeast-1a 3
 ```
 

@@ -40,8 +40,8 @@ $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
 ```{.sh .copy .separator-dollar}
-# get the yugaware binary where the 1.0.5.3 refers to the version of the binary. change this number as needed.
-$ wget https://downloads.yugabyte.com/yugaware-1.0.5.3.airgap
+# get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
+$ wget https://downloads.yugabyte.com/yugaware-1.1.0.2.airgap
 ```
 
 ```{.sh .copy .separator-dollar}
