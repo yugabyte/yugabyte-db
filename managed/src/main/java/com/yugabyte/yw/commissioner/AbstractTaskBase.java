@@ -31,7 +31,7 @@ public abstract class AbstractTaskBase implements ITask {
   public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
 
   // Number of concurrent tasks to execute at a time.
-  private static final int TASK_THREADS = 50;
+  private static final int TASK_THREADS = 10;
 
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
