@@ -218,6 +218,10 @@ int QLValue::CompareTo(const QLValue& other) const {
 // The internal methods such as AppendIntToKey should be renamed accordingly.
 void AppendToKey(const QLValuePB &value_pb, string *bytes) {
   switch (value_pb.value_case()) {
+    case QLValue::InternalType::kBoolValue: {
+      YBPartition::AppendIntToKey<bool, uint8>(value_pb.bool_value() ? 1 : 0, bytes);
+      break;
+    }
     case QLValue::InternalType::kInt8Value: {
       YBPartition::AppendIntToKey<int8, uint8>(value_pb.int8_value(), bytes);
       break;
@@ -299,7 +303,6 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
     }
     case QLValue::InternalType::VALUE_NOT_SET:
       break;
-    case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;

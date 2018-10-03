@@ -1117,6 +1117,9 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
     case QLValue::InternalType::kStringValue:
       target->set_string_value(source->string_value());
       break;
+    case QLValue::InternalType::kBoolValue:
+      target->set_string_value(source->bool_value() ? "true" : "false");
+      break;
     default:
       return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0", source->type());
   }

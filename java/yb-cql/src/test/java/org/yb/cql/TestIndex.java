@@ -74,6 +74,8 @@ public class TestIndex extends BaseCQLTest {
     // Create test indexes with range and non-primary-key columns.
     session.execute("create index i1 on test_create_index (r1, r2) include (c1, c4);");
     session.execute("create index i2 on test_create_index (c4) include (c1, c2);");
+    session.execute("create index i4 on test_create_index (c5) include (c4);");
+    session.execute("create index i5 on test_create_index (c1, c5) include (c2, c3);");
 
     // Wait to ensure the partitions metadata was updated.
     // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
@@ -86,10 +88,16 @@ public class TestIndex extends BaseCQLTest {
                  table.getIndex("i1").asCQLQuery());
     assertEquals("CREATE INDEX i2 ON cql_test_keyspace.test_create_index (c4, h1, h2, r1, r2);",
                  table.getIndex("i2").asCQLQuery());
+    assertEquals("CREATE INDEX i4 ON cql_test_keyspace.test_create_index (c5, h1, h2, r1, r2);",
+                 table.getIndex("i4").asCQLQuery());
+    assertEquals("CREATE INDEX i5 ON cql_test_keyspace.test_create_index (c1, c5, h1, h2, r1, r2);",
+                 table.getIndex("i5").asCQLQuery());
 
     // Verify the covering columns.
     assertIndexOptions("test_create_index", "i1", "r1, r2, h1, h2", "c1, c4");
     assertIndexOptions("test_create_index", "i2", "c4, h1, h2, r1, r2", "c1, c2");
+    assertIndexOptions("test_create_index", "i4", "c5, h1, h2, r1, r2", "c4");
+    assertIndexOptions("test_create_index", "i5", "c1, c5, h1, h2, r1, r2", "c2, c3");
 
     // Test retrieving non-existent index.
     assertNull(table.getIndex("i3"));
@@ -125,20 +133,6 @@ public class TestIndex extends BaseCQLTest {
     try {
       session.execute("create index i1 on test_create_index_2 (r1, r2) include (c1, c4);");
       fail("Index by the same name created on another table");
-    } catch (InvalidQueryException e) {
-      LOG.info("Expected exception " + e.getMessage());
-    }
-
-    try {
-      session.execute("create index i_invalid on test_create_index (c5);");
-      fail("Index with unsupported index column datatype created");
-    } catch (InvalidQueryException e) {
-      LOG.info("Expected exception " + e.getMessage());
-    }
-
-    try {
-      session.execute("create index i_invalid on test_create_index (c1, c5);");
-      fail("Index with unsupported index column datatype created");
     } catch (InvalidQueryException e) {
       LOG.info("Expected exception " + e.getMessage());
     }

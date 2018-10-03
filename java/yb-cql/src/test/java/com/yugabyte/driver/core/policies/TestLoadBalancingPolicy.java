@@ -37,6 +37,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.net.InetAddress;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -288,7 +289,26 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
 
       session.execute("drop table t6;");
     }
-  }
+
+    // Test hash key composed of boolean.
+    {
+      session.execute("create table t7 (h boolean, primary key ((h)));");
+
+      for (Boolean h : Arrays.asList(false, true)) {
+        LOG.info("h = " + h);
+        BoundStatement stmt = session.prepare("insert into t7 (h) values (?);").bind(h);
+        session.execute(stmt);
+
+        // Select the row back using the hash key value and verify the row.
+        Row row = session.execute("select * from t7 where token(h) = ?;",
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
+        assertNotNull(row);
+        assertEquals(h, row.getBool("h"));
+      }
+
+      session.execute("drop table t7;");
+    }
+ }
 
   private void waitForMetadataRefresh() throws Exception {
     // Since partition metadata is refreshed asynchronously after a new table is created, let's

@@ -128,7 +128,6 @@ shared_ptr<QLType> QLType::Create(DataType data_type) {
 
 bool QLType::IsValidPrimaryType(DataType type) {
   switch (type) {
-    case DataType::BOOL:FALLTHROUGH_INTENDED;
     case DataType::MAP: FALLTHROUGH_INTENDED;
     case DataType::SET: FALLTHROUGH_INTENDED;
     case DataType::LIST: FALLTHROUGH_INTENDED;
