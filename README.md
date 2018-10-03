@@ -137,9 +137,19 @@ Specifies that session logging should be enabled in the case where all relations
 
 The default is `on`.
 
+### pgaudit.log_client
+
+Specifies whether log messages will be visible to a client process such as psql. This setting should generally be left disabled but may be useful for debugging or other purposes.
+
+Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is `on`.
+
+The default is `off`.
+
 ### pgaudit.log_level
 
 Specifies the log level that will be used for log entries (see [Message Severity Levels](http://www.postgresql.org/docs/9.4/static/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) for valid levels) but note that `ERROR`, `FATAL`, and `PANIC` are not allowed). This setting is used for regression testing and may also be useful to end users for testing or other purposes.
+
+Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is `on`; otherwise the default will be used.
 
 The default is `log`.
 
