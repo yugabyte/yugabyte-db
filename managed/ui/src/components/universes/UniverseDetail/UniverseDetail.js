@@ -250,9 +250,7 @@ class UniverseTaskList extends Component {
     const currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
       universeTaskUUIDs = currentUniverseTasks.map(function(task) {
-        if (task.status !== "Running") {
-          universeTaskHistoryArray.push(task);
-        }
+        universeTaskHistoryArray.push(task);
         return (task.status !== "Failure" && task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }

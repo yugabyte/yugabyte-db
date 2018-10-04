@@ -5,7 +5,7 @@ import moment from 'moment';
 import { YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
-import { YBStatsBlock } from '../../common/descriptors';
+import { YBResourceCount } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import { isDefinedNotNull, isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { getUniverseNodes } from "../../../utils/UniverseUtils";
@@ -36,9 +36,9 @@ export default class HighlightedStatsPanel extends Component {
     );
     return (
       <div className="tile_count highlighted-stats-panel">
-        <YBStatsBlock value={universeList.data.length} label={"Universes"}/>
-        <YBStatsBlock value={numNodes} label={"Nodes"}/>
-        <YBStatsBlock value={formattedCost} label={"Per Month"}/>
+        <YBResourceCount kind="Universes" size={universeList.data.length}/>  
+        <YBResourceCount kind="Nodes" size={numNodes}/>  
+        <YBResourceCount kind="Per Month" size={formattedCost}/>
       </div>
     );
   }

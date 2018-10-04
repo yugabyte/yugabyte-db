@@ -30,7 +30,7 @@
     align-content: space-between;
   }
 
-  .tile_count .tile_stats_count {
+  .tile_count .yb-resource-count {
     border-left: 1px solid $YB_GRAY_HOVER;
     padding: 0 50px;
     text-align: center;
@@ -39,9 +39,14 @@
     @media (max-width:767px) {
       padding: 0 30px;
     }
+
+    .yb-resource-count-size {
+      font-size: 22px;
+      line-height: 22px;
+    }
   }
 
-  .tile_count .tile_stats_count:first-child {
+  .tile_count .yb-resource-count:first-child {
     border-left: none;
   }
 
