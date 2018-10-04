@@ -15,6 +15,7 @@ package org.yb.cql;
 import java.util.*;
 
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.SimpleStatement;
 import org.junit.Test;
 
 import com.datastax.driver.core.ResultSet;
@@ -133,6 +134,7 @@ public class TestDelete extends BaseCQLTest {
         "INSERT INTO " + tableName + "(h1, h2, r1, r2, s, v) VALUES(" +
             "?, ?, ?, ?, ?, ?);");
 
+    // Insert 100 rows.
     for (int h = 0; h < 10; h++) {
       for (int r = 0; r < 10; r++) {
         session.execute(insert.bind(
@@ -146,20 +148,37 @@ public class TestDelete extends BaseCQLTest {
     final PreparedStatement static_select = session.prepare(
         "SELECT DISTINCT s FROM " + tableName + " WHERE h1 = ? AND h2 = ?");
 
+    final SimpleStatement full_select = new SimpleStatement("SELECT * FROM " + tableName);
+
     //----------------------------------------------------------------------------------------------
     // Test Valid Statements
 
     // Test Delete entire hash.
     {
+      // Deleting 10 rows (out of 100).
       session.execute("DELETE FROM " + tableName + " WHERE h1 = 0 and h2 = 'h0'");
 
-      // Check rows.
-      Iterator<Row> rows = session.execute(select.bind(new Integer(0), "h0")).iterator();
-      assertFalse(rows.hasNext());
+      // Check row was removed.
+      List<Row> rows = session.execute(select.bind(new Integer(0), "h0")).all();
+      assertTrue(rows.isEmpty());
 
       // Check that static column is removed.
-      rows = session.execute(static_select.bind(new Integer(0), "h0")).iterator();
-      assertFalse(rows.hasNext());
+      rows = session.execute(static_select.bind(new Integer(0), "h0")).all();
+      assertTrue(rows.isEmpty());
+
+      // Check that no other rows are removed.
+      rows = session.execute(full_select).all();
+      assertEquals(90, rows.size());
+    }
+
+    // Test Delete non-existing hash.
+    {
+      // Deleting 0 rows (out of 90).
+      session.execute("DELETE FROM " + tableName + " WHERE h1 = -1 and h2 = 'h-1'");
+
+      // Check that no rows are removed.
+      List<Row> rows = session.execute(full_select).all();
+      assertEquals(90, rows.size());
     }
 
     // Test Delete with lower bound.
