@@ -237,12 +237,6 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		TupleDescInitEntry (tupdesc,  5, "separator", TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  6, "mod",       TEXTOID, -1, 0);
 
-#if PG_VERSION_NUM < 120000
-
-		funcctx->slot = TupleDescGetSlot(tupdesc);
-
-#endif
-
 		attinmeta = TupleDescGetAttInMetadata (tupdesc);
 		funcctx -> attinmeta = attinmeta;
 
@@ -283,18 +277,8 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		if (!nd->modificator)
 			values[5] = NULL;
 
-#if PG_VERSION_NUM < 120000
-
-		tuple = BuildTupleFromCStrings (funcctx -> attinmeta,
-							fctx -> values);
-		result = TupleGetDatum (funcctx -> slot, tuple);
-
-#else
-
 		tuple = BuildTupleFromCStrings(funcctx->attinmeta, fctx->values);
 		result = HeapTupleGetDatum(tuple);
-
-#endif
 
 		values[2] = back_vals[2];
 		values[4] = back_vals[4];

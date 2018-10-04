@@ -1,9 +1,7 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "fmgr.h"
-#if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
-#endif
 #include "storage/shmem.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
@@ -147,15 +145,7 @@ message_buffer *input_buffer = NULL;
 
 pipe* pipes = NULL;
 
-#if PG_VERSION_NUM >= 90400
-
 #define NOT_INITIALIZED		NULL
-
-#else
-
-#define NOT_INITIALIZED		-1
-
-#endif
 
 LWLockId shmem_lockid = NOT_INITIALIZED;;
 
@@ -1036,12 +1026,6 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, ++i, "owner",   VARCHAROID, -1, 0);
 		Assert(i == DB_PIPES_COLS);
 
-#if PG_VERSION_NUM < 120000
-
-		funcctx->slot = TupleDescGetSlot(tupdesc);
-
-#endif
-
 		attinmeta = TupleDescGetAttInMetadata(tupdesc);
 		funcctx->attinmeta = attinmeta;
 
@@ -1084,16 +1068,7 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 			values[5] = pipes[fctx->pipe_nth].creator;
 
 			tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
-
-#if PG_VERSION_NUM < 120000
-
-			result = TupleGetDatum(funcctx->slot, tuple);
-
-#else
-
 			result = HeapTupleGetDatum(tuple);
-
-#endif
 
 			fctx->pipe_nth += 1;
 			SRF_RETURN_NEXT(funcctx, result);
