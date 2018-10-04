@@ -139,6 +139,7 @@ spec:
       resources:
         requests:
           storage: 10Gi
+      storageClassName: standard
 
 ---
 apiVersion: v1
@@ -244,3 +245,4 @@ spec:
       resources:
         requests:
           storage: 10Gi
+      storageClassName: standard
