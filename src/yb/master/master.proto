@@ -952,6 +952,14 @@ message ChangeMasterClusterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message SetPreferredZonesRequestPB {
+  repeated CloudInfoPB preferred_zones = 1;
+}
+
+message SetPreferredZonesResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // Get the percentage of tablet data that got moved as part of a blacklist config change.
 // Handled by the master leader and picked up by new leader on failover.
 message GetLoadMovePercentRequestPB {
@@ -1279,6 +1287,7 @@ service MasterService {
 
   rpc RemovedMasterUpdate(RemovedMasterUpdateRequestPB) returns (RemovedMasterUpdateResponsePB);
 
+  rpc SetPreferredZones(SetPreferredZonesRequestPB) returns (SetPreferredZonesResponsePB);
   rpc GetMasterClusterConfig(GetMasterClusterConfigRequestPB)
       returns (GetMasterClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)

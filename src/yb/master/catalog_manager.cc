@@ -5773,6 +5773,36 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Status CatalogManager::SetPreferredZones(
+    const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp) {
+  auto l = cluster_config_->LockForWrite();
+  auto replication_info = l->mutable_data()->pb.mutable_replication_info();
+  replication_info->clear_affinitized_leaders();
+
+  Status s;
+  for (const auto& cloud_info : req->preferred_zones()) {
+    s = CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replication_info->live_replicas(),
+                                                              cloud_info);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+    }
+    *replication_info->add_affinitized_leaders() = cloud_info;
+  }
+
+  l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+
+  LOG(INFO) << "Updating cluster config to " << l->mutable_data()->pb.version();
+
+  s = sys_catalog_->UpdateItem(cluster_config_.get());
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+  }
+
+  l->Commit();
+
+  return Status::OK();
+}
+
 Status CatalogManager::GetReplicationFactor(int* num_replicas) {
   DCHECK(cluster_config_) << "Missing cluster config for master!";
   auto l = cluster_config_->LockForRead();
