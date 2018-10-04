@@ -361,7 +361,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     }
     EnableFailureDetector(initial_delta);
 
-    RETURN_NOT_OK(BecomeReplicaUnlocked());
+    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string()));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
@@ -661,9 +661,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     }
   }
 
-  RETURN_NOT_OK(BecomeReplicaUnlocked());
-
-  WithholdElectionAfterStepDown(new_leader_uuid);
+  RETURN_NOT_OK(BecomeReplicaUnlocked(new_leader_uuid));
 
   return Status::OK();
 }
@@ -699,9 +697,15 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
   DCHECK(state_->IsLocked());
   protege_leader_uuid_ = protege_uuid;
   auto timeout = MonoDelta::FromMilliseconds(
-      FLAGS_after_stepdown_delay_election_multiplier *
       FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms);
+  if (!protege_uuid.empty()) {
+    // Actually we have 2 kinds of step downs.
+    // 1) We step down in favor of some protege.
+    // 2) We step down because term was advanced or just started.
+    // In second case we should not withhold election for a long period of time.
+    timeout *= FLAGS_after_stepdown_delay_election_multiplier;
+  }
   auto deadline = MonoTime::Now() + timeout;
   withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
   election_lost_by_protege_at_ = MonoTime();
@@ -807,12 +811,13 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::BecomeReplicaUnlocked() {
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Becoming Follower/Learner. State: "
-                                 << state_->ToStringUnlocked();
+Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) {
+  LOG_WITH_PREFIX_UNLOCKED(INFO)
+      << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
+      << ", new leader: " << new_leader_uuid;
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    WithholdElectionAfterStepDown(std::string());
+    WithholdElectionAfterStepDown(new_leader_uuid);
   }
 
   state_->ClearLeaderUnlocked();
@@ -2811,7 +2816,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
                                    << state_->GetCurrentTermUnlocked()
                                    << " since new term is " << new_term;
 
-    RETURN_NOT_OK(BecomeReplicaUnlocked());
+    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string()));
   }
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Advancing to term " << new_term;

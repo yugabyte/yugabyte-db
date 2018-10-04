@@ -195,25 +195,16 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   }
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
-  void SetBootstrapping() {
-    CHECK_OK(UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, ""));
+  CHECKED_STATUS SetBootstrapping() {
+    return UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, "");
   }
 
-  Status UpdateState(TabletStatePB expected, TabletStatePB new_state, string error_message) {
-    TabletStatePB old = expected;
-    return (state_.compare_exchange_strong(old, new_state, std::memory_order_acq_rel) ?
-        Status::OK() : STATUS_FORMAT(
-            InvalidArgument, "$0 Expected state:$1, got:$2",
-            error_message, TabletStatePB_Name(expected), TabletStatePB_Name(old)));
-  }
+  CHECKED_STATUS UpdateState(TabletStatePB expected, TabletStatePB new_state,
+                             const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
-  void SetFailed(const Status& error) {
-    DCHECK(error_.get(std::memory_order_acquire) == nullptr);
-    error_ = MakeAtomicUniquePtr<Status>(error);
-    state_.store(TabletStatePB::FAILED, std::memory_order_release);
-  }
+  void SetFailed(const Status& error);
 
   // Returns the error that occurred, when state is FAILED.
   CHECKED_STATUS error() const {

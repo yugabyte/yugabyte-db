@@ -299,6 +299,30 @@ class QLTransactionTest : public KeyValueTableTest {
     ASSERT_EQ(false, has_bad);
   }
 
+  bool CheckAllTabletsRunning() {
+    bool result = true;
+    size_t count = 0;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      if (i == 0) {
+        count = peers.size();
+      } else if (count != peers.size()) {
+        LOG(WARNING) << "Different number of tablets in tservers: "
+                     << count << " vs " << peers.size() << " at " << i;
+        result = false;
+      }
+      for (const auto& peer : peers) {
+        auto status = peer->CheckRunning();
+        if (!status.ok()) {
+          LOG(WARNING) << Format("T $0 P $1 is not running: $2", peer->tablet_id(),
+                                 peer->permanent_uuid(), status);
+          result = false;
+        }
+      }
+    }
+    return result;
+  }
+
   // We write data with first transaction then try to read it another one.
   // If commit is true, then first transaction is committed and second should be restarted.
   // Otherwise second transaction would see pending intents from first one and should not restart.
@@ -1433,6 +1457,14 @@ class RemoteBootstrapTest : public QLTransactionTest {
 };
 
 // Check that we do correct remote bootstrap for intents db.
+// Workflow is the following:
+// Shutdown TServer with index 0.
+// Write some data to two remaining servers.
+// Flush data and clean logs.
+// Restart cluster.
+// Verify that all tablets at all tservers are up and running.
+// Verify that all tservers have same amount of running tablets.
+// During test tear down cluster verifier will check that all servers have same data.
 TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   constexpr size_t kNumWrites = 10;
   constexpr size_t kTransactionalWrites = 8;
@@ -1470,7 +1502,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   ASSERT_OK(cluster_->CleanTabletLogs());
 
   // Wait logs cleanup.
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(5s * kTimeMultiplier);
 
   // Shutdown to reset cached logs.
   for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
@@ -1481,6 +1513,9 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
+
+  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 30s * kTimeMultiplier,
+                    "All tablets running"));
 }
 
 TEST_F(QLTransactionTest, FlushIntents) {

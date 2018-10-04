@@ -629,6 +629,16 @@ Status Tablet::CreateCheckpoint(const std::string& dir) {
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
   Status status;
+  if (!regular_db_) {
+    LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
+    return STATUS(NotSupported,
+                  "Tablet does not have a RocksDB (could be a transaction status tablet)");
+  }
+
+  auto parent_dir = DirName(dir);
+  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(parent_dir),
+                        Format("Unable to create checkpoints directory $0", parent_dir));
+
   // Order does not matter because we flush both DBs and does not have parallel writes.
   if (intents_db_) {
     status = rocksdb::checkpoint::CreateCheckpoint(intents_db_.get(), temp_intents_dir);
