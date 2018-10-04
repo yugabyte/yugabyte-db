@@ -174,6 +174,14 @@ MonoDelta& MonoDelta::operator-=(const MonoDelta& rhs) {
   return *this;
 }
 
+MonoDelta& MonoDelta::operator*=(int64_t mul) {
+  DCHECK(Initialized());
+  DCHECK_EQ(nano_delta_ * mul / mul, nano_delta_); // Check for overflow
+  DCHECK(nano_delta_ * mul != kUninitialized);
+  nano_delta_ *= mul;
+  return *this;
+}
+
 void MonoDelta::ToTimeVal(struct timeval *tv) const {
   DCHECK(Initialized());
   tv->tv_sec = nano_delta_ / MonoTime::kNanosecondsPerSecond;

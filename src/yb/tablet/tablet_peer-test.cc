@@ -160,7 +160,7 @@ class TabletPeerTest : public YBTabletTest,
                         tablet()->metadata()->schema_version(), metric_entity_.get(),
                         append_pool_.get(), &log));
 
-    tablet_peer_->SetBootstrapping();
+    ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            std::shared_future<client::YBClientPtr>(),
                                            clock(),

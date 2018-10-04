@@ -469,7 +469,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
-  tablet_peer()->SetBootstrapping();
+  RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
   tablet::BootstrapTabletData data = { metadata,
                                        std::shared_future<client::YBClientPtr>(),
