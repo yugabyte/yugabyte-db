@@ -43,6 +43,10 @@ class CatalogManagerUtil {
   static CHECKED_STATUS GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                          ZoneToDescMap* zone_to_ts);
 
+  // For the given placement info, checks whether a given cloud info is contained within it.
+  static CHECKED_STATUS DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                          const CloudInfoPB& cloud_info);
+
  private:
   CatalogManagerUtil();
 
