@@ -996,7 +996,6 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	TupleDesc        tupdesc;
-	TupleTableSlot  *slot;
 	AttInMetadata   *attinmeta;
 	PipesFctx       *fctx;
 
@@ -1037,8 +1036,11 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, ++i, "owner",   VARCHAROID, -1, 0);
 		Assert(i == DB_PIPES_COLS);
 
-		slot = TupleDescGetSlot(tupdesc);
-		funcctx->slot = slot;
+#if PG_VERSION_NUM < 120000
+
+		funcctx->slot = TupleDescGetSlot(tupdesc);
+
+#endif
 
 		attinmeta = TupleDescGetAttInMetadata(tupdesc);
 		funcctx->attinmeta = attinmeta;
@@ -1082,7 +1084,16 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 			values[5] = pipes[fctx->pipe_nth].creator;
 
 			tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
+
+#if PG_VERSION_NUM < 120000
+
 			result = TupleGetDatum(funcctx->slot, tuple);
+
+#else
+
+			result = HeapTupleGetDatum(tuple);
+
+#endif
 
 			fctx->pipe_nth += 1;
 			SRF_RETURN_NEXT(funcctx, result);

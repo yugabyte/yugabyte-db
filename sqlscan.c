@@ -2689,10 +2689,10 @@ YY_BUFFER_STATE orafce_sql_yy_scan_bytes  (yyconst char * yybytes, int  _yybytes
 	YY_BUFFER_STATE b;
 	char *buf;
 	yy_size_t n;
-	yy_size_t i;
+	int i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
-	n = (yy_size_t) _yybytes_len + 2;
+	n = (yy_size_t) (_yybytes_len + 2);
 	buf = (char *) orafce_sql_yyalloc(n  );
 	if ( ! buf )
 		YY_FATAL_ERROR( "out of dynamic memory in orafce_sql_yy_scan_bytes()" );
