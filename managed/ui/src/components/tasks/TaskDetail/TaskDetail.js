@@ -6,10 +6,11 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from 'utils/ObjectUtils';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
-import { YBResourceCount } from 'components/common/descriptors';
+import { YBResourceCount } from '../../common/descriptors';
 import {Row, Col} from 'react-bootstrap';
 import './TaskDetail.scss';
 import moment from 'moment';
+import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import Highlight from 'react-highlight';
 import "highlight.js/styles/github.css";
@@ -46,16 +47,16 @@ class TaskDetail extends Component {
     let taskTopLevelData = <span/>;
     if (isNonEmptyObject(currentTaskData)) {
       taskTopLevelData = (
-        <div className={"universe-resources"}>
-          <YBResourceCount kind="Complete" size={currentTaskData.percent} unit={"%"}/>
-          <YBResourceCount kind="Status" size={currentTaskData.status}/>
+        <div className={"task-detail-status"}>
+          <div className="pull-right" >{Math.round(currentTaskData.percent)}% complete</div>
+          <div className={currentTaskData.status.toLowerCase()}>{currentTaskData.status}</div>
         </div>
       );
     };
 
     let taskProgressBarData = <span/>;
     if (taskProgressData.data.details && isNonEmptyArray(taskProgressData.data.details.taskDetails)) {
-      taskProgressBarData = <StepProgressBar progressData={taskProgressData.data}/>;
+      taskProgressBarData = <StepProgressBar progressData={taskProgressData.data} status={currentTaskData.status}/>;
     }
     let taskFailureDetails = <span/>;
     const getTruncatedErrorString = function(errorString) {
@@ -71,19 +72,17 @@ class TaskDetail extends Component {
 
     const getErrorMessageDisplay = errorString => {
       let errorElement = getTruncatedErrorString(errorString);
-      let chevronClassName = "fa fa-chevron-down";
-      let displayMessage = "View More";
+      let displayMessage = "Expand";
       if (self.state.errorStringDisplay) {
         errorElement = <Highlight className='json'>{errorString}</Highlight>;
-        chevronClassName = "fa fa-chevron-up";
         displayMessage = "View Less";
       }
 
       return (
-        <div>
+        <div className="clearfix">
           {errorElement}
-          <div className="task-detail-view-toggle text-center" onClick={self.toggleErrorStringDisplay}>
-            {displayMessage}&nbsp;<i className={chevronClassName} />
+          <div className="btn btn-orange text-center pull-right" onClick={self.toggleErrorStringDisplay}>
+            {displayMessage}
           </div>
         </div>
       );
@@ -98,15 +97,15 @@ class TaskDetail extends Component {
         return (
           <div className="task-detail-info" key={subTask.creationTime}>
             <Row>
-              <Col lg={2}>
+              <Col xs={4}>
                 {subTask.subTaskGroupType}
                 <i className="fa fa-angle-right" />
                 {subTask.subTaskType}
               </Col>
-              <Col lg={2}>{formatDateField(subTask.creationTime)}</Col>
-              <Col lg={2}>{subTask.subTaskState}</Col>
-              <Col lg={6}>{errorString}</Col>
+              <Col xs={4}>{formatDateField(subTask.creationTime)}</Col>
+              <Col xs={4}>{subTask.subTaskState}</Col>
             </Row>
+            {errorString}
           </div>
         );
       });
@@ -131,8 +130,6 @@ class TaskDetail extends Component {
             <Link to={`/universes/${universe.universeUUID}?tab=tasks`}>
               Tasks
             </Link>
-            <i className="fa fa-chevron-right"></i>
-            {(currentTaskData && currentTaskData.title) || 'Task Details'}
           </span>
         </h2>
       );
@@ -149,25 +146,34 @@ class TaskDetail extends Component {
     }
 
     return (
-      <div className="task-failure-container">
+      <div className="task-container">
         {heading}
         <div className="task-detail-overview">
-          <div className="task-failure-top-heading">
+          <div className="task-top-heading">
+            <YBResourceCount className="text-align-right pull-right" kind="Target universe" size={currentTaskData.title && currentTaskData.title.split(" : ")[1]}/>
+            <YBResourceCount kind="Task name" size={currentTaskData.title && currentTaskData.title.split(" : ")[0]}/>
             {taskTopLevelData}
           </div>
           <div className="task-step-bar-container">
             {taskProgressBarData}
           </div>
         </div>
-        <div className="task-failure-detail-container">
-          <Row className="task-failure-heading-row">
-            <Col lg={2}>Task</Col>
-            <Col lg={2}>Started On</Col>
-            <Col lg={2}>Status</Col>
-            <Col lg={6}>Details</Col>
-          </Row>
-          {taskFailureDetails}
-        </div>
+
+        <YBPanelItem
+          header={
+            <h2>Task details</h2>
+          }
+          body={     
+            <div className="task-detail-container">
+              <Row className="task-heading-row">
+                <Col xs={4}>Task</Col>
+                <Col xs={4}>Started On</Col>
+                <Col xs={4}>Status</Col>
+              </Row>
+              {taskFailureDetails}
+            </div>
+          }
+        />
       </div>
     );
   }

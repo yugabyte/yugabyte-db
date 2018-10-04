@@ -2,6 +2,7 @@
 
 @import "_style/colors.scss";
 @import "_style/icons.scss";
+@import "_style/mixins.scss";
 
 .task-detail-title {
   display: inline;
@@ -14,7 +15,7 @@
 
 .task-detail-overview {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   justify-content: space-between;
 }
 
@@ -24,11 +25,11 @@
   flex-grow: 1;
 }
 
-.task-failure-detail-container {
+.task-detail-container {
   flex-grow: 0;
 }
 
-.task-failure-detail-heading {
+.task-detail-heading {
   text-align: center;
   color: $YB_FAIL_COLOR;
   font-size: 18px;
@@ -37,18 +38,46 @@
   padding-bottom: 10px;
 }
 
-.task-failure-top-heading {
+.task-top-heading {
   padding-bottom: 10px;
   padding-top: 0;
+
+  .yb-resource-count {
+    margin-right: 0px;
+
+    .yb-resource-count-size {
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      font-family: 'Montserrat', sans-serif;
+    }
+  }
+
+  .universe-resources {
+    margin-top: 0px;
+    padding-top: 0px;
+  }
+
+  .task-detail-status {
+    font-size: 24px;
+    font-weight: 300;
+    margin: 30px 0;
+    color: $YB_SUBTITLE_COLOR;
+    
+    .failure {
+      color: $YB_FAIL_COLOR;
+    }
+  }
 }
 
-.task-failure-top-heading .universe-resources {
-  margin-top: 0px;
-  padding-top: 0px;
-}
-
-.task-failure-container {
+.task-container {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
   padding: 0px !important;
+
+  .content-panel {
+    margin-top: 40px;
+  }
 }
 
 .task-detail-back-button {
@@ -62,7 +91,7 @@
   padding: 10px 6px;
 }
 
-.task-failure-heading-row {
+.task-heading-row {
   font-size: 12px;
   font-weight: 600;
   margin-top: 10px;
@@ -80,15 +109,27 @@
   }
 
   pre {
-    margin: 0 !important;
+    margin: 15px 0 !important;
     border: none !important;
     padding: 0 !important;
   }
 
   code {
-    height: auto !important;
-    padding: 0 !important;
+    height: auto;
     font-size: 12px;
+    line-height: 1.5;
+    border-radius: 7px;
+    padding: 12px 20px;
+    margin: 0;
+    background: #F7F8F9;
+    border: 1px solid #DEE0EA;
+    word-wrap: normal;
+    word-break: keep-all;
+    @include transition(0.3s);
+  }
+
+  .btn-orange {
+    padding: 6px 12px;
   }
 }
 

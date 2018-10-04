@@ -11,8 +11,8 @@ import { YBPanelItem } from '../../panels';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
-import {getPromiseState} from '../../../utils/PromiseUtils';
-import { YBStatsBlock } from '../../common/descriptors';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { YBResourceCount } from '../../common/descriptors';
 
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
@@ -25,15 +25,15 @@ class TableTitle extends Component {
           <h2>Tables</h2>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
-            <YBStatsBlock value={numCassandraTables} label={"YCQL"}/>
+            <YBResourceCount kind="YCQL" size={numCassandraTables}/>
           </div>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
-            <YBStatsBlock value={numRedisTables} label={"YEDIS"}/>
+            <YBResourceCount kind="YEDIS" size={numRedisTables}/>
           </div>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
-            <YBStatsBlock value={numPostgresTables} label={"PostgreSQL"}/>
+            <YBResourceCount kind="PostgreSQL" size={numPostgresTables}/>
           </div>
         </div>
         <FlexContainer className="pull-right">

@@ -5,7 +5,6 @@ export { default as DescriptionItem } from './DescriptionItem';
 export { default as YBResourceCount } from './YBResourceCount';
 export { default as YBBreadcrumb } from './YBBreadcrumb';
 export { default as YBCost } from './YBCost';
-export { default as YBStatsBlock } from './YBStatsBlock';
 export { default as YBLabel } from './YBLabel';
 export { default as YBCopyButton } from './YBCopyButton';
 export { default as YBLabelWithIcon } from './YBLabelWithIcon';
