@@ -138,6 +138,40 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Check a custom function with a complex argument
+CREATE TABLE public.complex(a int);
+CREATE FUNCTION __cat__(public.complex) RETURNS BOOLEAN
+AS 'SELECT TRUE'
+LANGUAGE SQL;
+SELECT * FROM check_test(
+    has_function( '__cat__', '{complex}'::name[] ),
+    true,
+    'custom unqualified function with complex unqualified argument',
+    'Function __cat__(complex) should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_function( '__cat__', '{public.complex}'::name[] ),
+    true,
+    'custom unqualified function with complex qualified argument',
+    'Function __cat__(public.complex) should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_function( 'public', '__cat__', '{complex}'::name[] ),
+    true,
+    'custom qualified function with complex unqualified argument',
+    'Function public.__cat__(complex) should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_function( 'public', '__cat__', '{public.complex}'::name[] ),
+    true,
+    'custom qualified function with complex qualified argument',
+    'Function public.__cat__(public.complex) should exist',
+    ''
+);
+
 -- Check failure output.
 SELECT * FROM check_test(
     has_function( '__cat__', '{varchar[]}'::name[] ),
