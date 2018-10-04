@@ -153,18 +153,12 @@ DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
     return DocKey();
   }
 
-  // TODO: Require hash codes to be specified if hashed_components is not empty and update
-  // callers to provide it.
-  // https://yugabyte.atlassian.net/browse/ENG-3416
-
-  DocKeyHash min_hash = hash_code_ ?
-      static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
-  DocKeyHash max_hash = max_hash_code_ ?
-      static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
-
-  // if hash_code not set default to 0 (start from the beginning)
-  return DocKey(lower_bound ? min_hash : max_hash,
-      *hashed_components_, range_components(lower_bound));
+  // If hash_components are non-empty then hash_code and max_hash_code must both be set and equal.
+  DCHECK(hash_code_);
+  DCHECK(max_hash_code_);
+  DCHECK_EQ(*hash_code_, *max_hash_code_);
+  auto hash_code = static_cast<DocKeyHash> (*hash_code_);
+  return DocKey(hash_code, *hashed_components_, range_components(lower_bound));
 }
 
 std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {

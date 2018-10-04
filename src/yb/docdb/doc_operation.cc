@@ -2576,9 +2576,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             request_.hashed_column_values(), schema_, 0,
             schema_.num_hash_key_columns(), &hashed_components));
 
-        DocQLScanSpec spec(projection, request_.hash_code(), boost::none, hashed_components,
-            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
-            request_.query_id());
+        DocQLScanSpec spec(projection,
+                           request_.hash_code(),
+                           request_.hash_code(), // max hash code.
+                           hashed_components,
+                           request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+                           request_.query_id());
 
         // Create iterator.
         DocRowwiseIterator iterator(
