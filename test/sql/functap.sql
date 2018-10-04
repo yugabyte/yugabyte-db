@@ -83,7 +83,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_function( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
     true,
-    'simple scchma.func with 0 args, desc',
+    'simple schema.func with 0 args, desc',
     'whatever',
     ''
 );
@@ -208,7 +208,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_function( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
     false,
-    'simple scchma.func with 0 args, desc',
+    'simple schema.func with 0 args, desc',
     'whatever',
     ''
 );

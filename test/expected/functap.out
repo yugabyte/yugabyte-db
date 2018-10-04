@@ -21,9 +21,9 @@ ok 18 - simple schema.func with 0 args should have the proper diagnostics
 ok 19 - simple schema.func with desc should pass
 ok 20 - simple schema.func with desc should have the proper description
 ok 21 - simple schema.func with desc should have the proper diagnostics
-ok 22 - simple scchma.func with 0 args, desc should pass
-ok 23 - simple scchma.func with 0 args, desc should have the proper description
-ok 24 - simple scchma.func with 0 args, desc should have the proper diagnostics
+ok 22 - simple schema.func with 0 args, desc should pass
+ok 23 - simple schema.func with 0 args, desc should have the proper description
+ok 24 - simple schema.func with 0 args, desc should have the proper diagnostics
 ok 25 - simple function with 1 arg should pass
 ok 26 - simple function with 1 arg should have the proper description
 ok 27 - simple function with 1 arg should have the proper diagnostics
@@ -63,9 +63,9 @@ ok 60 - simple schema.func with 0 args should have the proper diagnostics
 ok 61 - simple schema.func with desc should fail
 ok 62 - simple schema.func with desc should have the proper description
 ok 63 - simple schema.func with desc should have the proper diagnostics
-ok 64 - simple scchma.func with 0 args, desc should fail
-ok 65 - simple scchma.func with 0 args, desc should have the proper description
-ok 66 - simple scchma.func with 0 args, desc should have the proper diagnostics
+ok 64 - simple schema.func with 0 args, desc should fail
+ok 65 - simple schema.func with 0 args, desc should have the proper description
+ok 66 - simple schema.func with 0 args, desc should have the proper diagnostics
 ok 67 - simple function with 1 arg should fail
 ok 68 - simple function with 1 arg should have the proper description
 ok 69 - simple function with 1 arg should have the proper diagnostics
