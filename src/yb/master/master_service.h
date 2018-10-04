@@ -166,6 +166,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                    RemovedMasterUpdateResponsePB* resp,
                                    rpc::RpcContext rpc) override;
 
+  virtual void SetPreferredZones(const SetPreferredZonesRequestPB* req,
+                                  SetPreferredZonesResponsePB* resp,
+                                  rpc::RpcContext rpc) override;
+
   virtual void GetMasterClusterConfig(
       const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
       rpc::RpcContext rpc) override;

@@ -521,6 +521,12 @@ void MasterServiceImpl::ChangeLoadBalancerState(
   rpc.RespondSuccess();
 }
 
+void MasterServiceImpl::SetPreferredZones(
+    const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::SetPreferredZones);
+}
+
 void MasterServiceImpl::GetMasterClusterConfig(
     const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
     RpcContext rpc) {

@@ -1072,6 +1072,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 
+  CHECKED_STATUS SetPreferredZones(
+      const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
+
   CHECKED_STATUS GetReplicationFactor(int* num_replicas);
   CHECKED_STATUS GetReplicationFactor(NamespaceName namespace_name, int* num_replicas) {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
