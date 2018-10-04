@@ -20,7 +20,7 @@
 #include "builtins.h"
 
 /*
- * @ Pavel Stehule 2006
+ * @ Pavel Stehule 2006-2018
  */
 
 #ifndef _GetCurrentTimestamp
