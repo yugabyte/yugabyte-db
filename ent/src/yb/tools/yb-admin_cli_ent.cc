@@ -136,6 +136,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to list live and read-only replica counts");
         return Status::OK();
       });
+
+  Register(
+      "set_preferred_zones", " <cloud.region.zone> [<cloud.region.zone>]...",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          UsageAndExit(args[0]);
+        }
+        RETURN_NOT_OK_PREPEND(client->SetPreferredZones(
+          std::vector<string>(args.begin() + 2, args.end())), "Unable to set preferred zones");
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
