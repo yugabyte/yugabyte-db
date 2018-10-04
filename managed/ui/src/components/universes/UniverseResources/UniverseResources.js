@@ -58,15 +58,17 @@ export default class UniverseResources extends Component {
             <YBResourceCount size={costPerMonth} kind="/month" />
           </div>
       ) :
-          <FlexContainer className={(empty ? "universe-resources empty" : "universe-resources")}>
+          <FlexContainer>
             <FlexGrow>
-              {universeNodes}
-              <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
-              <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
-              <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
-              <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
-              <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
-              <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
+              <div className={(empty ? "universe-resources empty" : "universe-resources")}>
+                {universeNodes}
+                <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+                <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+                <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+                <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+                <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
+                <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
+              </div>
             </FlexGrow>
             <FlexShrink>
               {this.props.children}

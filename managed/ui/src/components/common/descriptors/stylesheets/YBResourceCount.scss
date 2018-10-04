@@ -3,19 +3,16 @@
 @import "_style/colors.scss";
 
 .yb-resource-count {
-  display: inline-block;
-  text-align: center;
-  margin: 5px 10px;
+  text-align: left;
+  margin-right: 40px;
+  min-width: 70px;
+  white-space: nowrap;
+  position: relative;
   padding: 0;
-  @media (min-width: 768px) {
-    margin: 5px 5px;
-  }
-  @media (min-width: 1200px) {
-    margin: 5px 20px;
-  }
+  
   .yb-resource-count-size {
-    font-size: 22px;
-    line-height: 22px;
+    font-size: 28px;
+    line-height: 30px;
     font-weight: 600;
     color: $YB_VIOLET_TEXT;
   }
@@ -28,7 +25,7 @@
   }
 
   .yb-resource-count-kind {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 300;
   }
 }

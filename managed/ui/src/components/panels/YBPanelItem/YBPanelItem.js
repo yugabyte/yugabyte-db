@@ -10,7 +10,7 @@ export default class YBPanelItem extends Component {
     const { noBackground, className, children } = this.props;
     const bodyClassName = "body " + (noBackground ? "body-transparent" : "");
     return (
-      <div className={"content-panel "+className}>
+      <div className={className ? "content-panel " + className : "content-panel"}>
         {(this.props.header || this.props.title) &&
           <div className="header">
             {this.props.header} {this.props.title}

@@ -4,8 +4,9 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { StepProgressBar } from '../../common/indicators';
 import { isValidObject } from '../../../utils/ObjectUtils';
-import { Row, Col } from 'react-bootstrap';
 import './TaskProgressStepBar.scss';
+
+import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
 export default class TaskProgressStepBar extends Component {
   static propTypes = {
@@ -22,27 +23,24 @@ export default class TaskProgressStepBar extends Component {
       .filter((taskDetail) => taskDetail.state === "Running")
       .map((taskDetail, idx) => (
         <div key={`taskdetail-{idx}`}>
-          <h4>Current Task: {taskDetail.title}</h4>
-          <Row className="description-text-container">
-            <Col lg={8} className="description-text">
-              {taskDetail.description}
-            </Col>
-          </Row>
+          <h2>Current Step: {taskDetail.title}</h2>
+          <div className="description-text">
+            {taskDetail.description}
+          </div>
         </div>
       ));
 
     return (
-      <Row>
-        <Col lg={8}>
-          <div className="progress-bar-container">
-            <h4>Task Progress</h4>
-            <StepProgressBar progressData={this.props.progressData} />
-          </div>
-        </Col>
-        <Col lg={4}>
+
+      <FlexContainer className="current-task">
+        <FlexGrow className="current-task-progress clearfix">
+          <h2>Task Progress</h2>
+          <StepProgressBar progressData={this.props.progressData} />
+        </FlexGrow>
+        <FlexShrink className="current-task-details">
           {currentTaskDetail}
-        </Col>
-      </Row>
+        </FlexShrink>
+      </FlexContainer>
     );
   }
 }
