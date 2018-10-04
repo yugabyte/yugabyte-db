@@ -32,6 +32,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                         const std::vector<client::YBTableName>& tables);
   CHECKED_STATUS ListReplicaTypeCounts(const client::YBTableName& table_name);
 
+  CHECKED_STATUS SetPreferredZones(const std::vector<string>& preferred_zones);
+
  private:
   std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
 

@@ -405,6 +405,47 @@ Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) 
   return Status::OK();
 }
 
+Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferred_zones) {
+  rpc::RpcController rpc;
+  master::SetPreferredZonesRequestPB req;
+  master::SetPreferredZonesResponsePB resp;
+  rpc.set_timeout(timeout_);
+
+  std::set<string> zones;
+  for (const string& zone : preferred_zones) {
+    if (std::find(zones.begin(), zones.end(), zone) != zones.end()) {
+      continue;
+    }
+    size_t last_pos = 0;
+    size_t next_pos;
+    std::vector<string> tokens;
+    while ((next_pos = zone.find(".", last_pos)) != string::npos) {
+      tokens.push_back(zone.substr(last_pos, next_pos - last_pos));
+      last_pos = next_pos + 1;
+    }
+    tokens.push_back(zone.substr(last_pos, zone.size() - last_pos));
+    if (tokens.size() != 3) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument for preferred zone $0, should "
+          "have format cloud.region.zone", zone);
+    }
+
+    CloudInfoPB* cloud_info = req.add_preferred_zones();
+    cloud_info->set_placement_cloud(tokens[0]);
+    cloud_info->set_placement_region(tokens[1]);
+    cloud_info->set_placement_zone(tokens[2]);
+
+    zones.emplace(zone);
+  }
+
+  master_proxy_->SetPreferredZones(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    return STATUS(ServiceUnavailable, resp.error().status().message());
+  }
+
+  return Status::OK();
+}
+
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
