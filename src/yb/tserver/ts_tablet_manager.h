@@ -351,15 +351,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // registered, a FATAL message is logged, causing a process crash.
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
-  void RegisterTablet(const std::string& tablet_id,
-                      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                      RegisterTabletPeerMode mode);
+  CHECKED_STATUS RegisterTablet(const std::string& tablet_id,
+                                const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                RegisterTabletPeerMode mode);
 
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
   // the TablerPeer object. See RegisterTablet() for details about the
   // semantics of 'mode' and the locking requirements.
-  std::shared_ptr<tablet::TabletPeer> CreateAndRegisterTabletPeer(
+  Result<std::shared_ptr<tablet::TabletPeer>> CreateAndRegisterTabletPeer(
       const scoped_refptr<tablet::TabletMetadata>& meta,
       RegisterTabletPeerMode mode);
 
@@ -385,6 +385,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     boost::shared_lock<RWMutex> lock(lock_);
     return state_;
   }
+
+  bool ClosingUnlocked() const;
 
   // Initializes the RaftPeerPB for the local peer.
   // Guaranteed to include both uuid and last_seen_addr fields.

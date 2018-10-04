@@ -245,8 +245,6 @@ Status RemoteBootstrapSession::Init() {
 
   MonoTime now = MonoTime::Now();
   auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
-  RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
-                        Substitute("Unable to create checkpoints directory $0", checkpoints_dir));
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
@@ -254,8 +252,12 @@ Status RemoteBootstrapSession::Init() {
   // Clear any previous rocksdb files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   tablet_superblock_.clear_rocksdb_files();
-  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_));
-  *tablet_superblock_.mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
+  auto status = tablet->CreateCheckpoint(checkpoint_dir_);
+  if (status.ok()) {
+    *tablet_superblock_.mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
+  } else if (!status.IsNotSupported()) {
+    RETURN_NOT_OK(status);
+  }
 
   RETURN_NOT_OK(InitSnapshotFiles());
 

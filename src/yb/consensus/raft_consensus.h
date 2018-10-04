@@ -318,7 +318,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Makes the peer become a replica, i.e. a FOLLOWER or a LEARNER.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  CHECKED_STATUS BecomeReplicaUnlocked();
+  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid);
 
   // Updates the state in a replica by storing the received operations in the log
   // and triggering the required operations. This method won't return until all

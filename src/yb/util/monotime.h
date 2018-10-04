@@ -88,6 +88,7 @@ class MonoDelta {
 
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);
+  MonoDelta& operator*=(int64_t mul);
 
   // Update struct timeval to current value of delta, with microsecond accuracy.
   // Note that if MonoDelta::IsPositive() returns true, the struct timeval

@@ -146,9 +146,7 @@ TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
   // We should either have called Shutdown(), or we should have never called
   // Init().
-  CHECK(!tablet_)
-      << "TabletPeer not fully shut down. State: "
-      << TabletStatePB_Name(state_);
+  LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
@@ -167,7 +165,11 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    CHECK_EQ(TabletStatePB::BOOTSTRAPPING, state_);
+    auto state = state_.load(std::memory_order_acquire);
+    if (state != TabletStatePB::BOOTSTRAPPING) {
+      return STATUS_FORMAT(
+          IllegalState, "Invalid tablet state for init: $0", TabletStatePB_Name(state));
+    }
     tablet_ = tablet;
     client_future_ = client_future;
     clock_ = clock;
@@ -318,6 +320,7 @@ bool TabletPeer::StartShutdown() {
       }
       if (state_.compare_exchange_strong(
           state, TabletStatePB::QUIESCING, std::memory_order_acq_rel)) {
+        LOG_WITH_PREFIX(INFO) << "Started shutdown from state: " << TabletStatePB_Name(state);
         break;
       }
     }
@@ -368,7 +371,9 @@ void TabletPeer::CompleteShutdown() {
     consensus_.reset();
     prepare_thread_.reset();
     tablet_.reset();
-    DCHECK_EQ(state_.load(std::memory_order_acquire), TabletStatePB::QUIESCING);
+    auto state = state_.load(std::memory_order_acquire);
+    LOG_IF_WITH_PREFIX(DFATAL, state != TabletStatePB::QUIESCING) <<
+        "Bad state when completing shutdown: " << TabletStatePB_Name(state);
     state_.store(TabletStatePB::SHUTDOWN, std::memory_order_release);
   }
 }
@@ -892,6 +897,33 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
 TableType TabletPeer::table_type() {
   // TODO: what if tablet is not set?
   return tablet()->table_type();
+}
+
+void TabletPeer::SetFailed(const Status& error) {
+  DCHECK(error_.get(std::memory_order_acquire) == nullptr);
+  error_ = MakeAtomicUniquePtr<Status>(error);
+  auto state = state_.load(std::memory_order_acquire);
+  while (state != TabletStatePB::FAILED && state != TabletStatePB::QUIESCING &&
+         state != TabletStatePB::SHUTDOWN) {
+    if (state_.compare_exchange_weak(state, TabletStatePB::FAILED, std::memory_order_acq_rel)) {
+      LOG_WITH_PREFIX(INFO) << "Changed state from " << TabletStatePB_Name(state) << " to FAILED";
+      break;
+    }
+  }
+}
+
+Status TabletPeer::UpdateState(TabletStatePB expected, TabletStatePB new_state,
+                               const std::string& error_message) {
+  TabletStatePB old = expected;
+  if (!state_.compare_exchange_strong(old, new_state, std::memory_order_acq_rel)) {
+    return STATUS_FORMAT(
+        InvalidArgument, "$0 Expected state: $1, got: $2",
+        error_message, TabletStatePB_Name(expected), TabletStatePB_Name(old));
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Changed state from " << TabletStatePB_Name(old) << " to "
+                        << TabletStatePB_Name(new_state);
+  return Status::OK();
 }
 
 }  // namespace tablet
