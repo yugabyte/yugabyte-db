@@ -478,6 +478,25 @@ CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequest
   return Status::OK();
 }
 
+CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
+                                                             PgsqlResponsePB* response) const {
+  // When the "limit" number of rows are returned and we are asked to return the paging state,
+  // return the partition key and row key of the next row to read in the paging state if there are
+  // still more rows to read. Otherwise, leave the paging state empty which means we are done
+  // reading from this tablet.
+  if (request.return_paging_state()) {
+    SubDocKey next_key;
+    RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
+    if (!next_key.doc_key().empty()) {
+      PgsqlPagingStatePB* paging_state = response->mutable_paging_state();
+      paging_state->set_next_partition_key(
+          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
+      paging_state->set_next_row_key(next_key.Encode().data());
+    }
+  }
+  return Status::OK();
+}
+
 void DocRowwiseIterator::IncrementScanTargetAtColumn(size_t start_col) const {
   DCHECK_LE(start_col, current_scan_target_idxs_.size());
 

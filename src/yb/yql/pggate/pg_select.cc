@@ -39,11 +39,13 @@ PgSelect::~PgSelect() {
 Status PgSelect::Prepare() {
   RETURN_NOT_OK(LoadTable(false /* for_write */));
 
-  // Allocate SELECT request.
-  read_op_.reset(table_->NewPgsqlSelect());
-  read_req_ = read_op_->mutable_request();
+  // Allocate READ/SELECT operation.
+  PgDocReadOp::SharedPtr doc_op = make_shared<PgDocReadOp>(pg_session_, table_->NewPgsqlSelect());
+  read_req_ = doc_op->read_op()->mutable_request();
   PrepareColumns();
 
+  // Preparation complete.
+  doc_op_ = doc_op;
   return Status::OK();
 }
 
@@ -85,16 +87,14 @@ Status PgSelect::Exec() {
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
 
-  // Execute select statement.
-  RETURN_NOT_OK(pg_session_->Apply(read_op_));
-
-  // Append the data and wait for the fetch request.
-  result_set_.push_back(read_op_->rows_data());
-  if (cursor_.empty()) {
-    RETURN_NOT_OK(PgDocData::LoadCache(result_set_.front(), &total_row_count_, &cursor_));
+  // Check partition.
+  if (!PartitionIsProvided()) {
+    LOG(INFO) << "Full scan is needed";
+    read_req_->clear_partition_column_values();
   }
 
-  return Status::OK();
+  // Execute select statement asynchronously.
+  return doc_op_->Execute();
 }
 
 }  // namespace pggate

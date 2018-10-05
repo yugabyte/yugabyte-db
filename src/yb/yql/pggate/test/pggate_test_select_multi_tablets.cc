@@ -19,11 +19,11 @@
 namespace yb {
 namespace pggate {
 
-class PggateTestSelect : public PggateTest {
+class PggateTestSelectMultiTablets : public PggateTest {
 };
 
-TEST_F(PggateTestSelect, TestSelectOneTablet) {
-  CHECK_OK(Init("TestSelectOneTablet"));
+TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
+  CHECK_OK(Init("TestSelectMultiTablet"));
 
   const char *tabname = "basic_table";
   YBCPgStatement pg_stmt;
@@ -48,6 +48,41 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
+  // SELECT: Empty Table ---------------------------------------------------------------------------
+  LOG(INFO) << "Test SELECTing from empty table";
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+
+  // Specify the selected expressions.
+  YBCPgExpr colref;
+  YBCPgNewColumnRef(pg_stmt, 1, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 3, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 4, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 5, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 6, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+
+  // Execute select statement.
+  YBCPgExecSelect(pg_stmt);
+
+  // Fetching rows and check their contents.
+  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+  bool has_data = true;
+  while (has_data) {
+    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    CHECK(!has_data) << "Corrupted DB. Table is expected to be empty";
+  }
+
+  // Deallocate statement.
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
@@ -56,7 +91,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // TODO(neil) We can also allocate expression with bind.
   int seed = 1;
   YBCPgExpr expr_hash;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
+  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, seed, false, &expr_hash));
   YBCPgExpr expr_id;
   CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
   YBCPgExpr expr_depcnt;
@@ -87,6 +122,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed++;
+    YBCPgUpdateConstInt8(expr_hash, seed, false);
     YBCPgUpdateConstInt4(expr_id, seed, false);
     YBCPgUpdateConstInt2(expr_depcnt, seed, false);
     YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
@@ -99,11 +135,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
-  LOG(INFO) << "Test SELECTing from non-partitioned table";
+  LOG(INFO) << "Test SELECTing from partitioned table";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCPgExpr colref;
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   YBCPgNewColumnRef(pg_stmt, 2, &colref);
@@ -117,16 +152,12 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YBCPgNewColumnRef(pg_stmt, 6, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
-  // Set partition and range columns for SELECT.
-  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
-  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_hash));
-
   // Execute select statement.
   YBCPgExecSelect(pg_stmt);
 
   // Fetching rows and check their contents.
-  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
-  bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+  values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
@@ -143,8 +174,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
     // Check result.
     int col_index = 0;
-    CHECK_EQ(values[col_index++], 0);  // hash_key : int64
-    int32_t id = values[col_index++];  // id : int32
+    int32_t id = values[col_index++];  // hash_key : int64
+    CHECK_EQ(values[col_index++], id);  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
     CHECK_LE(*reinterpret_cast<float*>(&values[col_index]), id + 1.0*id/10.0 + 0.01); // salary

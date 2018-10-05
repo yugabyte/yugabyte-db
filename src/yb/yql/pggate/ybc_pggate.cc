@@ -37,6 +37,7 @@ extern "C" {
 
 void YBCInitPgGate() {
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+  pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl();
   LOG(INFO) << "PgGate open";
 }

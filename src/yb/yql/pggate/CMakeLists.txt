@@ -31,7 +31,8 @@ set(PGGATE_SRCS
     pg_delete.cc
     pg_select.cc
     pg_expr.cc
-    pg_column.cc)
+    pg_column.cc
+    pg_doc_op.cc)
 
 set(PGGATE_LIBS
     yb_util

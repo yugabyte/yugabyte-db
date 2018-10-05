@@ -116,7 +116,7 @@ CHECKED_STATUS PgDocData::LoadCache(const string& cache, int64_t *total_row_coun
   // Read the number row_count in this set.
   int64_t this_count;
   size_t read_size = ReadNumber(cursor, &this_count);
-  *total_row_count += this_count;
+  *total_row_count = this_count;
   cursor->remove_prefix(read_size);
 
   return Status::OK();
