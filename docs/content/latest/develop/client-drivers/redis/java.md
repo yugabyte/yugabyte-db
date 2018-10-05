@@ -7,7 +7,7 @@ To build your Java application using YugaByte DB's version of the Jedis driver, 
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jedis</artifactId>
-  <version>2.9.0-yb-11</version>
+  <version>2.9.0-yb-16</version>
 </dependency>
 ```
 
@@ -42,7 +42,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jedis</artifactId>
-      <version>2.9.0-yb-11</version>
+      <version>2.9.0-yb-16</version>
     </dependency>
   </dependencies>
 
