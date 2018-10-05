@@ -32,7 +32,6 @@ class PgDocData : public PgWire {
   static CHECKED_STATUS LoadCache(const string& data, int64_t *total_row_count, Slice *cursor);
 
   static PgWireDataHeader ReadDataHeader(Slice *cursor);
-  // static CHECKED_STATUS ReadTuple(Slice *yb_cursor, Slice *pg_cursor);
 };
 
 }  // namespace pggate

@@ -17,6 +17,7 @@
 
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_doc_op.h"
 
 namespace yb {
 namespace pggate {
@@ -42,6 +43,9 @@ class PgDml : public PgStatement {
 
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+
+  // True if values for all partition columns are provided.
+  bool PartitionIsProvided();
 
   // This function is not yet working and might not be needed.
   virtual CHECKED_STATUS ClearBinds();
@@ -103,16 +107,19 @@ class PgDml : public PgStatement {
   //   be updated accordingly.
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
 
-  //------------------------------------------------------------------------------------------------
-  // Data members for output.
-  // Result set either from seleted or returned targets is cached in a list of strings.
-  std::list<string> result_set_;
+  // DML Operator.
+  PgDocOp::SharedPtr doc_op_;
 
+  //------------------------------------------------------------------------------------------------
+  // A batch of rows in result set.
+  string row_batch_;
+
+  // Data members for navigating the output / result-set from either seleted or returned targets.
   // Cursor.
   Slice cursor_;
 
   // Total number of rows that have been found.
-  int64_t total_row_count_ = 0;
+  int64_t accumulated_row_count_ = 0;
 };
 
 }  // namespace pggate

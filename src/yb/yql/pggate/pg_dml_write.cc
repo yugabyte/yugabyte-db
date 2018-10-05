@@ -75,7 +75,10 @@ Status PgDmlWrite::Exec() {
   RETURN_NOT_OK(UpdateBindPBs());
 
   // Execute the statement.
-  return pg_session_->Apply(write_op_);
+  RETURN_NOT_OK(doc_op_->Execute());
+
+  // Execute the statement.
+  return doc_op_->GetResult(&row_batch_);
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {

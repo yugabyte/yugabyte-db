@@ -56,7 +56,6 @@ class PgDmlWrite : public PgDml {
   PgsqlExpressionPB *AllocTargetPB() override;
 
   // Protobuf code.
-  std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
   PgsqlWriteRequestPB *write_req_ = nullptr;
 };
 
