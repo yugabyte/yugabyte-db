@@ -75,7 +75,7 @@ public class NodeDetails {
   // True if this node is a master, along with port info.
   public boolean isMaster;
   public int masterHttpPort = 7000;
-  public static int masterRpcPort = 7100;
+  public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
   public boolean isTserver = true;
@@ -85,12 +85,12 @@ public class NodeDetails {
   // True if this node is a Redis server, along with port info.
   public boolean isRedisServer = true;
   public int redisServerHttpPort = 11000;
-  public static int redisServerRpcPort = 6379;
+  public int redisServerRpcPort = 6379;
 
   // True if this node is a YSQL server, along with port info.
   public boolean isYqlServer = true;
   public int yqlServerHttpPort = 12000;
-  public static int yqlServerRpcPort = 9042;
+  public int yqlServerRpcPort = 9042;
 
   @Override
   public NodeDetails clone() {
