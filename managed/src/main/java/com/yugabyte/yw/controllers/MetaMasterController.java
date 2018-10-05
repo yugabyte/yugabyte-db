@@ -24,13 +24,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.mvc.Controller;
 import play.mvc.Result;
 
-import static com.yugabyte.yw.models.helpers.NodeDetails.masterRpcPort;
-import static com.yugabyte.yw.models.helpers.NodeDetails.redisServerRpcPort;
-import static com.yugabyte.yw.models.helpers.NodeDetails.yqlServerRpcPort;
 
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
+
+  public static final int MASTER_RPC_PORT = 7100;
+  public static final int YEDIS_SERVER_RPC_PORT = 6379;
+  public static final int YCQL_SERVER_RPC_PORT = 9042;
 
   @Inject
   KubernetesManager kubernetesManager;
@@ -130,9 +131,9 @@ public class MetaMasterController extends Controller {
         return null;
       }
       String[] ips = r.message.split("\\|");
-      int rpcPort = masterRpcPort;
+      int rpcPort = MASTER_RPC_PORT;
       if (!type.equals(ServerType.MASTER)) {
-        rpcPort = type == ServerType.YQLSERVER ? yqlServerRpcPort : redisServerRpcPort;
+        rpcPort = type == ServerType.YQLSERVER ? YCQL_SERVER_RPC_PORT : YEDIS_SERVER_RPC_PORT;
       }
       return String.format("%s:%d", ips[ips.length-1], rpcPort);
     }
