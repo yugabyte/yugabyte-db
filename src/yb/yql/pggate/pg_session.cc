@@ -162,5 +162,13 @@ CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return session_->ApplyAndFlush(op);
 }
 
+CHECKED_STATUS PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
+  return session_->Apply(op);
+}
+
+void PgSession::FlushAsync(StatusFunctor callback) {
+  session_->FlushAsync(callback);
+}
+
 }  // namespace pggate
 }  // namespace yb

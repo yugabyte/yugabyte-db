@@ -40,8 +40,8 @@ class PgColumn {
     return &desc_;
   }
 
-  PgExpr *bind_expr() {
-    return bind_expr_;
+  const ColumnDesc *desc() const {
+    return &desc_;
   }
 
   PgsqlExpressionPB *bind_pb() {
@@ -68,23 +68,8 @@ class PgColumn {
     return read_requested_ = value;
   }
 
-  bool write_requested() const {
-    return write_requested_;
-  }
-
-  bool set_write_requested(bool value) {
-    return write_requested_ = value;
-  }
-
  private:
   ColumnDesc desc_;
-
-  // Column associated values (expressions) to be used by DML statements.
-  // - When expression are constructed, we bind them with their associated columns in a statement.
-  // - These expressions might not yet have values for place_holders or literals.
-  // - During execution, the place_holder values are available, and the statement protobuf will
-  //   be updated with these values before sending over to DocDB.
-  PgExpr *bind_expr_ = nullptr;
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.
@@ -98,9 +83,6 @@ class PgColumn {
 
   // Wether or not this column must be read from DB for the SQL request.
   bool read_requested_ = false;
-
-  // Wether or not this column must be written into DB for the SQL request.
-  bool write_requested_ = false;
 };
 
 }  // namespace pggate

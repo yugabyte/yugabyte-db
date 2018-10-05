@@ -21,4 +21,5 @@ target_link_libraries(pggate_test
 
 set(YB_TEST_LINK_LIBS pggate_test ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pggate_test_select)
+ADD_YB_TEST(pggate_test_select_multi_tablets)
 ADD_COMMON_YB_TEST_DEPENDENCIES(pggate_test_select)

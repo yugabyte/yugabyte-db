@@ -51,8 +51,12 @@ PgDelete::~PgDelete() {
 }
 
 void PgDelete::AllocWriteRequest() {
-  write_op_.reset(table_->NewPgsqlDelete());
-  write_req_ = write_op_->mutable_request();
+  // Allocate WRITE operation.
+  PgDocWriteOp::SharedPtr doc_op = make_shared<PgDocWriteOp>(pg_session_, table_->NewPgsqlDelete());
+  write_req_ = doc_op->write_op()->mutable_request();
+
+  // Preparation complete.
+  doc_op_ = doc_op;
 }
 
 }  // namespace pggate

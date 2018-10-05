@@ -65,7 +65,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                            std::shared_ptr<client::YBTable>* table, vector<PgColumn>* col_descs,
                            int* key_col_count, int* partition_col_count);
 
+  // Apply the given operation.
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
+  CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
+  void FlushAsync(StatusFunctor callback);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -104,6 +107,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Connected database.
   std::string connected_database_;
+
+  // Execution states.
 
   // Execution status.
   Status status_;
