@@ -16,10 +16,10 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
       : super(cm) {
   }
 
-  bool HandleLeaderMoves(
+  Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) override;
 
-  bool AnalyzeTablets(const TableId& table_uuid) override;
+  Result<bool> AnalyzeTablets(const TableId& table_uuid) override;
 
   virtual void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const;
 
