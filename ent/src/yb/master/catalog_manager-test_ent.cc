@@ -117,7 +117,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     AnalyzeTablets();
     string placeholder;
     // Only the affinitized zone contains tablet leaders, should be no movement.
-    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestAlreadyBalancedAffinitizedLeaders";
   }
 
@@ -144,12 +144,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     from_count[ts_1] = 0;
     from_count[ts_2] = 0;
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(to_ts, ts_0);
     tablets_moved.insert(tablet_id);
     from_count[from_ts]++;
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(to_ts, ts_0);
     tablets_moved.insert(tablet_id);
     from_count[from_ts]++;
@@ -159,12 +159,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     ASSERT_EQ(1, from_count[ts_1]);
     ASSERT_EQ(1, from_count[ts_2]);
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(to_ts, ts_0);
     tablets_moved.insert(tablet_id);
     from_count[from_ts]++;
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(to_ts, ts_0);
     tablets_moved.insert(tablet_id);
     from_count[from_ts]++;
@@ -177,7 +177,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     // Make sure all the tablets moved are distinct.
     ASSERT_EQ(4, tablets_moved.size());
 
-    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestBalancingOneAffinitizedLeader";
   }
 
@@ -204,12 +204,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     to_count[ts_2] = 0;
 
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(from_ts, ts_0);
     tablets_moved.insert(tablet_id);
     to_count[to_ts]++;
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(from_ts, ts_0);
     tablets_moved.insert(tablet_id);
     to_count[to_ts]++;
@@ -219,12 +219,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     ASSERT_EQ(1, to_count[ts_1]);
     ASSERT_EQ(1, to_count[ts_2]);
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(from_ts, ts_0);
     tablets_moved.insert(tablet_id);
     to_count[to_ts]++;
 
-    ASSERT_TRUE(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
     ASSERT_EQ(from_ts, ts_0);
     tablets_moved.insert(tablet_id);
     to_count[to_ts]++;
@@ -237,7 +237,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     // Make sure all the tablets moved are distinct.
     ASSERT_EQ(4, tablets_moved.size());
 
-    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestBalancingTwoAffinitizedLeaders";
   }
 
@@ -262,7 +262,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     string placeholder;
 
     // First we make sure that no load balancing happens during the live iteration.
-    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
 
     ResetState();
     cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
@@ -285,7 +285,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     AddRunningReplicaEnt(tablet_map_[expected_tablet_id].get(), ts_descs_[4], false);
 
     // Then make sure there is no more balancing, since both ts3 and ts4 have 2 replicas each.
-    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestBasicBalancingWithReadOnly";
   }
 
@@ -304,12 +304,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     ResetState();
     AnalyzeTablets();
     string placeholder;
-    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
     cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
     ResetState();
     AnalyzeTablets();
-    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestLeaderBalancingWithReadOnly";
   }
 
