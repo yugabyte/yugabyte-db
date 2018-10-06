@@ -9,17 +9,17 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-bool ClusterLoadBalancer::HandleLeaderMoves(
+Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (HandleLeaderLoadIfNonAffinitized(out_tablet_id, out_from_ts, out_to_ts)) {
-    MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts);
+    RETURN_NOT_OK(MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts));
     return true;
   }
 
   return super::HandleLeaderMoves(out_tablet_id, out_from_ts, out_to_ts);
 }
 
-bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
+Result<bool> ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   ClusterLoadState* ent_state = GetEntState();
   GetAllAffinitizedZones(&ent_state->affinitized_zones_);
   return super::AnalyzeTablets(table_uuid);
