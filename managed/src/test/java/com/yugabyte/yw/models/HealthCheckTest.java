@@ -24,17 +24,26 @@ public class HealthCheckTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
   }
 
+  private HealthCheck addCheck(UUID universeUUID) {
+    return addCheck(universeUUID, "{}");
+  }
+
+  private HealthCheck addCheck(UUID universeUUID, String detailsJson) {
+    try {
+      // The checkTime is created internally and part of the primary key
+      Thread.sleep(10);
+    } catch(InterruptedException e) {
+      // Ignore in test..
+    }
+    HealthCheck check = HealthCheck.addAndPrune(
+        universeUUID, defaultCustomer.getCustomerId(), detailsJson);
+    assertNotNull(check);
+    return check;
+  }
+
   private void addChecks(UUID universeUUID, int numChecks) {
     for (int i = 0; i < numChecks; ++i) {
-      try {
-        // The checkTime is created internally and part of the primary key
-        Thread.sleep(10);
-      } catch(InterruptedException e) {
-        // Ignore in test..
-      }
-      HealthCheck check = HealthCheck.addAndPrune(
-          universeUUID, defaultCustomer.getCustomerId(), "{}");
-      assertNotNull(check);
+      addCheck(universeUUID);
     }
     List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
     assertNotNull(checks);
@@ -64,5 +73,31 @@ public class HealthCheckTest extends FakeDBApplication {
     for (HealthCheck check : after) {
       assertTrue(now.compareTo(check.idKey.checkTime) < 0);
     }
+  }
+
+  @Test
+  public void testGetLatest() {
+    UUID universeUUID = UUID.randomUUID();
+    HealthCheck check1 = addCheck(universeUUID);
+    HealthCheck check2 = addCheck(universeUUID);
+    HealthCheck latest = HealthCheck.getLatest(universeUUID);
+    assertNotNull(latest);
+    assertEquals(latest.idKey.checkTime, check2.idKey.checkTime);
+  }
+
+  @Test
+  public void testHasError() {
+    UUID universeUUID = UUID.randomUUID();
+    HealthCheck noDetails = addCheck(universeUUID);
+    assertFalse(noDetails.hasError());
+
+    HealthCheck trueError = addCheck(
+        universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": true}");
+    assertTrue(trueError.hasError());
+
+    HealthCheck falseError = addCheck(
+        universeUUID,
+        "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": false}");
+    assertFalse(falseError.hasError());
   }
 }
