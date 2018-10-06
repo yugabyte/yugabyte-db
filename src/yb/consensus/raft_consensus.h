@@ -83,6 +83,8 @@ typedef std::function<void()> LostLeadershipListener;
 
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
+YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
                       public PeerMessageQueueObserver,
@@ -141,7 +143,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
                           LeaderStepDownResponsePB* resp) override;
 
-  CHECKED_STATUS Replicate(const ConsensusRoundPtr& round) override;
+  CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
   CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
 
   CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) override;
@@ -222,6 +224,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
 
   void SetMajorityReplicatedListener(std::function<void()> updater);
+
+  void SetEmptyAppendToken(ThreadPoolToken* token);
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -546,8 +550,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        ConsensusResponsePB* response);
   // Returns last op id received from leader.
-  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
-                             const StatusCallback& sync_status_cb);
+  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
+                             WriteEmpty write_empty, const StatusCallback& sync_status_cb);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
                                                    OpId last_from_leader);
@@ -558,6 +562,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
 
   yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id) override;
+
+  void AppendEmptyBatchToLeaderLog();
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
@@ -635,6 +641,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
+
+  // Used to append empty record to log, when we update only committed index.
+  // We should use the same token as used to append other records to the log.
+  ThreadPoolToken* empty_append_token_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

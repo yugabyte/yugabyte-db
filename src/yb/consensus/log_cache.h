@@ -45,7 +45,8 @@
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
-#include "yb/util/status.h"
+#include "yb/util/opid.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -106,7 +107,7 @@ class LogCache {
   // callback fires.
   //
   // Returns non-OK if the Log append itself fails.
-  CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs,
+  CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
                                   const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through the cache. The
@@ -177,6 +178,17 @@ class LogCache {
                    bool borrowed_memory,
                    const StatusCallback& user_callback,
                    const Status& log_status);
+
+  struct PrepareAppendResult {
+    // Mem required to store provided operations.
+    int64_t mem_required = 0;
+    // Last idx in batch of provided operations.
+    int64_t last_idx_in_batch = -1;
+    // true if we exceeded mem tracker limit while preparing provided operations.
+    bool borrowed_memory = false;
+  };
+
+  Result<PrepareAppendResult> PrepareAppendOperations(const ReplicateMsgs& msgs);
 
   scoped_refptr<log::Log> const log_;
 

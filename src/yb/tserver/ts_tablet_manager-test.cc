@@ -179,7 +179,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
     ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
     consensus_rounds.emplace_back(round);
-    ASSERT_OK(peer->consensus()->Replicate(round));
+    ASSERT_OK(peer->consensus()->TEST_Replicate(round));
   }
 
   for (int i = 0; i < kNumRestarts; ++i) {

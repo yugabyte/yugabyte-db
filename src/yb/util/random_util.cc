@@ -43,6 +43,13 @@
 
 namespace yb {
 
+namespace {
+
+const std::string kHumanReadableCharacters =
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+}
+
 void RandomString(void* dest, size_t n, Random* rng) {
   size_t i = 0;
   uint32_t random = rng->Next();
@@ -69,6 +76,14 @@ std::string RandomHumanReadableString(int len, Random* rnd) {
   ret.resize(len);
   for (int i = 0; i < len; ++i) {
     ret[i] = static_cast<char>('a' + rnd->Uniform(26));
+  }
+  return ret;
+}
+
+std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng) {
+  std::string ret(len, 0);
+  for (size_t i = 0; i != len; ++i) {
+    ret[i] = RandomElement(kHumanReadableCharacters, rng);
   }
   return ret;
 }

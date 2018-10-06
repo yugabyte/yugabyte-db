@@ -128,7 +128,8 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
   }
 
   Synchronizer s;
-  RETURN_NOT_OK(log->AsyncAppendReplicates(replicates, s.AsStatusCallback()));
+  RETURN_NOT_OK(log->AsyncAppendReplicates(
+      replicates, yb::OpId() /* committed_op_id */, s.AsStatusCallback()));
   RETURN_NOT_OK(s.Wait());
   return Status::OK();
 }
@@ -243,12 +244,13 @@ class LogTestBase : public YBTest {
                             bool sync = APPEND_SYNC) {
     if (sync) {
       Synchronizer s;
-      ASSERT_OK(log_->AsyncAppendReplicates({ replicate }, s.AsStatusCallback()));
+      ASSERT_OK(log_->AsyncAppendReplicates(
+          { replicate }, yb::OpId() /* committed_op_id */, s.AsStatusCallback()));
       ASSERT_OK(s.Wait());
     } else {
       // AsyncAppendReplicates does not free the ReplicateMsg on completion, so we
       // need to pass it through to our callback.
-      ASSERT_OK(log_->AsyncAppendReplicates({ replicate },
+      ASSERT_OK(log_->AsyncAppendReplicates({ replicate }, yb::OpId() /* committed_op_id */,
                                             Bind(&LogTestBase::CheckReplicateResult, replicate)));
     }
   }

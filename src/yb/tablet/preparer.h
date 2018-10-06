@@ -48,6 +48,7 @@ class Preparer {
   void Stop();
 
   CHECKED_STATUS Submit(OperationDriver* txn_driver);
+  ThreadPoolToken* PoolToken();
 
  private:
   std::unique_ptr<PreparerImpl> impl_;

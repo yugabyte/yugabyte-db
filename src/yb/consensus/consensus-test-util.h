@@ -115,7 +115,8 @@ static inline void AppendReplicateMessagesToQueue(
 
   for (int index = first_index; index < first_index + count; index++) {
     int term = index / 7;
-    CHECK_OK(queue->AppendOperation(CreateDummyReplicate(term, index, clock->Now(), payload_size)));
+    CHECK_OK(queue->TEST_AppendOperation(
+        CreateDummyReplicate(term, index, clock->Now(), payload_size)));
   }
 }
 
@@ -707,7 +708,7 @@ class TestOperationFactory : public ReplicaOperationFactory {
   void SetPropagatedSafeTime(HybridTime ht) override {}
 
   void ReplicateAsync(ConsensusRound* round) {
-    CHECK_OK(consensus_->Replicate(round));
+    CHECK_OK(consensus_->TEST_Replicate(round));
   }
 
   void WaitDone() {

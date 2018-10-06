@@ -260,7 +260,7 @@ class RaftConsensusQuorumTest : public YBTest {
     gscoped_ptr<Synchronizer> sync(new Synchronizer());
     *round = peer->NewRound(std::move(msg), sync->AsStdStatusCallback());
     InsertOrDie(&syncs_, round->get(), sync.release());
-    RETURN_NOT_OK_PREPEND(peer->Replicate(round->get()),
+    RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
                           Substitute("Unable to replicate to peer $0", peer_idx));
     return Status::OK();
   }

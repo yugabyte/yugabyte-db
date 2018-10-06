@@ -132,7 +132,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
-  CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates,
+  CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates, const OpId& committed_op_id,
                                        const StatusCallback& callback);
 
   // Blocks the current thread until all the entries in the log queue are flushed and fsynced (if
@@ -242,6 +242,8 @@ class Log : public RefCountedThreadSafe<Log> {
   void TEST_SetAllOpIdsSafe(bool value) {
     all_op_ids_safe_ = value;
   }
+
+  CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
  private:
   friend class LogTest;
@@ -445,13 +447,12 @@ class Log : public RefCountedThreadSafe<Log> {
 // the user and is managed by the Log class.
 class LogEntryBatch {
  public:
+  LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb);
   ~LogEntryBatch();
 
  private:
   friend class Log;
   friend class MultiThreadedLogTest;
-
-  LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count);
 
   // Serializes contents of the entry to an internal buffer.
   CHECKED_STATUS Serialize();
@@ -487,6 +488,8 @@ class LogEntryBatch {
     DCHECK_EQ(state_, kEntrySerialized);
     return Slice(buffer_);
   }
+
+  bool flush_marker() const;
 
   size_t count() const { return count_; }
 
