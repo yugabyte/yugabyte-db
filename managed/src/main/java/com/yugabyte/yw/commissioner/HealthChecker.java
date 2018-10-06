@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.NodeInstance;
@@ -203,11 +204,22 @@ public class HealthChecker extends Thread {
           destinations.add(alertingData.alertingEmail);
         }
       }
+      CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(u.universeUUID);
+      long potentialStartTime = 0;
+      if (lastTask != null && lastTask.getCompletionTime()!= null) {
+        potentialStartTime = lastTask.getCompletionTime().getTime();
+      }
+      // If last check had errors, set the flag to send an email. If this check will have an error,
+      // we would send an email anyway, but if this check shows a healthy universe, let's send an
+      // email about it.
+      HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
+      boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
+      // Setup customer tag including email and code, for ease of email parsing.
       String customerTag = String.format("[%s][%s]", c.email, c.code);
       ShellProcessHandler.ShellResponse response = healthManager.runCommand(
           new ArrayList(clusterMetadata.values()), u.name, customerTag,
           (destinations.size() == 0 ? null : String.join(",", destinations)),
-          shouldSendStatusUpdate);
+          potentialStartTime, (shouldSendStatusUpdate || lastCheckHadErrors));
       if (response.code == 0) {
         HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
       } else {

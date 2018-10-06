@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.avaje.ebean.Model;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -25,6 +26,9 @@ public class HealthCheck extends Model {
 
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
+
+  // Top-level payload field for figuring out if we have errors or not.
+  public static final String FIELD_HAS_ERROR = "has_error";
 
   @EmbeddedId
   @Constraints.Required
@@ -39,6 +43,13 @@ public class HealthCheck extends Model {
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   public String detailsJson;
+
+  public boolean hasError() {
+    JsonNode details = Json.parse(detailsJson);
+    JsonNode hasErrorField = details.get(FIELD_HAS_ERROR);
+    // Only return true if we have the top-level has_error field with a value of true.
+    return hasErrorField != null && hasErrorField.asBoolean();
+  }
 
   public static final Find<UUID, HealthCheck> find = new Find<UUID, HealthCheck>() {};
 
@@ -75,5 +86,18 @@ public class HealthCheck extends Model {
    */
   public static List<HealthCheck> getAll(UUID universeUUID) {
     return find.where().eq("universe_uuid", universeUUID).orderBy("check_time").findList();
+  }
+
+  public static HealthCheck getLatest(UUID universeUUID) {
+    List<HealthCheck> checks = find.where()
+      .eq("universe_uuid", universeUUID)
+      .orderBy("check_time desc")
+      .setMaxRows(1)
+      .findList();
+    if (checks != null && checks.size() > 0) {
+      return checks.get(0);
+    } else {
+      return null;
+    }
   }
 }

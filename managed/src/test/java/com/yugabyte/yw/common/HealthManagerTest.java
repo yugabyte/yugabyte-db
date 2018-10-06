@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -16,6 +17,7 @@ import play.libs.Json;
 
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 
 @RunWith(MockitoJUnitRunner.class)
@@ -26,9 +28,12 @@ public class HealthManagerTest extends FakeDBApplication {
   @InjectMocks
   HealthManager healthManager;
 
+  @Mock
+  play.Configuration appConfig;
+
   private List<String> healthCheckCommand(
       List<HealthManager.ClusterInfo> clusters, String universeName, String customerTag,
-      String destination, boolean shouldSendStatusUpdate) {
+      String destination, long startTimeMs, boolean shouldSendStatusUpdate) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add(DevopsBase.PY_WRAPPER);
@@ -42,6 +47,10 @@ public class HealthManagerTest extends FakeDBApplication {
     if (destination != null) {
       expectedCommand.add("--destination");
       expectedCommand.add(destination);
+    }
+    if (startTimeMs > 0) {
+      expectedCommand.add("--start_time_ms");
+      expectedCommand.add(String.valueOf(startTimeMs));
     }
     if (shouldSendStatusUpdate) {
       expectedCommand.add("--send_status");
@@ -60,17 +69,35 @@ public class HealthManagerTest extends FakeDBApplication {
     // Other args
     String universeName = "universe1";
     String customerTag = "customer.env";
+    // Destination options.
     List<String> destinationOptions = new ArrayList<>();
     destinationOptions.add("test@example.com");
     destinationOptions.add(null);
+    // --send_status options.
     List<Boolean> statusOptions = ImmutableList.of(true, false);
+    // --start_time_ms options.
+    List<Long> startTimeOptions = ImmutableList.of(0L, 1000L);
+    List<String> envVarOptions = new ArrayList<>();
+    envVarOptions.add("testing");
+    envVarOptions.add(null);
     for (String d : destinationOptions) {
       for (Boolean sendStatus : statusOptions) {
-        List<String> expectedCommand = healthCheckCommand(
-            ImmutableList.of(cluster), universeName, customerTag, d, sendStatus);
-        healthManager.runCommand(
-            ImmutableList.of(cluster), universeName, customerTag, d, sendStatus);
-        verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+        for (Long startTime : startTimeOptions) {
+          for (String envVal : envVarOptions) {
+            when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
+            when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
+            List<String> expectedCommand = healthCheckCommand(
+                ImmutableList.of(cluster), universeName, customerTag, d, startTime, sendStatus);
+            healthManager.runCommand(
+                ImmutableList.of(cluster), universeName, customerTag, d, startTime, sendStatus);
+            HashMap extraEnvVars = new HashMap<>();
+            if (envVal != null) {
+              extraEnvVars.put("YB_ALERTS_USERNAME", envVal);
+              extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);
+            }
+            verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars);
+          }
+        }
       }
     }
   }
