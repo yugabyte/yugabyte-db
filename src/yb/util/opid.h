@@ -51,6 +51,14 @@ struct OpId {
   }
 
   template <class PB>
+  PB ToPB() const {
+    PB out;
+    out.set_term(term);
+    out.set_index(index);
+    return out;
+  }
+
+  template <class PB>
   static OpId FromPB(const PB& pb) {
     return OpId(pb.term(), pb.index());
   }

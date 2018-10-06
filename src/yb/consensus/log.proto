@@ -38,6 +38,7 @@ option java_package = "org.yb.log";
 import "yb/common/common.proto";
 import "yb/consensus/consensus.proto";
 import "yb/consensus/metadata.proto";
+import "yb/util/opid.proto";
 
 // ===========================================================================
 //  Log Entries - Log specific messages + single node messages
@@ -61,6 +62,7 @@ message LogEntryPB {
 // A batch of entries in the WAL.
 message LogEntryBatchPB {
   repeated LogEntryPB entry = 1;
+  optional OpIdPB committed_op_id = 2;
 }
 
 // A header for a log segment.

@@ -248,6 +248,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       return mvcc_manager->SafeTime(ht_lease);
     });
 
+    prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
+
     consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
       auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
       if (ht_lease) {
@@ -255,7 +257,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       }
     });
 
-    prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
+    consensus_->SetEmptyAppendToken(prepare_thread_->PoolToken());
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());

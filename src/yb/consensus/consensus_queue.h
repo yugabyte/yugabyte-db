@@ -201,7 +201,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
-  CHECKED_STATUS AppendOperation(const ReplicateMsgPtr& msg);
+  CHECKED_STATUS TEST_AppendOperation(const ReplicateMsgPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.  Returns OK unless the message
   // could not be added to the queue for some reason (e.g. the queue reached max size). Calls
@@ -211,8 +211,11 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
+  //
+  // It is possible that this method will be invoked with empty list of messages, when
+  // we update committed op id.
   virtual CHECKED_STATUS AppendOperations(
-      const ReplicateMsgs& msgs,
+      const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
       const StatusCallback& log_append_callback);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to

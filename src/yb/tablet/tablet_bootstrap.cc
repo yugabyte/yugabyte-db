@@ -718,10 +718,13 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   RETURN_NOT_OK_PREPEND(OpenNewLog(), "Failed to open new log");
 
   int segment_count = 0;
+  yb::OpId last_committed_op_id;
   for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
     log::LogEntries entries;
     // TODO: Optimize this to not read the whole thing into memory?
-    Status read_status = segment->ReadEntries(&entries);
+    yb::OpId committed_op_id;
+    Status read_status = segment->ReadEntries(&entries, nullptr /* end_offset */, &committed_op_id);
+    last_committed_op_id = std::max(last_committed_op_id, committed_op_id);
     for (int entry_idx = 0; entry_idx < entries.size(); ++entry_idx) {
       Status s = HandleEntry(&state, &entries[entry_idx]);
       if (!s.ok()) {
@@ -758,7 +761,28 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     segment_count++;
   }
 
-  LOG(INFO) << "Dumping replay state to log at the end of " << __FUNCTION__;
+  if (last_committed_op_id.index > state.committed_op_id.index()) {
+    auto it = state.pending_replicates.find(last_committed_op_id.index);
+    if (it != state.pending_replicates.end()) {
+      // That should be guaranteed by RAFT protocol. If record is committed, it cannot
+      // be overriden by a new leader.
+      if (last_committed_op_id.term == it->second->replicate().id().term()) {
+        state.UpdateCommittedOpId(last_committed_op_id.ToPB<consensus::OpId>());
+        state.ApplyCommittedPendingReplicates(
+            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1));
+      } else {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Invalid last committed op id: " << last_committed_op_id
+            << ", record with this index has another term: " << it->second->replicate().id();
+      }
+    } else {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Does not have an entry for the last committed index: " << last_committed_op_id
+          << ", entries: " << yb::ToString(state.pending_replicates);
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Dumping replay state to log at the end of " << __FUNCTION__;
   DumpReplayStateToLog(state);
 
   // Set up the ConsensusBootstrapInfo structure for the caller.
@@ -769,8 +793,9 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // ConsensusRound instances for writes that have not been persisted into RocksDB.
     consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
   }
-  LOG(INFO) << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
-            << ", last id: " << state.prev_op_id << ", commited id: " << state.committed_op_id;
+  LOG_WITH_PREFIX(INFO)
+      << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
+      << ", last id: " << state.prev_op_id << ", commited id: " << state.committed_op_id;
   CHECK(state.prev_op_id.term() >= state.committed_op_id.term() &&
         state.prev_op_id.index() >= state.committed_op_id.index())
       << "Last: " << state.prev_op_id.ShortDebugString()

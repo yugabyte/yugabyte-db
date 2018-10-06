@@ -161,6 +161,10 @@ class Log::Appender {
     return task_stream_->Submit(item);
   }
 
+  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func) {
+    return task_stream_->TEST_SubmitFunc(func);
+  }
+
   // Waits until the last enqueued elements are processed, sets the appender_ to closing
   // state. If any entries are added to the queue during the process, invoke their callbacks'
   // 'OnFailure()' method.
@@ -460,8 +464,7 @@ Status Log::Reserve(LogEntryTypePB type,
   }
 #endif
 
-  int num_ops = entry_batch->entry_size();
-  gscoped_ptr<LogEntryBatch> new_entry_batch(new LogEntryBatch(type, entry_batch, num_ops));
+  auto new_entry_batch = std::make_unique<LogEntryBatch>(type, std::move(*entry_batch));
   new_entry_batch->MarkReserved();
 
   // Release the memory back to the caller: this will be freed when
@@ -490,10 +493,12 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
   return Status::OK();
 }
 
-Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs,
+Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
                                   const StatusCallback& callback) {
-  LogEntryBatchPB batch;
-  CreateBatchFromAllocatedOperations(msgs, &batch);
+  auto batch = CreateBatchFromAllocatedOperations(msgs);
+  if (committed_op_id) {
+    committed_op_id.ToPB(batch.mutable_committed_op_id());
+  }
 
   LogEntryBatch* reserved_entry_batch;
   RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
@@ -508,10 +513,10 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs,
 
 Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
   RETURN_NOT_OK(entry_batch->Serialize());
-  size_t num_entries = entry_batch->count();
-  DCHECK_GT(num_entries, 0) << "Cannot call DoAppend() with zero entries reserved";
-
   Slice entry_batch_data = entry_batch->data();
+  LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
+      << "Cannot call DoAppend() with no data";
+
   uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
   // If there is no data to write return OK.
   if (PREDICT_FALSE(entry_batch_bytes == 0)) {
@@ -548,17 +553,21 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
 
     // We keep track of the last-written OpId here. This is needed to initialize Consensus on
     // startup.
+    // Check that entry_batch contains records. We could add empty entry batch, that just
+    // updates committed op id. So entry_batch_bytes will be non zero, but entry_batch->count()
+    // will be zero.
+    if (entry_batch->count()) {
+      auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
+      std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
+      last_entry_op_id_.store(new_op_id, std::memory_order_release);
+      last_entry_op_id_cond_.notify_all();
 
-    auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
-    std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
-    last_entry_op_id_.store(new_op_id, std::memory_order_release);
-    last_entry_op_id_cond_.notify_all();
+      // We don't update the last segment offset here anymore. This is done on the Sync() method to
+      // guarantee that we only try to read what we have persisted in disk.
 
-    // We don't update the last segment offset here anymore. This is done on the Sync() method to
-    // guarantee that we only try to read what we have persisted in disk.
-
-    if (post_append_listener_) {
-      post_append_listener_();
+      if (post_append_listener_) {
+        post_append_listener_();
+      }
     }
   }
 
@@ -717,7 +726,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 Status Log::Append(LogEntryPB* phys_entry) {
   LogEntryBatchPB entry_batch_pb;
   entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
-  LogEntryBatch entry_batch(phys_entry->type(), &entry_batch_pb, 1);
+  LogEntryBatch entry_batch(phys_entry->type(), std::move(entry_batch_pb));
   // Mark this as reserved, as we're building it from preallocated data.
   entry_batch.state_ = LogEntryBatch::kEntryReserved;
   // Ready assumes the data is reserved before it is ready.
@@ -1056,6 +1065,10 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
   return Status::OK();
 }
 
+Status Log::TEST_SubmitFuncToAppendToken(const std::function<void()>& func) {
+  return appender_->TEST_SubmitFunc(func);
+}
+
 Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
@@ -1063,10 +1076,10 @@ Log::~Log() {
 // ------------------------------------------------------------------------------------------------
 // LogEntryBatch
 
-LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count)
+LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb)
     : type_(type),
-      count_(count) {
-  entry_batch_pb_.Swap(entry_batch_pb);
+      entry_batch_pb_(std::move(entry_batch_pb)),
+      count_(entry_batch_pb_.entry().size()) {
 }
 
 LogEntryBatch::~LogEntryBatch() {
@@ -1084,11 +1097,15 @@ void LogEntryBatch::MarkReserved() {
   state_ = kEntryReserved;
 }
 
+bool LogEntryBatch::flush_marker() const {
+  return count() == 1 && entry_batch_pb_.entry(0).type() == FLUSH_MARKER;
+}
+
 Status LogEntryBatch::Serialize() {
   DCHECK_EQ(state_, kEntryReady);
   buffer_.clear();
   // FLUSH_MARKER LogEntries are markers and are not serialized.
-  if (PREDICT_FALSE(count() == 1 && entry_batch_pb_.entry(0).type() == FLUSH_MARKER)) {
+  if (PREDICT_FALSE(flush_marker())) {
     total_size_bytes_ = 0;
     state_ = kEntrySerialized;
     return Status::OK();

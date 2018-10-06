@@ -449,7 +449,8 @@ Status ReadableLogSegment::ParseFooterMagicAndFooterLength(const Slice &data,
   return Status::OK();
 }
 
-Status ReadableLogSegment::ReadEntries(LogEntries* entries, int64_t* end_offset) {
+Status ReadableLogSegment::ReadEntries(
+    LogEntries* entries, int64_t* end_offset, OpId* committed_op_id) {
   TRACE_EVENT1("log", "ReadableLogSegment::ReadEntries",
                "path", path_);
 
@@ -531,6 +532,10 @@ Status ReadableLogSegment::ReadEntries(LogEntries* entries, int64_t* end_offset)
     if (VLOG_IS_ON(3)) {
       VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
     }
+    if (committed_op_id && current_batch.has_committed_op_id()) {
+      *committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id());
+    }
+
     for (size_t i = 0; i < current_batch.entry_size(); ++i) {
       entries->emplace_back(current_batch.mutable_entry(i));
       num_entries_read++;
@@ -818,18 +823,18 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 // Creates a LogEntryBatchPB from pre-allocated ReplicateMsgs managed using shared pointers. The
 // caller has to ensure these messages are not deleted twice, both by LogEntryBatchPB and by
 // the shared pointers.
-void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs, LogEntryBatchPB* batch) {
-  LogEntryBatchPB entry_batch;
-  entry_batch.mutable_entry()->Reserve(msgs.size());
+LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
+  LogEntryBatchPB result;
+  result.mutable_entry()->Reserve(msgs.size());
   for (const auto& msg_ptr : msgs) {
-    LogEntryPB* entry_pb = entry_batch.add_entry();
+    LogEntryPB* entry_pb = result.add_entry();
     entry_pb->set_type(log::REPLICATE);
     // entry_pb does not actually own the ReplicateMsg object, even though it thinks it does,
     // because we release it in ~LogEntryBatch. LogEntryBatchPB has a separate vector of shared
     // pointers to messages.
     entry_pb->set_allocated_replicate(msg_ptr.get());
   }
-  batch->Swap(&entry_batch);
+  return result;
 }
 
 bool IsLogFileName(const string& fname) {

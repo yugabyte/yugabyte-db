@@ -130,24 +130,21 @@ void LogCache::Init(const OpId& preceding_op) {
   min_pinned_op_index_ = next_sequential_op_index_;
 }
 
-Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
-                                  const StatusCallback& callback) {
-  CHECK_GT(msgs.size(), 0);
-
+Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const ReplicateMsgs& msgs) {
   // SpaceUsed is relatively expensive, so do calculations outside the lock
-  int64_t mem_required = 0;
-  vector<CacheEntry> entries_to_insert;
+  PrepareAppendResult result;
+  std::vector<CacheEntry> entries_to_insert;
   entries_to_insert.reserve(msgs.size());
   for (const auto& msg : msgs) {
     CacheEntry e = { msg, static_cast<int64_t>(msg->SpaceUsedLong()) };
-    mem_required += e.mem_usage;
+    result.mem_required += e.mem_usage;
     entries_to_insert.emplace_back(std::move(e));
   }
 
   int64_t first_idx_in_batch = msgs.front()->id().index();
-  int64_t last_idx_in_batch = msgs.back()->id().index();
+  result.last_idx_in_batch = msgs.back()->id().index();
 
-  std::unique_lock<simple_spinlock> l(lock_);
+  std::unique_lock<simple_spinlock> lock(lock_);
   // If we're not appending a consecutive op we're likely overwriting and need to replace operations
   // in the cache.
   if (first_idx_in_batch != next_sequential_op_index_) {
@@ -166,12 +163,11 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
   }
 
   // Try to consume the memory. If it can't be consumed, we may need to evict.
-  bool borrowed_memory = false;
-  if (!tracker_->TryConsume(mem_required)) {
+  if (!tracker_->TryConsume(result.mem_required)) {
     int spare = tracker_->SpareCapacity();
-    int need_to_free = mem_required - spare;
+    int need_to_free = result.mem_required - spare;
     VLOG_WITH_PREFIX_UNLOCKED(1) << "Memory limit would be exceeded trying to append "
-                        << HumanReadableNumBytes::ToString(mem_required)
+                        << HumanReadableNumBytes::ToString(result.mem_required)
                         << " to log cache (available="
                         << HumanReadableNumBytes::ToString(spare)
                         << "): attempting to evict some operations...";
@@ -183,9 +179,9 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
     // Force consuming, so that we don't refuse appending data. We might blow past our limit a
     // little bit (as much as the number of tablets times the amount of in-flight data in the log),
     // but until implementing the above TODO, it's difficult to solve this issue.
-    tracker_->Consume(mem_required);
+    tracker_->Consume(result.mem_required);
 
-    borrowed_memory = parent_tracker_->LimitExceeded();
+    result.borrowed_memory = parent_tracker_->LimitExceeded();
   }
 
   for (auto& e : entries_to_insert) {
@@ -194,24 +190,26 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
     next_sequential_op_index_ = index + 1;
   }
 
-  // We drop the lock during the AsyncAppendReplicates call, since it may block if the queue is
-  // full, and the queue might not drain if it's trying to call our callback and blocked on this
-  // lock.
-  l.unlock();
+  return result;
+}
 
-  metrics_.log_cache_size->IncrementBy(mem_required);
-  metrics_.log_cache_num_ops->IncrementBy(msgs.size());
+Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  const StatusCallback& callback) {
+  PrepareAppendResult prepare_result;
+  if (!msgs.empty()) {
+    prepare_result = VERIFY_RESULT(PrepareAppendOperations(msgs));
+    metrics_.log_cache_size->IncrementBy(prepare_result.mem_required);
+    metrics_.log_cache_num_ops->IncrementBy(msgs.size());
+  }
 
   Status log_status = log_->AsyncAppendReplicates(
-    msgs, Bind(&LogCache::LogCallback,
-               Unretained(this),
-               last_idx_in_batch,
-               borrowed_memory,
-               callback));
+    msgs, committed_op_id,
+    Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch,
+         prepare_result.borrowed_memory, callback));
 
   if (!log_status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status.ToString();
-    tracker_->Release(mem_required);
+    tracker_->Release(prepare_result.mem_required);
     return log_status;
   }
 
