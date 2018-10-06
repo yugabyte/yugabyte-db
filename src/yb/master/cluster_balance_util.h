@@ -501,15 +501,16 @@ class ClusterLoadState {
     return false;
   }
 
-  void AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+  Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
     per_ts_meta_[to_ts].starting_tablets.insert(tablet_id);
     ++per_tablet_meta_[tablet_id].starting;
     ++total_starting_;
     tablets_added_.insert(tablet_id);
     SortLoad();
+    return Status::OK();
   }
 
-  void RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
+  Status RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
     if (per_ts_meta_[from_ts].running_tablets.count(tablet_id)) {
       per_ts_meta_[from_ts].running_tablets.erase(tablet_id);
       --per_tablet_meta_[tablet_id].running;
@@ -521,7 +522,7 @@ class ClusterLoadState {
       --total_starting_;
     }
     if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
-      MoveLeader(tablet_id, from_ts);
+      RETURN_NOT_OK(MoveLeader(tablet_id, from_ts));
     }
     // This artificially constrains the removes to only handle one over_replication/wrong_placement
     // per run.
@@ -532,6 +533,7 @@ class ClusterLoadState {
     tablets_over_replicated_.erase(tablet_id_key);
     tablets_wrong_placement_.erase(tablet_id_key);
     SortLoad();
+    return Status::OK();
   }
 
   void SortLoad() {
@@ -539,15 +541,19 @@ class ClusterLoadState {
     sort(sorted_load_.begin(), sorted_load_.end(), comparator);
   }
 
-  void MoveLeader(
+  Status MoveLeader(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts = "") {
-    DCHECK_EQ(per_tablet_meta_[tablet_id].leader_uuid, from_ts);
+    if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
+      return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
+                               tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
+    }
     per_tablet_meta_[tablet_id].leader_uuid = to_ts;
     per_ts_meta_[from_ts].leaders.erase(tablet_id);
     if (!to_ts.empty()) {
       per_ts_meta_[to_ts].leaders.insert(tablet_id);
     }
     SortLeaderLoad();
+    return Status::OK();
   }
 
   virtual void SortLeaderLoad() {

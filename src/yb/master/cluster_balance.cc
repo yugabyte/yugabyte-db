@@ -191,7 +191,13 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     state_->options_ = options;
 
     // Prepare the in-memory structures.
-    if (!AnalyzeTablets(table.first)) {
+    auto analyze_tablets = AnalyzeTablets(table.first);
+    if (!analyze_tablets.ok()) {
+      LOG(WARNING) << "Skipping load balancing " << table.first << ": "
+                   << StatusToString(analyze_tablets);
+      continue;
+    }
+    if (!*analyze_tablets) {
       LOG(WARNING) << "Skipping load balancing " <<  table.first << " due to internal state error";
       continue;
     }
@@ -203,7 +209,15 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle adding and moving replicas.
     for (int i = 0; i < remaining_adds; ++i) {
-      if (!HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts)) {
+      auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
+      if (!handle_add.ok()) {
+        LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
+                     << StatusToString(handle_add);
+        break;
+      }
+      if (!*handle_add) {
+        LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
+                     << "HandleAddReplicas returned false.";
         break;
       }
       --remaining_adds;
@@ -211,7 +225,15 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle cleanup after over-replication.
     for (int i = 0; i < remaining_removals; ++i) {
-      if (!HandleRemoveReplicas(&out_tablet_id, &out_from_ts)) {
+      auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
+      if (!handle_remove.ok()) {
+        LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+                     << StatusToString(handle_remove);
+        break;
+      }
+      if (!*handle_remove) {
+        LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+                     << "HandleRemoveReplicas returned false.";
         break;
       }
       --remaining_removals;
@@ -219,7 +241,15 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle tablet servers with too many leaders.
     for (int i = 0; i < remaining_leader_moves; ++i) {
-      if (!HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts)) {
+      auto handle_leader = HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts);
+      if (!handle_leader.ok()) {
+        LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
+                     << StatusToString(handle_leader);
+        break;
+      }
+      if (!*handle_leader) {
+        LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
+                     << "HandleLeaderMoves returned false.";
         break;
       }
       --remaining_leader_moves;
@@ -235,7 +265,7 @@ void ClusterLoadBalancer::ResetState() {
   state_ = make_unique<YB_EDITION_NS_PREFIX ClusterLoadState>();
 }
 
-bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
+Result<bool> ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   // Set the blacklist so we can also mark the tablet servers as we add them up.
   state_->SetBlacklist(GetServerBlacklist());
 
@@ -305,24 +335,25 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet->id();
     if (state_->pending_remove_replica_tasks_[table_uuid].count(tablet_id) > 0) {
-      state_->RemoveReplica(tablet_id,
-                            state_->pending_remove_replica_tasks_[table_uuid][tablet_id]);
+      RETURN_NOT_OK(state_->RemoveReplica(
+          tablet_id, state_->pending_remove_replica_tasks_[table_uuid][tablet_id]));
     }
     if (state_->pending_stepdown_leader_tasks_[table_uuid].count(tablet_id) > 0) {
       const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
       const auto& from_ts = tablet_meta.leader_uuid;
       const auto& to_ts = state_->pending_stepdown_leader_tasks_[table_uuid][tablet_id];
-      state_->MoveLeader(tablet->id(), from_ts, to_ts);
+      RETURN_NOT_OK(state_->MoveLeader(tablet->id(), from_ts, to_ts));
     }
     if (state_->pending_add_replica_tasks_[table_uuid].count(tablet_id) > 0) {
-      state_->AddReplica(tablet->id(), state_->pending_add_replica_tasks_[table_uuid][tablet_id]);
+      RETURN_NOT_OK(state_->AddReplica(tablet->id(),
+                                       state_->pending_add_replica_tasks_[table_uuid][tablet_id]));
     }
   }
 
   return true;
 }
 
-bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
+Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
     TabletId* out_tablet_id, TabletServerId* out_to_ts) {
   for (const auto& tablet_id : state_->tablets_missing_replicas_) {
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
@@ -356,7 +387,7 @@ bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
       if (can_choose_ts) {
         *out_tablet_id = tablet_id;
         *out_to_ts = ts_uuid;
-        AddReplica(tablet_id, ts_uuid);
+        RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
         state_->tablets_missing_replicas_.erase(tablet_id);
         return true;
       }
@@ -365,7 +396,7 @@ bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
   return false;
 }
 
-bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
+Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   for (const auto& tablet_id : state_->tablets_wrong_placement_) {
     // Skip this tablet, if it is already over-replicated, as it does not need another replica, it
@@ -376,14 +407,14 @@ bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
     if (state_->SelectWrongReplicaToMove(
             tablet_id, GetPlacementByTablet(tablet_id), out_from_ts, out_to_ts)) {
       *out_tablet_id = tablet_id;
-      MoveReplica(tablet_id, *out_from_ts, *out_to_ts);
+      RETURN_NOT_OK(MoveReplica(tablet_id, *out_from_ts, *out_to_ts));
       return true;
     }
   }
   return false;
 }
 
-bool ClusterLoadBalancer::HandleAddReplicas(
+Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (state_->options_->kAllowLimitStartingTablets &&
       get_total_starting_tablets() >= state_->options_->kMaxTabletRemoteBootstraps) {
@@ -404,18 +435,18 @@ bool ClusterLoadBalancer::HandleAddReplicas(
 
   // Handle missing placements with highest priority, as it means we're potentially
   // under-replicated.
-  if (HandleAddIfMissingPlacement(out_tablet_id, out_to_ts)) {
+  if (VERIFY_RESULT(HandleAddIfMissingPlacement(out_tablet_id, out_to_ts))) {
     return true;
   }
 
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
-  if (HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts)) {
+  if (VERIFY_RESULT(HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
     return true;
   }
 
   // Finally, handle normal load balancing.
-  if (!GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts)) {
+  if (!VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts))) {
     VLOG(1) << "Cannot find any more tablets to move, under current constraints.";
     if (VLOG_IS_ON(1)) {
       DumpSortedLoad();
@@ -438,7 +469,7 @@ void ClusterLoadBalancer::DumpSortedLoad() const {
   VLOG(1) << out.str();
 }
 
-bool ClusterLoadBalancer::GetLoadToMove(
+Result<bool> ClusterLoadBalancer::GetLoadToMove(
     TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts) {
   if (state_->sorted_load_.empty()) {
     return false;
@@ -488,7 +519,7 @@ bool ClusterLoadBalancer::GetLoadToMove(
         // return. The tablet_id is filled in from GetTabletToMove.
         *from_ts = high_load_uuid;
         *to_ts = low_load_uuid;
-        MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid);
+        RETURN_NOT_OK(MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
         return true;
       }
     }
@@ -662,10 +693,10 @@ bool ClusterLoadBalancer::GetLeaderToMove(
   FATAL_ERROR("Load balancing algorithm reached invalid state!");
 }
 
-bool ClusterLoadBalancer::HandleRemoveReplicas(
+Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
   // Give high priority to removing tablets that are not respecting the placement policy.
-  if (HandleRemoveIfWrongPlacement(out_tablet_id, out_from_ts)) {
+  if (VERIFY_RESULT(HandleRemoveIfWrongPlacement(out_tablet_id, out_from_ts))) {
     return true;
   }
 
@@ -679,7 +710,10 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
     auto comparator = ClusterLoadState::Comparator(state_.get());
     vector<TabletServerId> sorted_ts(tablet_servers.begin(), tablet_servers.end());
-    DCHECK_GT(sorted_ts.size(), 0);
+    if (sorted_ts.empty()) {
+      return STATUS_SUBSTITUTE(IllegalState, "No tservers to remove from over-replicated "
+                                             "tablet $0", tablet_id);
+    }
     // Sort in reverse to first try to remove a replica from the highest loaded TS.
     sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
     string remove_candidate = sorted_ts[0];
@@ -694,13 +728,13 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
-    RemoveReplica(tablet_id, remove_candidate, true);
+    RETURN_NOT_OK(RemoveReplica(tablet_id, remove_candidate, true));
     return true;
   }
   return false;
 }
 
-bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
+Result<bool> ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
   for (const auto& tablet_id : state_->tablets_wrong_placement_) {
     // Skip this tablet if it is not over-replicated.
@@ -728,53 +762,54 @@ bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
       *out_tablet_id = tablet_id;
       *out_from_ts = std::move(target_uuid);
       // Force leader stepdown if we have wrong placements or blacklisted servers.
-      RemoveReplica(tablet_id, *out_from_ts, true);
+      RETURN_NOT_OK(RemoveReplica(tablet_id, *out_from_ts, true));
       return true;
     }
   }
   return false;
 }
 
-bool ClusterLoadBalancer::HandleLeaderMoves(
+Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (GetLeaderToMove(out_tablet_id, out_from_ts, out_to_ts)) {
-    MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts);
+    RETURN_NOT_OK(MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts));
     return true;
   }
   return false;
 }
 
-void ClusterLoadBalancer::MoveReplica(
+Status ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
   SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                      true /* should_remove_leader */);
-  state_->AddReplica(tablet_id, to_ts);
-  state_->RemoveReplica(tablet_id, from_ts);
+  RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
+  return state_->RemoveReplica(tablet_id, from_ts);
 }
 
-void ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Adding tablet $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the "should_remove_leader" flag is irrelevant.
   SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                      true /* should_remove_leader */);
-  state_->AddReplica(tablet_id, to_ts);
+  return state_->AddReplica(tablet_id, to_ts);
 }
 
-void ClusterLoadBalancer::RemoveReplica(
+Status ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader) {
   LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
   SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
                      true /* should_remove_leader */);
-  state_->RemoveReplica(tablet_id, ts_uuid);
+  return state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
-void ClusterLoadBalancer::MoveLeader(
+Status ClusterLoadBalancer::MoveLeader(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
   SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
                      false /* should_remove_leader */, to_ts);
-  state_->MoveLeader(tablet_id, from_ts, to_ts);
+
+  return state_->MoveLeader(tablet_id, from_ts, to_ts);
 }
 
 // CatalogManager indirection methods that are set as virtual to be bypassed in testing.
