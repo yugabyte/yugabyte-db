@@ -61,6 +61,10 @@ class PreparerImpl {
 
   CHECKED_STATUS Submit(OperationDriver* operation_driver);
 
+  ThreadPoolToken* PoolToken() {
+    return tablet_prepare_pool_token_.get();
+  }
+
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
 
@@ -318,6 +322,10 @@ void Preparer::Stop() {
 
 Status Preparer::Submit(OperationDriver* operation_driver) {
   return impl_->Submit(operation_driver);
+}
+
+ThreadPoolToken* Preparer::PoolToken() {
+  return impl_->PoolToken();
 }
 
 }  // namespace tablet

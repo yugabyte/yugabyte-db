@@ -123,6 +123,8 @@ typename Collection::const_reference RandomElement(const Collection& collection,
   return collection[index];
 }
 
+std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);
+
 } // namespace yb
 
 #endif // YB_UTIL_RANDOM_UTIL_H

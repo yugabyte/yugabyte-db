@@ -275,34 +275,45 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   callback.Run(status);
 }
 
-Status PeerMessageQueue::AppendOperation(const ReplicateMsgPtr& msg) {
-  return AppendOperations({ msg }, Bind(DoNothingStatusCB));
+Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
+  return AppendOperations(
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), Bind(DoNothingStatusCB));
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
+                                          const yb::OpId& committed_op_id,
                                           const StatusCallback& log_append_callback) {
-
   DFAKE_SCOPED_LOCK(append_fake_lock_);
-  std::unique_lock<simple_spinlock> lock(queue_lock_);
+  OpId last_id;
+  if (!msgs.empty()) {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
 
-  OpId last_id = msgs.back()->id();
+    last_id = msgs.back()->id();
 
-  if (last_id.term() > queue_state_.current_term) {
-    queue_state_.current_term = last_id.term();
+    if (last_id.term() > queue_state_.current_term) {
+      queue_state_.current_term = last_id.term();
+    }
+  } else {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    last_id = queue_state_.last_appended;
   }
 
   // Unlock ourselves during Append to prevent a deadlock: it's possible that the log buffer is
   // full, in which case AppendOperations would block. However, for the log buffer to empty, it may
   // need to call LocalPeerAppendFinished() which also needs queue_lock_.
-  lock.unlock();
-  RETURN_NOT_OK(log_cache_.AppendOperations(msgs,
-                                            Bind(&PeerMessageQueue::LocalPeerAppendFinished,
-                                                 Unretained(this),
-                                                 last_id,
-                                                 log_append_callback)));
-  lock.lock();
-  queue_state_.last_appended = last_id;
-  UpdateMetrics();
+  //
+  // Since we are doing AppendOperations only in one thread, no concurrent AppendOperations could
+  // be executed and queue_state_.last_appended will be updated correctly.
+  RETURN_NOT_OK(log_cache_.AppendOperations(
+      msgs, committed_op_id,
+      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
+           log_append_callback)));
+
+  if (!msgs.empty()) {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    queue_state_.last_appended = last_id;
+    UpdateMetrics();
+  }
 
   return Status::OK();
 }
@@ -899,8 +910,8 @@ void PeerMessageQueue::UpdateMetrics() {
       queue_state_.committed_index.index() -
       queue_state_.all_replicated_opid.index());
   metrics_.num_in_progress_ops->set_value(
-    queue_state_.last_appended.index() -
-    queue_state_.committed_index.index());
+      queue_state_.last_appended.index() -
+      queue_state_.committed_index.index());
 }
 
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {

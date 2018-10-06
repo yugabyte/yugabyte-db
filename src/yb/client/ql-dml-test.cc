@@ -36,6 +36,7 @@ DECLARE_bool(mini_cluster_reuse_data);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 namespace client {
@@ -57,8 +58,39 @@ using yb::ql::RowsResult;
 namespace {
 
 const std::vector<std::string> kAllColumns = {"h1", "h2", "r1", "r2", "c1", "c2"};
+const std::vector<std::string> kValueColumns = {"c1", "c2"};
+const size_t kValuePrefixLength = 4096;
+const std::string kValueFormat = RandomHumanReadableString(kValuePrefixLength) + "_$0";
 
+struct RowKey {
+  int32_t h1;
+  std::string h2;
+  int32_t r1;
+  std::string r2;
+
+  std::string ToString() const {
+    return Format("{ h1: $0 h2: $1 r1: $2 r2: $3 }", h1, h2, r1, r2);
+  }
+};
+
+struct RowValue {
+  int32_t c1;
+  std::string c2;
+};
+
+bool operator==(const RowValue& lhs, const RowValue& rhs) {
+  return lhs.c1 == rhs.c1 && lhs.c2 == rhs.c2;
 }
+
+RowKey KeyForIndex(int32_t index) {
+  return RowKey{index, Format("hash_$0", index), index * 2, Format("range_$0", index)};
+}
+
+RowValue ValueForIndex(int32_t index) {
+  return RowValue{index * 3, Format(kValueFormat, index)};
+}
+
+} // namespace
 
 class QLDmlTest : public QLDmlTestBase {
  public:
@@ -88,10 +120,16 @@ class QLDmlTest : public QLDmlTestBase {
   //   insert into t values (h1, h2, r1, r2, c1, c2);
   shared_ptr<YBqlWriteOp> InsertRow(
       const shared_ptr<YBSession>& session,
+      const RowKey& key,
+      const RowValue& value) {
+    return InsertRow(session, key.h1, key.h2, key.r1, key.r2, value.c1, value.c2);
+  }
+
+  shared_ptr<YBqlWriteOp> InsertRow(
+      const shared_ptr<YBSession>& session,
       const int32 h1, const string& h2,
       const int32 r1, const string& r2,
       const int32 c1, const string& c2) {
-
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
@@ -104,6 +142,19 @@ class QLDmlTest : public QLDmlTestBase {
     return op;
   }
 
+  void InsertRows(size_t num_rows) {
+    auto session = NewSession();
+    std::vector<std::future<Status>> futures;
+    futures.reserve(num_rows);
+    for (size_t i = 0; i != num_rows; ++i) {
+      InsertRow(session, KeyForIndex(i), ValueForIndex(i));
+      futures.push_back(session->FlushFuture());
+    }
+    for (auto& future : futures) {
+      EXPECT_OK(future.get());
+    }
+  }
+
   // Select the specified columns of a row using a primary key, equivalent to the select statement
   // below. Return a YB read op that has been applied.
   //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
@@ -112,7 +163,6 @@ class QLDmlTest : public QLDmlTestBase {
       const vector<string>& columns,
       const int32 h1, const string& h2,
       const int32 r1, const string& r2) {
-
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
@@ -126,6 +176,13 @@ class QLDmlTest : public QLDmlTestBase {
     return op;
   }
 
+  shared_ptr<YBqlReadOp> SelectRow(
+      const shared_ptr<YBSession>& session,
+      const vector<string>& columns,
+      const RowKey& key) {
+    return SelectRow(session, columns, key.h1, key.h2, key.r1, key.r2);
+  }
+
   std::shared_ptr<YBqlReadOp> SelectRow() {
     auto session = NewSession();
     auto result = SelectRow(session, kAllColumns, 1, "a", 2, "b");
@@ -133,7 +190,24 @@ class QLDmlTest : public QLDmlTestBase {
     return result;
   }
 
-  __attribute__ ((warn_unused_result)) testing::AssertionResult VerifyRow(
+  Result<RowValue> ReadRow(const YBSessionPtr& session, const RowKey& key,
+                           YBConsistencyLevel consistency_level = YBConsistencyLevel::STRONG) {
+    auto op = SelectRow(session, kValueColumns, key);
+    op->set_yb_consistency_level(consistency_level);
+    RETURN_NOT_OK(session->Flush());
+    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
+      return STATUS_FORMAT(
+          RemoteError, "Read filed: $0", QLResponsePB::QLStatus_Name(op->response().status()));
+    }
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
+    if (rowblock->row_count() != 1) {
+      return STATUS_FORMAT(NotFound, "No row for $0, count: $1", key, rowblock->row_count());
+    }
+    const auto& row = rowblock->row(0);
+    return RowValue{row.column(0).int32_value(), row.column(1).string_value()};
+  }
+
+  MUST_USE_RESULT testing::AssertionResult VerifyRow(
       const shared_ptr<YBSession>& session,
       int32 h1, const std::string& h2,
       int32 r1, const std::string& r2,
@@ -1130,6 +1204,50 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
     ASSERT_OK(session->Flush());
     table_creation_thread.join();
   }
+}
+
+TEST_F(QLDmlTest, ReadFollower) {
+  DontVerifyClusterBeforeNextTearDown();
+  FLAGS_flush_rocksdb_on_shutdown = false;
+  constexpr int kNumRows = 5000;
+
+  InsertRows(kNumRows);
+
+  auto must_see_all_rows_after_this_deadline = MonoTime::Now() + 5s * kTimeMultiplier;
+  auto session = NewSession();
+  for (size_t i = 0; i != kNumRows; ++i) {
+    for (;;) {
+      auto row = ReadRow(session, KeyForIndex(i), YBConsistencyLevel::CONSISTENT_PREFIX);
+      if (!row.ok() && row.status().IsNotFound()) {
+        ASSERT_LE(MonoTime::Now(), must_see_all_rows_after_this_deadline);
+        continue;
+      }
+      ASSERT_OK(row);
+      ASSERT_EQ(*row, ValueForIndex(i));
+      break;
+    }
+  }
+
+  LOG(INFO) << "All rows were read successfully";
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+
+  // Check that after restart we don't miss any rows.
+  std::vector<size_t> missing_rows;
+  for (size_t i = 0; i != kNumRows; ++i) {
+    auto row = ReadRow(session, KeyForIndex(i), YBConsistencyLevel::CONSISTENT_PREFIX);
+    if (!row.ok() && row.status().IsNotFound()) {
+      missing_rows.push_back(i);
+      continue;
+    }
+    ASSERT_OK(row);
+    ASSERT_EQ(*row, ValueForIndex(i));
+  }
+
+  ASSERT_TRUE(missing_rows.empty()) << "Missing rows: " << yb::ToString(missing_rows);
 }
 
 }  // namespace client

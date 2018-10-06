@@ -845,7 +845,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) 
   return Status::OK();
 }
 
-Status RaftConsensus::Replicate(const ConsensusRoundPtr& round) {
+Status RaftConsensus::TEST_Replicate(const ConsensusRoundPtr& round) {
   return ReplicateBatch({ round });
 }
 
@@ -945,7 +945,9 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   for (const auto& round : rounds) {
     replicate_msgs.push_back(round->replicate_msg());
   }
-  Status s = queue_->AppendOperations(replicate_msgs, Bind(DoNothingStatusCB));
+  Status s = queue_->AppendOperations(
+      replicate_msgs, yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked()),
+      Bind(DoNothingStatusCB));
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
@@ -1001,9 +1003,31 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+    // If all operations were just committed, and we don't have pending operations, then
+    // we write an empty batch that contains committed index.
+    // This affects only our local log, because followers have different logic in this scenario.
+    if (empty_append_token_ &&
+        OpIdEquals(*committed_index, state_->GetLastReceivedOpIdUnlocked())) {
+      WARN_NOT_OK(
+          empty_append_token_->SubmitFunc(
+              std::bind(&RaftConsensus::AppendEmptyBatchToLeaderLog, this)),
+          "Failed to submit append empty batch to pool");
+    }
+
     lock.unlock();
     // No need to hold the lock while calling SignalRequest.
     peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+  }
+}
+
+void RaftConsensus::AppendEmptyBatchToLeaderLog() {
+  auto lock = state_->LockForRead();
+  auto committed_op_id = state_->GetCommittedOpIdUnlocked();
+  if (OpIdEquals(committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
+    lock.unlock();
+    auto status = queue_->AppendOperations(
+        {}, yb::OpId::FromPB(committed_op_id), Bind(DoNothingStatusCB));
+    LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to append empty batch: " << status;
   }
 }
 
@@ -1480,6 +1504,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForUpdate(&lock));
 
+    auto prev_committed_op_id = yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked());
+
     deduped_req.leader_uuid = request->caller_uuid();
 
     RETURN_NOT_OK(CheckLeaderRequestUnlocked(request, response, &deduped_req));
@@ -1519,7 +1545,10 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     }
 
     // 3 - Enqueue the writes.
-    OpId last_from_leader = EnqueueWritesUnlocked(deduped_req, sync_status_cb);
+    auto new_committed_op_id = yb::OpId::FromPB(request->committed_index());
+    OpId last_from_leader = EnqueueWritesUnlocked(
+        deduped_req, new_committed_op_id, WriteEmpty(prev_committed_op_id != new_committed_op_id),
+        sync_status_cb);
 
     // 4 - Mark operations as committed
     RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(*request, deduped_req, last_from_leader));
@@ -1664,21 +1693,23 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
 }
 
 OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
+                                          const yb::OpId& committed_op_id,
+                                          WriteEmpty write_empty,
                                           const StatusCallback& sync_status_cb) {
   // Now that we've triggered the prepares enqueue the operations to be written
   // to the WAL.
-  if (PREDICT_TRUE(!deduped_req.messages.empty())) {
+  if (PREDICT_TRUE(!deduped_req.messages.empty()) || write_empty) {
     // Trigger the log append asap, if fsync() is on this might take a while
     // and we can't reply until this is done.
     //
     // Since we've prepared, we need to be able to append (or we risk trying to apply
     // later something that wasn't logged). We crash if we can't.
-    CHECK_OK(queue_->AppendOperations(deduped_req.messages, sync_status_cb));
-
-    return deduped_req.messages.back()->id();
-  } else {
-    return *deduped_req.preceding_opid;
+    CHECK_OK(queue_->AppendOperations(deduped_req.messages, committed_op_id, sync_status_cb));
   }
+
+
+  return !deduped_req.messages.empty() ?
+      deduped_req.messages.back()->id() : *deduped_req.preceding_opid;
 }
 
 Status RaftConsensus::WaitWritesUnlocked(const LeaderRequest& deduped_req,
@@ -2845,6 +2876,10 @@ void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> pr
 
 void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
   majority_replicated_listener_ = std::move(updater);
+}
+
+void RaftConsensus::SetEmptyAppendToken(ThreadPoolToken* token) {
+  empty_append_token_ = token;
 }
 
 }  // namespace consensus

@@ -91,11 +91,13 @@ class MockQueue : public PeerMessageQueue {
                                    int64_t current_term,
                                    const RaftConfigPB& active_config));
   MOCK_METHOD0(SetNonLeaderMode, void());
-  virtual Status AppendOperations(const ReplicateMsgs& msgs,
-                                  const StatusCallback& callback) override {
-    return AppendOperationsMock(msgs, callback);
+  Status AppendOperations(const ReplicateMsgs& msgs,
+                          const yb::OpId& committed_op_id,
+                          const StatusCallback& callback) override {
+    return AppendOperationsMock(msgs, committed_op_id, callback);
   }
-  MOCK_METHOD2(AppendOperationsMock, Status(const ReplicateMsgs& msgs,
+  MOCK_METHOD3(AppendOperationsMock, Status(const ReplicateMsgs& msgs,
+                                            const yb::OpId& committed_op_id,
                                             const StatusCallback& callback));
   MOCK_METHOD1(TrackPeer, void(const string&));
   MOCK_METHOD1(UntrackPeer, void(const string&));
@@ -234,7 +236,7 @@ class RaftConsensusTest : public YBTest {
     peer_manager_ = new MockPeerManager;
     operation_factory_.reset(new MockOperationFactory);
 
-    ON_CALL(*queue_, AppendOperationsMock(_, _))
+    ON_CALL(*queue_, AppendOperationsMock(_, _, _))
         .WillByDefault(Invoke(this, &RaftConsensusTest::AppendToLog));
   }
 
@@ -274,8 +276,9 @@ class RaftConsensusTest : public YBTest {
   }
 
   Status AppendToLog(const ReplicateMsgs& msgs,
+                     const yb::OpId& committed_op_id,
                      const StatusCallback& callback) {
-    return log_->AsyncAppendReplicates(msgs,
+    return log_->AsyncAppendReplicates(msgs, committed_op_id,
                                        Bind(LogAppendCallback, callback));
   }
 
@@ -330,7 +333,7 @@ class RaftConsensusTest : public YBTest {
         std::bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
              consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1));
 
-    CHECK_OK(consensus_->Replicate(round));
+    CHECK_OK(consensus_->TEST_Replicate(round));
     LOG(INFO) << "Appended NO_OP round with opid " << round->id();
     return round;
   }
@@ -403,7 +406,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
       .Times(1);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
       .Times(11);
-  EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
+  EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
       .Times(11).WillRepeatedly(Return(Status::OK()));
 
   ConsensusBootstrapInfo info;
@@ -440,7 +443,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .Times(3);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(2);
-  EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
+  EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
       .Times(3).WillRepeatedly(Return(Status::OK()));;
 
   ConsensusBootstrapInfo info;
@@ -530,7 +533,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
     // One more op will be appended for the election.
     EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
         .Times(1);
-    EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
+    EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
         .Times(1).WillRepeatedly(Return(Status::OK()));;
   }
 
@@ -602,8 +605,8 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
   // We'll append to the queue 12 times, the initial noop txn + 10 initial ops while leader
   // and the new leader's update, when we're overwriting operations.
-  EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
-      .Times(12);
+  EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
+      .Times(13);
 
   // .. but those will be overwritten later by another
   // leader, which will push and commit 5 ops.

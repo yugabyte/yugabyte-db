@@ -70,6 +70,8 @@ class TaskStream {
 
   CHECKED_STATUS Submit(T* item);
 
+  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func);
+
  private:
   std::unique_ptr<TaskStreamImpl<T>> impl_;
 };
@@ -87,6 +89,7 @@ class TaskStreamImpl {
   void Stop();
 
   CHECKED_STATUS Submit(T* task);
+  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func);
 
  private:
 
@@ -171,6 +174,11 @@ template <typename T> Status TaskStreamImpl<T>::Submit(T *task) {
   return taskstream_pool_token_->SubmitFunc(std::bind(&TaskStreamImpl::Run, this));
 }
 
+template <typename T>
+Status TaskStreamImpl<T>::TEST_SubmitFunc(const std::function<void()>& func) {
+  return taskstream_pool_token_->SubmitFunc(func);
+}
+
 template <typename T> void TaskStreamImpl<T>::Run() {
   VLOG(1) << "Starting taskstream task:" << this;
   for (;;) {
@@ -234,6 +242,10 @@ template <typename T> void TaskStream<T>::Stop() {
 
 template <typename T> Status TaskStream<T>::Submit(T* item) {
   return impl_->Submit(item);
+}
+
+template <typename T> Status TaskStream<T>::TEST_SubmitFunc(const std::function<void()>& func) {
+  return impl_->TEST_SubmitFunc(func);
 }
 
 }  // namespace yb
