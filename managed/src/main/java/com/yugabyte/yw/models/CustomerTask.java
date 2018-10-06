@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 import javax.persistence.Column;
@@ -173,5 +174,19 @@ public class CustomerTask extends Model {
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
     return find.where().eq("task_uuid", taskUUID).findUnique();
+  }
+
+  public static CustomerTask getLatestByUniverseUuid(UUID universeUUID) {
+    List<CustomerTask> tasks = find.where()
+      .eq("target_uuid", universeUUID)
+      .isNotNull("completion_time")
+      .orderBy("completion_time desc")
+      .setMaxRows(1)
+      .findList();
+    if (tasks != null && tasks.size() > 0) {
+      return tasks.get(0);
+    } else {
+      return null;
+    }
   }
 }
