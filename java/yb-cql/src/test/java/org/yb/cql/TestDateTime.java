@@ -132,6 +132,10 @@ public class TestDateTime extends BaseCQLTest {
                 "Row[2018-01-03, 4587789231163, v, 2018-01-03, 1421]" +
                 "Row[2018-01-03, 511451341, v, 2018-01-03, 1421]" +
                 "Row[2018-01-03, 1421, v, 2018-02-14, 20180214]");
+
+    // Verify min/max aggregate functions on date and time types.
+    assertQuery("select min(v1), max(v1), min(v2), max(v2) from test_dt",
+                "Row[2018-01-03, 2018-12-27, 1421, 4587789231163]");
   }
 
   @Test

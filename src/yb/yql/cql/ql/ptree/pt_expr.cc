@@ -192,6 +192,10 @@ PTExpr::SharedPtr PTExpr::CreateConst(MemoryContext *memctx,
       return PTConstInt::MakeShared(memctx, loc, 0);
     case DataType::STRING:
       return PTConstText::MakeShared(memctx, loc, MCMakeShared<MCString>(memctx, ""));
+    case DataType::TIMESTAMP:
+      return PTConstTimestamp::MakeShared(memctx, loc, 0);
+    case DataType::DATE:
+      return PTConstDate::MakeShared(memctx, loc, 0);
     default:
       return nullptr;
   }

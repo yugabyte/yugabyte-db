@@ -35,8 +35,7 @@ string Timestamp::ToString() const {
 
 
 string Timestamp::ToFormattedString() const {
-  string s = DateTime::TimestampToString(*this, DateTime::CqlDateTimeOutputFormat);
-  return s;
+  return DateTime::TimestampToString(*this, DateTime::CqlOutputFormat);
 }
 
 } // namespace yb

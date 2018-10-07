@@ -14,7 +14,9 @@ package org.yb.cql;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.text.SimpleDateFormat;
 
+import com.datastax.driver.core.LocalDate;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.yugabyte.driver.core.TableSplitMetadata;
@@ -1424,6 +1426,14 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(result, session.execute(query).one().getDouble(0), 1e-13);
   }
 
+  private void selectAndVerify(String query, Date result)  {
+    assertEquals(result, session.execute(query).one().getTimestamp(0));
+  }
+
+  private void selectAndVerify(String query, LocalDate result)  {
+    assertEquals(result, session.execute(query).one().getDate(0));
+  }
+
   @Test
   public void testIntegerBounds() throws Exception {
     session.execute("CREATE TABLE test_int_bounds(h int primary key, " +
@@ -1462,9 +1472,10 @@ public class TestSelect extends BaseCQLTest {
   public void testCasts() throws Exception {
     // Create test table.
     session.execute("CREATE TABLE test_local (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +
-        "smallint, c5 bigint, c6 text);");
-    session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6) values (1, 2.5, 3.3, 4, 5, " +
-        "'100')");
+        "smallint, c5 bigint, c6 text, c7 date, c8 time, c9 timestamp);");
+    session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6, c7, c8, c9) values " +
+        "(1, 2.5, 3.3, 4, 5, '100', '2018-2-14', '1:2:3.123456789', " +
+        "'2018-2-14 13:24:56.987+01:00')");
     selectAndVerify("SELECT CAST(c1 as integer) FROM test_local", 1);
     selectAndVerify("SELECT CAST(c1 as int) FROM test_local", 1);
     selectAndVerify("SELECT CAST(c1 as smallint) FROM test_local", (short)1);
@@ -1506,6 +1517,25 @@ public class TestSelect extends BaseCQLTest {
     selectAndVerify("SELECT CAST(c6 as double) FROM test_local", 100d);
     selectAndVerify("SELECT CAST(c6 as text) FROM test_local", "100");
 
+    selectAndVerify("SELECT CAST(c7 as timestamp) FROM test_local",
+        new SimpleDateFormat("yyyy-MM-dd Z").parse("2018-02-14 +0000"));
+    selectAndVerify("SELECT CAST(c7 as text) FROM test_local", "2018-02-14");
+
+    selectAndVerify("SELECT CAST(c8 as text) FROM test_local", "01:02:03.123456789");
+
+    selectAndVerify("SELECT CAST(c9 as date) FROM test_local",
+        LocalDate.fromYearMonthDay(2018, 2, 14));
+    selectAndVerify("SELECT CAST(c9 as text) FROM test_local",
+        "2018-02-14T12:24:56.987000+0000");
+
+    // Test aliases and related functions of CAST.
+    selectAndVerify("SELECT TODATE(c9) FROM test_local",
+        LocalDate.fromYearMonthDay(2018, 2, 14));
+    selectAndVerify("SELECT TOTIMESTAMP(c7) FROM test_local",
+        new SimpleDateFormat("yyyy-MM-dd Z").parse("2018-02-14 +0000"));
+    selectAndVerify("SELECT TOUNIXTIMESTAMP(c7) FROM test_local", 1518566400000L);
+    selectAndVerify("SELECT TOUNIXTIMESTAMP(c9) FROM test_local", 1518611096987L);
+
     // Try edge cases.
     session.execute("INSERT INTO test_local (c1, c2, c3, c4, c5, c6) values (2147483647, 2.5, " +
         "3.3, 32767, 9223372036854775807, '2147483647')");
@@ -1527,5 +1557,35 @@ public class TestSelect extends BaseCQLTest {
         "2147483647");
     selectAndVerify("SELECT CAST(c5 as text) FROM test_local WHERE c1 = 2147483647",
         "9223372036854775807");
+
+    // Verify invalid CAST target type.
+    runInvalidQuery("SELECT CAST(c1 as unixtimestamp) FROM test_local");
+  }
+
+  @Test
+  public void testCurrentTimeFunctions() throws Exception {
+    // Create test table and insert with current date/time/timestamp functions.
+    session.execute("create table test_current (k int primary key, d date, t time, ts timestamp);");
+    session.execute("insert into test_current (k, d, t, ts) values " +
+                    "(1, currentdate(), currenttime(), currenttimestamp());");
+
+    // Verify date, time and timestamp to be with range.
+    LocalDate d = session.execute("select d from test_current").one().getDate("d");
+    long date_diff = java.time.temporal.ChronoUnit.DAYS.between(
+        java.time.LocalDate.ofEpochDay(d.getDaysSinceEpoch()),
+        java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).toLocalDate());
+    assertTrue("Current date is " + d, date_diff >= 0 && date_diff <= 1);
+
+    long t = session.execute("select t from test_current").one().getTime("t");
+    long nowTime = java.time.LocalTime.now(java.time.ZoneOffset.UTC).toNanoOfDay();
+    if (nowTime < t) { // Handle day wrap.
+      nowTime += 86400000000000L;
+    }
+    long time_diff_sec = (nowTime - t) / 1000000000;
+    assertTrue("Current time is " + t, time_diff_sec >= 0 && time_diff_sec <= 60);
+
+    Date ts = session.execute("select ts from test_current").one().getTimestamp("ts");
+    long timestamp_diff_sec = (System.currentTimeMillis() - ts.getTime()) / 1000;
+    assertTrue("Current timestamp is " + ts, timestamp_diff_sec >= 0 && timestamp_diff_sec <= 60);
   }
 }

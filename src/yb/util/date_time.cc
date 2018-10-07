@@ -16,6 +16,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include <regex>
+#include <ctime>
 
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
@@ -27,102 +28,94 @@ using std::vector;
 using std::string;
 using std::regex;
 using boost::gregorian::date;
+using boost::gregorian::date_duration;
+using boost::gregorian::day_clock;
 using boost::local_time::local_date_time;
 using boost::local_time::local_time_facet;
 using boost::local_time::local_time_input_facet;
+using boost::local_time::local_microsec_clock;
 using boost::local_time::not_a_date_time;
 using boost::local_time::posix_time_zone;
+using boost::local_time::time_zone_ptr;
+using boost::posix_time::ptime;
 using boost::posix_time::microseconds;
 using boost::posix_time::time_duration;
 using boost::posix_time::microsec_clock;
 
 namespace yb {
 
-DateTimeFormatBase::DateTimeFormatBase(const time_type epoch_start, const tz_ptr_type default_tz)
-  : epoch_start_(epoch_start), default_tz_(default_tz) {
-}
+namespace {
 
-time_type DateTimeFormatBase::epoch_start() const {
-  return epoch_start_;
-}
+// Unix epoch in date and Posix time format.
+static const date kEpochDate(1970, 1, 1);
+static const ptime kEpochTime(kEpochDate);
 
-tz_ptr_type DateTimeFormatBase::default_tz() const {
-  return default_tz_;
-}
+// Date offset of Unix epoch (2^31).
+static constexpr uint32_t kEpochDateOffset = 1<<31;
 
-DateTimeInputFormat::DateTimeInputFormat(const time_type epoch_start,
-                                         const tz_ptr_type default_tz,
-                                         const vector<regex>& regexes,
-                                         const int input_precision)
-    : DateTimeFormatBase(epoch_start, default_tz),
-      regexes_(regexes),
-      input_precision_(input_precision) {
-}
+// Day in milli- and micro-seconds.
+static constexpr int64_t kDayInMilliSeconds = 24 * 60 * 60 * 1000L;
+static constexpr int64_t kDayInMicroSeconds = kDayInMilliSeconds * 1000L;
 
-const vector<regex>& DateTimeInputFormat::regexes() const {
-  return regexes_;
-}
+// UTC and system (local) timezones.
+static const time_zone_ptr kUtcTimezone(new posix_time_zone("UTC"));
+static const time_zone_ptr kSystemTimezone(new posix_time_zone(
+    []() -> string {
+      // Get current timezone by getting current UTC time, converting to local time and computing
+      // the offset.
+      const ptime utc_time = microsec_clock::universal_time();
+      const ptime local_time = boost::date_time::c_local_adjustor<ptime>::utc_to_local(utc_time);
+      const time_duration offset = local_time - utc_time;
+      const int hours = offset.hours();
+      const int minutes = offset.minutes();
+      char buffer[7]; // "+HH:MM" or "-HH:MM"
+      const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
+      CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
+      return buffer;
+    }()));
 
-int DateTimeInputFormat::input_precision() const {
-  return input_precision_;
-}
-
-DateTimeOutputFormat::DateTimeOutputFormat(const time_type epoch_start,
-                                           const tz_ptr_type default_tz,
-                                           const locale output_locale)
-    : DateTimeFormatBase(epoch_start, default_tz), output_locale_(output_locale) {
-}
-
-locale DateTimeOutputFormat::output_locale() const {
-  return output_locale_;
-}
+} // namespace
 
 Result<Timestamp> DateTime::TimestampFromString(const string& str,
-                                                const DateTimeInputFormat input_format) {
-  local_date_time ldt(not_a_date_time);
+                                                const InputFormat& input_format) {
   std::smatch m;
-  bool matched = false;
   // trying first regex to match from the format
-  for (const auto& reg : input_format.regexes()) {
-    matched = std::regex_match(str, m, reg);
-    if (matched)
-      break;
-  }
-
-  if (matched) {
-    // setting default values where missing
-    int year = stoi(m.str(1), nullptr);
-    int month = stoi(m.str(2), nullptr);
-    int day = stoi(m.str(3), nullptr);
-    int hours = (m.str(4).empty())?0:stoi(m.str(4), nullptr);
-    int minutes = (m.str(5).empty())?0:stoi(m.str(5), nullptr);
-    int seconds = (m.str(6).empty())?0:stoi(m.str(6), nullptr);
-    int64_t frac = (m.str(7).empty())?0:stoi(m.str(7), nullptr);
-    frac = AdjustPrecision(frac, m.str(7).size(), time_duration::num_fractional_digits());
-    // constructing date_time and getting difference from epoch to set as Timestamp value
-    try {
-      tz_ptr_type tz = input_format.default_tz(); // default
-      if (!m.str(8).empty()) {
-        tz = tz_ptr_type(new posix_time_zone(m.str(8)));
+  for (const auto& reg : input_format.regexes) {
+    if (std::regex_match(str, m, reg)) {
+      // setting default values where missing
+      const int year = stoi(m.str(1));
+      const int month = stoi(m.str(2));
+      const int day = stoi(m.str(3));
+      const int hours = m.str(4).empty() ? 0 : stoi(m.str(4));
+      const int minutes = m.str(5).empty() ? 0 : stoi(m.str(5));
+      const int seconds = m.str(6).empty() ? 0 : stoi(m.str(6));
+      int64_t frac = m.str(7).empty() ? 0 : stoi(m.str(7));
+      frac = AdjustPrecision(frac, m.str(7).size(), time_duration::num_fractional_digits());
+      // constructing date_time and getting difference from epoch to set as Timestamp value
+      try {
+        const date d(year, month, day);
+        const time_duration t(hours, minutes, seconds, frac);
+        const time_zone_ptr tz = !m.str(8).empty() ? time_zone_ptr(new posix_time_zone(m.str(8)))
+                                                   : kSystemTimezone;
+        const local_date_time ldt(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR);
+        const local_date_time epoch(kEpochTime, kUtcTimezone);
+        return Timestamp((ldt - epoch).total_microseconds());
+      } catch (std::exception& e) {
+        return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string", e.what());
       }
-      local_date_time ldt(date(year, month, day), time_duration(hours, minutes, seconds, frac),
-          tz, local_date_time::NOT_DATE_TIME_ON_ERROR);
-      local_date_time epoch(input_format.epoch_start(), GetUtcTimezone());
-      time_duration diff = ldt - epoch;
-      int64_t ts = diff.total_microseconds();
-      return Timestamp(ts);
-    } catch (std::exception& e) {
-      return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
     }
-  } else {
-    return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
   }
+  return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
 }
 
-Timestamp DateTime::TimestampFromInt(const int64_t val, const DateTimeInputFormat input_format) {
-  int input_precision = input_format.input_precision();
-  int64_t adj_val = AdjustPrecision(val, input_precision, kInternalPrecision);
-  return Timestamp(adj_val);
+Timestamp DateTime::TimestampFromInt(const int64_t val, const InputFormat& input_format) {
+  return Timestamp(AdjustPrecision(val, input_format.input_precision, kInternalPrecision));
+}
+
+Timestamp DateTime::TimestampNow() {
+  const local_date_time now = local_microsec_clock::local_time(kUtcTimezone);
+  const local_date_time epoch(kEpochTime, kUtcTimezone);
+  return Timestamp((now - epoch).total_microseconds());
 }
 
 Result<uint32_t> DateTime::DateFromString(const std::string& str) {
@@ -142,16 +135,54 @@ Result<uint32_t> DateTime::DateFromString(const std::string& str) {
     return STATUS(InvalidArgument, "Invalid day of month");
   }
   try {
-    static const date epoch(1970, 1, 1);
-    return (date(year, month, day) - epoch).days() + 0x80000000;
+    return (date(year, month, day) - kEpochDate).days() + kEpochDateOffset;
   } catch (std::exception& e) {
     return STATUS(InvalidArgument, "Invalid date", e.what());
   }
 }
 
+Result<uint32_t> DateTime::DateFromTimestamp(const Timestamp timestamp) {
+  const int64_t date = timestamp.ToInt64() / kDayInMicroSeconds + kEpochDateOffset;
+  if (date < std::numeric_limits<uint32_t>::min() || date > std::numeric_limits<uint32_t>::max()) {
+    return STATUS(InvalidArgument, "Invalid date");
+  }
+  return date;
+}
+
+Result<uint32_t> DateTime::DateFromUnixTimestamp(const int64_t unix_timestamp) {
+  const int64_t date = unix_timestamp / kDayInMilliSeconds + kEpochDateOffset;
+  if (date < std::numeric_limits<uint32_t>::min() || date > std::numeric_limits<uint32_t>::max()) {
+    return STATUS(InvalidArgument, "Invalid date");
+  }
+  return date;
+}
+
+Result<string> DateTime::DateToString(const uint32_t date) {
+  try {
+    const auto d = kEpochDate + date_duration(date - kEpochDateOffset);
+    return boost::gregorian::to_iso_extended_string(d);
+  } catch (std::exception& e) {
+    return STATUS(InvalidArgument, "Invalid date", e.what());
+  }
+}
+
+Timestamp DateTime::DateToTimestamp(uint32_t date) {
+  return Timestamp((static_cast<int64_t>(date) - kEpochDateOffset) * kDayInMicroSeconds);
+}
+
+int64_t DateTime::DateToUnixTimestamp(uint32_t date) {
+  return (static_cast<int64_t>(date) - kEpochDateOffset) * kDayInMilliSeconds;
+}
+
+uint32_t DateTime::DateNow() {
+  const local_date_time now = local_microsec_clock::local_time(kUtcTimezone);
+  const date today = boost::gregorian::date_from_tm(to_tm(now));
+  return (today - kEpochDate).days() + kEpochDateOffset;
+}
+
 Result<int64_t> DateTime::TimeFromString(const std::string& str) {
   // Regex for time format "hh:mm:ss[.fffffffff]"
-  static const regex time_format("(\\d{2}):(\\d{2}):(\\d{2})(\\.(\\d{0,9}))?");
+  static const regex time_format("(\\d{1,2}):(\\d{1,2}):(\\d{1,2})(\\.(\\d{0,9}))?");
   std::smatch m;
   if (!std::regex_match(str, m, time_format)) {
     return STATUS(InvalidArgument, "Invalid time format");
@@ -170,6 +201,28 @@ Result<int64_t> DateTime::TimeFromString(const std::string& str) {
     return STATUS(InvalidArgument, "Invalid second");
   }
   return ((hour * 60 + minute) * 60 + second) * 1000000000 + nano_sec;
+}
+
+Result<string> DateTime::TimeToString(int64_t time) {
+  if (time < 0) {
+    return STATUS(InvalidArgument, "Invalid time");
+  }
+  const int nano_sec = time % 1000000000; time /= 1000000000;
+  const int second = time % 60; time /= 60;
+  const int minute = time % 60; time /= 60;
+  const int hour = time;
+  if (hour > 23) {
+    return STATUS(InvalidArgument, "Invalid hour");
+  }
+  char buffer[19]; // "hh:mm:ss[.fffffffff]"
+  const int result = snprintf(buffer, sizeof(buffer), "%2.2d:%2.2d:%2.2d.%9.9d",
+                              hour, minute, second, nano_sec);
+  CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
+  return buffer;
+}
+
+int64_t DateTime::TimeNow() {
+  return (TimestampNow().ToInt64() % kDayInMicroSeconds) * 1000;
 }
 
 int64_t DateTime::AdjustPrecision(int64_t val,
@@ -194,13 +247,12 @@ int64_t DateTime::AdjustPrecision(int64_t val,
   return val;
 }
 
-string DateTime::TimestampToString(const Timestamp timestamp,
-                                   const DateTimeOutputFormat output_format) {
+string DateTime::TimestampToString(const Timestamp timestamp, const OutputFormat& output_format) {
   std::ostringstream ss;
-  ss.imbue(output_format.output_locale());
-  time_type pt = output_format.epoch_start() + microseconds(timestamp.value());
+  ss.imbue(output_format.output_locale);
+  ptime pt = kEpochTime + microseconds(timestamp.value());
   try {
-    local_date_time ldt(pt, output_format.default_tz());
+    local_date_time ldt(pt, kUtcTimezone);
     ss << ldt;
   } catch (...) {
     // If we cannot produce a valid date, default to showing the exact timestamp value.
@@ -210,9 +262,7 @@ string DateTime::TimestampToString(const Timestamp timestamp,
   return ss.str();
 }
 
-DateTimeInputFormat DateTime::CqlDateTimeInputFormat = []() -> DateTimeInputFormat {
-  time_type epoch_start(date(1970, 1, 1));
-  tz_ptr_type default_tz = GetSystemTimezone();
+const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
   // declaring format components used to construct regexes below
   string fmt_empty = "()";
   string date_fmt = "(\\d{4})-(\\d{1,2})-(\\d{1,2})";
@@ -284,33 +334,11 @@ DateTimeInputFormat DateTime::CqlDateTimeInputFormat = []() -> DateTimeInputForm
       // e.g. "1992-06-04 UTC+04:00" or "1992-6-4 UTC-04:30"
       regex(date_fmt + time_empty + fmt_empty + tzZ_fmt)};
   int input_precision = 3; // Cassandra current default
-  return DateTimeInputFormat(epoch_start, default_tz, regexes, input_precision);
+  return InputFormat(regexes, input_precision);
 } ();
 
-DateTimeOutputFormat DateTime::CqlDateTimeOutputFormat = DateTimeOutputFormat(
-    time_type(date(1970, 1, 1)),
-    GetUtcTimezone(),
-    locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f%q"))
+const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat(
+    locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q"))
 );
-
-// TODO (mihnea) find a better way to reliably get the system timezone
-tz_ptr_type DateTime::GetSystemTimezone() {
-  // getting time offset
-  time_type t1 = microsec_clock::local_time();
-  typedef boost::date_time::c_local_adjustor<time_type> local_adj;
-  time_type t2 = local_adj::utc_to_local(t1);
-  time_duration diff = t2 - t1;
-  // converting offset value to valid timezone id (e.g. +06:00)
-  std::ostringstream ss;
-  std::string sign = (diff.hours() >= 0)?"+":"-";
-  ss << sign << std::setfill('0') << std::setw(2) << diff.hours()
-     << ":" << std::setw(2) << diff.minutes();
-  tz_ptr_type sys_tz(new posix_time_zone(ss.str()));
-  return sys_tz;
-}
-
-tz_ptr_type DateTime::GetUtcTimezone() {
-  return tz_ptr_type(new posix_time_zone("UTC"));
-}
 
 } // namespace yb
