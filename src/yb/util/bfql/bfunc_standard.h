@@ -37,6 +37,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/uuid.h"
+#include "yb/util/date_time.h"
 
 namespace yb {
 namespace bfql {
@@ -44,20 +45,20 @@ namespace bfql {
 //--------------------------------------------------------------------------------------------------
 // Dummy function for minimum opcode.
 template<typename PTypePtr, typename RTypePtr>
-Status NoOp() {
+CHECKED_STATUS NoOp() {
   return Status::OK();
 }
 
 // ServerOperator that takes no argument and has no return value.
 template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator() {
+CHECKED_STATUS ServerOperator() {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // ServerOperator that takes 1 argument and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator(PTypePtr arg1, RTypePtr result) {
+CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -65,7 +66,7 @@ Status ServerOperator(PTypePtr arg1, RTypePtr result) {
 // This is not used but implemented as an example for future coding.
 // ServerOperator that takes 2 arguments and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
+CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -84,28 +85,26 @@ uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status Token(const vector<PTypePtr>& params, RTypePtr result) {
+CHECKED_STATUS Token(const vector<PTypePtr>& params, RTypePtr result) {
   uint16_t hash = YBHash(params, result);
   // Convert to CQL hash since this may be used in expressions above.
   result->set_int64_value(YBPartition::YBToCqlHashCode(hash));
-
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
+CHECKED_STATUS PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
   result->set_int32_value(YBHash(params, result));
-
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ttl(PTypePtr col, PTypePtr result) {
+CHECKED_STATUS ttl(PTypePtr col, PTypePtr result) {
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status writetime(PTypePtr col, PTypePtr result) {
+CHECKED_STATUS writetime(PTypePtr col, PTypePtr result) {
   return Status::OK();
 }
 
@@ -113,7 +112,7 @@ Status writetime(PTypePtr col, PTypePtr result) {
 // Special ops for counter: "+counter" and "-counter".
 
 template<typename PTypePtr, typename RTypePtr>
-Status IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull()) {
     result->set_int64_value(y->int64_value());
   } else {
@@ -123,7 +122,7 @@ Status IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull()) {
     result->set_int64_value(-y->int64_value());
   } else {
@@ -136,7 +135,7 @@ Status DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
 // "+" and "-".
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -146,7 +145,7 @@ Status AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -156,7 +155,7 @@ Status AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -166,7 +165,7 @@ Status AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -176,7 +175,7 @@ Status AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -186,25 +185,25 @@ Status AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddMapMap(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddMapMap(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddListList(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS AddListList(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -214,7 +213,7 @@ Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
   } else {
@@ -224,19 +223,19 @@ Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SubMapSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS SubMapSet(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SubSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS SubSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
+CHECKED_STATUS SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
   // TODO All calls allowed for this builtin should be optimized away to avoid evaluating here.
   // But this is not yet implemented in DocDB so evaluating inefficiently and in-memory for now.
   // For clarity, this implementation should be removed (see e.g. SubSetSet above) as soon as
@@ -246,8 +245,8 @@ Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
     return Status::OK();
   }
 
-  QLSeqValuePB xl = x->list_value();
-  QLSeqValuePB yl = y->list_value();
+  const QLSeqValuePB& xl = x->list_value();
+  const QLSeqValuePB& yl = y->list_value();
   for (const QLValuePB& x_elem : xl.elems()) {
     bool should_remove = false;
     for (const QLValuePB& y_elem : yl.elems()) {
@@ -257,8 +256,7 @@ Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
       }
     }
     if (!should_remove) {
-      auto elem = result->add_list_elem();
-      elem->CopyFrom(x_elem);
+      result->add_list_elem()->CopyFrom(x_elem);
     }
   }
   return Status::OK();
@@ -267,7 +265,25 @@ Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
 //--------------------------------------------------------------------------------------------------
 // Now().
 template<typename PTypePtr, typename RTypePtr>
-Status NowTimeUuid(RTypePtr result) {
+CHECKED_STATUS NowDate(RTypePtr result) {
+  result->set_date_value(DateTime::DateNow());
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS NowTime(RTypePtr result) {
+  result->set_time_value(DateTime::TimeNow());
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS NowTimestamp(RTypePtr result) {
+  result->set_timestamp_value(DateTime::TimestampNow());
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS NowTimeUuid(RTypePtr result) {
   uuid_t linux_time_uuid;
   uuid_generate_time(linux_time_uuid);
   Uuid time_uuid(linux_time_uuid);

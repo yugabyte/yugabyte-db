@@ -36,33 +36,38 @@ public class TestBooleanDataType extends BaseCQLTest {
   @Test
   public void testPrimaryKey() throws Exception {
     // Create test table with boolean hash and clustering columns (ascending/descending).
-    session.execute("create table bool_test (h boolean, r1 boolean, r2 boolean," +
+    session.execute("create table bool_test (h boolean, r1 boolean, r2 boolean, v boolean," +
                     " primary key ((h), r1, r2)) with clustering order by (r1 asc, r2 desc);");
 
     // Insert rows with all possible combinations of values.
     BatchStatement batch = new BatchStatement();
-    PreparedStatement stmt = session.prepare("insert into bool_test (h, r1, r2) values (?, ?, ?);");
+    PreparedStatement stmt = session.prepare("insert into bool_test (h, r1, r2, v) "+
+                                             "values (?, ?, ?, ?);");
     List<Boolean> values = Arrays.asList(false, true);
     for (Boolean h : values) {
       for (Boolean r1 : values) {
         for (Boolean r2 : values) {
-          batch.add(stmt.bind(h, r1, r2));
+          batch.add(stmt.bind(h, r1, r2, r2));
         }
       }
     }
     session.execute(batch);
 
     // Verify select by a hash key and clustering order.
-    assertQuery(new SimpleStatement("select * from bool_test where h = ?;", true),
+    assertQuery(new SimpleStatement("select h, r1, r2 from bool_test where h = ?;", true),
                 "Row[true, false, true]" +
                 "Row[true, false, false]" +
                 "Row[true, true, true]" +
                 "Row[true, true, false]");
 
     // Verify select by a hash key and range bound.
-    assertQuery(new SimpleStatement("select * from bool_test where h = ? and r1 > ?;", true, false),
+    assertQuery(new SimpleStatement("select h, r1, r2 from bool_test where h = ? and r1 > ?;",
+                                    true, false),
                 "Row[true, true, true]" +
                 "Row[true, true, false]");
+
+    // Verify min/max aggregate functions on boolean type.
+    assertQuery("select min(v), max(v) from bool_test", "Row[false, true]");
   }
 
   @Test

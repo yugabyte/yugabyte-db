@@ -92,6 +92,10 @@ DataType QLValue::FromInternalDataType(const InternalType& internal_type) {
       return DataType::STRING;
     case QLValue::InternalType::kTimestampValue:
       return DataType::TIMESTAMP;
+    case QLValue::InternalType::kDateValue:
+      return DataType::DATE;
+    case QLValue::InternalType::kTimeValue:
+      return DataType::TIME;
     case QLValue::InternalType::kInetaddressValue:
       return DataType::INET;
     case QLValue::InternalType::kJsonbValue:
@@ -371,7 +375,7 @@ void QLValue::Serialize(
     case TIMESTAMP: {
       int64_t val = DateTime::AdjustPrecision(timestamp_value_pb(),
                                               DateTime::kInternalPrecision,
-                                              DateTime::CqlDateTimeInputFormat.input_precision());
+                                              DateTime::CqlInputFormat.input_precision);
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
       return;
     }
@@ -593,7 +597,8 @@ Status QLValue::Deserialize(
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
       value = DateTime::AdjustPrecision(value,
-          DateTime::CqlDateTimeInputFormat.input_precision(), DateTime::kInternalPrecision);
+                                        DateTime::CqlInputFormat.input_precision,
+                                        DateTime::kInternalPrecision);
       set_timestamp_value(value);
       return Status::OK();
     }
