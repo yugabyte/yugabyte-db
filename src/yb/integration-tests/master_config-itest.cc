@@ -351,7 +351,7 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   // Now the new master should start the election process.
   ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "false"));
 
-  // Leader stepdowm ight not succeed as PRE_VOTER could still be uncommitted. Let it go through
+  // Leader stepdown might not succeed as PRE_VOTER could still be uncommitted. Let it go through
   // as new master should get the other votes anyway once it starts the election.
   if (!s.IsIllegalState()) {
     ASSERT_OK_PREPEND(s,  "Leader step down failed.");
@@ -447,6 +447,8 @@ TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
 TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
   SetCurLogIndex();
   ExternalMaster* old_leader = cluster_->GetLeaderMaster();
+  // Give the other peers few iterations to converge.
+  ASSERT_OK(cluster_->SetFlag(old_leader, "leader_failure_max_missed_heartbeat_periods", "24"));
   LOG(INFO) << "Current leader bound to " << old_leader->bound_rpc_hostport().ToString();
   TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
   ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(&dummy_err),
@@ -466,8 +468,8 @@ TEST_F(MasterChangeConfigTest, TestMulitpleLeaderRestarts) {
   // Revive the first leader.
   ASSERT_OK(first_leader->Restart());
   ExternalMaster* check_leader = cluster_->GetLeaderMaster();
-  // Leader should remain the same second one.
-  ASSERT_EQ(second_leader->bound_rpc_addr().port(), check_leader->bound_rpc_addr().port());
+  // Leader should not be first leader.
+  ASSERT_NE(check_leader->bound_rpc_addr().port(), first_leader->bound_rpc_addr().port());
   second_leader->Shutdown();
   check_leader = cluster_->GetLeaderMaster();
   // Leader should not be second one, it can be any one of the other masters.
