@@ -148,7 +148,7 @@ class PgInboundCall : public rpc::QueueableInboundCall {
   void SkipExecution(bool succeeded);
 
   // Sending response.
-  void Serialize(std::deque<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
 
   // Connection properties.
   const std::string& service_name() const override;

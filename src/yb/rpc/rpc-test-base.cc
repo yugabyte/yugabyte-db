@@ -53,7 +53,7 @@ using yb::rpc_test_diff_package::RespDiffPackagePB;
 
 namespace {
 
-constexpr size_t kQueueLength = 50;
+constexpr size_t kQueueLength = 1000;
 
 Slice GetSidecarPointer(const RpcController& controller, int idx, int expected_size) {
   Slice sidecar;

@@ -75,6 +75,12 @@ class TcpStream : public Stream {
 
   const std::string& LogPrefix() const;
 
+  int FillIov(iovec* out);
+
+  void DelayConnectHandler(ev::timer& watcher, int revents); // NOLINT
+
+  CHECKED_STATUS DoStart(ev::loop_ref* loop, bool connect);
+
   // The socket we're communicating on.
   Socket socket_;
 
@@ -91,6 +97,8 @@ class TcpStream : public Stream {
   // Notifies us when our socket is readable or writable.
   ev::io io_;
 
+  ev::timer connect_delayer_;
+
   // Set to true when the connection is registered on a loop.
   // This is used for a sanity check in the destructor that we are properly
   // un-registered before shutting down.
@@ -102,9 +110,25 @@ class TcpStream : public Stream {
   GrowableBuffer read_buffer_;
   bool read_buffer_full_ = false;
 
-  // sending_* contain bytes and calls we are currently sending to socket
-  std::deque<RefCntBuffer> sending_;
-  std::deque<OutboundDataPtr> sending_outbound_datas_;
+  typedef boost::container::small_vector<RefCntBuffer, 4> SendingBytes;
+
+  struct SendingData {
+    explicit SendingData(OutboundDataPtr data_);
+
+    size_t bytes_size() const {
+      size_t result = 0;
+      for (const auto& entry : bytes) {
+        result += entry.size();
+      }
+      return result;
+    }
+
+    OutboundDataPtr data;
+    SendingBytes bytes;
+    bool skipped = false;
+  };
+
+  std::deque<SendingData> sending_;
   size_t send_position_ = 0;
   bool waiting_write_ready_ = false;
 };
