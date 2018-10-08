@@ -68,7 +68,7 @@ class SecureOutboundData : public OutboundData {
     return false;
   }
 
-  void Serialize(std::deque<RefCntBuffer> *output) const override {
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override {
     output->push_back(buffer_);
   }
 
@@ -341,7 +341,7 @@ void SecureStream::Send(OutboundDataPtr data) {
     break;
   case SecureState::kEnabled: {
       {
-        std::deque<RefCntBuffer> queue;
+        boost::container::small_vector<RefCntBuffer, 10> queue;
         data->Serialize(&queue);
         for (const auto& buf : queue) {
           auto len = SSL_write(ssl_.get(), buf.data(), buf.size());
