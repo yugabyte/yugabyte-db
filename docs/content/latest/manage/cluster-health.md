@@ -1,7 +1,7 @@
 ---
-title: Health checking and alerts
-linkTitle: Health checking and alerts
-description: Health checking and alerts
+title: Health Checking and Alerts
+linkTitle: Health Checking and Alerts
+description: Health Checking and Alerts
 aliases:
   - /manage/cluster-health/
 menu:

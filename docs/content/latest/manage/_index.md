@@ -16,12 +16,23 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="articles">2 articles</div>
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Backup and Restore</div>
       </div>
       <div class="body">
-        Backup and restore data in YugaByte DB.
+        Backup & restore data in YugaByte DB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="bulk-import-export/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
+        <div class="title">Bulk Import and Export</div>
+      </div>
+      <div class="body">
+        Bulk data loading and unloading in the context of YugaByte DB.
       </div>
     </a>
   </div>
@@ -30,7 +41,7 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="articles">7 articles</div>
+        <div class="articles">8 articles</div>
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">
@@ -43,7 +54,7 @@ menu:
     <a class="section-link icon-offset" href="cluster-health/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Health checking and alerts</div>
+        <div class="title">Health Checks and Alerts</div>
       </div>
       <div class="body">
         Setup automatic cluster health checking and error reporting.

@@ -80,7 +80,6 @@ You would need:
 - One machine to install YugaWare on  
 
 - Minimum as many data nodes as the replication factor. So just one machine for replication factor 1, and 3 machines in case of rf=3  
-
 - A machine to run the load tests on  
 
 Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugaByte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a timeseries/IoT style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!

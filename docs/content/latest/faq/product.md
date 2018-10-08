@@ -21,7 +21,7 @@ YugaByte DB is a good fit for cloud native applications that need to serve missi
 
 3. Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real time monitoring.
 
-A few such use cases are detailed [here](https://www.yugabyte.com/solutions/).
+A few such use cases are detailed [here](https://www.yugabyte.com/).
 
 ## When is YugaByte DB not a good fit?
 
@@ -53,7 +53,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. We have started testing YugaByte DB with Jepsen and will post the results on the [YugaByte Forum](https://forum.yugabyte.com/t/validating-yugabyte-db-with-jepsen/73) as they become available.
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. We have developed our own Jepsen test suite that cover failure scenarios involving single faults, random partition, majority ring partition and clock skew. We are pleased to report that YugaByte DB 1.1 passes these Jepsen tests. For a detailed report on these test results and our future plans, please review the [Jepsen Testing on YugaByte DB](https://blog.yugabyte.com/jepsen-testing-on-yugabyte-db-database/) blog post.
 
 ## Is the Community Edition open source?
 
@@ -65,7 +65,7 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 [Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
-A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/product/compare/).
+A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/community-edition/#compare-editions).
 
 ## How does YugaByte DB compare to other SQL and NoSQL databases?
 

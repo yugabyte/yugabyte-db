@@ -1,33 +1,4 @@
----
-title: Backing Up Data
-linkTitle: Backing Up Data
-description: Backing Up Data
-image: /images/section_icons/manage/enterprise.png
-headcontent: Backing up data in YugaByte DB.
-aliases:
-  - /manage/backup-restore/backing-up-data
-menu:
-  latest:
-    identifier: manage-backup-restore-backing-up-data
-    parent: manage-backup-restore
-    weight: 703
----
-
-## Overview
-
-This page covers backups for YugaByte DB CE. Here are some points to keep in mind.
-
-- Export-based backups (YugaByte DB CE)
-  - Single row ACID backups
-  - Backup the schema and data separately
-  - Multi-threaded parallelism
-
-- Distributed backups (YugaByte DB EE)
-  - Single tablet ACID backups
-  - Integrated backup solution, integrated with object stores such as AWS S3
-  - Massively parallel, efficient for very large data sets
-
-Dump the keyspace schema (optional) as well as the data in the tables to create a backup of the data in YugaByte DB. Here are some points to bear in mind.
+This page documents backups for YugaByte DB’s [Cassandra compatible YCQL API](../../../api/cassandra).
 
 ## Schema backup
 
