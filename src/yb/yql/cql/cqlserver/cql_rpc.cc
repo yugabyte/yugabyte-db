@@ -144,7 +144,7 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
+void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 

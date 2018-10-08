@@ -125,6 +125,9 @@ inline bool operator!=(MonoDelta lhs, MonoDelta rhs) { return !(rhs == lhs); }
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other);
 
+inline MonoDelta operator-(MonoDelta lhs, MonoDelta rhs) { return lhs -= rhs; }
+inline MonoDelta operator+(MonoDelta lhs, MonoDelta rhs) { return lhs += rhs; }
+
 inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
   return out << delta.ToString();
 }

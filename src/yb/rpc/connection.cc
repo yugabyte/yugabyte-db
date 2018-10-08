@@ -187,9 +187,6 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
         i->second.reset();
-      } else {
-        LOG(ERROR) << "Timeout of non awaiting call: " << call->call_id();
-        DCHECK(i != awaiting_response_.end());
       }
     }
   }
@@ -204,6 +201,17 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK_EQ(direction_, Direction::CLIENT);
 
   DoQueueOutboundData(call, true);
+
+  // Set up the timeout timer.
+  const MonoDelta& timeout = call->controller()->timeout();
+  if (timeout.Initialized()) {
+    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
+    expiration_queue_.emplace(expires_at, call);
+    if (reschedule) {
+      StartTimer(timeout.ToSteadyDuration(), &timer_);
+    }
+  }
 
   call->SetQueued();
 }
@@ -276,17 +284,6 @@ void Connection::CallSent(OutboundCallPtr call) {
   DCHECK(reactor_->IsCurrentThread());
 
   awaiting_response_.emplace(call->call_id(), call);
-
-  // Set up the timeout timer.
-  const MonoDelta& timeout = call->controller()->timeout();
-  if (timeout.Initialized()) {
-    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
-    expiration_queue_.emplace(expires_at, call);
-    if (reschedule) {
-      StartTimer(timeout.ToSteadyDuration(), &timer_);
-    }
-  }
 }
 
 std::string Connection::ToString() const {

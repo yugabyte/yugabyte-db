@@ -295,7 +295,7 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
+void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   output->push_back(SerializeResponses(responses_));
 }
 

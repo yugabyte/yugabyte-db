@@ -213,7 +213,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(std::deque<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -237,7 +237,7 @@ class OutboundCall : public RpcCall {
   bool IsTimedOut() const;
 
   // Is the call finished?
-  bool IsFinished() const;
+  bool IsFinished() const override;
 
   // Fill in the call response.
   void SetResponse(CallResponse&& resp);
