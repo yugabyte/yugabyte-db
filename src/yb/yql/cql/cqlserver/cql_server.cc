@@ -21,9 +21,9 @@
 #include "yb/rpc/messenger.h"
 
 using yb::rpc::ServiceIf;
-using namespace yb::size_literals;
+using namespace yb::size_literals;  // NOLINT.
 
-DEFINE_int32(cql_service_queue_length, 1000,
+DEFINE_int32(cql_service_queue_length, 5000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
