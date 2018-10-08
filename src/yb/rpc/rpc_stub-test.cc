@@ -55,6 +55,7 @@
 DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);
 DECLARE_int32(rpc_slow_query_threshold_ms);
+DECLARE_int32(TEST_delay_connect_ms);
 
 using namespace std::chrono_literals;
 
@@ -132,6 +133,73 @@ class RpcStubTest : public RpcTestBase {
 
 TEST_F(RpcStubTest, TestSimpleCall) {
   SendSimpleCall();
+}
+
+TEST_F(RpcStubTest, ConnectTimeout) {
+  FLAGS_TEST_delay_connect_ms = 5000;
+  CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
+  const MonoDelta kWaitTime = 1s;
+  const MonoDelta kAllowedError = 100ms;
+
+  RpcController controller;
+  controller.set_timeout(kWaitTime);
+  AddRequestPB req;
+  req.set_x(10);
+  req.set_y(20);
+  AddResponsePB resp;
+  auto start = MonoTime::Now();
+  auto status = p.Add(req, &resp, &controller);
+  auto passed = MonoTime::Now() - start;
+  ASSERT_TRUE(status.IsTimedOut()) << "Status: " << status;
+  ASSERT_GE(passed, kWaitTime - kAllowedError);
+  ASSERT_LE(passed, kWaitTime + kAllowedError);
+
+  SendSimpleCall();
+}
+
+TEST_F(RpcStubTest, RandomTimeout) {
+  const size_t kTotalCalls = 1000;
+  const MonoDelta kMaxTimeout = 2s;
+
+  FLAGS_TEST_delay_connect_ms = kMaxTimeout.ToMilliseconds() / 2;
+  CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
+
+  struct CallData {
+    RpcController controller;
+    AddRequestPB req;
+    AddResponsePB resp;
+  };
+  std::vector<CallData> calls(kTotalCalls);
+  CountDownLatch latch(kTotalCalls);
+
+  for (auto& call : calls) {
+    auto timeout = MonoDelta::FromMilliseconds(
+        RandomUniformInt<int>(0, kMaxTimeout.ToMilliseconds()));
+    call.controller.set_timeout(timeout);
+    call.req.set_x(RandomUniformInt(-1000, 1000));
+    call.req.set_y(RandomUniformInt(-1000, 1000));
+    p.AddAsync(call.req, &call.resp, &call.controller, [&latch] {
+      latch.CountDown();
+    });
+  }
+
+  ASSERT_TRUE(latch.WaitFor(kMaxTimeout));
+
+  size_t timed_out = 0;
+  for (auto& call : calls) {
+    if (call.controller.status().IsTimedOut()) {
+      ++timed_out;
+    } else {
+      ASSERT_OK(call.controller.status());
+      ASSERT_EQ(call.req.x() + call.req.y(), call.resp.result());
+    }
+  }
+
+  LOG(INFO) << "Timed out calls: " << timed_out;
+
+  // About half of calls should expire, so we do a bit more relaxed checks.
+  ASSERT_GT(timed_out, kTotalCalls / 4);
+  ASSERT_LT(timed_out, kTotalCalls * 3 / 4);
 }
 
 // Regression test for a bug in which we would not properly parse a call

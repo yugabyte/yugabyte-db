@@ -219,7 +219,7 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   }
 }
 
-void OutboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
+void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   output->push_back(buffer_);
 }
 

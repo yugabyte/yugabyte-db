@@ -37,7 +37,7 @@ Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) 
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(std::deque<RefCntBuffer> *output) const {
+void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   LOG(FATAL) << "Local call should not require serialization";
 }
 
