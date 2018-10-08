@@ -41,7 +41,7 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="articles">8 articles</div>
+        <div class="articles">9 articles</div>
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">

@@ -75,6 +75,18 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
       </div>
     </a>
   </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="backup-restore/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Backup Restore</div>
+      </div>
+      <div class="body">
+        Backup and Restore tables using the YugaByte Admin Console.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-universe/">
