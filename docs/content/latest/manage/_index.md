@@ -26,13 +26,13 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="bulk-import-export/">
+    <a class="section-link icon-offset" href="data-migration/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Bulk Import and Export</div>
+        <div class="title">Data Migration</div>
       </div>
       <div class="body">
-        Bulk data loading and unloading in the context of YugaByte DB.
+        Bulk data import and export in the context of YugaByte DB.
       </div>
     </a>
   </div>

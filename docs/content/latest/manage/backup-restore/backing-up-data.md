@@ -21,7 +21,7 @@ This page covers backups for YugaByte DB CE. Here are some points to keep in min
   - Multi-threaded parallelism
 
 - Distributed backups (YugaByte DB EE)
-  - Single tablet ACID backups
+  - Single table ACID backups
   - Integrated backup solution, integrated with object stores such as AWS S3
   - Massively parallel, efficient for very large data sets
 

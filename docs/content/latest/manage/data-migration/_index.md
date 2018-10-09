@@ -1,7 +1,7 @@
 ---
-title: Bulk Import & Export
-linkTitle: Bulk Import & Export
-description: Bulk Import & Export
+title: Data Migration
+linkTitle: Data Migration
+description: Data Migration
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import/export data to/from YugaByte DB.
 menu:
