@@ -3085,8 +3085,9 @@ CHECKED_STATUS PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
 CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
-  if (RequireReadSnapshot()) {
-    RETURN_NOT_OK(ReadColumns(data, table_row));
+  RETURN_NOT_OK(ReadColumns(data, table_row));
+  if (!table_row->IsEmpty()) {
+    return STATUS(QLError, "Primary key already exists");
   }
 
   const MonoDelta ttl = Value::kMaxTtl;

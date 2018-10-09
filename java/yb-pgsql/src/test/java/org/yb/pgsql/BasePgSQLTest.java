@@ -18,12 +18,6 @@ import org.junit.Before;
 
 import java.io.File;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
@@ -32,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +42,10 @@ import static org.yb.client.TestUtils.findFreePort;
 import static org.yb.client.TestUtils.getBaseTmpDir;
 import static org.yb.client.TestUtils.getBinDir;
 import static org.yb.client.TestUtils.pidStrOfProcess;
+
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -99,6 +98,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected int overridableNumShardsPerTServer() {
     return 1;
   }
+
+  protected void overridableCustomizePostgresEnvVars(Map<String, String> envVars) { }
 
   //------------------------------------------------------------------------------------------------
   // Postgres process integration.
@@ -204,8 +205,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     postgresEnvVars.put("FLAGS_yb_num_shards_per_tserver",
         String.valueOf(overridableNumShardsPerTServer()));
-    // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
-    postgresEnvVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
 
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
@@ -223,6 +222,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
     postgresEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+
+    // Allow test subclasses to add/remove env vars to test specific features.
+    overridableCustomizePostgresEnvVars(postgresEnvVars);
 
     {
       List<String> postgresEnvVarsDump = new ArrayList<>();
@@ -551,10 +553,52 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       sb.append("Row[");
       for (int i = 0; i < elems.size(); i++) {
         if (i > 0) sb.append(',');
-        sb.append(elems.get(i).toString());
+        if (elems.get(i) == null) {
+          sb.append("null");
+        } else {
+          sb.append(elems.get(i).toString());
+        }
       }
       sb.append(']');
       return sb.toString();
+    }
+  }
+
+  protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
+    Set<Row> rows = new HashSet<>();
+    while (rs.next()) {
+      Object[] elems = new Object[rs.getMetaData().getColumnCount()];
+      for (int i = 0; i < elems.length; i++) {
+        elems[i] = rs.getObject(i + 1); // Column index starts from 1.
+      }
+      rows.add(new Row(elems));
+    }
+    return rows;
+  }
+
+  protected void assertNextRow(ResultSet rs, Object... values) throws SQLException {
+    assertTrue(rs.next());
+    for (int i = 0; i < values.length; i++) {
+      assertEquals(values[i], rs.getObject(i + 1)); // Column index starts from 1.
+    }
+  }
+
+  protected void assertOneRow(String stmt, Object... values)throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery(stmt)) {
+        assertNextRow(rs, values);
+        assertFalse(rs.next());
+      }
+    }
+  }
+
+  protected void createSimpleTable(String tableName) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      String sql =
+          "CREATE TABLE " + tableName + "(h bigint, r float, vi int, vs text, PRIMARY KEY (h, r))";
+      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+      statement.execute(sql);
+      LOG.info("Table creation finished: " + tableName);
     }
   }
 

@@ -138,15 +138,17 @@ class SetAndRestoreEnv:
 
 
 class PostgresControl:
-    def __init__(self, bin_dir, data_dir, port, master_addresses):
+    def __init__(self, bin_dir, data_dir, port, master_addresses, num_shards_per_tserver):
         self.data_dir = data_dir
         self.port = port
         self.bin_dir = bin_dir
         self.master_addresses = master_addresses
+        self.num_shards_per_tserver = num_shards_per_tserver
         self.pg_env = {
             'PGDATA': self.data_dir,
             'YB_ENABLED_IN_POSTGRES': '1',
-            'FLAGS_pggate_master_addresses': self.master_addresses
+            'FLAGS_pggate_master_addresses': self.master_addresses,
+            'FLAGS_yb_num_shards_per_tserver': str(self.num_shards_per_tserver)
         }
 
     def init_if_necessary(self):
@@ -598,7 +600,8 @@ class ClusterControl:
                 data_dir=os.path.join(self.options.get_base_node_dirs(daemon_index=1)[0],
                                       'yb-data', 'postgres'),
                 port=YB_POSTGRES_PORT,
-                master_addresses=self.options.master_addresses
+                master_addresses=self.options.master_addresses,
+                num_shards_per_tserver=self.options.num_shards_per_tserver
             )
         return self.pg_control
 

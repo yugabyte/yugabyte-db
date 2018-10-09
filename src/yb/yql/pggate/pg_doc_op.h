@@ -90,7 +90,6 @@ class PgDocOp {
   bool is_canceled_ = false;
 
   // Caching state variables.
-  simple_spinlock cache_lock_;
   std::list<string> result_cache_;
 };
 

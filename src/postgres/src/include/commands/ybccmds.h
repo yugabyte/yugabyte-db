@@ -30,6 +30,8 @@
 #include "storage/lock.h"
 #include "utils/relcache.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid);
@@ -46,4 +48,10 @@ extern void YBCDropTable(Oid relationId, const char *relname, const char *schema
 
 extern void YBCAlterTable(Oid relationId);
 
+/* Utility function to add columns to the YB create statement */
+extern void CreateTableAddColumns(YBCPgStatement yb_create_stmt,
+                                  CreateStmt *stmt,
+                                  Constraint *primary_key,
+                                  bool include_hash,
+                                  bool include_primary);
 #endif

@@ -76,11 +76,6 @@ YBTransactionsEnabled() {
 	return IsYugaByteEnabled() && ybc_transactions_enabled;
 }
 
-bool
-YBIsWritingToPgEnabled() {
-	return !YBTransactionsEnabled();
-}
-
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -103,6 +98,32 @@ HandleYBStatus(YBCStatus status)
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("%s", msg_buf)));
+}
+
+void
+HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt)
+{
+	if (!status)
+		return;
+
+	if (ybc_stmt)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	}
+	HandleYBStatus(status);
+}
+
+void
+HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
+{
+	if (!status)
+		return;
+
+	if (table)
+	{
+		HandleYBStatus(YBCPgDeleteTableDesc(table));
+	}
+	HandleYBStatus(status);
 }
 
 void
