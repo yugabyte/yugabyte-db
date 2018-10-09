@@ -160,6 +160,28 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
   }
 }
 
+Status SetDocOpQLErrorResponse(DocOperation* doc_op, std::string err_msg) {
+  switch (doc_op->OpType()) {
+    case DocOperation::Type::QL_WRITE_OPERATION: {
+      const auto &resp = down_cast<QLWriteOperation *>(doc_op)->response();
+      resp->set_status(QLResponsePB::YQL_STATUS_SQL_ERROR);
+      resp->set_error_message(err_msg);
+      break;
+    }
+    case DocOperation::Type::PGSQL_WRITE_OPERATION: {
+      const auto &resp = down_cast<PgsqlWriteOperation *>(doc_op)->response();
+      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_USAGE_ERROR);
+      resp->set_error_message(err_msg);
+      break;
+    }
+    default:
+      return STATUS_FORMAT(InternalError,
+                           "Invalid status (QLError) for doc operation %d",
+                           doc_op->OpType());
+  }
+  return Status::OK();
+}
+
 Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 MonoTime deadline,
                                 const ReadHybridTime& read_time,
@@ -173,11 +195,9 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
-    if (doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION && s.IsQLError()) {
+    if (s.IsQLError()) {
       // Ensure we set appropriate error in the response object for QL errors.
-      const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
-      resp->set_status(QLResponsePB::YQL_STATUS_SQL_ERROR);
-      resp->set_error_message(s.message().ToBuffer());
+      SetDocOpQLErrorResponse(doc_op.get(), s.message().ToBuffer());
       continue;
     }
     RETURN_NOT_OK(s);

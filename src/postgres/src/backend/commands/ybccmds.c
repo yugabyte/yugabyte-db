@@ -94,8 +94,7 @@ void
 YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 {
 	YBCPgStatement handle = NULL;
-	ListCell   *listptr;
-	int			attnum;
+	ListCell       *listptr;
 
 	/*
 	 * TODO The attnum from pg_attribute has not been created yet, we are
@@ -105,6 +104,21 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	/* ------------------------------------------------------------------- */
 	/* Error checking */
 
+	switch (relkind)
+	{
+		case RELKIND_RELATION:
+			/* Continue below. */
+			break;
+		case RELKIND_VIEW:
+			/* Nothing to do in YB. */
+			return;
+		default:
+			ereport(ERROR,
+			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+					        "Relation kind '%c' not yet supported",
+					        relkind)));
+	}
+
 	if (stmt->partspec != NULL)
 	{
 		/*
@@ -112,15 +126,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 		 * just use this as a hash key internally.
 		 */
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'PARTITION BY' clause is not yet supported")));
-	}
-
-	if (relkind != RELKIND_RELATION)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Relation kind '%c' not yet supported", relkind)));
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "'PARTITION BY' clause is not yet supported")));
 	}
 
 	if (stmt->ofTypename != NULL)
@@ -130,8 +137,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 		 * type.
 		 */
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'OF <type>' clause is not yet supported")));
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "'OF <type>' clause is not yet supported")));
 	}
 
 	if (stmt->inhRelations != NIL)
@@ -142,8 +149,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 		 * the common columns.
 		 */
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'INHERITS' clause is not yet supported")));
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "'INHERITS' clause is not yet supported")));
 	}
 
 	if (stmt->partbound != NULL)
@@ -153,15 +160,15 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 		 * something we want at all.
 		 */
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'PARTITION OF' clause is not supported yet.")));
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "'PARTITION OF' clause is not supported yet.")));
 	}
 
 	if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
 	{
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("'TEMP' tables are not supported yet.")));
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "'TEMP' tables are not supported yet.")));
 	}
 
 	/*
@@ -169,9 +176,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	 * config).
 	 */
 	if (stmt->oncommit != ONCOMMIT_NOOP &&
-		stmt->oncommit != ONCOMMIT_PRESERVE_ROWS)
+	    stmt->oncommit != ONCOMMIT_PRESERVE_ROWS)
 	{
-		YBCLogWarning("Given 'ON COMMIT' option is not supported, will be ignored.");
+		YBCLogWarning(
+				"Given 'ON COMMIT' option is not supported, will be ignored.");
 	}
 
 	if (stmt->tablespacename != NULL)
@@ -185,93 +193,124 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 		 * With OID we could probably support but it's not recommended for
 		 * non-system tables anyway.
 		 */
-		YBCLogWarning("'WITH' clause options are not supported yet, they will be ignored");
+		YBCLogWarning(
+				"'WITH' clause options are not supported yet, will be ignored");
 	}
 
-	char	   *db_name = get_database_name(MyDatabaseId);
+	char *db_name = get_database_name(MyDatabaseId);
 
-	YBCLogInfo("Creating Table %s, %s, %s", db_name, stmt->relation->schemaname,
-			   stmt->relation->relname);
+	YBCLogInfo("Creating Table %s, %s, %s",
+	           db_name,
+	           stmt->relation->schemaname,
+	           stmt->relation->relname);
 
-	PG_TRY();
+	Constraint *primary_key = NULL;
+
+	foreach(listptr, stmt->constraints)
 	{
-		HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
-											 db_name,
-											 stmt->relation->schemaname,
-											 stmt->relation->relname,
-											 false, /* if_not_exists */
-											 &handle));
+		Constraint *constraint = lfirst(listptr);
 
-		Constraint *primary_key;
-
-		foreach(listptr, stmt->constraints)
+		if (constraint->contype == CONSTR_PRIMARY)
 		{
-			Constraint *constraint = lfirst(listptr);
-
-			if (constraint->contype == CONSTR_PRIMARY)
-			{
-				primary_key = constraint;
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Only PRIMARY KEY constraints are currently supported.")));
-			}
+			primary_key = constraint;
 		}
-
-		if (primary_key == NULL)
+		else
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Tables without a PRIMARY KEY are not yet supported.")));
+			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+					        "Only PRIMARY KEY constraints are currently supported.")));
 		}
-
-		/* Process the table columns. */
-		attnum = 1;
-		foreach(listptr, stmt->tableElts)
-		{
-			bool		is_primary = false;
-			bool		is_first = true;
-			ColumnDef  *colDef = lfirst(listptr);
-			YBCPgDataType col_type = YBCDataTypeFromName(colDef->typeName);
-
-			ListCell   *cell;
-
-			foreach(cell, primary_key->keys)
-			{
-				char	   *attname = strVal(lfirst(cell));
-
-				if (strcmp(colDef->colname, attname) == 0)
-				{
-					is_primary = true;
-					break;
-				}
-				if (is_first)
-				{
-					is_first = false;
-				}
-			}
-
-			/* TODO For now, assume the first primary key column is the hash. */
-			HandleYBStatus(YBCPgCreateTableAddColumn(handle,
-													 colDef->colname,
-													 attnum++,
-													 col_type,
-													 is_primary && is_first,	/* is_hash */
-													 is_primary /* is_range */ ));
-		}
-
-		/* Create the table. */
-		HandleYBStatus(YBCPgExecCreateTable(handle));
 	}
-	PG_CATCH();
+
+	if (primary_key == NULL)
 	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "Tables without a PRIMARY KEY are not yet supported.")));
 	}
-	PG_END_TRY();
+
+	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
+	                                   db_name,
+	                                   stmt->relation->schemaname,
+	                                   stmt->relation->relname,
+	                                   false, /* if_not_exists */
+	                                   &handle));
+
+	/*
+	 * Process the table columns. They need to be sent in order, first hash
+	 * columns, then rest of primary key columns, then regular columns
+	 */
+
+	CreateTableAddColumns(handle,
+	                      stmt,
+	                      primary_key,
+	                      true /* is_hash */,
+	                      true /* is_primary */);
+
+	CreateTableAddColumns(handle,
+	                      stmt,
+	                      primary_key,
+	                      false /* is_hash */,
+	                      true /* is_primary */);
+
+	CreateTableAddColumns(handle,
+	                      stmt,
+	                      primary_key,
+	                      false /* is_hash */,
+	                      false /* is_primary */);
+
+	/* Create the table. */
+	HandleYBStmtStatus(YBCPgExecCreateTable(handle), handle);
+
 	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void CreateTableAddColumns(YBCPgStatement handle,
+                           CreateStmt *stmt,
+                           Constraint *primary_key,
+                           bool include_hash,
+                           bool include_primary)
+{
+	ListCell *lc;
+	int      attnum = 1;
+	foreach(lc, stmt->tableElts)
+	{
+		bool          is_primary = false;
+		bool          is_first   = true;
+		ColumnDef     *colDef    = lfirst(lc);
+		YBCPgDataType col_type   = YBCDataTypeFromName(colDef->typeName);
+
+		ListCell *cell;
+
+		foreach(cell, primary_key->keys)
+		{
+			char *attname = strVal(lfirst(cell));
+
+			if (strcmp(colDef->colname, attname) == 0)
+			{
+				is_primary = true;
+				break;
+			}
+			if (is_first)
+			{
+				is_first = false;
+			}
+		}
+
+		/* TODO For now, assume the first primary key column is the hash. */
+		bool is_hash = is_primary && is_first;
+		if (include_hash == is_hash && include_primary == is_primary)
+		{
+
+			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
+			                                             colDef->colname,
+			                                             attnum,
+			                                             col_type,
+			                                             is_hash,
+			                                             is_primary), handle);
+		}
+		attnum++;
+	}
 }
 
 void
@@ -281,26 +320,15 @@ YBCDropTable(Oid relationId,
 {
 	YBCPgStatement handle;
 
-	PG_TRY();
-	{
-		char	   *db_name = get_database_name(MyDatabaseId);
+	char *db_name = get_database_name(MyDatabaseId);
 
-		HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-										   db_name,
-										   schemaname,
-										   relname,
-										   false,	/* if_exists */
-										   &handle));
-		HandleYBStatus(YBCPgExecDropTable(handle));
-	}
-	PG_CATCH();
-	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	/* TODO Maybe rethink this to avoid the boilerplate of having to */
-	/* write the cleanup code twice (in catch and here). */
+	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
+	                                 db_name,
+	                                 schemaname,
+	                                 relname,
+	                                 false,    /* if_exists */
+	                                 &handle));
+	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 

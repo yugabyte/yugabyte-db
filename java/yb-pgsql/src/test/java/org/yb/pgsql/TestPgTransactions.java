@@ -1,6 +1,7 @@
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
@@ -11,6 +12,8 @@ import org.yb.client.TestUtils;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -23,6 +26,11 @@ import org.junit.runner.RunWith;
 @RunWith(value=YBTestRunner.class)
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
+
+  protected void overridableCustomizePostgresEnvVars(Map<String, String> envVars) {
+    // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
+    envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
+  }
 
   @Test
   public void testBasicTransaction() throws Exception {

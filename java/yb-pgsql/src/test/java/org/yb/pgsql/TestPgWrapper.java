@@ -61,12 +61,17 @@ public class TestPgWrapper extends BasePgSQLTest {
 
     createSimpleTable("test", "v");
 
+    // Test table with out of order primary key columns.
+    statement.execute("CREATE TABLE test2(v text, r float, h bigint, PRIMARY KEY (h, r))");
+
     // Table already exists.
     runInvalidQuery(statement, getSimpleTableCreationStatement("test", "v"));
 
+    // Test drop table.
     statement.execute("DROP TABLE test");
+    statement.execute("DROP TABLE test2");
 
-    // Database does not exist.
+    // Table does not exist.
     runInvalidQuery(statement, "DROP TABLE test");
 
     statement.close();

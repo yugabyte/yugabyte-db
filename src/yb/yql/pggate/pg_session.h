@@ -75,6 +75,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
   void FlushAsync(StatusFunctor callback);
 
+  // Return the number of errors which are pending.
+  int CountPendingErrors() const;
+
+  // Return the pending errors.
+  std::vector<std::unique_ptr<client::YBError>> GetPendingErrors();
+
+
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.

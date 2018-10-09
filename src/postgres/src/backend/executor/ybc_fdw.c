@@ -209,11 +209,11 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	Oid					relid;
 	Relation			rel = NULL;
 	ListCell 			*cell = NULL;
-	YbFdwPlanState		*ybc_rel_info = NULL;
+	YbFdwPlanState		*ybc_plan = NULL;
 	const char			*table_name = NULL;
 	const char			*db_name = get_database_name(MyDatabaseId);
 
-	ybc_rel_info = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
+	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/*
 	 * Get table info (from both Postgres and YugaByte).
@@ -223,40 +223,28 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	rel = RelationIdGetRelation(relid);
 	table_name = rel->rd_rel->relname.data;
 	YBCPgTableDesc ybc_table_desc = NULL;
-	PG_TRY();
-	{
-		HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-		                                 db_name,
-		                                 table_name,
-		                                 &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
+	                                 db_name,
+	                                 table_name,
+	                                 &ybc_table_desc));
 
-		for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++) {
-			bool is_primary = false;
-			bool is_hash = false;
-			HandleYBStatus(YBCPgGetColumnInfo(ybc_table_desc,
-                                        attrNum,
-			                                  &is_primary,
-			                                  &is_hash));
-			if (is_hash) {
-				ybc_rel_info->hash_key = bms_add_member(ybc_rel_info->hash_key,
-				                                        attrNum);
-			}
-		}
-		HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
-		RelationClose(rel);
-	}
-	PG_CATCH();
+	for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++)
 	{
-		if (ybc_table_desc != NULL) {
-			HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
-			ybc_table_desc = NULL;
+		bool is_primary = false;
+		bool is_hash    = false;
+		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
+		                                           attrNum,
+		                                           &is_primary,
+		                                           &is_hash), ybc_table_desc);
+		if (is_hash)
+		{
+			ybc_plan->hash_key = bms_add_member(ybc_plan->hash_key, attrNum);
 		}
-		if (rel != NULL) {
-			RelationClose(rel);
-		}
-		PG_RE_THROW();
 	}
-	PG_END_TRY();
+	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
+	ybc_table_desc = NULL;
+	RelationClose(rel);
+	rel = NULL;
 
 	/*
 	 * Split scan_clauses between those handled by YugaByte and the rest (which
@@ -266,34 +254,12 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	foreach(cell, baserel->baserestrictinfo)
 	{
 		RestrictInfo *ri = (RestrictInfo *) lfirst(cell);
-		ybcClassifyWhereExpr(baserel, ybc_rel_info, ri->clause);
-	}
-
-	/*
-	 * Get the target columns that need to be retrieved from YugaByte.
-	 * Specifically, any columns that are either:
-	 * 1. Referenced in the select targets (i.e. selected columns or exprs).
-	 * 2. Referenced in the WHERE clause exprs that Postgres must evaluate.
-	 */
-	foreach(cell, baserel->reltarget->exprs)
-	{
-		Expr *expr = (Expr *) lfirst(cell);
-		pull_varattnos((Node *) expr,
-		               baserel->relid,
-		               &ybc_rel_info->target_attrs);
-	}
-
-	foreach(cell, ybc_rel_info->pg_conds)
-	{
-		Expr *expr = (Expr *) lfirst(cell);
-		pull_varattnos((Node *) expr,
-		               baserel->relid,
-		               &ybc_rel_info->target_attrs);
+		ybcClassifyWhereExpr(baserel, ybc_plan, ri->clause);
 	}
 
 	/* Save the output-rows estimate for the planner */
 	baserel->rows = DEFAULT_YB_NUM_ROWS;
-	baserel->fdw_private = ybc_rel_info;
+	baserel->fdw_private = ybc_plan;
 }
 
 /*
@@ -378,22 +344,61 @@ ybcGetForeignPlan(PlannerInfo *root,
 		yb_plan_state->yb_conds = NIL;
 	}
 
-	/* Set scan targets. */
-	List *target_attrs = NULL;
-	for (AttrNumber i = baserel->min_attr; i <= baserel->max_attr; i++)
+	/*
+	 * Get the target columns that need to be retrieved from YugaByte.
+	 * Specifically, any columns that are either:
+	 * 1. Referenced in the select targets (i.e. selected columns or exprs).
+	 * 2. Referenced in the WHERE clause exprs that Postgres must evaluate.
+	 */
+	foreach(lc, baserel->reltarget->exprs)
 	{
-		if (bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
-		                  yb_plan_state->target_attrs))
+		Expr *expr = (Expr *) lfirst(lc);
+		pull_varattnos((Node *) expr,
+		               baserel->relid,
+		               &yb_plan_state->target_attrs);
+	}
+
+	foreach(lc, yb_plan_state->pg_conds)
+	{
+		Expr *expr = (Expr *) lfirst(lc);
+		pull_varattnos((Node *) expr,
+		               baserel->relid,
+		               &yb_plan_state->target_attrs);
+	}
+
+	/* Check there are no unsupported scan targets */
+	for (AttrNumber i = baserel->min_attr; i <= 0; i++)
+	{
+		int col = i - FirstLowInvalidHeapAttributeNumber;
+		if (bms_is_member(col, yb_plan_state->target_attrs))
 		{
 			/* We do not yet support system-defined columns in YugaByte */
-			if (i <= 0)
-			{
-				ereport(ERROR,
-				        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-						        "System column with id %d is not supported yet",
-						        i)));
-			}
+			ereport(ERROR,
+			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+					        "System column with id %d is not supported yet",
+					        i)));
+		}
+	}
 
+	/* Set scan targets. */
+	List *target_attrs = NULL;
+
+	/*
+	 * We can have no target columns for e.g. a count(*). For now we request
+	 * the hash key columns in this case.
+	 * TODO look into handling this on YugaByte side.
+	 */
+	bool no_targets = false;
+	if (bms_is_empty(yb_plan_state->target_attrs))
+	{
+		no_targets = true;
+	}
+	for (AttrNumber i = 1; i <= baserel->max_attr; i++)
+	{
+		int col = i - FirstLowInvalidHeapAttributeNumber;
+		if (bms_is_member(col, yb_plan_state->target_attrs) ||
+		    (no_targets && bms_is_member(i, yb_plan_state->hash_key)))
+		{
 			TargetEntry *target = makeNode(TargetEntry);
 			target->resno = i;
 			target_attrs = lappend(target_attrs, target);
@@ -432,71 +437,59 @@ static void
 ybcBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
-	Relation	relation = node->ss.ss_currentRelation;
-	char	   *dbname = get_database_name(MyDatabaseId);
-	char	   *schemaname = get_namespace_name(relation->rd_rel->relnamespace);
-	char	   *tablename = NameStr(relation->rd_rel->relname);
+	Relation    relation     = node->ss.ss_currentRelation;
+	char        *dbname      = get_database_name(MyDatabaseId);
+	char        *schemaname  = get_namespace_name(relation->rd_rel
+	                                                      ->relnamespace);
+	char        *tablename   = NameStr(relation->rd_rel->relname);
 
 	/* Planning function above should ensure both target and conds are set */
 	Assert(foreignScan->fdw_private->length == 2);
 	List *target_attrs = linitial(foreignScan->fdw_private);
-	List *yb_conds = lsecond(foreignScan->fdw_private);
+	List *yb_conds     = lsecond(foreignScan->fdw_private);
 
 	YbFdwExecState *ybc_state = NULL;
-	ListCell   *lc;
+	ListCell       *lc;
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
 
-	PG_TRY();
+	/* Allocate and initialize YB scan state. */
+	ybc_state = (YbFdwExecState *) palloc0(sizeof(YbFdwExecState));
+
+	node->fdw_state = (void *) ybc_state;
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
+	                              dbname,
+	                              schemaname,
+	                              tablename,
+	                              &ybc_state->handle));
+
+	/* Set WHERE clause values (currently only partition key). */
+	foreach(lc, yb_conds)
 	{
-		/* Allocate and initialize YB scan state. */
-		ybc_state = (YbFdwExecState *) palloc0(sizeof(YbFdwExecState));
-
-		node->fdw_state = (void *) ybc_state;
-		HandleYBStatus(YBCPgNewSelect(
-				ybc_pg_session,
-				dbname,
-				schemaname,
-				tablename,
-				&ybc_state->handle));
-
-		/* Set WHERE clause values (currently only partition key). */
-		foreach(lc, yb_conds)
-		{
-			Expr	   *expr = (Expr *) lfirst(lc);
-			ybcAddWhereCond(expr, ybc_state->handle);
-		}
-
-		/* Set scan targets. */
-		foreach(lc, target_attrs)
-		{
-			TargetEntry       *target = (TargetEntry *) lfirst(lc);
-			Form_pg_attribute attr;
-			attr = relation->rd_att->attrs[target->resno - 1];
-			/* Ignore dropped attributes */
-			if (attr->attisdropped)
-			{
-				continue;
-			}
-			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno);
-			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
-		}
-
-		/* Execute the select statement. */
-		HandleYBStatus(YBCPgExecSelect(ybc_state->handle));
-
+		Expr *expr = (Expr *) lfirst(lc);
+		ybcAddWhereCond(expr, ybc_state->handle);
 	}
-	PG_CATCH();
+
+	/* Set scan targets. */
+	foreach(lc, target_attrs)
 	{
-		if (ybc_state != NULL) {
-			HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-			ybc_state->handle = NULL;
+		TargetEntry       *target = (TargetEntry *) lfirst(lc);
+		Form_pg_attribute attr;
+		attr = relation->rd_att->attrs[target->resno - 1];
+		/* Ignore dropped attributes */
+		if (attr->attisdropped)
+		{
+			continue;
 		}
-		PG_RE_THROW();
+		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno);
+		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr),
+		                   ybc_state->handle);
 	}
-	PG_END_TRY();
+
+	/* Execute the select statement. */
+	HandleYBStmtStatus(YBCPgExecSelect(ybc_state->handle), ybc_state->handle);
 }
 
 /*
@@ -507,32 +500,23 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 static TupleTableSlot *
 ybcIterateForeignScan(ForeignScanState *node)
 {
-	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
+	TupleTableSlot *slot      = node->ss.ss_ScanTupleSlot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
-	bool has_data = false;
+	bool           has_data   = false;
 
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
-	PG_TRY();
-	{
-		// Fetch one row.
-		HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
-		                             (uint64_t *) slot->tts_values,
-		                             slot->tts_isnull,
-		                             &has_data));
+	// Fetch one row.
+	HandleYBStmtStatus(YBCPgDmlFetch(ybc_state->handle,
+	                                 (uint64_t *) slot->tts_values,
+	                                 slot->tts_isnull,
+	                                 &has_data), ybc_state->handle);
 
-		/* If we have result(s) update the tuple slot. */
-		if (has_data)
-		{
-			ExecStoreVirtualTuple(slot);
-		}
-	}
-	PG_CATCH();
+	/* If we have result(s) update the tuple slot. */
+	if (has_data)
 	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-		PG_RE_THROW();
+		ExecStoreVirtualTuple(slot);
 	}
-	PG_END_TRY();
 
 	return slot;
 }
@@ -547,8 +531,11 @@ ybcReScanForeignScan(ForeignScanState *node)
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 
 	/* Clear (delete) the previous select */
-	HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-	ybc_state->handle = NULL;
+	if (ybc_state->handle)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
+		ybc_state->handle = NULL;
+	}
 
 	/* Re-allocate and execute the select. */
 	ybcBeginForeignScan(node, 0 /* eflags */);
@@ -564,9 +551,10 @@ ybcEndForeignScan(ForeignScanState *node)
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 
 	/* If yb_state is NULL, we are in EXPLAIN; nothing to do */
-	if (ybc_state)
+	if (ybc_state && ybc_state->handle)
 	{
 		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
+		ybc_state->handle = NULL;
 	}
 }
 

@@ -374,6 +374,13 @@ ExecInsert(ModifyTableState *mtstate,
 
 		newId = InvalidOid;
 	}
+	else if (IsYugaByteEnabled() &&
+	         IsYBSupportedTable(RelationGetRelid(resultRelationDesc)))
+	{
+		newId = YBCExecuteInsert(resultRelationDesc,
+		                         slot->tts_tupleDescriptor,
+		                         tuple);
+	}
 	else
 	{
 		/*
@@ -415,8 +422,7 @@ ExecInsert(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr || check_partition_constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0 &&
-		    YBIsWritingToPgEnabled())
+		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
 		{
 			/* Perform a speculative insertion. */
 			uint32		specToken;
@@ -523,7 +529,7 @@ ExecInsert(ModifyTableState *mtstate,
 
 			/* Since there was no insertion conflict, we're done */
 		}
-		else if (YBIsWritingToPgEnabled())
+		else
 		{
 			/*
 			 * insert the tuple normally.
@@ -540,11 +546,6 @@ ExecInsert(ModifyTableState *mtstate,
 				recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
 													   estate, false, NULL,
 													   arbiterIndexes);
-		}
-
-		if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
-		{
-			YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
 		}
 	}
 
