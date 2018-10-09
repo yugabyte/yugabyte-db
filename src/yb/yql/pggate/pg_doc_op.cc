@@ -161,7 +161,6 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
     return;
   }
 
-  int64_t row_count = 0;
   if (!is_canceled_) {
     // Save it to cache.
     WriteToCacheUnlocked(read_op_);
@@ -170,24 +169,13 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
     const PgsqlResponsePB& res = read_op_->response();
      if (res.has_paging_state()) {
       PgsqlReadRequestPB *req = read_op_->mutable_request();
-      uint64 new_total_rows = res.paging_state().total_num_rows_read();
-      uint64 last_total_rows = 0;
-      if (req->mutable_paging_state()->has_total_num_rows_read()) {
-        last_total_rows = req->mutable_paging_state()->total_num_rows_read();
-      }
-
-      row_count = new_total_rows - last_total_rows;
+      // Set up paging state for next request.
       *req->mutable_paging_state() = res.paging_state();
     } else {
       end_of_data_ = true;
     }
   } else {
     end_of_data_ = true;
-  }
-
-  if (!end_of_data_ && (!has_cached_data_ || row_count <= 0)) {
-    // Send another request since the reponse for the last SendRequest doesn't get any data back.
-    exec_status_ = SendRequestUnlocked();
   }
 }
 
@@ -214,8 +202,13 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   CHECK(waiting_for_response_);
   waiting_for_response_ = false;
   cv_.notify_all();
-  exec_status_ = exec_status;
-  if (!is_canceled_ && exec_status.ok()) {
+
+  if (exec_status.ok() && !write_op_->succeeded()) {
+    exec_status_ = STATUS(QLError, write_op_->response().error_message());
+  } else {
+    exec_status_ = exec_status;
+  }
+  if (!is_canceled_ && exec_status_.ok()) {
     // Save it to cache.
     WriteToCacheUnlocked(write_op_);
   }

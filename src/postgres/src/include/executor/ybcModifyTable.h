@@ -23,6 +23,6 @@
 #ifndef YBCMODIFYTABLE_H
 #define YBCMODIFYTABLE_H
 
-extern void YBCExecuteInsert(Relation relationDesc, TupleDesc tupleDesc, HeapTuple tuple);
+extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
 
 #endif							/* YBCMODIFYTABLE_H */

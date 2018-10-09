@@ -158,5 +158,13 @@ YBSession* PgSession::GetSession(bool read_only_op) {
   return session_.get();
 }
 
+int PgSession::CountPendingErrors() const {
+  return session_->CountPendingErrors();
+}
+
+std::vector<std::unique_ptr<client::YBError>> PgSession::GetPendingErrors() {
+  return session_->GetPendingErrors();
+}
+
 }  // namespace pggate
 }  // namespace yb

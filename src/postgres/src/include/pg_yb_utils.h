@@ -42,9 +42,6 @@ extern bool IsYBSupportedTable(Oid relid);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
-/** If this is enabled, we will still write to PostgreSQL's storage engine. */
-extern bool YBIsWritingToPgEnabled();
-
 /**
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
  * transactions. This will be enabled by default soon after 10/12/2018.
@@ -57,6 +54,17 @@ extern bool YBTransactionsEnabled();
  */
 extern void	HandleYBStatus(YBCStatus status);
 
+/*
+ * Same as HandleYBStatus but delete the statement first if the status is
+ * not ok.
+ */
+extern void	HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt);
+
+/*
+ * Same as HandleYBStatus but delete the table description first if the
+ * status is not ok.
+ */
+extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
 /*
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.

@@ -34,7 +34,7 @@ YBCStatus ToYBCStatus(const Status& status) {
   if (status.ok()) {
     return nullptr;
   }
-  std::string status_str = status.ToString();
+  std::string status_str = status.ToUserMessage();
   size_t status_msg_buf_size = status_str.size() + 1;
   YBCStatus ybc_status = reinterpret_cast<YBCStatus>(
       malloc(sizeof(YBCStatusStruct) + status_msg_buf_size));

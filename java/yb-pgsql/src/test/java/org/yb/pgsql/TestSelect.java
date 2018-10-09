@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -35,19 +36,7 @@ import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgWrapper.class);
-
-  Set<Row> getRowSet(ResultSet rs) throws SQLException {
-    Set<Row> rows = new HashSet<>();
-    while (rs.next()) {
-      Object[] elems = new Object[rs.getMetaData().getColumnCount()];
-      for (int i = 0; i < elems.length; i++) {
-        elems[i] = rs.getObject(i + 1); // Column index starts from 1.
-      }
-      rows.add(new Row(elems));
-    }
-    return rows;
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelect.class);
 
   @Test
   public void testWhereClause() throws Exception {
@@ -61,58 +50,58 @@ public class TestSelect extends BasePgSQLTest {
 
     // Test fixed hash key.
     try (ResultSet rs = statement.executeQuery("SELECT * FROM test WHERE h = 2")) {
-      Set<Row> expected_rows = allRows.stream()
-                                       .filter(row -> row.getLong(0).equals(2L))
-                                       .collect(Collectors.toSet());
-      assertEquals(10, expected_rows.size());
-      assertEquals(expected_rows, getRowSet(rs));
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(row -> row.getLong(0).equals(2L))
+                                     .collect(Collectors.toSet());
+      assertEquals(10, expectedRows.size());
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test fixed primary key.
     try (ResultSet rs = statement.executeQuery("SELECT * FROM test WHERE h = 2 AND r = 3.5")) {
-      Set<Row> expected_rows = allRows.stream()
-                                       .filter(row -> row.getLong(0).equals(2L) &&
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(row -> row.getLong(0).equals(2L) &&
                                                       row.getDouble(1).equals(3.5))
-                                       .collect(Collectors.toSet());
-      assertEquals(1, expected_rows.size());
-      assertEquals(expected_rows, getRowSet(rs));
+                                     .collect(Collectors.toSet());
+      assertEquals(1, expectedRows.size());
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test range scan.
     try (ResultSet rs = statement.executeQuery("SELECT * FROM test " +
                                                    "WHERE h = 2 AND r >= 3.5 AND r < 8.5")) {
-      Set<Row> expected_rows = allRows.stream()
-                                       .filter(row -> row.getLong(0).equals(2L) &&
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(row -> row.getLong(0).equals(2L) &&
                                                       row.getDouble(1) >= 3.5 &&
                                                       row.getDouble(1) < 8.5)
-                                       .collect(Collectors.toSet());
-      assertEquals(5, expected_rows.size());
-      assertEquals(expected_rows, getRowSet(rs));
+                                     .collect(Collectors.toSet());
+      assertEquals(5, expectedRows.size());
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test conditions on regular (non-primary-key) columns.
     try (ResultSet rs =
              statement.executeQuery("SELECT * FROM test WHERE vi < 14 AND vs != 'v09'")) {
-      Set<Row> expected_rows = allRows.stream()
-                                       .filter(row -> row.getInt(2) < 14 &&
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(row -> row.getInt(2) < 14 &&
                                                       !row.getString(3).equals("v09"))
-                                       .collect(Collectors.toSet());
+                                     .collect(Collectors.toSet());
       // 14 options (for hash key) minus [9,'v09'].
-      assertEquals(13, expected_rows.size());
-      assertEquals(expected_rows, getRowSet(rs));
+      assertEquals(13, expectedRows.size());
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test other WHERE operators (IN, OR, LIKE).
     try (ResultSet rs =
              statement.executeQuery("SELECT * FROM test WHERE h IN (2,3) OR vs LIKE 'v_2'")) {
-      Set<Row> expected_rows = allRows.stream()
-                                       .filter(row -> row.getLong(0).equals(2L) ||
+      Set<Row> expectedRows = allRows.stream()
+                                     .filter(row -> row.getLong(0).equals(2L) ||
                                                       row.getLong(0).equals(3L) ||
                                                       row.getString(3).matches("v.2"))
-                                       .collect(Collectors.toSet());
+                                     .collect(Collectors.toSet());
       // 20 plus 10 options but 2 common ones ('v22' and 'v32').
-      assertEquals(28, expected_rows.size());
-      assertEquals(expected_rows, getRowSet(rs));
+      assertEquals(28, expectedRows.size());
+      assertEquals(expectedRows, getRowSet(rs));
     }
     statement.close();
   }
@@ -124,37 +113,39 @@ public class TestSelect extends BasePgSQLTest {
 
     // Test all columns -- different order.
     try (ResultSet rs = statement.executeQuery("SELECT vs,vi,r,h FROM test")) {
-      Set<Row> expected_rows = allRows.stream()
+      Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(2), row.get(1), row.get(0)))
           .collect(Collectors.toSet());
-      assertEquals(expected_rows, getRowSet(rs));
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test partial columns -- different order.
     try (ResultSet rs = statement.executeQuery("SELECT vs,r FROM test")) {
-      Set<Row> expected_rows = allRows.stream()
+      Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(1)))
           .collect(Collectors.toSet());
-      assertEquals(expected_rows, getRowSet(rs));
+      assertEquals(expectedRows, getRowSet(rs));
     }
 
     // Test aggregates.
-    try (ResultSet rs = statement.executeQuery("SELECT avg(r) FROM test")) {
-      assertTrue(rs.next());
-      assertEquals(5.0, rs.getDouble(1));
-      assertFalse(rs.next());
-    }
+    assertOneRow("SELECT avg(r) FROM test", 5.0D);
+    assertOneRow("SELECT count(*) FROM test", 100L);
 
     // Test distinct.
     try (ResultSet rs = statement.executeQuery("SELECT distinct(h) FROM test")) {
-      Set<Row> expected_rows = allRows.stream()
+      Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(0)))
           .distinct()
           .collect(Collectors.toSet());
-      assertEquals(expected_rows, getRowSet(rs));
+      assertEquals(expectedRows, getRowSet(rs));
     }
-  }
 
+    // Test selecting non-existent column.
+    runInvalidQuery(statement, "SELECT v FROM test");
+
+    // Test mistyped function.
+    runInvalidQuery(statement, "SELECT vs * r FROM test");
+  }
 
   @Test
   public void testOrderBy() throws Exception {
@@ -186,26 +177,27 @@ public class TestSelect extends BasePgSQLTest {
       statement.execute("INSERT INTO t2(h, r, v) VALUES (1, 2.5, 'foo')");
       statement.execute("INSERT INTO t2(h, r, v) VALUES (1, 4.5, 'bar')");
 
-      try (ResultSet rs = statement.executeQuery("SELECT a.h, a.r, a.v as av, b.v as bv " +
-                                                "FROM t1 a LEFT JOIN t2 b " +
-                                                "ON (a.h = b.h and a.r = b.r) " +
-                                                "WHERE a.h = 1 AND a.r IN (2.5, 3.5)")) {
-
-        assertTrue(rs.next());
-        assertEquals(1, rs.getLong("h"));
-        assertEquals(2.5, rs.getDouble("r"));
-        assertEquals("abc", rs.getString("av"));
-        assertEquals("foo", rs.getString("bv"));
-
-        assertTrue(rs.next());
-        assertEquals(1, rs.getLong("h"));
-        assertEquals(3.5, rs.getDouble("r"));
-        assertEquals("def", rs.getString("av"));
-        assertEquals(null, rs.getString("bv"));
-        assertTrue(rs.wasNull());
-
+      // Test simple join.
+      String joinStmt = "SELECT a.h, a.r, b.h, b.r, a.v as av, b.v as bv " +
+          "FROM t1 a JOIN t2 b ON (a.h = b.h and a.r = b.r)";
+      try (ResultSet rs = statement.executeQuery(joinStmt)) {
+        assertNextRow(rs, 1L, 2.5D, 1L, 2.5D, "abc", "foo");
+        assertNextRow(rs, 1L, 4.5D, 1L, 4.5D, "xyz", "bar");
         assertFalse(rs.next());
       }
+
+      // Test join with WHERE clause.
+      joinStmt = "SELECT a.h, a.r, a.v as av, b.v as bv FROM t1 a LEFT JOIN t2 b " +
+          "ON (a.h = b.h and a.r = b.r) WHERE a.h = 1 AND a.r IN (2.5, 3.5)";
+      try (ResultSet rs = statement.executeQuery(joinStmt)) {
+        assertNextRow(rs, 1L, 2.5D, "abc", "foo");
+        assertNextRow(rs, 1L, 3.5D, "def", null);
+        assertFalse(rs.next());
+      }
+
+      // Test views from join.
+      statement.execute("CREATE VIEW t1_and_t2 AS " + joinStmt);
+      assertOneRow("SELECT * FROM t1_and_t2 WHERE r > 3", 1L, 3.5D, "def", null);
     }
   }
 
@@ -214,54 +206,17 @@ public class TestSelect extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       createSimpleTable("test");
 
-      // Test expressions in INSERT values.
-      statement.execute("INSERT INTO test(h, r, vi, vs) " +
-                            "VALUES (floor(1 + 1.5), log(3, 27), ceil(pi()), 'ab' || 'c')");
-      try (ResultSet rs = statement.executeQuery("SELECT * FROM test")) {
-
-        assertTrue(rs.next());
-        assertEquals(2, rs.getLong("h"));
-        assertEquals(3.0, rs.getDouble("r"));
-        assertEquals(4, rs.getInt("vi"));
-        assertEquals("abc", rs.getString("vs"));
-
-        assertFalse(rs.next());
-      }
+      // Insert a sample row: Row[2, 3.0, 4, 'abc'].
+      statement.execute("INSERT INTO test(h, r, vi, vs) VALUES (2, 3.0, 4, 'abc')");
+      assertOneRow("SELECT * FROM test", 2L, 3.0D, 4, "abc");
 
       // Test expressions in SELECT targets.
-      try (ResultSet rs = statement.executeQuery("SELECT h + 1.5, pow(r, 2), vi * h, 7 " +
-                                                     "FROM test WHERE h = 2")) {
-
-        assertTrue(rs.next());
-        assertEquals(3.5, rs.getDouble(1));
-        assertEquals(9.0, rs.getDouble(2));
-        assertEquals(8, rs.getLong(3));
-        assertEquals(7, rs.getInt(4));
-        assertFalse(rs.next());
-      }
+      assertOneRow("SELECT h + 1.5, pow(r, 2), vi * h, 7 FROM test WHERE h = 2",
+                   new BigDecimal(3.5), 9.0D, 8L, 7);
 
       // Test expressions in SELECT WHERE clause.
-      try (ResultSet rs = statement.executeQuery("SELECT * FROM test WHERE h + r <= 10 AND " +
-                                                     "substring(vs from 2) = 'bc'")) {
-
-        assertTrue(rs.next());
-        assertEquals(2, rs.getLong("h"));
-        assertEquals(3.0, rs.getDouble("r"));
-        assertEquals(4, rs.getInt("vi"));
-        assertEquals("abc", rs.getString("vs"));
-
-        assertFalse(rs.next());
-      }
-    }
-  }
-
-  private void createSimpleTable(String tableName) throws SQLException {
-    try (Statement statement = connection.createStatement()) {
-      String sql =
-          "CREATE TABLE " + tableName + "(h bigint, r float, vi int, vs text, PRIMARY KEY (h, r))";
-      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
-      statement.execute(sql);
-      LOG.info("Table creation finished: " + tableName);
+      assertOneRow("SELECT * FROM test WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
+                   2L, 3.0D, 4, "abc");
     }
   }
 
