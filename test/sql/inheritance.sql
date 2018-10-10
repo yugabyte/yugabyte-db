@@ -1,6 +1,5 @@
 \unset ECHO
 \i test/setup.sql
-BEGIN;
 SELECT plan( 17 );
 SET client_min_messages = warning;
 
