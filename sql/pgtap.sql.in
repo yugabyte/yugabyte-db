@@ -1152,7 +1152,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, TEXT DEFAULT NULL )
 RETURNS TEXT AS $$
        SELECT ok( _inherited( $1 ),  -- table
-                  coalesce( $2, format( 'Table %I has children', $1 ) ) );
+                  coalesce( $2, 'Table ' || quote_ident( $1 ) || ' has children' ) );
 $$ LANGUAGE SQL;
 
 -- hasnt_inherited_tables( schema, table, description )
