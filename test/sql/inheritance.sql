@@ -1,7 +1,8 @@
---\unset ECHO
---\i test/setup.sql
+\unset ECHO
+\i test/setup.sql
 BEGIN;
 SELECT plan( 17 );
+SET client_min_messages = warning;
 
 -- Create inherited tables
 CREATE TABLE public.parent( id INT PRIMARY KEY );
