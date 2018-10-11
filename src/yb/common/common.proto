@@ -364,9 +364,15 @@ message ChildTransactionDataPB {
   map<string, fixed64> local_limits = 3;
 }
 
+enum InvolvedTabletMetadataState {
+  MISSING = 0;
+  EXIST = 1;
+  MAY_EXIST = 2;
+}
+
 message TransactionInvolvedTabletPB {
   optional bytes tablet_id = 1;
-  optional bool has_parameters = 2;
+  optional InvolvedTabletMetadataState metadata_state = 2;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl

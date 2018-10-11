@@ -193,8 +193,8 @@ void PrepareNonTransactionWriteBatch(
   DocHybridTimeBuffer doc_ht_buffer;
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.kv_pairs(write_id);
-    CHECK(kv_pair.has_key());
-    CHECK(kv_pair.has_value());
+    CHECK(!kv_pair.key().empty());
+    CHECK(!kv_pair.value().empty());
 
 #ifndef NDEBUG
     // Debug-only: ensure all keys we get in Raft replication can be decoded.
@@ -235,8 +235,8 @@ CHECKED_STATUS EnumerateIntents(
 
   for (int index = 0; index < kv_pairs.size(); ++index) {
     const auto &kv_pair = kv_pairs.Get(index);
-    CHECK(kv_pair.has_key());
-    CHECK(kv_pair.has_value());
+    CHECK(!kv_pair.key().empty());
+    CHECK(!kv_pair.value().empty());
     Slice key = kv_pair.key();
     auto key_size = DocKey::EncodedSize(key, DocKeyPart::WHOLE_DOC_KEY);
     CHECK_OK(key_size);

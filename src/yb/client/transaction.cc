@@ -72,6 +72,8 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
   return result;
 }
 
+YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
+
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
@@ -88,7 +90,7 @@ class YBTransaction::Impl final {
       metadata_ = CreateMetadata(isolation, manager->Now());
     }
     Init();
-    VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
+    VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
@@ -99,12 +101,13 @@ class YBTransaction::Impl final {
     read_point_.SetReadTime(std::move(data.read_time), std::move(data.local_limits));
     metadata_ = std::move(data.metadata);
     Init();
-    VLOG_WITH_PREFIX(1) << "Started child, metadata: " << metadata_;
+    VLOG_WITH_PREFIX(2) << "Started child, metadata: " << metadata_;
     ready_ = true;
   }
 
   ~Impl() {
     manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_, &abort_handle_});
+    LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
   }
 
   YBTransactionPtr CreateSimilarTransaction() {
@@ -131,36 +134,55 @@ class YBTransaction::Impl final {
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadata* metadata) {
+               TransactionMetadata* metadata,
+               bool* may_have_metadata) {
     CHECK_NOTNULL(metadata);
 
-    VLOG_WITH_PREFIX(1) << "Prepare";
+    VLOG_WITH_PREFIX(2) << "Prepare";
 
-    bool has_tablets_without_parameters = false;
+    bool has_tablets_without_metadata = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (!ready_) {
         waiters_.push_back(std::move(waiter));
         lock.unlock();
         RequestStatusTablet();
-        VLOG_WITH_PREFIX(1) << "Prepare, rejected";
+        VLOG_WITH_PREFIX(2) << "Prepare, rejected";
         return false;
       }
 
       for (const auto& op : ops) {
-        VLOG_WITH_PREFIX(1) << "Prepare, op: " << op->ToString();
+        VLOG_WITH_PREFIX(2) << "Prepare, op: " << op->ToString();
         DCHECK(op->tablet != nullptr);
         auto it = tablets_.find(op->tablet->tablet_id());
         if (it == tablets_.end()) {
-          tablets_.emplace(op->tablet->tablet_id(), TabletState());
-          has_tablets_without_parameters = true;
-        } else if (!has_tablets_without_parameters) {
-          has_tablets_without_parameters = !it->second.has_parameters;
+          it = tablets_.emplace(op->tablet->tablet_id(), TabletState()).first;
+          has_tablets_without_metadata = true;
+        } else {
+          // It is possible that after restart tablet does not know that he already stored metadata
+          // so we should tell him, that he should check RocksDB before creating transaction state
+          // from received metadata.
+          //
+          // It is important because otherwise he could lose write id.
+          //
+          // Also it is better to avoid doing such check each time, because it has significant
+          // impact on performance. So we are doing this optimization.
+          auto metadata_state = it->second.metadata_state;
+          has_tablets_without_metadata = has_tablets_without_metadata ||
+              metadata_state != InvolvedTabletMetadataState::EXIST;
+          if (metadata_state != InvolvedTabletMetadataState::MISSING) {
+            *may_have_metadata = true;
+          }
+        }
+        // Prepare is invoked when we are going to send request to tablet server.
+        // So after that tablet may have metadata, and we reflect it in our local state.
+        if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING) {
+          it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
     }
 
-    if (has_tablets_without_parameters) {
+    if (has_tablets_without_metadata) {
       *metadata = metadata_;
     } else {
       metadata->transaction_id = metadata_.transaction_id;
@@ -179,7 +201,7 @@ class YBTransaction::Impl final {
           if (it == tablets_.end() || it->first != tablet_id) {
             auto it = tablets_.find(tablet_id);
             CHECK(it != tablets_.end());
-            it->second.has_parameters = true;
+            it->second.metadata_state = InvolvedTabletMetadataState::EXIST;
           }
         }
       }
@@ -331,7 +353,7 @@ class YBTransaction::Impl final {
   }
 
   std::string ToString() const {
-    return Format("Transaction: $0", metadata_.transaction_id);
+    return Format("{ metadata: $0 state: $1 }", metadata_, state_.load(std::memory_order_acquire));
   }
 
   const TransactionId& id() const {
@@ -493,7 +515,7 @@ class YBTransaction::Impl final {
   }
 
   void ProcessResponse(const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "cleanup intents for Abort done";
+    VLOG_WITH_PREFIX(3) << "Cleanup intents for Abort done";
   }
 
   void CommitDone(const Status& status,
@@ -529,7 +551,7 @@ class YBTransaction::Impl final {
 
   void StatusTabletPicked(const Result<std::string>& tablet,
                           const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Picked status tablet: " << tablet;
+    VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
     if (tablet.ok()) {
       manager_->client()->LookupTabletById(
@@ -538,13 +560,21 @@ class YBTransaction::Impl final {
           std::bind(&Impl::LookupTabletDone, this, _1, transaction),
           client::UseCache::kTrue);
     } else {
-      SetError(tablet.status());
+      std::vector<Waiter> waiters;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        SetError(tablet.status(), &lock);
+        waiters_.swap(waiters);
+      }
+      for (const auto& waiter : waiters) {
+        waiter(tablet.status());
+      }
     }
   }
 
   void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
                         const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << result;
+    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
     // TODO(dtxn) Handle failure here.
     CHECK_OK(result);
@@ -553,13 +583,16 @@ class YBTransaction::Impl final {
       status_tablet_ = std::move(*result);
       metadata_.status_tablet = status_tablet_->tablet_id();
     }
-    SendHeartbeat(TransactionStatus::CREATED, transaction_->shared_from_this());
+    SendHeartbeat(TransactionStatus::CREATED, metadata_.transaction_id,
+                  transaction_->shared_from_this());
   }
 
   void SendHeartbeat(TransactionStatus status,
+                     const TransactionId& id,
                      std::weak_ptr<YBTransaction> weak_transaction) {
     auto transaction = weak_transaction.lock();
     if (!transaction || state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
+      VLOG(1) << id << " Send heartbeat cancelled: " << yb::ToString(transaction);
       return;
     }
 
@@ -608,7 +641,8 @@ class YBTransaction::Impl final {
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
-          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING, weak_transaction),
+          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING,
+                    metadata_.transaction_id, weak_transaction),
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
@@ -623,12 +657,17 @@ class YBTransaction::Impl final {
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
-      SendHeartbeat(transaction_status, transaction);
+      SendHeartbeat(transaction_status, metadata_.transaction_id, transaction);
     }
   }
 
-  void SetError(const Status& status) {
-    std::lock_guard<std::mutex> lock(mutex_);
+  void SetError(const Status& status, std::lock_guard<std::mutex>* lock = nullptr) {
+    LOG_WITH_PREFIX(INFO) << "Failure: " << status;
+    if (!lock) {
+      std::lock_guard<std::mutex> new_lock(mutex_);
+      SetError(status, &new_lock);
+      return;
+    }
     if (error_.ok()) {
       error_ = status;
       state_.store(TransactionState::kAborted, std::memory_order_release);
@@ -686,18 +725,29 @@ class YBTransaction::Impl final {
   boost::container::stable_vector<AbortRequest> abort_requests_;
 
   struct TabletState {
-    bool has_parameters = false;
+    InvolvedTabletMetadataState metadata_state = InvolvedTabletMetadataState::MISSING;
 
     void ToPB(TransactionInvolvedTabletPB* out) const {
-      out->set_has_parameters(has_parameters);
+      out->set_metadata_state(metadata_state);
     }
 
     void MergeFromPB(const TransactionInvolvedTabletPB& source) {
-      has_parameters = has_parameters || source.has_parameters();
+      switch (source.metadata_state()) {
+        case InvolvedTabletMetadataState::MISSING:
+          break;
+        case InvolvedTabletMetadataState::EXIST:
+          metadata_state = InvolvedTabletMetadataState::EXIST;
+          break;
+        case InvolvedTabletMetadataState::MAY_EXIST:
+          if (metadata_state == InvolvedTabletMetadataState::MISSING) {
+            metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
+          }
+          break;
+      }
     }
 
     std::string ToString() const {
-      return Format("{ has_parameters $0 }", has_parameters);
+      return Format("{ metadata_state $0 }", InvolvedTabletMetadataState_Name(metadata_state));
     }
   };
 
@@ -724,8 +774,9 @@ YBTransaction::~YBTransaction() {
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                             Waiter waiter,
-                            TransactionMetadata* metadata) {
-  return impl_->Prepare(ops, std::move(waiter), metadata);
+                            TransactionMetadata* metadata,
+                            bool* may_have_metadata) {
+  return impl_->Prepare(ops, std::move(waiter), metadata, may_have_metadata);
 }
 
 void YBTransaction::Flushed(const internal::InFlightOps& ops, const Status& status) {
@@ -786,6 +837,10 @@ std::shared_future<TransactionMetadata> YBTransaction::TEST_GetMetadata() const 
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
   return impl_->ApplyChildResult(result);
+}
+
+std::string YBTransaction::ToString() const {
+  return impl_->ToString();
 }
 
 } // namespace client

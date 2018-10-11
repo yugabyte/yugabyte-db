@@ -148,6 +148,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return transaction_metadata_;
   }
 
+  bool may_have_metadata() const {
+    return may_have_metadata_;
+  }
+
   void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
 
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
@@ -275,6 +279,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   YBTransactionPtr transaction_;
 
   TransactionMetadata transaction_metadata_;
+
+  bool may_have_metadata_ = false;
 
   // The consistent read point for this batch if it is specified.
   ConsistentReadPoint* read_point_ = nullptr;

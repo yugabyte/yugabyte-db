@@ -107,7 +107,8 @@ class TransactionParticipant : public TransactionStatusManager {
   virtual ~TransactionParticipant();
 
   // Adds new running transaction.
-  void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
+  void Add(const TransactionMetadataPB& data, bool may_have_metadata,
+           rocksdb::WriteBatch *write_batch);
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
 

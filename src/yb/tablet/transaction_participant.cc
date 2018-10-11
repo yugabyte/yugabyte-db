@@ -371,14 +371,18 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void RequestStatusAt(client::YBClient* client,
                        const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock) {
+    DCHECK_LT(request.global_limit_ht, HybridTime::kMax);
+    DCHECK_LE(request.read_ht, request.global_limit_ht);
+
     if (last_known_status_hybrid_time_ > HybridTime::kMin) {
       auto transaction_status =
           GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
       // If we don't have status at global_limit_ht, then we should request updated status.
       if (transaction_status) {
+        HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
         lock->unlock();
         request.callback(
-            TransactionStatusResult{*transaction_status, last_known_status_hybrid_time_});
+            TransactionStatusResult{*transaction_status, last_known_status_hybrid_time});
         return;
       }
     }
@@ -660,14 +664,27 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   // Adds new running transaction.
-  void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
+  void Add(const TransactionMetadataPB& data, bool may_have_metadata,
+           rocksdb::WriteBatch *write_batch) {
     auto metadata = TransactionMetadata::FromPB(data);
     if (!metadata.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Invalid transaction id: " << metadata.status().ToString();
       return;
     }
     bool store = false;
-    {
+    if (may_have_metadata) {
+      auto lock_and_iterator = LockAndFindOrLoad(
+          metadata->transaction_id, "add"s, MustExist::kFalse);
+      if (!lock_and_iterator.found()) {
+        lock_and_iterator.lock = std::unique_lock<std::mutex>(mutex_);
+        auto insert_result = transactions_.insert(
+            std::make_shared<RunningTransaction>(*metadata, 0, this));
+        lock_and_iterator.iterator = insert_result.first;
+        store = insert_result.second;
+      } else {
+        DCHECK_EQ((**lock_and_iterator.iterator).metadata(), *metadata);
+      }
+    } else {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
@@ -1126,9 +1143,9 @@ TransactionParticipant::TransactionParticipant(
 TransactionParticipant::~TransactionParticipant() {
 }
 
-void TransactionParticipant::Add(const TransactionMetadataPB& data,
+void TransactionParticipant::Add(const TransactionMetadataPB& data, bool may_have_metadata,
                                  rocksdb::WriteBatch *write_batch) {
-  impl_->Add(data, write_batch);
+  impl_->Add(data, may_have_metadata, write_batch);
 }
 
 boost::optional<TransactionMetadata> TransactionParticipant::Metadata(const TransactionId& id) {

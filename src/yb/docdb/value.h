@@ -114,6 +114,8 @@ class Value {
   static const Value& Tombstone();
   static const std::string& EncodedTombstone();
 
+  static std::string DebugSliceToString(const Slice& encoded_value);
+
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to
   // the timestamp.

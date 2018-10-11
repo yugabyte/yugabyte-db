@@ -336,7 +336,8 @@ class TransactionState {
   }
 
   bool ShouldBeCommitted() const {
-    return ShouldBeInStatus(TransactionStatus::COMMITTED);
+    return ShouldBeInStatus(TransactionStatus::COMMITTED) ||
+           ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
   }
 
   bool ShouldBeAborted() const {

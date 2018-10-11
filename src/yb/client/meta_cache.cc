@@ -410,6 +410,10 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
   return replicas_str;
 }
 
+std::string RemoteTablet::ToString() const {
+  return Format("{ tablet_id: $0 }", tablet_id_);
+}
+
 ////////////////////////////////////////////////////////////
 
 MetaCache::MetaCache(YBClient* client)

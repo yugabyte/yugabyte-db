@@ -899,8 +899,9 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 }
 
 Status Log::Close() {
-  allocation_pool_->Shutdown();
+  // Allocation pool is used from appender pool, so we should shutdown appender first.
   appender_->Shutdown();
+  allocation_pool_->Shutdown();
 
   std::lock_guard<percpu_rwlock> l(state_lock_);
   switch (log_state_) {

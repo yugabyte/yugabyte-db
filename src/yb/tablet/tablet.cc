@@ -584,7 +584,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   RETURN_NOT_OK(schema()->GetMappedReadProjection(projection, mapped_projection.get()));
 
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
-  auto read_time = ReadHybridTime::SingleTime(HybridTime::kMax);
+  auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), *schema(), txn_op_ctx,
       docdb::DocDB{regular_db_.get(), intents_db_.get()},
@@ -668,7 +668,8 @@ void Tablet::PrepareTransactionWriteBatch(
   RequestScope request_scope(transaction_participant_.get());
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
+    transaction_participant()->Add(
+        put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch);
   }
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
@@ -743,6 +744,8 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
   }
+  write_request->mutable_write_batch()->set_may_have_metadata(
+      batch_request->write_batch().may_have_metadata());
 }
 
 } // namespace
