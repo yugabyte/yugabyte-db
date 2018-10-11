@@ -328,6 +328,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   MonoDelta unreachable_time = MonoDelta::kMin;
   bool is_new;
   int64_t next_index;
+  HybridTime propagated_safe_time;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -349,15 +350,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
 
     if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-      auto propagated_safe_time = propagated_safe_time_provider_();
-      if (propagated_safe_time) {
-        // Get the current local safe time on the leader and propagate it to the follower.
-        request->set_propagated_safe_time(propagated_safe_time.ToUint64());
-      } else {
-        request->clear_propagated_safe_time();
-      }
-    } else {
-      request->clear_propagated_safe_time();
+      propagated_safe_time = propagated_safe_time_provider_();
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
@@ -408,12 +401,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
+    bool have_more_messages = false;
 
     // We try to get the follower's next_index from our log.
     Status s = log_cache_.ReadOps(next_index - 1,
                                   max_batch_size,
                                   &messages,
-                                  &preceding_id);
+                                  &preceding_id,
+                                  &have_more_messages);
     if (PREDICT_FALSE(!s.ok())) {
       if (PREDICT_TRUE(s.IsNotFound())) {
         // It's normal to have a NotFound() here if a follower falls behind where the leader has
@@ -444,6 +439,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // messages. At that point we'll need to do something smarter here, like copy or ref-count.
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
+    }
+    if (propagated_safe_time && !have_more_messages) {
+      // Get the current local safe time on the leader and propagate it to the follower.
+      request->set_propagated_safe_time(propagated_safe_time.ToUint64());
+    } else {
+      request->clear_propagated_safe_time();
     }
     msg_refs->swap(messages);
     DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);

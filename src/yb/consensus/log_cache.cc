@@ -284,11 +284,15 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
 Status LogCache::ReadOps(int64_t after_op_index,
                          int max_size_bytes,
                          ReplicateMsgs* messages,
-                         OpId* preceding_op) {
+                         OpId* preceding_op,
+                         bool* have_more_messages) {
   DCHECK_ONLY_NOTNULL(messages);
   DCHECK_ONLY_NOTNULL(preceding_op);
   DCHECK_GE(after_op_index, 0);
   RETURN_NOT_OK(LookupOpId(after_op_index, preceding_op));
+  if (have_more_messages) {
+    *have_more_messages = false;
+  }
 
   std::unique_lock<simple_spinlock> l(lock_);
   int64_t next_index = after_op_index + 1;
@@ -327,6 +331,8 @@ Status LogCache::ReadOps(int64_t after_op_index,
         if (remaining_space > 0 || messages->empty()) {
           messages->push_back(msg);
           next_index++;
+        } else if (have_more_messages) {
+          *have_more_messages = true;
         }
       }
 
@@ -341,6 +347,9 @@ Status LogCache::ReadOps(int64_t after_op_index,
 
         remaining_space -= TotalByteSizeForMessage(*msg);
         if (remaining_space < 0 && !messages->empty()) {
+          if (have_more_messages) {
+            *have_more_messages = true;
+          }
           break;
         }
 

@@ -526,6 +526,13 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
     return;
   }
 
+  TabletServerErrorPB::Code error_code;
+  auto status = CheckPeerIsLeaderAndReady(*tablet_peer, &error_code);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+    return;
+  }
+
   server::ClockPtr clock(server_->Clock());
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
   tablet_peer->tablet()->transaction_coordinator()->Abort(

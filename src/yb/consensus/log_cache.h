@@ -98,7 +98,8 @@ class LogCache {
   CHECKED_STATUS ReadOps(int64_t after_op_index,
                  int max_size_bytes,
                  ReplicateMsgs* messages,
-                 OpId* preceding_op);
+                 OpId* preceding_op,
+                 bool* have_more_messages = nullptr);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.

@@ -218,12 +218,17 @@ bool AsyncRpc::IsLocalCall() const {
 
 namespace {
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::WriteRequestPB* req) {
-  metadata.ToPB(req->mutable_write_batch()->mutable_transaction());
+void SetTransactionMetadata(const TransactionMetadata& metadata, bool may_have_metadata,
+                            tserver::WriteRequestPB* req) {
+  auto& write_batch = *req->mutable_write_batch();
+  metadata.ToPB(write_batch.mutable_transaction());
+  write_batch.set_may_have_metadata(may_have_metadata);
 }
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRequestPB* req) {
+void SetTransactionMetadata(const TransactionMetadata& metadata, bool may_have_metadata,
+                            tserver::ReadRequestPB* req) {
   metadata.ToPB(req->mutable_transaction());
+  // Don't need may_have_metadata for read requests.
 }
 
 } // namespace
@@ -255,7 +260,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   auto& transaction_metadata = batcher_->transaction_metadata();
   if (!transaction_metadata.transaction_id.is_nil()) {
-    SetTransactionMetadata(transaction_metadata, &req_);
+    SetTransactionMetadata(transaction_metadata, batcher_->may_have_metadata(), &req_);
   }
 }
 
@@ -389,6 +394,13 @@ void WriteRpc::CallRemoteMethod() {
       req_, &resp_, PrepareController(MonoDelta::kMax),
       std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
+}
+
+void WriteRpc::Finished(const Status& status) {
+  // It is possible that call succeeded, but failed to send response.
+  // So in case of retry to should tell server that it could have metadata.
+  req_.mutable_write_batch()->set_may_have_metadata(true);
+  AsyncRpc::Finished(status);
 }
 
 void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {

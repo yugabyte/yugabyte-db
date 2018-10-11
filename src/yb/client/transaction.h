@@ -72,7 +72,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // the waiter, which will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadata* metadata);
+               TransactionMetadata* metadata,
+               bool* may_have_metadata);
 
   // Notifies transaction that specified ops were flushed with some status.
   void Flushed(const internal::InFlightOps& ops, const Status& status);
@@ -110,6 +111,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() const;
+
+  std::string ToString() const;
 
  private:
   class Impl;

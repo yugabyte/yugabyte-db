@@ -134,7 +134,7 @@ class QLTransactionTest : public KeyValueTableTest {
     CreateTable(Transactional::kTrue);
 
     FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_log_segment_size_bytes = 128;
+    FLAGS_log_segment_size_bytes = log_segment_size_bytes();
     FLAGS_log_min_seconds_to_retain = 5;
     FLAGS_intents_flush_max_delay_ms = 250;
 
@@ -146,6 +146,10 @@ class QLTransactionTest : public KeyValueTableTest {
     server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
     ASSERT_OK(clock2->Init());
     transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
+  }
+
+  virtual uint64_t log_segment_size_bytes() const {
+    return 128;
   }
 
   void WriteRows(
@@ -327,6 +331,8 @@ class QLTransactionTest : public KeyValueTableTest {
   // If commit is true, then first transaction is committed and second should be restarted.
   // Otherwise second transaction would see pending intents from first one and should not restart.
   void TestReadRestart(bool commit = true);
+
+  void TestWriteConflicts(bool do_restarts);
 
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
@@ -755,7 +761,7 @@ TEST_F(QLTransactionTest, SimpleWriteConflict) {
   ASSERT_NOK(transaction->CommitFuture().get());
 }
 
-TEST_F(QLTransactionTest, WriteConflicts) {
+void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
   struct ActiveTransaction {
     YBTransactionPtr transaction;
     YBSessionPtr session;
@@ -769,6 +775,19 @@ TEST_F(QLTransactionTest, WriteConflicts) {
   std::vector<ActiveTransaction> active_transactions;
 
   auto stop = std::chrono::steady_clock::now() + kTestTime;
+
+  std::thread restart_thread;
+
+  if (do_restarts) {
+    restart_thread = std::thread([this, stop] {
+        int it = 0;
+        while (std::chrono::steady_clock::now() < stop) {
+          std::this_thread::sleep_for(5s);
+          ASSERT_OK(cluster_->mini_tablet_server(++it % cluster_->num_tablet_servers())->Restart());
+        }
+    });
+  }
+
   int value = 0;
   size_t tries = 0;
   size_t written = 0;
@@ -780,6 +799,10 @@ TEST_F(QLTransactionTest, WriteConflicts) {
         break;
       }
       LOG(INFO) << "Time expired, remaining transactions: " << active_transactions.size();
+      for (const auto& txn : active_transactions) {
+        LOG(INFO) << "TXN: " << txn.transaction->ToString() << ", "
+                  << (!txn.commit_future.valid() ? "Flushing" : "Committing");
+      }
     }
     while (!expired && active_transactions.size() < kActiveTransactions) {
       auto key = RandomUniformInt(1, kTotalKeys);
@@ -826,13 +849,32 @@ TEST_F(QLTransactionTest, WriteConflicts) {
     }
     active_transactions.erase(w, active_transactions.end());
 
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(expired ? 1s : 100ms);
+  }
+
+  if (do_restarts) {
+    restart_thread.join();
   }
 
   ASSERT_GE(written, kTotalKeys);
   ASSERT_GE(flushed, written);
   ASSERT_GE(flushed, kActiveTransactions);
   ASSERT_GE(tries, flushed);
+}
+
+class WriteConflictsTest : public QLTransactionTest {
+ protected:
+  uint64_t log_segment_size_bytes() const override {
+    return 0;
+  }
+};
+
+TEST_F_EX(QLTransactionTest, WriteConflicts, WriteConflictsTest) {
+  TestWriteConflicts(false /* do_restarts */);
+}
+
+TEST_F_EX(QLTransactionTest, WriteConflictsWithRestarts, WriteConflictsTest) {
+  TestWriteConflicts(true /* do_restarts */);
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
@@ -1450,7 +1492,6 @@ TEST_F(QLTransactionTest, ChangeLeader) {
 class RemoteBootstrapTest : public QLTransactionTest {
  protected:
   void SetUp() override {
-    FLAGS_log_segment_size_bytes = 128;
     FLAGS_remote_bootstrap_max_chunk_size = 1_KB;
     QLTransactionTest::SetUp();
   }
