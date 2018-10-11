@@ -122,6 +122,16 @@ string Value::ToString() const {
   return to_string;
 }
 
+std::string Value::DebugSliceToString(const Slice& encoded_value) {
+  Value value;
+  auto status = value.Decode(encoded_value);
+  if (!status.ok()) {
+    return status.ToString();
+  }
+
+  return value.ToString();
+}
+
 string Value::Encode() const {
   string result;
   EncodeAndAppend(&result);

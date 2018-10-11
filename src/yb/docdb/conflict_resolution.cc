@@ -196,7 +196,7 @@ class ConflictResolver {
 
       RETURN_NOT_OK(context_.CheckPriority(this, &transactions_));
 
-      AbortTransactions();
+      RETURN_NOT_OK(AbortTransactions());
 
       RETURN_NOT_OK(Cleanup());
 
@@ -277,22 +277,35 @@ class ConflictResolver {
     latch.Wait();
   }
 
-  void AbortTransactions() {
-    CountDownLatch latch(transactions_.size());
+  CHECKED_STATUS AbortTransactions() {
+    struct AbortContext {
+      size_t left;
+      std::mutex mutex;
+      std::condition_variable cond;
+      Status result;
+    };
+    AbortContext context{ transactions_.size() };
     for (auto& i : transactions_) {
       auto& transaction = i;
       status_manager().Abort(
           transaction.id,
-          [&transaction, &latch](Result<TransactionStatusResult> result) {
+          [&transaction, &context](Result<TransactionStatusResult> result) {
+            std::lock_guard<std::mutex> lock(context.mutex);
             if (result.ok()) {
               transaction.ProcessStatus(*result);
+            } else if (result.status().IsRemoteError()) {
+              context.result = result.status();
             } else {
               LOG(INFO) << "Abort failed, would retry: " << result.status();
             }
-            latch.CountDown();
+            if (--context.left == 0) {
+              context.cond.notify_one();
+            }
       });
     }
-    latch.Wait();
+    std::unique_lock<std::mutex> lock(context.mutex);
+    context.cond.wait(lock, [&context] { return context.left == 0; });
+    return context.result;
   }
 
   DocDB doc_db_;

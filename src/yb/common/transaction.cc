@@ -17,6 +17,8 @@
 
 #include "yb/util/tsan_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 const std::string kTransactionsTableName = "transactions";
@@ -92,7 +94,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
 MonoTime TransactionRpcDeadline() {
-  return MonoTime::Now() + MonoDelta::FromSeconds(NonTsanVsTsan(15, 5));
+  return MonoTime::Now() + 5s * kTimeMultiplier;
 }
 
 bool TransactionOperationContext::transactional() const {

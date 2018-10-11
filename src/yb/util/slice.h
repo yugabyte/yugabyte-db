@@ -260,6 +260,14 @@ struct SliceParts {
       : parts(input.data()), num_parts(N) {
   }
 
+  std::string ToDebugHexString() const {
+    std::string result;
+    for (int i = 0; i != num_parts; ++i) {
+      result += parts[i].ToDebugHexString();
+    }
+    return result;
+  }
+
   const Slice* parts;
   int num_parts;
 };

@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-syntax = "proto2";
+syntax = "proto3";
 
 package yb.docdb;
 
@@ -20,17 +20,18 @@ import "yb/util/opid.proto";
 option java_package = "org.yb.docdb";
 
 message KeyValuePairPB {
-  optional bytes key = 1;
-  optional bytes value = 2;
+  bytes key = 1;
+  bytes value = 2;
 }
 
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB kv_pairs = 1;
-  optional TransactionMetadataPB transaction = 2;
+  TransactionMetadataPB transaction = 2;
+  bool may_have_metadata = 3;
 }
 
 message ConsensusFrontierPB {
-  optional OpIdPB op_id = 1;
-  optional fixed64 hybrid_time = 2;
+  OpIdPB op_id = 1;
+  fixed64 hybrid_time = 2;
 }
