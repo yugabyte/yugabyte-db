@@ -488,4 +488,32 @@ void LogFatalHandlerSink::send(
   }
 }
 
+namespace logging_internal {
+
+bool LogRateThrottler::TooMany() {
+  const auto now = CoarseMonoClock::Now();
+  const auto drop_limit = now - duration_;
+  const auto queue_size = queue_.size();
+  std::lock_guard<std::mutex> lock(mutex_);
+  while (count_ > 0 && queue_[head_] < drop_limit) {
+    ++head_;
+    if (head_ >= queue_size) {
+      head_ = 0;
+    }
+    --count_;
+  }
+  if (count_ == queue_size) {
+    return true;
+  }
+  auto tail = head_ + count_;
+  if (tail >= queue_size) {
+    tail -= queue_size;
+  }
+  queue_[tail] = now;
+  ++count_;
+  return false;
+}
+
+} // namespace logging_internal
+
 } // namespace yb

@@ -166,7 +166,7 @@ Status YBTable::Data::Open() {
       }
     }
     if (!s.ok()) {
-      LOG(WARNING) << "Error getting table locations: " << s.ToString() << ", retrying.";
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Error getting table locations: " << s << ", retrying.";
     } else if (resp.tablet_locations_size() > 0) {
       DCHECK(partitions_.empty());
       partitions_.clear();
