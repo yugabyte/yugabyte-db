@@ -1,9 +1,11 @@
 pg_partman Test Suite
 =====================
 
-The pgTAP testing suite is used to provide an extensive and easily maintainable set of unit tests. Please see the pgTAP home page for more details on its installation and use.
+The pgTAP testing suite is used to provide an extensive and easily maintainable set of unit tests. Please see the pgTAP home page for more details on its installation and use. 
 
 http://pgTAP.org/
+
+A minimum version of pgtap 0.99.1 is required for pg_partman's test suite.
 
 Tests assume that the required extensions have been installed in the following schemas:
 
@@ -34,20 +36,4 @@ As of version 4.0.0, SECURITY DEFINER is no longer in use by the majority of fun
     pg_prove -ovf -U partman -d mydatabase test/test-id-nonsuperuser.sql
     pg_prove -ovf -U partman -d mydatabase test/test_native/test-id-time-subpart-native.sql
 
-Partitioning in PostgreSQL 10
-=============================
-pgtap currently does not have any tests for natively partitioned tables. The below two functions should be installed to the same schema as pgtap to allow the native partitioning tests to work. Once pgtap adds this support in itself, this will no longer be needed
 
-    create or replace function has_partition(name, name, text)
-    returns text
-    language sql
-    as $$
-    SELECT ok(_rexists('p', $1, $2), $3);
-    $$;
-
-    create or replace function hasnt_partition(name, name, text)
-    returns text
-    language sql
-    as $$
-    SELECT ok( NOT _rexists('p', $1, $2), $3);
-    $$;

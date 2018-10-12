@@ -47,7 +47,7 @@ END $pg11_objects_check$;
 SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', '{"col3"}', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 
-SELECT has_partition('partman_test', 'id_taptest_table', 'Check that id_taptest_table is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table', 'Check that id_taptest_table is natively partitioned');
 
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
@@ -80,12 +80,12 @@ SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'nativ
 --Reinsert data due to child table destruction
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 
-SELECT has_partition('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 is natively partitioned');
-SELECT has_partition('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 is natively partitioned');
-SELECT has_partition('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 is natively partitioned');
-SELECT has_partition('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 is natively partitioned');
-SELECT has_partition('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p40 is natively partitioned');
-SELECT hasnt_partition('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 doesn''t exists as partition yet');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p40 is natively partitioned');
+SELECT isnt_partitioned('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 doesn''t exists as partition yet');
 
 -- p0
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
@@ -281,7 +281,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p
 
 
 -- p50
-SELECT has_partition('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 is natively partitioned');
 
 SELECT has_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -319,7 +319,7 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p50', 'Check t
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p50', 'Check count from parent table _p50 (should be empty)');
 
 -- p60
-SELECT has_partition('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 is natively partitioned');
+SELECT is_partitioned('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 is natively partitioned');
 
 SELECT has_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 

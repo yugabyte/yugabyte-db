@@ -30,7 +30,7 @@ ALTER TABLE partman_test.time_taptest_table OWNER TO partman_owner;
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily', p_publications := ARRAY['partman_test_publication']);
 
-SELECT has_partition('partman_test', 'time_taptest_table', 'Check that time_taptest_table is natively partitioned');
+SELECT is_partitioned('partman_test', 'time_taptest_table', 'Check that time_taptest_table is natively partitioned');
 SELECT has_table('partman', 'template_partman_test_time_taptest_table', 'Check that default template table was created');
 SELECT table_owner_is ('partman', 'template_partman_test_time_taptest_table', 'partman_owner', 
     'Check that template table ownership is set properly');
