@@ -6,7 +6,7 @@ This page documents the manual deployment of YugaByte DB on 6 AWS EC2 instances 
 
 Create AWS EC2 instances with the following characteristics.
 
-- Virtual Machines: Spin up 6 (or minimum 3 if you are using RF=3). Given that this is a 3-AZ deployment, a multiple of 3 is preferred. 
+- Virtual Machines: Spin up 6 (minimum 3 if you are using RF=3). Given that this is a 3-AZ deployment, a multiple of 3 is preferred.
 
 - Operating System: CentOS 7 VMs of above type. You can use Ubuntu as well, but then some of the specific steps in terms of setting up ulimits etc. could be slightly different.
 
@@ -18,7 +18,7 @@ We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-wes
 
 Now that the 6 nodes have been prepared, the yb-master process will be run on 3 of these nodes (because RF=3) and yb-tserver will be run on all 6 nodes. To learn more about YugaByte DB’s process architecture, see [here](../../../architecture/concepts/universe/).
 
-These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”. 
+These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
 
 These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the 6 YB nodes.
 

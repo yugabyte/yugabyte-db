@@ -13,6 +13,8 @@ type: page
 
 After [installing YugaByte DB](../install/), follow the instructions below to create a local cluster.
 
+<b>NOTE</b>: We do not recommend a local multi-node setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node setup using the <a href="../deploy">manual or orchestrated deployment steps</a>.
+
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
