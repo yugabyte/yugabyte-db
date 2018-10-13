@@ -14,7 +14,10 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pggate_if_cxx_decl.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/client/transaction.h"
 
 namespace yb {
 namespace pggate {
@@ -40,8 +43,13 @@ static MonoDelta kSessionTimeout = 60s;
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
 
-PgSession::PgSession(std::shared_ptr<client::YBClient> client, const string& database_name)
-    : client_(client), session_(client_->NewSession()) {
+PgSession::PgSession(
+    std::shared_ptr<client::YBClient> client,
+    const string& database_name,
+    scoped_refptr<PgTxnManager> pg_txn_manager)
+    : client_(client),
+      session_(client_->NewSession()),
+      pg_txn_manager_(std::move(pg_txn_manager)) {
   session_->SetTimeout(kSessionTimeout);
 }
 
@@ -121,15 +129,33 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const YBTableName& name,
 }
 
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return session_->ApplyAndFlush(op);
+  YBSession* session = GetSession(op->read_only());
+  return session->ApplyAndFlush(op);
 }
 
 CHECKED_STATUS PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return session_->Apply(op);
+  return GetSession(op->read_only())->Apply(op);
 }
 
 void PgSession::FlushAsync(StatusFunctor callback) {
-  session_->FlushAsync(callback);
+  // Even in case of read-write operations, Apply or ApplyAsync would have already been called
+  // with that operation, and that would have started the YB transaction.
+  GetSession(/* read_only_op */ true)->FlushAsync(callback);
+}
+
+YBSession* PgSession::GetSession(bool read_only_op) {
+  YBSession* txn_session = pg_txn_manager_->GetTransactionalSession();
+  if (txn_session) {
+    VLOG(1) << __PRETTY_FUNCTION__
+            << ": read_only_op=" << read_only_op << ", returning transactional session";
+    if (!read_only_op) {
+      pg_txn_manager_->BeginWriteTransactionIfNecessary();
+    }
+    return txn_session;
+  }
+  VLOG(1) << __PRETTY_FUNCTION__
+          << ": read_only_op=" << read_only_op << ", returning non-transactional session";
+  return session_.get();
 }
 
 }  // namespace pggate

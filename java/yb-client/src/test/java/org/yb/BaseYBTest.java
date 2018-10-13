@@ -12,6 +12,7 @@
 //
 package org.yb;
 
+import com.google.common.base.Preconditions;
 import org.apache.log4j.Appender;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.LogManager;
@@ -23,6 +24,7 @@ import org.junit.rules.Timeout;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.bridge.SLF4JBridgeHandler;
 import org.yb.client.TestUtils;
 import org.yb.util.FileUtil;
 import org.yb.util.GzipHelpers;
@@ -36,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -51,6 +54,10 @@ public class BaseYBTest {
 
   private static String currentTestClassName;
   private static String currentTestMethodName;
+
+  static {
+    SLF4JBridgeHandler.install();
+  }
 
   /**
    * A facility for deleting successful per-test-method log files in case no test failures happened.
@@ -318,6 +325,66 @@ public class BaseYBTest {
       throw new RuntimeException("Current test method name not known");
     }
     return currentTestMethodName;
+  }
+
+  /**
+   * This could be overridden by subclasses to handle
+   * @param taskDescription
+   */
+  protected void handleTaskTimeout(String taskDescription, long timeoutMs, long elapsedMs)
+      throws TimeoutException {
+    String msg =
+        "Task with a timeout of " + timeoutMs + " ms took " + elapsedMs + " ms to complete: " +
+            taskDescription;
+    TimeoutException ex = new TimeoutException(msg);
+    LOG.error(msg, ex);
+    throw ex;
+  }
+
+  /**
+   * Run the given task with the given timeout. This runs the task in a separate thread, so should
+   * not be used too frequently.
+   *
+   * @param timeoutMs timeout in milliseconds
+   * @param taskDescription task description to be included in log messages and exception
+   * @param runnable the runnable
+   * @throws InterruptedException in case the calling thread is interrupted
+   * @throws TimeoutException in case the task times out
+   */
+  protected void runWithTimeout(int timeoutMs, String taskDescription, Runnable runnable)
+      throws InterruptedException, TimeoutException {
+    Preconditions.checkArgument(timeoutMs > 0, "timeoutMs must be positive");
+    Thread taskThread = new Thread(runnable);
+    taskThread.setName("Task with " + timeoutMs + " ms timeout: " + taskDescription);
+    long startTimeMs = System.currentTimeMillis();
+    taskThread.start();
+
+    try {
+      taskThread.join(timeoutMs);
+    } catch (InterruptedException ex) {
+      if (taskThread.isAlive()) {
+        taskThread.interrupt();
+        // Wait a bit longer for the thread to get interrupted.
+        taskThread.join(100);
+        if (taskThread.isAlive()) {
+          LOG.warn("Task got interrupted and we had trouble joining the thread: " +
+              taskDescription);
+        }
+      }
+      throw ex;
+    }
+
+    if (!taskThread.isAlive()) {
+      // The task completed within the allotted time.
+      return;
+    }
+    long elapsedMs = System.currentTimeMillis() - startTimeMs;
+    if (elapsedMs < timeoutMs) {
+      LOG.warn("Task with a timeout of " + timeoutMs + " ms completed in " + elapsedMs + " ms " +
+               "but the thread was still alive after the completion. This should not happen. " +
+               "Calling the timeout handler anyway.");
+    }
+    handleTaskTimeout(taskDescription, timeoutMs, elapsedMs);
   }
 
 }

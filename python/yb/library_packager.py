@@ -212,6 +212,8 @@ class LibraryPackager:
             build_dir=build_dir,
             verbose_mode=verbose_mode)
         self.installed_dyn_linked_binaries = []
+        self.main_dest_bin_dir = os.path.join(self.dest_dir, 'bin')
+        self.postgres_dest_bin_dir = os.path.join(self.dest_dir, 'postgres', 'bin')
 
     def install_dyn_linked_binary(self, src_path, dest_dir):
         if not os.path.isdir(dest_dir):
@@ -268,6 +270,21 @@ class LibraryPackager:
 
         return dependencies
 
+    @staticmethod
+    def is_postgres_binary(file_path):
+        return os.path.dirname(file_path).endswith('/postgres/bin')
+
+    def get_dest_bin_dir_for_executable(self, file_path):
+        if self.is_postgres_binary(file_path):
+            dest_bin_dir = self.postgres_dest_bin_dir
+        else:
+            dest_bin_dir = self.main_dest_bin_dir
+        return dest_bin_dir
+
+    @staticmethod
+    def join_binary_names_for_bash(binary_names):
+        return ' '.join(['"{}"'.format(name) for name in binary_names])
+
     def package_binaries(self):
         """
         The main entry point to this class. Arranges binaries (executables and shared libraries),
@@ -276,15 +293,15 @@ class LibraryPackager:
         """
         all_deps = []
 
-        executables = []
-
-        dest_bin_dir = os.path.join(self.dest_dir, 'bin')
-        mkdir_p(dest_bin_dir)
-
         dest_lib_dir = os.path.join(self.dest_dir, 'lib')
         mkdir_p(dest_lib_dir)
 
-        elf_names_to_set_interpreter = []
+        mkdir_p(self.main_dest_bin_dir)
+        mkdir_p(self.postgres_dest_bin_dir)
+
+        main_elf_names_to_patch = []
+        postgres_elf_names_to_patch = []
+
         for seed_executable_glob in self.seed_executable_patterns:
             glob_results = glob.glob(seed_executable_glob)
             if not glob_results:
@@ -293,17 +310,21 @@ class LibraryPackager:
             for executable in glob_results:
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
+                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
                 if deps:
                     self.install_dyn_linked_binary(executable, dest_bin_dir)
                     executable_basename = os.path.basename(executable)
-                    elf_names_to_set_interpreter.append(executable_basename)
+                    if self.is_postgres_binary(executable):
+                        postgres_elf_names_to_patch.append(executable_basename)
+                    else:
+                        main_elf_names_to_patch.append(executable_basename)
                 else:
                     # This is probably a script.
                     shutil.copy(executable, dest_bin_dir)
 
         # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we won't
         # need to do any post-processing on these two later.
-        shutil.copy(PATCHELF_PATH, dest_bin_dir)
+        shutil.copy(PATCHELF_PATH, self.main_dest_bin_dir)
 
         ld_path = os.path.join(LINUXBREW_HOME, 'lib', 'ld.so')
         shutil.copy(ld_path, dest_lib_dir)
@@ -317,8 +338,6 @@ class LibraryPackager:
                     "Multiple dependencies with the same name {} but different targets: {}".format(
                         dep_name, deps
                     ))
-
-        categories = sorted(set([dep.get_category() for dep in all_deps]))
 
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
@@ -335,7 +354,6 @@ class LibraryPackager:
 
             for dep in deps_in_category:
                 self.install_dyn_linked_binary(dep.target, category_dest_dir)
-                target_basename = os.path.basename(dep.target)
                 if os.path.basename(dep.target) != dep.name:
                     symlink(os.path.basename(dep.target),
                             os.path.join(category_dest_dir, dep.name))
@@ -366,58 +384,19 @@ class LibraryPackager:
             # Remove rpath (we will set it appropriately in post_install.sh).
             run_patchelf('--remove-rpath', installed_binary)
 
-        post_install_path = os.path.join(dest_bin_dir, 'post_install.sh')
+        post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
         with open(post_install_path) as post_install_script_input:
             post_install_script = post_install_script_input.read()
-        binary_names_to_patch = ' '.join([
-            '"{}"'.format(name) for name in elf_names_to_set_interpreter])
-        new_post_install_script = post_install_script.replace('${elf_names_to_set_interpreter}',
-                                                              binary_names_to_patch)
+
+        new_post_install_script = post_install_script
+        for macro_var_name, list_of_binary_names in [
+            ("main_elf_names_to_patch", main_elf_names_to_patch),
+            ("postgres_elf_names_to_patch", postgres_elf_names_to_patch)
+        ]:
+            new_post_install_script = new_post_install_script.replace(
+                '${%s}' % macro_var_name,
+                self.join_binary_names_for_bash(list_of_binary_names)
+            )
+
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)
-
-
-if __name__ == '__main__':
-    if not os.path.isdir(get_thirdparty_dir()):
-        raise RuntimeError("Third-party dependency directory '{}' does not exist".format(
-            get_thirdparty_dir()))
-
-    parser = argparse.ArgumentParser(description=LibraryPackager.__doc__)
-    parser.add_argument('--build-dir',
-                        help='Build directory to pick up executables/libraries from.',
-                        required=True)
-    parser.add_argument('--dest-dir',
-                        help='Destination directory to save the self-sufficient directory tree '
-                             'of executables and libraries at.',
-                        required=True)
-    parser.add_argument('--clean-dest',
-                        help='Remove the destination directory if it already exists. Only works '
-                             'with directories under /tmp/... for safety.',
-                        action='store_true')
-    add_common_arguments(parser)
-
-    args = parser.parse_args()
-    log_level = logging.INFO
-    if args.verbose:
-        log_level = logging.DEBUG
-    logging.basicConfig(
-        level=log_level,
-        format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
-
-    release_manifest_path = os.path.join(YB_SRC_ROOT, 'yb_release_manifest.json')
-    release_manifest = json.load(open(release_manifest_path))
-    if args.clean_dest and os.path.exists(args.dest_dir):
-        if args.dest_dir.startswith('/tmp/'):
-            logging.info(("--clean-dest specified and '{}' already exists, "
-                          "deleting.").format(args.dest_dir))
-            shutil.rmtree(args.dest_dir)
-        else:
-            raise RuntimeError(
-                    "For safety, --clean-dest only works with destination directories "
-                    "under /tmp/...")
-
-    packager = LibraryPackager(build_dir=args.build_dir,
-                               seed_executable_patterns=release_manifest['bin'],
-                               dest_dir=args.dest_dir,
-                               verbose_mode=args.verbose)
-    packager.package_binaries()

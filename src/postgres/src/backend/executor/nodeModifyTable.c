@@ -415,7 +415,8 @@ ExecInsert(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr || check_partition_constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
+		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0 &&
+		    YBIsWritingToPgEnabled())
 		{
 			/* Perform a speculative insertion. */
 			uint32		specToken;
@@ -522,7 +523,7 @@ ExecInsert(ModifyTableState *mtstate,
 
 			/* Since there was no insertion conflict, we're done */
 		}
-		else
+		else if (YBIsWritingToPgEnabled())
 		{
 			/*
 			 * insert the tuple normally.

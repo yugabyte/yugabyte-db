@@ -23,7 +23,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.zip.GZIPOutputStream;
 
-public class GzipHelpers {
+public final class GzipHelpers {
+
+  private GzipHelpers() {
+  }
 
   private static final Logger LOG = LoggerFactory.getLogger(GzipHelpers.class);
 

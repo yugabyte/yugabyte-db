@@ -19,6 +19,7 @@
 
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/pg_if_c_decl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -209,9 +210,7 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes,
 // Deprecated Code End. The above code should be deleted.
 //------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/if_macros_c_wrapper_decl.h"
-#include "yb/yql/pggate/pggate_if.h"
-#include "yb/yql/pggate/if_macros_undef.h"
+YBCPgTxnManager YBCGetPgTxnManager();
 
 #ifdef __cplusplus
 }  // extern "C"

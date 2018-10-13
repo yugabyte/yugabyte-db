@@ -910,15 +910,10 @@ YB_STRONGLY_TYPED_BOOL(Restart);
 //   indivisible semantic unit, per the usual definitions of database transactions
 //   and isolation levels.
 //
-// NOTE: YB does not currently support transactions! They are only mentioned
-// in the above documentation to clarify that batches are not transactional and
-// should only be used for efficiency.
-//
 // YBSession is separate from YBTable because a given batch or transaction
-// may span multiple tables. This is particularly important in the future when
-// we add ACID support, but even in the context of batching, we may be able to
-// coalesce writes to different tables hosted on the same server into the same
-// RPC.
+// may span multiple tables. Even in the context of batching and not multi-table
+// ACID transactions, we may be able to coalesce writes to different tables hosted
+// on the same server into the same RPC.
 //
 // YBSession is separate from YBClient because, in a multi-threaded
 // application, different threads may need to concurrently execute
@@ -935,11 +930,6 @@ YB_STRONGLY_TYPED_BOOL(Restart);
 // priorities high. Without the separation of batches, a latency-sensitive
 // single-row insert might get batched along with 10MB worth of inserts from the
 // batch writer, thus delaying the response significantly.
-//
-// Though we currently do not have transactional support, users will be forced
-// to use a YBSession to instantiate reads as well as writes.  This will make
-// it more straight-forward to add RW transactions in the future without
-// significant modifications to the API.
 //
 // Users who are familiar with the Hibernate ORM framework should find this
 // concept of a Session familiar.
@@ -960,16 +950,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
-
-  // Set the amount of buffer space used by this session for outbound writes.
-  // The effect of the buffer size varies based on the flush mode of the
-  // session:
-  //
-  // AUTO_FLUSH_SYNC:
-  //   since no buffering is done, this has no effect
-  // MANUAL_FLUSH:
-  //   if the buffer space is exhausted, then write calls will return an error.
-  CHECKED_STATUS SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
 
   // Set the timeout for writes made in this session.
   void SetTimeout(MonoDelta timeout);

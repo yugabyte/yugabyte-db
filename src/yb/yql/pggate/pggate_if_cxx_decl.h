@@ -11,7 +11,13 @@
 // under the License.
 //
 
-// No include guards here because this file is expected to be included multiple times.
+// Generates C++ interface class declarations from our common C++/PostgreSQL interface DSL.
 
-#include "yb/yql/pggate/pg_api_example_if.h"
-#include "yb/yql/pggate/pg_txn_manager_if.h"
+#ifndef YB_YQL_PGGATE_PGGATE_IF_CXX_DECL_H
+#define YB_YQL_PGGATE_PGGATE_IF_CXX_DECL_H
+
+#include "yb/yql/pggate/if_macros_cxx_decl.h"
+#include "yb/yql/pggate/pggate_if.h"
+#include "yb/yql/pggate/if_macros_undef.h"
+
+#endif  // YB_YQL_PGGATE_PGGATE_IF_CXX_DECL_H

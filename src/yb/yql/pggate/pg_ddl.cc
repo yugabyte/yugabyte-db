@@ -137,6 +137,12 @@ CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int
 CHECKED_STATUS PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
+
+  {
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    schema_builder_.SetTableProperties(table_properties);
+  }
   RETURN_NOT_OK(schema_builder_.Build(&schema));
 
   // Create table.

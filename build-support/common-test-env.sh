@@ -802,6 +802,16 @@ determine_test_timeout() {
   fi
 }
 
+try_set_ulimited_ulimit() {
+  # Setting the ulimit may fail with an error message, and that's what we want. We will still
+  # run the test.  In case we do manage to set the core file size limit, the caller can restore the
+  # previous limit after exiting a subshell.
+  if ! ulimit -c unlimited; then
+    # Print some diagnostics if we fail to set core file size limit.
+    log "Command 'ulimit -c unlimited' failed. Current 'ulimit -c' output: $( ulimit -c )"
+  fi
+}
+
 run_one_test() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set \
@@ -836,14 +846,7 @@ run_one_test() {
 
     set +e
     (
-      # Setting the ulimit may fail with an error message, and that's what we want. We will still
-      # run the test.  In case we do manage to set the core file size limit, we will restore the
-      # previous limit after we exit the subshell.
-      ulimit -c unlimited
-      if [[ $? -ne 0 ]]; then
-        # Print some diagnostics if we fail to set core file size limit.
-        log "Command 'ulimit -c unlimited' failed. Current 'ulimit -c' output: $( ulimit -c )"
-      fi
+      try_set_ulimited_ulimit
 
       # YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on
       # the console by giving ctest the --verbose option. This is intended for development. When we
@@ -1406,10 +1409,10 @@ run_java_test() {
     mkdir -p "$surefire_reports_dir"
     mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
     set +e
-    time ( set -x; mvn "${mvn_opts[@]}" ) &>"$mvn_output_path"
+    time ( try_set_ulimited_ulimit; set -x; mvn "${mvn_opts[@]}" ) &>"$mvn_output_path"
   else
     set +e
-    time ( set -x; mvn "${mvn_opts[@]}" )
+    time ( try_set_ulimited_ulimit; set -x; mvn "${mvn_opts[@]}" )
   fi
   local mvn_exit_code=$?
   set -e
@@ -1504,7 +1507,16 @@ collect_java_tests() {
         sed 's/^YUGABYTE_JAVA_TEST: //g' >>"$java_test_list_path"
     )
     if [[ $? -ne 0 ]]; then
-      fatal "Failed collecting Java tests. See '$stdout_log' and '$stderr_log'."
+      local log_file_path
+      for log_file_path in "$stdout_log" "$stderr_log"; do
+        if [[ -f $log_file_path ]]; then
+          heading "Contents of $log_file_path (dumping here because of an error)"
+          cat "$log_file_path"
+        else
+          heading "$log_file_path does not exist"
+        fi
+      done
+      fatal "Failed collecting Java tests. See '$stdout_log' and '$stderr_log' contents above."
     fi
     set -e
     popd

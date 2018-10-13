@@ -24,7 +24,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.postgresql.core.TransactionState;
+import org.postgresql.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +40,7 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.LogPrinter;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.util.EnvAndSysPropertyUtil;
 
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.client.TestUtils.findFreePort;
@@ -61,6 +69,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   private String postgresExecutable;
 
+  private List<Connection> connectionsToClose = new ArrayList<>();
+  private String pgHost = "127.0.0.1";
+  private int pgPort;
+
+  protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
+
+  protected ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap = new ConcurrentSkipListSet<>();
+
+  /**
+   * This is used during shutdown to prevent trying to kill the same backend multiple times, so not
+   * using a concurrent data structure.
+   */
+  protected Set<Integer> killedStuckBackendPids = new HashSet<>();
+
+  /**
+   * This allows us to run the same test against the vanilla PostgreSQL code (still compiled as
+   * part of the YB codebase).
+   */
+  private final boolean useVanillaPostgres =
+      EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_USE_VANILLA_POSTGRES_IN_TEST");
+
+  @Override
+  protected boolean miniClusterEnabled() {
+    return !useVanillaPostgres;
+  }
+
   @Override
   protected int overridableNumShardsPerTServer() {
     return 1;
@@ -73,44 +107,84 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // For now doing this here so we can already write tests.
   @Before
   public void initPostgresBefore() throws Exception {
-    String pgHost = "127.0.0.1";
-    int port = findFreePort(pgHost);
+    pgPort = findFreePort(pgHost);
     LOG.info("initPostgresBefore: will start PostgreSQL server on host " + pgHost +
-        ", port " + port);
-    startPgWrapper(pgHost, port);
+        ", port " + pgPort);
+    startPgWrapper(pgHost, pgPort);
 
     // Register PostgreSQL JDBC driver.
     Class.forName("org.postgresql.Driver");
-    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, port, DEFAULT_DATABASE);
+
+    if (connection != null) {
+      LOG.info("Closing previous connection");
+      connection.close();
+      connection = null;
+    }
+    connection = createConnection();
+  }
+
+  protected void configureConnection(Connection connection) throws Exception {
+    connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+  }
+
+  protected Connection createConnectionNoAutoCommit() throws Exception {
+    Connection conn = createConnection();
+    conn.setAutoCommit(false);
+    return conn;
+  }
+
+  protected Connection createConnectionWithAutoCommit() throws Exception {
+    Connection conn = createConnection();
+    conn.setAutoCommit(true);
+    return conn;
+  }
+
+  protected Connection createConnection() throws Exception {
+    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, DEFAULT_DATABASE);
+    if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
+      url += "?loggerLevel=TRACE";
+    }
 
     int delayMs = 1000;
+    Connection connection = null;
     for (int attemptsLeft = 10; attemptsLeft >= 1; --attemptsLeft) {
       try {
-        if (connection != null) {
-          LOG.info("Closing previous connection");
-          connection.close();
-          connection = null;
-        }
         connection = DriverManager.getConnection(url, DEFAULT_USER, DEFAULT_PASSWORD);
-        // Break when a connection has been successfully established.
-        // NOTE: if we forget to break here, we will create a lot of connections that won't get
-        // closed, and that will prevent PostgreSQL's "smart shutdown" from completing.
-        break;
-      } catch (SQLException e) {
+        connectionsToClose.add(connection);
+        configureConnection(connection);
+        // JDBC does not specify a default for auto-commit, let's set it to true here for
+        // determinism.
+        connection.setAutoCommit(true);
+        return connection;
+      } catch (SQLException sqlEx) {
+        // Close the connection now if we opened it, instead of waiting until the end of the test.
+        if (connection != null) {
+          try {
+            connection.close();
+            connectionsToClose.remove(connection);
+            connection = null;
+          } catch (SQLException closingError) {
+            LOG.error("Failure to close connection during failure cleanup before a retry:",
+                closingError);
+            LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
+          }
+        }
+
         if (attemptsLeft > 1 &&
-            e.getMessage().contains("FATAL: the database system is starting up") ||
-            e.getMessage().contains("refused. Check that the hostname and port are correct and " +
-                                    "that the postmaster is accepting")) {
+            sqlEx.getMessage().contains("FATAL: the database system is starting up") ||
+            sqlEx.getMessage().contains("refused. Check that the hostname and port are correct " +
+                "and that the postmaster is accepting")) {
           LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
-              "Got message: " + e.getMessage());
+              "Got message: " + sqlEx.getMessage());
           Thread.sleep(delayMs);
           delayMs += 1000;
           continue;
         }
-        LOG.error("Exception while trying to create connection: " + e.getMessage());
-        throw e;
+        LOG.error("Exception while trying to create connection: " + sqlEx.getMessage());
+        throw sqlEx;
       }
     }
+    throw new IllegalStateException("Should not be able to reach here");
   }
 
   private void startPgWrapper(String host, int port) throws Exception {
@@ -123,7 +197,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Map<String, String> postgresEnvVars = new HashMap<>();
     postgresEnvVars.put(PG_DATA_FLAG, pgdataDirPath);
     postgresEnvVars.put(MASTERS_FLAG, masterAddresses);
-    postgresEnvVars.put(YB_ENABLED_FLAG, "1");
+    if (useVanillaPostgres) {
+      LOG.info("NOT using YugaByte-enabled PostgreSQL");
+    } else {
+      postgresEnvVars.put(YB_ENABLED_FLAG, "1");
+    }
+    postgresEnvVars.put("FLAGS_yb_num_shards_per_tserver",
+        String.valueOf(overridableNumShardsPerTServer()));
+    // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
+    postgresEnvVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
+
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
     postgresEnvVars.put("TSAN_OPTIONS",
@@ -140,6 +223,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
     postgresEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+
+    {
+      List<String> postgresEnvVarsDump = new ArrayList<>();
+      for (Map.Entry<String, String> entry : postgresEnvVars.entrySet()) {
+        postgresEnvVarsDump.add(entry.getKey() + ": " + entry.getValue());
+      }
+      Collections.sort(postgresEnvVarsDump);
+      LOG.info(
+          "Setting the following environment variables for the PostgreSQL process:\n    " +
+              String.join("\n    ", postgresEnvVarsDump));
+    }
 
     String portStr = String.valueOf(port);
 
@@ -219,68 +313,187 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   @After
   public void tearDownAfter() throws Exception {
+    LOG.info(getClass().getSimpleName() + ".tearDownAfter is running");
     try {
-      if (connection != null) {
-        try (Statement statement = connection.createStatement()) {
-          try (ResultSet resultSet = statement.executeQuery(
-              "SELECT client_hostname, client_port, state, query FROM pg_stat_activity")) {
-            while (resultSet.next()) {
-              LOG.info("Found connection: " +
-                  "hostname=" + resultSet.getString(1) + ", " +
-                  "port=" + resultSet.getInt(2) + ", " +
-                  "state=" + resultSet.getString(3) + ", " +
-                  "query=" + resultSet.getString(4));
+      tearDownPostgreSQL();
+    } finally {
+      if (miniClusterEnabled()) {
+        LOG.info("Destroying mini-cluster");
+        // We are destroying and re-creating the miniCluster between every test.
+        // TODO Should just drop all tables/schemas/databases like for CQL.
+        if (miniCluster != null) {
+          destroyMiniCluster();
+          miniCluster = null;
+        }
+      }
+    }
+  }
+
+  private void processPgCoreFile(int pid) throws Exception {
+    if (postgresExecutable != null) {
+      MiniYBCluster.processCoreFile(pid, postgresExecutable, "postgres", pgDataDir,
+          true /* tryWithoutPid */);
+    } else {
+      LOG.error("PostgreSQL executable path not known, cannot look for core files from pid " + pid);
+    }
+  }
+
+  private void killAndCoreDumpBackends(Collection<Integer> stuckBackendPids) throws Exception {
+    stuckBackendPids.addAll(stuckBackendPidsConcMap);
+
+    LOG.warn(String.format(
+        "Found %d 'stuck' backends: %s", stuckBackendPids.size(), stuckBackendPids));
+    for (int stuckBackendPid : stuckBackendPids) {
+      if (killedStuckBackendPids.contains(stuckBackendPid)) {
+        continue;
+      }
+
+      LOG.warn("Killing stuck backend with PID " + stuckBackendPid + " with a SIGSEGV");
+      Runtime.getRuntime().exec("kill -SIGSEGV " + stuckBackendPid);
+      killedStuckBackendPids.add(stuckBackendPid);
+    }
+
+    LOG.warn("waiting a bit for core dumps to finish");
+    Thread.sleep(5000);
+    for (int stuckBackendPid : stuckBackendPids) {
+      processPgCoreFile(stuckBackendPid);
+    }
+  }
+
+  private void tearDownPostgreSQL() throws Exception {
+    Set<Integer> allBackendPids = new TreeSet<>();
+    killAndCoreDumpBackends(new TreeSet<>(stuckBackendPidsConcMap));
+    boolean pgFailedToTerminate = false;
+
+    if (connection != null) {
+      try (Statement statement = connection.createStatement()) {
+        try (ResultSet resultSet = statement.executeQuery(
+            "SELECT client_hostname, client_port, state, query, pid FROM pg_stat_activity")) {
+          while (resultSet.next()) {
+            int backendPid = resultSet.getInt(5);
+            LOG.info("Found connection: " +
+                "hostname=" + resultSet.getString(1) + ", " +
+                "port=" + resultSet.getInt(2) + ", " +
+                "state=" + resultSet.getString(3) + ", " +
+                "query=" + resultSet.getString(4) + ", " +
+                "backend_pid=" + backendPid);
+            if (backendPid > 0) {
+              allBackendPids.add(backendPid);
             }
           }
         }
-        catch (SQLException e) {
-          LOG.info("Exception when trying to list PostgreSQL connections", e);
-        }
+      }
+      catch (SQLException e) {
+        LOG.info("Exception when trying to list PostgreSQL connections", e);
+      }
 
-        LOG.info("Closing connection.");
+      LOG.info("Closing connections.");
+      for (Connection connection : connectionsToClose) {
         try {
           connection.close();
-          connection = null;
         } catch (SQLException ex) {
           LOG.error("Exception while trying to close connection");
           throw ex;
         }
-      } else {
-        LOG.info("Connection is already null, nothing to close");
       }
-      LOG.info("Finished closing connection.");
+    } else {
+      LOG.info("Connection is already null, nothing to close");
+    }
+    LOG.info("Finished closing connection.");
 
-      // Stop postgres server.
-      LOG.info("Stopping postgres server.");
-      int postgresPid = TestUtils.pidOfProcess(postgresProc);
-      if (postgresProc != null) {
-        // See https://www.postgresql.org/docs/current/static/server-shutdown.html for different
-        // server shutdown modes of PostgreSQL.
-        // SIGTERM = "Smart Shutdown"
-        // SIGINT = "Fast Shutdown"
-        // SIGQUIT = "Immediate Shutdown"
-        Runtime.getRuntime().exec("kill -SIGTERM " + postgresPid);
-        postgresProc.waitFor();
+    // Stop postgres server.
+    LOG.info("Stopping postgres server.");
+    int postgresPid = TestUtils.pidOfProcess(postgresProc);
+    if (postgresProc != null) {
+      // See https://www.postgresql.org/docs/current/static/server-shutdown.html for different
+      // server shutdown modes of PostgreSQL.
+      // SIGTERM = "Smart Shutdown"
+      // SIGINT = "Fast Shutdown"
+      // SIGQUIT = "Immediate Shutdown"
+      Runtime.getRuntime().exec("kill -SIGTERM " + postgresPid);
+      if (!postgresProc.waitFor(30, TimeUnit.SECONDS)) {
+        LOG.info("Timed out while waiting for the PostgreSQL process to finish. " +
+                 "Killing and core dumping all backends.");
+        killAndCoreDumpBackends(allBackendPids);
+        LOG.info("Killing the main PostgreSQL process with SIGKILL");
+        Runtime.getRuntime().exec("kill -SIGKILL" + postgresPid);
+        pgFailedToTerminate = true;
       }
-      if (postgresExecutable != null) {
-        MiniYBCluster.processCoreFile(postgresPid, postgresExecutable, "postgres", pgDataDir,
-            /* tryWithoutPid */ true);
-      }
+    }
+    processPgCoreFile(postgresPid);
 
-      if (logPrinter != null) {
-        logPrinter.stop();
-      }
+    if (logPrinter != null) {
+      logPrinter.stop();
+    }
 
-      LOG.info("Finished stopping postgres server.");
-      LOG.info("Deleting PostgreSQL data directory at " + pgDataDir.getPath());
-      FileUtils.deleteDirectory(pgDataDir);
+    LOG.info("Finished stopping postgres server.");
+    LOG.info("Deleting PostgreSQL data directory at " + pgDataDir.getPath());
+    FileUtils.deleteDirectory(pgDataDir);
+
+    if (pgFailedToTerminate) {
+      throw new AssertionError("PostgreSQL process failed to terminate normally");
+    }
+  }
+
+  /**
+   * Commit the current transaction on the given connection, catch and report the exception.
+   * @param conn connection to use
+   * @param extraMsg an extra part of the error message
+   * @return whether commit succeeded
+   */
+  protected static boolean commitAndCatchException(Connection conn, String extraMsg) {
+    extraMsg = extraMsg.trim();
+    if (!extraMsg.isEmpty()) {
+      extraMsg = " (" + extraMsg + ")";
+    }
+    try {
+      conn.commit();
+      return true;
+    } catch (SQLException ex) {
+      // TODO: validate the exception message.
+      LOG.info("Error during commit" + extraMsg + ": " + ex.getMessage());
+      return false;
+    }
+  }
+
+  protected static PgConnection toPgConnection(Connection connection) {
+    return (PgConnection) connection;
+  }
+
+  protected static TransactionState getPgTxnState(Connection connection) {
+    return toPgConnection(connection).getTransactionState();
+  }
+
+  protected static int getPgBackendPid(Connection connection) {
+    return toPgConnection(connection).getBackendPID();
+  }
+
+  protected void executeWithTimeout(Statement statement, String sql)
+      throws SQLException, TimeoutException, InterruptedException {
+    // Maintain our map saying how many statements are being run by each backend pid.
+    // Later we can determine stuck
+    final int backendPid = getPgBackendPid(statement.getConnection());
+
+    AtomicReference<SQLException> sqlExceptionWrapper = new AtomicReference<>();
+    boolean timedOut = false;
+    try {
+      String taskDescription = "SQL statement (PG backend pid: " + backendPid + "): " + sql;
+      runWithTimeout(DEFAULT_STATEMENT_TIMEOUT_MS, taskDescription, () -> {
+        try {
+          statement.execute(sql);
+        } catch (SQLException e) {
+          sqlExceptionWrapper.set(e);
+        }
+      });
+    } catch (TimeoutException ex) {
+      // Record that this backend is possibly "stuck" so we can force a core dump and examine it.
+      stuckBackendPidsConcMap.add(backendPid);
+      timedOut = true;
+      throw ex;
     } finally {
-      LOG.info("Destroying mini-cluster");
-      // We are destroying and re-creating the miniCluster between every test.
-      // TODO Should just drop all tables/schemas/databases like for CQL.
-      if (miniCluster != null) {
-        destroyMiniCluster();
-        miniCluster = null;
+      // Make sure we propagate the SQLException. But TimeoutException takes precedence.
+      if (!timedOut && sqlExceptionWrapper.get() != null) {
+        throw sqlExceptionWrapper.get();
       }
     }
   }
@@ -353,4 +566,18 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       LOG.info("Expected exception", e);
     }
   }
+
+  protected String getSimpleTableCreationStatement(String tableName, String valueColumnName) {
+    return "CREATE TABLE " + tableName + "(h int, r int, " + valueColumnName + " int, " +
+        "PRIMARY KEY (h, r))";
+  }
+
+  protected void createSimpleTable(String tableName, String valueColumnName) throws SQLException {
+    Statement statement = connection.createStatement();
+    String sql = getSimpleTableCreationStatement(tableName, valueColumnName);
+    LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+    statement.execute(sql);
+    LOG.info("Table creation finished: " + tableName);
+  }
+
 }

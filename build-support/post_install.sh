@@ -20,6 +20,19 @@
 #
 set -euo pipefail
 
+patch_binary() {
+  if [[ $# -ne 1 ]]; then
+    echo >&2 "patch_binary expects exactly one argument, the binary name to patch"
+    exit 1
+  fi
+  local f=$1
+  (
+    set -x;
+    "$patchelf_path" --set-interpreter "$ld_path" "$f";
+    "$patchelf_path" --set-rpath "$rpath" "$f";
+  )
+}
+
 bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
 distribution_dir=$( cd "$bin_dir/.." && pwd )
 lib_dir="$distribution_dir/lib"
@@ -39,12 +52,14 @@ if [[ ! -x $ld_path ]]; then
 fi
 
 cd "$bin_dir"
-# ${elf_names_to_set_interpreter} is substituted during packaging.
-for f in ${elf_names_to_set_interpreter}; do
-  ( set -x;
-    "$patchelf_path" --set-interpreter "$ld_path" "$f";
-    "$patchelf_path" --set-rpath "$rpath" "$f";
-  )
+# ${...} macro variables will be substituted during packaging.
+for f in ${main_elf_names_to_patch}; do
+  patch_binary "$f"
+done
+
+cd "$bin_dir/../postgres/bin"
+for f in ${postgres_elf_names_to_patch}; do
+  patch_binary "$f"
 done
 
 find $lib_dir -name "*.so*" ! -name "ld.so" | xargs -I{} "$patchelf_path" --set-rpath "$rpath" {} \

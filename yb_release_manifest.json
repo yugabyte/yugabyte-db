@@ -1,5 +1,6 @@
 {
   ".": ["$BUILD_ROOT/version_metadata.json"],
+  "postgres": ["$BUILD_ROOT/postgres/*"],
   "www": ["www/*"],
   "bin": ["bin/bulk_load_cleanup.sh",
           "bin/bulk_load_helper.sh",

@@ -34,8 +34,10 @@
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
-
 #include "yb/yql/pggate/type_mapping.h"
+#include "yb/yql/pggate/pggate_if_cxx_decl.h"
+
+#include "yb/server/hybrid_clock.h"
 
 namespace yb {
 namespace pggate {
@@ -231,6 +233,8 @@ class PgApiImpl {
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, bool is_null);
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null);
 
+  PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
+
  private:
   // Control variables.
   PggateOptions pggate_options_;
@@ -248,13 +252,10 @@ class PgApiImpl {
   // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
   // all the custom flags the PostgreSQL sets. We ignore them all for now.
   PgEnv::SharedPtr pg_env_;
-};
 
-// Generate C++ interface class declarations from the common DSL.
-// TODO: move this to a separate file.
-#include "yb/yql/pggate/if_macros_cxx_decl.h"
-#include "yb/yql/pggate/pggate_if.h"
-#include "yb/yql/pggate/if_macros_undef.h"
+  scoped_refptr<server::HybridClock> clock_;
+  scoped_refptr<PgTxnManager> pg_txn_manager_;
+};
 
 }  // namespace pggate
 }  // namespace yb

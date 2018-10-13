@@ -131,6 +131,8 @@
 #include "utils/timeout.h"
 #include "utils/varlena.h"
 
+#include "pg_yb_utils.h"
+
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 #endif
@@ -5152,13 +5154,15 @@ sigusr1_handler(SIGNAL_ARGS)
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_WORKER) &&
-		Shutdown == NoShutdown)
+		Shutdown == NoShutdown &&
+		!IsYugaByteEnabled())
 	{
 		/* The autovacuum launcher wants us to start a worker process. */
 		StartAutovacuumWorker();
 	}
 
-	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER))
+	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
+	    !IsYugaByteEnabled())
 	{
 		/* Startup Process wants us to start the walreceiver process. */
 		/* Start immediately if possible, else remember request for later. */

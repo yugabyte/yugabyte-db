@@ -462,6 +462,10 @@ public class TestUtils {
     return isTSAN() ? tsanValue : nonTsanValue;
   }
 
+  public static int nonTsanVsTsan(int nonTsanValue, int tsanValue) {
+    return isTSAN() ? tsanValue : nonTsanValue;
+  }
+
   public static String nonTsanVsTsan(String nonTsanValue, String tsanValue) {
     return isTSAN() ? tsanValue : nonTsanValue;
   }

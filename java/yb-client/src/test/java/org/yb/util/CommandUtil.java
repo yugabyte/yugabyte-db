@@ -22,7 +22,7 @@ import java.util.Arrays;
 
 public final class CommandUtil {
 
-  private void CommandUtil() {
+  private CommandUtil() {
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(CommandUtil.class);
