@@ -32,7 +32,8 @@ set(PGGATE_SRCS
     pg_expr.cc
     pg_column.cc
     pg_doc_op.cc
-    pg_tabledesc.cc)
+    pg_tabledesc.cc
+    pg_txn_manager.cc)
 
 set(PGGATE_LIBS
     yb_util

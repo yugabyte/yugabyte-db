@@ -32,27 +32,36 @@
 
 extern YBCPgSession ybc_pg_session;
 
-bool		IsYugaByteEnabled();
+extern bool IsYugaByteEnabled();
 
 /*
  * Given a relation (table) id, returns whether this table is handled by
  * YugaByte: i.e. it is not a system table or in the template1 database.
  */
-bool		IsYBSupportedTable(Oid relid);
+extern bool IsYBSupportedTable(Oid relid);
 
-void		YBReportFeatureUnsupported(const char *err_msg);
+extern void YBReportFeatureUnsupported(const char *err_msg);
+
+/** If this is enabled, we will still write to PostgreSQL's storage engine. */
+extern bool YBIsWritingToPgEnabled();
+
+/**
+ * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
+ * transactions. This will be enabled by default soon after 10/12/2018.
+ */
+extern bool YBTransactionsEnabled();
 
 /*
  * Given a status returned by YB C++ code, reports that status using ereport if
  * it is not OK.
  */
-void		HandleYBStatus(YBCStatus status);
+extern void	HandleYBStatus(YBCStatus status);
 
 /*
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
  */
-void YBInitPostgresBackend(
+extern void YBInitPostgresBackend(
 					  const char *program_name,
 					  const char *db_name,
 					  const char *user_name);
@@ -61,6 +70,40 @@ void YBInitPostgresBackend(
  * This should be called on all exit paths from the PostgreSQL backend process.
  * Only main PostgreSQL backend thread is expected to call this.
  */
-void		YBOnPostgresBackendShutdown();
+extern void	YBOnPostgresBackendShutdown();
 
-#endif							/* PG_YB_UTILS_H */
+/**
+ * Commits the current YugaByte-level transaction. Returns true in case of
+ * successful commit and false in case of failure. If there is no transaction in
+ * progress, also returns true.
+ */
+extern bool YBCCommitTransaction();
+
+/**
+ * Handle a commit error if it happened during a previous call to
+ * YBCCommitTransaction. We allow deferring this handling in order to be able
+ * to make PostgreSQL transaction block state transitions before calling
+ * ereport.
+ */
+extern void YBCHandleCommitError();
+
+/**
+ * Checks if the given environment variable is set to "1".
+ */
+extern bool YBCIsEnvVarTrue(const char* env_var_name);
+
+/**
+ * Return true if we want to allow PostgreSQL's own locking. This is needed
+ * while system tables are still managed by PostgreSQL.
+ */
+extern bool YBIsPgLockingEnabled();
+
+/**
+ * Define additional inline wrappers around _Status functions that return the
+ * real return value and ereport the error status.
+ */
+#include "yb/yql/pggate/if_macros_c_pg_wrapper_inl.h"
+#include "yb/yql/pggate/pggate_if.h"
+#include "yb/yql/pggate/if_macros_undef.h"
+
+#endif /* PG_YB_UTILS_H */

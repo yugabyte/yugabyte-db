@@ -180,6 +180,7 @@ public class MiniYBCluster implements AutoCloseable {
     syncClient.waitForMasterLeader(defaultTimeoutMs);
   }
 
+  /** Common flags for both master and tserver processes */
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
         // Ensure that logging goes to the test output and doesn't get buffered.
@@ -211,6 +212,8 @@ public class MiniYBCluster implements AutoCloseable {
       // and yb-tserver for this.
       commonFlags.add("--metric_node_name=" + testInvocationId);
     }
+
+    commonFlags.add("--yb_num_shards_per_tserver=" + numShardsPerTserver);
 
     return commonFlags;
   }
@@ -426,14 +429,12 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + PGSQL_PORT,
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
-        "--yb_num_shards_per_tserver=" + numShardsPerTserver,
         "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
-    tsCmdLine.addAll(getCommonDaemonFlags());
     if (tserverArgs != null) {
       for (String arg : tserverArgs) {
         tsCmdLine.add(arg);
@@ -633,6 +634,7 @@ public class MiniYBCluster implements AutoCloseable {
       fatalDetailsPathPrefix += "." + type.shortStr() + "-" + indexForLog + "." + bindIp + "-" +
           "port" + rpcPort;
       args.add("--fatal_details_path_prefix=" + fatalDetailsPathPrefix);
+      args.addAll(getCommonDaemonFlags());
       command = args.toArray(command);
     }
 

@@ -68,6 +68,7 @@
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 ProcessUtility_hook_type ProcessUtility_hook = NULL;
@@ -442,6 +443,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						break;
 
 					case TRANS_STMT_PREPARE:
+						if  (IsYugaByteEnabled()) {
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									errmsg("PREPARE not supported by YugaByte yet")));
+						}
 						PreventCommandDuringRecovery("PREPARE TRANSACTION");
 						if (!PrepareTransactionBlock(stmt->gid))
 						{

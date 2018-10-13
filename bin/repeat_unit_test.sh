@@ -60,7 +60,9 @@ EOT
 delete_tmp_files() {
   # Be extra careful before we nuke a directory.
   if [[ -n ${TEST_TMPDIR:-} && $TEST_TMPDIR =~ ^/tmp/ ]]; then
+    set +e
     rm -rf "$TEST_TMPDIR"
+    set -e
   fi
 }
 
@@ -318,7 +320,9 @@ $RANDOM.$RANDOM.$RANDOM.$$
         pushd "$log_dir"
         test_log_path="$YB_SUREFIRE_REPORTS_DIR.tar.gz"
         tar czf "$test_log_path" "${YB_SUREFIRE_REPORTS_DIR##*/}"
+        set +e
         rm -rf "$YB_SUREFIRE_REPORTS_DIR"
+        set -e
         popd
       else
         if [[ $pass_or_fail == "PASSED" ]]; then
@@ -338,7 +342,9 @@ $RANDOM.$RANDOM.$RANDOM.$$
   else
     rm -f "$raw_test_log_path"
     if "$is_java_test"; then
+      set +e
       rm -rf "$YB_SUREFIRE_REPORTS_DIR"
+      set -e
     fi
   fi
 

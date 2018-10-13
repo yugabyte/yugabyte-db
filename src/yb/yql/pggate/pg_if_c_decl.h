@@ -11,7 +11,21 @@
 // under the License.
 //
 
-// No include guards here because this file is expected to be included multiple times.
+// Generates declarations (prototypes) of C functions based on our C++/PostgreSQL interface DSL.
 
-#include "yb/yql/pggate/pg_api_example_if.h"
-#include "yb/yql/pggate/pg_txn_manager_if.h"
+#ifndef YB_YQL_PGGATE_PG_IF_C_DECL_H
+#define YB_YQL_PGGATE_PG_IF_C_DECL_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "yb/yql/pggate/if_macros_c_wrapper_decl.h"
+#include "yb/yql/pggate/pggate_if.h"
+#include "yb/yql/pggate/if_macros_undef.h"
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // YB_YQL_PGGATE_PG_IF_C_DECL_H

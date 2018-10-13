@@ -66,6 +66,7 @@
 #include "utils/timestamp.h"
 #include "pg_trace.h"
 
+#include "pg_yb_utils.h"
 
 /*
  *	User-tweakable parameters
@@ -1927,6 +1928,10 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
+	if (YBTransactionsEnabled()) {
+		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
+	}
+
 	ShowTransactionState("StartTransaction");
 }
 
@@ -2324,8 +2329,10 @@ PrepareTransaction(void)
 	StartPrepare(gxact);
 
 	AtPrepare_Notify();
-	AtPrepare_Locks();
-	AtPrepare_PredicateLocks();
+	if (YBIsPgLockingEnabled()) {
+		AtPrepare_Locks();
+		AtPrepare_PredicateLocks();
+	}
 	AtPrepare_PgStat();
 	AtPrepare_MultiXact();
 	AtPrepare_RelationMap();
@@ -2385,8 +2392,10 @@ PrepareTransaction(void)
 
 	PostPrepare_MultiXact(xid);
 
-	PostPrepare_Locks(xid);
-	PostPrepare_PredicateLocks(xid);
+	if (YBIsPgLockingEnabled()) {
+		PostPrepare_Locks(xid);
+		PostPrepare_PredicateLocks(xid);
+	}
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,
@@ -2461,13 +2470,15 @@ AbortTransaction(void)
 	AtAbort_Memory();
 	AtAbort_ResourceOwner();
 
-	/*
-	 * Release any LW locks we might be holding as quickly as possible.
-	 * (Regular locks, however, must be held till we finish aborting.)
-	 * Releasing LW locks is critical since we might try to grab them again
-	 * while cleaning up!
-	 */
-	LWLockReleaseAll();
+	if (YBIsPgLockingEnabled()) {
+		/*
+		* Release any LW locks we might be holding as quickly as possible.
+		* (Regular locks, however, must be held till we finish aborting.)
+		* Releasing LW locks is critical since we might try to grab them again
+		* while cleaning up!
+		*/
+		LWLockReleaseAll();
+	}
 
 	/* Clear wait information and command progress indicator */
 	pgstat_report_wait_end();
@@ -2483,11 +2494,13 @@ AbortTransaction(void)
 	/* Cancel condition variable sleep */
 	ConditionVariableCancelSleep();
 
-	/*
-	 * Also clean up any open wait for lock, since the lock manager will choke
-	 * if we try to wait for another lock before doing this.
-	 */
-	LockErrorCleanup();
+	if (YBIsPgLockingEnabled()) {
+		/*
+		* Also clean up any open wait for lock, since the lock manager will choke
+		* if we try to wait for another lock before doing this.
+		*/
+		LockErrorCleanup();
+	}
 
 	/*
 	 * If any timeout events are still active, make sure the timeout interrupt
@@ -2618,6 +2631,10 @@ AbortTransaction(void)
 		pgstat_report_xact_timestamp(0);
 	}
 
+	if (YBTransactionsEnabled()) {
+		YBCPgTxnManager_AbortTransaction(YBCGetPgTxnManager());
+	}
+
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
@@ -2743,6 +2760,22 @@ StartTransactionCommand(void)
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+void
+YBCCommitTransactionAndUpdateBlockState() {
+	TransactionState s = CurrentTransactionState;
+	if (YBCCommitTransaction()) {
+		/*
+		 * This is still needed in the YugaByte case because we need to manage the
+		 * PostgreSQL transaction state correctly.
+		 */
+		CommitTransaction();
+		s->blockState = TBLOCK_DEFAULT;
+	} else {
+		s->blockState = TBLOCK_ABORT;
+		YBCHandleCommitError();
+	}
+}
+
 /*
  *	CommitTransactionCommand
  */
@@ -2770,6 +2803,11 @@ CommitTransactionCommand(void)
 			 * transaction commit, and return to the idle state.
 			 */
 		case TBLOCK_STARTED:
+			if (YBTransactionsEnabled())
+			{
+				YBCCommitTransactionAndUpdateBlockState();
+				break;
+			}
 			CommitTransaction();
 			s->blockState = TBLOCK_DEFAULT;
 			break;
@@ -2799,6 +2837,11 @@ CommitTransactionCommand(void)
 			 * idle state.
 			 */
 		case TBLOCK_END:
+			if (YBTransactionsEnabled())
+			{
+				YBCCommitTransactionAndUpdateBlockState();
+				break;
+			}
 			CommitTransaction();
 			s->blockState = TBLOCK_DEFAULT;
 			break;
@@ -3538,6 +3581,14 @@ EndTransactionBlock(void)
 			 */
 		case TBLOCK_INPROGRESS:
 			s->blockState = TBLOCK_END;
+			if (YBTransactionsEnabled()) {
+				/*
+				 * YugaByte transaction commit happens here, but could also happen in
+				 * CommitTransactionCommand if this function is not called first.
+				 */
+				result = YBCCommitTransaction();
+				break;
+			}
 			result = true;
 			break;
 

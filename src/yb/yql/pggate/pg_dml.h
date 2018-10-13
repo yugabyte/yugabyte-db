@@ -90,7 +90,7 @@ class PgDml : public PgStatement {
   // Data members for generated protobuf.
   // NOTE:
   // - Where clause processing data is not supported yet.
-  // - Some protobuf structure are also setup in PgColumn class.
+  // - Some protobuf structure are also set up in PgColumn class.
 
   // Column references.
   PgsqlColumnRefsPB *column_refs_ = nullptr;

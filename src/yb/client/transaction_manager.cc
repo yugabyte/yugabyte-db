@@ -203,8 +203,9 @@ class TransactionManager::Impl {
       if (ThreadRestrictions::IsWaitAllowed()) {
         InvokeCallback(table_state_.local_tablet_filter, table_state_.tablets, callback);
       } else if (!invoke_callback_tasks_.Enqueue(&thread_pool_, &table_state_, callback)) {
-        callback(STATUS_FORMAT(ServiceUnavailable, "Invoke callback queue overflow, exists: $0",
-                               invoke_callback_tasks_.size()));
+        callback(STATUS_FORMAT(ServiceUnavailable,
+                              "Invoke callback queue overflow, number of tasks: $0",
+                              invoke_callback_tasks_.size()));
       }
       return;
     }
@@ -239,6 +240,7 @@ class TransactionManager::Impl {
 
   void Shutdown() {
     rpcs_.Shutdown();
+    thread_pool_.Shutdown();
   }
 
  private:

@@ -15,8 +15,10 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
+#include <mutex>
+#include <condition_variable>
+
 #include "yb/util/locks.h"
-#include "yb/util/semaphore.h"
 #include "yb/client/yb_op.h"
 #include "yb/yql/pggate/pg_session.h"
 
@@ -52,24 +54,27 @@ class PgDocOp {
   bool EndOfResult() const;
 
  protected:
-  // Processing response from DocDB.
-  virtual void Init();
-  virtual CHECKED_STATUS SendRequest() = 0;
-  void WaitForData();
+  virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);
+  virtual CHECKED_STATUS SendRequestUnlocked() = 0;
 
   // Caching and reading return result.
-  virtual void WriteToCache(std::shared_ptr<client::YBPgsqlOp> yb_op);
-  virtual void ReadFromCache(string *result);
+  void WriteToCacheUnlocked(std::shared_ptr<client::YBPgsqlOp> yb_op);
+  void ReadFromCacheUnlocked(string* result);
+
+  // Send another request if no request is pending and we've already consumed
+  // all data in the cache.
+  CHECKED_STATUS SendRequestIfNeededUnlocked();
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
+  // This mutex protects the fields below.
+  mutable std::mutex mtx_;
+  std::condition_variable cv_;
+
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
-
-  // Execution semaphore is used to lock a FETCH when waiting for response from DocDB.
-  Semaphore exec_semaphore_;
 
   // Whether or not we are waiting for a response from DocDB after sending a request. Only one
   // request can be sent to DocDB at a time.
@@ -78,8 +83,7 @@ class PgDocOp {
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;
 
-  // Whether or not result_cache_ is empty(). Instead of access result_cache_, which requires a
-  // lock, we use this boolean state variable.
+  // Whether or not result_cache_ is empty().
   bool has_cached_data_ = false;
 
   // Whether or not the statement has been canceled by application / users.
@@ -112,8 +116,8 @@ class PgDocReadOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual void Init() override;
-  virtual CHECKED_STATUS SendRequest() override;
+  virtual void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
+  virtual CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.
@@ -142,7 +146,7 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual CHECKED_STATUS SendRequest() override;
+  virtual CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.

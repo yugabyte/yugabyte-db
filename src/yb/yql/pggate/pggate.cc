@@ -21,6 +21,7 @@
 #include "yb/yql/pggate/pg_delete.h"
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/util/flag_tags.h"
+#include "yb/client/client_fwd.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
              "If an RPC connection from a client is idle for this amount of time, the server "
@@ -82,7 +83,10 @@ PgApiImpl::PgApiImpl()
                          "" /* tserver_uuid */,
                          &pggate_options_,
                          metric_entity_,
-                         mem_tracker_) {
+                         mem_tracker_),
+      clock_(new server::HybridClock()),
+      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_)) {
+  CHECK_OK(clock_->Init());
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -105,7 +109,7 @@ CHECKED_STATUS PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 CHECKED_STATUS PgApiImpl::CreateSession(const PgEnv *pg_env,
                                         const string& database_name,
                                         PgSession **pg_session) {
-  auto session = make_scoped_refptr<PgSession>(client(), database_name);
+  auto session = make_scoped_refptr<PgSession>(client(), database_name, pg_txn_manager_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }

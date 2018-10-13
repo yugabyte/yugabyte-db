@@ -339,6 +339,10 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
+YBCPgTxnManager YBCGetPgTxnManager() {
+  return pgapi->GetPgTxnManager();
+}
+
 } // extern "C"
 
 } // namespace pggate

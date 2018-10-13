@@ -163,7 +163,7 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
 }
 
 void PreparerImpl::Run() {
-  VLOG(1) << "Starting prepare task:" << this;
+  VLOG(2) << "Starting prepare task:" << this;
   for (;;) {
     OperationDriver *item = nullptr;
     while (queue_.pop(item)) {
@@ -180,11 +180,11 @@ void PreparerImpl::Run() {
         continue;
       }
       if (stop_requested_.load(std::memory_order_acquire)) {
-        VLOG(1) << "Prepare task's Run() function is returning because stop is requested.";
+        VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";
         stop_cond_.notify_all();
         return;
       }
-      VLOG(1) << "Returning from prepare task after inactivity:" << this;
+      VLOG(2) << "Returning from prepare task after inactivity:" << this;
       return;
     }
   }
@@ -228,7 +228,7 @@ void PreparerImpl::ProcessAndClearLeaderSideBatch() {
     return;
   }
 
-  VLOG(1) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side operations";
+  VLOG(2) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side operations";
 
   auto iter = leader_side_batch_.begin();
   auto replication_subbatch_begin = iter;
@@ -269,11 +269,11 @@ void PreparerImpl::ReplicateSubBatch(
   if (batch_begin == batch_end) {
     return;
   }
-  VLOG(1) << "Replicating a sub-batch of " << std::distance(batch_begin, batch_end)
+  VLOG(2) << "Replicating a sub-batch of " << std::distance(batch_begin, batch_end)
           << " leader-side operations";
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(3)) {
     for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
-      VLOG(2) << "Leader-side operation to be replicated: " << (*batch_iter)->ToString();
+      VLOG(3) << "Leader-side operation to be replicated: " << (*batch_iter)->ToString();
     }
   }
 
@@ -289,7 +289,7 @@ void PreparerImpl::ReplicateSubBatch(
   rounds_to_replicate_.clear();
 
   if (PREDICT_FALSE(!s.ok())) {
-    VLOG(1) << "ReplicateBatch failed with status " << s.ToString()
+    VLOG(2) << "ReplicateBatch failed with status " << s.ToString()
             << ", treating all " << std::distance(batch_begin, batch_end) << " operations as "
             << "failed with that status";
     // Treat all the operations in the batch as failed.
@@ -310,14 +310,14 @@ Preparer::Preparer(consensus::Consensus* consensus, ThreadPool* tablet_prepare_t
 Preparer::~Preparer() = default;
 
 Status Preparer::Start() {
-  VLOG(1) << "Starting the prepare thread";
+  VLOG(1) << "Starting the preparer";
   return impl_->Start();
 }
 
 void Preparer::Stop() {
-  VLOG(1) << "Stopping the prepare thread";
+  VLOG(1) << "Stopping the preparer";
   impl_->Stop();
-  VLOG(1) << "The prepare thread has stopped";
+  VLOG(1) << "The preparer has stopped";
 }
 
 Status Preparer::Submit(OperationDriver* operation_driver) {
