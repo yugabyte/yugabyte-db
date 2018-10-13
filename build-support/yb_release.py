@@ -222,7 +222,7 @@ def main():
         if system == "linux":
             library_packager = LibraryPackager(**library_packager_args)
         elif system == "darwin":
-            library_packager = MacLibraryPackager(library_packager_args)
+            library_packager = MacLibraryPackager(**library_packager_args)
         else:
             raise RuntimeError("System {} not supported".format(system))
         library_packager.package_binaries()
