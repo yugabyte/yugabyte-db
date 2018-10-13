@@ -8,6 +8,7 @@ import { reduxForm } from 'redux-form';
 const mapDispatchToProps = (dispatch) => {
   return {
     createTableBackup: (universeUUID, tableUUID, payload) => {
+      Object.keys(payload).forEach((key) => { if (typeof payload[key] === 'string' || payload[key] instanceof String) payload[key] = payload[key].trim(); });
       dispatch(createTableBackup(universeUUID, tableUUID, payload)).then((response) => {
         dispatch(createTableBackupResponse(response.payload));
       });

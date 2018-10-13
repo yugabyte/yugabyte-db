@@ -9,6 +9,7 @@ import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from 'utils/ObjectU
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     setOnPremProviderAndAccessKey: (formData) => {
+      Object.keys(formData).forEach((key) => { if (typeof formData[key] === 'string' || formData[key] instanceof String) formData[key] = formData[key].trim(); });
       if (!ownProps.isEditProvider) {
         const formSubmitVals = {
           provider: {name: formData.name},

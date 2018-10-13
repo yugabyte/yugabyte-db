@@ -73,7 +73,10 @@ class CreateKubernetesConfiguration extends Component {
         {"instanceTypeCode": "xlarge", "numCores": 32, "memSizeGB": 30,
           "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]}
       ];
-      self.props.createKubernetesProvider(providerName, providerConfig, regionData, zoneData, instanceTypes);
+      Object.keys(providerConfig).forEach((key) => { if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String) providerConfig[key] = providerConfig[key].trim(); });
+      Object.keys(regionData).forEach((key) =>     { if (typeof regionData[key] === 'string' ||     regionData[key] instanceof String)     regionData[key] =     regionData[key].trim(); });
+      Object.keys(zoneData).forEach((key) =>       { if (typeof zoneData[key] === 'string' ||       providerConfig[key] instanceof String) zoneData[key] =       zoneData[key].trim(); });
+      self.props.createKubernetesProvider(providerName.trim(), providerConfig, regionData, zoneData, instanceTypes);
     }, reason => {
       console.warn("File Upload gone wrong. "+reason);
     });

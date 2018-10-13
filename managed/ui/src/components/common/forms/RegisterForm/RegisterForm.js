@@ -42,7 +42,7 @@ class RegisterForm extends Component {
             <YBLogo type="full"/>
             <span>Admin Console Registration</span>
           </PageHeader>
-          <form class="form-register" onSubmit={handleSubmit(this.submitRegister.bind(this))}>
+          <form className="form-register" onSubmit={handleSubmit(this.submitRegister.bind(this))}>
             <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
               {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>

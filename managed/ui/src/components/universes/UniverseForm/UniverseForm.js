@@ -164,7 +164,7 @@ class UniverseForm extends Component {
           return item.value;
         }),
         // We only have universe name field captured at primary form
-        universeName: self.getUniverseName(),
+        universeName: self.getUniverseName().trim(),
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
@@ -192,7 +192,7 @@ class UniverseForm extends Component {
         clusterIntent.tserverGFlags = formValues.primary.tserverGFlags.filter((tserverFlag) => {
           return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
         }).map((tserverFlag) => {
-          return {name: tserverFlag.name, value: tserverFlag.value};
+          return {name: tserverFlag.name, value: tserverFlag.value.trim()};
         });
       } else {
         if (isDefinedNotNull(formValues.primary)) {
@@ -205,7 +205,7 @@ class UniverseForm extends Component {
           const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent.tserverGFlags;
           const tserverGFlags = [];
           Object.entries(existingTserverGFlags).forEach(
-            ([key, value]) => tserverGFlags.push({'name': key, 'value': value})
+            ([key, value]) => tserverGFlags.push({'name': key, 'value': value.trim()})
           );
           clusterIntent.tserverGFlags = tserverGFlags;
         }

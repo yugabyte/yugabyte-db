@@ -127,7 +127,7 @@ class AWSProviderInitView extends Component {
     }
     let hostedZoneField = <span />;
     if (this.state.setupHostedZone) {
-      hostedZoneField = this.generateRow("Route53 Zone ID",
+      hostedZoneField = this.generateRow("Route 53 Zone ID",
         <Field name="hostedZoneId" type="text" component={YBTextInputWithLabel}
           normalize={trimString} />
       );
