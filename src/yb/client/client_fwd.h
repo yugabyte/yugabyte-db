@@ -91,6 +91,7 @@ typedef scoped_refptr<Batcher> BatcherPtr;
 
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
 
+class AsyncClientInitialiser;
 } // namespace client
 } // namespace yb
 

@@ -32,6 +32,7 @@ typedef struct YBCStatusStruct* YBCStatus;
 extern YBCStatus YBCStatusOK;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
+void YBCFreeStatus(YBCStatus s);
 
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 

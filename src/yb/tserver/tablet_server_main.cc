@@ -78,7 +78,7 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
 DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
     "use for the thread cache for tcmalloc across all threads in the tserver.");
 
-DEFINE_bool(start_pgsql_proxy, true, "Starts a PostgreSQL proxy along with the tablet server");
+DEFINE_bool(start_pgsql_proxy, false, "Starts a PostgreSQL proxy along with the tablet server");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);

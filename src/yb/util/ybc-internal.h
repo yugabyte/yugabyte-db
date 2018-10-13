@@ -29,6 +29,7 @@ namespace yb {
 
 // Convert our C++ status to YBCStatus, which can be returned to PostgreSQL C code.
 YBCStatus ToYBCStatus(const Status& status);
+void FreeYBCStatus(YBCStatus status);
 
 void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
 void* YBCPAlloc(size_t size);

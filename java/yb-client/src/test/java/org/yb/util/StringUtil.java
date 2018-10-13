@@ -36,4 +36,14 @@ public final class StringUtil {
     return sb.toString();
   }
 
+  public static boolean isStringTrue(String value, boolean defaultValue) {
+    if (value == null)
+      return defaultValue;
+    value = value.trim().toLowerCase();
+    if (value.isEmpty() || value.equals("auto") || value.equals("default"))
+      return defaultValue;
+    return value.equals("1") || value.equals("yes") && value.equals("y") &&
+           value.equals("on") || value.equals("enabled") || value.equals("true") ||
+           value.equals("t");
+  }
 }

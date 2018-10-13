@@ -22,7 +22,7 @@ script_name=${script_name%.*}
 show_help() {
   cat >&2 <<-EOT
 yb_build.sh (or "ybd") is the main build tool for YugaByte Database.
-Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>]
+Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>] [<yb_env_var_settings>]
 Options:
   -h, --help
     Show help.
@@ -166,16 +166,25 @@ Options:
     Clean and rebuild PostgeSQL code
   --sanitizers-enable-coredump
     When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
+  --extra-daemon-flags <extra_daemon_flags>
+    Extra flags to pass to mini-cluster daemons (master/tserver). Currently only used in Java
+    tests. Note that bash-style quoting won't work here right now -- they are naively split on
+    spaces.
   --
     Pass all arguments after -- to repeat_unit_test.
+
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
+
 Supported target keywords:
   ...-test           - build and run a C++ test
   [yb-]master        - master executable
   [yb-]tserver       - tablet server executable
   daemons            - both yb-master and yb-tserver
   packaged[-targets] - targets that are required for a release package
+
+Setting YB environment variables on the command line (for environment variables starting with YB_):
+  YB_SOME_VARIABLE1=some_value1 YB_SOME_VARIABLE2=some_value2
 EOT
 }
 
@@ -270,6 +279,12 @@ print_report() {
       report_time "C++ (one test program)" "cxx_test"
       report_time "ctest (multiple C++ test programs)" "ctest"
       report_time "Remote tests" "remote_tests"
+
+      if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
+        echo
+        echo "NO COMPILATION WAS DONE AS PART OF THIS BUILD (--skip-build)"
+        echo
+      fi
       horizontal_line
     ) >&2
   fi
@@ -837,6 +852,24 @@ while [[ $# -gt 0 ]]; do
     ;;
     --sanitizers-enable-coredump)
       export YB_SANITIZERS_ENABLE_COREDUMP=1
+    ;;
+    --extra-daemon-flags)
+      export YB_EXTRA_DAEMON_FLAGS=$2
+      shift
+    ;;
+    YB*)
+      if [[ $1 =~ ^(YB_[A-Z0-9_]+)=(.*)$ ]]; then
+        env_var_name=${BASH_REMATCH[1]}
+        # Use "the ultimate fix" from http://bit.ly/setenvvar
+        env_var_value=${BASH_REMATCH[2]}
+        eval export $env_var_name=\$env_var_value  # note escaped dollar sign
+        log "Setting $env_var_name to: '$env_var_value' (as specified on cmd line)"
+        unset env_var_name
+        unset env_var_value
+      else
+        fatal "Could not parse an environment variable name/value from: $1"
+      fi
+      shift
     ;;
     *)
       echo "Invalid option: '$1'" >&2

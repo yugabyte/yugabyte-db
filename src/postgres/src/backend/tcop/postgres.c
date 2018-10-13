@@ -2468,6 +2468,10 @@ finish_xact_command(void)
 #endif
 
 		xact_started = false;
+
+		if (YBTransactionsEnabled()) {
+			YBCHandleCommitError();
+		}
 	}
 }
 
@@ -2596,7 +2600,9 @@ quickdie(SIGNAL_ARGS)
 	 */
 	on_exit_reset();
 
-	YBOnPostgresBackendShutdown();
+	if (IsYugaByteEnabled()) {
+		YBOnPostgresBackendShutdown();
+	}
 
 	/*
 	 * Note we do exit(2) not exit(0).  This is to force the postmaster into a
@@ -2639,7 +2645,9 @@ die(SIGNAL_ARGS)
 
 	errno = save_errno;
 
-	YBOnPostgresBackendShutdown();
+	if (IsYugaByteEnabled()) {
+		YBOnPostgresBackendShutdown();
+	}
 }
 
 /*

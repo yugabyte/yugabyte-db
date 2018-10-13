@@ -38,6 +38,8 @@
         "(^src/yb/yql/pggate/if_macros_c_wrapper_decl[.]h$)",
         "(^src/yb/yql/pggate/if_macros_c_wrapper_impl[.]h$)",
         "(^src/yb/yql/pggate/if_macros_c_pg_wrapper_inl[.]h$)",
+        "(^src/yb/yql/pggate/pg_api_example_if[.]h$)",
+        "(^src/yb/yql/pggate/pg_txn_manager_if[.]h$)",
         "(^src/yb/yql/pggate/pggate_if[.]h$)"
       ],
       "include": [

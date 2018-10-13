@@ -37,10 +37,14 @@ YBCStatus ToYBCStatus(const Status& status) {
   std::string status_str = status.ToString();
   size_t status_msg_buf_size = status_str.size() + 1;
   YBCStatus ybc_status = reinterpret_cast<YBCStatus>(
-      YBCPAlloc(sizeof(YBCStatusStruct) + status_msg_buf_size));
+      malloc(sizeof(YBCStatusStruct) + status_msg_buf_size));
   ybc_status->code = status.code();
   strncpy(ybc_status->msg, status_str.c_str(), status_msg_buf_size);
   return ybc_status;
+}
+
+void FreeYBCStatus(YBCStatus status) {
+  free(status);
 }
 
 YBCStatus YBCStatusOK() {

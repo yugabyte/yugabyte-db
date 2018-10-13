@@ -13,11 +13,16 @@
 
 package org.yb.pgsql;
 
+import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+
+import org.postgresql.core.TransactionState;
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +33,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import org.junit.runner.RunWith;
 
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgWrapper extends BasePgSQLTest {
@@ -53,10 +59,10 @@ public class TestPgWrapper extends BasePgSQLTest {
     // ---------------------------------------------------------------------------------------------
     // Test Table
 
-    statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+    createSimpleTable("test", "v");
 
     // Table already exists.
-    runInvalidQuery(statement, "CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+    runInvalidQuery(statement, getSimpleTableCreationStatement("test", "v"));
 
     statement.execute("DROP TABLE test");
 
@@ -121,4 +127,5 @@ public class TestPgWrapper extends BasePgSQLTest {
     rs.close();
     statement.close();
   }
+
 }

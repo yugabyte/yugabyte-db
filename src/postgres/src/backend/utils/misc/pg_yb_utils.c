@@ -39,6 +39,13 @@
 
 YBCPgSession ybc_pg_session = NULL;
 
+/** These values are lazily initialized based on corresponding environment variables. */
+int ybc_pg_double_write = -1;
+int ybc_disable_pg_locking = -1;
+int ybc_transactions_enabled = -1;
+
+YBCStatus ybc_commit_status = NULL;
+
 bool
 IsYugaByteEnabled()
 {
@@ -61,6 +68,19 @@ IsYBSupportedTable(Oid relid)
 	return is_supported;
 }
 
+bool
+YBTransactionsEnabled() {
+	if (ybc_transactions_enabled == -1) {
+		ybc_transactions_enabled = YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED");
+	}
+	return IsYugaByteEnabled() && ybc_transactions_enabled;
+}
+
+bool
+YBIsWritingToPgEnabled() {
+	return !YBTransactionsEnabled();
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -74,10 +94,15 @@ HandleYBStatus(YBCStatus status)
 {
 	if (!status)
 		return;
+	/* Copy the message to the current memory context and free the YBCStatus. */
+	size_t status_len = strlen(status->msg);
+	char* msg_buf = palloc(status_len + 1);
+	strncpy(msg_buf, status->msg, status_len + 1);
+	YBCFreeStatus(status);
 	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("%s", status->msg)));
+			 errmsg("%s", msg_buf)));
 }
 
 void
@@ -112,13 +137,12 @@ YBInitPostgresBackend(
 		if (db_name != NULL)
 		{
 			HandleYBStatus(YBCPgCreateSession(
-											   /* pg_env */ NULL, db_name, &ybc_pg_session));
+				/* pg_env */ NULL, db_name, &ybc_pg_session));
 		}
 		else if (user_name != NULL)
 		{
-			HandleYBStatus(
-						   YBCPgCreateSession(
-											   /* pg_env */ NULL, user_name, &ybc_pg_session));
+			HandleYBStatus(YBCPgCreateSession(
+				/* pg_env */ NULL, user_name, &ybc_pg_session));
 		}
 	}
 }
@@ -141,4 +165,52 @@ YBOnPostgresBackendShutdown()
 	YBCDestroyPgGate();
 	shutdown_done = true;
 	YBCLogInfo("YBOnPostgresBackendShutdown completed for pid %d", getpid());
+}
+
+static void
+YBCResetCommitStatus() {
+	if (ybc_commit_status) {
+		YBCFreeStatus(ybc_commit_status);
+		ybc_commit_status = NULL;
+	}
+}
+
+bool
+YBCCommitTransaction() {
+	if (!IsYugaByteEnabled())
+		return true;
+
+	YBCStatus status =
+		YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager());
+	if (status != NULL) {
+		YBCResetCommitStatus();
+		ybc_commit_status = status;
+		return false;
+	}
+
+	return true;
+}
+
+bool
+YBCIsEnvVarTrue(const char* env_var_name) {
+	const char* env_var_value = getenv(env_var_name);
+	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
+}
+
+void
+YBCHandleCommitError() {
+	YBCStatus status = ybc_commit_status;
+	if (status != NULL) {
+		char* msg = palloc(strlen(status->msg) + 1);
+		strcpy(msg, status->msg);
+		YBCResetCommitStatus();
+		ereport(ERROR,
+				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				 errmsg("Error during commit: %s", msg)));
+	}
+}
+
+bool
+YBIsPgLockingEnabled() {
+	return !YBTransactionsEnabled();
 }

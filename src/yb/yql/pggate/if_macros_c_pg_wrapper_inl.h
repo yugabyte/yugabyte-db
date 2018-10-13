@@ -12,13 +12,16 @@
 //
 
 // This generates implementations of a second level of C wrapper functions that get compiled
-// on the PostgreSQL side.
+// on the PostgreSQL side. These functions are inline / header-only, and they convert the status
+// returned by YB code to errors that PostgreSQL can understand.
 
 #include "yb/yql/pggate/if_macros_common.h"
 #include "yb/yql/pggate/if_macros_c_wrapper_common.h"
 
 // This appears at the beginning of a YB C API class definition in the DSL.
 #define YBC_CLASS_START
+#define YBC_CLASS_START_INHERIT_FROM
+#define YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
 
 // This appears at the end of a YB C API class definition.
 #define YBC_CLASS_END
@@ -26,6 +29,7 @@
 // Nothing to generate here as the ..._New function in the yb_pggate library is already in its final
 // form.
 #define YBC_CONSTRUCTOR(argument_descriptions)
+#define YBC_CONSTRUCTOR_NO_ARGS
 
 // Nothing to generate here as the function in the yb_pggate library is already in its final form.
 #define YBC_METHOD(return_type, method_name, argument_descriptions)
@@ -45,6 +49,14 @@
       YBCStatus _ybc_status = \
           YBC_FULL_C_FUNCTION_NAME(YBC_CURRENT_CLASS, BOOST_PP_CAT(method_name, _Status)) ( \
               _ybc_this_obj, YBC_FORWARD_ARGUMENTS(argument_descriptions)); \
+      if (_ybc_status) { HandleYBStatus(_ybc_status); } \
+    }
+
+#define YBC_STATUS_METHOD_NO_ARGS(method_name) \
+    inline static YBC_METHOD_WRAPPER_PROTOTYPE_NO_ARGS(void, method_name) { \
+      YBCStatus _ybc_status = \
+          YBC_FULL_C_FUNCTION_NAME(YBC_CURRENT_CLASS, BOOST_PP_CAT(method_name, _Status)) ( \
+              _ybc_this_obj); \
       if (_ybc_status) { HandleYBStatus(_ybc_status); } \
     }
 

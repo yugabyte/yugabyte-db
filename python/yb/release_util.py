@@ -25,7 +25,8 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, edition, distribution_path, force, commit):
+    def __init__(self, repository, build_type, edition, distribution_path, force, commit,
+                 build_root):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
@@ -44,14 +45,17 @@ class ReleaseUtil(object):
             self.release_manifest = json.load(f)
         assert self.release_manifest is not None, \
             'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
+        self.build_root = build_root
+        self._rewrite_manifest()
 
     def get_release_manifest(self):
         return self.release_manifest
 
-    def get_binary_path(self):
-        return self.release_manifest['bin']
+    def get_seed_executable_patterns(self):
+        return self.release_manifest['bin'] + [
+            os.path.join(self.build_root, 'postgres', 'bin', '*')]
 
-    def rewrite_manifest(self, build_root):
+    def _rewrite_manifest(self):
         """
         Rewrite the release manifest with the following changes:
         - Replace ${project.version} with the Java version from pom.xml.
@@ -73,7 +77,7 @@ class ReleaseUtil(object):
                 if thirdparty_prefix_match:
                     new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
                 # Substitution for BUILD_ROOT.
-                new_value = new_value.replace("$BUILD_ROOT", build_root)
+                new_value = new_value.replace("$BUILD_ROOT", self.build_root)
                 if new_value != value_list[i]:
                     logging.info("Substituting '{}' -> '{}' in manifest".format(
                         value_list[i], new_value))
@@ -112,13 +116,13 @@ class ReleaseUtil(object):
                         logging.debug("Creating symlink {} -> {}".format(link_path, link_target))
                         os.symlink(link_target, link_path)
                     elif os.path.isdir(file_path):
-                        current_dest_dir = os.path.join(current_dest_dir,
-                                                        os.path.basename(file_path))
+                        current_dest_subdir = os.path.join(
+                            current_dest_dir,
+                            os.path.basename(file_path))
                         logging.debug("Copying directory {} to {}".format(file_path,
-                                                                          current_dest_dir))
-                        shutil.copytree(file_path, current_dest_dir)
+                                                                          current_dest_subdir))
+                        shutil.copytree(file_path, current_dest_subdir)
                     else:
-                        current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
                         logging.debug("Copying file {} to directory {}".format(file_path,
                                                                                current_dest_dir))
                         shutil.copy(file_path, current_dest_dir)

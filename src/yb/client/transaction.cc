@@ -147,7 +147,7 @@ class YBTransaction::Impl final {
         waiters_.push_back(std::move(waiter));
         lock.unlock();
         RequestStatusTablet();
-        VLOG_WITH_PREFIX(2) << "Prepare, rejected";
+        VLOG_WITH_PREFIX(2) << "Prepare, rejected (not ready, requesting status tablet)";
         return false;
       }
 

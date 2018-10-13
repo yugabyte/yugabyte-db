@@ -28,13 +28,17 @@
 namespace yb {
 namespace pggate {
 
+class PgTxnManager;
+
 class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(std::shared_ptr<client::YBClient> client, const string& database_name);
+  PgSession(std::shared_ptr<client::YBClient> client,
+            const string& database_name,
+            scoped_refptr<PgTxnManager> pg_txn_manager);
   virtual ~PgSession();
 
   //------------------------------------------------------------------------------------------------
@@ -100,6 +104,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
  private:
+  // Returns the appopriate session to use, in most cases the one used by the current transaction.
+  // read_only_op - whether this is being done in the context of a read-only operation. For
+  //                non-read-only operations we make sure to start a YB transaction.
+  // We are returning a raw pointer here because the returned session is owned either by the
+  // PgTxnManager or by this object.
+  client::YBSession* GetSession(bool read_only_op);
+
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
 
@@ -109,7 +120,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Connected database.
   std::string connected_database_;
 
-  // Execution states.
+  // A transaction manager allowing to begin/abort/commit transactions.
+  scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   // Execution status.
   Status status_;

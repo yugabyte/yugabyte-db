@@ -76,6 +76,10 @@ bool YBCStatusIsNotFound(YBCStatus s) {
   return (s->code == Status::Code::kNotFound);
 }
 
+void YBCFreeStatus(YBCStatus s) {
+  FreeYBCStatus(s);
+}
+
 YBCStatus YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
   YBCSetPAllocFn(palloc_fn);
   return ToYBCStatus(yb::InitInternal(argv0));
