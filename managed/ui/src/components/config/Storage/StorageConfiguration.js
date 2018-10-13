@@ -76,6 +76,7 @@ class StorageConfiguration extends Component {
 
   addStorageConfig = (values, action, props) => {
     const type = props.activeTab.toUpperCase() || Object.keys(storageConfigTypes)[0];
+    Object.keys(values).forEach((key) => { if (typeof values[key] === 'string' || values[key] instanceof String) values[key] = values[key].trim(); });
     this.props.addCustomerConfig({
       "type": "STORAGE",
       "name": type,

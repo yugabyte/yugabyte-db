@@ -14,7 +14,9 @@ import {fetchTaskProgress, fetchTaskProgressResponse,fetchCustomerTasks , fetchC
 const mapDispatchToProps = (dispatch) => {
   return {
     createAWSProvider: (name, config, regionFormVals) => {
-      dispatch(createProvider("aws", name, config)).then((response) => {
+      Object.keys(config).forEach((key) => { if (typeof config[key] === 'string' || config[key] instanceof String) config[key] = config[key].trim(); });
+      Object.keys(regionFormVals).forEach((key) => { if (typeof regionFormVals[key] === 'string' || regionFormVals[key] instanceof String) regionFormVals[key] = regionFormVals[key].trim(); });
+      dispatch(createProvider("aws", name.trim(), config)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());
@@ -27,7 +29,8 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createGCPProvider: (providerName, providerConfig) => {
-      dispatch(createProvider("gcp", providerName, providerConfig)).then((response) => {
+      Object.keys(providerConfig).forEach((key) => { if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String) providerConfig[key] = providerConfig[key].trim(); });
+      dispatch(createProvider("gcp", providerName.trim(), providerConfig)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());
