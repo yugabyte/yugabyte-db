@@ -17,7 +17,7 @@ class Footer extends PureComponent {
         <div className="flex-grow">
           <YBLogo type="monochrome" />
           { version &&
-            <span> Version: {version}</span>
+            <span> Version: {version.substr(0, version.indexOf("-"))}</span>
           }
         </div>
         <div className="flex-grow copyright">
