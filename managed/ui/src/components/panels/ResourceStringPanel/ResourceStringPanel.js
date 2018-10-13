@@ -22,7 +22,11 @@ export default class ResourceStringPanel extends Component {
     const userIntent = cluster && cluster.userIntent;
     let provider = null;
     if (isNonEmptyObject(userIntent) && isNonEmptyArray(providers.data)) {
-      provider = providers.data.find(item => item.code === userIntent.providerType);
+      if (userIntent.provider) {
+        provider = providers.data.find(item => item.uuid === userIntent.provider);
+      } else {
+        provider = providers.data.find(item => item.code === userIntent.providerType);
+      }
     }
     const regionList = cluster.regions && cluster.regions.map((region) => region.name).join(", ");
     const connectStringPanelItems = [
