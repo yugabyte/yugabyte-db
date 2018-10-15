@@ -130,6 +130,7 @@ class TabletPeerTest : public YBTabletTest,
     tablet_peer_.reset(
       new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
                           config_peer,
+                          tablet()->metadata()->fs_manager()->uuid(),
                           Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
                                Unretained(this),
                                tablet()->tablet_id())));

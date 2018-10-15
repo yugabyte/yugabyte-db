@@ -116,6 +116,17 @@ struct CBTabletMetadata {
   // Leader stepdown failures. We use this to prevent retrying the same leader stepdown too soon.
   LeaderStepDownFailureTimes leader_stepdown_failures;
 
+  std::string ToString() const {
+    return Format("{ running: $0 starting: $1 is_under_replicated: $2 "
+                      "under_replicated_placements: $3 is_over_replicated: $4 "
+                      "over_replicated_tablet_servers: $5 wrong_placement_tablet_servers: $6 "
+                      "blacklisted_tablet_servers: $7 leader_uuid: $8 "
+                      "leader_stepdown_failures: $9 }",
+                  running, starting, is_under_replicated, under_replicated_placements,
+                  is_over_replicated, over_replicated_tablet_servers,
+                  wrong_placement_tablet_servers, blacklisted_tablet_servers,
+                  leader_uuid, leader_stepdown_failures);
+  }
 };
 
 struct CBTabletServerMetadata {
