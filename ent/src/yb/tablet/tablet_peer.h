@@ -12,10 +12,9 @@ namespace enterprise {
 class TabletPeer : public yb::tablet::TabletPeer{
   typedef yb::tablet::TabletPeer super;
  public:
-  TabletPeer(const scoped_refptr<TabletMetadata>& meta,
-             const consensus::RaftPeerPB& local_peer_pb,
-             Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
-      : super(meta, local_peer_pb, mark_dirty_clbk) {}
+  template<class... Args>
+  explicit TabletPeer(Args&&... args)
+      : super(std::forward<Args>(args)...) {}
 
  protected:
   std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg) override;
