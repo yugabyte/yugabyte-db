@@ -119,6 +119,11 @@ class ReleaseUtil(object):
                         current_dest_subdir = os.path.join(
                             current_dest_dir,
                             os.path.basename(file_path))
+                        if os.path.exists(current_dest_subdir) and \
+                                platform.system().lower() == "darwin":
+                            logging.warning("Not copying directory {} to {} because destination"
+                                            "already exists".format(file_path, current_dest_subdir))
+                            continue
                         logging.debug("Copying directory {} to {}".format(file_path,
                                                                           current_dest_subdir))
                         shutil.copytree(file_path, current_dest_subdir)
