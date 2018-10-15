@@ -19,3 +19,10 @@ Optionally, you can shutdown the local cluster created in Step 1.
 ```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```
+
+Further, to destroy the persistent volume claims (**you will lose all the data if you do this**), run:
+
+```{.sh .copy}
+kubectl delete pvc -l app=yb-master
+kubectl delete pvc -l app=yb-tserver
+```

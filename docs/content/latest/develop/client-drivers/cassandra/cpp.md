@@ -3,7 +3,7 @@
 
 The tutorial assumes that you have:
 
-- installed Yugabyte DB, created a universe and are able to interact with it using the CQL shell. If
+- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If
   not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, Clang 3.4+ installed.
