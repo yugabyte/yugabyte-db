@@ -133,6 +133,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     tablet_peer_.reset(
         new TabletPeerClass(tablet()->metadata(),
                             config_peer,
+                            fs_manager()->uuid(),
                             Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
                                  Unretained(this),
                                  tablet()->tablet_id())));

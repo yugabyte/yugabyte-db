@@ -100,6 +100,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb,
+             const std::string& permanent_uuid,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   ~TabletPeer();
@@ -287,7 +288,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  const std::string& permanent_uuid() const;
+  const std::string& permanent_uuid() const {
+    return permanent_uuid_;
+  }
 
   Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation>* operation,
                                                 consensus::DriverType type);
@@ -396,8 +399,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   std::vector<MaintenanceOp*> maintenance_ops_;
 
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
-  mutable std::atomic<bool> cached_permanent_uuid_initialized_ { false };
-  mutable std::string cached_permanent_uuid_;
+  const std::string permanent_uuid_;
 
   rpc::ThreadPool* service_thread_pool_;
 

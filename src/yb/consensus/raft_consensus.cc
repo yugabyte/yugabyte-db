@@ -970,7 +970,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
-    OpId* committed_index) {
+    OpId* committed_op_id) {
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -988,7 +988,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
-      majority_replicated_data.op_id, committed_index, &committed_index_changed);
+      majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
   if (majority_replicated_listener_) {
     majority_replicated_listener_();
   }
@@ -1006,12 +1006,11 @@ void RaftConsensus::UpdateMajorityReplicated(
     // If all operations were just committed, and we don't have pending operations, then
     // we write an empty batch that contains committed index.
     // This affects only our local log, because followers have different logic in this scenario.
-    if (empty_append_token_ &&
-        OpIdEquals(*committed_index, state_->GetLastReceivedOpIdUnlocked())) {
-      WARN_NOT_OK(
-          empty_append_token_->SubmitFunc(
-              std::bind(&RaftConsensus::AppendEmptyBatchToLeaderLog, this)),
-          "Failed to submit append empty batch to pool");
+    if (OpIdEquals(*committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
+      auto status = queue_->AppendOperations(
+          {}, yb::OpId::FromPB(*committed_op_id), Bind(DoNothingStatusCB));
+      LOG_IF_WITH_PREFIX(DFATAL, !status.ok() && !status.IsServiceUnavailable())
+          << "Failed to append empty batch: " << status;
     }
 
     lock.unlock();
@@ -1024,7 +1023,6 @@ void RaftConsensus::AppendEmptyBatchToLeaderLog() {
   auto lock = state_->LockForRead();
   auto committed_op_id = state_->GetCommittedOpIdUnlocked();
   if (OpIdEquals(committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
-    lock.unlock();
     auto status = queue_->AppendOperations(
         {}, yb::OpId::FromPB(committed_op_id), Bind(DoNothingStatusCB));
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to append empty batch: " << status;
@@ -1940,15 +1938,16 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
       state_->IsConfigChangePendingUnlocked() ||
       servers_in_transition != 0) {
-    return STATUS(IllegalState, Substitute("Leader is not ready for Config Change, can try again. "
-                                           "Num peers in transit = $0. Type=$1. Has opid=$2.\n"
-                                           "  Committed config: $3.\n  Pending config: $4.",
-                                           servers_in_transition, ChangeConfigType_Name(type),
-                                           active_config.has_opid_index(),
-                                           state_->GetCommittedConfigUnlocked().ShortDebugString(),
-                                           state_->IsConfigChangePendingUnlocked() ?
-                                             state_->GetPendingConfigUnlocked().ShortDebugString() :
-                                             ""));
+    return STATUS_FORMAT(IllegalState,
+                         "Leader is not ready for Config Change, can try again. "
+                         "Num peers in transit: $0. Type: $1. Has opid: $2. Committed config: $3. "
+                         "Pending config: $4. Current term: $5. Committed op id: $6.",
+                         servers_in_transition, ChangeConfigType_Name(type),
+                         active_config.has_opid_index(),
+                         state_->GetCommittedConfigUnlocked().ShortDebugString(),
+                         state_->IsConfigChangePendingUnlocked() ?
+                             state_->GetPendingConfigUnlocked().ShortDebugString() : "",
+                         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
   }
 
   return Status::OK();
@@ -2876,10 +2875,6 @@ void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> pr
 
 void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
   majority_replicated_listener_ = std::move(updater);
-}
-
-void RaftConsensus::SetEmptyAppendToken(ThreadPoolToken* token) {
-  empty_append_token_ = token;
 }
 
 }  // namespace consensus

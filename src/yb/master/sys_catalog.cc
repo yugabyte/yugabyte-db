@@ -449,8 +449,8 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
-      metadata, local_peer_pb_, Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this),
-      metadata->tablet_id()));
+      metadata, local_peer_pb_, metadata->fs_manager()->uuid(),
+      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id()));
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }

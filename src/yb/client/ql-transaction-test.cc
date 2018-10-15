@@ -63,6 +63,7 @@ DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_int32(load_balancer_max_concurrent_adds);
 
 namespace yb {
 namespace client {
@@ -129,6 +130,7 @@ class QLTransactionTest : public KeyValueTableTest {
   void SetUp() override {
     server::SkewedClock::Register();
     FLAGS_time_source = server::SkewedClock::kName;
+    FLAGS_load_balancer_max_concurrent_adds = 100;
     KeyValueTableTest::SetUp();
 
     CreateTable(Transactional::kTrue);
@@ -1452,7 +1454,7 @@ TEST_F(QLTransactionTest, ChangeLeader) {
   DisableTransactionTimeout();
 
   std::vector<std::thread> threads;
-  std::atomic<bool> stopped;
+  std::atomic<bool> stopped{false};
   for (size_t i = 0; i != kThreads; ++i) {
     threads.emplace_back([this, i, &stopped] {
       size_t idx = i;
@@ -1555,7 +1557,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
 
-  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 30s * kTimeMultiplier,
+  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
                     "All tablets running"));
 }
 

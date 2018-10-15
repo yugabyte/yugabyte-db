@@ -133,6 +133,7 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const scoped_refptr<TabletMetadata>& meta,
     const consensus::RaftPeerPB& local_peer_pb,
+    const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
     tablet_id_(meta->tablet_id()),
@@ -140,7 +141,8 @@ TabletPeer::TabletPeer(
     state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
     log_anchor_registry_(new LogAnchorRegistry()),
-    mark_dirty_clbk_(std::move(mark_dirty_clbk)) {}
+    mark_dirty_clbk_(std::move(mark_dirty_clbk)),
+    permanent_uuid_(permanent_uuid) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -256,8 +258,6 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
     });
-
-    consensus_->SetEmptyAppendToken(prepare_thread_->PoolToken());
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -777,23 +777,6 @@ void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   (**driver).ExecuteAsync();
 }
 
-const std::string& TabletPeer::permanent_uuid() const {
-  if (cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
-    return cached_permanent_uuid_;
-  }
-  std::lock_guard<simple_spinlock> lock(lock_);
-  if (tablet_ == nullptr) {
-    static std::string empty_string;
-    return empty_string;
-  }
-
-  if (!cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
-    cached_permanent_uuid_ = tablet_->metadata()->fs_manager()->uuid();
-    cached_permanent_uuid_initialized_.store(true, std::memory_order_release);
-  }
-  return cached_permanent_uuid_;
-}
-
 consensus::Consensus* TabletPeer::consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_.get();
@@ -869,7 +852,7 @@ uint64_t TabletPeer::OnDiskSize() const {
 
 std::string TabletPeer::LogPrefix() const {
   return Substitute("T $0 P $1 [state=$2]: ",
-      tablet_id_, cached_permanent_uuid_, TabletStatePB_Name(state()));
+      tablet_id_, permanent_uuid_, TabletStatePB_Name(state()));
 }
 
 scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {

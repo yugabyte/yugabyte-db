@@ -407,7 +407,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
       .Times(11);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
-      .Times(11).WillRepeatedly(Return(Status::OK()));
+      .Times(22).WillRepeatedly(Return(Status::OK()));
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
@@ -444,7 +444,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(2);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
-      .Times(3).WillRepeatedly(Return(Status::OK()));;
+      .Times(5).WillRepeatedly(Return(Status::OK()));;
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
