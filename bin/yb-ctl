@@ -169,6 +169,13 @@ class PostgresControl:
     def get_pgrep_regex(self):
         return "/postgres -p %d -D %s" % (self.port, self.data_dir)
 
+    def adjust_env(self):
+        # TODO: we should not need to do this if Linuxbrew's glibc bundled with the YB package has
+        # proper access to locale data.
+        for k in os.environ.keys():
+            if k == 'LANG' or k.startswith('LC_'):
+                del os.environ[k]
+
 
 class DaemonId:
     def __init__(self, daemon_type, index):
@@ -645,6 +652,8 @@ class ClusterControl:
         logging.info("Starting {} with:\n{}".format(daemon_id, command))
 
         with SetAndRestoreEnv(env_vars):
+            if daemon_id.is_postgres():
+                pg_control.adjust_env()
             os.system(command)
 
     def stop_daemon(self, daemon_id):
