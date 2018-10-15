@@ -87,7 +87,8 @@ Status LogAnchorRegistry::GetEarliestRegisteredLogIndex(int64_t* log_index) {
   std::lock_guard<simple_spinlock> l(lock_);
   auto iter = anchors_.begin();
   if (iter == anchors_.end()) {
-    return STATUS(NotFound, "No anchors in registry");
+    static Status no_anchors_status = STATUS(NotFound, "No anchors in registry");
+    return no_anchors_status;
   }
 
   // Since this is a sorted map, the first element is the one we want.

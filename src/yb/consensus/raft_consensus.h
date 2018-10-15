@@ -196,7 +196,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // operations were pending.
   // This is idempotent.
   void UpdateMajorityReplicated(const MajorityReplicatedData& data,
-                                OpId* committed_index) override;
+                                OpId* committed_op_id) override;
 
   void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
                                        OpId *committed_index) {
@@ -224,8 +224,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
 
   void SetMajorityReplicatedListener(std::function<void()> updater);
-
-  void SetEmptyAppendToken(ThreadPoolToken* token);
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -641,10 +639,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
-
-  // Used to append empty record to log, when we update only committed index.
-  // We should use the same token as used to append other records to the log.
-  ThreadPoolToken* empty_append_token_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
