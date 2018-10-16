@@ -1,4 +1,4 @@
-/*-------------------------------------------------------------------------
+	/*-------------------------------------------------------------------------
  *
  * memutils.h
  *	  This file contains declarations for memory allocation utility
@@ -19,6 +19,7 @@
 
 #include "nodes/memnodes.h"
 
+#include "yb/util/ybc_util.h"
 
 /*
  * MaxAllocSize, MaxAllocHugeSize
@@ -108,6 +109,9 @@ GetMemoryChunkContext(void *pointer)
 {
 	MemoryContext context;
 
+	if (pointer == NULL) {
+		YBCLogErrorStackTrace("GetMemoryChunkContext: null pointer\n");
+	}
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
 	 * Presumably, a pointer that isn't MAXALIGNED isn't pointing at an

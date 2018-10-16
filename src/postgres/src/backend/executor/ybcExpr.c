@@ -32,6 +32,25 @@
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
 
+#include "utils/builtins.h"
+
+static YBCPgExpr
+YBCNewTextConstant(
+		YBCPgStatement ybc_stmt,
+		Oid type_id,
+		Datum datum,
+		bool is_null) {
+	/* TODO: get rid of memory allocation here (in TextDatumGetCString). */
+	char* text_str = is_null ? NULL : TextDatumGetCString(datum);
+	YBCPgExpr expr = NULL;
+	HandleYBStatus(YBCPgNewConstantText(ybc_stmt, text_str, is_null, &expr));
+	if (text_str != NULL)
+	{
+		pfree(text_str);
+	}
+	return expr;
+}
+
 YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null) {
 	YBCPgExpr expr = NULL;
 	switch (type_id)
@@ -64,7 +83,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case TEXTOID:
-			HandleYBStatus(YBCPgNewConstantText(ybc_stmt, DatumGetCString(datum), is_null, &expr));
+			expr = YBCNewTextConstant(ybc_stmt, type_id, datum, is_null);
 			break;
 		case OIDOID:
 		case TIDOID:
@@ -101,7 +120,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 							 errmsg("YB Insert, type not yet supported: %d", type_id)));
 			break;
 		case VARCHAROID:
-			HandleYBStatus(YBCPgNewConstantText(ybc_stmt, DatumGetCString(datum), is_null, &expr));
+			expr = YBCNewTextConstant(ybc_stmt, type_id, datum, is_null);
 			break;
 		case DATEOID:
 		case TIMEOID:
@@ -132,7 +151,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		default:
 			ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
+							 errmsg("Type not yet supported in YugaByte: %d", type_id)));
 			break;
 	}
 

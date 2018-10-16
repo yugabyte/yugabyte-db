@@ -20,6 +20,9 @@
 
 #ifdef __cplusplus
 extern "C" {
+
+struct varlena;
+
 #endif
 
 typedef struct YBCStatusStruct {
@@ -38,8 +41,13 @@ void YBCFreeStatus(YBCStatus s);
 
 typedef void* (*YBCPAllocFn)(size_t size);
 
+typedef struct varlena* (*YBCCStringToTextWithLenFn)(const char* c, int size);
+
 // Global initialization of the YugaByte subsystem.
-CHECKED_YBCSTATUS YBCInit(const char* argv0, YBCPAllocFn palloc_fn);
+CHECKED_YBCSTATUS YBCInit(
+    const char* argv0,
+    YBCPAllocFn palloc_fn,
+    YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
 
 // Logging functions with printf-like formatting capabilities.
 void YBCLogInfo(const char* format, ...);
