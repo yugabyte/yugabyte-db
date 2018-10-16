@@ -18,6 +18,7 @@ namespace yb {
 
 namespace {
 YBCPAllocFn g_palloc_fn = nullptr;
+YBCCStringToTextWithLenFn g_cstring_to_text_with_len_fn = nullptr;
 }
 
 void YBCSetPAllocFn(YBCPAllocFn palloc_fn) {
@@ -29,6 +30,17 @@ void* YBCPAlloc(size_t size) {
   CHECK_NOTNULL(g_palloc_fn);
   return g_palloc_fn(size);
 }
+
+void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn) {
+  CHECK_NOTNULL(fn);
+  g_cstring_to_text_with_len_fn = fn;
+}
+
+void* YBCCStringToTextWithLen(const char* c, int size) {
+  CHECK_NOTNULL(g_cstring_to_text_with_len_fn);
+  return g_cstring_to_text_with_len_fn(c, size);
+}
+
 
 YBCStatus ToYBCStatus(const Status& status) {
   if (status.ok()) {

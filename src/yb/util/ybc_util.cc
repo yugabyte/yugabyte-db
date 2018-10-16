@@ -80,8 +80,11 @@ void YBCFreeStatus(YBCStatus s) {
   FreeYBCStatus(s);
 }
 
-YBCStatus YBCInit(const char* argv0, YBCPAllocFn palloc_fn) {
+YBCStatus YBCInit(const char* argv0,
+                  YBCPAllocFn palloc_fn,
+                  YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
   YBCSetPAllocFn(palloc_fn);
+  YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
   return ToYBCStatus(yb::InitInternal(argv0));
 }
 

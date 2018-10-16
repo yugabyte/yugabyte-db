@@ -34,6 +34,9 @@ void FreeYBCStatus(YBCStatus status);
 void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
 void* YBCPAlloc(size_t size);
 
+void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn);
+void* YBCCStringToTextWithLen(const char* c, int size);
+
 // YBCStatus definition for Some common Status.
 YBCStatus YBCStatusOK();
 YBCStatus YBCStatusNotSupport(const string& feature_name);

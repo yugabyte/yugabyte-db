@@ -20,6 +20,9 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
@@ -131,6 +134,48 @@ public class TestPgWrapper extends BasePgSQLTest {
 
     rs.close();
     statement.close();
+  }
+
+  /**
+   * ENG-4044: check that we handle text keys of arbitrary length correctly.
+   */
+  @Test
+  public void testSelectByTextKey() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE textkeytable (k text primary key, v1 text, v2 int)");
+      StringBuilder kBuilder = new StringBuilder();
+      Random r = new Random(349871827L);
+      List<String> ks = new ArrayList<>();
+      List<String> v1s = new ArrayList<>();
+      List<Integer> v2s = new ArrayList<>();
+
+      for (int i = 0; i < 100; i++) {
+        String k = kBuilder.toString();
+        String v1 = "v1_" + i;
+        int v2 = i * i;
+        ks.add(k);
+        v1s.add(v1);
+        v2s.add(v2);
+        statement.execute(
+            String.format(
+                "INSERT INTO textkeytable (k, v1, v2) VALUES ('%s', '%s', %d)",
+                k, v1, v2));
+
+        int iSelect = r.nextInt(i + 1);
+        String kSelect = ks.get(iSelect);
+        ResultSet rs = statement.executeQuery(
+            String.format("SELECT * FROM textkeytable WHERE k = '%s'", kSelect));
+        assertTrue(rs.next());
+        assertEquals(kSelect, rs.getString("k"));
+        assertEquals(v1s.get(iSelect), rs.getString("v1"));
+        assertEquals(v2s.get(iSelect).intValue(), rs.getInt("v2"));
+
+        // Check varying key lengths, starting from zero (that's why we're appending here).
+        kBuilder.append("012345789_i=" + i + "_");
+      }
+
+      statement.execute("DROP TABLE textkeytable");
+    }
   }
 
 }

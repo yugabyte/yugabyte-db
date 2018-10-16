@@ -219,7 +219,8 @@ class PostgresBuilder:
             if self.build_type == 'asan':
                 additional_c_cxx_flags += [
                     '-fsanitize-recover=signed-integer-overflow',
-                    '-fsanitize-recover=shift-base'
+                    '-fsanitize-recover=shift-base',
+                    '-fsanitize-recover=shift-exponent'
                 ]
 
         # Tell gdb to pretend that we're compiling the code in the $YB_SRC_ROOT/src/postgres

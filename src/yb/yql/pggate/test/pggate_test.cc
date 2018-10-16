@@ -48,6 +48,19 @@ void *PggateTestAlloc(size_t bytes) {
   return static_cast<void*>(memctx.AllocateBytes(bytes));
 }
 
+// This implementation is different from what PostgreSQL's cstring_to_text_with_len function does.
+// Here we just copy the given string and add a terminating zero. This is what our test expects.
+struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
+  static MemoryContext memctx;
+  CHECK_GE(size, 0);
+  CHECK_LE(size, 1024ll * 1024 * 1024 - 4);
+
+  char* buf = static_cast<char*>(memctx.AllocateBytes(size + 1));
+  memcpy(buf, c, size);
+  buf[size] = 0;
+  return reinterpret_cast<struct varlena*>(buf);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Starting and ending routines.
 
@@ -79,7 +92,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   RETURN_NOT_OK(CreateCluster(num_tablet_servers));
 
   // Init PgGate API.
-  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc));
+  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
   YBCInitPgGate();
 
   // Setup session.
