@@ -79,20 +79,66 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-void
-YBCAlterDatabase(Oid dboid, const char *dbname)
-{
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("'ALTER DATABASE' is not supported yet.")));
-}
-
 /* -------------------------------------------------------------------- */
 /*  Table Functions. */
+
+/* Utility function to add columns to the YB create statement */
+static void CreateTableAddColumns(YBCPgStatement handle,
+																	CreateStmt *stmt,
+																	Constraint *primary_key,
+																	bool include_hash,
+																	bool include_primary)
+{
+	ListCell *lc;
+	int      attnum = 1;
+	foreach(lc, stmt->tableElts)
+	{
+		bool          is_primary = false;
+		bool          is_first   = true;
+		ColumnDef     *colDef    = lfirst(lc);
+		YBCPgDataType col_type   = YBCDataTypeFromName(colDef->typeName);
+
+		ListCell *cell;
+
+		foreach(cell, primary_key->keys)
+		{
+			char *attname = strVal(lfirst(cell));
+
+			if (strcmp(colDef->colname, attname) == 0)
+			{
+				is_primary = true;
+				break;
+			}
+			if (is_first)
+			{
+				is_first = false;
+			}
+		}
+
+		/* TODO For now, assume the first primary key column is the hash. */
+		bool is_hash = is_primary && is_first;
+		if (include_hash == is_hash && include_primary == is_primary)
+		{
+
+			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
+			                                             colDef->colname,
+			                                             attnum,
+			                                             col_type,
+			                                             is_hash,
+			                                             is_primary), handle);
+		}
+		attnum++;
+	}
+}
 
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 {
+	if (relkind != RELKIND_RELATION)
+	{
+		return;
+	}
+
 	YBCPgStatement handle = NULL;
 	ListCell       *listptr;
 
@@ -100,105 +146,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	 * TODO The attnum from pg_attribute has not been created yet, we are
 	 * making some assumptions below about how it will be assigned.
 	 */
-
-	/* ------------------------------------------------------------------- */
-	/* Error checking */
-
-	switch (relkind)
-	{
-		case RELKIND_RELATION:
-			/* Continue below. */
-			break;
-		case RELKIND_VIEW:
-			/* Nothing to do in YB. */
-			return;
-		default:
-			ereport(ERROR,
-			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-					        "Relation kind '%c' not yet supported",
-					        relkind)));
-	}
-
-	if (stmt->partspec != NULL)
-	{
-		/*
-		 * Tables with this clause cannot have a primary key so we can maybe
-		 * just use this as a hash key internally.
-		 */
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "'PARTITION BY' clause is not yet supported")));
-	}
-
-	if (stmt->ofTypename != NULL)
-	{
-		/*
-		 * We need to look up the type to get the schema for the referenced
-		 * type.
-		 */
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "'OF <type>' clause is not yet supported")));
-	}
-
-	if (stmt->inhRelations != NIL)
-	{
-		/*
-		 * We need to look up the referenced type (relation) to get its
-		 * schema. Additionally we need to share (interleave?) the data for
-		 * the common columns.
-		 */
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "'INHERITS' clause is not yet supported")));
-	}
-
-	if (stmt->partbound != NULL)
-	{
-		/*
-		 * Manual partition by giving explicit key ranges -- maybe not
-		 * something we want at all.
-		 */
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "'PARTITION OF' clause is not supported yet.")));
-	}
-
-	if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-	{
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "'TEMP' tables are not supported yet.")));
-	}
-
-	/*
-	 * Features that are not really applicable to YB (e.g. storage-specific
-	 * config).
-	 */
-	if (stmt->oncommit != ONCOMMIT_NOOP &&
-	    stmt->oncommit != ONCOMMIT_PRESERVE_ROWS)
-	{
-		YBCLogWarning(
-				"Given 'ON COMMIT' option is not supported, will be ignored.");
-	}
-
-	if (stmt->tablespacename != NULL)
-	{
-		YBCLogWarning("'TABLESPACE' option is not supported, will be ignored");
-	}
-
-	if (stmt->options != NIL)
-	{
-		/*
-		 * With OID we could probably support but it's not recommended for
-		 * non-system tables anyway.
-		 */
-		YBCLogWarning(
-				"'WITH' clause options are not supported yet, will be ignored");
-	}
-
 	char *db_name = get_database_name(MyDatabaseId);
-
 	YBCLogInfo("Creating Table %s, %s, %s",
 	           db_name,
 	           stmt->relation->schemaname,
@@ -265,54 +213,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-void CreateTableAddColumns(YBCPgStatement handle,
-                           CreateStmt *stmt,
-                           Constraint *primary_key,
-                           bool include_hash,
-                           bool include_primary)
-{
-	ListCell *lc;
-	int      attnum = 1;
-	foreach(lc, stmt->tableElts)
-	{
-		bool          is_primary = false;
-		bool          is_first   = true;
-		ColumnDef     *colDef    = lfirst(lc);
-		YBCPgDataType col_type   = YBCDataTypeFromName(colDef->typeName);
-
-		ListCell *cell;
-
-		foreach(cell, primary_key->keys)
-		{
-			char *attname = strVal(lfirst(cell));
-
-			if (strcmp(colDef->colname, attname) == 0)
-			{
-				is_primary = true;
-				break;
-			}
-			if (is_first)
-			{
-				is_first = false;
-			}
-		}
-
-		/* TODO For now, assume the first primary key column is the hash. */
-		bool is_hash = is_primary && is_first;
-		if (include_hash == is_hash && include_primary == is_primary)
-		{
-
-			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
-			                                             colDef->colname,
-			                                             attnum,
-			                                             col_type,
-			                                             is_hash,
-			                                             is_primary), handle);
-		}
-		attnum++;
-	}
-}
-
 void
 YBCDropTable(Oid relationId,
 			 const char *relname,
@@ -330,12 +230,4 @@ YBCDropTable(Oid relationId,
 	                                 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
-}
-
-void
-YBCAlterTable(Oid dboid)
-{
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("'ALTER TABLE' is not yet supported")));
 }
