@@ -161,6 +161,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			npreparedxacts;
 	createdb_failure_params fparms;
 
+	if (dbname != NULL && (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)) {
+		YBSetPreparingTemplates();
+	}
+
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
 	{

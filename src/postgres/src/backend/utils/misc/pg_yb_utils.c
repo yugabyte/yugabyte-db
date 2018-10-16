@@ -234,3 +234,14 @@ bool
 YBIsPgLockingEnabled() {
 	return !YBTransactionsEnabled();
 }
+
+static bool yb_preparing_templates = false;
+void
+YBSetPreparingTemplates() {
+	yb_preparing_templates = true;
+}
+
+bool
+YBIsPreparingTemplates() {
+	return yb_preparing_templates;
+}

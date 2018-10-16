@@ -114,4 +114,10 @@ extern bool YBIsPgLockingEnabled();
 #include "yb/yql/pggate/pggate_if.h"
 #include "yb/yql/pggate/if_macros_undef.h"
 
+/*
+ * These functions help indicating if we are creating system catalog.
+ */
+void YBSetPreparingTemplates();
+bool YBIsPreparingTemplates();
+
 #endif /* PG_YB_UTILS_H */
