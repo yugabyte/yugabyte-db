@@ -39,7 +39,7 @@ void YBCInitPgGate() {
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl();
-  LOG(INFO) << "PgGate open";
+  VLOG(1) << "PgGate open";
 }
 
 void YBCDestroyPgGate() {
@@ -48,7 +48,7 @@ void YBCDestroyPgGate() {
   }
   delete pgapi;
   pgapi = nullptr;
-  LOG(INFO) << __PRETTY_FUNCTION__ << " finished";
+  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {

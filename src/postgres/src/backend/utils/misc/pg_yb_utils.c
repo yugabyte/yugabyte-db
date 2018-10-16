@@ -32,6 +32,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "catalog/pg_database.h"
+#include "utils/builtins.h"
 
 #include "pg_yb_utils.h"
 
@@ -132,7 +133,7 @@ YBInitPostgresBackend(
 					  const char *db_name,
 					  const char *user_name)
 {
-	HandleYBStatus(YBCInit(program_name, palloc));
+	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
@@ -171,7 +172,6 @@ YBInitPostgresBackend(
 void
 YBOnPostgresBackendShutdown()
 {
-	YBCLogInfo("YBOnPostgresBackendShutdown called for pid %d", getpid());
 	static bool shutdown_done = false;
 
 	if (shutdown_done)
@@ -185,7 +185,6 @@ YBOnPostgresBackendShutdown()
 	}
 	YBCDestroyPgGate();
 	shutdown_done = true;
-	YBCLogInfo("YBOnPostgresBackendShutdown completed for pid %d", getpid());
 }
 
 static void

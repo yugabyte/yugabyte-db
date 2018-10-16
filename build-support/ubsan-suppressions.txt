@@ -77,3 +77,8 @@ signed-integer-overflow:erand48.c
 
 # https://gist.githubusercontent.com/mbautin/8939d2a6e22156fbf61daaeb986f169e/raw
 shift-base:pglz_compress
+shift-base:pglz_find_match
+
+# We might need these too:
+shift-exponent:pglz_compress
+shift-exponent:pglz_find_match

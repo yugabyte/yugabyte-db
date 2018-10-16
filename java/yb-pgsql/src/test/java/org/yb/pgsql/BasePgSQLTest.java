@@ -341,6 +341,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   private void killAndCoreDumpBackends(Collection<Integer> stuckBackendPids) throws Exception {
+    if (stuckBackendPids.isEmpty())
+      return;
     stuckBackendPids.addAll(stuckBackendPidsConcMap);
 
     LOG.warn(String.format(

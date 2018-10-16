@@ -1637,7 +1637,7 @@ resolve_and_run_java_test() {
               local current_module_name=${module_dir##*/}
               if [[ -n $module_name ]]; then
                 fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                      "'$module_name' and '$current_moudle_name' are valid candidates."
+                      "'$module_name' and '$current_module_name' are valid candidates."
               fi
               module_name=$current_module_name
               rel_module_dir=${module_dir##$YB_SRC_ROOT/}
