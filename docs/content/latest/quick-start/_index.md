@@ -14,7 +14,9 @@ menu:
     weight: 100
 ---
 
-<b>NOTE</b>: We do not recommend a local multi-node setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node setup using the <a href="../deploy">manual or orchestrated deployment steps</a>.
+{{< note title="Note" >}}
+We do not recommend a local multi-node cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../deploy">manual or orchestrated deployment steps</a>.
+{{< /note >}}
 
 {{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}
 <p class="subtitle">

@@ -51,6 +51,8 @@ $ mkdir data
 ### Create node.properties file - replace &lt;username&gt; below
 ```{.sh .copy .separator-dollar}
 $ cat > etc/node.properties
+```
+```sh
 node.environment=test
 node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
 node.data-dir=/Users/<username>/presto-server-0.212/data
@@ -59,6 +61,8 @@ node.data-dir=/Users/<username>/presto-server-0.212/data
 ### Create jvm.config file
 ```{.sh .copy .separator-dollar}
 $ cat > etc/jvm.config
+```
+```sh
 -server
 -Xmx6G
 -XX:+UseG1GC
@@ -72,6 +76,8 @@ $ cat > etc/jvm.config
 ### Create config.properties file
 ```{.sh .copy .separator-dollar}
 $ cat > etc/config.properties
+```
+```sh
 coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
@@ -84,6 +90,8 @@ discovery.uri=http://localhost:8080
 ### Create log.properties file
 ```{.sh .copy .separator-dollar}
 $ cat > etc/log.properties
+```
+```sh
 com.facebook.presto=INFO
 ```
 
@@ -94,50 +102,66 @@ Detailed instructions are [here](https://prestodb.io/docs/current/connector/cass
 
 ```{.sh .copy .separator-dollar}
 $ cat > etc/catalog/cassandra.properties
+```
+```sh
 connector.name=cassandra
 cassandra.contact-points=127.0.0.1
 ```
 
 ## 3. Download Presto CLI
-```sh
+
+```{.sh .copy .separator-dollar}
 $ cd ~/presto-server-0.212/bin
+```
+```{.sh .copy .separator-dollar}
 $ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.212/presto-cli-0.212-executable.jar
-# Rename jar to ‘presto’. It is meant to be a self-running binary.
-$ mv presto-cli-0.212-executable.jar presto
-$ chmod +x presto
+```
+
+Rename jar to ‘presto’. It is meant to be a self-running binary.
+
+```{.sh .copy .separator-dollar}
+$ mv presto-cli-0.212-executable.jar presto && chmod +x presto
 ```
 
 
 ## 4. Launch Presto server
 
-```sh
+```{.sh .copy .separator-dollar}
 $ cd presto-server-0.212
-$ bin/launcher run        (to run in foreground mode).
-OR
-$ bin/launcher start      (to run in background mode).
+```
+
+To run in foreground mode.
+```{.sh .copy .separator-dollar}
+$ ./bin/launcher run       
+```
+
+To run in background mode.
+```{.sh .copy .separator-dollar}
+$ ./bin/launcher start  
 ```
 
 ## 5. Test Presto queries
 
 Use the presto CLI to run ad-hoc queries. 
 
-```sh
-$ cd presto-server-0.212
+```{.sh .copy .separator-dollar}
 $ ./bin/presto --server localhost:8080 --catalog cassandra --schema default
 ```
+
+Start using `myapp`.
 
 ```{.sql .copy .separator-gt}
 presto:default> use myapp;
 ```
-
 ```sh
 USE
 ```
 
+Show the tables available.
+
 ```{.sql .copy .separator-gt}
 presto:myapp> show tables;
 ```
-
 ```
  Table
 -------
@@ -145,10 +169,11 @@ presto:myapp> show tables;
 (1 row)
 ```
 
+Describe a particular table.
+
 ```{.sql .copy .separator-gt}
 presto:myapp> describe stock_market;
 ```
-
 ```sh
     Column     |  Type   | Extra | Comment 
 ---------------+---------+-------+---------
@@ -158,11 +183,11 @@ presto:myapp> describe stock_market;
 (3 rows)
 ```
 
-### Query with filters
+### Query with filter
+
 ```{.sql .copy .separator-gt}
 presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
-
 ```sh
  stock_symbol |         ts          | current_price 
 --------------+---------------------+---------------
@@ -172,10 +197,10 @@ presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
 
 ### Query with aggregates
+
 ```{.sql .copy .separator-gt}
 presto:myapp> select stock_symbol, avg(current_price) from stock_market group by stock_symbol;
 ```
-
 ```sh
  stock_symbol |  _col1  
 --------------+---------

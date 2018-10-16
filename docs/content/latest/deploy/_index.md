@@ -66,7 +66,7 @@ menu:
         <div class="title">Public Clouds</div>
       </div>
       <div class="body">
-        Automated deployments of YugaByte DB on various public clouds.
+        Automated and manual deployments of YugaByte DB on various public clouds.
       </div>
     </a>
   </div>

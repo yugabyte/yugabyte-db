@@ -1,7 +1,7 @@
 ---
-title: Redis
-linkTitle: Redis
-description: Redis
+title: Redis In-Memory Store
+linkTitle: Redis In-Memory Store
+description: Redis In-Memory Store
 aliases:
   - /comparisons/redis/
 menu:
@@ -10,7 +10,7 @@ menu:
     weight: 1100
 ---
 
-Following are the key areas of differences between YugaByte DB and [Redis](https://redis.io/).
+Following are the key areas of differences between YugaByte DB and [Redis In-Memory Store](https://redis.io/).
 
 ## 1. Persistent DB vs. In-Memory Cache
 

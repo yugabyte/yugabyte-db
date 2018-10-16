@@ -222,6 +222,8 @@ function setupRegistrationForm(selector, message = 'Thanks! We\'ll email you soo
 }
 window.setupRegistrationForm = setupRegistrationForm;
 
+/* Commenting this function since it is not used.
+
 function setupContactUsModal(selector) {
   $('#contactUsModal')
     .on('show.bs.modal', event => {
@@ -246,4 +248,4 @@ function setupContactUsModal(selector) {
     .on('hide.bs.modal', () => {
       $('.contact-sales-button').show();
     });
-}
+} */
