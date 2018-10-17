@@ -1488,14 +1488,14 @@ set(Boost_NO_BOOST_CMAKE ON)
 
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS date_time system thread REQUIRED)
+find_package(Boost COMPONENTS system thread REQUIRED)
 set(BOOST_STATIC_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_STATIC_LIBS BOOST_STATIC_LIBS_LEN)
 list(SORT BOOST_STATIC_LIBS)
 
 # Find Boost shared libraries.
 set(Boost_USE_STATIC_LIBS OFF)
-find_package(Boost COMPONENTS date_time system thread REQUIRED)
+find_package(Boost COMPONENTS system thread REQUIRED)
 set(BOOST_SHARED_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_SHARED_LIBS BOOST_SHARED_LIBS_LEN)
 list(SORT BOOST_SHARED_LIBS)
@@ -1528,6 +1528,17 @@ foreach(IDX RANGE ${LAST_IDX})
 endforeach()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
+if(APPLE)
+  set(ICU_ROOT "/usr/local/opt/icu4c")
+endif()
+find_package(ICU COMPONENTS i18n uc REQUIRED)
+include_directories(SYSTEM ${ICU_INCLUDE_DIRS})
+ADD_THIRDPARTY_LIB(icui18n
+  STATIC_LIB "${ICU_I18N_LIBRARIES}"
+  SHARED_LIB "${ICU_I18N_LIBRARIES}")
+ADD_THIRDPARTY_LIB(icuuc
+  STATIC_LIB "${ICU_UC_LIBRARIES}"
+  SHARED_LIB "${ICU_UC_LIBRARIES}")
 
 ############################################################
 # Linker setup
@@ -1625,6 +1636,9 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
   ADD_LINKER_FLAGS("-L/usr/lib64")
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
+elseif(APPLE)
+  ADD_LINKER_FLAGS("-L${ICU_ROOT}/lib")
+  ADD_GLOBAL_RPATH_ENTRY("${ICU_ROOT}/lib")
 endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")

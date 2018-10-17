@@ -40,7 +40,7 @@ class BoostDependency(Dependency):
         self.copy_sources = True
 
     def build(self, builder):
-        libs = ['date_time', 'system', 'thread']
+        libs = ['system', 'thread']
 
         log_prefix = builder.log_prefix(self)
         log_output(log_prefix, ['./bootstrap.sh', '--prefix={}'.format(builder.prefix)])

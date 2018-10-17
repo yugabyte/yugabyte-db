@@ -146,10 +146,31 @@ public class TestDateTime extends BaseCQLTest {
     for (String d : Arrays.asList("2018-01-03",
                                   "1999-02-14",
                                   "1960-08-15",
-                                  "1517-10-31")) {
+                                  "1517-10-31",
+                                  "-4000-01-31",
+                                  "-100000-01-01",
+                                  "100000-12-31")) {
       session.execute(String.format("insert into test_dt (k, d) values (1, '%s');", d));
       LocalDate date = session.execute("select d from test_dt where k = 1;").one().getDate("d");
       assertEquals(d, date.toString());
+
+      // Test date to string conversion also.
+      String s = session.execute("select cast(d as text) from test_dt where k = 1;")
+                 .one().getString(0);
+      assertEquals(s, date.toString());
+    }
+
+    // Test insert with date literal in non-cardinal form.
+    Map<String, LocalDate> map = new HashMap<String, LocalDate>() {{
+        put("1-01-2", LocalDate.fromYearMonthDay(1, 1, 2));
+        put("11-3-04", LocalDate.fromYearMonthDay(11, 3, 4));
+        put("111-5-6", LocalDate.fromYearMonthDay(111, 5, 6));
+        put("-11-7-19", LocalDate.fromYearMonthDay(-11, 7, 19));
+      }};
+    for (Map.Entry<String, LocalDate> e : map.entrySet()) {
+      session.execute(String.format("insert into test_dt (k, d) values (1, '%s');", e.getKey()));
+      LocalDate d = session.execute("select d from test_dt where k = 1;").one().getDate("d");
+      assertEquals(e.getValue(), d);
     }
 
     // Test insert with time literals.
