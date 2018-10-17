@@ -71,6 +71,7 @@ public class ColumnDetails {
     UUID("uuid"),
     TIMEUUID ("timeuuid"),
     FROZEN("frozen"),
+    JSONB("jsonb"),
     USER_DEFINED_TYPE("user_defined_type");
 
     static final Set<YQLDataType> COLLECTION_TYPES = ImmutableSet.of(LIST, MAP, SET);
@@ -135,6 +136,8 @@ public class ColumnDetails {
           return TIMEUUID;
         case FROZEN:
           return FROZEN;
+        case JSONB:
+          return JSONB;
         case USER_DEFINED_TYPE:
           return USER_DEFINED_TYPE;
       }
