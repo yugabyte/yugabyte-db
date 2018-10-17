@@ -15,26 +15,27 @@
 // DateTime parser and serializer
 //--------------------------------------------------------------------------------------------------
 
+#include <unicode/gregocal.h>
+
 #include <regex>
 #include <ctime>
 
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
-#include "boost/date_time/local_time_adjustor.hpp"
+#include "boost/date_time/gregorian/gregorian.hpp"
 #include "boost/date_time/c_local_time_adjustor.hpp"
+#include "boost/date_time/local_time/local_time.hpp"
 
 using std::locale;
 using std::vector;
 using std::string;
 using std::regex;
+using icu::GregorianCalendar;
+using icu::TimeZone;
 using boost::gregorian::date;
-using boost::gregorian::date_duration;
-using boost::gregorian::day_clock;
 using boost::local_time::local_date_time;
 using boost::local_time::local_time_facet;
-using boost::local_time::local_time_input_facet;
 using boost::local_time::local_microsec_clock;
-using boost::local_time::not_a_date_time;
 using boost::local_time::posix_time_zone;
 using boost::local_time::time_zone_ptr;
 using boost::posix_time::ptime;
@@ -46,9 +47,11 @@ namespace yb {
 
 namespace {
 
-// Unix epoch in date and Posix time format.
-static const date kEpochDate(1970, 1, 1);
-static const ptime kEpochTime(kEpochDate);
+// UTC timezone.
+static const time_zone_ptr kUtcTimezone(new posix_time_zone("UTC"));
+
+// Unix epoch (time_t 0) at UTC.
+static const local_date_time kEpoch(boost::posix_time::from_time_t(0), kUtcTimezone);
 
 // Date offset of Unix epoch (2^31).
 static constexpr uint32_t kEpochDateOffset = 1<<31;
@@ -57,25 +60,51 @@ static constexpr uint32_t kEpochDateOffset = 1<<31;
 static constexpr int64_t kDayInMilliSeconds = 24 * 60 * 60 * 1000L;
 static constexpr int64_t kDayInMicroSeconds = kDayInMilliSeconds * 1000L;
 
-// UTC and system (local) timezones.
-static const time_zone_ptr kUtcTimezone(new posix_time_zone("UTC"));
-static const time_zone_ptr kSystemTimezone(new posix_time_zone(
-    []() -> string {
-      // Get current timezone by getting current UTC time, converting to local time and computing
-      // the offset.
-      const ptime utc_time = microsec_clock::universal_time();
-      const ptime local_time = boost::date_time::c_local_adjustor<ptime>::utc_to_local(utc_time);
-      const time_duration offset = local_time - utc_time;
-      const int hours = offset.hours();
-      const int minutes = offset.minutes();
-      char buffer[7]; // "+HH:MM" or "-HH:MM"
-      const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
-      CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
-      return buffer;
-    }()));
+Timestamp ToTimestamp(const local_date_time& t) {
+  return Timestamp((t - kEpoch).total_microseconds());
+}
+
+Result<uint32_t> ToDate(const int64_t days_since_epoch) {
+  const int64_t date = days_since_epoch + kEpochDateOffset;
+  if (date < std::numeric_limits<uint32_t>::min() || date > std::numeric_limits<uint32_t>::max()) {
+    return STATUS(InvalidArgument, "Invalid date");
+  }
+  return date;
+}
+
+Result<GregorianCalendar> CreateCalendar() {
+  UErrorCode status = U_ZERO_ERROR;
+  GregorianCalendar cal(*TimeZone::getGMT(), status);
+  if (U_FAILURE(status)) {
+    return STATUS(InvalidArgument, "Failed to create Gregorian calendar", u_errorName(status));
+  }
+  cal.setGregorianChange(U_DATE_MIN, status);
+  if (U_FAILURE(status)) {
+    return STATUS(InvalidArgument, "Failed to set Gregorian change", u_errorName(status));
+  }
+  cal.setLenient(FALSE);
+  cal.clear();
+  return cal;
+}
+
+// Get system (local) time zone.
+string GetSystemTimezone() {
+  // Get system timezone by getting current UTC time, converting to local time and computing the
+  // offset.
+  const ptime utc_time = microsec_clock::universal_time();
+  const ptime local_time = boost::date_time::c_local_adjustor<ptime>::utc_to_local(utc_time);
+  const time_duration offset = local_time - utc_time;
+  const int hours = offset.hours();
+  const int minutes = offset.minutes();
+  char buffer[7]; // "+HH:MM" or "-HH:MM"
+  const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
+  CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
+  return buffer;
+}
 
 } // namespace
 
+//------------------------------------------------------------------------------------------------
 Result<Timestamp> DateTime::TimestampFromString(const string& str,
                                                 const InputFormat& input_format) {
   std::smatch m;
@@ -95,29 +124,39 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
       try {
         const date d(year, month, day);
         const time_duration t(hours, minutes, seconds, frac);
-        const time_zone_ptr tz = !m.str(8).empty() ? time_zone_ptr(new posix_time_zone(m.str(8)))
-                                                   : kSystemTimezone;
-        const local_date_time ldt(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR);
-        const local_date_time epoch(kEpochTime, kUtcTimezone);
-        return Timestamp((ldt - epoch).total_microseconds());
+        const time_zone_ptr tz(new posix_time_zone(m.str(8).empty() ? GetSystemTimezone()
+                                                                    : m.str(8)));
+        return ToTimestamp(local_date_time(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR));
       } catch (std::exception& e) {
-        return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string", e.what());
+        return STATUS(InvalidArgument, "Invalid timestamp", e.what());
       }
     }
   }
-  return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
+  return STATUS(InvalidArgument, "Invalid timestamp", "Wrong format of input string");
 }
 
 Timestamp DateTime::TimestampFromInt(const int64_t val, const InputFormat& input_format) {
   return Timestamp(AdjustPrecision(val, input_format.input_precision, kInternalPrecision));
 }
 
-Timestamp DateTime::TimestampNow() {
-  const local_date_time now = local_microsec_clock::local_time(kUtcTimezone);
-  const local_date_time epoch(kEpochTime, kUtcTimezone);
-  return Timestamp((now - epoch).total_microseconds());
+string DateTime::TimestampToString(const Timestamp timestamp, const OutputFormat& output_format) {
+  std::ostringstream ss;
+  ss.imbue(output_format.output_locale);
+  try {
+    ss << (kEpoch + microseconds(timestamp.value()));
+  } catch (...) {
+    // If we cannot produce a valid date, default to showing the exact timestamp value.
+    // This can happen if timestamp value is outside the standard year range (1400..10000).
+    ss << timestamp.value();
+  }
+  return ss.str();
 }
 
+Timestamp DateTime::TimestampNow() {
+  return ToTimestamp(local_microsec_clock::local_time(kUtcTimezone));
+}
+
+//------------------------------------------------------------------------------------------------
 Result<uint32_t> DateTime::DateFromString(const std::string& str) {
   // Regex for date format "yyyy-mm-dd"
   static const regex date_format("(-?\\d{1,7})-(\\d{1,2})-(\\d{1,2})");
@@ -134,36 +173,45 @@ Result<uint32_t> DateTime::DateFromString(const std::string& str) {
   if (day < 1 || day > 31) {
     return STATUS(InvalidArgument, "Invalid day of month");
   }
-  try {
-    return (date(year, month, day) - kEpochDate).days() + kEpochDateOffset;
-  } catch (std::exception& e) {
-    return STATUS(InvalidArgument, "Invalid date", e.what());
+  const auto cal_era = (year <= 0) ? GregorianCalendar::EEras::BC : GregorianCalendar::EEras::AD;
+  const int cal_year = (year <= 0) ? -year + 1 : year;
+  GregorianCalendar cal = VERIFY_RESULT(CreateCalendar());
+  cal.set(UCAL_ERA, cal_era);
+  cal.set(cal_year, month - 1, day);
+  UErrorCode status = U_ZERO_ERROR;
+  const int64_t ms_since_epoch = cal.getTime(status);
+  if (U_FAILURE(status)) {
+    return STATUS(InvalidArgument, "Failed to get time", u_errorName(status));
   }
+  return ToDate(ms_since_epoch / kDayInMilliSeconds);
 }
 
 Result<uint32_t> DateTime::DateFromTimestamp(const Timestamp timestamp) {
-  const int64_t date = timestamp.ToInt64() / kDayInMicroSeconds + kEpochDateOffset;
-  if (date < std::numeric_limits<uint32_t>::min() || date > std::numeric_limits<uint32_t>::max()) {
-    return STATUS(InvalidArgument, "Invalid date");
-  }
-  return date;
+  return ToDate(timestamp.ToInt64() / kDayInMicroSeconds);
 }
 
 Result<uint32_t> DateTime::DateFromUnixTimestamp(const int64_t unix_timestamp) {
-  const int64_t date = unix_timestamp / kDayInMilliSeconds + kEpochDateOffset;
-  if (date < std::numeric_limits<uint32_t>::min() || date > std::numeric_limits<uint32_t>::max()) {
-    return STATUS(InvalidArgument, "Invalid date");
-  }
-  return date;
+  return ToDate(unix_timestamp / kDayInMilliSeconds);
 }
 
 Result<string> DateTime::DateToString(const uint32_t date) {
-  try {
-    const auto d = kEpochDate + date_duration(date - kEpochDateOffset);
-    return boost::gregorian::to_iso_extended_string(d);
-  } catch (std::exception& e) {
-    return STATUS(InvalidArgument, "Invalid date", e.what());
+  GregorianCalendar cal = VERIFY_RESULT(CreateCalendar());
+  UErrorCode status = U_ZERO_ERROR;
+  cal.setTime(DateToUnixTimestamp(date), status);
+  if (U_FAILURE(status)) {
+    return STATUS(InvalidArgument, "Failed to set time", u_errorName(status));
   }
+  const int year  = cal.get(UCAL_ERA, status) == GregorianCalendar::EEras::BC ?
+                    -(cal.get(UCAL_YEAR, status) - 1) : cal.get(UCAL_YEAR, status);
+  const int month = cal.get(UCAL_MONTH, status) + 1;
+  const int day   = cal.get(UCAL_DATE, status);
+  if (U_FAILURE(status)) {
+    return STATUS(InvalidArgument, "Failed to get date", u_errorName(status));
+  }
+  char buffer[15]; // Between "-5877641-06-23" and "5881580-07-11".
+  const int result = snprintf(buffer, sizeof(buffer), "%d-%2.2d-%2.2d", year, month, day);
+  CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
+  return buffer;
 }
 
 Timestamp DateTime::DateToTimestamp(uint32_t date) {
@@ -175,11 +223,10 @@ int64_t DateTime::DateToUnixTimestamp(uint32_t date) {
 }
 
 uint32_t DateTime::DateNow() {
-  const local_date_time now = local_microsec_clock::local_time(kUtcTimezone);
-  const date today = boost::gregorian::date_from_tm(to_tm(now));
-  return (today - kEpochDate).days() + kEpochDateOffset;
+  return TimestampNow().ToInt64() / kDayInMicroSeconds + kEpochDateOffset;
 }
 
+//------------------------------------------------------------------------------------------------
 Result<int64_t> DateTime::TimeFromString(const std::string& str) {
   // Regex for time format "hh:mm:ss[.fffffffff]"
   static const regex time_format("(\\d{1,2}):(\\d{1,2}):(\\d{1,2})(\\.(\\d{0,9}))?");
@@ -225,19 +272,17 @@ int64_t DateTime::TimeNow() {
   return (TimestampNow().ToInt64() % kDayInMicroSeconds) * 1000;
 }
 
+//------------------------------------------------------------------------------------------------
 int64_t DateTime::AdjustPrecision(int64_t val,
                                   int input_precision,
                                   const int output_precision) {
   while (input_precision < output_precision) {
     // In case of overflow we just return max/min values -- this is needed for correctness of
     // comparison operations and is similar to Cassandra behaviour.
-    if (val > kInt64MaxOverTen) {
-      return INT64_MAX;
-    } else if (val < kInt64MinOverTen) {
-      return INT64_MIN;
-    } else {
-      val *= 10;
-    }
+    if (val > (INT64_MAX / 10)) return INT64_MAX;
+    if (val < (INT64_MIN / 10)) return INT64_MIN;
+
+    val *= 10;
     input_precision += 1;
   }
   while (input_precision > output_precision) {
@@ -245,21 +290,6 @@ int64_t DateTime::AdjustPrecision(int64_t val,
     input_precision -= 1;
   }
   return val;
-}
-
-string DateTime::TimestampToString(const Timestamp timestamp, const OutputFormat& output_format) {
-  std::ostringstream ss;
-  ss.imbue(output_format.output_locale);
-  ptime pt = kEpochTime + microseconds(timestamp.value());
-  try {
-    local_date_time ldt(pt, kUtcTimezone);
-    ss << ldt;
-  } catch (...) {
-    // If we cannot produce a valid date, default to showing the exact timestamp value.
-    // This can happen if timestamp value is outside the standard year range (1400..10000).
-    ss << timestamp.value();
-  }
-  return ss.str();
 }
 
 const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {

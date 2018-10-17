@@ -238,9 +238,10 @@ if(NOT APPLE)
 endif()
 
 set(UTIL_LIBS
-  boost_date_time
   boost_system
   boost_thread
+  icui18n
+  icuuc
   crcutil
   crypt_blowfish
   gflags
