@@ -827,6 +827,7 @@ stmt :
 			| CreateUserStmt
 			| CreatedbStmt
 			| DropStmt
+			| DropdbStmt
 			| GrantStmt
 			| InsertStmt
 			| RevokeStmt
@@ -920,7 +921,6 @@ stmt :
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropdbStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ExecuteStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ExplainStmt { parser_ybc_not_support(@1, "This statement"); }
 			| FetchStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1440,7 +1440,6 @@ set_rest:
 				}
 			| SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
 				{
-					parser_ybc_not_support(@1, "SET TRANSACTION");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_MULTI;
 					n->name = "SESSION CHARACTERISTICS";
@@ -10146,20 +10145,34 @@ opt_transaction:	WORK							{}
 
 transaction_mode_item:
 			ISOLATION LEVEL iso_level
-					{ $$ = makeDefElem("transaction_isolation",
-									   makeStringConst($3, @3), @1); }
+				{
+					$$ = makeDefElem("transaction_isolation",
+									 makeStringConst($3, @3), @1);
+				}
 			| READ ONLY
-					{ $$ = makeDefElem("transaction_read_only",
-									   makeIntConst(TRUE, @1), @1); }
+				{
+					parser_ybc_not_support(@1, "TRANSACTION READ ONLY mode");
+					$$ = makeDefElem("transaction_read_only",
+									 makeIntConst(TRUE, @1), @1);
+				}
 			| READ WRITE
-					{ $$ = makeDefElem("transaction_read_only",
-									   makeIntConst(FALSE, @1), @1); }
+				{
+					parser_ybc_not_support(@1, "TRANSACTION READ WRITE mode");
+					$$ = makeDefElem("transaction_read_only",
+									 makeIntConst(FALSE, @1), @1);
+				}
 			| DEFERRABLE
-					{ $$ = makeDefElem("transaction_deferrable",
-									   makeIntConst(TRUE, @1), @1); }
+				{
+					parser_ybc_not_support(@1, "TRANSACTION DEFERRABLE mode");
+					$$ = makeDefElem("transaction_deferrable",
+									 makeIntConst(TRUE, @1), @1);
+				}
 			| NOT DEFERRABLE
-					{ $$ = makeDefElem("transaction_deferrable",
-									   makeIntConst(FALSE, @1), @1); }
+				{
+					parser_ybc_not_support(@1, "TRANSACTION NOT DEFERRABLE mode");
+					$$ = makeDefElem("transaction_deferrable",
+									 makeIntConst(FALSE, @1), @1);
+				}
 		;
 
 /* Syntax with commas is SQL-spec, without commas is Postgres historical */
@@ -10421,7 +10434,6 @@ AlterDatabaseSetStmt:
 
 DropdbStmt: DROP DATABASE database_name
 				{
-					parser_ybc_not_support(@1, "DROP DATABASE");
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $3;
 					n->missing_ok = FALSE;
@@ -10429,7 +10441,6 @@ DropdbStmt: DROP DATABASE database_name
 				}
 			| DROP DATABASE IF_P EXISTS database_name
 				{
-					parser_ybc_not_support(@1, "DROP DATABASE");
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $5;
 					n->missing_ok = TRUE;
