@@ -25,8 +25,6 @@
 
 #include <locale>
 #include <regex>
-#include <boost/date_time/local_time/local_time.hpp>
-#include <boost/date_time/gregorian/gregorian.hpp>
 
 #include "yb/util/result.h"
 #include "yb/util/timestamp.h"
@@ -87,11 +85,6 @@ class DateTime {
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
   static constexpr int64_t kInternalPrecision = 6; // microseconds
   static constexpr int64_t kMillisecondPrecision = 3; // milliseconds
-
- private:
-  // Utility constants to avoid overflow when increasing precision in AdjustPrecision().
-  static constexpr int64_t kInt64MaxOverTen = INT64_MAX / 10;
-  static constexpr int64_t kInt64MinOverTen = INT64_MIN / 10;
 };
 
 } // namespace yb

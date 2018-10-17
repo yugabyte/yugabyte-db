@@ -14,6 +14,8 @@
 #ifndef YB_TOOLS_BULK_LOAD_UTILS_H
 #define YB_TOOLS_BULK_LOAD_UTILS_H
 
+#include <boost/tokenizer.hpp>
+
 #include "yb/util/date_time.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
