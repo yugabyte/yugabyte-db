@@ -22,19 +22,20 @@ DataType | Min | Max |
 `INT` or `INTEGER` | -2,147,483,648 | 2,147,483,647 |
 `BIGINT` | –9,223,372,036,854,775,808 | 9,223,372,036,854,775,807 |
 `COUNTER` | –9,223,372,036,854,775,808 | 9,223,372,036,854,775,807 |
+`VARINT` | unbounded | unbounded |
 
 ## Syntax
 The following keywords are used to specify a column of type integer for different constraints including its value ranges.
 
 ```
-type_specification ::= TINYINT | SMALLINT | INT | INTEGER | BIGINT | COUNTER
+type_specification ::= TINYINT | SMALLINT | INT | INTEGER | BIGINT | VARINT | COUNTER
 
 integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 ```
 
 ## Semantics
 
-- Columns of type `TINYINT`, `SMALLINT`, `INT`, `INTEGER`, or `BIGINT` can be part of the `PRIMARY KEY`.
+- Columns of type `TINYINT`, `SMALLINT`, `INT`, `INTEGER`, `BIGINT` or `VARINT` can be part of the `PRIMARY KEY`.
 - Values of different integer datatypes are comparable and convertible to one another.
 - Values of integer datatypes are convertible but not comparable to floating point number.
 - Values of floating point datatypes are not convertible to integers.

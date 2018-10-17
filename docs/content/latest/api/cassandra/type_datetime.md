@@ -7,6 +7,7 @@ menu:
     parent: api-cassandra
     weight: 1450
 aliases:
+  - api/cassandra/type_datetime
   - api/cassandra/type_timestamp
   - api/cql/type_timestamp
   - api/ycql/type_timestamp
@@ -15,7 +16,6 @@ aliases:
 ## Synopsis
 
 Datetime datatypes are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
-Of the three, YugaByte currently only supports the `TIMESTAMP` type.
 
 ## Syntax
 ```
@@ -33,7 +33,7 @@ Where
 
 ## Semantics
 
-- Columns of type `TIMESTAMP` can be part of the `PRIMARY KEY`.
+- Columns of type `DATE`, `TIME` and `TIMESTAMP` can be part of the `PRIMARY KEY`.
 - Implicitly, value of type datetime type are neither convertible nor comparable to other datatypes.
 - Values of integer and text datatypes with the correct format (given above) are convertible to datetime types.
 - Supported timestamp range is from year `1900` to year `9999`.
@@ -42,13 +42,49 @@ Where
 
 ## Examples
 
+### Using the date and type types
+
+```{.sql .copy .separator-gt}
+cqlsh:example> CREATE TABLE orders(customer_id INT, order_date DATE, order_time TIME, amount DECIMAL, PRIMARY KEY ((customer_id), order_date, order_time));
+```
+
+Date and time values can be inserted using currentdate and currenttime standard functions.
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 85.99);
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (1, currentdate(), currenttime(), 34.15);
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) VALUES (2, currentdate(), currenttime(), 55.45);
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM orders;
+```
+```sh
+ customer_id | order_date | order_time         | amount
+-------------+------------+--------------------+--------
+           1 | 2018-10-09 | 17:12:25.824094000 |  85.99
+           1 | 2018-10-09 | 17:12:56.350031000 |  34.15
+           2 | 2018-10-09 | 17:13:15.203633000 |  55.45
+```
+
+Date values can be given using date-time literals.
+
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_date = '2018-10-09';
+```
+```sh
+ system.sum(amount)
+--------------------
+             120.14
+```
+
 ### Using the timestamp type
 ```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));
 ```
-```{.sql .copy .separator-gt}
-cqlsh:example> -- Timestamp values can be given using date-time literals
-```
+Timestamp values can be given using date-time literals.
 ```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:30:30 UTC', 12.5);
 ```

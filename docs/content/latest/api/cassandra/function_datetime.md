@@ -13,7 +13,34 @@ aliases:
 ---
 
 This section covers the set of CQL builtin functions that work on the data types related to
-date and time, i.e `DATE`, `TIME`, [`TIMEUUID`](../type_uuid) or [`TIMESTAMP`](../type_timestamp).
+date and time, i.e [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime) or [`TIMEUUID`](../type_uuid).
+
+## currentdate(), currenttime() and currenttimestamp()
+
+These functions return the current system date and time in UTC time zone.
+
+- They take in no arguments.
+- The return value is a `DATE`, `TIME` or `TIMESTAMP` respectively.
+
+### Examples
+
+#### Insert values using currentdate(), currenttime() and currenttimestamp()
+```{.sql .copy .separator-gt}
+cqlsh:example> CREATE TABLE test_current (k INT PRIMARY KEY, d DATE, t TIME, ts TIMESTAMP);
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO test_current (k, d, t, ts) VALUES (1, currentdate(), currenttime(), currenttimestamp());
+```
+
+#### Comparison using currentdate() and currenttime()
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT * FROM test_current WHERE d = currentdate() and t < currenttime();
+```
+```
+ k | d          | t                  | ts
+---+------------+--------------------+---------------------------------
+ 1 | 2018-10-09 | 18:00:41.688216000 | 2018-10-09 18:00:41.688000+0000
+```
 
 ## now()
 
@@ -52,11 +79,33 @@ cqlsh:example> SELECT v FROM test_now WHERE v < now();
  71bb5104-4fe9-11e8-8839-6336e659252a
 ```
 
+## todate()
+
+This function converts a timestamp or TIMEUUID to the corresponding date.
+
+- It takes in an argument of type `TIMESTAMP` or `TIMEUUID`. 
+- The return value is a `DATE`.
+
+```{.sql .copy .separator-gt}
+cqlsh:example> CREATE TABLE test_todate (k INT PRIMARY KEY, ts TIMESTAMP);
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> INSERT INTO test_todate (k, ts) VALUES (1, currenttimestamp());
+```
+```{.sql .copy .separator-gt}
+cqlsh:example> SELECT todate(ts) FROM test_todate;
+```
+```
+ todate(ts)
+------------
+ 2018-10-09
+ ```
+
 ## totimestamp()
 
-This function converts a TIMEUUID to the corresponding timestamp.
+This function converts a date or TIMEUUID to the corresponding timestamp.
 
-- It takes in an argument of type `TIMEUUID`. 
+- It takes in an argument of type `DATE` or `TIMEUUID`. 
 - The return value is a `TIMESTAMP`.
 
 ### Examples
@@ -129,11 +178,11 @@ cqlsh:example> SELECT v FROM test_dateof WHERE v < dateof(now());
 
 ## tounixtimestamp()
 
-This function converts TIMEUUID or timestamp to a unix timestamp (which is
+This function converts TIMEUUID, date or timestamp to a unix timestamp (which is
 equal to the number of millisecond since epoch Thursday, 1 January 1970). 
 
-- It takes in an argument of type `TIMEUUID` or type `TIMESTAMP`.
-- The return value is a `INTEGER`.
+- It takes in an argument of type `TIMEUUID`, `DATE` or `TIMESTAMP`.
+- The return value is a `BIGINT`.
 
 ### Examples
 
@@ -171,7 +220,7 @@ This function converts TIMEUUID or timestamp to a unix timestamp (which is
 equal to the number of millisecond since epoch Thursday, 1 January 1970). 
 
 - It takes in an argument of type `TIMEUUID` or type `TIMESTAMP`.
-- The return value is a `INTEGER`.
+- The return value is a `BIGINT`.
 
 ### Examples
 
@@ -205,7 +254,7 @@ cqlsh:example> SELECT v from test_unixtimestampof WHERE v < unixtimestampof(now(
 
 ## See Also
 
-[`TIMESTAMP`](../type_timestamp)
+[`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
 [`TIMEUUID`](../type_uuid)
 [`UUID`](../type_uuid)
 [Other CQL Statements](..)

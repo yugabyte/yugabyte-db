@@ -79,9 +79,10 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 ---------------|----------------|-----------------|-------------|
 [`BIGINT`](type_int) | Yes | - | 64-bit signed integer |
 [`BLOB`](type_blob) | Yes | - | String of binary characters |
-[`BOOLEAN`](type_bool) | No | - | Boolean |
+[`BOOLEAN`](type_bool) | Yes | - | Boolean |
 [`COUNTER`](type_int) | No | - | 64-bit signed integer |
 [`DECIMAL`](type_number) | Yes | - | Exact, fixed-point number |
+[`DATE`](type_datetime) | Yes | - | Date |
 [`DOUBLE`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FROZEN`](type_frozen) | Yes | 1 | Collection in binary format |
@@ -92,10 +93,12 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`SET`](type_collection) | No | 1 | Collection of unique elements |
 [`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
 [`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | String of Unicode characters |
-[`TIMESTAMP`](type_timestamp) | Yes | - | Date-and-time |
+[`TIME`](type_datetime) | Yes | - | Time of day |
+[`TIMESTAMP`](type_datetime) | Yes | - | Date-and-time |
 [`TIMEUUID`](type_uuid) | Yes | - | Timed UUID |
 [`TINYINT`](type_int) | Yes | - | 8-bit signed integer |
 [`UUID`](type_uuid) | Yes | - | Standard UUID |
+[`VARINT`](type_integer) | Yes | - | Arbitrary-precision integer |
 [`JSONB`](type_jsonb) | No | - | Json datatype similar to postgresql jsonb |
 
 - [User-defined datatypes](ddl_create_type) are also supported.
@@ -104,7 +107,4 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 Primitive Type |
 ---------------|
-`DATE` | 
-`TIME` | 
 `TUPLE` | 
-`VARINT` | 
