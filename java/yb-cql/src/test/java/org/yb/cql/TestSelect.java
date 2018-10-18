@@ -1588,4 +1588,18 @@ public class TestSelect extends BaseCQLTest {
     long timestamp_diff_sec = (System.currentTimeMillis() - ts.getTime()) / 1000;
     assertTrue("Current timestamp is " + ts, timestamp_diff_sec >= 0 && timestamp_diff_sec <= 60);
   }
+
+  @Test
+  public void testDistinct() throws Exception {
+    // Create test table with hash/range and static/non-static columns.
+    session.execute("create table test_distinct (h int, r int, s int static, c int," +
+                    " primary key ((h), r));");
+
+    // Verify that the WHERE clause of a SELECT DISTINCT allows reference to hash/static column
+    // but not range or non-static columns.
+    assertQuery("select distinct h, s from test_distinct where h = 0;", "");
+    assertQuery("select distinct h, s from test_distinct where s > 0;", "");
+    runInvalidQuery("select distinct h, s from test_distinct where r > 0;");
+    runInvalidQuery("select distinct h, s from test_distinct where c < 0;");
+  }
 }
