@@ -786,6 +786,20 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
+
+  // Only hash/static columns are supported in the where clause of SELECT DISTINCT.
+  if (sem_context->where_state() != nullptr) {
+    const PTDmlStmt *dml = sem_context->current_dml_stmt();
+    if (dml != nullptr && dml->opcode() == TreeNodeOpcode::kPTSelectStmt &&
+        down_cast<const PTSelectStmt*>(dml)->distinct() &&
+        !desc_->is_hash() && !desc_->is_static()) {
+      return sem_context->Error(this,
+                                "Non-partition/static column reference is not supported in the "
+                                "where clause of a SELECT DISTINCT statement",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    }
+  }
+
   return Status::OK();
 }
 
