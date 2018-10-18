@@ -20,8 +20,9 @@ ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)
     : clock_(clock) {
 }
 
-void ConsistentReadPoint::SetReadTime(ReadHybridTime&& read_time, HybridTimeMap&& local_limits) {
-  read_time_ = std::move(read_time);
+void ConsistentReadPoint::SetReadTime(
+    const ReadHybridTime& read_time, HybridTimeMap&& local_limits) {
+  read_time_ = read_time;
   restart_read_ht_ = read_time_.read;
   local_limits_ = std::move(local_limits);
   restarts_.clear();

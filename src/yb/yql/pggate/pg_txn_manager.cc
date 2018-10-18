@@ -64,8 +64,8 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary() {
   if (txn_) {
     return Status::OK();
   }
-  txn_ = std::make_shared<YBTransaction>(
-      GetOrCreateTransactionManager(), IsolationLevel::SNAPSHOT_ISOLATION);
+  txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
+  RETURN_NOT_OK(txn_->Init(IsolationLevel::SNAPSHOT_ISOLATION));
   if (!session_) {
     StartNewSession();
   }

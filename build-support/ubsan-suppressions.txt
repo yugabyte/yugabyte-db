@@ -65,6 +65,7 @@ alignment:snappy::internal::CompressFragment
 alignment:snappy::EmitLiteral
 alignment:snappy::EmitCopyLessThan64
 alignment:snappy::internal::CompressFragment
+alignment:snappy::internal::FindMatchLength
 alignment:snappy::SnappyDecompressor::DecompressAllTags
 
 # https://goo.gl/AaE3P5

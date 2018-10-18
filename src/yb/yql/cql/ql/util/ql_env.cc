@@ -75,8 +75,8 @@ CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* ind
 }
 
 //------------------------------------------------------------------------------------------------
-YBTransactionPtr QLEnv::NewTransaction(const YBTransactionPtr& transaction,
-                                       const IsolationLevel isolation_level) {
+Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transaction,
+                                               const IsolationLevel isolation_level) {
   if (transaction) {
     DCHECK(transaction->IsRestartRequired());
     return transaction->CreateRestartedTransaction();
@@ -84,7 +84,9 @@ YBTransactionPtr QLEnv::NewTransaction(const YBTransactionPtr& transaction,
   if (transaction_manager_ == nullptr) {
     transaction_manager_ = transaction_manager_provider_();
   }
-  return std::make_shared<YBTransaction>(transaction_manager_, isolation_level);
+  auto result = std::make_shared<YBTransaction>(transaction_manager_);
+  RETURN_NOT_OK(result->Init(isolation_level));
+  return result;
 }
 
 YBSessionPtr QLEnv::NewSession() {

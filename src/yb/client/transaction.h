@@ -55,7 +55,7 @@ struct ChildTransactionData {
 // to indicate that this session will send commands related to this transaction.
 class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
  public:
-  YBTransaction(TransactionManager* manager, IsolationLevel isolation);
+  explicit YBTransaction(TransactionManager* manager);
 
   // Creates "child" transaction.
   // Child transaction shares same metadata as parent transaction, so all writes are done
@@ -66,6 +66,11 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   YBTransaction(TransactionManager* manager, ChildTransactionData data);
 
   ~YBTransaction();
+
+  // Should be invoked to complete transaction creation.
+  // Transaction is unusable before Init is called.
+  CHECKED_STATUS Init(
+      IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
 
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
