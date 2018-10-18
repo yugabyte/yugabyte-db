@@ -31,7 +31,6 @@ $ ./bin/yb-ctl status
 $ ./bin/psql -p 5433 -U postgres
 ```
 ```sh
-Database 'username' does not exist
 psql (10.3, server 10.4)
 Type "help" for help.
 

@@ -32,13 +32,13 @@ Follow the instructions below to test YugaByte DB's PostgreSQL API.
       Linux
     </a>
   </li>
-  <!--
   <li>
     <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
       <i class="icon-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
+  <!--
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
@@ -55,10 +55,10 @@ Follow the instructions below to test YugaByte DB's PostgreSQL API.
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/test-postgresql.md" /%}}
   </div>
-  <!--
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/test-postgresql.md" /%}}
   </div>
+  <!--
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/test-postgresql.md" /%}}
   </div>
@@ -71,17 +71,16 @@ Follow the instructions below to test YugaByte DB's PostgreSQL API.
 Create a database called 'sample'.
 
 ```{.sql .copy .separator-gt}
-username=> CREATE DATABASE sample;
+postgres=> CREATE DATABASE sample;
 ```
 
 Connect to the database we just created.
 
 ```{.sql .copy .separator-gt}
-username=> \c sample
+postgres=> \c sample
 ```
 ```
-psql (10.3, server 0.0.0)
-You are now connected to database "sample" as user "username".
+You are now connected to database "sample" as user "postgres".
 sample=>
 ```
 
@@ -117,17 +116,17 @@ INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10
 Query all the values we have inserted into the table.
 
 ```{.sql .copy .separator-gt}
-sample=> SELECT * FROM stock_market;
+sample=> SELECT * FROM stock_market ORDER BY stock_symbol ASC, ts DESC;
 ```
 ```sql
  stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
- AAPL         | 2017-10-26 09:00:00 |    157.410004
- AAPL         | 2017-10-26 10:00:00 |    157.000000
- FB           | 2017-10-26 09:00:00 |    170.630005
- FB           | 2017-10-26 10:00:00 |    170.100006
- GOOG         | 2017-10-26 09:00:00 |    972.559998
- GOOG         | 2017-10-26 10:00:00 |    971.909973
+ AAPL         | 2017-10-26 10:00:00 |           157
+ AAPL         | 2017-10-26 09:00:00 |        157.41
+ FB           | 2017-10-26 10:00:00 |         170.1
+ FB           | 2017-10-26 09:00:00 |        170.63
+ GOOG         | 2017-10-26 10:00:00 |        971.91
+ GOOG         | 2017-10-26 09:00:00 |        972.56
 (6 rows)
 ```
 

@@ -16,7 +16,6 @@ cqlsh>
 cqlsh> describe keyspaces;
 ```
 ```sh
-
 system_schema  system_auth  system
 
 cqlsh> 
