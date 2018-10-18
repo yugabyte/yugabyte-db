@@ -382,7 +382,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
         if (doc_ht.hybrid_time() >= metadata_.start_time) {
           conflicts_metric_->Increment();
-          return STATUS(TryAgain, "Value write after transaction start");
+          return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
+                               doc_ht.hybrid_time(), metadata_.start_time);
         }
       }
     }

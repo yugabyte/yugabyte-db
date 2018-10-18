@@ -43,11 +43,11 @@ TnodeContext* ExecContext::AddTnode(const TreeNode *tnode) {
 }
 
 //--------------------------------------------------------------------------------------------------
-void ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* ql_env) {
+Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* ql_env) {
   TRACE("Start Transaction");
   transaction_start_time_ = MonoTime::Now();
   if (!transaction_) {
-    transaction_ = ql_env->NewTransaction(transaction_, isolation_level);
+    transaction_ = VERIFY_RESULT(ql_env->NewTransaction(transaction_, isolation_level));
   } else if (transaction_->IsRestartRequired()) {
     transaction_ = transaction_->CreateRestartedTransaction();
   } else {
@@ -55,7 +55,7 @@ void ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* 
     // a table with secondary index inside a "BEGIN TRANSACTION ... END TRANSACTION" block. Each DML
     // will try to start a transaction "on-demand" and we will use the shared transaction already
     // started by "BEGIN TRANSACTION".
-    return;
+    return Status::OK();
   }
 
   if (!transactional_session_) {
@@ -63,6 +63,8 @@ void ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* 
     transactional_session_->SetReadPoint(client::Restart::kFalse);
   }
   transactional_session_->SetTransaction(transaction_);
+
+  return Status::OK();
 }
 
 Status ExecContext::PrepareChildTransaction(ChildTransactionDataPB* data) {

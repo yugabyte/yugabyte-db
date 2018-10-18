@@ -51,10 +51,6 @@ namespace client {
 
 namespace {
 
-TransactionMetadata CreateMetadata(IsolationLevel isolation, HybridTime read_time) {
-  return {GenerateTransactionId(), isolation, TabletId(), RandomUniformInt<uint64_t>(), read_time};
-}
-
 YB_STRONGLY_TYPED_BOOL(Child);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted));
 
@@ -76,20 +72,14 @@ YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 
 class YBTransaction::Impl final {
  public:
-  Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
+  Impl(TransactionManager* manager, YBTransaction* transaction)
       : manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
-    if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      read_point_.SetCurrentReadTime();
-      metadata_ = CreateMetadata(isolation, read_point_.GetReadTime());
-    } else {
-      // TODO: The choice of read time should be reviewed when implementing serializable
-      // transactions.
-      metadata_ = CreateMetadata(isolation, manager->Now());
-    }
-    Init();
+    metadata_.transaction_id = GenerateTransactionId();
+    metadata_.priority = RandomUniformInt<uint64_t>();
+    CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
   }
 
@@ -100,7 +90,7 @@ class YBTransaction::Impl final {
         child_(Child::kTrue) {
     read_point_.SetReadTime(std::move(data.read_time), std::move(data.local_limits));
     metadata_ = std::move(data.metadata);
-    Init();
+    CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started child, metadata: " << metadata_;
     ready_ = true;
   }
@@ -111,12 +101,32 @@ class YBTransaction::Impl final {
   }
 
   YBTransactionPtr CreateSimilarTransaction() {
-    return std::make_shared<YBTransaction>(manager_, metadata_.isolation);
+    return std::make_shared<YBTransaction>(manager_);
+  }
+
+  CHECKED_STATUS Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
+    if (read_point_.GetReadTime().read.is_valid()) {
+      return STATUS_FORMAT(IllegalState, "Read point already specified: $0",
+                           read_point_.GetReadTime());
+    }
+    if (isolation != IsolationLevel::SNAPSHOT_ISOLATION) {
+      return STATUS_FORMAT(NotSupported, "Isolation level $0 is not implemented", isolation);
+    }
+
+    if (read_time.read.is_valid()) {
+      read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
+    } else {
+      read_point_.SetCurrentReadTime();
+    }
+    metadata_.isolation = isolation;
+    metadata_.start_time = read_point_.GetReadTime().read;
+
+    return Status::OK();
   }
 
   // This transaction is a restarted transaction, so we set it up with data from original one.
   void SetupRestart(Impl* other) {
-    VLOG_WITH_PREFIX(1) << "Setup from " << other->ToString();
+    VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
     auto transaction = transaction_->shared_from_this();
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -127,6 +137,8 @@ class YBTransaction::Impl final {
       DCHECK(read_point_.IsRestartRequired());
       other->read_point_ = std::move(read_point_);
       other->read_point_.Restart();
+      other->metadata_.isolation = metadata_.isolation;
+      other->metadata_.start_time = other->read_point_.Now();
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(Status::OK(), transaction);
@@ -152,7 +164,7 @@ class YBTransaction::Impl final {
       }
 
       for (const auto& op : ops) {
-        VLOG_WITH_PREFIX(2) << "Prepare, op: " << op->ToString();
+        VLOG_WITH_PREFIX(3) << "Prepare, op: " << op->ToString();
         DCHECK(op->tablet != nullptr);
         auto it = tablets_.find(op->tablet->tablet_id());
         if (it == tablets_.end()) {
@@ -176,12 +188,15 @@ class YBTransaction::Impl final {
         }
         // Prepare is invoked when we are going to send request to tablet server.
         // So after that tablet may have metadata, and we reflect it in our local state.
-        if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING) {
+        if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING &&
+            !op->yb_op->read_only()) {
           it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
     }
 
+    VLOG_WITH_PREFIX(3) << "Prepare, has_tablets_without_metadata: "
+                        << has_tablets_without_metadata;
     if (has_tablets_without_metadata) {
       *metadata = metadata_;
     } else {
@@ -195,7 +210,7 @@ class YBTransaction::Impl final {
       std::lock_guard<std::mutex> lock(mutex_);
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
-        if (op->yb_op->succeeded()) {
+        if (op->yb_op->succeeded() && !op->yb_op->read_only()) {
           const std::string& tablet_id = op->tablet->tablet_id();
           // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
           if (it == tablets_.end() || it->first != tablet_id) {
@@ -365,7 +380,7 @@ class YBTransaction::Impl final {
   }
 
  private:
-  void Init() {
+  void CompleteConstruction() {
     log_prefix_ = Format("$0: ", to_string(metadata_.transaction_id));
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
@@ -760,9 +775,8 @@ class YBTransaction::Impl final {
   std::shared_future<TransactionMetadata> metadata_future_;
 };
 
-YBTransaction::YBTransaction(TransactionManager* manager,
-                             IsolationLevel isolation)
-    : impl_(new Impl(manager, this, isolation)) {
+YBTransaction::YBTransaction(TransactionManager* manager)
+    : impl_(new Impl(manager, this)) {
 }
 
 YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
@@ -770,6 +784,10 @@ YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData d
 }
 
 YBTransaction::~YBTransaction() {
+}
+
+Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
+  return impl_->Init(isolation, read_time);
 }
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
