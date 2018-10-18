@@ -85,8 +85,8 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
       auto& transaction_manager = CreateTransactionManager();
       auto session = CreateSession();
       while (!share.stopped.load(std::memory_order_acquire)) {
-        auto transaction = std::make_shared<client::YBTransaction>(
-            &transaction_manager, IsolationLevel::SNAPSHOT_ISOLATION);
+        auto transaction = std::make_shared<client::YBTransaction>(&transaction_manager);
+        ASSERT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION));
         session->SetTransaction(transaction);
         auto value = share.values[key].load(std::memory_order_acquire);
         auto new_value = value + 1;
@@ -120,8 +120,8 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
         if (!transaction) {
           key = RandomUniformInt<int32_t>(0, share.values.size() - 1);
           value = share.values[key].load(std::memory_order_acquire);
-          transaction = std::make_shared<client::YBTransaction>(
-             &transaction_manager, IsolationLevel::SNAPSHOT_ISOLATION);
+          transaction = std::make_shared<client::YBTransaction>(&transaction_manager);
+          ASSERT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION));
         }
 
         session->SetTransaction(transaction);
