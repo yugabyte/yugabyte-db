@@ -85,8 +85,8 @@ class QLEnv {
   client::YBSessionPtr NewSession();
 
   // Create a new transaction.
-  client::YBTransactionPtr NewTransaction(const client::YBTransactionPtr& transaction,
-                                          IsolationLevel isolation_level);
+  Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,
+                                                  IsolationLevel isolation_level);
 
   //------------------------------------------------------------------------------------------------
   // Permission related methods.

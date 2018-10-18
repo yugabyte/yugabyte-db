@@ -168,7 +168,7 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Start a distributed transaction.
-  void StartTransaction(IsolationLevel isolation_level, QLEnv* ql_env);
+  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level, QLEnv* ql_env);
 
   // Is a transaction currently in progress?
   bool HasTransaction() const {

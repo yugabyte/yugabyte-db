@@ -1541,7 +1541,7 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
   RETURN_NOT_OK(id);
   auto stored_metadata = transaction_participant->Metadata(*id);
   if (!stored_metadata) {
-    return STATUS_FORMAT(IllegalState, "Missing metadata for transaction: $0", *id);
+    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", *id);
   }
   return stored_metadata->isolation;
 }
