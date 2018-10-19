@@ -89,7 +89,9 @@ struct ReactorMetrics {
 
 class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
  public:
-  ReactorTask();
+  // source_location - location of code that initiated this task.
+  explicit ReactorTask(const SourceLocation& source_location);
+
   ReactorTask(const ReactorTask&) = delete;
   void operator=(const ReactorTask&) = delete;
 
@@ -104,7 +106,12 @@ class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
   // The Reactor guarantees that the Reactor lock is free when this method is called.
   void Abort(const Status& abort_status);
 
+  virtual std::string ToString() const;
+
   virtual ~ReactorTask();
+
+ protected:
+  const SourceLocation source_location_;
 
  private:
   // To be overridden by subclasses.
@@ -122,7 +129,8 @@ typedef std::shared_ptr<ReactorTask> ReactorTaskPtr;
 template <class F>
 class FunctorReactorTask : public ReactorTask {
  public:
-  explicit FunctorReactorTask(const F& f) : f_(f) {}
+  explicit FunctorReactorTask(const F& f, const SourceLocation& source_location)
+      : ReactorTask(source_location), f_(f) {}
 
   void Run(Reactor* reactor) override  {
     f_(reactor);
@@ -132,8 +140,8 @@ class FunctorReactorTask : public ReactorTask {
 };
 
 template <class F>
-ReactorTaskPtr MakeFunctorReactorTask(const F& f) {
-  return std::make_shared<FunctorReactorTask<F>>(f);
+ReactorTaskPtr MakeFunctorReactorTask(const F& f, const SourceLocation& source_location) {
+  return std::make_shared<FunctorReactorTask<F>>(f, source_location);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -142,7 +150,8 @@ ReactorTaskPtr MakeFunctorReactorTask(const F& f) {
 template <class F>
 class FunctorReactorTaskWithAbort : public ReactorTask {
  public:
-  explicit FunctorReactorTaskWithAbort(const F& f) : f_(f) {}
+  FunctorReactorTaskWithAbort(const F& f, const SourceLocation& source_location)
+      : ReactorTask(source_location), f_(f) {}
 
   void Run(Reactor* reactor) override  {
     f_(reactor, Status::OK());
@@ -157,8 +166,8 @@ class FunctorReactorTaskWithAbort : public ReactorTask {
 };
 
 template <class F>
-ReactorTaskPtr MakeFunctorReactorTaskWithAbort(const F& f) {
-  return std::make_shared<FunctorReactorTaskWithAbort<F>>(f);
+ReactorTaskPtr MakeFunctorReactorTaskWithAbort(const F& f, const SourceLocation& source_location) {
+  return std::make_shared<FunctorReactorTaskWithAbort<F>>(f, source_location);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -168,8 +177,9 @@ ReactorTaskPtr MakeFunctorReactorTaskWithAbort(const F& f) {
 template <class F, class Object>
 class FunctorReactorTaskWithWeakPtr : public ReactorTask {
  public:
-  explicit FunctorReactorTaskWithWeakPtr(const F& f, const std::weak_ptr<Object>& ptr)
-      : f_(f), ptr_(ptr) {}
+  FunctorReactorTaskWithWeakPtr(const F& f, const std::weak_ptr<Object>& ptr,
+                                const SourceLocation& source_location)
+      : ReactorTask(source_location), f_(f), ptr_(ptr) {}
 
   void Run(Reactor* reactor) override  {
     auto shared_ptr = ptr_.lock();
@@ -177,21 +187,23 @@ class FunctorReactorTaskWithWeakPtr : public ReactorTask {
       f_(reactor);
     }
   }
+
  private:
   F f_;
   std::weak_ptr<Object> ptr_;
 };
 
 template <class F, class Object>
-ReactorTaskPtr MakeFunctorReactorTask(const F& f,
-                                                    const std::weak_ptr<Object>& ptr) {
-  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
+ReactorTaskPtr MakeFunctorReactorTask(
+    const F& f, const std::weak_ptr<Object>& ptr,
+    const SourceLocation& source_location) {
+  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr, source_location);
 }
 
 template <class F, class Object>
-ReactorTaskPtr MakeFunctorReactorTask(const F& f,
-                                                    const std::shared_ptr<Object>& ptr) {
-  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
+ReactorTaskPtr MakeFunctorReactorTask(
+    const F& f, const std::shared_ptr<Object>& ptr, const SourceLocation& source_location) {
+  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr, source_location);
 }
 
 YB_DEFINE_ENUM(MarkAsDoneResult,
@@ -213,6 +225,7 @@ YB_DEFINE_ENUM(MarkAsDoneResult,
 class DelayedTask : public ReactorTask {
  public:
   DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
+              const SourceLocation& source_location,
               const std::shared_ptr<Messenger>& messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
@@ -220,6 +233,8 @@ class DelayedTask : public ReactorTask {
 
   // Could be called from non-reactor thread even before reactor thread shutdown.
   void AbortTask(const Status& abort_status);
+
+  std::string ToString() const override;
 
  private:
   void DoAbort(const Status& abort_status) override;
@@ -268,6 +283,8 @@ class Reactor {
           int index,
           const MessengerBuilder &bld);
 
+  ~Reactor();
+
   Reactor(const Reactor&) = delete;
   void operator=(const Reactor&) = delete;
 
@@ -310,7 +327,7 @@ class Reactor {
   // Return true if this reactor thread is the thread currently running, or the reactor is closing.
   // This is the condition under which the Abort method can be called for tasks. Should be used in
   // DCHECK assertions.
-  bool IsCurrentThreadOrClosed() const;
+  bool IsCurrentThreadOrStartedClosing() const;
 
   // Shut down the given connection, removing it from the connection tracking
   // structures of this reactor.
@@ -328,10 +345,11 @@ class Reactor {
   // Must be called from the reactor thread.
   CHECKED_STATUS GetMetrics(ReactorMetrics *metrics);
 
-  void Join() { thread_->Join(); }
+  void Join();
 
   // Queues a server event on all the connections, such that every client receives it.
-  void QueueEventOnAllConnections(ServerEventListPtr server_event);
+  void QueueEventOnAllConnections(
+      ServerEventListPtr server_event, const SourceLocation& source_location);
 
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
@@ -342,11 +360,13 @@ class Reactor {
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
   // Returns true if task was scheduled.
-  bool ScheduleReactorTask(ReactorTaskPtr task);
+  MUST_USE_RESULT bool ScheduleReactorTask(ReactorTaskPtr task) {
+    return ScheduleReactorTask(std::move(task), false /* schedule_even_closing */);
+  }
 
   template<class F>
-  bool ScheduleReactorFunctor(const F& f) {
-    return ScheduleReactorTask(MakeFunctorReactorTask(f));
+  bool ScheduleReactorFunctor(const F& f, const SourceLocation& source_location) {
+    return ScheduleReactorTask(MakeFunctorReactorTask(f, source_location));
   }
 
  private:
@@ -356,6 +376,8 @@ class Reactor {
 
   // Run the main event loop of the reactor.
   void RunThread();
+
+  MUST_USE_RESULT bool ScheduleReactorTask(ReactorTaskPtr task, bool schedule_even_closing);
 
   // Find or create a new connection to the given remote.
   // If such a connection already exists, returns that, otherwise creates a new one.
@@ -390,7 +412,7 @@ class Reactor {
   bool DrainTaskQueueAndCheckIfClosing();
 
   template<class F>
-  CHECKED_STATUS RunOnReactorThread(const F& f);
+  CHECKED_STATUS RunOnReactorThread(const F& f, const SourceLocation& source_location);
 
   void ShutdownConnection(const ConnectionPtr& conn);
 
@@ -459,6 +481,8 @@ class Reactor {
   // We found that we should shut down, but not all connections are ready for it.  Only accessed in
   // the reactor thread.
   bool stopping_ = false;
+
+  CoarseMonoClock::TimePoint stop_start_time_;
 
   std::vector<OutboundCallPtr> outbound_queue_;
 

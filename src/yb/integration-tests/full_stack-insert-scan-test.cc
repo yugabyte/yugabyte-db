@@ -284,9 +284,7 @@ void FullStackInsertScanTest::DoConcurrentClientInserts() {
                                  kNumRows, kNumInsertClients)) {
     start_latch.CountDown();
     for (const scoped_refptr<Thread>& thread : threads) {
-      ASSERT_OK(ThreadJoiner(thread.get())
-                .warn_every_ms(15000)
-                .Join());
+      ASSERT_OK(ThreadJoiner(thread.get()).warn_every(15s).Join());
     }
   }
 }

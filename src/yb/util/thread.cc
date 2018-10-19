@@ -429,24 +429,21 @@ Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metr
 }
 
 ThreadJoiner::ThreadJoiner(Thread* thr)
-  : thread_(CHECK_NOTNULL(thr)),
-    warn_after_ms_(kDefaultWarnAfterMs),
-    warn_every_ms_(kDefaultWarnEveryMs),
-    give_up_after_ms_(kDefaultGiveUpAfterMs) {
+  : thread_(CHECK_NOTNULL(thr)) {
 }
 
-ThreadJoiner& ThreadJoiner::warn_after_ms(int ms) {
-  warn_after_ms_ = ms;
+ThreadJoiner& ThreadJoiner::warn_after(MonoDelta duration) {
+  warn_after_ = duration;
   return *this;
 }
 
-ThreadJoiner& ThreadJoiner::warn_every_ms(int ms) {
-  warn_every_ms_ = ms;
+ThreadJoiner& ThreadJoiner::warn_every(MonoDelta duration) {
+  warn_every_ = duration;
   return *this;
 }
 
-ThreadJoiner& ThreadJoiner::give_up_after_ms(int ms) {
-  give_up_after_ms_ = ms;
+ThreadJoiner& ThreadJoiner::give_up_after(MonoDelta duration) {
+  give_up_after_ = duration;
   return *this;
 }
 
@@ -461,31 +458,31 @@ Status ThreadJoiner::Join() {
     return Status::OK();
   }
 
-  int waited_ms = 0;
+  MonoDelta waited = MonoDelta::kZero;
   bool keep_trying = true;
   while (keep_trying) {
-    if (waited_ms >= warn_after_ms_) {
-      LOG(WARNING) << Substitute("Waited for $0ms trying to join with $1 (tid $2)",
-                                 waited_ms, thread_->name_, thread_->tid_);
+    if (waited >= warn_after_) {
+      LOG(WARNING) << Format("Waited for $0 trying to join with $1 (tid $2)",
+                             waited, thread_->name_, thread_->tid_);
     }
 
-    int remaining_before_giveup = MathLimits<int>::kMax;
-    if (give_up_after_ms_ != -1) {
-      remaining_before_giveup = give_up_after_ms_ - waited_ms;
+    auto remaining_before_giveup = give_up_after_;
+    if (remaining_before_giveup != MonoDelta::kMax) {
+      remaining_before_giveup -= waited;
     }
 
-    int remaining_before_next_warn = warn_every_ms_;
-    if (waited_ms < warn_after_ms_) {
-      remaining_before_next_warn = warn_after_ms_ - waited_ms;
+    auto remaining_before_next_warn = warn_every_;
+    if (waited < warn_after_) {
+      remaining_before_next_warn = warn_after_ - waited;
     }
 
     if (remaining_before_giveup < remaining_before_next_warn) {
       keep_trying = false;
     }
 
-    int wait_for = std::min(remaining_before_giveup, remaining_before_next_warn);
+    auto wait_for = std::min(remaining_before_giveup, remaining_before_next_warn);
 
-    if (thread_->done_.WaitFor(MonoDelta::FromMilliseconds(wait_for))) {
+    if (thread_->done_.WaitFor(wait_for)) {
       // Unconditionally join before returning, to guarantee that any TLS
       // has been destroyed (pthread_key_create() destructors only run
       // after a pthread's user method has returned).
@@ -494,10 +491,10 @@ Status ThreadJoiner::Join() {
       thread_->joinable_ = false;
       return Status::OK();
     }
-    waited_ms += wait_for;
+    waited += wait_for;
   }
-  return STATUS(Aborted, strings::Substitute("Timed out after $0ms joining on $1",
-                                             waited_ms, thread_->name_));
+
+  return STATUS_FORMAT(Aborted, "Timed out after $0 joining on $1", waited, thread_->name_);
 }
 
 Thread::~Thread() {

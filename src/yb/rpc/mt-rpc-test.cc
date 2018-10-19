@@ -48,6 +48,7 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 using std::string;
 using std::shared_ptr;
 using strings::Substitute;
+using namespace std::literals;
 
 namespace yb {
 namespace rpc {
@@ -91,7 +92,7 @@ class MultiThreadedRpcTest : public RpcTestBase {
 };
 
 static void AssertShutdown(yb::Thread* thread, const Status* status) {
-  ASSERT_OK(ThreadJoiner(thread).warn_every_ms(500).Join());
+  ASSERT_OK(ThreadJoiner(thread).warn_every(500ms).Join());
   string msg = status->ToString();
   ASSERT_TRUE(msg.find("Service unavailable") != string::npos ||
               msg.find("Network error") != string::npos)
@@ -147,7 +148,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   client_messenger->Shutdown();
   client_messenger.reset();
 
-  ASSERT_OK(ThreadJoiner(thread.get()).warn_every_ms(500).Join());
+  ASSERT_OK(ThreadJoiner(thread.get()).warn_every(500ms).Join());
   ASSERT_TRUE(status.IsAborted() ||
               status.IsServiceUnavailable());
   string msg = status.ToString();
@@ -216,7 +217,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   server_messenger->Shutdown();
 
   for (const auto& thread : threads) {
-    ASSERT_OK(ThreadJoiner(thread.get()).warn_every_ms(500).Join());
+    ASSERT_OK(ThreadJoiner(thread.get()).warn_every(500ms).Join());
   }
 
   // Verify that one error was due to backpressure.
@@ -280,7 +281,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
   server().Shutdown();
 
   for (scoped_refptr<yb::Thread>& t : threads) {
-    ASSERT_OK(ThreadJoiner(t.get()).warn_every_ms(500).Join());
+    ASSERT_OK(ThreadJoiner(t.get()).warn_every(500ms).Join());
   }
 }
 

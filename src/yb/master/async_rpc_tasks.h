@@ -118,7 +118,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   MonitoredTaskState AbortAndReturnPrevState() override;
 
   MonitoredTaskState state() const override {
-    return state_.load();
+    return state_.load(std::memory_order_acquire);
   }
 
   MonoTime start_timestamp() const override { return start_ts_; }

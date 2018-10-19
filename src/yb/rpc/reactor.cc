@@ -69,8 +69,7 @@
 #include "yb/util/status.h"
 #include "yb/util/net/socket.h"
 
-using std::string;
-using std::shared_ptr;
+using namespace std::literals;
 
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
@@ -117,7 +116,7 @@ bool HasReactorStartedClosing(ReactorState state) {
 // Reactor class members
 // ------------------------------------------------------------------------------------------------
 
-Reactor::Reactor(const shared_ptr<Messenger>& messenger,
+Reactor::Reactor(const std::shared_ptr<Messenger>& messenger,
                  int index,
                  const MessengerBuilder &bld)
     : messenger_(messenger),
@@ -134,7 +133,12 @@ Reactor::Reactor(const shared_ptr<Messenger>& messenger,
           << ", coarse timer granularity: " << ToSeconds(coarse_timer_granularity_);
 
   process_outbound_queue_task_ =
-      MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this));
+      MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this), SOURCE_LOCATION());
+}
+
+Reactor::~Reactor() {
+  LOG_IF(DFATAL, !pending_tasks_.empty())
+      << "Not empty pending tasks when destroyed reactor: " << yb::ToString(pending_tasks_);
 }
 
 Status Reactor::Init() {
@@ -181,7 +185,7 @@ void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
     VLOG(1) << name() << ": connection is not idle: " << conn->ToString();
     std::weak_ptr<Connection> weak_conn(conn);
     conn->context().ListenIdle([this, weak_conn]() {
-      DCHECK(IsCurrentThreadOrClosed());
+      DCHECK(IsCurrentThreadOrStartedClosing());
       auto conn = weak_conn.lock();
       if (conn) {
         VLOG(1) << name() << ": connection became idle " << conn->ToString();
@@ -200,6 +204,7 @@ void Reactor::ShutdownInternal() {
   DCHECK(IsCurrentThread());
 
   stopping_ = true;
+  stop_start_time_ = CoarseMonoClock::Now();
 
   // Tear down any outbound TCP connections.
   VLOG(1) << name() << ": tearing down outbound TCP connections...";
@@ -251,15 +256,30 @@ Status Reactor::GetMetrics(ReactorMetrics *metrics) {
     metrics->num_client_connections_ = reactor->client_conns_.size();
     metrics->num_server_connections_ = reactor->server_conns_.size();
     return Status::OK();
-  });
+  }, SOURCE_LOCATION());
 }
 
-void Reactor::QueueEventOnAllConnections(ServerEventListPtr server_event) {
+void Reactor::Join() {
+  auto join_result = ThreadJoiner(thread_.get()).give_up_after(30s).Join();
+  if (join_result.ok()) {
+    return;
+  }
+  if (join_result.IsInvalidArgument()) {
+    LOG(WARNING) << join_result;
+    return;
+  }
+  LOG(DFATAL) << "Failed to join Reactor " << thread_->ToString() << ": " << join_result;
+  // Fallback to endless join in release mode.
+  thread_->Join();
+}
+
+void Reactor::QueueEventOnAllConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location) {
   ScheduleReactorFunctor([server_event = std::move(server_event)](Reactor* reactor) {
     for (const ConnectionPtr& conn : reactor->server_conns_) {
       conn->QueueOutboundData(server_event);
     }
-  });
+  }, source_location);
 }
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
@@ -273,7 +293,7 @@ Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
       RETURN_NOT_OK(conn->DumpPB(req, resp->add_outbound_connections()));
     }
     return Status::OK();
-  });
+  }, SOURCE_LOCATION());
 }
 
 void Reactor::WakeThread() {
@@ -445,9 +465,9 @@ bool Reactor::IsCurrentThread() const {
   return thread_.get() == yb::Thread::current_thread();
 }
 
-bool Reactor::IsCurrentThreadOrClosed() const {
+bool Reactor::IsCurrentThreadOrStartedClosing() const {
   return thread_.get() == yb::Thread::current_thread() ||
-         state_.load(std::memory_order_acquire) == ReactorState::kClosed;
+         HasReactorStartedClosing(state_.load(std::memory_order_acquire));
 }
 
 void Reactor::RunThread() {
@@ -663,7 +683,8 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
     return;
   }
   if (was_empty) {
-    ScheduleReactorTask(process_outbound_queue_task_);
+    auto scheduled = ScheduleReactorTask(process_outbound_queue_task_);
+    LOG_IF(WARNING, !scheduled) << "Failed to schedule process outbound queue task";
   }
   TRACE_TO(call->trace(), "Scheduled.");
 }
@@ -672,7 +693,8 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
 // ReactorTask class members
 // ------------------------------------------------------------------------------------------------
 
-ReactorTask::ReactorTask() {
+ReactorTask::ReactorTask(const SourceLocation& source_location)
+    : source_location_(source_location) {
 }
 
 ReactorTask::~ReactorTask() {
@@ -684,13 +706,19 @@ void ReactorTask::Abort(const Status& abort_status) {
   }
 }
 
+std::string ReactorTask::ToString() const {
+  return Format("{ source: $0 }", source_location_);
+}
+
 // ------------------------------------------------------------------------------------------------
 // DelayedTask class members
 // ------------------------------------------------------------------------------------------------
 
 DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
+                         const SourceLocation& source_location,
                          const std::shared_ptr<Messenger>& messenger)
-    : func_(std::move(func)),
+    : ReactorTask(source_location),
+      func_(std::move(func)),
       when_(when),
       id_(id),
       messenger_(messenger) {
@@ -737,6 +765,10 @@ MarkAsDoneResult DelayedTask::MarkAsDone() {
                              : MarkAsDoneResult::kSuccess;
 }
 
+std::string DelayedTask::ToString() const {
+  return Format("{ id: $0 source: $1 }", id_, source_location_);
+}
+
 void DelayedTask::AbortTask(const Status& abort_status) {
   auto mark_as_done_result = MarkAsDone();
   if (mark_as_done_result == MarkAsDoneResult::kSuccess) {
@@ -749,7 +781,7 @@ void DelayedTask::AbortTask(const Status& abort_status) {
       // from being deleted. If the reactor thread has already been shut down, this will be a no-op.
       reactor_->ScheduleReactorFunctor([this, holder = shared_from(this)](Reactor* reactor) {
         timer_.stop();
-      });
+      }, SOURCE_LOCATION());
     }
   }
   if (mark_as_done_result != MarkAsDoneResult::kAlreadyDone) {
@@ -788,7 +820,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   }
 
   if (EV_ERROR & revents) {
-    string msg = "Delayed task got an error in its timer handler";
+    std::string msg = "Delayed task got an error in its timer handler";
     LOG(WARNING) << msg;
     func_(STATUS(Aborted, msg));
   } else {
@@ -818,23 +850,19 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
                                            std::move(connection_context));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
-  });
+  }, SOURCE_LOCATION());
 }
 
-bool Reactor::ScheduleReactorTask(ReactorTaskPtr task) {
+bool Reactor::ScheduleReactorTask(ReactorTaskPtr task, bool schedule_even_closing) {
   bool was_empty;
   {
     // Even though state_ is atomic, we still need to take the lock to make sure state_
     // and pending_tasks_mtx_ are being modified in a consistent way.
     std::unique_lock<simple_spinlock> pending_lock(pending_tasks_mtx_);
-    if (state_.load(std::memory_order_acquire) == ReactorState::kClosed) {
-      // The reactor thread has already stopped. We can safely call Abort() now. Abort() will
-      // internally deduplicate repeated calls using an atomic.
-      //
-      // Also, we guarantee that pending_tasks_mtx_ is not taken when calling Abort().
-      pending_lock.unlock();
-      std::lock_guard<std::recursive_mutex> final_abort_serializer(final_abort_mutex_);
-      task->Abort(ServiceUnavailableError());
+    auto state = state_.load(std::memory_order_acquire);
+    bool failure = schedule_even_closing ? state == ReactorState::kClosed
+                                         : HasReactorStartedClosing(state);
+    if (failure) {
       return false;
     }
     was_empty = pending_tasks_.empty();
@@ -859,7 +887,8 @@ bool Reactor::DrainTaskQueueAndCheckIfClosing() {
 template<class F>
 class RunFunctionTask : public ReactorTask {
  public:
-  explicit RunFunctionTask(const F& f) : function_(f), latch_(1) {}
+  RunFunctionTask(const F& f, const SourceLocation& source_location)
+      : ReactorTask(source_location), function_(f) {}
 
   void Run(Reactor *reactor) override {
     status_ = function_(reactor);
@@ -880,13 +909,15 @@ class RunFunctionTask : public ReactorTask {
 
   F function_;
   Status status_;
-  CountDownLatch latch_;
+  CountDownLatch latch_{1};
 };
 
 template<class F>
-Status Reactor::RunOnReactorThread(const F& f) {
-  auto task = std::make_shared<RunFunctionTask<F>>(f);
-  ScheduleReactorTask(task);
+Status Reactor::RunOnReactorThread(const F& f, const SourceLocation& source_location) {
+  auto task = std::make_shared<RunFunctionTask<F>>(f, source_location);
+  if (!ScheduleReactorTask(task)) {
+    return ServiceUnavailableError();
+  }
   return task->Wait();
 }
 

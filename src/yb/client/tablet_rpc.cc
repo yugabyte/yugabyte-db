@@ -276,7 +276,9 @@ bool TabletInvoker::Done(Status* status) {
       FailToNewReplica(*status, rpc_->response_error());
     } else {
       auto retry_status = retrier_->DelayedRetry(command_, *status);
-      LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
+      if (!retry_status.ok()) {
+        command_->Finished(retry_status);
+      }
     }
     return false;
   }
@@ -358,7 +360,7 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   auto retry_status = retrier_->DelayedRetry(
       command_, result.ok() ? Status::OK() : result.status());
   if (!retry_status.ok()) {
-    command_->Finished(result.status());
+    command_->Finished(!result.ok() ? result.status() : retry_status);
   }
 }
 
