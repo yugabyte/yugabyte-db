@@ -561,13 +561,16 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
       watermarks.push_back(Policy::ExtractValue(peer));
     }
   }
-  VLOG(1) << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
-          << ", num_peers_required=" << num_peers_required;
 
   // We always assume that local peer has most recent information.
   const size_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
 
   if (num_responsive_peers < num_peers_required) {
+    VLOG_WITH_PREFIX_UNLOCKED(2)
+        << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
+        << ", num_peers_required=" << num_peers_required
+        << ", num_responsive_peers=" << num_responsive_peers
+        << ", not enough responsive peers";
     // There are not enough peers with which the last message exchange was successful.
     return Policy::Min();
   }
@@ -589,6 +592,12 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
 
   auto nth = watermarks.begin() + index_of_interest;
   std::nth_element(watermarks.begin(), nth, watermarks.end(), typename Policy::Comparator());
+  VLOG_WITH_PREFIX_UNLOCKED(2)
+      << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
+      << ", num_peers_required=" << num_peers_required
+      << ", local_peer_infinite_watermark=" << local_peer_infinite_watermark
+      << ", watermark: " << yb::ToString(*nth);
+
   return *nth;
 }
 

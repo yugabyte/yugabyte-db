@@ -997,8 +997,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   bool RemoveUnlocked(const Transactions::iterator& it) {
     if (running_requests_.empty()) {
+      TransactionId txn_id = (**it).id();
       transactions_.erase(it);
-      VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << (**it).id()
+      VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id
                           << ", left: " << transactions_.size();
       return true;
     }

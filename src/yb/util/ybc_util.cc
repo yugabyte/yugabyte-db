@@ -20,6 +20,7 @@
 #include "yb/util/version_info.h"
 #include "yb/util/status.h"
 #include "yb/util/debug-util.h"
+#include "yb/gutil/stringprintf.h"
 
 using std::string;
 
@@ -61,8 +62,6 @@ Status InitInternal(const char* argv0) {
   return Status::OK();
 }
 
-constexpr size_t kFormattingBufSize = 16384;
-
 } // anonymous namespace
 
 extern "C" {
@@ -88,26 +87,24 @@ YBCStatus YBCInit(const char* argv0,
   return ToYBCStatus(yb::InitInternal(argv0));
 }
 
-#define DEFINE_YBC_LOG_FUNCTION(level_capitalized, level_caps, extra_content) \
-  void BOOST_PP_CAT(YBCLog, level_capitalized)(const char* format, ...) { \
-    va_list argptr; \
-    va_start(argptr, format); \
-    char buf[kFormattingBufSize]; \
-    vsnprintf(buf, sizeof(buf), format, argptr); \
-    va_end(argptr); \
-    LOG(level_caps) << buf << extra_content; \
+void YBCLogImpl(
+    google::LogSeverity severity,
+    const char* file,
+    int line,
+    bool with_stack_trace,
+    const char* format,
+    ...) {
+  va_list argptr;
+  va_start(argptr, format); \
+  string buf;
+  StringAppendV(&buf, format, argptr);
+  va_end(argptr);
+  google::LogMessage log_msg(file, line, severity);
+  log_msg.stream() << buf;
+  if (with_stack_trace) {
+    log_msg.stream() << "\n" << yb::GetStackTrace();
   }
-
-DEFINE_YBC_LOG_FUNCTION(Info, INFO, "")
-DEFINE_YBC_LOG_FUNCTION(Warning, WARNING, "")
-DEFINE_YBC_LOG_FUNCTION(Error, ERROR, "")
-DEFINE_YBC_LOG_FUNCTION(Fatal, FATAL, "")
-
-DEFINE_YBC_LOG_FUNCTION(InfoStackTrace,    INFO,    GetStackTraceWithoutTopFrame())
-DEFINE_YBC_LOG_FUNCTION(WarningStackTrace, WARNING, GetStackTraceWithoutTopFrame())
-DEFINE_YBC_LOG_FUNCTION(ErrorStackTrace,   ERROR,   GetStackTraceWithoutTopFrame())
-
-#undef DEFINE_YBC_LOG_FUNCTION
+}
 
 } // extern "C"
 

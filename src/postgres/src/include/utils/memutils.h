@@ -110,7 +110,7 @@ GetMemoryChunkContext(void *pointer)
 	MemoryContext context;
 
 	if (pointer == NULL) {
-		YBCLogErrorStackTrace("GetMemoryChunkContext: null pointer\n");
+		YBC_LOG_ERROR_STACK_TRACE("GetMemoryChunkContext: null pointer");
 	}
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.

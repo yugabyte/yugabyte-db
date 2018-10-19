@@ -42,7 +42,8 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
 
 	char	   *src_dbname = get_database_name(src_dboid);
 
-	YBCLogWarning("Ignoring source database '%s' when creating database '%s'", src_dbname, dbname);
+	YBC_LOG_WARNING("Ignoring source database '%s' when creating database '%s'", src_dbname,
+		dbname);
 	PG_TRY();
 	{
 		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, &handle));
@@ -147,7 +148,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	 * making some assumptions below about how it will be assigned.
 	 */
 	char *db_name = get_database_name(MyDatabaseId);
-	YBCLogInfo("Creating Table %s, %s, %s",
+	YBC_LOG_INFO("Creating Table %s, %s, %s",
 	           db_name,
 	           stmt->relation->schemaname,
 	           stmt->relation->relname);

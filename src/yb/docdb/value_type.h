@@ -125,7 +125,7 @@ namespace docdb {
     /* This ValueType is used as +infinity for scanning purposes only. */ \
     ((kHighest, '~')) /* ASCII code 126 */ \
     \
-    /* This is used for sanity checking. TODO: rename to kInvalid since this is an enum class. */ \
+    /* This is used for sanity checking. */ \
     ((kInvalid, 127)) \
     \
     /* ValueType which lexicographically higher than any other byte and is not used for */ \
