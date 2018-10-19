@@ -318,8 +318,26 @@ $RANDOM.$RANDOM.$RANDOM.$$
         # Compress Java test log.
         mv "$test_log_path" "$YB_SUREFIRE_REPORTS_DIR"
         pushd "$log_dir"
-        test_log_path="$YB_SUREFIRE_REPORTS_DIR.tar.gz"
-        tar czf "$test_log_path" "${YB_SUREFIRE_REPORTS_DIR##*/}"
+        test_log_path="${YB_SUREFIRE_REPORTS_DIR}_combined_logs.txt"
+
+        for file_path in $( ls "$YB_SUREFIRE_REPORTS_DIR"/* | sort ); do
+          (
+            echo
+            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            echo "================================================================================"
+            echo "Contents of ${file_path##*/} (copied here by $script_name_no_ext)"
+            echo "================================================================================"
+            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            echo
+          ) >>"$test_log_path"
+          cat "$file_path" >>"$test_log_path"
+        done
+
+        gzip "$test_log_path"
+        test_log_path+=".gz"
+
+        # Ignore errors here -- they could happen e.g. if someone opens one of the uncompressed
+        # log files while the test is still running and keeps it open.
         set +e
         rm -rf "$YB_SUREFIRE_REPORTS_DIR"
         set -e

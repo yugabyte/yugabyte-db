@@ -148,7 +148,7 @@ YBInitPostgresBackend(
 		YBCInitPgGate();
 
 		if (ybc_pg_session != NULL) {
-			YBCLogFatal("Double initialization of ybc_pg_session");
+			YBC_LOG_FATAL("Double initialization of ybc_pg_session");
 		}
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use

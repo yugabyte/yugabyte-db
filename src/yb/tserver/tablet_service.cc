@@ -499,7 +499,14 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
     return;
   }
 
-  auto status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
+  TabletServerErrorPB::Code error_code;
+  auto status = CheckPeerIsLeaderAndReady(*tablet_peer, &error_code);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+    return;
+  }
+
+  status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
       req->transaction_id(), resp);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (status.ok()) {
@@ -619,7 +626,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   s = server_->tablet_manager()->CreateNewTablet(req->table_id(), req->tablet_id(), partition,
       req->table_name(), req->table_type(), schema, partition_schema,
       req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
-      req->config(), nullptr);
+      req->config(), /* tablet_peer */ nullptr);
   if (PREDICT_FALSE(!s.ok())) {
     TabletServerErrorPB::Code code;
     if (s.IsAlreadyPresent()) {

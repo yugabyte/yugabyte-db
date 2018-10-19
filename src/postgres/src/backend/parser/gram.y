@@ -1431,7 +1431,6 @@ VariableSetStmt:
 set_rest:
 			TRANSACTION transaction_mode_list
 				{
-					parser_ybc_not_support(@1, "SET TRANSACTION");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION";
@@ -1687,7 +1686,6 @@ reset_rest:
 				}
 			| TRANSACTION ISOLATION LEVEL
 				{
-					parser_ybc_not_support(@1, "RESET TRANSACTION ISOLATION LEVEL");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_RESET;
 					n->name = "transaction_isolation";

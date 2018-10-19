@@ -49,20 +49,37 @@ CHECKED_YBCSTATUS YBCInit(
     YBCPAllocFn palloc_fn,
     YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
 
-// Logging functions with printf-like formatting capabilities.
-void YBCLogInfo(const char* format, ...);
-void YBCLogWarning(const char* format, ...);
-void YBCLogError(const char* format, ...);
-void YBCLogFatal(const char* format, ...);
+// From glog's log_severity.h:
+// const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;
+
+// Logging macros with printf-like formatting capabilities.
+#define YBC_LOG_INFO(...) \
+    YBCLogImpl(/* severity */ 0, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_WARNING(...) \
+    YBCLogImpl(/* severity */ 1, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_ERROR(...) \
+    YBCLogImpl(/* severity */ 2, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_FATAL(...) \
+    YBCLogImpl(/* severity */ 3, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
 
 // The following functions log the given message formatted similarly to printf followed by a stack
 // trace.
-void YBCLogInfoStackTrace(const char* format, ...);
-void YBCLogWarningStackTrace(const char* format, ...);
-void YBCLogErrorStackTrace(const char* format, ...);
+
+#define YBC_LOG_INFO_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 0, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+#define YBC_LOG_WARNING_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 1, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+#define YBC_LOG_ERROR_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 2, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+
+void YBCLogImpl(int severity,
+                const char* file_name,
+                int line_number,
+                bool stack_trace,
+                const char* format, ...);
 
 #ifdef __cplusplus
-}
+} // extern "C"
 #endif
 
 #endif  // YB_UTIL_YBC_UTIL_H
