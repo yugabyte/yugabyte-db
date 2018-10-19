@@ -52,6 +52,7 @@
 #include "yb/util/string_util.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
@@ -146,10 +147,11 @@ void Connection::OutboundQueued() {
   auto status = stream_->TryWrite();
   if (!status.ok()) {
     VLOG_WITH_PREFIX(1) << "Write failed: " << status;
-    reactor_->ScheduleReactorTask(
+    auto scheduled = reactor_->ScheduleReactorTask(
         MakeFunctorReactorTask(
             std::bind(&Reactor::DestroyConnection, reactor_, this, status),
-            shared_from_this()));
+            shared_from_this(), SOURCE_LOCATION()));
+    LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule destroy";
   }
 }
 
@@ -351,12 +353,11 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     std::unique_lock<simple_spinlock> lock(outbound_data_queue_lock_);
     if (!shutdown_status_.ok()) {
       auto task = MakeFunctorReactorTaskWithAbort(
-          std::bind(&OutboundData::Transferred,
-                    outbound_data,
-                    std::placeholders::_2,
-                    /* conn */ nullptr));
+          std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
+          SOURCE_LOCATION());
       lock.unlock();
-      reactor_->ScheduleReactorTask(task);
+      auto scheduled = reactor_->ScheduleReactorTask(task, true /* schedule_even_closing */);
+      LOG_IF_WITH_PREFIX(DFATAL, !scheduled) << "Failed to schedule OutboundData::Transferred";
       return;
     }
     was_empty = outbound_data_to_process_.empty();
@@ -364,13 +365,15 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     if (was_empty && !process_response_queue_task_) {
       process_response_queue_task_ =
           MakeFunctorReactorTask(std::bind(&Connection::ProcessResponseQueue, this),
-                                 shared_from_this());
+                                 shared_from_this(), SOURCE_LOCATION());
     }
   }
 
   if (was_empty) {
     // TODO: what happens if the reactor is shutting down? Currently Abort is ignored.
-    reactor_->ScheduleReactorTask(process_response_queue_task_);
+    auto scheduled = reactor_->ScheduleReactorTask(process_response_queue_task_);
+    LOG_IF_WITH_PREFIX(WARNING, !scheduled)
+        << "Failed to schedule Connection::ProcessResponseQueue";
   }
 }
 

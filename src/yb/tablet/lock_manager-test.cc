@@ -47,6 +47,7 @@
 
 using std::vector;
 using std::shared_ptr;
+using namespace std::literals;
 
 DEFINE_int32(num_test_threads, 10, "number of stress test client threads");
 DEFINE_int32(num_iterations, 1000, "number of iterations per client thread");
@@ -192,8 +193,8 @@ class LmTestThread {
 
   void Join() {
     CHECK_OK(ThreadJoiner(thread_.get()).
-             warn_after_ms(1000).
-             warn_every_ms(5000).
+             warn_after(1s).
+             warn_every(5s).
              Join());
     thread_ = nullptr;
   }

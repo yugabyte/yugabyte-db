@@ -233,9 +233,7 @@ void UpdateScanDeltaCompactionTest::RunThreads() {
   stop_latch.CountDown();
 
   for (const scoped_refptr<Thread>& thread : threads) {
-    ASSERT_OK(ThreadJoiner(thread.get())
-              .warn_every_ms(500)
-              .Join());
+    ASSERT_OK(ThreadJoiner(thread.get()).warn_every(500ms).Join());
   }
 }
 

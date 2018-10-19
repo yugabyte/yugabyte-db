@@ -63,6 +63,8 @@ class TabletInvoker {
   virtual ~TabletInvoker();
 
   void Execute(const std::string& tablet_id, bool leader_only = false);
+
+  // Returns true when whole operation is finished, false otherwise.
   bool Done(Status* status);
 
   bool IsLocalCall() const;
