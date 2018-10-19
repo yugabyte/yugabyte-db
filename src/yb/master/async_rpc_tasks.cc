@@ -122,7 +122,9 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
-  DCHECK(state() == MonitoredTaskState::kWaiting || state() == MonitoredTaskState::kAborted);
+  auto task_state = state();
+  DCHECK(task_state == MonitoredTaskState::kWaiting || task_state == MonitoredTaskState::kAborted)
+      << "State: " << ToString(task_state);
 
   const Status s = ResetTSProxy();
   if (!s.ok()) {
@@ -257,9 +259,16 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";
       return false;
     }
-    reactor_task_id_ = master_->messenger()->ScheduleOnReactor(
+    auto task_id = master_->messenger()->ScheduleOnReactor(
         std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
-        MonoDelta::FromMilliseconds(delay_millis), master_->messenger());
+        MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION(), master_->messenger());
+    reactor_task_id_.store(task_id, std::memory_order_release);
+
+    if (task_id == rpc::kInvalidTaskId) {
+      AbortTask();
+      UnregisterAsyncTask();
+      return false;
+    }
 
     if (!PerformStateTransition(MonitoredTaskState::kScheduling, MonitoredTaskState::kWaiting)) {
       // The only valid reason for state not being MonitoredTaskState is because the task got

@@ -68,22 +68,22 @@ class ThreadJoiner {
  public:
   explicit ThreadJoiner(Thread* thread);
 
-  // Start emitting warnings after this many milliseconds.
+  // Start emitting warnings after specified duration.
   //
   // Default: 1000 ms.
-  ThreadJoiner& warn_after_ms(int ms);
+  ThreadJoiner& warn_after(MonoDelta duration);
 
   // After the warnings after started, emit another warning at the
   // given interval.
   //
   // Default: 1000 ms.
-  ThreadJoiner& warn_every_ms(int ms);
+  ThreadJoiner& warn_every(MonoDelta duration);
 
-  // If the thread has not stopped after this number of milliseconds, give up
+  // If the thread has not stopped after this duration, give up
   // joining on it and return Status::Aborted.
   //
-  // -1 (the default) means to wait forever trying to join.
-  ThreadJoiner& give_up_after_ms(int ms);
+  // MonoDelta::kMax (the default) means to wait forever trying to join.
+  ThreadJoiner& give_up_after(MonoDelta duration);
 
   // Join the thread, subject to the above parameters. If the thread joining
   // fails for any reason, returns RuntimeError. If it times out, returns
@@ -91,17 +91,11 @@ class ThreadJoiner {
   CHECKED_STATUS Join();
 
  private:
-  enum {
-    kDefaultWarnAfterMs = 1000,
-    kDefaultWarnEveryMs = 1000,
-    kDefaultGiveUpAfterMs = -1 // forever
-  };
-
   Thread* thread_;
 
-  int warn_after_ms_;
-  int warn_every_ms_;
-  int give_up_after_ms_;
+  MonoDelta warn_after_ = MonoDelta::FromMilliseconds(1000);
+  MonoDelta warn_every_ = MonoDelta::FromMilliseconds(1000);
+  MonoDelta give_up_after_ = MonoDelta::kMax;
 
   DISALLOW_COPY_AND_ASSIGN(ThreadJoiner);
 };

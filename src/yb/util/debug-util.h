@@ -223,6 +223,15 @@ std::string SymbolizeAddress(
 // Demangle a C++-mangled identifier.
 std::string DemangleName(const char* name);
 
+struct SourceLocation {
+  const char* file_name;
+  int line_number;
+
+  std::string ToString() const;
+};
+
+#define SOURCE_LOCATION() SourceLocation {__FILE__, __LINE__}
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H

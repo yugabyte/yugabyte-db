@@ -149,7 +149,7 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
     cqlserver_event_list->AddEvent(
         BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
 
-    Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list);
+    Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
     if (!s.ok()) {
       LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
                                            cqlserver_event_list->ToString(), s.ToString());

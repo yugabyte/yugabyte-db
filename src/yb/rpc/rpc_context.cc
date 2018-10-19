@@ -218,7 +218,7 @@ void RpcContext::CloseConnection() {
   auto connection = call_->connection();
   connection->reactor()->ScheduleReactorFunctor([connection](Reactor*) {
     connection->Close();
-  });
+  }, SOURCE_LOCATION());
 }
 
 std::string RpcContext::ToString() const {

@@ -942,4 +942,8 @@ std::string DemangleName(const char* mangled_name) {
   return ret_val;
 }
 
+std::string SourceLocation::ToString() const {
+  return Format("$0:$1", file_name, line_number);
+}
+
 }  // namespace yb

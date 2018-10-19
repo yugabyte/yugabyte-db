@@ -137,7 +137,7 @@ Status RpcRetrier::DelayedRetry(
   auto retain_rpc = rpc->shared_from_this();
   task_id_ = messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms),
-      messenger_);
+      SOURCE_LOCATION(), messenger_);
 
   // Scheduling state can be changed only in this method, so we expected both
   // exchanges below to succeed.
