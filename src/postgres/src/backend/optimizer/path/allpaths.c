@@ -401,11 +401,14 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-
-					/* TODO we don't support tablesample queries yet. */
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
+					{
+						/* TODO we don't support tablesample queries yet. */
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("'TABLESAMPLE' clause is not yet "
+										"supported by YugaByte")));
+					}
 
 					/* Sampled relation */
 					set_tablesample_rel_size(root, rel, rte);
@@ -498,10 +501,14 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-					/* TODO we don't support tablesample queries yet. */
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
+					{
+						/* TODO we don't support tablesample queries yet. */
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("'TABLESAMPLE' clause is not yet "
+									   "supported by YugaByte")));
+					}
 
 					/* Sampled relation */
 					set_tablesample_rel_pathlist(root, rel, rte);

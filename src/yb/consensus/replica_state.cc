@@ -928,7 +928,7 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
   }
 }
 
-string ReplicaState::LogPrefix() {
+string ReplicaState::LogPrefix() const {
   if (ThreadRestrictions::IsWaitAllowed()) {
     auto lock = LockForRead();
     return LogPrefixUnlocked();

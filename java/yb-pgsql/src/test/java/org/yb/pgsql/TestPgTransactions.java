@@ -1,27 +1,33 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
-import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.HashMap;
 import java.util.Map;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
-
-import org.yb.YBTestRunner;
-
-import org.junit.runner.RunWith;
+import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgTransactions extends BasePgSQLTest {
@@ -97,6 +103,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     int numSecondWinners = 0;
     final int totalIterations = TestUtils.nonTsanVsTsan(300, 100);
     for (int i = 1; i <= totalIterations; ++i) {
+      LOG.info("Starting iteration: i=" + i);
       if (RandomUtils.nextBoolean()) {
         // Shuffle the two connections between iterations.
         Connection tmpConnection = connection1;
@@ -139,15 +146,22 @@ public class TestPgTransactions extends BasePgSQLTest {
           " txnState2AfterCommit=" + txnState2AfterCommit +
           " numFirstWinners=" + numFirstWinners +
           " numSecondWinners=" + numSecondWinners);
+
+      // Whether or not a transaction commits successfully, its state is changed to IDLE after the
+      // commit attempt.
+      assertEquals(TransactionState.IDLE, txnState1AfterCommit);
+      assertEquals(TransactionState.IDLE, txnState2AfterCommit);
+
+      if (!committed1 && !committed2) {
+        // TODO: if this happens, look at why two transactions could fail at the same time.
+        throw new AssertionError("Did not expect both transactions to fail!");
+      }
+
       if (executed2) {
         assertFalse(committed1);
         assertTrue(committed2);
         assertEquals(TransactionState.OPEN, txnState1BeforeCommit);
         assertEquals(TransactionState.OPEN, txnState2BeforeCommit);
-        // It looks like when the commit of the first transaction throws an exception, the
-        // transaction state changes to IDLE immediately.
-        assertEquals(TransactionState.IDLE, txnState1AfterCommit);
-        assertEquals(TransactionState.IDLE, txnState2AfterCommit);
         numSecondWinners++;
       } else {
         assertTrue(committed1);
@@ -168,8 +182,6 @@ public class TestPgTransactions extends BasePgSQLTest {
         // assertFalse(committed2);
         assertEquals(TransactionState.OPEN, txnState1BeforeCommit);
         assertEquals(TransactionState.FAILED, txnState2BeforeCommit);
-        assertEquals(TransactionState.IDLE, txnState1AfterCommit);
-        assertEquals(TransactionState.IDLE, txnState2AfterCommit);
 
         numFirstWinners++;
       }

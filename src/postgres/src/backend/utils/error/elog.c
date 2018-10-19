@@ -1357,7 +1357,7 @@ elog_finish(int elevel, const char *fmt,...)
 	/* TODO Make this a YB-debug-mode feature */
 	if (IsYugaByteEnabled() && elevel >= FATAL)
 	{
-		YBCLogInfoStackTrace("StackTrace:");
+		YBC_LOG_INFO_STACK_TRACE("Stack trace");
 	}
 
 	/*

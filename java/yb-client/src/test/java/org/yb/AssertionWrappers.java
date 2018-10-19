@@ -704,4 +704,8 @@ public class AssertionWrappers {
     wrapAssertion(() -> Assert.assertNotSame(unexpected, actual));
   }
 
+  public static void assertLess(String message, int x, int y) {
+    assertTrue("Expected that first value (" + x + ") is less than the second value (" + y + "): " +
+        message, x < y);
+  }
 }

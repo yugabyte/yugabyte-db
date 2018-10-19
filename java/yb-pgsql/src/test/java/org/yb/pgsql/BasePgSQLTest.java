@@ -407,8 +407,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     // Stop postgres server.
     LOG.info("Stopping postgres server.");
-    int postgresPid = TestUtils.pidOfProcess(postgresProc);
     if (postgresProc != null) {
+      int postgresPid = TestUtils.pidOfProcess(postgresProc);
       // See https://www.postgresql.org/docs/current/static/server-shutdown.html for different
       // server shutdown modes of PostgreSQL.
       // SIGTERM = "Smart Shutdown"
@@ -423,8 +423,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         Runtime.getRuntime().exec("kill -SIGKILL" + postgresPid);
         pgFailedToTerminate = true;
       }
+      processPgCoreFile(postgresPid);
     }
-    processPgCoreFile(postgresPid);
 
     if (logPrinter != null) {
       logPrinter.stop();
