@@ -121,7 +121,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // N.B.: the file path passed here is not copied, so should be a static
   // constant (eg __FILE__).
   void SubstituteAndTrace(const char* file_path, int line_number,
-                          MonoTime now, StringPiece format,
+                          MonoTime now, GStringPiece format,
                           const strings::internal::SubstituteArg& arg0,
                           const strings::internal::SubstituteArg& arg1 =
                             strings::internal::SubstituteArg::NoArg,
@@ -142,7 +142,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
                           const strings::internal::SubstituteArg& arg9 =
                             strings::internal::SubstituteArg::NoArg);
 
-  void SubstituteAndTrace(const char* file_path, int line_number, MonoTime now, StringPiece format);
+  void SubstituteAndTrace(const char* file_path, int line_number, MonoTime now, GStringPiece format);
 
   // Dump the trace buffer to the given output stream.
   //

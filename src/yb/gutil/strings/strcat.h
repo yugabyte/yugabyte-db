@@ -50,7 +50,7 @@ using std::string;
 // http://goto/style-guide-exception-20978288
 //
 struct AlphaNum {
-  StringPiece piece;
+  GStringPiece piece;
   char digits[kFastToBufferSize];
 
   // No bool ctor -- bools convert to an integral type.
@@ -76,11 +76,11 @@ struct AlphaNum {
     : piece(digits, strlen(DoubleToBuffer(f, digits))) {}
 
   AlphaNum(const char *c_str) : piece(c_str) {}  // NOLINT(runtime/explicit)
-  AlphaNum(StringPiece pc)
+  AlphaNum(GStringPiece pc)
       : piece(std::move(pc)) {}            // NOLINT(runtime/explicit)
   AlphaNum(const string &s) : piece(s) {}  // NOLINT(runtime/explicit)
 
-  StringPiece::size_type size() const { return piece.size(); }
+  GStringPiece::size_type size() const { return piece.size(); }
   const char *data() const { return piece.data(); }
 
  private:
@@ -94,7 +94,7 @@ extern AlphaNum gEmptyAlphaNum;
 // StrCat()
 //    This merges the given strings or numbers, with no delimiter.  This
 //    is designed to be the fastest possible way to construct a string out
-//    of a mix of raw C strings, StringPieces, strings, bool values,
+//    of a mix of raw C strings, GStringPieces, strings, bool values,
 //    and numeric values.
 //
 //    Don't use this for user-visible strings.  The localization process

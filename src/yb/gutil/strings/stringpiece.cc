@@ -38,48 +38,48 @@ using std::swap;
 using std::string;
 
 namespace std {
-  size_t hash<StringPiece>::operator()(StringPiece s) const {
+  size_t hash<GStringPiece>::operator()(GStringPiece s) const {
     return HashTo32(s.data(), s.size());
   }
 } // namespace std
 
-std::ostream& operator<<(std::ostream& o, StringPiece piece) {
+std::ostream& operator<<(std::ostream& o, GStringPiece piece) {
   o.write(piece.data(), piece.size());
   return o;
 }
 
-StringPiece::StringPiece(StringPiece x, int pos)
+GStringPiece::GStringPiece(GStringPiece x, int pos)
     : ptr_(x.ptr_ + pos), length_(x.length_ - pos) {
   DCHECK_LE(0, pos);
   DCHECK_LE(pos, x.length_);
 }
 
-StringPiece::StringPiece(StringPiece x, int pos, int len)
+GStringPiece::GStringPiece(GStringPiece x, int pos, int len)
     : ptr_(x.ptr_ + pos), length_(min(len, x.length_ - pos)) {
   DCHECK_LE(0, pos);
   DCHECK_LE(pos, x.length_);
   DCHECK_GE(len, 0);
 }
 
-void StringPiece::CopyToString(string* target) const {
+void GStringPiece::CopyToString(string* target) const {
   STLAssignToString(target, ptr_, length_);
 }
 
-void StringPiece::AppendToString(string* target) const {
+void GStringPiece::AppendToString(string* target) const {
   STLAppendToString(target, ptr_, length_);
 }
 
-int StringPiece::copy(char* buf, size_type n, size_type pos) const {
+int GStringPiece::copy(char* buf, size_type n, size_type pos) const {
   int ret = min(length_ - pos, n);
   memcpy(buf, ptr_ + pos, ret);
   return ret;
 }
 
-bool StringPiece::contains(StringPiece s) const {
+bool GStringPiece::contains(GStringPiece s) const {
   return find(s, 0) != npos;
 }
 
-int StringPiece::find(StringPiece s, size_type pos) const {
+int GStringPiece::find(GStringPiece s, size_type pos) const {
   if (length_ <= 0 || pos > static_cast<size_type>(length_)) {
     if (length_ == 0 && pos == 0 && s.length_ == 0) return 0;
     return npos;
@@ -89,7 +89,7 @@ int StringPiece::find(StringPiece s, size_type pos) const {
   return result ? result - ptr_ : npos;
 }
 
-int StringPiece::find(char c, size_type pos) const {
+int GStringPiece::find(char c, size_type pos) const {
   if (length_ <= 0 || pos >= static_cast<size_type>(length_)) {
     return npos;
   }
@@ -98,7 +98,7 @@ int StringPiece::find(char c, size_type pos) const {
   return result != nullptr ? result - ptr_ : npos;
 }
 
-int StringPiece::rfind(StringPiece s, size_type pos) const {
+int GStringPiece::rfind(GStringPiece s, size_type pos) const {
   if (length_ < s.length_) return npos;
   const size_t ulen = length_;
   if (s.length_ == 0) return min(ulen, pos);
@@ -109,7 +109,7 @@ int StringPiece::rfind(StringPiece s, size_type pos) const {
 }
 
 // Search range is [0..pos] inclusive.  If pos == npos, search everything.
-int StringPiece::rfind(char c, size_type pos) const {
+int GStringPiece::rfind(char c, size_type pos) const {
   // Note: memrchr() is not available on Windows.
   if (length_ <= 0) return npos;
   for (int i = min(pos, static_cast<size_type>(length_ - 1));
@@ -129,7 +129,7 @@ int StringPiece::rfind(char c, size_type pos) const {
 // the possible values of an unsigned char.  Thus it should be be declared
 // as follows:
 //   bool table[UCHAR_MAX + 1]
-static inline void BuildLookupTable(StringPiece characters_wanted,
+static inline void BuildLookupTable(GStringPiece characters_wanted,
                                     bool* table) {
   const int length = characters_wanted.length();
   const char* const data = characters_wanted.data();
@@ -138,7 +138,7 @@ static inline void BuildLookupTable(StringPiece characters_wanted,
   }
 }
 
-int StringPiece::find_first_of(StringPiece s, size_type pos) const {
+int GStringPiece::find_first_of(GStringPiece s, size_type pos) const {
   if (length_ <= 0 || s.length_ <= 0) {
     return npos;
   }
@@ -155,7 +155,7 @@ int StringPiece::find_first_of(StringPiece s, size_type pos) const {
   return npos;
 }
 
-int StringPiece::find_first_not_of(StringPiece s, size_type pos) const {
+int GStringPiece::find_first_not_of(GStringPiece s, size_type pos) const {
   if (length_ <= 0) return npos;
   if (s.length_ <= 0) return 0;
   // Avoid the cost of BuildLookupTable() for a single-character search.
@@ -171,7 +171,7 @@ int StringPiece::find_first_not_of(StringPiece s, size_type pos) const {
   return npos;
 }
 
-int StringPiece::find_first_not_of(char c, size_type pos) const {
+int GStringPiece::find_first_not_of(char c, size_type pos) const {
   if (length_ <= 0) return npos;
 
   for (; pos < static_cast<size_type>(length_); ++pos) {
@@ -182,7 +182,7 @@ int StringPiece::find_first_not_of(char c, size_type pos) const {
   return npos;
 }
 
-int StringPiece::find_last_of(StringPiece s, size_type pos) const {
+int GStringPiece::find_last_of(GStringPiece s, size_type pos) const {
   if (length_ <= 0 || s.length_ <= 0) return npos;
   // Avoid the cost of BuildLookupTable() for a single-character search.
   if (s.length_ == 1) return find_last_of(s.ptr_[0], pos);
@@ -198,7 +198,7 @@ int StringPiece::find_last_of(StringPiece s, size_type pos) const {
   return npos;
 }
 
-int StringPiece::find_last_not_of(StringPiece s, size_type pos) const {
+int GStringPiece::find_last_not_of(GStringPiece s, size_type pos) const {
   if (length_ <= 0) return npos;
 
   int i = min(pos, static_cast<size_type>(length_ - 1));
@@ -217,7 +217,7 @@ int StringPiece::find_last_not_of(StringPiece s, size_type pos) const {
   return npos;
 }
 
-int StringPiece::find_last_not_of(char c, size_type pos) const {
+int GStringPiece::find_last_not_of(char c, size_type pos) const {
   if (length_ <= 0) return npos;
 
   for (int i = min(pos, static_cast<size_type>(length_ - 1));
@@ -229,10 +229,10 @@ int StringPiece::find_last_not_of(char c, size_type pos) const {
   return npos;
 }
 
-StringPiece StringPiece::substr(size_type pos, size_type n) const {
+GStringPiece GStringPiece::substr(size_type pos, size_type n) const {
   if (pos > length_) pos = length_;
   if (n > length_ - pos) n = length_ - pos;
-  return StringPiece(ptr_ + pos, n);
+  return GStringPiece(ptr_ + pos, n);
 }
 
-const StringPiece::size_type StringPiece::npos = size_type(-1);
+const GStringPiece::size_type GStringPiece::npos = size_type(-1);

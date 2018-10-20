@@ -622,7 +622,7 @@ class Schema {
 
   // Return the column index corresponding to the given column,
   // or kColumnNotFound if the column is not in this schema.
-  int find_column(const StringPiece col_name) const {
+  int find_column(const GStringPiece col_name) const {
     auto iter = name_to_index_.find(col_name);
     if (PREDICT_FALSE(iter == name_to_index_.end())) {
       return kColumnNotFound;
@@ -652,7 +652,7 @@ class Schema {
   }
 
   // Returns true if the specified column (by name) is a key
-  bool is_key_column(const StringPiece col_name) const {
+  bool is_key_column(const GStringPiece col_name) const {
     return is_key_column(find_column(col_name));
   }
 
@@ -667,7 +667,7 @@ class Schema {
   }
 
   // Returns true if the specified column (by name) is a hash key
-  bool is_hash_key_column(const StringPiece col_name) const {
+  bool is_hash_key_column(const GStringPiece col_name) const {
     return is_hash_key_column(find_column(col_name));
   }
 
@@ -682,7 +682,7 @@ class Schema {
   }
 
   // Returns true if the specified column (by name) is a range column
-  bool is_range_column(const StringPiece col_name) const {
+  bool is_range_column(const GStringPiece col_name) const {
     return is_range_column(find_column(col_name));
   }
 
@@ -805,7 +805,7 @@ class Schema {
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
-  CHECKED_STATUS CreateProjectionByNames(const std::vector<StringPiece>& col_names,
+  CHECKED_STATUS CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
                                          Schema* out, size_t num_key_columns = 0) const;
 
   // Create a new schema containing only the selected column IDs.
@@ -989,20 +989,20 @@ class Schema {
   vector<ColumnId> col_ids_;
   vector<size_t> col_offsets_;
 
-  // The keys of this map are StringPiece references to the actual name members of the
+  // The keys of this map are GStringPiece references to the actual name members of the
   // ColumnSchema objects inside cols_. This avoids an extra copy of those strings,
-  // and also allows us to do lookups on the map using StringPiece keys, sometimes
+  // and also allows us to do lookups on the map using GStringPiece keys, sometimes
   // avoiding copies.
   //
   // The map is instrumented with a counting allocator so that we can accurately
   // measure its memory footprint.
   int64_t name_to_index_bytes_;
-  typedef STLCountingAllocator<std::pair<const StringPiece, size_t> > NameToIndexMapAllocator;
+  typedef STLCountingAllocator<std::pair<const GStringPiece, size_t> > NameToIndexMapAllocator;
   typedef unordered_map<
-      StringPiece,
+      GStringPiece,
       size_t,
-      std::hash<StringPiece>,
-      std::equal_to<StringPiece>,
+      std::hash<GStringPiece>,
+      std::equal_to<GStringPiece>,
       NameToIndexMapAllocator> NameToIndexMap;
   NameToIndexMap name_to_index_;
 

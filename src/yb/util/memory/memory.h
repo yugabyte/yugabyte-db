@@ -80,7 +80,7 @@ namespace yb {
 class BufferAllocator;
 class MemTracker;
 
-void OverwriteWithPattern(char* p, size_t len, StringPiece pattern);
+void OverwriteWithPattern(char* p, size_t len, GStringPiece pattern);
 
 // Wrapper for a block of data allocated by a BufferAllocator. Owns the block.
 // (To release the block, destroy the buffer - it will then return it via the

@@ -48,45 +48,45 @@ namespace {
 // shared between the Literal and AnyOf delimiters. The FindPolicy template
 // parameter allows each delimiter to customize the actual find function to use
 // and the length of the found delimiter. For example, the Literal delimiter
-// will ultimately use StringPiece::find(), and the AnyOf delimiter will use
-// StringPiece::find_first_of().
+// will ultimately use GStringPiece::find(), and the AnyOf delimiter will use
+// GStringPiece::find_first_of().
 template <typename FindPolicy>
-StringPiece GenericFind(
-    StringPiece text,
-    StringPiece delimiter,
+GStringPiece GenericFind(
+    GStringPiece text,
+    GStringPiece delimiter,
     FindPolicy find_policy) {
   if (delimiter.empty() && text.length() > 0) {
     // Special case for empty string delimiters: always return a zero-length
-    // StringPiece referring to the item at position 1.
-    return StringPiece(text.begin() + 1, 0);
+    // GStringPiece referring to the item at position 1.
+    return GStringPiece(text.begin() + 1, 0);
   }
-  int found_pos = StringPiece::npos;
-  StringPiece found(text.end(), 0);  // By default, not found
+  int found_pos = GStringPiece::npos;
+  GStringPiece found(text.end(), 0);  // By default, not found
   found_pos = find_policy.Find(text, delimiter);
-  if (found_pos != StringPiece::npos) {
+  if (found_pos != GStringPiece::npos) {
     found.set(text.data() + found_pos, find_policy.Length(delimiter));
   }
   return found;
 }
 
-// Finds using StringPiece::find(), therefore the length of the found delimiter
+// Finds using GStringPiece::find(), therefore the length of the found delimiter
 // is delimiter.length().
 struct LiteralPolicy {
-  int Find(StringPiece text, StringPiece delimiter) {
+  int Find(GStringPiece text, GStringPiece delimiter) {
     return text.find(delimiter);
   }
-  int Length(StringPiece delimiter) {
+  int Length(GStringPiece delimiter) {
     return delimiter.length();
   }
 };
 
-// Finds using StringPiece::find_first_of(), therefore the length of the found
+// Finds using GStringPiece::find_first_of(), therefore the length of the found
 // delimiter is 1.
 struct AnyOfPolicy {
-  size_t Find(StringPiece text, StringPiece delimiter) {
+  size_t Find(GStringPiece text, GStringPiece delimiter) {
     return text.find_first_of(delimiter);
   }
-  int Length(StringPiece delimiter) {
+  int Length(GStringPiece delimiter) {
     return 1;
   }
 };
@@ -97,10 +97,10 @@ struct AnyOfPolicy {
 // Literal
 //
 
-Literal::Literal(StringPiece sp) : delimiter_(sp.ToString()) {
+Literal::Literal(GStringPiece sp) : delimiter_(sp.ToString()) {
 }
 
-StringPiece Literal::Find(StringPiece text) const {
+GStringPiece Literal::Find(GStringPiece text) const {
   return GenericFind(text, delimiter_, LiteralPolicy());
 }
 
@@ -108,10 +108,10 @@ StringPiece Literal::Find(StringPiece text) const {
 // AnyOf
 //
 
-AnyOf::AnyOf(StringPiece sp) : delimiters_(sp.ToString()) {
+AnyOf::AnyOf(GStringPiece sp) : delimiters_(sp.ToString()) {
 }
 
-StringPiece AnyOf::Find(StringPiece text) const {
+GStringPiece AnyOf::Find(GStringPiece text) const {
   return GenericFind(text, delimiters_, AnyOfPolicy());
 }
 
@@ -140,11 +140,11 @@ void AppendToImpl(Container* container, Splitter splitter) {
 }
 
 // Overload of AppendToImpl() that is optimized for appending to vector<string>.
-// This version eliminates a couple string copies by using a vector<StringPiece>
+// This version eliminates a couple string copies by using a vector<GStringPiece>
 // as the intermediate container.
 template <typename Splitter>
 void AppendToImpl(vector<string>* container, Splitter splitter) {
-  vector<StringPiece> vsp = splitter;  // Calls implicit conversion operator.
+  vector<GStringPiece> vsp = splitter;  // Calls implicit conversion operator.
   size_t container_size = container->size();
   container->resize(container_size + vsp.size());
   for (const auto& sp : vsp) {
@@ -454,15 +454,15 @@ void SplitStringToHashmapUsing(const string& full, const char* delim,
 }
 
 // ----------------------------------------------------------------------
-// SplitStringPieceToVector()
-//    Split a StringPiece into sub-StringPieces based on delim
+// SplitGStringPieceToVector()
+//    Split a GStringPiece into sub-GStringPieces based on delim
 //    and appends the pieces to 'vec'.
 //    If omit empty strings is true, empty strings are omitted
 //    from the resulting vector.
 // ----------------------------------------------------------------------
-void SplitStringPieceToVector(const StringPiece& full,
+void SplitGStringPieceToVector(const GStringPiece& full,
                               const char* delim,
-                              vector<StringPiece>* vec,
+                              vector<GStringPiece>* vec,
                               bool omit_empty_strings) {
   if (omit_empty_strings) {
     AppendTo(vec, strings::Split(full, AnyOf(delim), SkipEmpty()));
@@ -888,10 +888,10 @@ char* SplitStructuredLineInternal(char* line,
   return nullptr;  // Success
 }
 
-bool SplitStructuredLineInternal(StringPiece line,
+bool SplitStructuredLineInternal(GStringPiece line,
                                  char delimiter,
                                  const char* symbol_pairs,
-                                 vector<StringPiece>* cols,
+                                 vector<GStringPiece>* cols,
                                  bool with_escapes) {
   ClosingSymbolLookup lookup(symbol_pairs);
 
@@ -912,7 +912,7 @@ bool SplitStructuredLineInternal(StringPiece line,
     } else if (expected_to_close.empty() && c == delimiter) {
       // We don't have any open expression, this is a valid separator.
       cols->back().remove_suffix(line.size() - i);
-      cols->push_back(StringPiece(line, i + 1));
+      cols->push_back(GStringPiece(line, i + 1));
     } else if (!expected_to_close.empty() && c == expected_to_close.back()) {
       // Can we close the currently open expression?
       expected_to_close.pop_back();
@@ -941,10 +941,10 @@ char* SplitStructuredLine(char* line,
                                      false);
 }
 
-bool SplitStructuredLine(StringPiece line,
+bool SplitStructuredLine(GStringPiece line,
                          char delimiter,
                          const char* symbol_pairs,
-                         vector<StringPiece>* cols) {
+                         vector<GStringPiece>* cols) {
   return SplitStructuredLineInternal(line, delimiter, symbol_pairs, cols,
                                      false);
 }
@@ -957,10 +957,10 @@ char* SplitStructuredLineWithEscapes(char* line,
                                      true);
 }
 
-bool SplitStructuredLineWithEscapes(StringPiece line,
+bool SplitStructuredLineWithEscapes(GStringPiece line,
                                      char delimiter,
                                      const char* symbol_pairs,
-                                     vector<StringPiece>* cols) {
+                                     vector<GStringPiece>* cols) {
   return SplitStructuredLineInternal(line, delimiter, symbol_pairs, cols,
                                      true);
 }
