@@ -41,7 +41,7 @@ static int CountSubstituteArgs(const SubstituteArg* const* args_array) {
 }
 
 namespace internal {
-int SubstitutedSize(StringPiece format,
+int SubstitutedSize(GStringPiece format,
                     const SubstituteArg* const* args_array) {
   int size = 0;
   for (int i = 0; i < format.size(); i++) {
@@ -77,7 +77,7 @@ int SubstitutedSize(StringPiece format,
   return size;
 }
 
-char* SubstituteToBuffer(StringPiece format,
+char* SubstituteToBuffer(GStringPiece format,
                          const SubstituteArg* const* args_array,
                          char* target) {
   for (int i = 0; i < format.size(); i++) {
@@ -101,7 +101,7 @@ char* SubstituteToBuffer(StringPiece format,
 } // namespace internal
 
 void SubstituteAndAppend(
-    string* output, StringPiece format,
+    string* output, GStringPiece format,
     const SubstituteArg& arg0, const SubstituteArg& arg1,
     const SubstituteArg& arg2, const SubstituteArg& arg3,
     const SubstituteArg& arg4, const SubstituteArg& arg5,

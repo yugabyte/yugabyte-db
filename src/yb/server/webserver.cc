@@ -110,10 +110,10 @@ void Webserver::RootHandler(const Webserver::WebRequest& args, stringstream* out
 }
 
 void Webserver::BuildArgumentMap(const string& args, ArgumentMap* output) {
-  vector<StringPiece> arg_pairs = strings::Split(args, "&");
+  vector<GStringPiece> arg_pairs = strings::Split(args, "&");
 
-  for (const StringPiece& arg_pair : arg_pairs) {
-    vector<StringPiece> key_value = strings::Split(arg_pair, "=");
+  for (const GStringPiece& arg_pair : arg_pairs) {
+    vector<GStringPiece> key_value = strings::Split(arg_pair, "=");
     if (key_value.empty()) continue;
 
     string key;

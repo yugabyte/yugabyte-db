@@ -71,14 +71,14 @@ namespace strings {
 //   \r    common on macos 9 and before
 //   \r\n  common on windows
 //
-// Returns a StringPiece that contains the end-of-line sequence (a pointer into
+// Returns a GStringPiece that contains the end-of-line sequence (a pointer into
 // the input, 1 or 2 characters long).
 //
 // If the input does not contain an end-of-line sequence, returns an empty
-// StringPiece located at the end of the input:
-//    StringPiece(sp.data() + sp.length(), 0).
+// GStringPiece located at the end of the input:
+//    GStringPiece(sp.data() + sp.length(), 0).
 
-StringPiece FindEol(StringPiece sp);
+GStringPiece FindEol(GStringPiece sp);
 
 }  // namespace strings
 
@@ -183,14 +183,14 @@ inline const char* GetPrintableString(const char* const in) {
 }
 
 // Returns whether str begins with prefix.
-inline bool HasPrefixString(const StringPiece& str,
-                            const StringPiece& prefix) {
+inline bool HasPrefixString(const GStringPiece& str,
+                            const GStringPiece& prefix) {
   return str.starts_with(prefix);
 }
 
 // Returns whether str ends with suffix.
-inline bool HasSuffixString(const StringPiece& str,
-                            const StringPiece& suffix) {
+inline bool HasSuffixString(const GStringPiece& str,
+                            const GStringPiece& suffix) {
   return str.ends_with(suffix);
 }
 
@@ -199,8 +199,8 @@ inline bool HasSuffixString(const StringPiece& str,
 // The backslash character (\) is an escape character for * and ?
 // We limit the patterns to having a max of 16 * or ? characters.
 // ? matches 0 or 1 character, while * matches 0 or more characters.
-bool MatchPattern(const StringPiece& string,
-                  const StringPiece& pattern);
+bool MatchPattern(const GStringPiece& string,
+                  const GStringPiece& pattern);
 
 // Returns where suffix begins in str, or NULL if str doesn't end with suffix.
 inline char* strsuffix(char* str, const char* suffix) {
@@ -301,7 +301,7 @@ struct strlt : public binary_function<const char*, const char*, bool> {
 // Returns whether str has only Ascii characters (as defined by ascii_isascii()
 // in strings/ascii_ctype.h).
 bool IsAscii(const char* str, int len);
-inline bool IsAscii(const StringPiece& str) {
+inline bool IsAscii(const GStringPiece& str) {
   return IsAscii(str.data(), str.size());
 }
 
@@ -313,7 +313,7 @@ inline bool IsAscii(const StringPiece& str) {
 //
 // Examples:
 // "a" -> "b", "aaa" -> "aab", "aa\xff" -> "ab", "\xff" -> "", "" -> ""
-string PrefixSuccessor(const StringPiece& prefix);
+string PrefixSuccessor(const GStringPiece& prefix);
 
 // Returns the immediate lexicographically-following string. This is useful to
 // turn an inclusive range into something that can be used with Bigtable's
@@ -332,7 +332,7 @@ string PrefixSuccessor(const StringPiece& prefix);
 //
 // WARNING: Transforms "" -> "\0"; this doesn't account for Bigtable's special
 // treatment of "" as infinity.
-string ImmediateSuccessor(const StringPiece& s);
+string ImmediateSuccessor(const GStringPiece& s);
 
 // Fills in *separator with a short string less than limit but greater than or
 // equal to start. If limit is greater than start, *separator is the common
@@ -341,7 +341,7 @@ string ImmediateSuccessor(const StringPiece& s);
 // FindShortestSeparator("foobar", "foxhunt", &sep) => sep == "fop"
 // FindShortestSeparator("abracadabra", "bacradabra", &sep) => sep == "b"
 // If limit is less than or equal to start, fills in *separator with start.
-void FindShortestSeparator(const StringPiece& start, const StringPiece& limit,
+void FindShortestSeparator(const GStringPiece& start, const GStringPiece& limit,
                            string* separator);
 
 // Copies at most n-1 bytes from src to dest, and returns dest. If n >=1, null
@@ -375,18 +375,18 @@ size_t strlcpy(char* dst, const char* src, size_t dst_size);
 // Replaces the first occurrence (if replace_all is false) or all occurrences
 // (if replace_all is true) of oldsub in s with newsub. In the second version,
 // *res must be distinct from all the other arguments.
-string StringReplace(const StringPiece& s, const StringPiece& oldsub,
-                     const StringPiece& newsub, bool replace_all);
-void StringReplace(const StringPiece& s, const StringPiece& oldsub,
-                   const StringPiece& newsub, bool replace_all,
+string StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
+                     const GStringPiece& newsub, bool replace_all);
+void StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
+                   const GStringPiece& newsub, bool replace_all,
                    string* res);
 
 // Replaces all occurrences of substring in s with replacement. Returns the
 // number of instances replaced. s must be distinct from the other arguments.
 //
 // Less flexible, but faster, than RE::GlobalReplace().
-int GlobalReplaceSubstring(const StringPiece& substring,
-                           const StringPiece& replacement,
+int GlobalReplaceSubstring(const GStringPiece& substring,
+                           const GStringPiece& replacement,
                            string* s);
 
 // Removes v[i] for every element i in indices. Does *not* preserve the order of
@@ -425,7 +425,7 @@ char* strcasestr_alnum(const char* haystack, const char* needle);
 // Returns the number times substring appears in text.
 // Note: Runs in O(text.length() * substring.length()). Do *not* use on long
 // strings.
-int CountSubstring(StringPiece text, StringPiece substring);
+int CountSubstring(GStringPiece text, GStringPiece substring);
 
 // Finds, in haystack (which is a list of tokens separated by delim), an token
 // equal to needle. Returns a pointer into haystack, or NULL if not found (or
@@ -438,7 +438,7 @@ const char* strstr_delimited(const char* haystack,
 // by characters from delim.
 char* gstrsep(char** stringp, const char* delim);
 
-// Appends StringPiece(data, len) to *s.
+// Appends GStringPiece(data, len) to *s.
 void FastStringAppend(string* s, const char* data, int len);
 
 // Returns a duplicate of the_string, with memory allocated by new[].
@@ -502,15 +502,15 @@ void InsertString(
 
 // Finds the nth occurrence of c in n; returns the index in s of that
 // occurrence, or string::npos if fewer than n occurrences.
-int FindNth(StringPiece s, char c, int n);
+int FindNth(GStringPiece s, char c, int n);
 
 // Finds the nth-to-last occurrence of c in s; returns the index in s of that
 // occurrence, or string::npos if fewer than n occurrences.
-int ReverseFindNth(StringPiece s, char c, int n);
+int ReverseFindNth(GStringPiece s, char c, int n);
 
 // Returns whether s contains only whitespace characters (including the case
 // where s is empty).
-bool OnlyWhitespace(const StringPiece& s);
+bool OnlyWhitespace(const GStringPiece& s);
 
 // Formats a string in the same fashion as snprintf(), but returns either the
 // number of characters written, or zero if not enough space was available.

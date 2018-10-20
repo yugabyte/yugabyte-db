@@ -93,10 +93,10 @@ char* JoinUsingToBuffer(const vector<const char*>& components,
 //    JoinStrings concatenates a container of strings into a C++ string,
 //    using the string "delim" as a separator between components.
 //    "components" can be any sequence container whose values are C++ strings
-//    or StringPieces. More precisely, "components" must support STL container
+//    or GStringPieces. More precisely, "components" must support STL container
 //    iteration; i.e. it must have begin() and end() methods with appropriate
 //    semantics, which return forward iterators whose value type is
-//    string or StringPiece. Repeated string fields of protocol messages
+//    string or GStringPiece. Repeated string fields of protocol messages
 //    satisfy these requirements.
 //
 //    JoinStringsIterator is the same as JoinStrings, except that the input
@@ -113,27 +113,27 @@ char* JoinUsingToBuffer(const vector<const char*>& components,
 // ----------------------------------------------------------------------
 template <class CONTAINER>
 void JoinStrings(const CONTAINER& components,
-                 const StringPiece& delim,
+                 const GStringPiece& delim,
                  string* result);
 template <class CONTAINER>
 string JoinStrings(const CONTAINER& components,
-                   const StringPiece& delim);
+                   const GStringPiece& delim);
 
 template <class ITERATOR>
 void JoinStringsIterator(const ITERATOR& start,
                          const ITERATOR& end,
-                         const StringPiece& delim,
+                         const GStringPiece& delim,
                          string* result);
 template <class ITERATOR>
 string JoinStringsIterator(const ITERATOR& start,
                            const ITERATOR& end,
-                           const StringPiece& delim);
+                           const GStringPiece& delim);
 
 // Join the keys of a map using the specified delimiter.
 template<typename ITERATOR>
 void JoinKeysIterator(const ITERATOR& start,
                       const ITERATOR& end,
-                      const StringPiece& delim,
+                      const GStringPiece& delim,
                       string *result) {
   result->clear();
   for (ITERATOR iter = start; iter != end; ++iter) {
@@ -148,7 +148,7 @@ void JoinKeysIterator(const ITERATOR& start,
 template <typename ITERATOR>
 string JoinKeysIterator(const ITERATOR& start,
                         const ITERATOR& end,
-                        const StringPiece& delim) {
+                        const GStringPiece& delim) {
   string result;
   JoinKeysIterator(start, end, delim, &result);
   return result;
@@ -158,8 +158,8 @@ string JoinKeysIterator(const ITERATOR& start,
 template<typename ITERATOR>
 void JoinKeysAndValuesIterator(const ITERATOR& start,
                                const ITERATOR& end,
-                               const StringPiece& intra_delim,
-                               const StringPiece& inter_delim,
+                               const GStringPiece& intra_delim,
+                               const GStringPiece& inter_delim,
                                string *result) {
   result->clear();
   for (ITERATOR iter = start; iter != end; ++iter) {
@@ -174,8 +174,8 @@ void JoinKeysAndValuesIterator(const ITERATOR& start,
 template <typename ITERATOR>
 string JoinKeysAndValuesIterator(const ITERATOR& start,
                                  const ITERATOR& end,
-                                 const StringPiece& intra_delim,
-                                 const StringPiece& inter_delim) {
+                                 const GStringPiece& intra_delim,
+                                 const GStringPiece& inter_delim) {
   string result;
   JoinKeysAndValuesIterator(start, end, intra_delim, inter_delim, &result);
   return result;
@@ -201,14 +201,14 @@ string JoinStringsInArray(string const* components,
 // ----------------------------------------------------------------------
 template <class CONTAINER>
 inline void JoinStrings(const CONTAINER& components,
-                        const StringPiece& delim,
+                        const GStringPiece& delim,
                         string* result) {
   JoinStringsIterator(components.begin(), components.end(), delim, result);
 }
 
 template <class CONTAINER>
 inline string JoinStrings(const CONTAINER& components,
-                          const StringPiece& delim) {
+                          const GStringPiece& delim) {
   string result;
   JoinStrings(components, delim, &result);
   return result;
@@ -217,7 +217,7 @@ inline string JoinStrings(const CONTAINER& components,
 template <class ITERATOR>
 void JoinStringsIterator(const ITERATOR& start,
                          const ITERATOR& end,
-                         const StringPiece& delim,
+                         const GStringPiece& delim,
                          string* result) {
   result->clear();
 
@@ -242,7 +242,7 @@ void JoinStringsIterator(const ITERATOR& start,
 template <class ITERATOR>
 inline string JoinStringsIterator(const ITERATOR& start,
                                   const ITERATOR& end,
-                                  const StringPiece& delim) {
+                                  const GStringPiece& delim) {
   string result;
   JoinStringsIterator(start, end, delim, &result);
   return result;
@@ -276,19 +276,19 @@ inline string JoinStringsInArray(string const* components,
 // ----------------------------------------------------------------------
 
 void JoinMapKeysAndValues(const map<string, string>& components,
-                          const StringPiece& intra_delim,
-                          const StringPiece& inter_delim,
+                          const GStringPiece& intra_delim,
+                          const GStringPiece& inter_delim,
                           string* result);
 void JoinVectorKeysAndValues(const vector< pair<string, string> >& components,
-                             const StringPiece& intra_delim,
-                             const StringPiece& inter_delim,
+                             const GStringPiece& intra_delim,
+                             const GStringPiece& inter_delim,
                              string* result);
 
 // DEPRECATED(jyrki): use JoinKeysAndValuesIterator directly.
 template<typename T>
 void JoinHashMapKeysAndValues(const T& container,
-                              const StringPiece& intra_delim,
-                              const StringPiece& inter_delim,
+                              const GStringPiece& intra_delim,
+                              const GStringPiece& inter_delim,
                               string* result) {
   JoinKeysAndValuesIterator(container.begin(), container.end(),
                             intra_delim, inter_delim,
@@ -335,7 +335,7 @@ void JoinCSVLineWithDelimiter(const vector<string>& original_cols,
 template <class ITERATOR>
 void JoinElementsIterator(ITERATOR first,
                           ITERATOR last,
-                          StringPiece delim,
+                          GStringPiece delim,
                           string* result) {
   result->clear();
   for (ITERATOR it = first; it != last; ++it) {
@@ -349,7 +349,7 @@ void JoinElementsIterator(ITERATOR first,
 template <class ITERATOR>
 string JoinElementsIterator(ITERATOR first,
                             ITERATOR last,
-                            StringPiece delim) {
+                            GStringPiece delim) {
   string result;
   JoinElementsIterator(first, last, delim, &result);
   return result;
@@ -357,13 +357,13 @@ string JoinElementsIterator(ITERATOR first,
 
 template <class CONTAINER>
 inline void JoinElements(const CONTAINER& components,
-                         StringPiece delim,
+                         GStringPiece delim,
                          string* result) {
   JoinElementsIterator(components.begin(), components.end(), delim, result);
 }
 
 template <class CONTAINER>
-inline string JoinElements(const CONTAINER& components, StringPiece delim) {
+inline string JoinElements(const CONTAINER& components, GStringPiece delim) {
   string result;
   JoinElements(components, delim, &result);
   return result;

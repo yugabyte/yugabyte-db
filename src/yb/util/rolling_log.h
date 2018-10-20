@@ -95,7 +95,7 @@ class RollingLog {
   // Note that this is a synchronous API and causes potentially-blocking IO on the
   // current thread. However, this does not fsync() or otherwise ensure durability
   // of the appended data.
-  CHECKED_STATUS Append(StringPiece data);
+  CHECKED_STATUS Append(GStringPiece data);
 
   // Close the log.
   CHECKED_STATUS Close();

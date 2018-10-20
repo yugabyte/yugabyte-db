@@ -54,7 +54,7 @@ namespace internal {
 
 // The default Predicate object, which doesn't filter out anything.
 struct NoFilter {
-  bool operator()(StringPiece /* ignored */) {
+  bool operator()(GStringPiece /* ignored */) {
     return true;
   }
 };
@@ -63,7 +63,7 @@ struct NoFilter {
 // substrings via an iterator interface. An optional Predicate functor may be
 // supplied, which will be used to filter the split strings: strings for which
 // the predicate returns false will be skipped. A Predicate object is any
-// functor that takes a StringPiece and returns bool. By default, the NoFilter
+// functor that takes a GStringPiece and returns bool. By default, the NoFilter
 // Predicate is used, which does not filter out anything.
 //
 // This class is NOT part of the public splitting API.
@@ -73,7 +73,7 @@ struct NoFilter {
 //   using strings::delimiter::Literal;
 //   Literal d(",");
 //   for (SplitIterator<Literal> it("a,b,c", d), end(d); it != end; ++it) {
-//     StringPiece substring = *it;
+//     GStringPiece substring = *it;
 //     DoWork(substring);
 //   }
 //
@@ -82,7 +82,7 @@ struct NoFilter {
 // delimiter.
 template <typename Delimiter, typename Predicate = NoFilter>
 class SplitIterator
-    : public std::iterator<std::input_iterator_tag, StringPiece> {
+    : public std::iterator<std::input_iterator_tag, GStringPiece> {
  public:
   // Two constructors for "end" iterators.
   explicit SplitIterator(Delimiter d)
@@ -90,14 +90,14 @@ class SplitIterator
   SplitIterator(Delimiter d, Predicate p)
       : delimiter_(std::move(d)), predicate_(std::move(p)), is_end_(true) {}
   // Two constructors taking the text to iterator.
-  SplitIterator(StringPiece text, Delimiter d)
+  SplitIterator(GStringPiece text, Delimiter d)
       : text_(std::move(text)),
         delimiter_(std::move(d)),
         predicate_(),
         is_end_(false) {
     ++(*this);
   }
-  SplitIterator(StringPiece text, Delimiter d, Predicate p)
+  SplitIterator(GStringPiece text, Delimiter d, Predicate p)
       : text_(std::move(text)),
         delimiter_(std::move(d)),
         predicate_(std::move(p)),
@@ -105,8 +105,8 @@ class SplitIterator
     ++(*this);
   }
 
-  StringPiece operator*() { return curr_piece_; }
-  StringPiece* operator->() { return &curr_piece_; }
+  GStringPiece operator*() { return curr_piece_; }
+  GStringPiece* operator->() { return &curr_piece_; }
 
   SplitIterator& operator++() {
     do {
@@ -115,7 +115,7 @@ class SplitIterator
         is_end_ = true;
         return *this;
       }
-      StringPiece found_delimiter = delimiter_.Find(text_);
+      GStringPiece found_delimiter = delimiter_.Find(text_);
       assert(found_delimiter.data() != NULL);
       assert(text_.begin() <= found_delimiter.begin());
       assert(found_delimiter.end() <= text_.end());
@@ -155,40 +155,40 @@ class SplitIterator
 
  private:
   // The text being split. Modified as delimited pieces are consumed.
-  StringPiece text_;
+  GStringPiece text_;
   Delimiter delimiter_;
   Predicate predicate_;
   bool is_end_;
   // Holds the currently split piece of text. Will always refer to string data
   // within text_. This value is returned when the iterator is dereferenced.
-  StringPiece curr_piece_;
+  GStringPiece curr_piece_;
 };
 
-// Declares a functor that can convert a StringPiece to another type. This works
+// Declares a functor that can convert a GStringPiece to another type. This works
 // for any type that has a constructor (explicit or not) taking a single
-// StringPiece argument. A specialization exists for converting to string
+// GStringPiece argument. A specialization exists for converting to string
 // because the underlying data needs to be copied. In theory, these
 // specializations could be extended to work with other types (e.g., int32), but
 // then a solution for error reporting would need to be devised.
 template <typename To>
-struct StringPieceTo {
-  To operator()(StringPiece from) const {
+struct GStringPieceTo {
+  To operator()(GStringPiece from) const {
     return To(from);
   }
 };
 
 // Specialization for converting to string.
 template <>
-struct StringPieceTo<string> {
-  string operator()(StringPiece from) const {
+struct GStringPieceTo<string> {
+  string operator()(GStringPiece from) const {
     return from.ToString();
   }
 };
 
 // Specialization for converting to *const* string.
 template <>
-struct StringPieceTo<const string> {
-  string operator()(StringPiece from) const {
+struct GStringPieceTo<const string> {
+  string operator()(GStringPiece from) const {
     return from.ToString();
   }
 };
@@ -209,33 +209,33 @@ struct IsNotInitializerList<std::initializer_list<T> > {};
 // through iterators or implicit conversion functions. Do not construct this
 // class directly, rather use the Split() function instead.
 //
-// Output containers can be collections of either StringPiece or string objects.
-// StringPiece is more efficient because the underlying data will not need to be
-// copied; the returned StringPieces will all refer to the data within the
+// Output containers can be collections of either GStringPiece or string objects.
+// GStringPiece is more efficient because the underlying data will not need to be
+// copied; the returned GStringPieces will all refer to the data within the
 // original input string. If a collection of string objects is used, then each
 // substring will be copied.
 //
 // An optional Predicate functor may be supplied. This predicate will be used to
 // filter the split strings: only strings for which the predicate returns true
 // will be kept. A Predicate object is any unary functor that takes a
-// StringPiece and returns bool. By default, the NoFilter predicate is used,
+// GStringPiece and returns bool. By default, the NoFilter predicate is used,
 // which does not filter out anything.
 template <typename Delimiter, typename Predicate = NoFilter>
 class Splitter {
  public:
   typedef internal::SplitIterator<Delimiter, Predicate> Iterator;
 
-  Splitter(StringPiece text, Delimiter d)
+  Splitter(GStringPiece text, Delimiter d)
       : begin_(text, d), end_(d) {}
 
-  Splitter(StringPiece text, Delimiter d, Predicate p)
+  Splitter(GStringPiece text, Delimiter d, Predicate p)
       : begin_(text, d, p), end_(d, p) {}
 
-  // Range functions that iterate the split substrings as StringPiece objects.
+  // Range functions that iterate the split substrings as GStringPiece objects.
   // These methods enable a Splitter to be used in a range-based for loop in
   // C++11, for example:
   //
-  //   for (StringPiece sp : my_splitter) {
+  //   for (GStringPiece sp : my_splitter) {
   //     DoWork(sp);
   //   }
   const Iterator& begin() const { return begin_; }
@@ -319,12 +319,12 @@ class Splitter {
   };
 
   // Inserts split results into the container. To do this the results are first
-  // stored in a vector<StringPiece>. This is where the input text is actually
+  // stored in a vector<GStringPiece>. This is where the input text is actually
   // "parsed". This vector is then used to possibly reserve space in the output
-  // container, and the StringPieces in "v" are converted as necessary to the
+  // container, and the GStringPieces in "v" are converted as necessary to the
   // output container's value type.
   //
-  // The reason to use an intermediate vector of StringPiece is so we can learn
+  // The reason to use an intermediate vector of GStringPiece is so we can learn
   // the needed capacity of the output container. This is needed when the output
   // container is a vector<string> in which case resizes can be expensive due to
   // copying of the ::string objects.
@@ -334,12 +334,12 @@ class Splitter {
   // use of this intermediate vector "v" can be removed.
   template <typename Container>
   Container ToContainer() {
-    vector<StringPiece> v;
+    vector<GStringPiece> v;
     for (Iterator it = begin(); it != end_; ++it) {
       v.push_back(*it);
     }
     typedef typename Container::value_type ToType;
-    internal::StringPieceTo<ToType> converter;
+    internal::GStringPieceTo<ToType> converter;
     Container c;
     ReserveCapacity(&c, v.size());
     std::insert_iterator<Container> inserter(c, c.begin());
@@ -358,8 +358,8 @@ class Splitter {
     typedef typename Map::key_type Key;
     typedef typename Map::mapped_type Data;
     Map m;
-    StringPieceTo<Key> key_converter;
-    StringPieceTo<Data> val_converter;
+    GStringPieceTo<Key> key_converter;
+    GStringPieceTo<Data> val_converter;
     typename Map::iterator curr_pair;
     bool is_even = true;
     for (Iterator it = begin(); it != end_; ++it) {
@@ -378,9 +378,9 @@ class Splitter {
   // will be empty strings if the iterator doesn't have a corresponding value.
   template <typename First, typename Second>
   std::pair<First, Second> ToPair() {
-    StringPieceTo<First> first_converter;
-    StringPieceTo<Second> second_converter;
-    StringPiece first, second;
+    GStringPieceTo<First> first_converter;
+    GStringPieceTo<Second> second_converter;
+    GStringPiece first, second;
     Iterator it = begin();
     if (it != end()) {
       first = *it;

@@ -170,7 +170,7 @@ Status RollingLog::Close() {
   return Status::OK();
 }
 
-Status RollingLog::Append(StringPiece s) {
+Status RollingLog::Append(GStringPiece s) {
   if (!file_) {
     RETURN_NOT_OK_PREPEND(Open(), "Unable to open log");
   }

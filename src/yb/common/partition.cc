@@ -716,7 +716,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
 }
 
 void PartitionSchema::AppendRangeDebugStringComponentsOrString(const YBPartialRow& row,
-                                                               const StringPiece default_string,
+                                                               const GStringPiece default_string,
                                                                vector<string>* components) const {
   ConstContiguousRow const_row(row.schema(), row.row_data_);
 

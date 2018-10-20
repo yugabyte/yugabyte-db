@@ -294,7 +294,7 @@ class PartitionSchema {
   // If any columns of the range partition do not exist in the partial row,
   // processing stops and the provided default string piece is appended to the vector.
   void AppendRangeDebugStringComponentsOrString(const YBPartialRow& row,
-                                                StringPiece default_string,
+                                                GStringPiece default_string,
                                                 std::vector<std::string>* components) const;
 
   // Appends the stringified range partition components of a partial row to a

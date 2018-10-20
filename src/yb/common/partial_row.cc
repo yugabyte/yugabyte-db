@@ -51,7 +51,7 @@ namespace yb {
 
 namespace {
 inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) {
-  StringPiece sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
+  GStringPiece sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
   *idx = schema.find_column(sp);
   if (PREDICT_FALSE(*idx == -1)) {
     return STATUS(NotFound, "No such column", col_name);

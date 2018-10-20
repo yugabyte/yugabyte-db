@@ -384,7 +384,7 @@ class YBSchema {
 
   const std::vector<ColumnSchema>& columns() const;
 
-  int FindColumn(const StringPiece& name) const {
+  int FindColumn(const GStringPiece& name) const {
     return schema_->find_column(name);
   }
 

@@ -115,7 +115,7 @@ TEST_F(RollingLogTest, TestCompression) {
   RollingLog log(env_.get(), log_dir_, "mylog");
   ASSERT_OK(log.Open());
 
-  StringPiece data = "Hello world\n";
+  GStringPiece data = "Hello world\n";
   int raw_size = 0;
   for (int i = 0; i < 1000; i++) {
     ASSERT_OK(log.Append(data));

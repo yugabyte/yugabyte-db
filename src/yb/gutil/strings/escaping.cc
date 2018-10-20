@@ -266,7 +266,7 @@ string UnescapeCEscapeString(const string& src) {
 //     NOTE: any changes to this function must also be reflected in the older
 //     UnescapeCEscapeSequences().
 // ----------------------------------------------------------------------
-static bool CUnescapeInternal(const StringPiece& source,
+static bool CUnescapeInternal(const GStringPiece& source,
                               bool leave_nulls_escaped,
                               char* dest,
                               int* dest_len,
@@ -454,7 +454,7 @@ static bool CUnescapeInternal(const StringPiece& source,
 //    Same as above but uses a C++ string for output. 'source' and 'dest'
 //    may be the same.
 // ----------------------------------------------------------------------
-bool CUnescapeInternal(const StringPiece& source,
+bool CUnescapeInternal(const GStringPiece& source,
                        bool leave_nulls_escaped,
                        string* dest,
                        string* error) {
@@ -476,12 +476,12 @@ bool CUnescapeInternal(const StringPiece& source,
 //
 // See CUnescapeInternal() for implementation details.
 // ----------------------------------------------------------------------
-bool CUnescape(const StringPiece& source, char* dest, int* dest_len,
+bool CUnescape(const GStringPiece& source, char* dest, int* dest_len,
                string* error) {
   return CUnescapeInternal(source, kUnescapeNulls, dest, dest_len, error);
 }
 
-bool CUnescape(const StringPiece& source, string* dest, string* error) {
+bool CUnescape(const GStringPiece& source, string* dest, string* error) {
   return CUnescapeInternal(source, kUnescapeNulls, dest, error);
 }
 
@@ -490,14 +490,14 @@ bool CUnescape(const StringPiece& source, string* dest, string* error) {
 //
 // See CUnescapeInternal() for implementation details.
 // ----------------------------------------------------------------------
-bool CUnescapeForNullTerminatedString(const StringPiece& source,
+bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       char* dest,
                                       int* dest_len,
                                       string* error) {
   return CUnescapeInternal(source, kLeaveNullsEscaped, dest, dest_len, error);
 }
 
-bool CUnescapeForNullTerminatedString(const StringPiece& source,
+bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       string* dest,
                                       string* error) {
   return CUnescapeInternal(source, kLeaveNullsEscaped, dest, error);
@@ -594,7 +594,7 @@ int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
 //
 //    Currently only \n, \r, \t, ", ', \ and !ascii_isprint() chars are escaped.
 // ----------------------------------------------------------------------
-string CEscape(const StringPiece& src) {
+string CEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   gscoped_array<char> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
@@ -603,7 +603,7 @@ string CEscape(const StringPiece& src) {
   return string(dest.get(), len);
 }
 
-string CHexEscape(const StringPiece& src) {
+string CHexEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   gscoped_array<char> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
@@ -612,7 +612,7 @@ string CHexEscape(const StringPiece& src) {
   return string(dest.get(), len);
 }
 
-string Utf8SafeCEscape(const StringPiece& src) {
+string Utf8SafeCEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   gscoped_array<char> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
@@ -621,7 +621,7 @@ string Utf8SafeCEscape(const StringPiece& src) {
   return string(dest.get(), len);
 }
 
-string Utf8SafeCHexEscape(const StringPiece& src) {
+string Utf8SafeCHexEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   gscoped_array<char> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
@@ -633,7 +633,7 @@ string Utf8SafeCHexEscape(const StringPiece& src) {
 // ----------------------------------------------------------------------
 // BackslashEscape and BackslashUnescape
 // ----------------------------------------------------------------------
-void BackslashEscape(const StringPiece& src,
+void BackslashEscape(const GStringPiece& src,
                      const strings::CharSet& to_escape,
                      string* dest) {
   dest->reserve(dest->size() + src.size());
@@ -656,7 +656,7 @@ void BackslashEscape(const StringPiece& src,
   }
 }
 
-void BackslashUnescape(const StringPiece& src,
+void BackslashUnescape(const GStringPiece& src,
                        const strings::CharSet& to_unescape,
                        string* dest) {
   dest->reserve(dest->size() + src.size());
@@ -1659,7 +1659,7 @@ static const Charmap escape_file_name_exceptions(
     "0123456789"  // digits
     "-_.");
 
-void EscapeFileName(const StringPiece& src, string* dst) {
+void EscapeFileName(const GStringPiece& src, string* dst) {
   // Reserve at least src.size() chars
   dst->reserve(dst->size() + src.size());
 
@@ -1681,7 +1681,7 @@ void EscapeFileName(const StringPiece& src, string* dst) {
   }
 }
 
-void UnescapeFileName(const StringPiece& src_piece, string* dst) {
+void UnescapeFileName(const GStringPiece& src_piece, string* dst) {
   const char* src = src_piece.data();
   const int len = src_piece.size();
   for (int i = 0; i < len; ++i) {
@@ -1793,7 +1793,7 @@ string b2a_hex(const char* b, int len) {
   return result;
 }
 
-string b2a_hex(const StringPiece& b) {
+string b2a_hex(const GStringPiece& b) {
   return b2a_hex(b.data(), b.size());
 }
 
@@ -1817,12 +1817,12 @@ void a2b_hex(const char* from, string* to, int num) {
 const char* kDontNeedShellEscapeChars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.=/:,@";
 
-string ShellEscape(StringPiece src) {
+string ShellEscape(GStringPiece src) {
   if (!src.empty() &&  // empty string needs quotes
-      src.find_first_not_of(kDontNeedShellEscapeChars) == StringPiece::npos) {
+      src.find_first_not_of(kDontNeedShellEscapeChars) == GStringPiece::npos) {
     // only contains chars that don't need quotes; it's fine
     return src.ToString();
-  } else if (src.find('\'') == StringPiece::npos) {
+  } else if (src.find('\'') == GStringPiece::npos) {
     // no single quotes; just wrap it in single quotes
     return StrCat("'", src, "'");
   } else {
