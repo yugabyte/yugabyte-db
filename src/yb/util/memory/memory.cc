@@ -63,7 +63,7 @@ static char dummy_buffer[0] = {};
 #pragma GCC push_options
 #pragma GCC optimize("-O3")
 #endif
-void OverwriteWithPattern(char* p, size_t len, StringPiece pattern) {
+void OverwriteWithPattern(char* p, size_t len, GStringPiece pattern) {
   size_t pat_len = pattern.size();
   CHECK_LT(0, pat_len);
   size_t rem = len;

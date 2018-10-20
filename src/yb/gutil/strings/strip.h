@@ -31,24 +31,24 @@ using std::string;
 // Given a string and a putative prefix, returns the string minus the
 // prefix string if the prefix matches, otherwise the original
 // string.
-string StripPrefixString(StringPiece str, const StringPiece& prefix);
+string StripPrefixString(GStringPiece str, const GStringPiece& prefix);
 
 // Like StripPrefixString, but return true if the prefix was
 // successfully matched.  Write the output to *result.
 // It is safe for result to point back to the input string.
-bool TryStripPrefixString(StringPiece str, const StringPiece& prefix,
+bool TryStripPrefixString(GStringPiece str, const GStringPiece& prefix,
                           string* result);
 
 // Given a string and a putative suffix, returns the string minus the
 // suffix string if the suffix matches, otherwise the original
 // string.
-string StripSuffixString(StringPiece str, const StringPiece& suffix);
+string StripSuffixString(GStringPiece str, const GStringPiece& suffix);
 
 
 // Like StripSuffixString, but return true if the suffix was
 // successfully matched.  Write the output to *result.
 // It is safe for result to point back to the input string.
-bool TryStripSuffixString(StringPiece str, const StringPiece& suffix,
+bool TryStripSuffixString(GStringPiece str, const GStringPiece& suffix,
                           string* result);
 
 // ----------------------------------------------------------------------
@@ -65,9 +65,9 @@ inline void StripString(char* str, char remove, char replacewith) {
   }
 }
 
-void StripString(char* str, StringPiece remove, char replacewith);
-void StripString(char* str, int len, StringPiece remove, char replacewith);
-void StripString(string* s, StringPiece remove, char replacewith);
+void StripString(char* str, GStringPiece remove, char replacewith);
+void StripString(char* str, int len, GStringPiece remove, char replacewith);
+void StripString(string* s, GStringPiece remove, char replacewith);
 
 // ----------------------------------------------------------------------
 // StripDupCharacters
@@ -121,7 +121,7 @@ inline void StripWhiteSpace(char** str, int* len) {
   StripWhiteSpace(const_cast<const char**>(str), len);
 }
 
-inline void StripWhiteSpace(StringPiece* str) {
+inline void StripWhiteSpace(GStringPiece* str) {
   const char* data = str->data();
   int len = str->size();
   StripWhiteSpace(&data, &len);
@@ -227,21 +227,21 @@ string OutputWithMarkupTagsStripped(const string& s);
 //    Removes any occurrences of the characters in 'remove' from the start
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-int TrimStringLeft(string* s, const StringPiece& remove);
+int TrimStringLeft(string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimStringRight
 //    Removes any occurrences of the characters in 'remove' from the end
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-int TrimStringRight(string* s, const StringPiece& remove);
+int TrimStringRight(string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimString
 //    Removes any occurrences of the characters in 'remove' from either
 //    end of the string.
 // ----------------------------------------------------------------------
-inline int TrimString(string* s, const StringPiece& remove) {
+inline int TrimString(string* s, const GStringPiece& remove) {
   return TrimStringRight(s, remove) + TrimStringLeft(s, remove);
 }
 
@@ -257,7 +257,7 @@ inline int TrimString(string* s, const StringPiece& remove) {
 //    "  a:(b):c  " -> "a b c"
 //    "first,last::(area)phone, ::zip" -> "first last area phone zip"
 // ----------------------------------------------------------------------
-void TrimRunsInString(string* s, StringPiece remove);
+void TrimRunsInString(string* s, GStringPiece remove);
 
 // ----------------------------------------------------------------------
 // RemoveNullsInString

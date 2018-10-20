@@ -246,7 +246,7 @@ ThreadSafeArena* Trace::GetAndInitArena() {
 }
 
 void Trace::SubstituteAndTrace(
-    const char* file_path, int line_number, MonoTime now, StringPiece format) {
+    const char* file_path, int line_number, MonoTime now, GStringPiece format) {
   int msg_len = format.size();
   DCHECK_NE(msg_len, 0) << "Bad format specification";
   TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
@@ -258,7 +258,7 @@ void Trace::SubstituteAndTrace(
 void Trace::SubstituteAndTrace(const char* file_path,
                                int line_number,
                                MonoTime now,
-                               StringPiece format,
+                               GStringPiece format,
                                const SubstituteArg& arg0, const SubstituteArg& arg1,
                                const SubstituteArg& arg2, const SubstituteArg& arg3,
                                const SubstituteArg& arg4, const SubstituteArg& arg5,

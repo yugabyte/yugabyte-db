@@ -653,7 +653,7 @@ void TraceEvent::UpdateDuration(const MicrosecondsInt64& now,
 
 namespace {
 // Escape the given string using JSON rules.
-void JsonEscape(StringPiece s, string* out) {
+void JsonEscape(GStringPiece s, string* out) {
   out->reserve(out->size() + s.size() * 2);
   const char* p_end = s.data() + s.size();
   for (const char* p = s.data(); p != p_end; p++) {
@@ -1847,7 +1847,7 @@ TraceEventHandle TraceLog::AddTraceEventWithThreadIdAndTimestamp(
         } else {
           // This is a thread id that we've seen before, but potentially with a
           // new name.
-          std::vector<StringPiece> existing_names = strings::Split(existing_name->second, ",");
+          std::vector<GStringPiece> existing_names = strings::Split(existing_name->second, ",");
           bool found = std::find(existing_names.begin(),
                                  existing_names.end(),
                                  new_name) != existing_names.end();

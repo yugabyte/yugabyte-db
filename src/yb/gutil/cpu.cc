@@ -157,8 +157,8 @@ class LazyCpuInfoValue {
             continue;
           }
 
-          const StringPiece line_sp(line);
-          StringPiece value_sp = line_sp.substr(colon_pos + 1);
+          const GStringPiece line_sp(line);
+          GStringPiece value_sp = line_sp.substr(colon_pos + 1);
           while (!value_sp.empty() &&
                  (value_sp[0] == ' ' || value_sp[0] == '\t')) {
             value_sp = value_sp.substr(1);

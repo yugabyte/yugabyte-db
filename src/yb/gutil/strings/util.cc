@@ -203,8 +203,8 @@ bool IsAscii(const char* str, int len) {
 //    happened or not.
 // ----------------------------------------------------------------------
 
-string StringReplace(const StringPiece& s, const StringPiece& oldsub,
-                     const StringPiece& newsub, bool replace_all) {
+string StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
+                     const GStringPiece& newsub, bool replace_all) {
   string ret;
   StringReplace(s, oldsub, newsub, replace_all, &ret);
   return ret;
@@ -218,19 +218,19 @@ string StringReplace(const StringPiece& s, const StringPiece& oldsub,
 //    it only replaces the first instance of "old."
 // ----------------------------------------------------------------------
 
-void StringReplace(const StringPiece& s, const StringPiece& oldsub,
-                   const StringPiece& newsub, bool replace_all,
+void StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
+                   const GStringPiece& newsub, bool replace_all,
                    string* res) {
   if (oldsub.empty()) {
     res->append(s.data(), s.length());  // If empty, append the given string.
     return;
   }
 
-  StringPiece::size_type start_pos = 0;
-  StringPiece::size_type pos;
+  GStringPiece::size_type start_pos = 0;
+  GStringPiece::size_type pos;
   do {
     pos = s.find(oldsub, start_pos);
-    if (pos == StringPiece::npos) {
+    if (pos == GStringPiece::npos) {
       break;
     }
     res->append(s.data() + start_pos, pos - start_pos);
@@ -249,8 +249,8 @@ void StringReplace(const StringPiece& s, const StringPiece& oldsub,
 //    NOTE: The string pieces must not overlap s.
 // ----------------------------------------------------------------------
 
-int GlobalReplaceSubstring(const StringPiece& substring,
-                           const StringPiece& replacement,
+int GlobalReplaceSubstring(const GStringPiece& substring,
+                           const GStringPiece& replacement,
                            string* s) {
   CHECK(s != nullptr);
   if (s->empty() || substring.empty())
@@ -467,12 +467,12 @@ char *strcasestr_alnum(const char *haystack, const char *needle) {
 //          printf format string has the right number of arguments).
 //          DO NOT pass in long "text".
 // ----------------------------------------------------------------------
-int CountSubstring(StringPiece text, StringPiece substring) {
+int CountSubstring(GStringPiece text, GStringPiece substring) {
   CHECK_GT(substring.length(), 0);
 
   int count = 0;
-  StringPiece::size_type curr = 0;
-  while (StringPiece::npos != (curr = text.find(substring, curr))) {
+  GStringPiece::size_type curr = 0;
+  while (GStringPiece::npos != (curr = text.find(substring, curr))) {
     ++count;
     ++curr;
   }
@@ -913,8 +913,8 @@ struct NextCharUTF8 {
   }
 };
 
-bool MatchPattern(const StringPiece& eval,
-                  const StringPiece& pattern) {
+bool MatchPattern(const GStringPiece& eval,
+                  const GStringPiece& pattern) {
   return MatchPatternT(eval.data(), eval.data() + eval.size(),
                        pattern.data(), pattern.data() + pattern.size(),
                        0, NextCharUTF8());
@@ -1038,12 +1038,12 @@ void InsertString(string *const s,
 //  or string::npos if n > number of occurrences of c.
 //  (returns string::npos = -1 if n <= 0)
 //------------------------------------------------------------------------
-int FindNth(StringPiece s, char c, int n) {
+int FindNth(GStringPiece s, char c, int n) {
   size_t pos = string::npos;
 
   for ( int i = 0; i < n; ++i ) {
     pos = s.find_first_of(c, pos + 1);
-    if ( pos == StringPiece::npos ) {
+    if ( pos == GStringPiece::npos ) {
       break;
     }
   }
@@ -1056,19 +1056,19 @@ int FindNth(StringPiece s, char c, int n) {
 //  or string::npos if n > number of occurrences of c.
 //  (returns string::npos if n <= 0)
 //------------------------------------------------------------------------
-int ReverseFindNth(StringPiece s, char c, int n) {
+int ReverseFindNth(GStringPiece s, char c, int n) {
   if ( n <= 0 ) {
-    return static_cast<int>(StringPiece::npos);
+    return static_cast<int>(GStringPiece::npos);
   }
 
   size_t pos = s.size();
 
   for ( int i = 0; i < n; ++i ) {
-    // If pos == 0, we return StringPiece::npos right away. Otherwise,
+    // If pos == 0, we return GStringPiece::npos right away. Otherwise,
     // the following find_last_of call would take (pos - 1) as string::npos,
     // which means it would again search the entire input string.
     if (pos == 0) {
-      return static_cast<int>(StringPiece::npos);
+      return static_cast<int>(GStringPiece::npos);
     }
     pos = s.find_last_of(c, pos - 1);
     if ( pos == string::npos ) {
@@ -1083,20 +1083,20 @@ namespace strings {
 // FindEol()
 // Returns the location of the next end-of-line sequence.
 
-StringPiece FindEol(StringPiece s) {
+GStringPiece FindEol(GStringPiece s) {
   for (size_t i = 0; i < s.length(); ++i) {
     if (s[i] == '\n') {
-      return StringPiece(s.data() + i, 1);
+      return GStringPiece(s.data() + i, 1);
     }
     if (s[i] == '\r') {
       if (i+1 < s.length() && s[i+1] == '\n') {
-        return StringPiece(s.data() + i, 2);
+        return GStringPiece(s.data() + i, 2);
       } else {
-        return StringPiece(s.data() + i, 1);
+        return GStringPiece(s.data() + i, 1);
       }
     }
   }
-  return StringPiece(s.data() + s.length(), 0);
+  return GStringPiece(s.data() + s.length(), 0);
 }
 
 }  // namespace strings
@@ -1105,14 +1105,14 @@ StringPiece FindEol(StringPiece s) {
 // OnlyWhitespace()
 //  return true if string s contains only whitespace characters
 //------------------------------------------------------------------------
-bool OnlyWhitespace(const StringPiece& s) {
+bool OnlyWhitespace(const GStringPiece& s) {
   for (const auto& c : s) {
     if ( !ascii_isspace(c) ) return false;
   }
   return true;
 }
 
-string PrefixSuccessor(const StringPiece& prefix) {
+string PrefixSuccessor(const GStringPiece& prefix) {
   // We can increment the last character in the string and be done
   // unless that character is 255, in which case we have to erase the
   // last character and increment the previous character, unless that
@@ -1137,7 +1137,7 @@ string PrefixSuccessor(const StringPiece& prefix) {
   }
 }
 
-string ImmediateSuccessor(const StringPiece& s) {
+string ImmediateSuccessor(const GStringPiece& s) {
   // Return the input string, with an additional NUL byte appended.
   string out;
   out.reserve(s.size() + 1);
@@ -1146,8 +1146,8 @@ string ImmediateSuccessor(const StringPiece& s) {
   return out;
 }
 
-void FindShortestSeparator(const StringPiece& start,
-                           const StringPiece& limit,
+void FindShortestSeparator(const GStringPiece& start,
+                           const GStringPiece& limit,
                            string* separator) {
   // Find length of common prefix
   size_t min_length = min(start.size(), limit.size());
