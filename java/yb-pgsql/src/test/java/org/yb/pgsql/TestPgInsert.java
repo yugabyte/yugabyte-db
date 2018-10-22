@@ -33,8 +33,8 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestInsert extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestInsert.class);
+public class TestPgInsert extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgInsert.class);
 
   @Test
   public void testBasicInsert() throws SQLException {

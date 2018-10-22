@@ -35,8 +35,8 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestSelect extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestSelect.class);
+public class TestPgSelect extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
 
   @Test
   public void testWhereClause() throws Exception {
@@ -148,20 +148,37 @@ public class TestSelect extends BasePgSQLTest {
   }
 
   @Test
-  public void testOrderBy() throws Exception {
+  public void testComplexSelect() throws Exception {
     setupSimpleTable("test");
     Statement statement = connection.createStatement();
 
-    try (ResultSet rs = statement.executeQuery("SELECT h, r FROM test " +
-                                                   "ORDER BY r ASC, h DESC")) {
-      for (double r = 0.5; r < 10.5; r += 1) {
-        for (long h = 9; h >= 0; h--) {
-          assertTrue(rs.next());
-          assertEquals(h, rs.getLong("h"));
-          assertEquals(r, rs.getDouble("r"));
+    // Test ORDER BY, OFFSET, and LIMIT clauses
+    try (ResultSet rs = statement.executeQuery("SELECT h, r FROM test" +
+                                                   " ORDER BY r ASC, h DESC LIMIT 27 OFFSET 17")) {
+      int count = 0;
+      int start = 17; // offset.
+      int end = start + 27; // offset + limit.
+      for (double r = 0.5; r < 10.5 && count < end; r += 1) {
+        for (long h = 9; h >= 0 && count < end; h--) {
+          if (count >= start) {
+            assertTrue(rs.next());
+            assertEquals(h, rs.getLong("h"));
+            assertEquals(r, rs.getDouble("r"));
+          }
+          count++;
         }
       }
+      assertFalse(rs.next());
     }
+
+    // Test WITH clause (with RECURSIVE modifier).
+    assertOneRow("WITH RECURSIVE t(n) AS (" +
+                     "    VALUES (1)" +
+                     "  UNION ALL" +
+                     "    SELECT n+1 FROM t WHERE n < 100" +
+                     ")" +
+                     "SELECT sum(n) FROM t",
+                 5050L);
   }
 
   @Test

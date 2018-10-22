@@ -828,8 +828,11 @@ stmt :
 			| CreatedbStmt
 			| DropStmt
 			| DropdbStmt
+			| ExecuteStmt
+			| ExplainStmt
 			| GrantStmt
 			| InsertStmt
+			| PrepareStmt
 			| RevokeStmt
 			| SelectStmt
 			| TransactionStmt
@@ -921,8 +924,6 @@ stmt :
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ExecuteStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ExplainStmt { parser_ybc_not_support(@1, "This statement"); }
 			| FetchStmt { parser_ybc_not_support(@1, "This statement"); }
 			| GrantRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ImportForeignSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -932,7 +933,6 @@ stmt :
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LockStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_not_support(@1, "This statement"); }
-			| PrepareStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReassignOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RemoveAggrStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1596,7 +1596,11 @@ var_value:	opt_boolean_or_string
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
 			| READ COMMITTED						{ $$ = "read committed"; }
 			| REPEATABLE READ						{ $$ = "repeatable read"; }
-			| SERIALIZABLE							{ $$ = "serializable"; }
+			| SERIALIZABLE
+				{
+					parser_ybc_not_support(@1, "SERIALIZABLE isolation level");
+					$$ = "serializable";
+				}
 		;
 
 opt_boolean_or_string:
@@ -10906,7 +10910,6 @@ opt_name_list:
 ExplainStmt:
 		EXPLAIN ExplainableStmt
 				{
-					parser_ybc_not_support(@1, "EXPLAIN");
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->query = $2;
 					n->options = NIL;
@@ -10914,7 +10917,6 @@ ExplainStmt:
 				}
 		| EXPLAIN analyze_keyword opt_verbose ExplainableStmt
 				{
-					parser_ybc_not_support(@1, "EXPLAIN");
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->query = $4;
 					n->options = list_make1(makeDefElem("analyze", NULL, @2));
@@ -10925,7 +10927,6 @@ ExplainStmt:
 				}
 		| EXPLAIN VERBOSE ExplainableStmt
 				{
-					parser_ybc_not_support(@1, "EXPLAIN");
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->query = $3;
 					n->options = list_make1(makeDefElem("verbose", NULL, @2));
@@ -10933,7 +10934,6 @@ ExplainStmt:
 				}
 		| EXPLAIN '(' explain_option_list ')' ExplainableStmt
 				{
-					parser_ybc_not_support(@1, "EXPLAIN");
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->query = $5;
 					n->options = $3;
@@ -10991,7 +10991,6 @@ explain_option_arg:
 
 PrepareStmt: PREPARE name prep_type_clause AS PreparableStmt
 				{
-					parser_ybc_not_support(@1, "PREPARE");
 					PrepareStmt *n = makeNode(PrepareStmt);
 					n->name = $2;
 					n->argtypes = $3;
@@ -11020,7 +11019,6 @@ PreparableStmt:
 
 ExecuteStmt: EXECUTE name execute_param_clause
 				{
-					parser_ybc_not_support(@1, "EXECUTE");
 					ExecuteStmt *n = makeNode(ExecuteStmt);
 					n->name = $2;
 					n->params = $3;
@@ -11502,7 +11500,6 @@ select_no_parens:
 				}
 			| select_clause opt_sort_clause for_locking_clause opt_select_limit
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $1, $2, $3,
 										list_nth($4, 0), list_nth($4, 1),
 										NULL,
@@ -11511,7 +11508,6 @@ select_no_parens:
 				}
 			| select_clause opt_sort_clause select_limit opt_for_locking_clause
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $1, $2, $4,
 										list_nth($3, 0), list_nth($3, 1),
 										NULL,
@@ -11520,7 +11516,6 @@ select_no_parens:
 				}
 			| with_clause select_clause
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $2, NULL, NIL,
 										NULL, NULL,
 										$1,
@@ -11529,7 +11524,6 @@ select_no_parens:
 				}
 			| with_clause select_clause sort_clause
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $2, $3, NIL,
 										NULL, NULL,
 										$1,
@@ -11538,7 +11532,6 @@ select_no_parens:
 				}
 			| with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $2, $3, $4,
 										list_nth($5, 0), list_nth($5, 1),
 										$1,
@@ -11547,7 +11540,6 @@ select_no_parens:
 				}
 			| with_clause select_clause opt_sort_clause select_limit opt_for_locking_clause
 				{
-					parser_ybc_not_support(@1, "Complex SELECT");
 					insertSelectOptions((SelectStmt *) $2, $3, $5,
 										list_nth($4, 0), list_nth($4, 1),
 										$1,
@@ -11993,7 +11985,11 @@ having_clause:
 		;
 
 for_locking_clause:
-			for_locking_items						{ $$ = $1; }
+			for_locking_items
+				{
+					parser_ybc_not_support(@1, "SELECT locking option");
+					$$ = $1;
+				}
 			| FOR READ ONLY							{ $$ = NIL; }
 		;
 
