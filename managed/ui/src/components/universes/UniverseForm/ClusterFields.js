@@ -787,8 +787,11 @@ export default class ClusterFields extends Component {
 
     if (isNonEmptyObject(deviceInfo)) {
       if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
-        const isInAws = this.getCurrentProvider(self.state.providerSelected).code === 'aws';
-        const fixedVolumeInfo = self.state.volumeType === 'SSD';
+        const currentProvider = this.getCurrentProvider(self.state.providerSelected);
+        const isInAws = currentProvider.code === 'aws';
+        // We don't want to keep the volume fixed in case of Kubernetes.
+        const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
+                                currentProvider.code !== 'kubernetes';
 
         const isIoType = deviceInfo.ebsType === 'IO1';
         if (isIoType) {

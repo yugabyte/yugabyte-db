@@ -32,8 +32,6 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import javax.persistence.PersistenceException;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,6 +46,13 @@ import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadat
 
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
+
+  private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
+      "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4}," +
+      "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5}," +
+      "{\"instanceTypeCode\": \"medium\", \"numCores\": 8, \"memSizeGB\": 15}," +
+      "{\"instanceTypeCode\": \"large\", \"numCores\": 16, \"memSizeGB\": 15}," +
+      "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
 
   @Inject
   FormFactory formFactory;
@@ -168,6 +173,7 @@ public class CloudProviderController extends AuthenticatedController {
             break;
           case "kubernetes":
             updateKubeConfig(provider, config);
+            createKubernetesInstanceTypes(provider);
             break;
         }
       }
@@ -199,6 +205,19 @@ public class CloudProviderController extends AuthenticatedController {
 
     provider.setConfig(newConfig);
     provider.save();
+  }
+
+  private void createKubernetesInstanceTypes(Provider provider) {
+    KUBERNETES_INSTANCE_TYPES.forEach((instanceType -> {
+      InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
+      idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
+      InstanceType.upsert(provider.code,
+          instanceType.get("instanceTypeCode").asText(),
+          instanceType.get("numCores").asInt(),
+          instanceType.get("memSizeGB").asDouble(),
+          idt
+      );
+    }));
   }
 
   private void updateKubeConfig(Provider provider, Map<String, String> config) {
