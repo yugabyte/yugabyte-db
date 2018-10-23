@@ -60,23 +60,11 @@ class CreateKubernetesConfiguration extends Component {
       };
       const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
       const zoneData = [vals.zoneLabel.replace(" ", "-")];
-      // TODO: we need to have this in YW backend.
-      const instanceTypes = [
-        {"instanceTypeCode": "xsmall", "numCores": 2, "memSizeGB": 7.5,
-          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "small", "numCores": 4, "memSizeGB": 7.5,
-          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "medium", "numCores": 8, "memSizeGB": 15,
-          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "large", "numCores": 16, "memSizeGB": 15,
-          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]},
-        {"instanceTypeCode": "xlarge", "numCores": 32, "memSizeGB": 30,
-          "volumeDetailsList": [{ "volumeSizeGB": "100", "volumeType": "SSD" }]}
-      ];
+
       Object.keys(providerConfig).forEach((key) => { if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String) providerConfig[key] = providerConfig[key].trim(); });
       Object.keys(regionData).forEach((key) =>     { if (typeof regionData[key] === 'string' ||     regionData[key] instanceof String)     regionData[key] =     regionData[key].trim(); });
       Object.keys(zoneData).forEach((key) =>       { if (typeof zoneData[key] === 'string' ||       providerConfig[key] instanceof String) zoneData[key] =       zoneData[key].trim(); });
-      self.props.createKubernetesProvider(providerName.trim(), providerConfig, regionData, zoneData, instanceTypes);
+      self.props.createKubernetesProvider(providerName.trim(), providerConfig, regionData, zoneData);
     }, reason => {
       console.warn("File Upload gone wrong. "+reason);
     });
