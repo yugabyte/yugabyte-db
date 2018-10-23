@@ -19,6 +19,7 @@ aliases:
 ## Introduction
 PostgreSQL support is under active development in YugaByte DB. We will keep updating this page as features are added.
 
+- List of [`supported features`](supported_features) in latest release.
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.
 - Builtin functions and Expression operators.
@@ -62,20 +63,20 @@ Data definition language (DDL) statements are instructions for the following dat
 
 Statement | Description |
 ----------|-------------|
-[`CREATE DATABASE`](../ddl_create_database) | Create a new database |
-[`CREATE TABLE`](../ddl_create_table) | Create a new table |
-[`DROP DATABASE`](../ddl_drop_database) | Delete a database and associated objects |
-[`DROP TABLE`](../ddl_drop_table) | Delete a table from a database |
+[`CREATE DATABASE`](ddl_create_database) | Create a new database |
+[`CREATE TABLE`](ddl_create_table) | Create a new table |
+[`DROP DATABASE`](ddl_drop_database) | Delete a database and associated objects |
+[`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 
 ## DML Statements
 Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.
 
 Statement | Description |
 ----------|-------------|
-[`INSERT`](../dml_insert) | Insert rows into a table |
-[`SELECT`](../dml_select) | Select rows from a table |
-[`UPDATE`](../dml_update) | Will be added. Update rows in a table |
-[`DELETE`](../dml_delete) | Will be added. Delete rows from a table |
+[`INSERT`](dml_insert) | Insert rows into a table |
+[`SELECT`](dml_select) | Select rows from a table |
+[`UPDATE`](dml_update) | Will be added. Update rows in a table |
+[`DELETE`](dml_delete) | Will be added. Delete rows from a table |
 
 ## Expressions
 Under development.
@@ -85,12 +86,12 @@ The following table lists all supported primitive types.
 
 Primitive Type | Allowed in Key | Type Parameters | Description |
 ---------------|----------------|-----------------|-------------|
-[`BIGINT`](../type_int) | Yes | - | 64-bit signed integer |
-[`BOOLEAN`](../type_bool) | Yes | - | Boolean |
-[`DECIMAL`](../type_number) | Yes | - | Exact, fixed-point number |
-[`DOUBLE PRECISION`](../type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`FLOAT`](../type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`REAL`](../type_number) | Yes | - | 32-bit, inexact, floating-point number |
-[`INT` &#124; `INTEGER`](../type_int) | Yes | - | 32-bit signed integer |
-[`SMALLINT`](../type_int) | Yes | - | 16-bit signed integer |
-[`TEXT` &#124; `VARCHAR`](../type_text) | Yes | - | Variable-size string of Unicode characters |
+[`BIGINT`](type_int) | Yes | - | 64-bit signed integer |
+[`BOOLEAN`](type_bool) | Yes | - | Boolean |
+[`DECIMAL`](type_number) | Yes | - | Exact, fixed-point number |
+[`DOUBLE PRECISION`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
+[`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
+[`REAL`](type_number) | Yes | - | 32-bit, inexact, floating-point number |
+[`INT` &#124; `INTEGER`](type_int) | Yes | - | 32-bit signed integer |
+[`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
+[`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | Variable-size string of Unicode characters |
