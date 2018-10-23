@@ -7,8 +7,7 @@ import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
 
 import { createProvider, createProviderResponse,
          createRegion, createRegionResponse, fetchCloudMetadata,
-         createZones, createZonesResponse,
-         createInstanceType, createInstanceTypeResponse } from 'actions/cloud';
+         createZones, createZonesResponse } from 'actions/cloud';
 
 const mapStateToProps = (state) => {
   return {
@@ -19,17 +18,11 @@ const mapStateToProps = (state) => {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    createKubernetesProvider: (providerName, providerConfig, regionData, zoneData, instanceTypes) => {
+    createKubernetesProvider: (providerName, providerConfig, regionData, zoneData) => {
       dispatch(createProvider("kubernetes", providerName, providerConfig)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           const providerUUID = response.payload.data.uuid;
-          instanceTypes.forEach((instanceTypeData) => {
-            // console.log(instanceTypeData); Ram's debug
-            dispatch(createInstanceType("kubernetes", providerUUID, instanceTypeData)).then((response) => {
-              dispatch(createInstanceTypeResponse(response.payload));
-            });
-          });
           dispatch(createRegion(providerUUID, regionData)).then((response) => {
             dispatch(createRegionResponse(response.payload));
             if (response.payload.status === 200) {

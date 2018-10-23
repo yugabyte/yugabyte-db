@@ -32,7 +32,10 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -63,11 +66,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     super.setUp();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = updateUniverseDetails("small");
+  }
+
+  private Universe updateUniverseDetails(String instanceTypeCode) {
+    instanceType = InstanceType.upsert(defaultProvider.code, instanceTypeCode,
+        10, 5.5, new InstanceType.InstanceTypeDetails());
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    instanceType = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
-        10, 5.5, new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(r,
         defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
@@ -75,7 +82,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
-    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
+    return Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
   }
 
@@ -120,15 +127,25 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         expectedOverrides.put("persistentVolume", diskSpecs);
       }
     }
+    Map<String, Object> resourceOverrides = new HashMap();
 
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
     tserverLimit.put("cpu", instanceType.numCores * burstVal);
-    expectedOverrides.put("resource", ImmutableMap.of(
-        "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit)
-    ));
+    resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
+
+    if (!instanceType.getInstanceTypeCode().equals("xsmall")) {
+      Map<String, Object> masterResource = new HashMap<>();
+      Map<String, Object> masterLimit = new HashMap<>();
+      masterResource.put("cpu", 2);
+      masterResource.put("memory", "4Gi");
+      masterLimit.put("cpu", 2 * burstVal);
+      resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+    }
+
+    expectedOverrides.put("resource", resourceOverrides);
 
     expectedOverrides.put("Image", ImmutableMap.of("tag", ybSoftwareVersion));
     expectedOverrides.put("replicas", ImmutableMap.of("tserver", numNodes,
@@ -157,6 +174,32 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
     // TODO implement exposeAll false case
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallForXSmallInstance() throws IOException {
+    defaultUniverse = updateUniverseDetails("xsmall");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> resourceOverrides = (Map<String, Object>) overrides.get("resource");
+    assertFalse(resourceOverrides.containsKey("master"));
+    assertTrue(resourceOverrides.containsKey("tserver"));
     assertEquals(getExpectedOverrides(true), overrides);
   }
 

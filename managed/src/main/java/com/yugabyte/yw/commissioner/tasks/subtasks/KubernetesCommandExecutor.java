@@ -272,9 +272,20 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
     tserverLimit.put("cpu", instanceType.numCores * burstVal);
-    overrides.put("resource", ImmutableMap.of(
-        "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit)
-    ));
+    Map<String, Object> resourceOverrides = new HashMap();
+    resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
+
+    // If the instance type is not xsmall, we would bump the master resource.
+    if (!instanceType.getInstanceTypeCode().equals("xsmall")) {
+      Map<String, Object> masterResource = new HashMap<>();
+      Map<String, Object> masterLimit = new HashMap<>();
+      masterResource.put("cpu", 2);
+      masterResource.put("memory", "4Gi");
+      masterLimit.put("cpu", 2 * burstVal);
+      resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+    }
+
+    overrides.put("resource", resourceOverrides);
 
     Map<String, Object> imageInfo = new HashMap<>();
     // Override image tag based on ybsoftwareversion.
