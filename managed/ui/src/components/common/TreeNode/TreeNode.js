@@ -9,7 +9,7 @@ export default class TreeNode extends Component {
   constructor(props, context) {
     super(props, context);
     this.state = {
-      open: false,
+      open: false || props.defaultExpanded,
     };
   }
 
@@ -21,7 +21,7 @@ export default class TreeNode extends Component {
     return (
       <div className={`TreeNode ${this.state.open ? 'TreeNode-open' : 'TreeNode-closed'}`}>
         <div className="TreeNode-header" onClick={this.toggleOpen}>
-          <i className={`fa fa-chevron-${this.state.open ? 'down' : 'right'}`} />
+          <i className={`fa fa-caret-${this.state.open ? 'down' : 'right'}`} />
           <div className="TreeNode-header-content">
             {header}
           </div>
