@@ -81,8 +81,8 @@ class PgsqlRangeBasedFileFilter : public rocksdb::ReadFileFilter {
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const DocKey& doc_key,
-                                   const bool is_forward_scan)
-    : PgsqlScanSpec(YQL_CLIENT_PGSQL),
+                                   bool is_forward_scan)
+    : PgsqlScanSpec(YQL_CLIENT_PGSQL, nullptr),
       query_id_(query_id),
       hashed_components_(nullptr),
       doc_key_(doc_key),
@@ -97,21 +97,20 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const std::vector<PrimitiveValue>& hashed_components,
                                    const boost::optional<int32_t> hash_code,
                                    const boost::optional<int32_t> max_hash_code,
-                                   const PgsqlExpressionPB *bool_expr,
+                                   const PgsqlExpressionPB *where_expr,
                                    const DocKey& start_doc_key,
-                                   const bool is_forward_scan)
-    : PgsqlScanSpec(YQL_CLIENT_PGSQL),
+                                   bool is_forward_scan)
+    : PgsqlScanSpec(YQL_CLIENT_PGSQL, where_expr),
       query_id_(query_id),
       hashed_components_(&hashed_components),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
-      condition_(bool_expr),
       doc_key_(),
       start_doc_key_(start_doc_key),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
       is_forward_scan_(is_forward_scan) {
-  if (condition_) {
+  if (where_expr_) {
     // Should never get here until WHERE clause is supported.
     LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
   }

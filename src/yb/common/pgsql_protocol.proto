@@ -119,6 +119,8 @@ message PgsqlWriteRequestPB {
   repeated PgsqlExpressionPB partition_column_values = 6;
   repeated PgsqlExpressionPB range_column_values = 7;
 
+  optional bool missing_primary_key = 13 [default = false];
+
   // Columns to be written or overwritten.
   repeated PgsqlColumnValuePB column_values = 8;
 

@@ -320,5 +320,21 @@ CHECKED_STATUS QLScanSpec::Match(const QLTableRow& table_row, bool* match) const
   return Status::OK();
 }
 
+//-------------------------------------- QL scan spec ---------------------------------------
+// Pgsql scan specification.
+PgsqlScanSpec::PgsqlScanSpec(QLClient client_type,
+                             const PgsqlExpressionPB *where_expr,
+                             QLExprExecutor::SharedPtr executor)
+    : YQLScanSpec(client_type),
+      where_expr_(where_expr),
+      executor_(executor) {
+  if (executor_ == nullptr) {
+    executor_ = std::make_shared<QLExprExecutor>();
+  }
+}
+
+PgsqlScanSpec::~PgsqlScanSpec() {
+}
+
 } // namespace common
 } // namespace yb

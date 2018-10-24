@@ -14,6 +14,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_expr.h"
+
+#include <unordered_map>
+
 #include "yb/yql/pggate/pg_dml.h"
 
 namespace yb {
@@ -24,12 +27,49 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 
 //--------------------------------------------------------------------------------------------------
+// Mapping Postgres operator names to YugaByte opcodes.
+// When constructing expresions, Postgres layer will pass the operator name.
+const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
+  { "!", PgExpr::Opcode::PG_EXPR_NOT },
+  { "not", PgExpr::Opcode::PG_EXPR_NOT },
+  { "=", PgExpr::Opcode::PG_EXPR_EQ },
+  { "<>", PgExpr::Opcode::PG_EXPR_NE },
+  { "!=", PgExpr::Opcode::PG_EXPR_NE },
+  { ">", PgExpr::Opcode::PG_EXPR_GT },
+  { ">=", PgExpr::Opcode::PG_EXPR_GE },
+  { "<", PgExpr::Opcode::PG_EXPR_LT },
+  { "<=", PgExpr::Opcode::PG_EXPR_LE },
 
-PgExpr::PgExpr(PgExpr::Opcode op, InternalType internal_type)
-    : op_(op), internal_type_(internal_type) {
+  { "avg", PgExpr::Opcode::PG_EXPR_AVG },
+  { "sum", PgExpr::Opcode::PG_EXPR_SUM },
+  { "count", PgExpr::Opcode::PG_EXPR_COUNT },
+  { "max", PgExpr::Opcode::PG_EXPR_MAX },
+  { "min", PgExpr::Opcode::PG_EXPR_MIN },
+};
+
+PgExpr::PgExpr(PgExpr::Opcode opcode, InternalType internal_type)
+    : opcode_(opcode), internal_type_(internal_type) {
+}
+
+PgExpr::PgExpr(const char *opname, InternalType internal_type)
+    : PgExpr(NameToOpcode(opname), internal_type) {
 }
 
 PgExpr::~PgExpr() {
+}
+
+Status PgExpr::CheckOperatorName(const char *name) {
+  auto iter = kOperatorNames.find(name);
+  if (iter == kOperatorNames.end()) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Wrong operator name: $0", name);
+  }
+  return Status::OK();
+}
+
+PgExpr::Opcode PgExpr::NameToOpcode(const char *name) {
+  auto iter = kOperatorNames.find(name);
+  DCHECK(iter != kOperatorNames.end()) << "Wrong operator name: " << name;
+  return iter->second;
 }
 
 Status PgExpr::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
@@ -266,6 +306,18 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   }
 
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgOperator::PgOperator(const char *opname) : PgExpr(opname), opname_(opname) {
+}
+
+PgOperator::~PgOperator() {
+}
+
+void PgOperator::AppendArg(PgExpr *arg) {
+  args_.push_back(arg);
 }
 
 }  // namespace pggate

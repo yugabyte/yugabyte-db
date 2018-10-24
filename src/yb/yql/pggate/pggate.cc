@@ -357,10 +357,58 @@ CHECKED_STATUS PgApiImpl::ExecInsert(PgStatement *handle) {
 }
 
 // Update ------------------------------------------------------------------------------------------
-// TODO(neil) Need API support for update.
+
+CHECKED_STATUS PgApiImpl::NewUpdate(PgSession *pg_session,
+                                    const char *database_name,
+                                    const char *schema_name,
+                                    const char *table_name,
+                                    PgStatement **handle) {
+  DCHECK(pg_session) << "Invalid session handle";
+  *handle = nullptr;
+  if (database_name == nullptr) {
+    database_name = pg_session->connected_dbname();
+  }
+
+  auto stmt = make_scoped_refptr<PgUpdate>(pg_session, database_name, schema_name, table_name);
+  RETURN_NOT_OK(stmt->Prepare());
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+CHECKED_STATUS PgApiImpl::ExecUpdate(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_UPDATE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgUpdate*>(handle)->Exec();
+}
 
 // Delete ------------------------------------------------------------------------------------------
-// TODO(neil) Need API support for delete.
+
+CHECKED_STATUS PgApiImpl::NewDelete(PgSession *pg_session,
+                                    const char *database_name,
+                                    const char *schema_name,
+                                    const char *table_name,
+                                    PgStatement **handle) {
+  DCHECK(pg_session) << "Invalid session handle";
+  *handle = nullptr;
+  if (database_name == nullptr) {
+    database_name = pg_session->connected_dbname();
+  }
+
+  auto stmt = make_scoped_refptr<PgDelete>(pg_session, database_name, schema_name, table_name);
+  RETURN_NOT_OK(stmt->Prepare());
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+CHECKED_STATUS PgApiImpl::ExecDelete(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgDelete*>(handle)->Exec();
+}
 
 // Select ------------------------------------------------------------------------------------------
 
@@ -423,7 +471,7 @@ Status PgApiImpl::NewConstant(PgStatement *stmt, const char *value, bool is_null
 }
 
 Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, bool is_null) {
-  if (expr->op() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
+  if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid expression handle for constant");
   }
@@ -445,11 +493,37 @@ Status PgApiImpl::NewConstant(PgStatement *stmt, const char *value, int64_t byte
 }
 
 Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null) {
-  if (expr->op() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
+  if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid expression handle for constant");
   }
   down_cast<PgConstant*>(expr)->UpdateConstant(value, bytes, is_null);
+  return Status::OK();
+}
+
+// Text constant -----------------------------------------------------------------------------------
+
+Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname, PgExpr **op_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
+
+  // Create operator.
+  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname);
+  stmt->AddExpr(pg_op);
+
+  *op_handle = pg_op.get();
+  return Status::OK();
+}
+
+Status PgApiImpl::OperatorAppendArg(PgExpr *op_handle, PgExpr *arg) {
+  if (!op_handle || !arg) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid expression handle");
+  }
+  down_cast<PgOperator*>(op_handle)->AppendArg(arg);
   return Status::OK();
 }
 
