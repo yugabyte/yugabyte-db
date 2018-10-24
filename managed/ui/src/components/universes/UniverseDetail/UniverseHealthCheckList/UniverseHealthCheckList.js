@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import * as moment from 'moment';
 import { sortBy, values } from 'lodash';
@@ -8,6 +8,7 @@ import { sortBy, values } from 'lodash';
 import { YBLoading } from 'components/common/indicators';
 import TreeNode from 'components/common/TreeNode';
 import { YBPanelItem } from 'components/panels';
+import { Panel } from 'react-bootstrap';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 
@@ -24,7 +25,10 @@ const UniverseHealthCheckList = props => {
     content = (
       <div>
         <h2 className="health-check-header content-title">Health Checks</h2>
-        <TimestampList timestamps={timestamps} />
+
+        {timestamps.map((timestamp, index) => (
+          <Timestamp id={'healthcheck'+timestamp.timestampMoment.unix()} key={timestamp.timestampMoment.unix()} timestamp={timestamp} index={index}/>
+        ))}
       </div>
     );
   }
@@ -36,44 +40,47 @@ const UniverseHealthCheckList = props => {
   );
 };
 
-const TimestampList = props => {
-  const {timestamps} = props;
-  return (
-    <div>
-      {timestamps.map(timestamp => (
-        <TreeNode
-          key={timestamp.timestampMoment.unix()}
-          header={
-            <div>
-              <span className="tree-node-main-heading">{timestampFormatter(timestamp.timestampMoment)}</span>
-              {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, 'healthy')}
-              {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, 'failing')}
-            </div>
-          }
-          body={
-            <div>
-              <NodeList nodes={timestamp.nodes} />
-            </div>
-          }
-        />
-      ))}
-    </div>
-  );
+class Timestamp extends Component {
+
+  constructor(props) {
+    super(props);
+    this.state = {isOpen: false, ...this.props};
+  }
+  render() {
+    const {timestamp, index} = this.props;
+    const defaultExpanded = this.state.isOpen || index === 0;
+    return (
+      <Panel eventKey={this.props.eventKey} defaultExpanded={defaultExpanded} className="health-container">
+        <Panel.Heading>
+          <Panel.Title tag="h4" toggle onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}>
+            <span>{timestampFormatter(timestamp.timestampMoment)}</span>
+            {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, 'healthy')}
+            {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, 'failing')}
+          </Panel.Title>
+        </Panel.Heading>
+        <Panel.Body collapsible>
+          <NodeList nodes={timestamp.nodes} defaultExpanded={defaultExpanded}/>
+        </Panel.Body>
+      </Panel>
+    );
+  }
 };
 
 const NodeList = props => {
-  const {nodes} = props;
+  const {nodes, defaultExpanded} = props;
   return (
     <div>
       {nodes.map(node => (
         <TreeNode
           key={node.ipAddress}
+          defaultExpanded={defaultExpanded}
           header={
-            <div>
+            <span>
               <span className="tree-node-main-heading">{node.ipAddress}</span>
+              – 
               {countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
               {countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
-            </div>
+            </span>
           }
           body={<ChecksTable checks={node.checks} />}
         />
@@ -89,18 +96,13 @@ const ChecksTable = props => {
       body={
         <BootstrapTable data={checks}>
           <TableHeaderColumn dataField="key" isKey={true} hidden={true}/>
-          <TableHeaderColumn dataField="has_error" dataFormat={checkStatusFormatter}>
-            Status
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="process">
-            Process
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="message"
-              columnClassName="no-border name-column" className="no-border">
+          <TableHeaderColumn dataField="message" dataFormat={messageFormatter} columnClassName="no-border name-column" className="no-border name-column">
             Check Type
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="details" dataFormat={detailsFormatter}
-              className="expand-cell" columnClassName="word-wrap expand-cell">
+          <TableHeaderColumn dataField="process" columnClassName="name-column" className="no-border name-column">
+            Process
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="details" dataFormat={detailsFormatter} className="expand-cell" columnClassName="word-wrap expand-cell">
             Details
           </TableHeaderColumn>
         </BootstrapTable>
@@ -127,21 +129,25 @@ const countFormatter = (items, singleUnit, pluralUnit, hasError, descriptor = ''
   );
 };
 
-const checkStatusFormatter = hasError => (
-  <span className={`status status-${hasError ? 'bad' : 'good'}`}>
-    <i className={`fa fa-${hasError ? 'times' : 'check'}`} />
-    {hasError ? 'Error' : 'OK'}
+const messageFormatter = (cell, row) => (
+  <span>
+    {row.has_error && (
+      <span className="label label-danger">Failed</span>
+    )}
+    {row.message}
   </span>
 );
 
-const detailsFormatter = (cell, row) => (
-  <span>
-    {row.has_error && (
-      <span className="label label-danger">ERROR</span>
-    )}
-    {row.details}
-  </span>
-);
+const detailsFormatter = (cell, row) => {
+  switch (row.details.length) {
+    case 0:
+      return 'Ok';
+    case 1:
+      return <pre>{row.details}</pre>;
+    default:
+      return <pre style={{whiteSpace:'pre'}}>{(row.details).join('\n')}</pre>;
+  }
+};
 
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data) {
