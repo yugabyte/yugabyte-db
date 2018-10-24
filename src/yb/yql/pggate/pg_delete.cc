@@ -43,8 +43,7 @@ PgDelete::PgDelete(PgSession::ScopedRefPtr pg_session,
                    const char *database_name,
                    const char *schema_name,
                    const char *table_name)
-    : PgDmlWrite(
-        std::move(pg_session), database_name, schema_name, table_name, StmtOp::STMT_DELETE) {
+    : PgDmlWrite(pg_session, database_name, schema_name, table_name, StmtOp::STMT_DELETE) {
 }
 
 PgDelete::~PgDelete() {

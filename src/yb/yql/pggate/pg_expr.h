@@ -30,8 +30,8 @@ class PgExpr {
     PG_EXPR_COLREF,
     PG_EXPR_VARIABLE,
 
-    // The following is not yet implemented. The logical expression will be used to define the
-    // conditions when we support WHERE clause.
+    // The logical expression for defining the conditions when we support WHERE clause.
+    PG_EXPR_NOT,
     PG_EXPR_EQ,
     PG_EXPR_NE,
     PG_EXPR_GE,
@@ -39,6 +39,7 @@ class PgExpr {
     PG_EXPR_LE,
     PG_EXPR_LT,
 
+    // Aggregate functions.
     PG_EXPR_AVG,
     PG_EXPR_SUM,
     PG_EXPR_COUNT,
@@ -54,7 +55,8 @@ class PgExpr {
   typedef std::unique_ptr<const PgExpr> UniPtrConst;
 
   // Constructor.
-  explicit PgExpr(Opcode op, InternalType internal_type = InternalType::VALUE_NOT_SET);
+  explicit PgExpr(Opcode opcode, InternalType internal_type = InternalType::VALUE_NOT_SET);
+  explicit PgExpr(const char *opname, InternalType internal_type = InternalType::VALUE_NOT_SET);
   virtual ~PgExpr();
 
   // Prepare expression when constructing a statement.
@@ -64,8 +66,8 @@ class PgExpr {
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   // Access methods.
-  Opcode op() const {
-    return op_;
+  Opcode opcode() const {
+    return opcode_;
   }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
@@ -96,8 +98,13 @@ class PgExpr {
     return internal_type_;
   }
 
+  // Find opcode.
+  static CHECKED_STATUS CheckOperatorName(const char *name);
+  static Opcode NameToOpcode(const char *name);
+
  protected:
-  Opcode op_;
+  // Data members.
+  Opcode opcode_;
   InternalType internal_type_;
 };
 
@@ -164,6 +171,27 @@ class PgColumnRef : public PgExpr {
 
  private:
   int attr_num_;
+};
+
+class PgOperator : public PgExpr {
+ public:
+  // Public types.
+  typedef std::shared_ptr<PgOperator> SharedPtr;
+  typedef std::shared_ptr<const PgOperator> SharedPtrConst;
+
+  typedef std::unique_ptr<PgOperator> UniPtr;
+  typedef std::unique_ptr<const PgOperator> UniPtrConst;
+
+  // Constructor.
+  explicit PgOperator(const char *name);
+  virtual ~PgOperator();
+
+  // Append arguments.
+  void AppendArg(PgExpr *arg);
+
+ private:
+  const string opname_;
+  std::vector<PgExpr*> args_;
 };
 
 }  // namespace pggate

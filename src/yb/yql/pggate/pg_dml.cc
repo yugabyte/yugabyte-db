@@ -196,7 +196,7 @@ Status PgDml::Fetch(uint64_t *values, bool *isnulls, bool *has_data) {
 
 Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
   for (const PgExpr *target : targets_) {
-    if (target->op() != PgColumnRef::Opcode::PG_EXPR_COLREF) {
+    if (target->opcode() != PgColumnRef::Opcode::PG_EXPR_COLREF) {
       return STATUS(InternalError, "Unexpected expression, only column refs supported here");
     }
     const auto *col_ref = static_cast<const PgColumnRef *>(target);

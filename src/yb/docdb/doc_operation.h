@@ -432,6 +432,9 @@ class PgsqlWriteOperation : public PgsqlDocOperation {
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
 
+  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+                           const ReadHybridTime& read_ht, const MonoTime deadline);
+
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              const QLTableRow::SharedPtr& table_row);

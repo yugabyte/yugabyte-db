@@ -164,9 +164,38 @@ class PgApiImpl {
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
+  // Binding Columns: Bind column with a value (expression) in a statement.
+  // + This API is used to identify the rows you want to operate on. If binding columns are not
+  //   there, that means you want to operate on all rows (full scan). You can view this as a
+  //   a definitions of an initial rowset or an optimization over full-scan.
+  //
+  // + There are some restrictions on when BindColumn() can be used.
+  //   Case 1: INSERT INTO tab(x) VALUES(x_expr)
+  //   - BindColumn() can be used for BOTH primary-key and regular columns.
+  //   - This bind-column function is used to bind "x" with "x_expr", and "x_expr" that can contain
+  //     bind-variables (placeholders) and contants whose values can be updated for each execution
+  //     of the same allocated statement.
+  //
+  //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
+  //   - BindColumn() can only be used for primary-key columns.
+  //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+  //     contain bind-variables (placeholders) and contants whose values can be updated for each
+  //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
+  // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
+  // by YBCPgDmlBindColumn().
   CHECKED_STATUS DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls, bool *has_data);
+
+  // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
+  // + The following operations are run by DocDB.
+  //   - API for "set_clause" (not yet implemented).
+  //
+  // + The following operations are run by Postgres layer. An API might be added to move these
+  //   operations to DocDB.
+  //   - API for "where_expr"
+  //   - API for "order_by_expr"
+  //   - API for "group_by_expr"
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -180,9 +209,23 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Update.
+  CHECKED_STATUS NewUpdate(PgSession *pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           PgStatement **handle);
+
+  CHECKED_STATUS ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
+  CHECKED_STATUS NewDelete(PgSession *pg_session,
+                           const char *database_name,
+                           const char *schema_name,
+                           const char *table_name,
+                           PgStatement **handle);
+
+  CHECKED_STATUS ExecDelete(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Select.
@@ -193,6 +236,10 @@ class PgApiImpl {
                            PgStatement **handle);
 
   CHECKED_STATUS ExecSelect(PgStatement *handle);
+
+  //------------------------------------------------------------------------------------------------
+  // Transaction control.
+  PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -217,7 +264,7 @@ class PgApiImpl {
 
   template<typename value_type>
   CHECKED_STATUS UpdateConstant(PgExpr *expr, value_type value, bool is_null) {
-    if (expr->op() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
+    if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
       // Invalid handle.
       return STATUS(InvalidArgument, "Invalid expression handle for constant");
     }
@@ -233,7 +280,9 @@ class PgApiImpl {
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, bool is_null);
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null);
 
-  PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
+  // Operators.
+  CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname, PgExpr **op_handle);
+  CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
  private:
   // Control variables.
