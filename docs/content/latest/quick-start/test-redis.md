@@ -1,7 +1,7 @@
 ---
 title: 4. Test YEDIS API
 linkTitle: 4. Test YEDIS API
-description: Test YugaBytE DIctionary Service (YEDIS) API
+description: Test YugaByte Dictionary Service (YEDIS) API
 aliases:
   - /quick-start/test-redis/
 menu:

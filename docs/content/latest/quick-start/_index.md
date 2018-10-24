@@ -15,7 +15,7 @@ menu:
 ---
 
 {{< note title="Note" >}}
-We do not recommend a local multi-node cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../deploy">manual or orchestrated deployment steps</a>.
+We do not recommend a local multi-node cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
 {{< /note >}}
 
 {{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}
@@ -75,7 +75,7 @@ YugaByte DB Community Edition plus:
         <div class="title">3. Test YCQL API</div>
       </div>
       <div class="body">
-        Test Cassandra-compatible Yugabyte Cloud Query Language (YCQL) API.
+        Test Cassandra-compatible YugaByte Cloud Query Language (YCQL) API.
       </div>
     </a>
   </div>
@@ -87,7 +87,7 @@ YugaByte DB Community Edition plus:
         <div class="title">4. Test YEDIS API</div>
       </div>
       <div class="body">
-        Test Redis-compatible YugabytE DIctionary Service (YEDIS) API.
+        Test Redis-compatible YugaByte Dictionary Service (YEDIS) API.
       </div>
     </a>
   </div>
@@ -96,10 +96,10 @@ YugaByte DB Community Edition plus:
     <a class="section-link icon-offset" href="test-postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">5. Test PostgreSQL API</div>
+        <div class="title">5. Test YSQL API</div>
       </div>
       <div class="body">
-        Test PostgreSQL API.
+        Test PostgreSQL-compatible YugaByte SQL (YSQL) API.
       </div>
     </a>
   </div>

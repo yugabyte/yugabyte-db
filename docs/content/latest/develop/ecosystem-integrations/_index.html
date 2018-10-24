@@ -2,7 +2,7 @@
 title: Ecosystem Integrations
 linkTitle: Ecosystem Integrations
 description: Ecosystem Integrations
-headcontent: YugaByte DB is driver compatible with Apache Cassandra and Redis clients with PostgreSQL coming soon. It can therefore work with the ecosytem of projects built around these APIs. This page lists some of the ecosystems that YugaByte DB can work with.
+headcontent: YugaByte DB is driver compatible with Apache Cassandra, Redis and PostgreSQL (beta) clients. It can therefore work with the ecosytem of projects built around these APIs. This page lists some of the ecosystems that YugaByte DB can work with.
 image: /images/section_icons/develop/ecosystem-integrations.png
 aliases:
   - /develop/ecosystem-integrations/
@@ -21,7 +21,7 @@ menu:
         <div class="title">Apache Spark</div>
       </div>
       <div class="body">
-        Powerful open source processing engine built for fast analytics.
+        Powerful open source processing engine built for fast analytics on top of YugaByte DB's Cassandra-compatible YCQL API.
       </div>
     </a>
   </div>
@@ -33,7 +33,7 @@ menu:
         <div class="title">JanusGraph</div>
       </div>
       <div class="body">
-          Scalable graph API that uses Cassandra as it's underlying distributed database.
+          Scalable graph API that uses Cassandra-compatible YugaByte DB as it's underlying distributed database.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ menu:
         <div class="title">KairosDB</div>
       </div>
       <div class="body">
-        Fast time series metrics API that uses Cassandra as it's underlying distributed database.
+        Fast time series metrics API that uses Cassandra-compatible YugaByte DB as it's underlying distributed database.
       </div>
     </a>
   </div>
@@ -57,7 +57,19 @@ menu:
         <div class="title">Presto</div>
       </div>
       <div class="body">
-        Ad-hoc interactive SQL queries 
+        Ad-hoc interactive SQL queries on top of Cassandra-compatible YugaByte DB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="metabase/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/ecosystem/metabase.png" aria-hidden="true" />
+        <div class="title">Metabase</div>
+      </div>
+      <div class="body">
+        Ad-hoc interactive SQL queries on top of PostgreSQL-compatible YugaByte DB.
       </div>
     </a>
   </div>

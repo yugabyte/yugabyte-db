@@ -9,7 +9,9 @@ menu:
     weight: 292
 ---
 
-YugaByte DB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for both PostgreSQL tables. In this tutorial, we will look at how fault tolerance is achieved for PostgreSQL, but the same steps would work for Cassandra and Redis tables as well. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugaByte DB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for PostgreSQL tables. In this tutorial, we will look at how fault tolerance is achieved for PostgreSQL, but the same steps would work for Cassandra and Redis tables as well. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
+
+Note that the current YSQL beta version depends on an additional single-node PostgreSQL to act as the query router. We are working towards moving the PostgreSQL logic directly into each of the individual YB-TServers (similar to our YCQL and YEDIS implementations) in an upcoming beta release.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
@@ -26,6 +28,14 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
       Linux
     </a>
   </li>
+  <!--
+  <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+      <i class="icon-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  -->
 </ul>
 
 <div class="tab-content">
@@ -35,4 +45,9 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/fault-tolerance.md" /%}}
   </div>
+   <!--
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+    {{% includeMarkdown "docker/fault-tolerance.md" /%}}
+  </div>
+  -->
 </div>

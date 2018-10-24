@@ -12,6 +12,9 @@ menu:
     identifier: quick-start
     weight: 100
 ---
+{{< note title="Note" >}}
+Click <a href="/latest/quick-start/">here</a> to go to documentation for the latest version of YugaByte DB.
+{{< /note >}}
 
 
 {{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}

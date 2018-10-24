@@ -1,5 +1,5 @@
 ---
-title: SUPPORTED FEATURES
+title: Supported Features
 summary: Listing supported PosgreSQL features.
 description: Supported PostgreSQL Features by YugaByte
 menu:
@@ -11,12 +11,12 @@ aliases:
   - api/pgsql/supported_features
 ---
 
-# Synopsis
-This document lists PostgreSQL features that are supported in the latest release of YugaByte.
+## Synopsis
+This document lists PostgreSQL 10.4 features that are supported in the latest release of YugaByte DB.
 
-# DDL Statements
+## DDL Statements
 
-## DATABASE
+### DATABASE
 
 <b>CREATE DATABASE</b> [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-createdatabase.html)
 
@@ -24,7 +24,7 @@ This document lists PostgreSQL features that are supported in the latest release
 
 <b>DROP DATABASE</b> Not supported.
 
-## SCHEMA
+### SCHEMA
 
 <b>CREATE SCHEMA</b> [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-createschema.html)
 
@@ -32,7 +32,7 @@ This document lists PostgreSQL features that are supported in the latest release
 
 <b>DROP SCHEMA</b> Not supported.
 
-## TABLE
+### TABLE
 
 <b>CREATE TABLE</b> [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-createtable.html)
 
@@ -47,7 +47,7 @@ This document lists PostgreSQL features that are supported in the latest release
 
 -- Optional parameters are not supported.
 
-## USER
+### USER
 
 <b>CREATE USER</b> [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-createuser.html)
 
@@ -55,7 +55,7 @@ This document lists PostgreSQL features that are supported in the latest release
 
 <b>DROP USER</b> Not supported.
 
-## VIEW
+### VIEW
 
 <b>CREATE VIEW</b> [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-createview.html)
 
@@ -63,19 +63,19 @@ This document lists PostgreSQL features that are supported in the latest release
 
 <b>DROP VIEW</b> Not supported.
 
-# DML Statements
+## DML Statements
 
-## INSERT Statement
+### INSERT Statement
 
 -- [<i>Specifications</i>](https://www.postgresql.org/docs/current/static/sql-insert.html)
 
 -- Optional clauses, OVERRIDING, DEFAULT, ON CONFLICT, and RETURNING, are not supported.
 
-## SELECT Statement
+### SELECT Statement
 
 -- [<i>Specifications</i>](https://www.postgresql.org/docs/current/static/sql-select.html)
 
-## Transaction Control Statements
+### Transaction Control Statements
 
 The following statements are supported, but transaction mode options such as ISOLATION LEVEL, READ, and WRITE, are not supported.
 
@@ -91,7 +91,7 @@ ROLLBACK [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-rollba
 
 START TRANSACTION [<i>Spec</i>](https://www.postgresql.org/docs/current/static/sql-start-transaction.html)
 
-# Datatypes
+## Datatypes
 
 -- [<i>Specifications</i>](https://www.postgresql.org/docs/current/static/datatype.html)
 
@@ -99,7 +99,7 @@ START TRANSACTION [<i>Spec</i>](https://www.postgresql.org/docs/current/static/s
 
 -- BIGINT, INT, SMALLINT, FLOAT, and DOUBLE are supported.
 
-# Expressions
+## Expressions
 
 -- [<i>Specifications</i>](https://www.postgresql.org/docs/current/static/functions.html)
 
@@ -107,5 +107,5 @@ START TRANSACTION [<i>Spec</i>](https://www.postgresql.org/docs/current/static/s
 
 -- User-defined functions are not.
 
-# See Also
+## See Also
 [PostgreSQL Statements](..)

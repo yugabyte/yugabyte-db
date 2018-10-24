@@ -1,8 +1,8 @@
 ---
-title: PostgreSQL (Beta)
-linkTitle: PostgreSQL (Beta)
-description: PostgreSQL (Beta)
-summary: PostgreSQL overview and features
+title: YSQL (Beta)
+linkTitle: YSQL (Beta)
+description: YugaByte Structured Query Language (YSQL)
+summary: Reference for PostgreSQL-compatible YSQL API
 image: /images/section_icons/api/pgsql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
@@ -17,7 +17,7 @@ aliases:
 ---
 
 ## Introduction
-PostgreSQL support is under active development in YugaByte DB. We will keep updating this page as features are added.
+YugaByte DB's YSQL API is compatible with PostgreSQL and supports the following features.
 
 - List of [`supported features`](supported_features) in latest release.
 - Data definition language (DDL) statements.

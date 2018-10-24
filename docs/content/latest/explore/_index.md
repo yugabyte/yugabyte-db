@@ -67,11 +67,11 @@ menu:
     <a class="section-link icon-offset" href="postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" /> 
-       <div class="articles">2 articles</div>
+       <div class="articles">6 articles</div>
         <div class="title">PostgreSQL (Beta)</div>
       </div>
       <div class="body">
-       Linear scalability and fault tolerance.
+       Multiple features in the PostgreSQL-compatible YSQL API.
       </div>
     </a>
   </div>

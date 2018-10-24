@@ -3,7 +3,7 @@ title: API Reference
 linkTitle: API Reference
 description: API Reference
 image: /images/section_icons/index/api.png
-headcontent: YugaByte DB's YCQL and YEDIS APIs are wire-compatible with Apache Cassandra and Redis respectively. PostgreSQL API is in Beta.
+headcontent: YugaByte DB's YCQL, YEDIS and YSQL APIs are wire-compatible with Apache Cassandra, Redis and PostgreSQL respectively. 
 aliases:
   - /api/
 menu:
@@ -42,10 +42,10 @@ menu:
     <a class="section-link icon-offset" href="postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" />
-        <div class="title">PostgreSQL (Beta)</div>
+        <div class="title">YSQL (Beta)</div>
       </div>
       <div class="body">
-        Complete reference for <b>PostgreSQL</b> API.
+        Complete reference for PostgreSQL-compatible <b>Y</b>ugaByte <b>S</b>tructured <b>Q</b>uery <b>L</b>anguage (<b>YSQL</b>) API.
       </div>
     </a>
   </div>

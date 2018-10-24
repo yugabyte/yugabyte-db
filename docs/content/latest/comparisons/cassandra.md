@@ -10,7 +10,7 @@ menu:
     weight: 1080
 ---
 
-Following are the key areas of differences between YugaByte DB and [Apache Cassandra](http://cassandra.apache.org/). A recent [blog post](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6) also highlights these differences in more detail.
+Following are the key areas of differences between YugaByte DB and [Apache Cassandra](http://cassandra.apache.org/). Recent blog posts on [performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance) and [consistency/transactions](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/) also highlight these differences in greater detail.
 
 ## 1. Data Consistency
 
@@ -22,7 +22,7 @@ even those do NOT offer [clean rollback semantics on write failures](https://sta
 
 2. Deletes resurfacing: Another problem due to an eventually consistent core is [deleted values resurfacing](https://stackoverflow.com/questions/35392430/cassandra-delete-not-working). 
 
-YugaByte avoids these pitfalls by using a theoretically sound replication model based on RAFT, with
+YugaByte DB avoids these pitfalls by using a theoretically sound replication model based on RAFT, with
 strong-consistency on writes and tunable consistency options for reads.
 
 ## 2. High read penalty of eventual consistency
@@ -38,7 +38,7 @@ In Apache Cassandra, simple read-modify-write operations such as “increment”
 
 ## 4. Secondary Indexes
 
-Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog/cassandra-scale-problem-secondary-indexes)) require a fan-out read to all nodes, i.e. index performance keeps dropping as cluster size increases. With YugaByte’s distributed transactions, secondary indexes will both be strongly-consistent and be point-reads rather than needing a read from all nodes/shards in the cluster.
+Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog/cassandra-scale-problem-secondary-indexes)) require a fan-out read to all nodes, i.e. index performance keeps dropping as cluster size increases. With YugaByte DB’s distributed transactions, secondary indexes are both strongly-consistent and point-reads rather than a read from all nodes/shards in the cluster.
 
 ## 5. Operational Stability / Add Node Challenges
 

@@ -1,7 +1,7 @@
 ---
-title: 5. Test PostgreSQL API
-linkTitle: 5. Test PostgreSQL API
-description: Test PostgreSQL API
+title: 5. Test YSQL API
+linkTitle: 5. Test YSQL API
+description: Test YugaByte SQL (YSQL) API
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /quick-start/test-postgresql/
@@ -12,10 +12,9 @@ menu:
 ---
 
 
-Follow the instructions below to test YugaByte DB's PostgreSQL API.
+Follow the instructions below to test YugaByte DB's PostgreSQL-compatible YSQL API.
 
-[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with the 10.3 version of psql in its bin directory.
-
+[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with a version of psql in its bin directory.
 
 ## 1. Create a new cluster
 
@@ -100,7 +99,7 @@ sample=> CREATE TABLE stock_market (
 
 ## 3. Insert data
 
-Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
+Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your psql shell.
 
 ```{.sql .copy}
 INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);

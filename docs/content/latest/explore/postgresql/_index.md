@@ -12,7 +12,7 @@ menu:
     weight: 290
 ---
 
-This section highlights the core features of YugaByte DB's PostgreSQL compatible API.
+This section highlights the core features of YugaByte DB's PostgreSQL-compatible YSQL API.
 
 <br>
 
@@ -36,6 +36,50 @@ This section highlights the core features of YugaByte DB's PostgreSQL compatible
       </div>
       <div class="body">
         Resilient and self-healing.
+      </div>
+    </a>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="joins/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/core_functions/table.png" aria-hidden="true" />
+        <div class="title">JOINs</div>
+      </div>
+      <div class="body">
+        Query data across multiple tables.
+      </div>
+    </a>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="aggregations/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/core_functions/table.png" aria-hidden="true" />
+        <div class="title">Aggregations</div>
+      </div>
+      <div class="body">
+        Summarize data faster with built-in aggregate functions.
+      </div>
+    </a>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="expressions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/core_functions/table.png" aria-hidden="true" />
+        <div class="title">Expressions</div>
+      </div>
+      <div class="body">
+        Transform the data inserted or queried with expressions.
+      </div>
+    </a>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="views/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/core_functions/table.png" aria-hidden="true" />
+        <div class="title">Views</div>
+      </div>
+      <div class="body">
+        Abstract complexity of data organization through views.
       </div>
     </a>
   </div>
