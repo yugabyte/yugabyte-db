@@ -55,6 +55,9 @@ class PgDmlWrite : public PgDml {
   // Allocate target for selected or returned expressions.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Delete allocated target for columns that have no bind-values.
+  CHECKED_STATUS DeleteEmptyPrimaryBinds();
+
   // Protobuf code.
   PgsqlWriteRequestPB *write_req_ = nullptr;
 };

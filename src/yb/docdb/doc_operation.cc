@@ -3165,11 +3165,112 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
 }
 
 CHECKED_STATUS PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
+  QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
+  RETURN_NOT_OK(ReadColumns(data, table_row));
+
+  for (const auto& column_value : request_.column_values()) {
+    // Get the column.
+    if (!column_value.has_column_id()) {
+      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                           column_value.DebugString());
+    }
+    const ColumnId column_id(column_value.column_id());
+    auto column = schema_.column_by_id(column_id);
+    RETURN_NOT_OK(column);
+
+    // Check column-write operator.
+    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+      << "Illegal write instruction";
+
+    // Evaluate column value.
+    QLValue expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+    const SubDocument sub_doc =
+        SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+
+    // Inserting into specified column.
+    DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+  }
+
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
 
 CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
+  QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
+  RETURN_NOT_OK(ReadColumns(data, table_row));
+
+  if (request_.column_values_size() > 0) {
+    return STATUS(InvalidArgument, "WHERE clause condition is not yet fully supported");
+
+    // TODO(neil) Uncomment the following code when proxy server supports where clause.
+#if 0
+    for (const auto& column_value : request_.column_values()) {
+      const ColumnId column_id(column_value.column_id());
+      const auto column = schema_.column_by_id(column_id);
+      RETURN_NOT_OK(column);
+      const DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
+      RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path, data.read_time, data.deadline,
+                                                       request_.stmt_id()));
+    }
+#endif
+  } else if (request_.missing_primary_key()) {
+    return STATUS(InvalidArgument, "WHERE clause condition is not yet fully supported");
+
+    // TODO(neil) Uncomment the following code when proxy server supports where clause.
+#if 0
+    // Create the schema projection -- range deletes cannot reference non-primary key columns,
+    // so the non-static projection is all we need, it should contain all referenced columns.
+    Schema projection;
+    RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &projection));
+
+    // Construct the scan spec basing on the WHERE condition.
+    vector<PrimitiveValue> hashed_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
+                                               schema_,
+                                               0,
+                                               &hashed_components));
+    DocPgsqlScanSpec spec(projection,
+                          request_.stmt_id(),
+                          hashed_components,
+                          request_.hash_code(),
+                          request_.hash_code(),
+                          request_.mutable_where_expr());
+    DocRowwiseIterator iterator(projection,
+                                schema_,
+                                txn_op_context_,
+                                data.doc_write_batch->doc_db(),
+                                data.deadline,
+                                data.read_time);
+    RETURN_NOT_OK(iterator.Init(spec));
+
+    // Iterate through rows and delete those that match the condition.
+    // TODO We do not lock here, so other write transactions coming in might appear partially
+    // applied if they happen in the middle of a ranged delete.
+    while (iterator.HasNext()) {
+      table_row->Clear();
+      RETURN_NOT_OK(iterator.NextRow(table_row.get()));
+
+      // Match the row with the where condition before deleting it.
+      QLValue match;
+      RETURN_NOT_OK(EvalExpr(*spec.where_expr(), table_row, &match));
+      if (match.bool_value()) {
+        const DocKey& row_key = iterator.row_key();
+        const DocPath row_path(row_key.Encode());
+        RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(row_path, data.read_time, data.deadline));
+      }
+    }
+    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+#endif
+
+  } else {
+    // Otherwise, delete the referenced row (all columns).
+    RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(*range_doc_path_, data.read_time,
+                                                     data.deadline));
+  }
+
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }

@@ -247,8 +247,38 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 }
 
 // UPDATE Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
+                         const char *database_name,
+                         const char *schema_name,
+                         const char *table_name,
+                         YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewUpdate(pg_session,
+                                      database_name,
+                                      schema_name,
+                                      table_name,
+                                      handle));
+}
+
+YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecUpdate(handle));
+}
 
 // DELETE Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
+                         const char *database_name,
+                         const char *schema_name,
+                         const char *table_name,
+                         YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDelete(pg_session,
+                                      database_name,
+                                      schema_name,
+                                      table_name,
+                                      handle));
+}
+
+YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDelete(handle));
+}
 
 // SELECT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
@@ -343,6 +373,19 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) 
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
+
+
+YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle) {
+  return ToYBCStatus(pgapi->NewOperator(stmt, opname, op_handle));
+}
+
+YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
+  return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
+}
+
+//------------------------------------------------------------------------------------------------
+// Transaction operation.
+//------------------------------------------------------------------------------------------------
 
 YBCPgTxnManager YBCGetPgTxnManager() {
   return pgapi->GetPgTxnManager();
