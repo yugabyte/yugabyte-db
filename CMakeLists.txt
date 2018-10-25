@@ -1540,6 +1540,18 @@ ADD_THIRDPARTY_LIB(icuuc
   STATIC_LIB "${ICU_UC_LIBRARIES}"
   SHARED_LIB "${ICU_UC_LIBRARIES}")
 
+## Libuv
+find_package(LibUv REQUIRED)
+include_directories(SYSTEM ${LIBUV_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(libuv
+  STATIC_LIB "${LIBUV_STATIC_LIB}"
+  SHARED_LIB "${LIBUV_SHARED_LIB}")
+
+## C++ Cassandra driver
+find_package(Cassandra REQUIRED)
+include_directories(SYSTEM ${LIBCASSANDRA_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
+
 ############################################################
 # Linker setup
 ############################################################
