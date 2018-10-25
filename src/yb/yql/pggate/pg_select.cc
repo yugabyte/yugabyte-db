@@ -57,7 +57,7 @@ void PgSelect::PrepareColumns() {
   // Because Kudu API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
   for (PgColumn &col : table_desc_->columns()) {
-    col.AllocPartitionBindPB(read_req_);
+    col.AllocPrimaryBindPB(read_req_);
   }
 }
 
@@ -78,20 +78,55 @@ PgsqlExpressionPB *PgSelect::AllocTargetPB() {
 // For now, selected expressions are just a list of column names (ref).
 //   SELECT column_l, column_m, column_n FROM ...
 
+Status PgSelect::DeleteEmptyPrimaryBinds() {
+  bool miss_range_columns = false;
+  bool has_range_columns = false;
+
+  bool miss_partition_columns = false;
+  bool has_partition_columns = false;
+
+  for (PgColumn &col : table_desc_->columns()) {
+    if (col.desc()->is_partition()) {
+      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
+        miss_partition_columns = true;
+      } else {
+        has_partition_columns = true;
+      }
+    } else if (col.desc()->is_primary()) {
+      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
+        miss_range_columns = true;
+      } else {
+        has_range_columns = true;
+      }
+    }
+  }
+
+  if (miss_partition_columns) {
+    LOG(INFO) << "Full scan is needed";
+    read_req_->clear_partition_column_values();
+    read_req_->clear_range_column_values();
+
+  } else if (miss_range_columns) {
+    LOG(INFO) << "Single tablet scan is needed";
+    read_req_->clear_range_column_values();
+  }
+
+  // Set the primary key indicator in protobuf.
+  if (has_partition_columns && miss_partition_columns) {
+    return STATUS(InvalidArgument, "Partition key must be fully specified");
+  }
+  if (has_range_columns && miss_range_columns) {
+    return STATUS(InvalidArgument, "Range key must be fully specified");
+  }
+  return Status::OK();
+}
+
 Status PgSelect::Exec() {
-  // TODO(neil) The following code is a simple read and cache. It operates once and done.
-  // - This will be extended to do scanning and caching chunk by chunk.
-  // - "result_set_" field need to be locked and release. Available rows are fetched from the
-  //   beginning while the arriving rows are append at the end.
+  // Delete key columns that are not bound to any values.
+  RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
-
-  // Check partition.
-  if (!PartitionIsProvided()) {
-    LOG(INFO) << "Full scan is needed";
-    read_req_->clear_partition_column_values();
-  }
 
   // Execute select statement asynchronously.
   return doc_op_->Execute();

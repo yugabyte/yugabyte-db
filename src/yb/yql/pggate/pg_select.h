@@ -56,6 +56,9 @@ class PgSelect : public PgDml {
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Delete allocated target for columns that have no bind-values.
+  CHECKED_STATUS DeleteEmptyPrimaryBinds();
+
   // Protobuf instruction.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;
   PgsqlReadRequestPB *read_req_ = nullptr;

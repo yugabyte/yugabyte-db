@@ -44,9 +44,6 @@ class PgDml : public PgStatement {
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
 
-  // True if values for all partition columns are provided.
-  bool PartitionIsProvided();
-
   // This function is not yet working and might not be needed.
   virtual CHECKED_STATUS ClearBinds();
 

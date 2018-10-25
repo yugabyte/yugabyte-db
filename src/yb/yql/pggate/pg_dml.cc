@@ -144,23 +144,6 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   return Status::OK();
 }
 
-bool PgDml::PartitionIsProvided() {
-  bool has_partition_columns = false;
-  bool miss_partition_columns = false;
-  for (PgColumn &col : table_desc_->columns()) {
-    if (col.desc()->is_partition()) {
-      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
-        miss_partition_columns = true;
-      } else {
-        has_partition_columns = true;
-      }
-    }
-  }
-
-  DCHECK(!has_partition_columns || !miss_partition_columns) << "Partition is not fully specified";
-  return has_partition_columns;
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::UpdateBindPBs() {
