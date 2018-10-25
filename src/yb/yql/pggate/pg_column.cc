@@ -21,6 +21,8 @@ namespace pggate {
 PgColumn::PgColumn() {
 }
 
+//--------------------------------------------------------------------------------------------------
+
 PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req) {
   if (desc_.is_partition()) {
     bind_pb_ = write_req->add_partition_column_values();
@@ -38,6 +40,17 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlWriteRequestPB *write_req) {
     PgsqlColumnValuePB* col_pb = write_req->add_column_values();
     col_pb->set_column_id(id());
     bind_pb_ = col_pb->mutable_expr();
+  }
+  return bind_pb_;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlReadRequestPB *read_req) {
+  if (desc_.is_partition()) {
+    bind_pb_ = read_req->add_partition_column_values();
+  } else if (desc_.is_primary()) {
+    bind_pb_ = read_req->add_range_column_values();
   }
   return bind_pb_;
 }

@@ -28,10 +28,12 @@ class PgColumn {
  public:
   PgColumn();
 
-  // Bindings.
+  // Bindings for write requests.
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlWriteRequestPB *write_req);
 
+  // Bindings for read requests.
+  PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
   PgsqlExpressionPB *AllocPartitionBindPB(PgsqlReadRequestPB *read_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
 
