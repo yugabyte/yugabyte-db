@@ -36,3 +36,8 @@ class CassandraCppDriverDependency(Dependency):
                                   '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                                   '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
                                   '-DBUILD_SHARED_LIBS=On'])
+        if is_mac():
+          lib_file = 'libcassandra.' + builder.dylib_suffix
+          path = os.path.join(builder.prefix_lib, lib_file)
+          log_output(builder.log_prefix(self),
+                     ['install_name_tool', '-id', '@rpath/' + lib_file, path])
