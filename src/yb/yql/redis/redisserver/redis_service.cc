@@ -1049,7 +1049,7 @@ void RedisServiceImplData::LogToMonitors(
   ss.precision(6);
   ss << (now_ms / 1000000.0) << " [" << db << " " << end << "]";
   for (auto& part : cmd) {
-    ss << " \"" << part << "\"";
+    ss << " \"" << part.ToBuffer() << "\"";
   }
   ss << "\r\n";
 
@@ -1194,7 +1194,7 @@ RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresse
 void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   auto call = std::static_pointer_cast<RedisInboundCall>(call_ptr);
 
-  DVLOG(4) << "Asked to handle a call " << call->ToString();
+  DVLOG(2) << "Asked to handle a call " << call->ToString();
   if (call->serialized_request().size() > FLAGS_redis_max_command_size) {
     auto message = StrCat("Size of redis command ", call->serialized_request().size(),
                           ", but we only support up to length of ", FLAGS_redis_max_command_size);
