@@ -602,9 +602,16 @@ bool AcceptPassword(const vector<string>& allowed, const string& candidate) {
 
 void HandleConfig(LocalCommandData data) {
   RedisResponsePB resp;
+  // We only handle config requests of the type:
+  // CONFIG SET REQUIREPASS <password>
+  // everything else is handled as a no-op.
   if (data.arg_size() != 4 ||
       !(boost::iequals(data.arg(1).ToBuffer(), "SET") &&
         boost::iequals(data.arg(2).ToBuffer(), "REQUIREPASS"))) {
+    if (data.arg_size() >= 2 && boost::iequals(data.arg(1).ToBuffer(), "GET")) {
+      // CONFIG GET will be responded to with an empty array.
+      resp.mutable_array_response()->set_encoded(false);
+    }
     data.Respond(&resp);
     return;
   }

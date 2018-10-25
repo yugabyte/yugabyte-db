@@ -1794,7 +1794,9 @@ TEST_F(TestRedisService, TestMonitor) {
   ASSERT_EQ(2, CountSessions(METRIC_redis_monitoring_clients));
 
   UseClient(rc1);
-  DoRedisTestBulkString(__LINE__, {"PING", "cmd3"}, "cmd3");  // Included in mc1 and mc2.
+  const string really_long(100, 'x');
+  const string response_ending = string("\"PING\" \"").append(really_long).append("\"");
+  DoRedisTestBulkString(__LINE__, {"PING", really_long}, really_long); // Included in mc1 and mc2.
   SyncClient();
 
   UseClient(mc1);
@@ -1803,13 +1805,15 @@ TEST_F(TestRedisService, TestMonitor) {
   // <TS> {<db-id> <client-ip>:<port>} "CMD" "ARG1" ....
   // We will check for the responses to end in "CMD" "ARG1"
   DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck1"}, "\"PING\" \"cmd2\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck2"}, "\"PING\" \"cmd3\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
+                                             {"PING", "mc1-ck2"}, response_ending);
   DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck3"}, "\"PING\" \"mc1-ck1\"");
   SyncClient();
 
   UseClient(mc2);
   // Check the responses for monitor on mc2.
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck1"}, "\"PING\" \"cmd3\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
+                                             {"PING", "mc2-ck1"}, response_ending);
 
   // Since the redis client here forced us to send "PING" above to check for responses for mc1, we
   // should see those as well.
@@ -1934,6 +1938,8 @@ TEST_F(TestRedisService, TestAuth) {
   // Set require pass using one connection
   UseClient(rc1);
   DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});
+  DoRedisTestArray(__LINE__, {"CONFIG", "GET", "REQUIREPASS"}, {});
+  DoRedisTestArray(__LINE__, {"CONFIG", "GET", "FooBar"}, {});
   SyncClient();
   UseClient(nullptr);
   // Other pre-established connections should still be able to work, without re-authentication.
