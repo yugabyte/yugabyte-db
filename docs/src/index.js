@@ -137,6 +137,7 @@ $(document).ready(() => {
       let index = 0;
       if (contentContainer.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
       if (contentContainer.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
+      if (contentContainer.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
 
       const textarea = document.createElement('textarea');
       textarea.value = content.substr(index < 0 ? 0 : index, content.length).trim();

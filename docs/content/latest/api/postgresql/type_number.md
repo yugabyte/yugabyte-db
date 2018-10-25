@@ -19,7 +19,6 @@ DataType | Description | Decimal Precision |
 `REAL` | Inexact 32-bit floating point number | 6 |
 `DOUBLE PRECISION` | Inexact 64-bit floating point number | 15 |
 `FLOAT` | Inexact 64-bit floating point number | variable |
-`DECIMAL` | Exact fixed-point number | 99 |
 
 ## Syntax
 

@@ -18,5 +18,5 @@ Statement | Description |
 ----------|-------------|
 [`INSERT`](../dml_insert) | Insert rows into a table |
 [`SELECT`](../dml_select) | Select rows from a table |
-[`UPDATE`](../dml_update) | Will be added. Update rows in a table |
-[`DELETE`](../dml_delete) | Will be added. Delete rows from a table |
+[`UPDATE`] | In progress. Update rows in a table |
+[`DELETE`] | In progress. Delete rows from a table |
