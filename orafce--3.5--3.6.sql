@@ -180,9 +180,9 @@ $$ LANGUAGE sql IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION oracle.nvl(bigint, int)
 RETURNS bigint AS $$
 SELECT coalesce($1, $2)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.nvl(numeric, int)
 RETURNS numeric AS $$
 SELECT coalesce($1, $2)
-$$ LANGUAGE sql IMMUTABLE STRICT;
+$$ LANGUAGE sql IMMUTABLE;
