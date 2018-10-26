@@ -5,8 +5,6 @@ description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
 headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local multi-node cluster. We recommend deploying YugaByte DB to individual machines for performance benchmarking and pre-production evaluations.  
 type: page
-aliases:
-  - /quick-start/
 menu:
   v1.0:
     identifier: quick-start
