@@ -484,6 +484,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::VERSION: FALLTHROUGH_INTENDED;
       case SysRowEntry::SNAPSHOT:
         FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
     }
