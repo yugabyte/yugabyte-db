@@ -20,6 +20,8 @@
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/util/thread_restrictions.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
     "Time spent parsing the SQL query", yb::MetricUnit::kMicroseconds,

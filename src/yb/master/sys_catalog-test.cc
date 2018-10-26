@@ -835,6 +835,87 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   ASSERT_EQ(0, loader->config_entries.size());
 }
 
+class TestVersionLoader : public Visitor<PersistentVersionInfo> {
+ public:
+  TestVersionLoader() {}
+  ~TestVersionLoader() { Reset(); }
+
+  void Reset() {
+    for (SysVersionInfo* version : versions) {
+      version->Release();
+    }
+    versions.clear();
+  }
+
+  Status Visit(const string& version_id, const SysVersionEntryPB& metadata) override {
+
+    // Setup the version info.
+    SysVersionInfo* const version = new SysVersionInfo(version_id);
+    auto l = version->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    l->Commit();
+    version->AddRef();
+    versions.push_back(version);
+    LOG(INFO) << " Current SysVersionInfo: " << version->ToString();
+    return Status::OK();
+  }
+
+  vector<SysVersionInfo*> versions;
+};
+
+// Test the sys-catalog version basic operations (add, visit, drop).
+TEST_F(SysCatalogTest, TestSysCatalogVersionOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestVersionLoader> loader(new TestVersionLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // Set the version information.
+  SysVersionEntryPB version_entry;
+  version_entry.set_type("test_version");
+  version_entry.set_version(0);
+
+
+  // 1. Add a new SysVersionEntryPB.
+  scoped_refptr<SysVersionInfo> version = new SysVersionInfo("test_version");
+  {
+    auto l = version->LockForWrite();
+    l->mutable_data()->pb = version_entry;
+
+    // Add the version.
+    ASSERT_OK(sys_catalog->AddItem(version.get()));
+    l->Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // Because we create the cassandra role during initialization, we will create a new SysVersionInfo
+  // object with id set to kRolesVersionType. So there should be two SysVersionInfo objects.
+  ASSERT_EQ(2, loader->versions.size());
+  auto roles_version = new SysVersionInfo(kRolesVersionType);
+  {
+    version_entry.set_type(kRolesVersionType);
+    version_entry.set_version(0);
+    auto l = roles_version->LockForWrite();
+    l->mutable_data()->pb = std::move(version_entry);
+    l->Commit();
+  }
+  ASSERT_TRUE(MetadatasEqual(roles_version, loader->versions[0]));
+  ASSERT_TRUE(MetadatasEqual(version.get(), loader->versions[1]));
+
+  // 2. Remove the SysVersionEntry.
+  ASSERT_OK(sys_catalog->DeleteItem(version.get()));
+
+  // Verify that it got removed.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->versions.size());
+  ASSERT_TRUE(MetadatasEqual(roles_version, loader->versions[0]));
+}
+
+
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
  public:
   TestRoleLoader() {}
@@ -856,7 +937,7 @@ class TestRoleLoader : public Visitor<PersistentRoleInfo> {
     l->Commit();
     rl->AddRef();
     roles.push_back(rl);
-    LOG(INFO) << " Current Role:" << rl->ToString();
+    LOG(INFO) << " Current Role: " << rl->ToString();
     return Status::OK();
   }
 

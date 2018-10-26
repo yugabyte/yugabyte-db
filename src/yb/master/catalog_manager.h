@@ -86,6 +86,7 @@ class TSDescriptor;
 struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
+static const char* const kRolesVersionType = "roles-version-type";
 
 using PlacementId = std::string;
 
@@ -615,16 +616,6 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   explicit RoleInfo(const std::string& role) : role_(role) {}
   const std::string& id() const override { return role_; }
 
-  static const std::map<PermissionType, const char*>  kPermissionMap;
-
-  static const char* permissionName(PermissionType permission) {
-    auto iterator = kPermissionMap.find(permission);
-    if (iterator != kPermissionMap.end()) {
-      return iterator->second;
-    }
-    return nullptr;
-  }
-
  private:
   friend class RefCountedThreadSafe<RoleInfo>;
   ~RoleInfo() = default;
@@ -632,6 +623,23 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   const std::string role_;
 
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
+};
+
+struct PersistentVersionInfo : public Persistent<SysVersionEntryPB, SysRowEntry::VERSION> {};
+
+class SysVersionInfo : public RefCountedThreadSafe<SysVersionInfo>,
+                       public MetadataCowWrapper<PersistentVersionInfo> {
+ public:
+  explicit SysVersionInfo(const std::string& version_type) : version_type_(version_type) {}
+  const std::string& id() const override { return version_type_; }
+
+ private:
+  friend class RefCountedThreadSafe<SysVersionInfo>;
+  ~SysVersionInfo() = default;
+
+  const std::string version_type_;
+
+  DISALLOW_COPY_AND_ASSIGN(SysVersionInfo);
 };
 
 // Component within the catalog manager which tracks blacklist (decommission) operation
@@ -864,11 +872,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
-  // Grant/Revoke a permission to a role.
-  CHECKED_STATUS GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                       GrantRevokePermissionResponsePB* resp,
-                                       rpc::RpcContext* rpc);
-
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
@@ -900,12 +903,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Generic Create Role function for both default roles and user defined roles.
   CHECKED_STATUS CreateRoleUnlocked(const std::string& role_name,
                                     const std::string& salted_hash,
-                                    const bool login, const bool superuser);
+                                    const bool login, const bool superuser,
+                                    // This value is only set to false during the creation of the
+                                    // default role when it doesn't exist.
+                                    const bool increment_roles_version = true);
 
   // Grant one role to another role.
   CHECKED_STATUS GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
                                  GrantRevokeRoleResponsePB* resp,
                                  rpc::RpcContext* rpc);
+
+    // Grant/Revoke a permission to a role.
+  CHECKED_STATUS GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                       GrantRevokePermissionResponsePB* resp,
+                                       rpc::RpcContext* rpc);
+
+  // Get all the permissions granted to resources.
+  CHECKED_STATUS GetPermissions(const GetPermissionsRequestPB* req,
+                                GetPermissionsResponsePB* resp,
+                                rpc::RpcContext* rpc);
+
   // Set Redis Config
   CHECKED_STATUS RedisConfigSet(
       const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext* rpc);
@@ -980,6 +997,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void BuildRecursiveRoles();
 
   void BuildRecursiveRolesUnlocked();
+
+  void BuildResourcePermissionsUnlocked();
 
   bool IsMemberOf(const RoleName& granted_role, const RoleName& role);
 
@@ -1137,6 +1156,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class ClusterConfigLoader;
   friend class RoleLoader;
   friend class RedisConfigLoader;
+  friend class VersionLoader;
 
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
@@ -1486,6 +1506,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
                                    TableInfo* table_info = nullptr);
 
+  // Increment the version stored in roles_version_ if it exists. Otherwise, creates a
+  // SysVersionInfo object with version equal to 0 to track the roles versions.
+  CHECKED_STATUS IncrementRolesVersionUnlocked();
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -1516,11 +1540,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
   RoleInfoMap roles_map_;
 
-  // TODO (Bristy) : Implement (resource) --> (role->permissions) map
   typedef std::unordered_map<RoleName, std::unordered_set<RoleName>> RoleMemberMap;
+
+  typedef std::string ResourceName;
+
+  // Resource permissions map: resource -> permissions.
+  typedef std::unordered_map<ResourceName, Permissions> ResourcePermissionsMap;
+
+  // Role permissions map: role name -> map of resource permissions.
+  typedef std::unordered_map<RoleName, ResourcePermissionsMap> RolePermissionsMap;
 
   // role_name -> set of granted roles (including those acquired transitively).
   RoleMemberMap recursive_granted_roles_;
+
+  RolePermissionsMap recursive_granted_permissions_;
+
+  // Permissions cache. Kept in a protobuf to avoid rebuilding it every time we receive a request
+  // from a client.
+  std::shared_ptr<GetPermissionsResponsePB> permissions_cache_;
+
+  scoped_refptr<SysVersionInfo> roles_version_ = nullptr;
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
   typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;

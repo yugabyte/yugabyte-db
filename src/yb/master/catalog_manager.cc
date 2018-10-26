@@ -54,6 +54,7 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <bitset>
 #include <functional>
 #include <mutex>
 #include <set>
@@ -66,6 +67,7 @@
 #include "yb/common/flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
@@ -554,6 +556,32 @@ class RoleLoader : public Visitor<PersistentRoleInfo> {
   DISALLOW_COPY_AND_ASSIGN(RoleLoader);
 };
 
+class VersionLoader : public Visitor<PersistentVersionInfo> {
+ public:
+  explicit VersionLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+
+  Status Visit(const string& version_type, const SysVersionEntryPB& metadata) override {
+    SysVersionInfo* const roles_version = new SysVersionInfo(version_type);
+    auto l = roles_version->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+
+    // For now we are only using this for storing the version of roles.
+    if (version_type == kRolesVersionType) {
+      catalog_manager_->roles_version_ = roles_version;
+    }
+
+    l->Commit();
+
+    LOG(INFO) << "Loaded version type " << version_type << " with version number " << version_type;
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager *catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(VersionLoader);
+};
+
 ////////////////////////////////////////////////////////////
 // Background Tasks
 ////////////////////////////////////////////////////////////
@@ -624,16 +652,6 @@ void CatalogManagerBgTasks::Shutdown() {
     CHECK_OK(ThreadJoiner(thread_.get()).Join());
   }
 }
-
-const std::map<PermissionType, const char*>  RoleInfo::kPermissionMap = {
-    {PermissionType::ALTER_PERMISSION, "ALTER"},
-    {PermissionType::CREATE_PERMISSION, "CREATE"},
-    {PermissionType::DROP_PERMISSION, "DROP"},
-    {PermissionType::SELECT_PERMISSION, "SELECT"},
-    {PermissionType::MODIFY_PERMISSION, "MODIFY"},
-    {PermissionType::AUTHORIZE_PERMISSION, "AUTHORIZE"},
-    {PermissionType::DESCRIBE_PERMISSION, "DESCRIBE"}
-};
 
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
@@ -918,6 +936,7 @@ Status CatalogManager::RunLoaders() {
   }
 
   // Visit tables and tablets, load them into memory.
+  // TODO(hector): Refactor this code.
   LOG(INFO) << __func__ << ": Loading tables into memory.";
   unique_ptr<TableLoader> table_loader(new TableLoader(this));
   RETURN_NOT_OK_PREPEND(
@@ -956,6 +975,12 @@ Status CatalogManager::RunLoaders() {
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(redis_config_loader.get()),
       "Failed while visiting redis config in sys catalog");
+
+  LOG(INFO) << __func__ << ": Loading versions into memory.";
+  unique_ptr<VersionLoader> version_loader(new VersionLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(version_loader.get()),
+      "Failed while visiting versions in sys catalog");
 
   return Status::OK();
 }
@@ -1054,6 +1079,20 @@ CHECKED_STATUS CatalogManager::PrepareDefaultRoles() {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
 
+  // Prepare the default roles version (0).
+  if (!roles_version_) {
+    SysVersionEntryPB version_entry;
+    version_entry.set_type(kRolesVersionType);
+    version_entry.set_version(0);
+    roles_version_ = new SysVersionInfo(kRolesVersionType);
+
+    auto l = roles_version_->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(version_entry);
+
+    RETURN_NOT_OK(sys_catalog_->AddItem(roles_version_.get()));
+    l->Commit();
+  }
+
   if (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr) {
     LOG(INFO) << strings::Substitute("Role $0 already created, skipping initialization",
                                      kDefaultCassandraUsername);
@@ -1069,7 +1108,7 @@ CHECKED_STATUS CatalogManager::PrepareDefaultRoles() {
 
   // Create in memory object.
   Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash, kBcryptHashSize),
-                                true, true);
+                                true, true, false /* Don't increment the roles version */);
   if (PREDICT_TRUE(s.ok())) {
     LOG(INFO) << "Created role: " << kDefaultCassandraUsername;
   }
@@ -3015,6 +3054,121 @@ void CatalogManager::BuildRecursiveRolesUnlocked() {
       TraverseRole(role_name, nullptr);
     }
   }
+
+  BuildResourcePermissionsUnlocked();
+}
+
+void CatalogManager::BuildResourcePermissionsUnlocked() {
+  shared_ptr<GetPermissionsResponsePB> response = std::make_shared<GetPermissionsResponsePB>();
+
+  for (const auto& e : recursive_granted_roles_) {
+    const auto& role_name = e.first;
+    // Get a copy of this set.
+    auto granted_roles = e.second;
+    granted_roles.insert(role_name);
+    auto* role_permissions = response->add_role_permissions();
+    for (const auto& granted_role : granted_roles) {
+      const auto& role_info = roles_map_[granted_role];
+      auto l = role_info->LockForRead();
+      const auto& pb = l->data().pb;
+      role_permissions->set_role(role_name);
+
+      // No permissions on ALL ROLES and ALL KEYSPACES by default.
+      role_permissions->set_all_keyspaces_permissions(0);
+      role_permissions->set_all_roles_permissions(0);
+
+      Permissions all_roles_permissions_bitset;
+      Permissions all_keyspaces_permissions_bitset;
+      for (const auto& resource : pb.resources()) {
+        Permissions resource_permissions_bitset;
+
+        for (const auto& permission : resource.permissions()) {
+          if (resource.canonical_resource() == kRolesRoleResource) {
+            all_roles_permissions_bitset.set(permission);
+          } else if (resource.canonical_resource() == kRolesDataResource) {
+            all_keyspaces_permissions_bitset.set(permission);
+          } else {
+            resource_permissions_bitset.set(permission);
+          }
+        }
+
+        if (resource.canonical_resource() != kRolesDataResource &&
+            resource.canonical_resource() != kRolesRoleResource) {
+          auto* resource_permissions = role_permissions->add_resource_permissions();
+          resource_permissions->set_canonical_resource(resource.canonical_resource());
+          resource_permissions->set_permissions(resource_permissions_bitset.to_ullong());
+          recursive_granted_permissions_[role_name][resource.canonical_resource()] =
+              resource_permissions_bitset.to_ullong();
+        }
+      }
+
+      role_permissions->set_all_keyspaces_permissions(all_keyspaces_permissions_bitset.to_ullong());
+      role_permissions->set_all_roles_permissions(all_roles_permissions_bitset.to_ullong());
+
+      // TODO: since this gets checked first when enforcing permissions, there is no point in
+      // populating the rest of the permissions. Furthermore, we should remove any specific
+      // permissions in the map.
+      // In other words, if all-roles_all_keyspaces_permissions is equal to superuser_permissions,
+      // it should be the only field sent to the clients for that specific role.
+      if (pb.is_superuser()) {
+        Permissions superuser_bitset;
+        // Set all the bits to 1.
+        superuser_bitset.set();
+
+        role_permissions->set_all_keyspaces_permissions(superuser_bitset.to_ullong());
+        role_permissions->set_all_roles_permissions(superuser_bitset.to_ullong());
+      }
+    }
+  }
+
+  if (!roles_version_) {
+    LOG(DFATAL) << "Invalid nullptr roles_version_";
+    return;
+  }
+
+  auto rvl = roles_version_->LockForRead();
+  response->set_version(rvl->data().pb.version());
+  permissions_cache_ = std::move(response);
+}
+
+// Get all the permissions granted to resources.
+Status CatalogManager::GetPermissions(const GetPermissionsRequestPB* req,
+                                      GetPermissionsResponsePB* resp,
+                                      rpc::RpcContext* rpc) {
+  std::shared_ptr<GetPermissionsResponsePB> permissions_cache;
+  {
+    std::lock_guard<LockType> l_big(lock_);
+    if (!permissions_cache_) {
+      BuildRecursiveRolesUnlocked();
+      if (!permissions_cache_) {
+        RETURN_NOT_OK_OR_DFATAL(STATUS(IllegalState, "Unable to build permissions cache"));
+      }
+    }
+    // Create another reference so that the cache doesn't go away while we are using it.
+    permissions_cache = permissions_cache_;
+  }
+
+  boost::optional<uint64_t> request_version;
+  if (req->has_if_version_greater_than()) {
+    request_version = req->if_version_greater_than();
+  }
+
+  if (request_version && permissions_cache->version() == *request_version) {
+    resp->set_version(permissions_cache->version());
+    return Status::OK();
+  } else if (request_version && permissions_cache->version() < *request_version) {
+    LOG(WARNING) << "GetPermissionsRequestPB version is greater than master's version";
+    Status s = STATUS(IllegalState, Substitute(
+        "GetPermissionsRequestPB version $0 is greater than master's version $1. "
+        "Should call GetPermissions again",  *request_version,
+        permissions_cache->version()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::CONFIG_VERSION_MISMATCH, s);
+  }
+
+  // permisions_cache_->version() > req->if_version_greater_than() or
+  // req->if_version_greather_than() is not set.
+  resp->CopyFrom(*permissions_cache);
+  return Status::OK();
 }
 
 bool CatalogManager::IsMemberOf(const RoleName& granted_role, const RoleName& role) {
@@ -3490,6 +3644,9 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
+  // Increment roles version.
+  RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+
   SysRoleEntryPB* metadata;
   {
     ScopedMutation<RoleInfo> role_info_mutation(rp.get());
@@ -3582,6 +3739,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     role_info_mutation.Commit();
   }
   LOG(INFO) << "Modified Permission for role " << rp->id();
+  BuildResourcePermissionsUnlocked();
   return Status::OK();
 }
 
@@ -3767,9 +3925,43 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::CreateRoleUnlocked(const std::string& role_name,
-                                                   const std::string& salted_hash,
-                                                   const bool login, const bool superuser) {
+// Create a SysVersionInfo object to track the roles versions.
+Status CatalogManager::IncrementRolesVersionUnlocked() {
+  DCHECK(lock_.is_locked()) << "We don't have the catalog manager lock!";
+  DCHECK(roles_version_) << "Roles versions object is uninitialized";
+  uint64_t version = 0;
+
+  {
+    auto l = roles_version_->LockForRead();
+    version = l->data().pb.version() + 1;
+    // This should never happen.
+    if (version == std::numeric_limits<uint64_t>::max()) {
+      RETURN_NOT_OK_OR_DFATAL(STATUS_SUBSTITUTE(IllegalState,
+          "Roles version reached max allowable integer: $0", version));
+    }
+  }
+
+  SysVersionEntryPB version_entry;
+  version_entry.set_type(kRolesVersionType);
+  version_entry.set_version(version);
+
+  // Prepare write.
+  auto l = roles_version_->LockForWrite();
+  l->mutable_data()->pb = std::move(version_entry);
+
+  TRACE("Set CatalogManager's roles version");
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(roles_version_.get()));
+
+  l->Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateRoleUnlocked(const std::string& role_name,
+                                          const std::string& salted_hash,
+                                          const bool login, const bool superuser,
+                                          const bool increment_roles_version) {
 
   if (!lock_.is_locked()) {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
@@ -3782,6 +3974,12 @@ CHECKED_STATUS CatalogManager::CreateRoleUnlocked(const std::string& role_name,
   if (salted_hash.size() != 0) {
     role_entry.set_salted_hash(salted_hash);
   }
+
+  if (increment_roles_version) {
+    // Increment roles version.
+    RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+  }
+
   // Create in memory object.
   scoped_refptr<RoleInfo> role = new RoleInfo(role_name);
 
@@ -3843,6 +4041,9 @@ Status CatalogManager::AlterRole(const AlterRoleRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
+  // Increment roles version.
+  RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+
   // Modify the role.
   auto l = role->LockForWrite();
   if (req->has_login()) {
@@ -3855,8 +4056,11 @@ Status CatalogManager::AlterRole(const AlterRoleRequestPB* req,
     l->mutable_data()->pb.set_salted_hash(req->salted_hash());
   }
 
-  VLOG(1) << "Altered role with request: " << req->ShortDebugString();
   l->Commit();
+  VLOG(1) << "Altered role with request: " << req->ShortDebugString();
+  if (req->has_superuser()) {
+    BuildResourcePermissionsUnlocked();
+  }
   return Status::OK();
 }
 
@@ -3883,6 +4087,9 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
         Substitute("Role $0 does not exist", req->name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
+
+  // Increment roles version.
+  RETURN_NOT_OK(IncrementRolesVersionUnlocked());
 
   // Find all the roles where req->name() is part of the member_of list since we will need to remove
   // the role we are deleting from those lists.
@@ -4037,6 +4244,10 @@ Status CatalogManager::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
       }
 
       LOG(INFO) << "Modified 'member of' field of role " << recipient_role->id();
+
+      // Increment roles version before commiting the mutation.
+      RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+
       role_info_mutation.Commit();
       BuildRecursiveRolesUnlocked();
     }

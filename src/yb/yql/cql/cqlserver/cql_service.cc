@@ -31,6 +31,8 @@
 
 using namespace std::placeholders;
 
+DECLARE_bool(use_cassandra_authentication);
+
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
@@ -93,7 +95,8 @@ const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
             server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
       }
       // Create and save the metadata cache object.
-      metadata_cache_ = std::make_shared<YBMetaDataCache>(client);
+      metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
+                                                          FLAGS_use_cassandra_authentication);
       is_metadata_initialized_.store(true, std::memory_order_release);
     }
   }

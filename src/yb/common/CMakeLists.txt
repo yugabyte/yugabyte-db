@@ -116,7 +116,8 @@ set(COMMON_SRCS
   ql_resultset.cc
   ql_expr.cc
   flags.cc
-  pgsql_resultset.cc)
+  pgsql_resultset.cc
+  roles_permissions.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.

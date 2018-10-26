@@ -266,6 +266,36 @@ class SemContext : public ProcessContext {
     current_dml_stmt_ = stmt;
   }
 
+  CHECKED_STATUS HasKeyspacePermission(const PermissionType permission,
+                                       const NamespaceName& keyspace_name);
+
+  // Check whether the current role has the specified permission on the keyspace. Returns an
+  // UNAUTHORIZED error message if not found.
+  CHECKED_STATUS CheckHasKeyspacePermission(const YBLocation& loc,
+                                            const PermissionType permission,
+                                            const NamespaceName& keyspace_name);
+
+  // Check whether the current role has the specified permission on the keyspace or table. Returns
+  // an UNAUTHORIZED error message if not found.
+  CHECKED_STATUS CheckHasTablePermission(const YBLocation& loc,
+                                         const PermissionType permission,
+                                         const NamespaceName& keyspace_name,
+                                         const TableName& table_name);
+
+  // Check whether the current role has the specified permission on the role. Returns an
+  // UNAUTHORIZED error message if not found.
+  CHECKED_STATUS CheckHasRolePermission(const YBLocation& loc,
+                                        const PermissionType permission,
+                                        const RoleName& role_name);
+
+  // Check whether the current role has the specified permission on 'ALL KEYSPACES'.
+  CHECKED_STATUS CheckHasAllKeyspacesPermission(const YBLocation& loc,
+                                                const PermissionType permission);
+
+  // Check whether the current role has the specified permission on 'ALL ROLES'.
+  CHECKED_STATUS CheckHasAllRolesPermission(const YBLocation& loc,
+                                            const PermissionType permission);
+
   void Reset();
 
  private:
@@ -298,5 +328,4 @@ class SemContext : public ProcessContext {
 
 }  // namespace ql
 }  // namespace yb
-
 #endif  // YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_

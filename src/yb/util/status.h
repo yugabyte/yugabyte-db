@@ -68,6 +68,13 @@
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
   } while (0);
 
+#define YB_RETURN_NOT_OK_OR_DFATAL(s) do { \
+    if (PREDICT_FALSE(!s.ok())) { \
+      LOG(DFATAL) << s.ToString(); \
+    } \
+    YB_RETURN_NOT_OK(s); \
+  } while (0);
+
 // Emit a warning if 'to_call' returns a bad status.
 #define YB_WARN_NOT_OK(to_call, warning_prefix) do { \
     ::yb::Status _s = (to_call); \
@@ -93,13 +100,15 @@
 // If the status is bad, CHECK immediately, appending the status to the logged message.
 #define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
-#define RETURN_NOT_OK         YB_RETURN_NOT_OK
-#define RETURN_NOT_OK_PREPEND YB_RETURN_NOT_OK_PREPEND
-#define RETURN_NOT_OK_RET     YB_RETURN_NOT_OK_RET
-#define WARN_NOT_OK           YB_WARN_NOT_OK
-#define LOG_AND_RETURN        YB_LOG_AND_RETURN
-#define CHECK_OK_PREPEND      YB_CHECK_OK_PREPEND
-#define CHECK_OK              YB_CHECK_OK
+#define RETURN_NOT_OK           YB_RETURN_NOT_OK
+#define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
+#define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
+// If status is not OK, this will FATAL in debug mode, or return the error otherwise.
+#define RETURN_NOT_OK_OR_DFATAL YB_RETURN_NOT_OK_OR_DFATAL
+#define WARN_NOT_OK             YB_WARN_NOT_OK
+#define LOG_AND_RETURN          YB_LOG_AND_RETURN
+#define CHECK_OK_PREPEND        YB_CHECK_OK_PREPEND
+#define CHECK_OK                YB_CHECK_OK
 
 // These are standard glog macros.
 #define YB_LOG              LOG

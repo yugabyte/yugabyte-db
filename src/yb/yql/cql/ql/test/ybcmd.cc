@@ -66,7 +66,7 @@ class TestQLCmd : public QLTestBase {
     builder.add_master_server_addr(master_addresses);
     builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
     CHECK_OK(builder.Build(&client_));
-    metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_);
+    metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_, false);
   }
 };
 
