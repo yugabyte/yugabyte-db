@@ -227,6 +227,7 @@ message SysRowEntry {
     ROLE = 6;
     SNAPSHOT = 7;
     REDIS_CONFIG = 8;
+    VERSION = 9;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -359,7 +360,6 @@ message SysUDTypeEntryPB {
   repeated QLTypePB field_types = 4;
 }
 
-
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
 message SysRedisConfigEntryPB {
   optional string key = 1;
@@ -383,6 +383,15 @@ message SysRoleEntryPB {
   repeated bytes member_of = 4;
   optional bytes salted_hash = 5;
   repeated ResourcePermissionsPB resources = 7;
+}
+
+// Used to keep track of objects' versions, but could be used to track the version of any object
+// by using a different type name.
+// For now used only for roles. Every time a role gets created/deleted, or a permission gets
+// added/removed, we increase the version entry for roles.
+message SysVersionEntryPB {
+  optional string type = 1;
+  optional uint64 version = 2;
 }
 
 message ResourcePermissionsPB {
@@ -1036,23 +1045,6 @@ message DeleteNamespaceResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message GrantRevokePermissionRequestPB {
-  optional PermissionType permission = 1;
-  optional ResourceType resource_type = 2;
-  optional string canonical_resource = 3;
-  optional string resource_name = 4;
-  optional NamespaceIdentifierPB namespace = 5;
-  optional string role_name = 6;
-
-  // true if this is a revoke request.
-  optional bool revoke = 7 [ default = false ];
-}
-
-message GrantRevokePermissionResponsePB {
-  // The error, if an error occurred with this request.
-  optional MasterErrorPB error = 1;
-}
-
 message ListNamespacesRequestPB {
   optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_UNDEFINED ];
 }
@@ -1112,6 +1104,48 @@ message GrantRevokeRoleRequestPB {
 message GrantRevokeRoleResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+}
+
+message GrantRevokePermissionRequestPB {
+  optional PermissionType permission = 1;
+  optional ResourceType resource_type = 2;
+  optional string canonical_resource = 3;
+  optional string resource_name = 4;
+  optional NamespaceIdentifierPB namespace = 5;
+  optional string role_name = 6;
+
+  // true if this is a revoke request.
+  optional bool revoke = 7 [ default = false ];
+}
+
+message GrantRevokePermissionResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message GetPermissionsRequestPB {
+  // Only get the permissions if the cache version in the master is greater than this version.
+  optional uint64 if_version_greater_than = 1;
+}
+
+message ResourcePermissionInfoPB {
+  optional string canonical_resource = 1;
+  // Bitmap representing the permissions.
+  optional uint32 permissions = 2;
+}
+
+message RolePermissionInfoPB {
+  optional string role = 1;
+  // Bitmap representing the permissions for 'ALL KEYSPACES' and 'ALL ROLES'.
+  optional uint32 all_keyspaces_permissions = 2;
+  optional uint32 all_roles_permissions = 3;
+  repeated ResourcePermissionInfoPB resource_permissions = 4;
+}
+
+message GetPermissionsResponsePB {
+  optional uint64 version = 1;
+  optional MasterErrorPB error = 2;
+  repeated RolePermissionInfoPB role_permissions = 3;
 }
 
 message RedisConfigSetRequestPB {
@@ -1246,17 +1280,18 @@ service MasterService {
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
 
-  rpc GrantRevokePermission(GrantRevokePermissionRequestPB)
-      returns (GrantRevokePermissionResponsePB);
-
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
+  //  Authentication and Authorization.
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
   rpc AlterRole(AlterRoleRequestPB) returns (AlterRoleResponsePB);
   rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
   rpc GrantRevokeRole(GrantRevokeRoleRequestPB) returns (GrantRevokeRoleResponsePB);
+  rpc GrantRevokePermission(GrantRevokePermissionRequestPB)
+      returns (GrantRevokePermissionResponsePB);
+  rpc GetPermissions(GetPermissionsRequestPB) returns (GetPermissionsResponsePB);
 
   rpc CreateUDType(CreateUDTypeRequestPB) returns (CreateUDTypeResponsePB);
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);

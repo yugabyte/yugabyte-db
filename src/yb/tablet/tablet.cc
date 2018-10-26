@@ -355,7 +355,7 @@ Tablet::Tablet(
 
   // Create index table metadata cache for secondary index update.
   if (!metadata_->index_map().empty()) {
-    metadata_cache_.emplace(client_future_.get());
+    metadata_cache_.emplace(client_future_.get(), false /* Update roles' permissions cache */);
   }
 
   // If this is a unique index tablet, set up the index primary key schema.
@@ -1344,7 +1344,7 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
     }
-    metadata_cache_.emplace(client_future_.get());
+    metadata_cache_.emplace(client_future_.get(), false /* Update permissions cache */);
   }
 
   // Flush the updated schema metadata to disk.

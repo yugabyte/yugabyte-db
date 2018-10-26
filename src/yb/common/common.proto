@@ -138,14 +138,14 @@ enum ResourceType {
 
 // Suffixed with PERMISSION, because Google does not allow same enum name CREATE
 enum PermissionType {
-  ALL_PERMISSION = 1;
-  ALTER_PERMISSION = 2;
-  CREATE_PERMISSION = 3;
-  DROP_PERMISSION = 4;
-  SELECT_PERMISSION = 5;
-  MODIFY_PERMISSION = 6;
-  AUTHORIZE_PERMISSION = 7;
-  DESCRIBE_PERMISSION = 8;
+  ALTER_PERMISSION = 0;
+  CREATE_PERMISSION = 1;
+  DROP_PERMISSION = 2;
+  SELECT_PERMISSION = 3;
+  MODIFY_PERMISSION = 4;
+  AUTHORIZE_PERMISSION = 5;
+  DESCRIBE_PERMISSION = 6;
+  ALL_PERMISSION = 999999999;
 }
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)

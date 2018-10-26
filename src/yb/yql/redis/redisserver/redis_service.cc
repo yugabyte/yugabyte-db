@@ -1087,7 +1087,8 @@ Status RedisServiceImplData::Initialize() {
           server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
     }
 
-    tables_cache_ = std::make_shared<YBMetaDataCache>(client_);
+    tables_cache_ = std::make_shared<YBMetaDataCache>(client_,
+        false /* Update roles permissions cache */);
     session_pool_.Init(client_, server_->metric_entity());
 
     initialized_.store(true, std::memory_order_release);

@@ -16,6 +16,7 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 #include "yb/client/client.h"
+#include "yb/common/roles_permissions.h"
 #include "yb/util/flag_tags.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
@@ -275,6 +276,78 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
   }
 
   return entry->column_desc_;
+}
+
+Status SemContext::HasKeyspacePermission(PermissionType permission,
+                                       const NamespaceName& keyspace_name) {
+
+  const auto& keyspace = keyspace_name.empty() ? ql_env_->CurrentKeyspace() : keyspace_name;
+  return ql_env_->HasResourcePermission(
+      strings::Substitute("$0/$1", kRolesDataResource, keyspace), ObjectType::OBJECT_SCHEMA,
+      ql_env_->CurrentRoleName(), permission, keyspace);
+}
+
+Status SemContext::CheckHasKeyspacePermission(const YBLocation& loc,
+                                              const PermissionType permission,
+                                              const NamespaceName& keyspace_name) {
+  auto s = HasKeyspacePermission(permission, keyspace_name);
+  if (!s.ok()) {
+    return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
+  }
+  return Status::OK();
+}
+
+Status SemContext::CheckHasTablePermission(const YBLocation &loc,
+                                           PermissionType permission,
+                                           const NamespaceName& keyspace_name,
+                                           const TableName& table_name) {
+
+  if (HasKeyspacePermission(permission, keyspace_name).ok()) {
+    return Status::OK();
+  }
+  const auto& keyspace = keyspace_name.empty() ? ql_env_->CurrentKeyspace() : keyspace_name;
+  auto s = ql_env_->HasResourcePermission(
+      strings::Substitute("$0/$1/$2", kRolesDataResource, keyspace, table_name),
+      ObjectType::OBJECT_TABLE, ql_env_->CurrentRoleName(), permission, keyspace, table_name);
+  if (!s.ok()) {
+    return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
+  }
+  return Status::OK();
+}
+
+Status SemContext::CheckHasRolePermission(const YBLocation& loc,
+                                          PermissionType permission,
+                                          const RoleName& role_name) {
+
+  auto s = ql_env_->HasResourcePermission(
+      strings::Substitute("$0/$1", kRolesRoleResource, role_name),  ObjectType::OBJECT_ROLE,
+      ql_env_->CurrentRoleName(), permission);
+  if (s.ok()) {
+    return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
+  }
+  return Status::OK();
+}
+
+Status SemContext::CheckHasAllKeyspacesPermission(const YBLocation& loc,
+                                              PermissionType permission) {
+
+  auto s = ql_env_->HasResourcePermission(kRolesDataResource, ObjectType::OBJECT_SCHEMA,
+                                          ql_env_->CurrentRoleName(), permission);
+  if (!s.ok()) {
+    return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
+  }
+  return Status::OK();
+}
+
+Status SemContext::CheckHasAllRolesPermission(const YBLocation& loc,
+                                          PermissionType permission) {
+
+  auto s = ql_env_->HasResourcePermission(kRolesRoleResource, ObjectType::OBJECT_ROLE,
+                                          ql_env_->CurrentRoleName(), permission);
+  if (!s.ok()) {
+    return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
+  }
+  return Status::OK();
 }
 
 void SemContext::Reset() {

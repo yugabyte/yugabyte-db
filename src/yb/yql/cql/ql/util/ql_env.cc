@@ -15,12 +15,11 @@
 // QLEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
-
 #include "yb/master/catalog_manager.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 
 namespace yb {
 namespace ql {
@@ -211,6 +210,17 @@ Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
                               const std::string& recipient_role_name) {
   return client_->GrantRevokeRole(statement_type, granted_role_name, recipient_role_name);
 }
+
+Status QLEnv::HasResourcePermission(const string& canonical_name,
+                                    const ql::ObjectType& object_type,
+                                    const std::string& role_name,
+                                    const PermissionType permission,
+                                    const NamespaceName& keyspace,
+                                    const TableName& table) {
+  return metadata_cache_->HasResourcePermission(canonical_name, object_type, role_name, permission,
+                                                keyspace, table);
+}
+
 
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateUDType(const std::string &keyspace_name,

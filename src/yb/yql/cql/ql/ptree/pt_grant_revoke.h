@@ -18,6 +18,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 
+#include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/common.pb.h"
 #include "yb/master/master.pb.h"
@@ -172,9 +173,9 @@ class PTGrantRevokePermission : public TreeNode {
     }
 
     if (resource_type_ == ResourceType::ALL_ROLES || resource_type_ == ResourceType::ROLE) {
-      prefix = "roles";
+      prefix = kRolesRoleResource;
     } else {
-      prefix = "data";
+      prefix = kRolesDataResource;
     }
     std::string full_name = prefix + suffix;
     return full_name;

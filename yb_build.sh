@@ -765,7 +765,7 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_NINJA=1
     ;;
     --make)
-      unset YB_USE_NINJA
+      export YB_USE_NINJA=0
     ;;
     --build-root)
       predefined_build_root=$2

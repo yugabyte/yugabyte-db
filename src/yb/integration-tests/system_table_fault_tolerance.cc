@@ -77,7 +77,8 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
   std::shared_ptr<client::YBClient> client;
   ASSERT_OK(builder.Build(&client));
 
-  auto metadata_cache = std::make_shared<client::YBMetaDataCache>(client);
+  auto metadata_cache = std::make_shared<client::YBMetaDataCache>(client,
+      false /* Update roles' permissions cache */);
   server::ClockPtr clock(new server::HybridClock());
   ASSERT_OK(clock->Init());
   auto processor = std::make_unique<ql::QLProcessor>(client, metadata_cache, nullptr, clock,
