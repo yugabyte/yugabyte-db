@@ -73,19 +73,26 @@ static const int DEFAULT_YB_NUM_ROWS = 1000;
 typedef struct YbFdwPlanState
 {
 	/* YugaByte metadata about the referenced table/relation. */
+	Bitmapset *primary_key;
 	Bitmapset *hash_key;
 
 	/* Bitmap of attribute (column) numbers that we need to fetch from YB. */
 	Bitmapset *target_attrs;
 
-	/* baserestrictinfo clauses, split into those that YugaByte should
-	 * check and the leftovers that PG should check. */
-	List *yb_conds;
+	/* (Equality) Conditions on hash key -- filtered by YugaByte */
+	List *yb_hconds;
+
+	/* (Equality) Conditions on range key -- filtered by YugaByte */
+	List *yb_rconds;
+
+	/* Rest of baserestrictinfo conditions -- filtered by Postgres */
 	List *pg_conds;
 
-	/* The set of columns set (i.e. with eq conditions) by yb_conds.
-	 * Used to check if hash or primary key is fully set. */
-	Bitmapset *yb_set_cols;
+	/*
+	 * The set of columns set by YugaByte conds (i.e. in yb_hconds or yb_rconds
+	 * above). Used to check if hash or primary key is fully set.
+	 */
+	Bitmapset *yb_cols;
 
 } YbFdwPlanState;
 
@@ -148,18 +155,29 @@ void ybcClassifyWhereExpr(RelOptInfo *baserel,
 					attrNum = IsA(left, Var) ? ((Var *) left)->varattno
 					                         : ((Var *) right)->varattno;
 
-					bool is_hash = bms_is_member(attrNum, yb_state->hash_key);
+					bool is_primary = bms_is_member(attrNum,
+					                                yb_state->primary_key);
+					bool is_hash    = bms_is_member(attrNum,
+					                                yb_state->hash_key);
 
 					/*
-					 * TODO Once we support WHERE clause in pggate, add
-					 * `|| !is_hash` to also pass down all supported
-					 * conditions (i.e. comparisons) on non-hash key columns.
+					 * TODO Once we support WHERE clause in pggate, these
+					 * conditions need to be updated accordingly.
 					 */
 					if (is_hash && is_eq)
 					{
-						yb_state->yb_set_cols =
-								bms_add_member(yb_state->yb_set_cols, attrNum);
-						yb_state->yb_conds = lappend(yb_state->yb_conds, expr);
+						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
+						                                     attrNum);
+						yb_state->yb_hconds = lappend(yb_state->yb_hconds,
+						                              expr);
+						return;
+					}
+					else if (is_primary && is_eq)
+					{
+						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
+						                                     attrNum);
+						yb_state->yb_rconds = lappend(yb_state->yb_rconds,
+						                              expr);
 						return;
 					}
 				}
@@ -241,6 +259,11 @@ ybcGetForeignRelSize(PlannerInfo *root,
 		if (is_hash)
 		{
 			ybc_plan->hash_key = bms_add_member(ybc_plan->hash_key, attrNum);
+		}
+		if (is_primary)
+		{
+			ybc_plan->primary_key = bms_add_member(ybc_plan->primary_key,
+			                                       attrNum);
 		}
 	}
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
@@ -331,19 +354,31 @@ ybcGetForeignPlan(PlannerInfo *root,
 	foreach(lc, scan_clauses)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		if (!list_member_ptr(yb_plan_state->yb_conds, expr) &&
+		if (!list_member_ptr(yb_plan_state->yb_hconds, expr) &&
+		    !list_member_ptr(yb_plan_state->yb_rconds, expr) &&
 		    !list_member_ptr(yb_plan_state->pg_conds, expr))
 		{
 			ybcClassifyWhereExpr(baserel, yb_plan_state, expr);
 		}
 	}
 
-	/* If hash key is not fully set, we must do a full-table scan in YugaByte
-	 * and defer all filtering to Postgres */
-	if (!bms_is_subset(yb_plan_state->hash_key, yb_plan_state->yb_set_cols))
+	/*
+	 * If hash key is not fully set, we must do a full-table scan in YugaByte
+	 * and defer all filtering to Postgres.
+	 * Else, if primary key is not fully set we need to remove all range
+	 * key conds and defer filtering for range column conds to Postgres.
+	 */
+	if (!bms_is_subset(yb_plan_state->hash_key, yb_plan_state->yb_cols))
 	{
-		yb_plan_state->pg_conds = scan_clauses;
-		yb_plan_state->yb_conds = NIL;
+		yb_plan_state->pg_conds  = scan_clauses;
+		yb_plan_state->yb_hconds = NIL;
+		yb_plan_state->yb_rconds = NIL;
+	}
+	else if (!bms_is_subset(yb_plan_state->primary_key, yb_plan_state->yb_cols))
+	{
+		yb_plan_state->pg_conds = list_concat(yb_plan_state->pg_conds,
+		                                      yb_plan_state->yb_rconds);
+		yb_plan_state->yb_rconds = NIL;
 	}
 
 	/*
@@ -407,15 +442,18 @@ ybcGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
+	List *yb_conds = list_concat(yb_plan_state->yb_hconds,
+	                             yb_plan_state->yb_rconds);
+
 	/* Create the ForeignScan node */
-	fdw_private = list_make2(target_attrs, yb_plan_state->yb_conds);
+	fdw_private = list_make2(target_attrs, yb_conds);
 	return make_foreignscan(tlist,  /* target list */
 	                        yb_plan_state->pg_conds,  /* checked by Postgres */
 	                        scan_relid,
 	                        NIL,    /* expressions YB may evaluate (none) */
 	                        fdw_private,  /* private data for YB */
 	                        NIL,    /* custom YB target list (none for now */
-	                        yb_plan_state->yb_conds,    /* checked by YB */
+	                        yb_conds,    /* checked by YB */
 	                        outer_plan);
 }
 
