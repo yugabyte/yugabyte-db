@@ -41,69 +41,89 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testWhereClause() throws Exception {
     Set<Row> allRows = setupSimpleTable("test");
-    Statement statement = connection.createStatement();
+    try (Statement statement = connection.createStatement()) {
 
-    // Test no where clause -- select all rows.
-    try (ResultSet rs = statement.executeQuery("SELECT * FROM test")) {
-      assertEquals(allRows, getRowSet(rs));
-    }
+      // Test no where clause -- select all rows.
+      String query = "SELECT * FROM test";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        assertEquals(allRows, getRowSet(rs));
+      }
+      assertFalse(needsPgFiltering(query));
 
-    // Test fixed hash key.
-    try (ResultSet rs = statement.executeQuery("SELECT * FROM test WHERE h = 2")) {
-      Set<Row> expectedRows = allRows.stream()
-                                     .filter(row -> row.getLong(0).equals(2L))
-                                     .collect(Collectors.toSet());
-      assertEquals(10, expectedRows.size());
-      assertEquals(expectedRows, getRowSet(rs));
-    }
+      // Test fixed hash key.
+      query = "SELECT * FROM test WHERE h = 2";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getLong(0).equals(2L))
+            .collect(Collectors.toSet());
+        assertEquals(10, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertFalse(needsPgFiltering(query));
 
-    // Test fixed primary key.
-    try (ResultSet rs = statement.executeQuery("SELECT * FROM test WHERE h = 2 AND r = 3.5")) {
-      Set<Row> expectedRows = allRows.stream()
-                                     .filter(row -> row.getLong(0).equals(2L) &&
-                                                      row.getDouble(1).equals(3.5))
-                                     .collect(Collectors.toSet());
-      assertEquals(1, expectedRows.size());
-      assertEquals(expectedRows, getRowSet(rs));
-    }
+      // Test fixed primary key.
+      query = "SELECT * FROM test WHERE h = 2 AND r = 3.5";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getLong(0).equals(2L) &&
+                row.getDouble(1).equals(3.5))
+            .collect(Collectors.toSet());
+        assertEquals(1, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertFalse(needsPgFiltering(query));
 
-    // Test range scan.
-    try (ResultSet rs = statement.executeQuery("SELECT * FROM test " +
-                                                   "WHERE h = 2 AND r >= 3.5 AND r < 8.5")) {
-      Set<Row> expectedRows = allRows.stream()
-                                     .filter(row -> row.getLong(0).equals(2L) &&
-                                                      row.getDouble(1) >= 3.5 &&
-                                                      row.getDouble(1) < 8.5)
-                                     .collect(Collectors.toSet());
-      assertEquals(5, expectedRows.size());
-      assertEquals(expectedRows, getRowSet(rs));
-    }
+      // Test fixed range key without fixed hash key.
+      query = "SELECT * FROM test WHERE r = 6.5";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getDouble(1).equals(6.5))
+            .collect(Collectors.toSet());
+        assertEquals(10, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertTrue(needsPgFiltering(query));
 
-    // Test conditions on regular (non-primary-key) columns.
-    try (ResultSet rs =
-             statement.executeQuery("SELECT * FROM test WHERE vi < 14 AND vs != 'v09'")) {
-      Set<Row> expectedRows = allRows.stream()
-                                     .filter(row -> row.getInt(2) < 14 &&
-                                                      !row.getString(3).equals("v09"))
-                                     .collect(Collectors.toSet());
-      // 14 options (for hash key) minus [9,'v09'].
-      assertEquals(13, expectedRows.size());
-      assertEquals(expectedRows, getRowSet(rs));
-    }
+      // Test range scan.
+      query = "SELECT * FROM test WHERE h = 2 AND r >= 3.5 AND r < 8.5";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getLong(0).equals(2L) &&
+                row.getDouble(1) >= 3.5 &&
+                row.getDouble(1) < 8.5)
+            .collect(Collectors.toSet());
+        assertEquals(5, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertTrue(needsPgFiltering(query));
 
-    // Test other WHERE operators (IN, OR, LIKE).
-    try (ResultSet rs =
-             statement.executeQuery("SELECT * FROM test WHERE h IN (2,3) OR vs LIKE 'v_2'")) {
-      Set<Row> expectedRows = allRows.stream()
-                                     .filter(row -> row.getLong(0).equals(2L) ||
-                                                      row.getLong(0).equals(3L) ||
-                                                      row.getString(3).matches("v.2"))
-                                     .collect(Collectors.toSet());
-      // 20 plus 10 options but 2 common ones ('v22' and 'v32').
-      assertEquals(28, expectedRows.size());
-      assertEquals(expectedRows, getRowSet(rs));
+      // Test conditions on regular (non-primary-key) columns.
+      query = "SELECT * FROM test WHERE vi < 14 AND vs != 'v09'";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getInt(2) < 14 &&
+                !row.getString(3).equals("v09"))
+            .collect(Collectors.toSet());
+        // 14 options (for hash key) minus [9,'v09'].
+        assertEquals(13, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertTrue(needsPgFiltering(query));
+
+      // Test other WHERE operators (IN, OR, LIKE).
+      query = "SELECT * FROM test WHERE h IN (2,3) OR vs LIKE 'v_2'";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        Set<Row> expectedRows = allRows.stream()
+            .filter(row -> row.getLong(0).equals(2L) ||
+                row.getLong(0).equals(3L) ||
+                row.getString(3).matches("v.2"))
+            .collect(Collectors.toSet());
+        // 20 plus 10 options but 2 common ones ('v22' and 'v32').
+        assertEquals(28, expectedRows.size());
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      assertTrue(needsPgFiltering(query));
     }
-    statement.close();
   }
 
   @Test
