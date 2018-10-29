@@ -835,86 +835,74 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   ASSERT_EQ(0, loader->config_entries.size());
 }
 
-class TestVersionLoader : public Visitor<PersistentVersionInfo> {
+class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
  public:
-  TestVersionLoader() {}
-  ~TestVersionLoader() { Reset(); }
+  TestSysConfigLoader() {}
+  ~TestSysConfigLoader() { Reset(); }
 
   void Reset() {
-    for (SysVersionInfo* version : versions) {
-      version->Release();
+    for (SysConfigInfo* sys_config : sys_configs) {
+      sys_config->Release();
     }
-    versions.clear();
+    sys_configs.clear();
   }
 
-  Status Visit(const string& version_id, const SysVersionEntryPB& metadata) override {
+  Status Visit(const string& id, const SysConfigEntryPB& metadata) override {
 
-    // Setup the version info.
-    SysVersionInfo* const version = new SysVersionInfo(version_id);
-    auto l = version->LockForWrite();
+    // Setup the sysconfig info.
+    SysConfigInfo* const sys_config = new SysConfigInfo(id /* config_type */);
+    auto l = sys_config->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
     l->Commit();
-    version->AddRef();
-    versions.push_back(version);
-    LOG(INFO) << " Current SysVersionInfo: " << version->ToString();
+    sys_config->AddRef();
+    sys_configs.push_back(sys_config);
+    LOG(INFO) << " Current SysConfigInfo: " << sys_config->ToString();
     return Status::OK();
   }
 
-  vector<SysVersionInfo*> versions;
+  vector<SysConfigInfo*> sys_configs;
 };
 
-// Test the sys-catalog version basic operations (add, visit, drop).
-TEST_F(SysCatalogTest, TestSysCatalogVersionOperations) {
+// Test the sys-catalog sys-config basic operations (add, visit, drop).
+TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
 
-  unique_ptr<TestVersionLoader> loader(new TestVersionLoader());
-  ASSERT_OK(sys_catalog->Visit(loader.get()));
-
-  // Set the version information.
-  SysVersionEntryPB version_entry;
-  version_entry.set_type("test_version");
-  version_entry.set_version(0);
-
-
-  // 1. Add a new SysVersionEntryPB.
-  scoped_refptr<SysVersionInfo> version = new SysVersionInfo("test_version");
+  // 1. Verify that when master initializes, "security-config" entry is set up with
+  // roles_version = 0.
+  scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
   {
-    auto l = version->LockForWrite();
-    l->mutable_data()->pb = version_entry;
-
-    // Add the version.
-    ASSERT_OK(sys_catalog->AddItem(version.get()));
+    auto l = security_config->LockForWrite();
+    l->mutable_data()->pb.mutable_security_config()->set_roles_version(0);
     l->Commit();
   }
-
-  // Verify it showed up.
-  loader->Reset();
+  unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
 
-  // Because we create the cassandra role during initialization, we will create a new SysVersionInfo
-  // object with id set to kRolesVersionType. So there should be two SysVersionInfo objects.
-  ASSERT_EQ(2, loader->versions.size());
-  auto roles_version = new SysVersionInfo(kRolesVersionType);
+  // 2. Add a new SysConfigEntryPB and verify it shows up.
+  scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
   {
-    version_entry.set_type(kRolesVersionType);
-    version_entry.set_version(0);
-    auto l = roles_version->LockForWrite();
-    l->mutable_data()->pb = std::move(version_entry);
+    auto l = test_config->LockForWrite();
+    l->mutable_data()->pb.mutable_security_config()->set_roles_version(1234);
+
+    // Add the test_config.
+    ASSERT_OK(sys_catalog->AddItem(test_config.get()));
     l->Commit();
   }
-  ASSERT_TRUE(MetadatasEqual(roles_version, loader->versions[0]));
-  ASSERT_TRUE(MetadatasEqual(version.get(), loader->versions[1]));
-
-  // 2. Remove the SysVersionEntry.
-  ASSERT_OK(sys_catalog->DeleteItem(version.get()));
-
-  // Verify that it got removed.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(1, loader->versions.size());
-  ASSERT_TRUE(MetadatasEqual(roles_version, loader->versions[0]));
+  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+  ASSERT_TRUE(MetadatasEqual(test_config.get(), loader->sys_configs[1]));
+
+  // 2. Remove the SysConfigEntry and verify that it got removed.
+  ASSERT_OK(sys_catalog->DeleteItem(test_config.get()));
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
 }
-
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
  public:

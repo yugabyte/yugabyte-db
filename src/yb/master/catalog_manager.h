@@ -86,7 +86,7 @@ class TSDescriptor;
 struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
-static const char* const kRolesVersionType = "roles-version-type";
+static const char* const kSecurityConfigType = "security-configuration";
 
 using PlacementId = std::string;
 
@@ -625,21 +625,21 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
-struct PersistentVersionInfo : public Persistent<SysVersionEntryPB, SysRowEntry::VERSION> {};
+struct PersistentSysConfigInfo : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
 
-class SysVersionInfo : public RefCountedThreadSafe<SysVersionInfo>,
-                       public MetadataCowWrapper<PersistentVersionInfo> {
+class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
+                      public MetadataCowWrapper<PersistentSysConfigInfo> {
  public:
-  explicit SysVersionInfo(const std::string& version_type) : version_type_(version_type) {}
-  const std::string& id() const override { return version_type_; }
+  explicit SysConfigInfo(const std::string& config_type) : config_type_(config_type) {}
+  const std::string& id() const override { return config_type_; /* config type is the entry id */ }
 
  private:
-  friend class RefCountedThreadSafe<SysVersionInfo>;
-  ~SysVersionInfo() = default;
+  friend class RefCountedThreadSafe<SysConfigInfo>;
+  ~SysConfigInfo() = default;
 
-  const std::string version_type_;
+  const std::string config_type_;
 
-  DISALLOW_COPY_AND_ASSIGN(SysVersionInfo);
+  DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
 };
 
 // Component within the catalog manager which tracks blacklist (decommission) operation
@@ -1156,7 +1156,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class ClusterConfigLoader;
   friend class RoleLoader;
   friend class RedisConfigLoader;
-  friend class VersionLoader;
+  friend class SysConfigLoader;
 
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
@@ -1191,6 +1191,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
   CHECKED_STATUS PrepareDefaultClusterConfig();
+
+  // Sets up various system configs.
+  CHECKED_STATUS PrepareDefaultSysConfig();
 
   CHECKED_STATUS PrepareDefaultNamespaces();
 
@@ -1559,7 +1562,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // from a client.
   std::shared_ptr<GetPermissionsResponsePB> permissions_cache_;
 
-  scoped_refptr<SysVersionInfo> roles_version_ = nullptr;
+  // Cluster security config.
+  scoped_refptr<SysConfigInfo> security_config_ = nullptr;
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
   typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
