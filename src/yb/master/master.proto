@@ -227,7 +227,7 @@ message SysRowEntry {
     ROLE = 6;
     SNAPSHOT = 7;
     REDIS_CONFIG = 8;
-    VERSION = 9;
+    SYS_CONFIG = 9;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -385,13 +385,18 @@ message SysRoleEntryPB {
   repeated ResourcePermissionsPB resources = 7;
 }
 
-// Used to keep track of objects' versions, but could be used to track the version of any object
-// by using a different type name.
-// For now used only for roles. Every time a role gets created/deleted, or a permission gets
-// added/removed, we increase the version entry for roles.
-message SysVersionEntryPB {
-  optional string type = 1;
-  optional uint64 version = 2;
+// Cluster security configuration.
+message SysSecurityConfigEntryPB {
+  // Roles configuration version. Every time a role gets created/deleted, or a permission gets
+  // added/removed, we increase the version.
+  optional uint64 roles_version = 1;
+}
+
+// Various cluster configuration.
+message SysConfigEntryPB {
+  oneof config {
+    SysSecurityConfigEntryPB security_config = 1;
+  }
 }
 
 message ResourcePermissionsPB {
