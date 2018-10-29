@@ -322,6 +322,7 @@ void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
   }
 
   docdb::SeekOutOfSubKey(key_bytes, iter_.get());
+  skip_future_records_needed_ = true;
   if (intent_iter_ && status_.ok()) {
     seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeekForward;
     GetIntentPrefixForKeyWithoutHt(*key_bytes, &seek_key_buffer_);

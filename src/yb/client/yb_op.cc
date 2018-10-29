@@ -148,6 +148,11 @@ const std::string& YBRedisReadOp::GetKey() const {
 }
 
 Status YBRedisReadOp::GetPartitionKey(std::string *partition_key) const {
+  if (!redis_read_request_->key_value().has_key()) {
+    *partition_key =
+        PartitionSchema::EncodeMultiColumnHashValue(redis_read_request_->key_value().hash_code());
+    return Status::OK();
+  }
   const Slice& slice(redis_read_request_->key_value().key());
   return table_->partition_schema().EncodeRedisKey(slice, partition_key);
 }

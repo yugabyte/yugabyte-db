@@ -168,7 +168,8 @@ class Operation {
       call_(call),
       index_(index),
       operation_(std::move(operation)),
-      metrics_(metrics) {
+      metrics_(metrics),
+      manual_response_(ManualResponse::kFalse) {
     auto status = operation_->GetPartitionKey(&partition_key_);
     if (!status.ok()) {
       Respond(status);
@@ -177,15 +178,17 @@ class Operation {
 
   Operation(const std::shared_ptr<RedisInboundCall>& call,
             size_t index,
-            std::function<bool(const StatusFunctor&)> functor,
+            std::function<bool(client::YBSession*, const StatusFunctor&)> functor,
             std::string partition_key,
-            const rpc::RpcMethodMetrics& metrics)
+            const rpc::RpcMethodMetrics& metrics,
+            ManualResponse manual_response)
     : type_(OperationType::kLocal),
       call_(call),
       index_(index),
       functor_(std::move(functor)),
       partition_key_(std::move(partition_key)),
-      metrics_(metrics) {
+      metrics_(metrics),
+      manual_response_(manual_response) {
   }
 
   bool responded() const {
@@ -261,7 +264,7 @@ class Operation {
     }
   }
 
-  bool Apply(client::YBSession* session, const StatusFunctor& callback) {
+  bool Apply(client::YBSession* session, const StatusFunctor& callback, bool* applied_operations) {
     // We should destroy functor after this call.
     // Because it could hold references to other objects.
     // So we more it to temp variable.
@@ -274,7 +277,7 @@ class Operation {
 
     // Used for DebugSleep
     if (functor) {
-      return functor(callback);
+      return functor(session, callback);
     }
 
     auto status = session->Apply(operation_);
@@ -282,11 +285,16 @@ class Operation {
       Respond(status);
       return false;
     }
+    *applied_operations = true;
     return true;
   }
 
   void Respond(const Status& status) {
     responded_.store(true, std::memory_order_release);
+    if (manual_response_) {
+      return;
+    }
+
     if (status.ok()) {
       if (operation_) {
         call_->RespondSuccess(index_, metrics_, &response());
@@ -311,9 +319,10 @@ class Operation {
   std::shared_ptr<RedisInboundCall> call_;
   size_t index_;
   std::shared_ptr<YBRedisOp> operation_;
-  std::function<bool(const StatusFunctor&)> functor_;
+  std::function<bool(client::YBSession*, const StatusFunctor&)> functor_;
   std::string partition_key_;
   rpc::RpcMethodMetrics metrics_;
+  ManualResponse manual_response_;
   client::internal::RemoteTabletPtr tablet_;
   std::atomic<bool> responded_{false};
 };
@@ -384,13 +393,14 @@ class Block : public std::enable_shared_from_this<Block> {
     session_pool_ = session_pool;
     session_ = session_pool->Take();
     bool has_ok = false;
+    bool applied_operations = false;
     // Supposed to be called only once.
     StatusFunctor callback = BlockCallback(shared_from_this());
     for (auto* op : ops_) {
-      has_ok = op->Apply(session_.get(), callback) || has_ok;
+      has_ok = op->Apply(session_.get(), callback, &applied_operations) || has_ok;
     }
     if (has_ok) {
-      if (session_->HasPendingOperations()) {
+      if (applied_operations) {
         // Allow local calls in this thread only if no one is waiting behind us.
         session_->set_allow_local_calls_in_curr_thread(
             allow_local_calls_in_curr_thread && this->next_ == nullptr);
@@ -423,7 +433,7 @@ class Block : public std::enable_shared_from_this<Block> {
       // the context lives beyond the block_.reset() we might get an error while updating the
       // ref-count for the block_ (in the area of arena owned by the context).
       auto context = block_->context_;
-      DCHECK(context != nullptr);
+      DCHECK(context != nullptr) << block_.get();
       block_->Done(status);
       block_.reset();
     }
@@ -594,7 +604,10 @@ class TabletOperations {
       ArenaAllocator<Block> alloc(arena);
       data.block = std::allocate_shared<Block>(
           alloc, context, alloc, metrics_internal[static_cast<size_t>(OperationType::kRead)]);
-      if (type == last_conflict_type_) {
+      if (last_conflict_type_ == OperationType::kLocal) {
+        last_local_block_->SetNext(data.block);
+        last_conflict_type_ = type;
+      } else if (type == last_conflict_type_) {
         auto old_value = this->data(Opposite(type)).block->SetNext(data.block);
         if (old_value) {
           LOG(DFATAL) << "Opposite already had next block: "
@@ -670,8 +683,7 @@ class TabletOperations {
         data.used_keys.clear();
         break;
       case OperationType::kLocal:
-        last_local_block_->SetNext(opposite_data.block);
-        opposite_data.block->SetNext(data.block);
+        last_local_block_->SetNext(data.block);
         break;
     }
     last_conflict_type_ = type;
@@ -679,6 +691,9 @@ class TabletOperations {
 
   void CheckConflicts(OperationType type, const RedisKeyList& keys) {
     if (last_conflict_type_ == type) {
+      return;
+    }
+    if (last_conflict_type_ == OperationType::kLocal) {
       return;
     }
     auto& opposite = data(Opposite(type));
@@ -854,10 +869,11 @@ class BatchContextImpl : public BatchContext {
 
   void Apply(
       size_t index,
-      std::function<bool(const StatusFunctor&)> functor,
+      std::function<bool(client::YBSession*, const StatusFunctor&)> functor,
       std::string partition_key,
-      const rpc::RpcMethodMetrics& metrics) override {
-    DoApply(index, std::move(functor), std::move(partition_key), metrics);
+      const rpc::RpcMethodMetrics& metrics,
+      ManualResponse manual_response) override {
+    DoApply(index, std::move(functor), std::move(partition_key), metrics, manual_response);
   }
 
   std::string ToString() const {

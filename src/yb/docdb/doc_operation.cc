@@ -35,6 +35,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/trace.h"
+#include "yb/util/redis_util.h"
 
 DECLARE_bool(trace_docdb_calls);
 
@@ -1343,6 +1344,8 @@ Status RedisReadOperation::Execute() {
       return ExecuteGetRange();
     case RedisReadRequestPB::RequestCase::kGetCollectionRangeRequest:
       return ExecuteCollectionGetRange();
+    case RedisReadRequestPB::RequestCase::kKeysRequest:
+      return ExecuteKeys();
     default:
       return STATUS(Corruption,
           Substitute("Unsupported redis read operation: $0", request_.request_case()));
@@ -1879,6 +1882,35 @@ Status RedisReadOperation::ExecuteGetRange() {
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_string_response(value->value.c_str() + start, end - start);
+  return Status::OK();
+}
+
+Status RedisReadOperation::ExecuteKeys() {
+  iterator_->Seek(DocKey());
+  int threshold = request_.keys_request().threshold();
+
+  while (iterator_->valid()) {
+    auto key = VERIFY_RESULT(iterator_->FetchKey());
+    DocKey doc_key;
+    RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
+    const PrimitiveValue& key_primitive = doc_key.hashed_group().front();
+    if (key_primitive.IsString() &&
+        RedisUtil::RedisPatternMatch(request_.keys_request().pattern(),
+                                     key_primitive.GetString(),
+                                     false)) {
+      if (--threshold < 0) {
+        response_.clear_array_response();
+        response_.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        response_.set_error_message("Too many keys in the database.");
+        return Status::OK();
+      }
+      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(key_primitive,
+                                                     response_.mutable_array_response()));
+    }
+    iterator_->SeekOutOfSubDoc(key);
+  }
+
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
 
