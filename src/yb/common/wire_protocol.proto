@@ -87,6 +87,8 @@ message AppStatusPB {
     int32 posix_code = 4;
     int64 ql_error_code = 5;
   }
+  optional string source_file = 6;
+  optional int32 source_line = 7;
 }
 
 // Uniquely identify a particular instance of a particular server in the

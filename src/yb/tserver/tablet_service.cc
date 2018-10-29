@@ -989,6 +989,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   } else {
     safe_ht_to_read = tablet->SafeTime(require_lease, read_time.read, context.GetClientDeadline());
     if (!safe_ht_to_read.is_valid()) { // Timed out
+      TRACE("Timed out waiting for read time");
       SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
                            TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;
@@ -1036,6 +1037,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       break;
     }
     if (MonoTime::Now() > context.GetClientDeadline()) {
+      TRACE("Read timed out");
       SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
                            TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;

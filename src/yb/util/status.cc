@@ -61,18 +61,22 @@ Status::Status(Code code,
                int line_number,
                const Slice& msg,
                const Slice& msg2,
-               int64_t error_code) {
+               int64_t error_code,
+               DupFileName dup_file_name) {
   assert(code != kOk);
   const size_t len1 = msg.size();
   const size_t len2 = msg2.size();
   const size_t size = len1 + (len2 ? (2 + len2) : 0);
-  state_.reset(static_cast<State*>(malloc(size + kHeaderSize)));
+  size_t file_name_size = 0;
+  if (dup_file_name) {
+    file_name_size = strlen(file_name) + 1;
+  }
+  state_.reset(static_cast<State*>(malloc(size + kHeaderSize + file_name_size)));
   state_->message_len = static_cast<uint32_t>(size);
   state_->code = static_cast<uint8_t>(code);
   state_->error_code = error_code;
   // We aleady assigned intrusive_ptr, so counter should be one.
   state_->counter.store(1, std::memory_order_relaxed);
-  state_->file_name = file_name;
   state_->line_number = line_number;
   memcpy(state_->message, msg.data(), len1);
   if (len2) {
@@ -80,7 +84,15 @@ Status::Status(Code code,
     state_->message[len1 + 1] = ' ';
     memcpy(state_->message + 2 + len1, msg2.data(), len2);
   }
-#ifndef NDEBUG
+  if (dup_file_name) {
+    auto new_file_name = &state_->message[0] + size;
+    memcpy(new_file_name, file_name, file_name_size);
+    file_name = new_file_name;
+  }
+
+  state_->file_name = file_name;
+
+  #ifndef NDEBUG
   static const bool print_stack_trace = getenv("YB_STACK_TRACE_ON_ERROR_STATUS") != nullptr;
   static const boost::optional<std::regex> status_stack_trace_re =
       StatusStackTraceRegEx();
@@ -185,11 +197,13 @@ Slice Status::message() const {
 }
 
 Status Status::CloneAndPrepend(const Slice& msg) const {
-  return Status(code(), state_->file_name, state_->line_number, msg, message(), error_code());
+  return Status(code(), state_->file_name, state_->line_number, msg, message(), error_code(),
+                DupFileName(file_name_duplicated()));
 }
 
 Status Status::CloneAndAppend(const Slice& msg) const {
-  return Status(code(), state_->file_name, state_->line_number, message(), msg, error_code());
+  return Status(code(), state_->file_name, state_->line_number, message(), msg, error_code(),
+                DupFileName(file_name_duplicated()));
 }
 
 size_t Status::memory_footprint_excluding_this() const {
@@ -199,4 +213,9 @@ size_t Status::memory_footprint_excluding_this() const {
 size_t Status::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
+
+bool Status::file_name_duplicated() const {
+  return state_->file_name == &state_->message[0] + state_->message_len;
+}
+
 }  // namespace yb
