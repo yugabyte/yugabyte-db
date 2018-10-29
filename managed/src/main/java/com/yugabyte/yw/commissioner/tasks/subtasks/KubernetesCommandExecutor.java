@@ -317,6 +317,18 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     overrides.put("replicas", ImmutableMap.of("tserver", userIntent.numNodes,
         "master", userIntent.replicationFactor));
 
+    Map<String, Object> gflagOverrides = new HashMap<>();
+    if (!userIntent.masterGFlags.isEmpty()) {
+      gflagOverrides.put("master", userIntent.masterGFlags);
+    }
+    if (!userIntent.tserverGFlags.isEmpty()) {
+      gflagOverrides.put("tserver", userIntent.tserverGFlags);
+    }
+
+    if (!gflagOverrides.isEmpty()) {
+      overrides.put("gflags", gflagOverrides);
+    }
+
     try {
       Path tempFile = Files.createTempFile(taskParams().universeUUID.toString(), ".yml");
       BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));

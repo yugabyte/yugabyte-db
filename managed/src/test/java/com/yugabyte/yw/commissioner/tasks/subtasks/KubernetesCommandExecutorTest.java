@@ -150,11 +150,54 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("Image", ImmutableMap.of("tag", ybSoftwareVersion));
     expectedOverrides.put("replicas", ImmutableMap.of("tserver", numNodes,
         "master", defaultUserIntent.replicationFactor));
+
+    Map<String, Object> gflagOverrides = new HashMap<>();
+    if (!defaultUserIntent.masterGFlags.isEmpty()) {
+      gflagOverrides.put("master", defaultUserIntent.masterGFlags);
+    }
+    if (!defaultUserIntent.tserverGFlags.isEmpty()) {
+      gflagOverrides.put("tserver", defaultUserIntent.tserverGFlags);
+    }
+
+    if (!gflagOverrides.isEmpty()) {
+      expectedOverrides.put("gflags", gflagOverrides);
+    }
+
     return expectedOverrides;
   }
 
   @Test
   public void testHelmInstall() throws IOException {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallWithGflags() throws IOException {
+    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
+    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
+    Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     kubernetesCommandExecutor.run();
