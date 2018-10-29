@@ -816,6 +816,11 @@ class ClusterControl:
         self.start_helper(server_counts_map)
         self.modify_placement_info()
         print ("Successfully created a new cluster.")
+        if not bool(os.getenv("YB_DISABLE_CALLHOME")):
+            print ("Congratulations on installing YugaByte DB Community Edition. " +
+                   "We'd like to welcome you to the community with a free t-shirt " +
+                   "and pack of stickers! " +
+                   "Please claim your reward here: https://www.yugabyte.com/community-rewards/")
 
     # Starts as well as creates. Check if the cluster exists.
     # If it does not create it else start the individual daemons.
