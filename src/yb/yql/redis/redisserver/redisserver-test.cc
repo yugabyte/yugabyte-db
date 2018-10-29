@@ -3923,6 +3923,46 @@ TEST_F(TestRedisService, TestListBasic) {
   SyncClient();
   DoRedisTestNull(__LINE__, {"LPOP", "sierra"});
   DoRedisTestNull(__LINE__, {"RPOP", "sierra"});
+}
+
+TEST_F(TestRedisService, Keys) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key_0", "1", "a"}, 1);
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key_0", "2", "b"}, 1);
+  DoRedisTestOk(__LINE__, {"SET", "z_key_1", "v1"});
+  DoRedisTestOk(__LINE__, {"SET", "z_key_1", "v2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"z_key_1", "z_key_0"});
+  DoRedisTestArray(__LINE__, {"KEYS", "*key*1"}, {"z_key_1"});
+  DoRedisTestArray(__LINE__, {"KEYS", "*key\\*1"}, {});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_[^1]"}, {"z_key_0"});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_[02]"}, {"z_key_0"});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_k?y_?"}, {"z_key_1", "z_key_0"});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_\\?"}, {});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_["}, {});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_."}, {});
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_[]"}, {});
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HSET", "z_key_\0", "f", "v"}, 1);
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"KEYS", "z_key_\0"}, {"z_key_\0"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, KeysZeroChar) {
+  FLAGS_emulate_redis_responses = true;
+  string s("foo\0bar", 6);
+  string s1("foo\0bars", 7);
+  DoRedisTestInt(__LINE__, {"HSET", s, "1", "a"}, 1);
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"KEYS", "foo"}, {});
+  DoRedisTestArray(__LINE__, {"KEYS", s}, {s});
+  DoRedisTestArray(__LINE__, {"KEYS", s1}, {});
   SyncClient();
   VerifyCallbacks();
 }

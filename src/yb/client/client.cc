@@ -1635,6 +1635,10 @@ const PartitionSchema& YBTable::partition_schema() const {
   return data_->info_.partition_schema;
 }
 
+const std::vector<std::string>& YBTable::GetPartitions() const {
+  return data_->partitions_;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 YBqlWriteOp* YBTable::NewQLWrite() {

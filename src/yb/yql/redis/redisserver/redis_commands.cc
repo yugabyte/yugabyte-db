@@ -38,6 +38,7 @@
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 using yb::client::YBTableName;
 
 namespace {
@@ -53,6 +54,9 @@ static bool ValidateRedisPasswordSeparator(const char* flagname, const string& v
 DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
 DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+
+DEFINE_int32(redis_keys_threshold, 10000,
+             "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
 
 __attribute__((unused))
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
@@ -121,6 +125,7 @@ namespace redisserver {
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
     ((debugsleep, DebugSleep, 2, LOCAL)) \
+    ((keys, Keys, 2, LOCAL)) \
     ((cluster, Cluster, -2, CLUSTER)) \
     ((persist, Persist, 2, WRITE)) \
     ((expire, Expire, 3, WRITE)) \
@@ -256,8 +261,22 @@ class LocalCommandData {
   }
 
   template<class Functor>
-  void Apply(const Functor& functor, const std::string& partition_key) {
-    context_->Apply(idx_, functor, partition_key, info_.metrics);
+  void Apply(const Functor& functor, const std::string& partition_key,
+             ManualResponse manual_response) {
+    context_->Apply(idx_, functor, partition_key, info_.metrics, manual_response);
+  }
+
+  const rpc::RpcMethodMetrics& metrics() const {
+    return info_.metrics;
+  }
+
+  void Respond(const Status& status, RedisResponsePB* response) const {
+    if (!status.ok()) {
+      call()->RespondFailure(idx_, status);
+      return;
+    }
+
+    Respond(response);
   }
 
   void Respond(RedisResponsePB* response = nullptr) const {
@@ -399,6 +418,115 @@ void HandlePing(LocalCommandData data) {
     response.set_status_response("PONG");
   }
   data.Respond(&response);
+}
+
+class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
+ public:
+  explicit KeysProcessor(const LocalCommandData& data)
+      : data_(data),
+        partitions_(data.table()->GetPartitions()), sessions_(partitions_.size()),
+        callbacks_(partitions_.size()) {
+    resp_.set_code(RedisResponsePB::OK);
+  }
+
+  bool Store(size_t idx, client::YBSession* session, const StatusFunctor& callback) {
+    sessions_[idx] = session;
+    callbacks_[idx] = callback;
+    if (stored_.fetch_add(1, std::memory_order_acq_rel) + 1 == callbacks_.size()) {
+      Execute(0);
+    }
+    return true;
+  }
+
+  const std::vector<std::string>& partitions() const {
+    return partitions_;
+  }
+
+ private:
+  void Execute(size_t idx) {
+    if (idx == partitions_.size()) {
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    const auto& partition_key = partitions_[idx];
+    auto operation = std::make_shared<client::YBRedisReadOp>(data_.table()->shared_from_this());
+    auto request = operation->mutable_request();
+    uint16_t hash_code = partition_key.size() == 0 ?
+        0 : PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    request->mutable_key_value()->set_hash_code(hash_code);
+    request->mutable_keys_request()->set_pattern(data_.arg(1).ToBuffer());
+    request->mutable_keys_request()->set_threshold(keys_threshold_);
+    sessions_[idx]->set_allow_local_calls_in_curr_thread(false);
+    auto status = sessions_[idx]->Apply(operation);
+    if (!status.ok()) {
+      ProcessedAll(status);
+      return;
+    }
+    sessions_[idx]->FlushAsync(std::bind(
+        &KeysProcessor::ProcessedOne, shared_from_this(), idx, operation, _1));
+  }
+
+  void ProcessedOne(
+      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation, const Status& status) {
+    if (!status.ok()) {
+      ProcessedAll(status);
+      return;
+    }
+
+    auto& response = *operation->mutable_response();
+    if (response.code() == RedisResponsePB::SERVER_ERROR) {
+      // We received too many keys, forwarding the error message.
+      resp_ = response;
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    size_t count = response.array_response().elements_size();
+    auto** elements = response.mutable_array_response()->mutable_elements()->mutable_data();
+    keys_threshold_ -= count;
+
+    auto& array_response = *resp_.mutable_array_response();
+    for (size_t i = 0; i != count; ++i) {
+      array_response.mutable_elements()->AddAllocated(elements[i]);
+    }
+
+    response.mutable_array_response()->mutable_elements()->ExtractSubrange(0, count, nullptr);
+
+    if (keys_threshold_ == 0) {
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    Execute(idx + 1);
+  }
+
+  void ProcessedAll(const Status& status) {
+    data_.Respond(status, &resp_);
+
+    for (const auto& callback : callbacks_) {
+      callback(status);
+    }
+  }
+
+  LocalCommandData data_;
+
+  std::vector<std::string> partitions_;
+  std::vector<client::YBSession*> sessions_;
+  std::vector<StatusFunctor> callbacks_;
+  std::atomic<size_t> stored_{0};
+  RedisResponsePB resp_;
+  size_t keys_threshold_ = FLAGS_redis_keys_threshold;
+};
+
+void HandleKeys(LocalCommandData data) {
+  auto processor = std::make_shared<KeysProcessor>(data);
+  size_t idx = 0;
+  for (const std::string& partition_key : processor->partitions()) {
+    data.Apply(std::bind(
+        &KeysProcessor::Store, processor, idx, _1, _2), partition_key, ManualResponse::kTrue);
+    ++idx;
+  }
 }
 
 void HandleCommand(LocalCommandData data) {
@@ -677,13 +805,13 @@ void HandleDebugSleep(LocalCommandData data) {
 
   auto now = std::chrono::steady_clock::now();
   auto functor = [end = now + std::chrono::milliseconds(*time_ms),
-                  data](const StatusFunctor& callback) {
+                  data](client::YBSession*, const StatusFunctor& callback) {
     SleepWaiter waiter{ end, callback, data };
     waiter(Status::OK());
     return true;
   };
 
-  data.Apply(functor, std::string());
+  data.Apply(functor, std::string(), ManualResponse::kFalse);
 }
 
 } // namespace

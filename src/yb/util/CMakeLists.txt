@@ -196,6 +196,7 @@ set(UTIL_SRCS
   port_picker.cc
   pstack_watcher.cc
   random_util.cc
+  redis_util.cc
   ref_cnt_buffer.cc
   rolling_log.cc
   rw_mutex.cc
