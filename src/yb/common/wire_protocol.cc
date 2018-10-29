@@ -61,72 +61,94 @@ DEFINE_string(use_private_ip, "never",
 
 namespace yb {
 
+namespace {
+
+template <class Index, class Value>
+void SetAt(
+    Index index, const Value& value, const Value& default_value, std::vector<Value>* vector) {
+  size_t int_index = static_cast<size_t>(index);
+  size_t new_size = vector->size();
+  while (new_size <= int_index) {
+    new_size = std::max<size_t>(1, new_size * 2);
+  }
+  vector->resize(new_size, default_value);
+  (*vector)[int_index] = value;
+}
+
+std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
+  std::vector<AppStatusPB::ErrorCode> result;
+  const auto default_value = AppStatusPB::UNKNOWN_ERROR;
+  SetAt(Status::kNotFound, AppStatusPB::NOT_FOUND, default_value, &result);
+  SetAt(Status::kCorruption, AppStatusPB::CORRUPTION, default_value, &result);
+  SetAt(Status::kNotSupported, AppStatusPB::NOT_SUPPORTED, default_value, &result);
+  SetAt(Status::kInvalidArgument, AppStatusPB::INVALID_ARGUMENT, default_value, &result);
+  SetAt(Status::kIOError, AppStatusPB::IO_ERROR, default_value, &result);
+  SetAt(Status::kAlreadyPresent, AppStatusPB::ALREADY_PRESENT, default_value, &result);
+  SetAt(Status::kRuntimeError, AppStatusPB::RUNTIME_ERROR, default_value, &result);
+  SetAt(Status::kNetworkError, AppStatusPB::NETWORK_ERROR, default_value, &result);
+  SetAt(Status::kIllegalState, AppStatusPB::ILLEGAL_STATE, default_value, &result);
+  SetAt(Status::kNotAuthorized, AppStatusPB::NOT_AUTHORIZED, default_value, &result);
+  SetAt(Status::kAborted, AppStatusPB::ABORTED, default_value, &result);
+  SetAt(Status::kRemoteError, AppStatusPB::REMOTE_ERROR, default_value, &result);
+  SetAt(Status::kServiceUnavailable, AppStatusPB::SERVICE_UNAVAILABLE, default_value, &result);
+  SetAt(Status::kTimedOut, AppStatusPB::TIMED_OUT, default_value, &result);
+  SetAt(Status::kUninitialized, AppStatusPB::UNINITIALIZED, default_value, &result);
+  SetAt(Status::kConfigurationError, AppStatusPB::CONFIGURATION_ERROR, default_value, &result);
+  SetAt(Status::kIncomplete, AppStatusPB::INCOMPLETE, default_value, &result);
+  SetAt(Status::kEndOfFile, AppStatusPB::END_OF_FILE, default_value, &result);
+  SetAt(Status::kInvalidCommand, AppStatusPB::INVALID_COMMAND, default_value, &result);
+  SetAt(Status::kQLError, AppStatusPB::SQL_ERROR, default_value, &result);
+  SetAt(Status::kInternalError, AppStatusPB::INTERNAL_ERROR, default_value, &result);
+  SetAt(Status::kExpired, AppStatusPB::EXPIRED, default_value, &result);
+  SetAt(Status::kLeaderHasNoLease, AppStatusPB::LEADER_HAS_NO_LEASE, default_value, &result);
+  SetAt(Status::kLeaderNotReadyToServe, AppStatusPB::LEADER_NOT_READY_TO_SERVE, default_value,
+        &result);
+  SetAt(Status::kTryAgain, AppStatusPB::TRY_AGAIN_CODE, default_value, &result);
+  SetAt(Status::kBusy, AppStatusPB::BUSY, default_value, &result);
+  return result;
+}
+
+const std::vector<AppStatusPB::ErrorCode> kStatusToErrorCode = CreateStatusToErrorCode();
+
+std::vector<Status::Code> CreateErrorCodeToStatus() {
+  size_t max_index = 0;
+  for (const auto error_code : kStatusToErrorCode) {
+    if (error_code == AppStatusPB::UNKNOWN_ERROR) {
+      continue;
+    }
+    max_index = std::max(max_index, static_cast<size_t>(error_code));
+  }
+
+  std::vector<Status::Code> result(max_index + 1);
+  for (size_t int_code = 0; int_code != kStatusToErrorCode.size(); ++int_code) {
+    if (kStatusToErrorCode[int_code] == AppStatusPB::UNKNOWN_ERROR) {
+      continue;
+    }
+    result[static_cast<size_t>(kStatusToErrorCode[int_code])] = static_cast<Status::Code>(int_code);
+  }
+
+  return result;
+}
+
+const std::vector<Status::Code> kErrorCodeToStatus = CreateErrorCodeToStatus();
+
+} // namespace
+
 void StatusToPB(const Status& status, AppStatusPB* pb) {
   pb->Clear();
-  bool is_unknown = false;
+
   if (status.ok()) {
     pb->set_code(AppStatusPB::OK);
     // OK statuses don't have any message or posix code.
     return;
-  } else if (status.IsNotFound()) {
-    pb->set_code(AppStatusPB::NOT_FOUND);
-  } else if (status.IsCorruption()) {
-    pb->set_code(AppStatusPB::CORRUPTION);
-  } else if (status.IsNotSupported()) {
-    pb->set_code(AppStatusPB::NOT_SUPPORTED);
-  } else if (status.IsInvalidArgument()) {
-    pb->set_code(AppStatusPB::INVALID_ARGUMENT);
-  } else if (status.IsIOError()) {
-    pb->set_code(AppStatusPB::IO_ERROR);
-  } else if (status.IsAlreadyPresent()) {
-    pb->set_code(AppStatusPB::ALREADY_PRESENT);
-  } else if (status.IsRuntimeError()) {
-    pb->set_code(AppStatusPB::RUNTIME_ERROR);
-  } else if (status.IsNetworkError()) {
-    pb->set_code(AppStatusPB::NETWORK_ERROR);
-  } else if (status.IsIllegalState()) {
-    pb->set_code(AppStatusPB::ILLEGAL_STATE);
-  } else if (status.IsNotAuthorized()) {
-    pb->set_code(AppStatusPB::NOT_AUTHORIZED);
-  } else if (status.IsAborted()) {
-    pb->set_code(AppStatusPB::ABORTED);
-  } else if (status.IsRemoteError()) {
-    pb->set_code(AppStatusPB::REMOTE_ERROR);
-  } else if (status.IsServiceUnavailable()) {
-    pb->set_code(AppStatusPB::SERVICE_UNAVAILABLE);
-  } else if (status.IsTimedOut()) {
-    pb->set_code(AppStatusPB::TIMED_OUT);
-  } else if (status.IsUninitialized()) {
-    pb->set_code(AppStatusPB::UNINITIALIZED);
-  } else if (status.IsConfigurationError()) {
-    pb->set_code(AppStatusPB::CONFIGURATION_ERROR);
-  } else if (status.IsIncomplete()) {
-    pb->set_code(AppStatusPB::INCOMPLETE);
-  } else if (status.IsEndOfFile()) {
-    pb->set_code(AppStatusPB::END_OF_FILE);
-  } else if (status.IsInvalidCommand()) {
-    pb->set_code(AppStatusPB::INVALID_COMMAND);
-  } else if (status.IsQLError()) {
-    pb->set_code(AppStatusPB::SQL_ERROR);
-  } else if (status.IsInternalError()) {
-    pb->set_code(AppStatusPB::INTERNAL_ERROR);
-  } else if (status.IsExpired()) {
-    pb->set_code(AppStatusPB::EXPIRED);
-  } else if (status.IsLeaderHasNoLease()) {
-    pb->set_code(AppStatusPB::LEADER_HAS_NO_LEASE);
-  } else if (status.IsLeaderNotReadyToServe()) {
-    pb->set_code(AppStatusPB::LEADER_NOT_READY_TO_SERVE);
-  } else if (status.IsTryAgain()) {
-    pb->set_code(AppStatusPB::TRY_AGAIN_CODE);
-  } else if (status.IsBusy()) {
-    pb->set_code(AppStatusPB::BUSY);
-  } else {
-    LOG(WARNING) << "Unknown error code translation connect_from internal error "
-                 << status.ToString() << ": sending UNKNOWN_ERROR";
-    pb->set_code(AppStatusPB::UNKNOWN_ERROR);
-    is_unknown = true;
   }
-  if (is_unknown) {
+
+  auto code = static_cast<size_t>(status.code()) < kStatusToErrorCode.size()
+      ? kStatusToErrorCode[status.code()] : AppStatusPB::UNKNOWN_ERROR;
+  pb->set_code(code);
+  if (code == AppStatusPB::UNKNOWN_ERROR) {
+    LOG(WARNING) << "Unknown error code translation connect_from internal error "
+                 << status << ": sending UNKNOWN_ERROR";
     // For unknown status codes, include the original stringified error
     // code.
     pb->set_message(status.CodeAsString() + ": " + status.message().ToBuffer());
@@ -135,80 +157,39 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     // will reconstruct the other parts of the ToString() response.
     pb->set_message(status.message().cdata(), status.message().size());
   }
+
   if (status.IsQLError()) {
     pb->set_ql_error_code(status.error_code());
   } else if (status.error_code() != -1) {
     pb->set_posix_code(status.error_code());
   }
+
+  pb->set_source_file(status.file_name());
+  pb->set_source_line(status.line_number());
 }
 
 Status StatusFromPB(const AppStatusPB& pb) {
-  int posix_code = pb.has_posix_code() ? pb.posix_code() : -1;
+  int error_code = pb.has_posix_code() ? pb.posix_code() : -1;
 
-  switch (pb.code()) {
-    case AppStatusPB::OK:
-      return Status::OK();
-    case AppStatusPB::NOT_FOUND:
-      return STATUS(NotFound, pb.message(), "", posix_code);
-    case AppStatusPB::CORRUPTION:
-      return STATUS(Corruption, pb.message(), "", posix_code);
-    case AppStatusPB::NOT_SUPPORTED:
-      return STATUS(NotSupported, pb.message(), "", posix_code);
-    case AppStatusPB::INVALID_ARGUMENT:
-      return STATUS(InvalidArgument, pb.message(), "", posix_code);
-    case AppStatusPB::IO_ERROR:
-      return STATUS(IOError, pb.message(), "", posix_code);
-    case AppStatusPB::ALREADY_PRESENT:
-      return STATUS(AlreadyPresent, pb.message(), "", posix_code);
-    case AppStatusPB::RUNTIME_ERROR:
-      return STATUS(RuntimeError, pb.message(), "", posix_code);
-    case AppStatusPB::NETWORK_ERROR:
-      return STATUS(NetworkError, pb.message(), "", posix_code);
-    case AppStatusPB::ILLEGAL_STATE:
-      return STATUS(IllegalState, pb.message(), "", posix_code);
-    case AppStatusPB::NOT_AUTHORIZED:
-      return STATUS(NotAuthorized, pb.message(), "", posix_code);
-    case AppStatusPB::ABORTED:
-      return STATUS(Aborted, pb.message(), "", posix_code);
-    case AppStatusPB::REMOTE_ERROR:
-      return STATUS(RemoteError, pb.message(), "", posix_code);
-    case AppStatusPB::SERVICE_UNAVAILABLE:
-      return STATUS(ServiceUnavailable, pb.message(), "", posix_code);
-    case AppStatusPB::TIMED_OUT:
-      return STATUS(TimedOut, pb.message(), "", posix_code);
-    case AppStatusPB::UNINITIALIZED:
-      return STATUS(Uninitialized, pb.message(), "", posix_code);
-    case AppStatusPB::CONFIGURATION_ERROR:
-      return STATUS(ConfigurationError, pb.message(), "", posix_code);
-    case AppStatusPB::INCOMPLETE:
-      return STATUS(Incomplete, pb.message(), "", posix_code);
-    case AppStatusPB::END_OF_FILE:
-      return STATUS(EndOfFile, pb.message(), "", posix_code);
-    case AppStatusPB::INVALID_COMMAND:
-      return STATUS(InvalidCommand, pb.message(), "", posix_code);
-    case AppStatusPB::SQL_ERROR:
-      if (!pb.has_ql_error_code()) {
-        return STATUS(InternalError, "SQL error code missing");
-      }
-      return STATUS(QLError, pb.message(), "", pb.ql_error_code());
-    case AppStatusPB::INTERNAL_ERROR:
-      return STATUS(InternalError, pb.message(), "", posix_code);
-    case AppStatusPB::EXPIRED:
-      return STATUS(Expired, pb.message(), "", posix_code);
-    case AppStatusPB::LEADER_HAS_NO_LEASE:
-      return STATUS(LeaderHasNoLease, pb.message(), "", posix_code);
-    case AppStatusPB::LEADER_NOT_READY_TO_SERVE:
-      return STATUS(LeaderNotReadyToServe, pb.message(), "", posix_code);
-    case AppStatusPB::TRY_AGAIN_CODE:
-      return STATUS(TryAgain, pb.message(), "", posix_code);
-    case AppStatusPB::BUSY:
-      return STATUS(Busy, pb.message(), "", posix_code);
-    case AppStatusPB::UNKNOWN_ERROR:
-    default:
-      LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();
-      return STATUS_FORMAT(
-          RuntimeError, "($0 unknown): $1, $2", pb.code(), pb.message(), posix_code);
+  if (pb.code() == AppStatusPB::OK) {
+    return Status::OK();
+  } else if (pb.code() == AppStatusPB::UNKNOWN_ERROR ||
+             static_cast<size_t>(pb.code()) >= kErrorCodeToStatus.size()) {
+    LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();
+    return STATUS_FORMAT(
+        RuntimeError, "($0 unknown): $1, $2", pb.code(), pb.message(), error_code);
   }
+
+  auto code = kErrorCodeToStatus[pb.code()];
+  if (code == Status::kQLError) {
+    if (!pb.has_ql_error_code()) {
+      return STATUS(InternalError, "SQL error code missing");
+    }
+    error_code = pb.ql_error_code();
+  }
+
+  return Status(code, pb.source_file().c_str(), pb.source_line(), pb.message(), "", error_code,
+                DupFileName::kTrue);
 }
 
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {

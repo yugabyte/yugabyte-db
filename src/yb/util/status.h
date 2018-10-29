@@ -47,6 +47,7 @@
 
 #include "yb/util/slice.h"
 #include "yb/util/format.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
@@ -166,6 +167,8 @@ enum class TimeoutError {
   kLockLimit = 3,
 };
 
+YB_STRONGLY_TYPED_BOOL(DupFileName);
+
 class Status {
  public:
   // Create a success status.
@@ -203,6 +206,9 @@ class Status {
 
   int64_t error_code() const { return state_ ? state_->error_code : 0; }
 
+  const char* file_name() const { return state_ ? state_->file_name : ""; }
+  int line_number() const { return state_ ? state_->line_number : 0; }
+
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;
 
@@ -231,7 +237,8 @@ class Status {
          int line_number,
          const Slice& msg,
          const Slice& msg2 = Slice(),
-         int64_t error_code = -1);
+         int64_t error_code = -1,
+         DupFileName dup_file_name = DupFileName::kFalse);
 
   Status(Code code,
          const char* file_name,
@@ -243,6 +250,9 @@ class Status {
   }
  private:
   struct State {
+    State(const State&) = delete;
+    void operator=(const State&) = delete;
+
     std::atomic<size_t> counter;
     uint32_t message_len;
     uint8_t code;
@@ -253,6 +263,8 @@ class Status {
     int line_number;
     char message[1];
   };
+
+  bool file_name_duplicated() const;
 
   typedef boost::intrusive_ptr<State> StatePtr;
 

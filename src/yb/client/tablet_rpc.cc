@@ -194,7 +194,7 @@ void TabletInvoker::FailToNewReplica(const Status& reason,
                                      const tserver::TabletServerErrorPB* error_code) {
   VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
 
-  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER  &&
+  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER &&
                (!tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason));
   if (!found) {
     // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked

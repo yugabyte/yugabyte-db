@@ -169,16 +169,17 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
   auto now = CoarseMonoClock::Now();
 
+  CoarseMonoClock::TimePoint deadline = CoarseMonoClock::TimePoint::max();
   if (!stream_->IsConnected()) {
-    auto deadline = last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms;
+    const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
+    deadline = last_activity_time_ + timeout;
     if (now > deadline) {
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
-          this, STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0", passed));
+          this,
+          STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
       return;
     }
-
-    StartTimer(deadline - now, &timer_);
   }
 
   while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
@@ -194,7 +195,11 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (!expiration_queue_.empty()) {
-    StartTimer(expiration_queue_.top().first - now, &timer_);
+    deadline = std::min(deadline, expiration_queue_.top().first);
+  }
+
+  if (deadline != CoarseMonoClock::TimePoint::max()) {
+    StartTimer(deadline - now, &timer_);
   }
 }
 
@@ -210,7 +215,8 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
     auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
     auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
     expiration_queue_.emplace(expires_at, call);
-    if (reschedule) {
+    if (reschedule && (stream_->IsConnected() ||
+                       expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
       StartTimer(timeout.ToSteadyDuration(), &timer_);
     }
   }
