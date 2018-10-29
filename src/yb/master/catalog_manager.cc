@@ -556,30 +556,32 @@ class RoleLoader : public Visitor<PersistentRoleInfo> {
   DISALLOW_COPY_AND_ASSIGN(RoleLoader);
 };
 
-class VersionLoader : public Visitor<PersistentVersionInfo> {
+class SysConfigLoader : public Visitor<PersistentSysConfigInfo> {
  public:
-  explicit VersionLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+  explicit SysConfigLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  Status Visit(const string& version_type, const SysVersionEntryPB& metadata) override {
-    SysVersionInfo* const roles_version = new SysVersionInfo(version_type);
-    auto l = roles_version->LockForWrite();
+  Status Visit(const string& config_type, const SysConfigEntryPB& metadata) override {
+    SysConfigInfo* const config = new SysConfigInfo(config_type);
+    auto l = config->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
 
-    // For now we are only using this for storing the version of roles.
-    if (version_type == kRolesVersionType) {
-      catalog_manager_->roles_version_ = roles_version;
+    // For now we are only using this to store security config.
+    if (config_type == kSecurityConfigType) {
+      LOG_IF(WARNING, catalog_manager_->security_config_ != nullptr)
+          << "Multiple sys config type " << config_type << " found";
+      catalog_manager_->security_config_ = config;
     }
 
     l->Commit();
 
-    LOG(INFO) << "Loaded version type " << version_type << " with version number " << version_type;
+    LOG(INFO) << "Loaded sys config type " << config_type;
     return Status::OK();
   }
 
  private:
   CatalogManager *catalog_manager_;
 
-  DISALLOW_COPY_AND_ASSIGN(VersionLoader);
+  DISALLOW_COPY_AND_ASSIGN(SysConfigLoader);
 };
 
 ////////////////////////////////////////////////////////////
@@ -888,6 +890,9 @@ Status CatalogManager::VisitSysCatalog() {
   // Clear internal maps and run data loaders.
   RETURN_NOT_OK(RunLoaders());
 
+  // Prepare various default system configurations.
+  RETURN_NOT_OK(PrepareDefaultSysConfig());
+
   // Create the system namespaces (created only if they don't already exist).
   RETURN_NOT_OK(PrepareDefaultNamespaces());
 
@@ -976,11 +981,11 @@ Status CatalogManager::RunLoaders() {
       sys_catalog_->Visit(redis_config_loader.get()),
       "Failed while visiting redis config in sys catalog");
 
-  LOG(INFO) << __func__ << ": Loading versions into memory.";
-  unique_ptr<VersionLoader> version_loader(new VersionLoader(this));
+  LOG(INFO) << __func__ << ": Loading sys config into memory.";
+  unique_ptr<SysConfigLoader> sys_config_loader(new SysConfigLoader(this));
   RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(version_loader.get()),
-      "Failed while visiting versions in sys catalog");
+      sys_catalog_->Visit(sys_config_loader.get()),
+      "Failed while visiting sys config in sys catalog");
 
   return Status::OK();
 }
@@ -1019,6 +1024,32 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->AddItem(cluster_config_.get()));
   l->Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareDefaultSysConfig() {
+  // Verify we have the catalog manager lock.
+  if (!lock_.is_locked()) {
+    return STATUS(IllegalState, "We don't have the catalog manager lock!");
+  }
+
+  // Set up default security config if not already present.
+  if (!security_config_) {
+    SysSecurityConfigEntryPB security_config;
+    security_config.set_roles_version(0);
+
+    // Create in memory object.
+    security_config_ = new SysConfigInfo(kSecurityConfigType);
+
+    // Prepare write.
+    auto l = security_config_->LockForWrite();
+    *l->mutable_data()->pb.mutable_security_config() = std::move(security_config);
+
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(sys_catalog_->AddItem(security_config_.get()));
+    l->Commit();
+  }
 
   return Status::OK();
 }
@@ -1077,20 +1108,6 @@ CHECKED_STATUS CatalogManager::PrepareDefaultRoles() {
   // Verify we have the catalog manager lock.
   if (!lock_.is_locked()) {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
-  }
-
-  // Prepare the default roles version (0).
-  if (!roles_version_) {
-    SysVersionEntryPB version_entry;
-    version_entry.set_type(kRolesVersionType);
-    version_entry.set_version(0);
-    roles_version_ = new SysVersionInfo(kRolesVersionType);
-
-    auto l = roles_version_->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(version_entry);
-
-    RETURN_NOT_OK(sys_catalog_->AddItem(roles_version_.get()));
-    l->Commit();
   }
 
   if (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr) {
@@ -3121,13 +3138,8 @@ void CatalogManager::BuildResourcePermissionsUnlocked() {
     }
   }
 
-  if (!roles_version_) {
-    LOG(DFATAL) << "Invalid nullptr roles_version_";
-    return;
-  }
-
-  auto rvl = roles_version_->LockForRead();
-  response->set_version(rvl->data().pb.version());
+  auto config = CHECK_NOTNULL(security_config_.get())->LockForRead();
+  response->set_version(config->data().pb.security_config().roles_version());
   permissions_cache_ = std::move(response);
 }
 
@@ -3928,31 +3940,21 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 // Create a SysVersionInfo object to track the roles versions.
 Status CatalogManager::IncrementRolesVersionUnlocked() {
   DCHECK(lock_.is_locked()) << "We don't have the catalog manager lock!";
-  DCHECK(roles_version_) << "Roles versions object is uninitialized";
-  uint64_t version = 0;
-
-  {
-    auto l = roles_version_->LockForRead();
-    version = l->data().pb.version() + 1;
-    // This should never happen.
-    if (version == std::numeric_limits<uint64_t>::max()) {
-      RETURN_NOT_OK_OR_DFATAL(STATUS_SUBSTITUTE(IllegalState,
-          "Roles version reached max allowable integer: $0", version));
-    }
-  }
-
-  SysVersionEntryPB version_entry;
-  version_entry.set_type(kRolesVersionType);
-  version_entry.set_version(version);
 
   // Prepare write.
-  auto l = roles_version_->LockForWrite();
-  l->mutable_data()->pb = std::move(version_entry);
+  auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
+  const uint64_t roles_version = l->mutable_data()->pb.security_config().roles_version();
+  if (roles_version == std::numeric_limits<uint64_t>::max()) {
+    RETURN_NOT_OK_OR_DFATAL(
+        STATUS_SUBSTITUTE(IllegalState,
+                          "Roles version reached max allowable integer: $0", roles_version));
+  }
+  l->mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
 
   TRACE("Set CatalogManager's roles version");
 
   // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->UpdateItem(roles_version_.get()));
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(security_config_.get()));
 
   l->Commit();
   return Status::OK();
