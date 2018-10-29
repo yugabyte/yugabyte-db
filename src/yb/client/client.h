@@ -842,6 +842,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
 
+  const std::vector<std::string>& GetPartitions() const;
+
   // Indexes available on the table.
   const IndexMap& index_map() const;
 

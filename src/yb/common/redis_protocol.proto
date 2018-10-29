@@ -52,6 +52,7 @@ message RedisReadRequestPB {
     RedisGetRangeRequestPB get_range_request = 5;
     RedisCollectionGetRangeRequestPB get_collection_range_request = 9;
     RedisGetTtlRequestPB get_ttl_request = 11;
+    RedisKeysRequestPB keys_request = 12;
   }
 
   optional RedisKeyValuePB key_value = 6;
@@ -234,7 +235,13 @@ message RedisSetTtlRequestPB {
 // TTL, PTTL
 message RedisGetTtlRequestPB {
   // By default, the return value is in milliseconds.
-  optional bool return_seconds = 1 [ default = false ];
+  optional bool return_seconds = 1 [default = false];
+}
+
+// KEYS
+message RedisKeysRequestPB {
+  optional string pattern = 1;
+  optional int32 threshold = 2;
 }
 
 // GETSET
