@@ -4,8 +4,6 @@ linkTitle: Troubleshoot
 description: Troubleshoot YugaByte DB
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
-aliases:
-  - /troubleshoot/
 menu:
   v1.0:
     identifier: troubleshoot

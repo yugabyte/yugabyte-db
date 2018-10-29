@@ -10,10 +10,6 @@ menu:
     identifier: api-cassandra
     parent: api
     weight: 1300
-aliases:
-  - api/cassandra/
-  - api/cql/
-  - api/ycql/
 ---
 
 ## Introduction

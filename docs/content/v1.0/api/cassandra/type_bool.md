@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1380
-aliases:
-  - api/cassandra/type_bool
-  - api/cql/type_bool
-  - api/ycql/type_bool
 ---
 
 ## Synopsis

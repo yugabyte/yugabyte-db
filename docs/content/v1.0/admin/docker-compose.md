@@ -7,8 +7,6 @@ menu:
     identifier: docker-compose
     parent: admin
     weight: 2430
-aliases:
-  - admin/docker-compose
 ---
 
 Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters.

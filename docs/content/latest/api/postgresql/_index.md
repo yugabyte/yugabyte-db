@@ -19,7 +19,6 @@ aliases:
 ## Introduction
 YugaByte DB's YSQL API is compatible with PostgreSQL and supports the following features.
 
-- List of [`supported features`](supported_features) in latest release.
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.
 - Builtin functions and Expression operators.

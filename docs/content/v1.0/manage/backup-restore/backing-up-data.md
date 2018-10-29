@@ -4,8 +4,6 @@ linkTitle: Backing Up Data
 description: Backing Up Data
 image: /images/section_icons/manage/enterprise.png
 headcontent: Backing up data in YugaByte DB.
-aliases:
-  - /manage/backup-restore/backing-up-data
 menu:
   v1.0:
     identifier: manage-backup-restore-backing-up-data

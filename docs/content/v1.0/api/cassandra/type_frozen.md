@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1400
-aliases:
-  - api/cassandra/type_frozen
-  - api/cql/type_frozen
-  - api/ycql/type_frozen
 ---
 
 ## Synopsis

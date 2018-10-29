@@ -2,8 +2,6 @@
 title: Configure Admin Console
 linkTitle: 3. Configure Admin Console
 description: Configure Admin Console
-aliases:
-  - deploy/enterprise-edition/configure-admin-console/
 menu:
   v1.0:
     identifier: configure-admin-console

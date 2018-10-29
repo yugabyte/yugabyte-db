@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2450
-aliases:
-  - api/redis/tsrem
-  - api/yedis/tsrem
 ---
 
 ## Synopsis

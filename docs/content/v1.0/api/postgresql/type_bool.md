@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-bool
     parent: api-postgresql-type
-aliases:
-  - api/postgresql/type/bool
-  - api/pgsql/type/bool
 ---
 
 ## Synopsis

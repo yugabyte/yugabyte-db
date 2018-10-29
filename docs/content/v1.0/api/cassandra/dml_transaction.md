@@ -7,10 +7,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1330
-aliases:
-  - api/cassandra/dml_insert
-  - api/cql/dml_insert
-  - api/ycql/dml_insert
 ---
 
 ## Synopsis

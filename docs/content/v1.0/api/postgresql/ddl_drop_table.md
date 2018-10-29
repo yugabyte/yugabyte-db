@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-drop-table
     parent: api-postgresql-ddl
-aliases:
-  - api/postgresql/ddl_drop_table
-  - api/pgsql/ddl_drop_table
 ---
 
 ## Synopsis

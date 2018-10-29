@@ -2,8 +2,6 @@
 title: Docker Swarm
 linkTitle: Docker Swarm
 description: Docker Swarm
-aliases:
-  - /deploy/docker-swarm/
 menu:
   v1.0:
     identifier: docker-swarm

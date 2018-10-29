@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2110
-aliases:
-  - api/redis/hexists
-  - api/yedis/hexists
 ---
 
 ## Synopsis

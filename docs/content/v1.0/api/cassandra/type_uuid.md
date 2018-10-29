@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1460
-aliases:
-  - api/cassandra/type_uuid
-  - api/cql/type_uuid
-  - api/ycql/type_uuid
 ---
 
 ## Synopsis

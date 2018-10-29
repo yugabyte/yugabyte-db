@@ -3,8 +3,6 @@ title: Benefits
 linkTitle: Benefits
 description: Benefits
 type: page
-aliases:
-  - /introduction/benefits/
 menu:
   v1.0:
     identifier: benefits

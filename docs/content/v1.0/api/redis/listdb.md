@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2036
-aliases:
-  - api/redis/listdb
-  - api/yedis/listdb
 ---
 
 ## Synopsis

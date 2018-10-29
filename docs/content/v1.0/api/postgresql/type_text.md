@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-text
     parent: api-postgresql-type
-aliases:
-  - api/postgresql/type/text
-  - api/pgsql/type/text
 ---
 
 ## Synopsis

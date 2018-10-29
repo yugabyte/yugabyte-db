@@ -2,8 +2,6 @@
 title: Apache HBase
 linkTitle: Apache HBase
 description: Apache HBase
-aliases:
-  - /comparisons/hbase/
 menu:
   v1.0:
     parent: comparisons

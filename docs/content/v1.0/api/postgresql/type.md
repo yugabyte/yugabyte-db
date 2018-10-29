@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-type
     parent: api-postgresql
     weight: 3300
-aliases:
-  - api/postgresql/type
-  - api/pgsql/type
 ---
 
 The following table lists all supported primitive types.

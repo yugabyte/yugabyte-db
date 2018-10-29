@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2240
-aliases:
-  - api/redis/role
-  - api/yedis/role
 ---
 YugaByte DB only has `master` role for the Redis API.
 

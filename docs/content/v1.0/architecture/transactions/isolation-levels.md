@@ -2,8 +2,6 @@
 title: Isolation Levels
 linkTitle: Isolation Levels
 description: Isolation Levels
-aliases:
-  - /architecture/transactions/isolation-levels/
 menu:
   v1.0:
     identifier: architecture-isolation-levels

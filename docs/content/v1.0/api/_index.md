@@ -4,8 +4,6 @@ linkTitle: API Reference
 description: API Reference
 image: /images/section_icons/index/api.png
 headcontent: YugaByte DB's YCQL and YEDIS APIs are wire-compatible with Apache Cassandra and Redis respectively. PostgreSQL API is in Beta.
-aliases:
-  - /api/
 menu:
   v1.0:
     identifier: api

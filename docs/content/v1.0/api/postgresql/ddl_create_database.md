@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-create-db
     parent: api-postgresql-ddl
-aliases:
-  - api/postgresql/ddl_create_database
-  - api/pgsql/ddl_create_database
 ---
 
 ## Synopsis

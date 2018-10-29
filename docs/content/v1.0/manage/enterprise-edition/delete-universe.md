@@ -2,8 +2,6 @@
 title: Delete Universe
 linkTitle: Delete Universe
 description: Delete Universe
-aliases:
-  - /manage/enterprise-edition/delete-universe/
 menu:
   v1.0:
     identifier: manage-delete-universe

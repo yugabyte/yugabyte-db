@@ -2,8 +2,6 @@
 title: Cassandra Connection Issues
 linkTitle: Cassandra Connection Issues
 description: Cannot Connect to Cassandra-compatible YCQL API
-aliases:
-  - /troubleshoot/cluster/connect-cassandra/
 menu:
   v1.0:
     parent: troubleshoot-cluster

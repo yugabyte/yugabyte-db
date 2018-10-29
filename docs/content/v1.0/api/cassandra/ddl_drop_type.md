@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1280
-aliases:
-  - api/cassandra/ddl_drop_type
-  - api/cql/ddl_drop_type
-  - api/ycql/ddl_drop_type
 ---
 
 ## Synopsis

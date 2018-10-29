@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2520
-aliases:
-  - api/redis/zrangebyscore
-  - api/yedis/zrangebyscore
 ---
 
 ## Synopsis

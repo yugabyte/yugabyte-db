@@ -2,8 +2,6 @@
 title: Single Node
 linkTitle: Single Node
 description: Single Node
-aliases:
-  - /architecture/concepts/single-node/
 menu:
   v1.0:
     identifier: architecture-single-node

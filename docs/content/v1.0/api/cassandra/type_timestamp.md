@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1450
-aliases:
-  - api/cassandra/type_timestamp
-  - api/cql/type_timestamp
-  - api/ycql/type_timestamp
 ---
 
 ## Synopsis

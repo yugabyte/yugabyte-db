@@ -2,8 +2,6 @@
 title: Persistence
 linkTitle: Persistence
 description: Data Persistence with DocDB
-aliases:
-  - /architecture/concepts/persistence/
 menu:
   v1.0:
     identifier: architecture-persistence

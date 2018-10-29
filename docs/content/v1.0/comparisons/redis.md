@@ -2,8 +2,6 @@
 title: Redis
 linkTitle: Redis
 description: Redis
-aliases:
-  - /comparisons/redis/
 menu:
   v1.0:
     parent: comparisons

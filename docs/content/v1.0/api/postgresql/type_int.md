@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-int
     parent: api-postgresql-type
-aliases:
-  - api/postgresql/type/int
-  - api/pgsql/type/int
 ---
 
 ## Synopsis

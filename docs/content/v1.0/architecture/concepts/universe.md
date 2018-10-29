@@ -2,8 +2,6 @@
 title: Universe, Cluster, YB-TServer, YB-Master
 linkTitle: Universe, Cluster, YB-TServer, YB-Master
 description: Universe, Cluster, YB-TServer, YB-Master
-aliases:
-  - /architecture/concepts/universe/
 menu:
   v1.0:
     identifier: architecture-universe

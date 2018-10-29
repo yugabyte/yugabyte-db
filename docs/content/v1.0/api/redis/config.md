@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2030
-aliases:
-  - api/redis/config
-  - api/yedis/config
 ---
 
 ## Synopsis

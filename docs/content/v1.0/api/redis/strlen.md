@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2320
-aliases:
-  - api/redis/strlen
-  - api/yedis/strlen
 ---
 
 ## Synopsis

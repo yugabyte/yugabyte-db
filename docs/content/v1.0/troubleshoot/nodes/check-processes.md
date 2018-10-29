@@ -2,8 +2,6 @@
 title: Check Processes
 linkTitle: Check Processes
 description: Check YugaByte DB Processes
-aliases:
-  - /troubleshoot/nodes/check-processes/
 menu:
   v1.0:
     parent: troubleshoot-nodes

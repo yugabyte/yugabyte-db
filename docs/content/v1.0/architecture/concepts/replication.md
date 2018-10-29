@@ -2,8 +2,6 @@
 title: Replication
 linkTitle: Replication
 description: Data Replication with Raft Consensus
-aliases:
-  - /architecture/concepts/replication/
 menu:
   v1.0:
     identifier: architecture-replication

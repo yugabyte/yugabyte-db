@@ -2,8 +2,6 @@
 title: Query Layer
 linkTitle: Query Layer
 description: YugaByte Query Layer (YQL)
-aliases:
-  - /architecture/concepts/yql/
 menu:
   v1.0:
     identifier: architecture-yql

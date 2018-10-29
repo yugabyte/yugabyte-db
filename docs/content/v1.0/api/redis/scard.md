@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2260
-aliases:
-  - api/redis/scard
-  - api/yedis/scard
 ---
 
 ## Synopsis

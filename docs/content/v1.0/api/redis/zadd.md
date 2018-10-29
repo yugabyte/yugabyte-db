@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2500
-aliases:
-  - api/redis/zadd
-  - api/yedis/zadd
 ---
 
 ## Synopsis

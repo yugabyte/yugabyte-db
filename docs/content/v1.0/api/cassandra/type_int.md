@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1420
-aliases:
-  - api/cassandra/type_int
-  - api/cql/type_int
-  - api/ycql/type_int
 ---
 
 ## Synopsis

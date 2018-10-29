@@ -5,15 +5,11 @@ description: PostgreSQL (Beta)
 summary: PostgreSQL overview and features
 image: /images/section_icons/api/pgsql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - api/postgresql
 menu:
   v1.0:
     identifier: api-postgresql
     parent: api
     weight: 3000
-aliases:
-  - api/pgsql
 ---
 
 ## Introduction

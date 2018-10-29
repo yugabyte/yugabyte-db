@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2250
-aliases:
-  - api/redis/sadd
-  - api/yedis/sadd
 ---
 ## Synopsis
 <b>`SADD key value [value ...]`</b><br>

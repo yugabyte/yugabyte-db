@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-number
     parent: api-postgresql-type
-aliases:
-  - api/postgresql/type/number
-  - api/pgsql/type/number
 ---
 
 ## Synopsis

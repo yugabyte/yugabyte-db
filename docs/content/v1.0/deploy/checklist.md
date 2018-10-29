@@ -2,8 +2,6 @@
 title: Checklist
 linkTitle: Checklist
 description: Checklist
-aliases:
-  - /deploy/checklist/
 menu:
   v1.0:
     identifier: checklist

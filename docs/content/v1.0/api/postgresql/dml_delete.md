@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-delete
     parent: api-postgresql-dml
-aliases:
-  - api/postgresql/dml/delete
-  - api/pgsql/dml/delete
 ---
 
 ## Synopsis

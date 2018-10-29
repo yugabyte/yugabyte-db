@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2280
-aliases:
-  - api/redis/setrange
-  - api/yedis/setrange
 ---
 ## Synopsis
 <b>`SETRANGE key offset value`</b><br>

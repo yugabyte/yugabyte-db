@@ -2,8 +2,6 @@
 title: Redis Connection Issues
 linkTitle: Redis Connection Issues
 description: Cannot Connect to Redis-compatible YEDIS API
-aliases:
-  - /troubleshoot/cluster/connect-redis/
 menu:
   v1.0:
     parent: troubleshoot-cluster

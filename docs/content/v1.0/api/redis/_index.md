@@ -10,9 +10,6 @@ menu:
     identifier: api-redis
     parent: api
     weight: 2000
-aliases:
-  - /api/redis
-  - /api/yedis
 ---
 
 ## Introduction

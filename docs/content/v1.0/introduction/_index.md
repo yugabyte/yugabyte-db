@@ -4,8 +4,6 @@ linkTitle: Introduction
 description: Introduction
 image: /images/section_icons/index/introduction.png
 headcontent:
-aliases:
-  - /introduction/
 menu:
   v1.0:
     identifier: introduction
@@ -31,7 +29,7 @@ Enterprise Edition is Community Edition plus:
   - Production support
 </div>
 </div>
-<a href="https://www.yugabyte.com/contact-sales/" class="btn cta-button">
+<a href="https://www.yugabyte.com/enterprise-edition-trial/" class="btn cta-button">
   Contact Us
 </a>
 {{< /hero >}}

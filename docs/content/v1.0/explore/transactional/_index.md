@@ -4,8 +4,6 @@ linkTitle: Transactional
 description: Transactional
 headcontent:
 image: /images/section_icons/explore/transactional.png
-aliases:
-  - /explore/transactional/
 menu:
   v1.0:
     identifier: explore-transactional

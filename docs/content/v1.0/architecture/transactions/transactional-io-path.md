@@ -2,8 +2,6 @@
 title: Transactional IO Path
 linkTitle: Transactional IO Path
 description: Transactional IO Path
-aliases:
-  - /architecture/transactions/transactional-io-path/
 menu:
   v1.0:
     identifier: architecture-transactional-io-path

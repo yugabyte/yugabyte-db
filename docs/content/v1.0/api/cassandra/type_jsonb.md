@@ -6,10 +6,7 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1470
-aliases:
-  - api/cassandra/type_jsonb
-  - api/cql/type_jsonb
-  - api/ycql/type_jsonb
+
 ---
 
 ## Synopsis

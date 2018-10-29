@@ -2,8 +2,6 @@
 title: Overview
 linkTitle: Overview
 description: Overview
-aliases:
-  - /introduction/overview/
 type: page
 menu:
   v1.0:

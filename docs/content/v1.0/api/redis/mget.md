@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2220
-aliases:
-  - api/redis/mget
-  - api/yedis/mget
 ---
 
 ## Synopsis

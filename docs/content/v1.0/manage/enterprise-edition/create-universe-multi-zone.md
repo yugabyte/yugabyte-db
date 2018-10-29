@@ -2,8 +2,6 @@
 title: Create Universe - Multi-Zone
 linkTitle: Create Universe  - Multi-Zone
 description: Create Universe - Multi-Zone
-aliases:
-  - /manage/enterprise-edition/create-universe/
 menu:
   v1.0:
     identifier: manage-create-universe-multi-zone

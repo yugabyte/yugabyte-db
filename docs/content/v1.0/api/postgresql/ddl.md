@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-ddl
     parent: api-postgresql
     weight: 3100
-aliases:
-  - api/postgresql/ddl
-  - api/pgsql/ddl
 ---
 
 Data definition language (DDL) statements are instructions for the following database operations.

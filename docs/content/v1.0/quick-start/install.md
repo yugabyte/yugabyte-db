@@ -2,8 +2,6 @@
 title: Install YugaByte DB
 linkTitle: 1. Install YugaByte DB
 description: Install YugaByte DB
-aliases:
-  - /quick-start/install/
 menu:
   v1.0:
     parent: quick-start

@@ -2,8 +2,6 @@
 title: Initial Setup
 linkTitle: 1. Initial Setup
 description: Initial Setup
-aliases:
-  - /deploy/enterprise-edition/prepare-cloud-environment/
 menu:
   v1.0:
     identifier: prepare-cloud-environment

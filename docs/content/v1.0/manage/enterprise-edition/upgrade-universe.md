@@ -2,8 +2,6 @@
 title: Upgrade Universe
 linkTitle: Upgrade Universe
 description: Upgrade Universe
-aliases:
-  - /manage/enterprise-edition/upgrade-universe/
 menu:
   v1.0:
     identifier: manage-upgrade-universe

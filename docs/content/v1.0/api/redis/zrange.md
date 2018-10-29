@@ -6,8 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2385
-aliases:
-  - api/redis/zrange
 ---
 
 ## Synopsis

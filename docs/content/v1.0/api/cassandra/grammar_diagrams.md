@@ -1,10 +1,6 @@
 ---
 title: Grammar Diagrams
 summary: Diagrams of the grammar rules
-aliases:
-  - api/cassandra/grammar_diagrams
-  - api/cql/grammar_diagrams
-  - api/ycql/grammar_diagrams
 ---
 
 ## DDL Statements

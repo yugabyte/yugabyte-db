@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1330
-aliases:
-  - api/cassandra/ddl_delete
-  - api/cql/ddl_delete
-  - api/ycql/ddl_delete
 ---
 
 ## Synopsis

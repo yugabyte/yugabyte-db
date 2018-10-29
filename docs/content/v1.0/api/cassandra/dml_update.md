@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1320
-aliases:
-  - api/cassandra/dml_update
-  - api/cql/dml_update
-  - api/ycql/dml_update
 ---
 
 ## Synopsis

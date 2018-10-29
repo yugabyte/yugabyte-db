@@ -2,8 +2,6 @@
 title: Sharding
 linkTitle: Sharding
 description: Data Sharding into Tablets
-aliases:
-  - /architecture/concepts/sharding/
 menu:
   v1.0:
     identifier: architecture-sharding

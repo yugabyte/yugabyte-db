@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2218
-aliases:
-  - api/redis/monitor
-  - api/yedis/auth
 ---
 `MONITOR` is a debugging tool to see all requests that are being processed by a YugaByte YEDIS API server.
 

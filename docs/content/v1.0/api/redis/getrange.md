@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2080
-aliases:
-  - api/redis/getrange
-  - api/yedis/getrange
 ---
 
 ## Synopsis

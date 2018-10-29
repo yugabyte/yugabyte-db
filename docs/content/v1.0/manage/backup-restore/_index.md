@@ -4,8 +4,6 @@ linkTitle: Backup and Restore
 description: Backup and Restore
 image: /images/section_icons/manage/enterprise.png
 headcontent: Backup and restore your data in YugaByte DB.
-aliases:
-  - /manage/backup-restore/
 menu:
   v1.0:
     identifier: manage-backup-restore

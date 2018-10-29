@@ -4,8 +4,6 @@ linkTitle: High Performance
 description: High Performance
 headcontent:
 image: /images/section_icons/explore/high_performance.png
-aliases:
-  - /explore/high-performance/
 menu:
   v1.0:
     identifier: explore-high-perf

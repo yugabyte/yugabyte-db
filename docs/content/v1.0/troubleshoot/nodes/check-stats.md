@@ -2,8 +2,6 @@
 title: System Stats
 linkTitle: System Stats
 description: Check System Stats
-aliases:
-  - /troubleshoot/nodes/check-stats/
 menu:
   v1.0:
     parent: troubleshoot-nodes

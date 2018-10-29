@@ -6,8 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2460
-aliases:
-  - api/redis/tsrevrangebytime
 ---
 
 ## Synopsis

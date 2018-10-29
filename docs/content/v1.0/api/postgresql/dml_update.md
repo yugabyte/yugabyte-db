@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-update
     parent: api-postgresql-dml
-aliases:
-  - api/postgresql/dml/update
-  - api/pgsql/dml/update
 ---
 
 ## Synopsis

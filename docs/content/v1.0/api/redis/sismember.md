@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2290
-aliases:
-  - api/redis/sismember
-  - api/yedis/sismember
 ---
 ## Synopsis
 <b>`SISMEMBER key member_value`</b><br>

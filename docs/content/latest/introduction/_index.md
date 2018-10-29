@@ -31,7 +31,7 @@ Enterprise Edition is Community Edition plus:
   - Production support
 </div>
 </div>
-<a href="https://www.yugabyte.com/contact-sales/" class="btn cta-button">
+<a href="https://www.yugabyte.com/enterprise-edition-trial/" class="btn cta-button">
   Contact Us
 </a>
 {{< /hero >}}

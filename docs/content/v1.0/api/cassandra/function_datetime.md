@@ -6,10 +6,6 @@ menu:
   v1.0:
     parent: api-cassandra
     weight: 1560
-aliases:
-  - api/cassandra/function_datetime
-  - api/cql/function_datetime
-  - api/ycql/function_datetime
 ---
 
 This section covers the set of CQL builtin functions that work on the data types related to

@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2100
-aliases:
-  - api/redis/hdel
-  - api/yedis/hdel
 ---
 
 ## Synopsis

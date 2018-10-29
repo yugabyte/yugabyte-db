@@ -6,9 +6,6 @@ menu:
   v1.0:
     parent: api-redis
     weight: 2540
-aliases:
-  - api/redis/zrevrange
-  - api/yedis/zrevrange
 ---
 
 ## Synopsis

@@ -6,9 +6,6 @@ menu:
   v1.0:
     identifier: api-postgresql-create-table
     parent: api-postgresql-ddl
-aliases:
-  - api/postgresql/ddl_create_table
-  - api/pgsql/ddl_create_table
 ---
 
 ## Synopsis
