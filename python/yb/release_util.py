@@ -184,6 +184,11 @@ class ReleaseUtil(object):
 
         try:
             release_file = self.get_release_file()
+            logging.info(
+                    "Changing permissions recursively on directory '%s' to make it user-writable",
+                    tmp_distribution_dir)
+            run_program(['chmod', '-R', 'u+w', tmp_distribution_dir],
+                        cwd=tmp_parent_dir)
             logging.info("Creating a package '{}' from directory {}".format(
                 release_file, tmp_distribution_dir))
             run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
