@@ -82,7 +82,7 @@ This section assumes you already have a YugaByte DB cluster. You can install a l
 Create a keyspace for the stock ticker app.
 
 ```{.sql .copy .separator-gt}
-cqlsh> CREATE KEYSPACE stocks;
+cqlsh> CREATE KEYSPACE myapp;
 ```
 Create the stock ticker table.
 
@@ -128,7 +128,7 @@ cqlsh> SELECT * FROM myapp.stock_market;
 Run the following in order to backup the schema of the keyspace `myapp`.
 
 ```{.sh .copy .separator-dollar}
-cqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
+$ cqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
 ```
 
 The schema of the keyspace `myapp` along with the tables in it are saved to the file `myapp_schema.cql`.

@@ -29,4 +29,15 @@ This section goes into details of backing up data and restoring it from YugaByte
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="restoring-data/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
+        <div class="title">Restoring Data</div>
+      </div>
+      <div class="body">
+        This section describes how to restore data into YugaByte DB from a backup.
+      </div>
+    </a>
+  </div>
 </div>
