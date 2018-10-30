@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -49,6 +51,11 @@ PTCreateTable::~PTCreateTable() {
 
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
+
+  if (FLAGS_use_cassandra_authentication) {
+    RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(), PermissionType::CREATE_PERMISSION,
+        yb_table_name().namespace_name()));
+  }
 
   // Processing table name.
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));

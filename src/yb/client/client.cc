@@ -833,7 +833,7 @@ CHECKED_STATUS YBClient::GrantRevokeRole(GrantRevokeStatementType statement_type
 
 Status YBClient::GetPermissions(PermissionsCache* permissions_cache) {
   if (!permissions_cache) {
-    RETURN_NOT_OK_OR_DFATAL(STATUS(InvalidArgument, "Invalid null permissions_cache"));
+    DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid null permissions_cache"));
   }
 
   boost::optional<uint64_t> version = permissions_cache->version();
@@ -853,14 +853,14 @@ Status YBClient::GetPermissions(PermissionsCache* permissions_cache) {
   if (!version) {
     // We should at least receive cassandra's permissions.
     if (resp.role_permissions_size() == 0) {
-      RETURN_NOT_OK_OR_DFATAL(
+      DFATAL_OR_RETURN_NOT_OK(
           STATUS(IllegalState, "Received invalid empty permissions cache from master"));
 
     }
   } else if (resp.version() == *version) {
       // No roles should have been received if both versions match.
       if (resp.role_permissions_size() != 0) {
-        RETURN_NOT_OK_OR_DFATAL(STATUS(IllegalState,
+        DFATAL_OR_RETURN_NOT_OK(STATUS(IllegalState,
             "Received permissions cache when none was expected because the master's "
             "permissions versions is equal to the client's version"));
       }
@@ -868,7 +868,7 @@ Status YBClient::GetPermissions(PermissionsCache* permissions_cache) {
       return Status::OK();
   } else if (resp.version() < *version) {
     // If the versions don't match, then the master's version has to be greater than ours.
-    RETURN_NOT_OK_OR_DFATAL(STATUS_SUBSTITUTE(IllegalState,
+    DFATAL_OR_RETURN_NOT_OK(STATUS_SUBSTITUTE(IllegalState,
         "Client's permissions version $0 can't be greater than the master's permissions version $1",
         *version, resp.version()));
   }
@@ -1231,10 +1231,15 @@ Status YBMetaDataCache::HasResourcePermission(const string& canonical_resource,
                                               const PermissionType& permission,
                                               const NamespaceName& keyspace,
                                               const TableName& table) {
+  if (!permissions_cache_) {
+    LOG(WARNING) << "Permissions cache disabled. This only should be used in unit tests";
+    return Status::OK();
+  }
+
   if (object_type != ql::ObjectType::OBJECT_SCHEMA &&
       object_type != ql::ObjectType::OBJECT_TABLE &&
       object_type != ql::ObjectType::OBJECT_ROLE) {
-    RETURN_NOT_OK_OR_DFATAL(STATUS_SUBSTITUTE(InvalidArgument, "Invalid ObjectType $0",
+    DFATAL_OR_RETURN_NOT_OK(STATUS_SUBSTITUTE(InvalidArgument, "Invalid ObjectType $0",
                                               object_type));
   }
 

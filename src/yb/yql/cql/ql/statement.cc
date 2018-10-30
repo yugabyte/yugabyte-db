@@ -33,14 +33,15 @@ Statement::~Statement() {
 }
 
 Status Statement::Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker,
-                          PreparedResult::UniPtr *result) {
+                          const bool internal, PreparedResult::UniPtr *result) {
   // Prepare the statement (parse and semantically analysis). Do so within an exclusive lock.
   if (!prepared_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> guard(parse_tree_mutex_);
 
     if (parse_tree_ == nullptr) {
       ParseTree::UniPtr parse_tree;
-      RETURN_NOT_OK(processor->Prepare(text_, &parse_tree, false /* reparsed */, mem_tracker));
+      RETURN_NOT_OK(processor->Prepare(text_, &parse_tree, false /* reparsed */, mem_tracker,
+                                       internal));
       parse_tree_ = std::move(parse_tree);
       prepared_.store(true, std::memory_order_release);
     }

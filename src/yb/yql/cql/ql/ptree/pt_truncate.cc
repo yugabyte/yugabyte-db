@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -39,7 +41,10 @@ Status PTTruncateStmt::Analyze(SemContext *sem_context) {
   // Processing table name.
   bool is_system_ignored;
   RETURN_NOT_OK(name()->AnalyzeName(sem_context, OBJECT_TABLE));
+
+  // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   return sem_context->LookupTable(yb_table_name(), name()->loc(), true /* write_table */,
+                                  PermissionType::MODIFY_PERMISSION,
                                   &table_, &is_system_ignored);
 }
 

@@ -69,7 +69,11 @@ class QLProcessor {
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
   // the parse tree.
   CHECKED_STATUS Prepare(const std::string& stmt, ParseTree::UniPtr* parse_tree,
-                         bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr);
+                         bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+                         const bool internal = false);
+
+  // Check whether the current user has the required permissions to execute the statment.
+  bool CheckPermissions(const ParseTree& parse_tree, StatementExecutedCallback cb);
 
   // Execute a prepared statement (parse tree) or batch. The parse trees and the parameters must not
   // be destroyed until the statements have been executed.
@@ -110,7 +114,8 @@ class QLProcessor {
 
   // Parse a SQL statement and generate a parse tree.
   CHECKED_STATUS Parse(const std::string& stmt, ParseTree::UniPtr* parse_tree,
-                       bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr);
+                       bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+                       const bool internal = false);
 
   // Semantically analyze a parse tree.
   CHECKED_STATUS Analyze(ParseTree::UniPtr* parse_tree);

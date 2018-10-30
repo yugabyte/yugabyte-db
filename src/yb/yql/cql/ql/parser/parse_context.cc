@@ -33,8 +33,9 @@ using std::string;
 
 ParseContext::ParseContext(const string& stmt,
                            const bool reparsed,
-                           const MemTrackerPtr& mem_tracker)
-    : ProcessContext(ParseTree::UniPtr(new ParseTree(stmt, reparsed, mem_tracker))),
+                           const MemTrackerPtr& mem_tracker,
+                           const bool internal)
+    : ProcessContext(ParseTree::UniPtr(new ParseTree(stmt, reparsed, mem_tracker, internal))),
       bind_variables_(PTreeMem()),
       stmt_offset_(0),
       trace_scanning_(false),

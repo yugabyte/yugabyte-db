@@ -107,8 +107,14 @@ class TreeNode : public MCBase {
     return loc_;
   }
 
+  void set_internal() {
+    internal_ = true;
+  }
+
  protected:
   YBLocation::SharedPtr loc_;
+
+  bool internal_ = false;
 };
 
 }  // namespace ql

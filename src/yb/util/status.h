@@ -44,7 +44,6 @@
 #include "yb/client/stubs.h"
 #endif
 
-
 #include "yb/util/slice.h"
 #include "yb/util/format.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -69,11 +68,17 @@
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
   } while (0);
 
-#define YB_RETURN_NOT_OK_OR_DFATAL(s) do { \
-    if (PREDICT_FALSE(!s.ok())) { \
-      LOG(DFATAL) << s.ToString(); \
-    } \
+#define YB_DFATAL_OR_RETURN_NOT_OK(s) do { \
+    LOG_IF(DFATAL, !s.ok()) << s; \
     YB_RETURN_NOT_OK(s); \
+  } while (0);
+
+#define YB_DFATAL_OR_RETURN_ERROR_IF(condition, s) do { \
+    if (PREDICT_FALSE(condition)) { \
+      DCHECK(!s.ok()) << "Invalid OK status"; \
+      LOG(DFATAL) << s; \
+      return s; \
+    } \
   } while (0);
 
 // Emit a warning if 'to_call' returns a bad status.
@@ -105,7 +110,8 @@
 #define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
 // If status is not OK, this will FATAL in debug mode, or return the error otherwise.
-#define RETURN_NOT_OK_OR_DFATAL YB_RETURN_NOT_OK_OR_DFATAL
+#define DFATAL_OR_RETURN_NOT_OK YB_DFATAL_OR_RETURN_NOT_OK
+#define DFATAL_OR_RETURN_ERROR_IF  YB_DFATAL_OR_RETURN_ERROR_IF
 #define WARN_NOT_OK             YB_WARN_NOT_OK
 #define LOG_AND_RETURN          YB_LOG_AND_RETURN
 #define CHECK_OK_PREPEND        YB_CHECK_OK_PREPEND

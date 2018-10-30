@@ -46,7 +46,7 @@ PTInsertStmt::~PTInsertStmt() {
 }
 
 CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
-
+  // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   // Get table descriptor.
