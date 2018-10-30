@@ -92,7 +92,7 @@ TEST_F(TestQLStatement, TestPKIndices) {
   Statement stmt(processor->CurrentKeyspace(),
                  "select * from test_pk_indices where h3 = ? and h1 = ? and h2 = ?;");
   PreparedResult::UniPtr result;
-  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, &result));
+  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
 
   const std::vector<int64_t>& hash_col_indices = result->hash_col_indices();
   EXPECT_EQ(hash_col_indices.size(), 3);

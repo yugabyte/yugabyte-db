@@ -298,7 +298,7 @@ class PTCreateTable : public TreeNode {
                                          const PTBaseType::SharedPtr& datatype);
 
   // Table name.
-  PTQualifiedName::SharedPtr table_name() const {
+  const PTQualifiedName::SharedPtr& table_name() const {
     return relation_;
   }
   virtual client::YBTableName yb_table_name() const {

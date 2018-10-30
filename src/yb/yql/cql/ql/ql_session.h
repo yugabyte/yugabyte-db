@@ -39,7 +39,7 @@ class QLSession {
   typedef std::shared_ptr<const QLSession> SharedPtrConst;
 
   // Constructors.
-  QLSession() : current_keyspace_(kUndefinedKeyspace), current_role_name_(kUndefinedRoleName ) { }
+  QLSession() : current_keyspace_(kUndefinedKeyspace), current_role_name_(kUndefinedRoleName) { }
 
   virtual ~QLSession() { }
 

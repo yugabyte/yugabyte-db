@@ -27,8 +27,9 @@
 
 #include "yb/util/status.h"
 
-// Return the given status if it is not OK.
-#define RETURN_NOT_AUTH(s)  do { \
+// Return an unauthorized error if authentication is not enabled through the flag
+// use_cassandra_authentication.
+#define RETURN_NOT_AUTH_ENABLED(s)  do { \
   if (!FLAGS_use_cassandra_authentication) {                                                      \
     return s->Error(this, "You have to be logged in and not anonymous to perform this request",   \
                     ErrorCode::UNAUTHORIZED);                                                     \

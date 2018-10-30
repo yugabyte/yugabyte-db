@@ -45,6 +45,13 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     return s;
   }
 
+  public Session getSession(String username, String password) {
+    Cluster.Builder cb = super.getDefaultClusterBuilder().withCredentials(username, password);
+    Cluster c = cb.build();
+    Session s = c.connect();
+    return s;
+  }
+
   public void checkConnectivity(
       boolean usingAuth, String optUser, String optPass, boolean expectFailure) {
     checkConnectivity(usingAuth, optUser, optPass, ProtocolOptions.Compression.NONE, expectFailure);
@@ -67,13 +74,14 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     c = cb.build();
     try {
       Session s = c.connect();
-      s.execute("SELECT * FROM system_auth.roles;");
+      s.execute("SELECT * FROM system_schema.tables;");
       // If we're expecting a failure, we should NOT be in here.
       assertFalse(expectFailure);
     } catch (com.datastax.driver.core.exceptions.AuthenticationException e) {
       // If we're expecting a failure, we should be in here.
       assertTrue(expectFailure);
     }
+    c.close();
   }
 
   // Verifies that roleName exists in the system_auth.roles table, and that canLogin and isSuperuser
@@ -83,9 +91,19 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     verifyRoleFields(roleName, canLogin, isSuperuser, new ArrayList<>());
   }
 
+  public void verifyRoleWithSession(String roleName, boolean canLogin, boolean isSuperuser,
+                                    Session s) throws Exception {
+    verifyRoleFieldsWithSession(roleName, canLogin, isSuperuser, new ArrayList<>(), s);
+  }
+
   private void verifyRoleFields(String roleName, boolean canLogin, boolean isSuperuser,
                                 List<String> memberOf) throws Exception {
     Session s = getDefaultSession();
+    verifyRoleFieldsWithSession(roleName, canLogin, isSuperuser, memberOf, s);
+  }
+
+  private void verifyRoleFieldsWithSession(String roleName, boolean canLogin, boolean isSuperuser,
+                                          List<String> memberOf, Session s) throws Exception {
     ResultSet rs = s.execute(
         String.format("SELECT * FROM system_auth.roles WHERE role = '%s';", roleName));
 
@@ -100,6 +118,13 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
   protected void testCreateRoleHelper(String roleName, String password, boolean canLogin,
                                       boolean isSuperuser) throws Exception {
     Session s = getDefaultSession();
+    testCreateRoleHelperWithSession(roleName, password, canLogin, isSuperuser, true, s);
+  }
+
+  protected void testCreateRoleHelperWithSession(String roleName, String password,
+                                                 boolean canLogin, boolean isSuperuser,
+                                                 boolean verifyConnectivity, Session s)
+      throws Exception {
 
     // Create the role.
     String createStmt = String.format(
@@ -109,9 +134,11 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     s.execute(createStmt);
 
     // Verify that we can connect using the new role.
-    checkConnectivity(true, roleName, password, !canLogin);
+    if (verifyConnectivity) {
+      checkConnectivity(true, roleName, password, !canLogin);
+    }
 
     // Verify that the information got written into system_auth.roles correctly.
-    verifyRole(roleName, canLogin, isSuperuser);
+    verifyRoleWithSession(roleName, canLogin, isSuperuser, s);
   }
 }

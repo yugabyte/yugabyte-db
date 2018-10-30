@@ -44,6 +44,16 @@ PTGrantRevokeRole::PTGrantRevokeRole(MemoryContext* memctx,
 PTGrantRevokeRole::~PTGrantRevokeRole() {
 }
 
+Status PTGrantRevokeRole::Analyze(SemContext* sem_context) {
+  if (FLAGS_use_cassandra_authentication) {
+    RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::AUTHORIZE_PERMISSION,
+        recipient_role_name_->data()));
+    RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::AUTHORIZE_PERMISSION,
+        granted_role_name_->data()));
+  }
+  return Status::OK();
+}
+
 void PTGrantRevokeRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
   MCString sem_output("\tGRANT Role ", sem_context->PTempMem());
   sem_output = sem_output + granted_role_name().c_str() +  " TO  " + recipient_role_name().c_str();
@@ -86,9 +96,9 @@ PTGrantRevokePermission::PTGrantRevokePermission(MemoryContext* memctx,
 PTGrantRevokePermission::~PTGrantRevokePermission() {
 }
 
-CHECKED_STATUS PTGrantRevokePermission::Analyze(SemContext* sem_context) {
+Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
-  RETURN_NOT_AUTH(sem_context);
+  RETURN_NOT_AUTH_ENABLED(sem_context);
 
   // We check for the existence of the resource in the catalog manager as
   // this should be a rare occurence.
@@ -134,18 +144,29 @@ CHECKED_STATUS PTGrantRevokePermission::Analyze(SemContext* sem_context) {
                                                       common::kRedisKeyspaceName).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
+      RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),
+          PermissionType::AUTHORIZE_PERMISSION,
+          complete_resource_name_->ToTableName().namespace_name()));
       break;
     }
     case ResourceType::TABLE: {
       RETURN_NOT_OK(complete_resource_name_->AnalyzeName(sem_context, OBJECT_TABLE));
+      RETURN_NOT_OK(sem_context->CheckHasTablePermission(loc(), AUTHORIZE_PERMISSION,
+          complete_resource_name_->ToTableName()));
       break;
     }
     case ResourceType::ROLE: {
       RETURN_NOT_OK(complete_resource_name_->AnalyzeName(sem_context, OBJECT_ROLE));
+      RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), AUTHORIZE_PERMISSION,
+          complete_resource_name_->QLName()));
       break;
     }
-    case ResourceType::ALL_KEYSPACES: FALLTHROUGH_INTENDED;
+    case ResourceType::ALL_KEYSPACES: {
+      RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(), AUTHORIZE_PERMISSION));
+      break;
+    }
     case ResourceType::ALL_ROLES:
+      RETURN_NOT_OK(sem_context->CheckHasAllRolesPermission(loc(), AUTHORIZE_PERMISSION));
       break;
   }
 

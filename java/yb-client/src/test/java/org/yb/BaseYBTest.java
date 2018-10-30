@@ -24,7 +24,6 @@ import org.junit.rules.Timeout;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.bridge.SLF4JBridgeHandler;
 import org.yb.client.TestUtils;
 import org.yb.util.FileUtil;
 import org.yb.util.GzipHelpers;
@@ -55,10 +54,6 @@ public class BaseYBTest {
 
   private static String currentTestClassName;
   private static String currentTestMethodName;
-
-  static {
-    SLF4JBridgeHandler.install();
-  }
 
   /**
    * A facility for deleting successful per-test-method log files in case no test failures happened.

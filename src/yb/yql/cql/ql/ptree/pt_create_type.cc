@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -85,6 +87,12 @@ CHECKED_STATUS PTCreateType::Analyze(SemContext *sem_context) {
 
   // Processing type name.
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
+
+  // TODO(hector): Check whether a type is created globally. If so, this is the right check.
+  if (FLAGS_use_cassandra_authentication) {
+    RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(),
+        PermissionType::CREATE_PERMISSION));
+  }
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();

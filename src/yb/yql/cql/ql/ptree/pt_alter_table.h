@@ -125,6 +125,10 @@ class PTAlterTable : public TreeNode {
     return MCMakeShared<PTAlterTable>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  const PTQualifiedName::SharedPtr& table_name() const {
+    return name_;
+  }
+
   // Table name.
   client::YBTableName yb_table_name() const {
     return name_->ToTableName();
