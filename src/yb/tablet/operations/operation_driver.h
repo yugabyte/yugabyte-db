@@ -39,6 +39,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
@@ -103,7 +104,8 @@ class Preparer;
 //
 // This class is thread safe.
 class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
-                        public consensus::ConsensusAppendCallback {
+                        public consensus::ConsensusAppendCallback,
+                        public MPSCQueueEntry<OperationDriver> {
 
  public:
   // Construct OperationDriver. OperationDriver does not take ownership
