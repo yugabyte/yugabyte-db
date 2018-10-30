@@ -274,7 +274,8 @@ CQLResponse* CQLProcessor::ProcessRequest(const PrepareRequest& req) {
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
       query_id, ql_env_.CurrentKeyspace(), req.query());
   PreparedResult::UniPtr result;
-  const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
+  const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(),
+                                 false /* internal */, &result);
   if (!s.ok()) {
     service_impl_->DeletePreparedStatement(stmt);
     return ProcessError(s, stmt->query_id());
@@ -340,7 +341,7 @@ CQLResponse* CQLProcessor::ProcessRequest(const BatchRequest& req) {
 CQLResponse* CQLProcessor::ProcessRequest(const AuthResponseRequest& req) {
   const auto& params = req.params();
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
-  if (!stmt->Prepare(this).ok()) {
+  if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
     return new ErrorResponse(
         req, ErrorResponse::Code::SERVER_ERROR,
         "Could not prepare statement for querying user " + params.username);
@@ -412,6 +413,9 @@ CQLResponse* CQLProcessor::ProcessError(const Status& s,
       return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
                                "Query failed to execute due to stale metadata cache");
     } else if (ql_errcode < ErrorCode::SUCCESS) {
+      if (ql_errcode == ErrorCode::UNAUTHORIZED) {
+        return new ErrorResponse(*request_, ErrorResponse::Code::UNAUTHORIZED, s.ToUserMessage());
+      }
       if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
         // System errors, internal errors, or crashes.
         return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
@@ -426,7 +430,10 @@ CQLResponse* CQLProcessor::ProcessError(const Status& s,
 
     LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
     return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
+  } else if (s.IsNotAuthorized()) {
+    return new ErrorResponse(*request_, ErrorResponse::Code::UNAUTHORIZED, s.ToUserMessage());
   }
+
   return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
 }
 

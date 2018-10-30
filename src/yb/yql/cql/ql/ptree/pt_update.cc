@@ -125,6 +125,7 @@ PTUpdateStmt::~PTUpdateStmt() {
 }
 
 CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
+  // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   RETURN_NOT_OK(relation_->Analyze(sem_context));

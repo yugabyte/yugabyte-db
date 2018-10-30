@@ -148,6 +148,22 @@ class QLEnv {
                                                const NamespaceName& keyspace = "",
                                                const TableName& table = "");
 
+  // Convenience methods to check whether the current role has the specified permission on the
+  // given table.
+  // We first check if the permission exists at the keyspace level. Otherwise, we check the
+  // table's permissions.
+  virtual CHECKED_STATUS HasTablePermission(const NamespaceName& keyspace_name,
+                                            const TableName& table_name,
+                                            const PermissionType permission);
+
+  virtual CHECKED_STATUS HasTablePermission(const client::YBTableName table_name,
+                                            const PermissionType permission);
+
+  // Convenience method to check whether the current role has the specified permission on the given
+  // role.
+  virtual CHECKED_STATUS HasRolePermission(const RoleName& role_name,
+                                           const PermissionType permission);
+
   //------------------------------------------------------------------------------------------------
   // (User-defined) Type related methods.
 

@@ -15,12 +15,10 @@
 // Treenode implementation for DML including SELECT statements.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
 
-#include "yb/client/client.h"
-#include "yb/client/schema-internal.h"
-#include "yb/common/table_properties_constants.h"
+DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
 namespace ql {
@@ -61,6 +59,29 @@ PTDmlStmt::~PTDmlStmt() {
 }
 
 Status PTDmlStmt::LookupTable(SemContext *sem_context) {
+  if (FLAGS_use_cassandra_authentication) {
+    switch (opcode()) {
+      case TreeNodeOpcode::kPTSelectStmt: {
+        if (!internal_) {
+          if (down_cast<PTSelectStmt *>(this)->IsReadableByAllSystemTable()) {
+            break;
+          }
+          RETURN_NOT_OK(sem_context->CheckHasTablePermission(loc(),
+              PermissionType::SELECT_PERMISSION, this->table_name()));
+        }
+        break;
+      }
+      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTDeleteStmt: {
+        RETURN_NOT_OK(sem_context->CheckHasTablePermission(loc(),
+            PermissionType::MODIFY_PERMISSION, this->table_name()));
+        break;
+      }
+      default:
+        DFATAL_OR_RETURN_NOT_OK(STATUS_FORMAT(InternalError, "Unexpected operation $0", opcode()));
+    }
+  }
   is_system_ = table_name().is_system();
   if (is_system_ && IsWriteOp() && client::FLAGS_yb_system_namespace_readonly) {
     return sem_context->Error(table_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
@@ -570,7 +591,6 @@ Status WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
   // Check that if where clause is present, it must follow CQL rules.
   return Status::OK();
 }
-
 
 Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                                              const PTRelationExpr *expr,

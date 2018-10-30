@@ -3153,7 +3153,7 @@ Status CatalogManager::GetPermissions(const GetPermissionsRequestPB* req,
     if (!permissions_cache_) {
       BuildRecursiveRolesUnlocked();
       if (!permissions_cache_) {
-        RETURN_NOT_OK_OR_DFATAL(STATUS(IllegalState, "Unable to build permissions cache"));
+        DFATAL_OR_RETURN_NOT_OK(STATUS(IllegalState, "Unable to build permissions cache"));
       }
     }
     // Create another reference so that the cache doesn't go away while we are using it.
@@ -3945,7 +3945,7 @@ Status CatalogManager::IncrementRolesVersionUnlocked() {
   auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
   const uint64_t roles_version = l->mutable_data()->pb.security_config().roles_version();
   if (roles_version == std::numeric_limits<uint64_t>::max()) {
-    RETURN_NOT_OK_OR_DFATAL(
+    DFATAL_OR_RETURN_NOT_OK(
         STATUS_SUBSTITUTE(IllegalState,
                           "Roles version reached max allowable integer: $0", roles_version));
   }

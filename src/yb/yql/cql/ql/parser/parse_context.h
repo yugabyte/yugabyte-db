@@ -37,7 +37,8 @@ class ParseContext : public ProcessContext {
   // Constructor & destructor.
   ParseContext(const std::string& stmt,
                bool reparsed = false,
-               const MemTrackerPtr& mem_tracker = nullptr);
+               const MemTrackerPtr& mem_tracker = nullptr,
+               const bool internal = false);
   virtual ~ParseContext();
 
   // Read a maximum of 'max_size' bytes from SQL statement of this parsing context into the

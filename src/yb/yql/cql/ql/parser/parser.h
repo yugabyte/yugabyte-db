@@ -44,7 +44,7 @@ class Parser {
   // semantic analysis. Otherwise, it returns one of the errcodes that are defined in file
   // "yb/yql/cql/ql/errcodes.h", and the caller (QL API) should stop the compiling process.
   CHECKED_STATUS Parse(const std::string& stmt, bool reparsed,
-                       const MemTrackerPtr& mem_tracker = nullptr);
+                       const MemTrackerPtr& mem_tracker = nullptr, const bool internal = false);
 
   // Returns the generated parse tree.
   ParseTree::UniPtr Done();

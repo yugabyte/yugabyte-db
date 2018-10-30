@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -43,6 +45,11 @@ CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
                               strings::Substitute("$0 is a reserved keyspace name",
                                                   common::kRedisKeyspaceName).c_str(),
                               ErrorCode::INVALID_ARGUMENTS);
+  }
+
+  if (FLAGS_use_cassandra_authentication) {
+    RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(),
+        PermissionType::CREATE_PERMISSION));
   }
 
   if (keyspace_properties_ != nullptr) {

@@ -96,6 +96,7 @@ class SemContext : public ProcessContext {
   CHECKED_STATUS LookupTable(const client::YBTableName& name,
                              const YBLocation& loc,
                              bool write_table,
+                             const PermissionType permission_type,
                              std::shared_ptr<client::YBTable>* table,
                              bool* is_system,
                              MCVector<ColumnDesc>* col_descs = nullptr,
@@ -281,6 +282,11 @@ class SemContext : public ProcessContext {
                                          const PermissionType permission,
                                          const NamespaceName& keyspace_name,
                                          const TableName& table_name);
+
+  // Convenience method.
+  CHECKED_STATUS CheckHasTablePermission(const YBLocation& loc,
+                                         const PermissionType permission,
+                                         client::YBTableName table_name);
 
   // Check whether the current role has the specified permission on the role. Returns an
   // UNAUTHORIZED error message if not found.

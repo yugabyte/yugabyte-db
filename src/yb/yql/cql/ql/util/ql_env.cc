@@ -21,6 +21,8 @@
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
+DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
+
 namespace yb {
 namespace ql {
 
@@ -217,10 +219,34 @@ Status QLEnv::HasResourcePermission(const string& canonical_name,
                                     const PermissionType permission,
                                     const NamespaceName& keyspace,
                                     const TableName& table) {
+  DFATAL_OR_RETURN_ERROR_IF(!FLAGS_use_cassandra_authentication, STATUS(IllegalState,
+      "Permissions check is not allowed when use_cassandra_authentication flag is disabled"));
   return metadata_cache_->HasResourcePermission(canonical_name, object_type, role_name, permission,
                                                 keyspace, table);
 }
 
+Status QLEnv::HasTablePermission(const NamespaceName& keyspace_name,
+                                 const TableName& table_name,
+                                 const PermissionType permission) {
+  const string current_role = CurrentRoleName();
+  if (!HasResourcePermission(get_canonical_keyspace(keyspace_name), OBJECT_SCHEMA,
+                             current_role, permission, keyspace_name).ok()) {
+    RETURN_NOT_OK(HasResourcePermission(get_canonical_table(keyspace_name, table_name),
+                                        OBJECT_TABLE, current_role, permission, keyspace_name,
+                                        table_name));
+  }
+  return Status::OK();
+}
+
+Status QLEnv::HasTablePermission(const client::YBTableName table_name,
+                                 const PermissionType permission) {
+  return HasTablePermission(table_name.namespace_name(), table_name.table_name(), permission);
+}
+
+Status QLEnv::HasRolePermission(const RoleName& role_name, const PermissionType permission) {
+  return HasResourcePermission(get_canonical_role(role_name), OBJECT_ROLE, CurrentRoleName(),
+                               permission);
+}
 
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateUDType(const std::string &keyspace_name,

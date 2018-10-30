@@ -40,7 +40,8 @@ class ParseTree {
   // Public functions.
 
   // Constructs a parse tree. The parse tree saves a reference to the statement string.
-  ParseTree(const std::string& stmt, bool reparsed, const MemTrackerPtr& mem_tracker = nullptr);
+  ParseTree(const std::string& stmt, bool reparsed, const MemTrackerPtr& mem_tracker = nullptr,
+            const bool internal = false);
   ~ParseTree();
 
   // Run semantics analysis.
@@ -81,8 +82,13 @@ class ParseTree {
   bool stale() const {
     return stale_;
   }
+
   void set_stale() const {
     stale_ = true;
+  }
+
+  bool internal() const {
+    return internal_;
   }
 
   // Add table to the set of tables used during semantic analysis.
@@ -130,6 +136,9 @@ class ParseTree {
 
   // Is this parse tree stale?
   mutable bool stale_ = false;
+
+  // Was this generated internally? Used to to bypass authorization enforcement.
+  bool internal_ = false;
 };
 
 }  // namespace ql

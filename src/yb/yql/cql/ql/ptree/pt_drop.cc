@@ -39,7 +39,7 @@ PTDropStmt::~PTDropStmt() {
 
 CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
   if (drop_type_ == OBJECT_ROLE) {
-    RETURN_NOT_AUTH(sem_context);
+    RETURN_NOT_AUTH_ENABLED(sem_context);
   }
 
   if (names_->size() > 1) {
@@ -48,7 +48,34 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
   }
 
   // Processing object name.
-  return name()->AnalyzeName(sem_context, drop_type());
+  RETURN_NOT_OK(name()->AnalyzeName(sem_context, drop_type()));
+
+  if (FLAGS_use_cassandra_authentication) {
+    switch (drop_type()) {
+      case OBJECT_INDEX: FALLTHROUGH_INTENDED;
+      case OBJECT_TABLE: {
+        RETURN_NOT_OK(sem_context->CheckHasTablePermission(loc(), PermissionType::DROP_PERMISSION,
+            yb_table_name()));
+        break;
+      }
+      case OBJECT_TYPE:
+        RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(),
+            PermissionType::DROP_PERMISSION));
+        break;
+      case OBJECT_SCHEMA:
+        RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),
+            PermissionType::DROP_PERMISSION, yb_table_name().namespace_name()));
+        break;
+      case OBJECT_ROLE:
+        RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::DROP_PERMISSION,
+            name()->QLName()));
+        break;
+      default:
+        return sem_context->Error(this, ErrorCode::FEATURE_NOT_SUPPORTED);
+    }
+  }
+
+  return Status::OK();
 }
 
 void PTDropStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {

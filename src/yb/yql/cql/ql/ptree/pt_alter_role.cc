@@ -46,7 +46,10 @@ PTAlterRole::~PTAlterRole() {
 
 CHECKED_STATUS PTAlterRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
-  RETURN_NOT_AUTH(sem_context);
+
+  RETURN_NOT_AUTH_ENABLED(sem_context);
+  RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::ALTER_PERMISSION,
+                                                    role_name()));
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
