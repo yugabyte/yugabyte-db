@@ -26,20 +26,10 @@
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/lockfree.h"
 
 DEFINE_int32(max_group_replicate_batch_size, 16,
              "Maximum number of operations to submit to consensus for replication in a batch.");
-
-// We have to make the queue length really long. Otherwise we risk crashes on followers when they
-// fail to append entries to the queue, as we try to cancel the operation in that case, and it
-// is not possible to cancel an already-replicated operation. The proper way to handle that would
-// probably be to implement backpressure in UpdateReplica.
-//
-// Note that the lock-free queue seems to be preallocating memory proportional to the queue size
-// (about 64 bytes per entry for 8-byte pointer keys) -- something to keep in mind with a large
-// number of tablets.
-DEFINE_int32(prepare_queue_max_size, 100000,
-             "Maximum number of operations waiting in the per-tablet prepare queue.");
 
 using std::vector;
 
@@ -77,14 +67,19 @@ class PreparerImpl {
   std::atomic<bool> stop_requested_{false};
 
   // If true, a task is running for this tablet already.
-  // If false, no taska are running for this tablet,
+  // If false, no tasks are running for this tablet,
   // and we can submit a task to the thread pool token.
-  std::atomic<int> running_{0};
+  std::atomic<bool> running_{false};
 
   // This is set to true immediately before the thread exits.
   std::atomic<bool> stopped_{false};
 
-  boost::lockfree::queue<OperationDriver*> queue_;
+  // Number or active tasks is incremented before task added to queue and decremented after
+  // it was popped.
+  // So it always greater than or equal to number of entries in queue.
+  std::atomic<int64_t> active_tasks_{0};
+
+  MPSCQueue<OperationDriver> queue_;
 
   // This mutex/condition combination is used in Stop() in case multiple threads are calling that
   // function concurrently. One of them will ask the prepare thread to stop and wait for it, and
@@ -114,7 +109,6 @@ class PreparerImpl {
 PreparerImpl::PreparerImpl(consensus::Consensus* consensus,
                                      ThreadPool* tablet_prepare_pool)
     : consensus_(consensus),
-      queue_(FLAGS_prepare_queue_max_size),
       tablet_prepare_pool_token_(tablet_prepare_pool
                                      ->NewToken(ThreadPool::ExecutionMode::SERIAL)) {
 }
@@ -135,7 +129,8 @@ void PreparerImpl::Stop() {
   {
     std::unique_lock<std::mutex> stop_lock(stop_mtx_);
     stop_cond_.wait(stop_lock, [this] {
-      return (!running_.load(std::memory_order_acquire) && queue_.empty());
+      return !running_.load(std::memory_order_acquire) &&
+             active_tasks_.load(std::memory_order_acquire) == 0;
     });
   }
   stopped_.store(true, std::memory_order_release);
@@ -145,15 +140,13 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
   if (stop_requested_.load(std::memory_order_acquire)) {
     return STATUS(IllegalState, "Tablet is shutting down");
   }
-  if (!queue_.bounded_push(operation_driver)) {
-    return STATUS_FORMAT(ServiceUnavailable,
-                         "Prepare queue is full (max capacity $0)",
-                         FLAGS_prepare_queue_max_size);
-  }
 
-  int expected = 0;
-  if (!running_.compare_exchange_strong(expected, 1, std::memory_order_release)) {
-    // running_ was not 0, so we are not creating a task to process operations.
+  active_tasks_.fetch_add(1, std::memory_order_release);
+  queue_.Push(operation_driver);
+
+  auto expected = false;
+  if (!running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    // running_ was already true, so we are not creating a task to process operations.
     return Status::OK();
   }
   // We flipped running_ from 0 to 1. The previously running thread could go back to doing another
@@ -165,28 +158,29 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
 void PreparerImpl::Run() {
   VLOG(2) << "Starting prepare task:" << this;
   for (;;) {
-    OperationDriver *item = nullptr;
-    while (queue_.pop(item)) {
+    while (OperationDriver *item = queue_.Pop()) {
+      active_tasks_.fetch_sub(1, std::memory_order_release);
       ProcessItem(item);
     }
-    if (queue_.empty()) {
-      // Not processing and queue empty, return from task.
-      ProcessAndClearLeaderSideBatch();
-      std::unique_lock<std::mutex> stop_lock(stop_mtx_);
-      running_--;
-      if (!queue_.empty()) {
-        // Got more operations, stay in the loop.
-        running_++;
+    ProcessAndClearLeaderSideBatch();
+    std::unique_lock<std::mutex> stop_lock(stop_mtx_);
+    running_.store(false, std::memory_order_release);
+    // Check whether tasks we added while we were setting running to false.
+    if (active_tasks_.load(std::memory_order_acquire)) {
+      // Got more operations, try stay in the loop.
+      bool expected = false;
+      if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
         continue;
       }
-      if (stop_requested_.load(std::memory_order_acquire)) {
-        VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";
-        stop_cond_.notify_all();
-        return;
-      }
-      VLOG(2) << "Returning from prepare task after inactivity:" << this;
-      return;
+      // If someone else has flipped running_ to true, we can safely exit this function because
+      // another task is already submitted to the same token.
     }
+    if (stop_requested_.load(std::memory_order_acquire)) {
+      VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";
+      stop_cond_.notify_all();
+    }
+    VLOG(2) << "Returning from prepare task after inactivity: " << this;
+    return;
   }
 }
 
