@@ -26,22 +26,19 @@
 
 #include "yb/common/transaction.h"
 
-DEFINE_uint64(transaction_table_num_tablets, 24,
-              "Automatically create transaction table with specified number of tablets if missing. "
-              "0 to disable.");
+#include "yb/master/master_defaults.h"
 
 namespace yb {
 namespace client {
 
 namespace {
 
-const YBTableName kTransactionTableName("system", yb::kTransactionsTableName);
+const YBTableName kTransactionTableName(master::kSystemNamespaceName, kTransactionsTableName);
 
-// Idle - initial state, don't know actual state of table.
 // Exists - table exists.
 // Updating - intermediate state, we are currently updating local cache of tablets.
 // Resolved - final state, when all tablets are resolved and written to cache.
-YB_DEFINE_ENUM(TransactionTableStatus, (kIdle)(kExists)(kUpdating)(kResolved));
+YB_DEFINE_ENUM(TransactionTableStatus, (kExists)(kUpdating)(kResolved));
 
 void InvokeCallback(const LocalTabletFilter& filter, const std::vector<TabletId>& tablets,
                     const PickStatusTabletCallback& callback) {
@@ -63,7 +60,7 @@ void InvokeCallback(const LocalTabletFilter& filter, const std::vector<TabletId>
 
 struct TransactionTableState {
   LocalTabletFilter local_tablet_filter;
-  std::atomic<TransactionTableStatus> status{TransactionTableStatus::kIdle};
+  std::atomic<TransactionTableStatus> status{TransactionTableStatus::kExists};
   std::vector<TabletId> tablets;
 };
 
@@ -78,15 +75,9 @@ class PickStatusTabletTask {
   }
 
   void Run() {
-    auto status = EnsureStatusTableExists();
-    if (!status.ok()) {
-      callback_(status.CloneAndPrepend("Failed to create status table"));
-      return;
-    }
-
     // TODO(dtxn) async
     std::vector<TabletId> tablets;
-    status = client_->GetTablets(kTransactionTableName, 0, &tablets, /* ranges */ nullptr);
+    auto status = client_->GetTablets(kTransactionTableName, 0, &tablets, /* ranges */ nullptr);
     if (!status.ok()) {
       callback_(status);
       return;
@@ -114,43 +105,6 @@ class PickStatusTabletTask {
   }
 
  private:
-  CHECKED_STATUS EnsureStatusTableExists() {
-    if (table_state_->status.load(std::memory_order_acquire) != TransactionTableStatus::kIdle) {
-      return Status::OK();
-    }
-
-    std::shared_ptr<YBTable> table;
-    constexpr int kNumRetries = 5;
-    Status status;
-    for (int i = 0; i != kNumRetries; ++i) {
-      status = client_->OpenTable(kTransactionTableName, &table);
-      if (status.ok()) {
-        break;
-      }
-      LOG(WARNING) << "Failed to open transaction table: " << status.ToString();
-      auto tablets = FLAGS_transaction_table_num_tablets;
-      if (tablets > 0 && status.IsNotFound()) {
-        status = client_->CreateNamespaceIfNotExists(kTransactionTableName.namespace_name());
-        if (status.ok()) {
-          std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-          table_creator->num_tablets(tablets);
-          table_creator->table_type(client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
-          table_creator->table_name(kTransactionTableName);
-          status = table_creator->Create();
-          LOG_IF(DFATAL, !status.ok() && !status.IsAlreadyPresent())
-              << "Failed to create transaction table: " << status;
-        } else {
-          LOG(DFATAL) << "Failed to create namespace: " << status;
-        }
-      }
-    }
-    if (status.ok()) {
-      auto expected = TransactionTableStatus::kIdle;
-      table_state_->status.compare_exchange_strong(
-          expected, TransactionTableStatus::kExists, std::memory_order_acq_rel);
-    }
-    return status;
-  }
 
   YBClientPtr client_;
   TransactionTableState* table_state_;
