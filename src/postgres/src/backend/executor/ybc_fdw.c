@@ -8,7 +8,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
  *
- * http: *www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -61,6 +61,8 @@
 #include "executor/ybcExpr.h"
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
+
+#include "utils/resowner_private.h"
 
 /* Number of rows assumed for a YB table if no size estimates exist */
 static const int DEFAULT_YB_NUM_ROWS = 1000;
@@ -427,6 +429,7 @@ typedef struct YbFdwExecState
 {
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement handle;
+	ResourceOwner stmt_owner;
 } YbFdwExecState;
 
 /*
@@ -464,6 +467,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	                              schemaname,
 	                              tablename,
 	                              &ybc_state->handle));
+	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
+	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
+	ybc_state->stmt_owner = CurrentResourceOwner;
 
 	/* Set WHERE clause values (currently only partition key). */
 	foreach(lc, yb_conds)
@@ -506,7 +512,8 @@ ybcIterateForeignScan(ForeignScanState *node)
 
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
-	// Fetch one row.
+
+	/* Fetch one row. */
 	HandleYBStmtStatus(YBCPgDmlFetch(ybc_state->handle,
 	                                 (uint64_t *) slot->tts_values,
 	                                 slot->tts_isnull,
@@ -521,6 +528,20 @@ ybcIterateForeignScan(ForeignScanState *node)
 	return slot;
 }
 
+static void
+ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
+{
+	/* If yb_fdw_exec_state is NULL, we are in EXPLAIN; nothing to do */
+	if (yb_fdw_exec_state != NULL && yb_fdw_exec_state->handle != NULL)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(yb_fdw_exec_state->handle));
+		ResourceOwnerForgetYugaByteStmt(yb_fdw_exec_state->stmt_owner,
+										yb_fdw_exec_state->handle);
+		yb_fdw_exec_state->handle = NULL;
+		yb_fdw_exec_state->stmt_owner = NULL;
+	}
+}
+
 /*
  * fileReScanForeignScan
  *		Rescan table, possibly with new parameters
@@ -531,11 +552,7 @@ ybcReScanForeignScan(ForeignScanState *node)
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 
 	/* Clear (delete) the previous select */
-	if (ybc_state->handle)
-	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-		ybc_state->handle = NULL;
-	}
+	ybcFreeStatementObject(ybc_state);
 
 	/* Re-allocate and execute the select. */
 	ybcBeginForeignScan(node, 0 /* eflags */);
@@ -549,13 +566,7 @@ static void
 ybcEndForeignScan(ForeignScanState *node)
 {
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
-
-	/* If yb_state is NULL, we are in EXPLAIN; nothing to do */
-	if (ybc_state && ybc_state->handle)
-	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_state->handle));
-		ybc_state->handle = NULL;
-	}
+	ybcFreeStatementObject(ybc_state);
 }
 
 /* ------------------------------------------------------------------------- */

@@ -17,17 +17,13 @@ import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
-import org.yb.util.CommandUtil;
-import org.yb.util.ConfForTesting;
+import org.yb.util.*;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import org.yb.util.CommandResult;
-import org.yb.util.StringUtil;
 
 public class MiniYBDaemon {
   private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
@@ -68,7 +64,7 @@ public class MiniYBDaemon {
           String.format(
               "tail -%d '%s' | egrep -i -C %d '%s'", NUM_LAST_SYSLOG_LINES_TO_USE,
               SYSLOG_PATH, SYSLOG_CONTEXT_NUM_LINES, regexStr));
-      cmdResult.logErrorOutput();
+      cmdResult.logStderr();
       if (cmdResult.stdoutLines.isEmpty()) {
         if (!terminatedNormally()) {
           LOG.warn("Could not find anything in " + SYSLOG_PATH + " relevant to the " +
@@ -84,7 +80,7 @@ public class MiniYBDaemon {
     private void analyzeMemoryUsage() throws IOException {
       CommandResult cmdResult = CommandUtil.runShellCommand(
           "ps -e -orss=,pid=,args= | egrep 'yb-(master|tserver)' | sort -k2,2 -rn");
-      cmdResult.logErrorOutput();
+      cmdResult.logStderr();
       if (!cmdResult.isSuccess()) {
         return;
       }
@@ -252,7 +248,7 @@ public class MiniYBDaemon {
   }
 
   public int getPid() throws NoSuchFieldException, IllegalAccessException {
-    return TestUtils.pidOfProcess(process);
+    return ProcessUtil.pidOfProcess(process);
   }
 
   String getPidStr() {

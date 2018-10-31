@@ -72,11 +72,17 @@ CHECKED_YBCSTATUS YBCInit(
 #define YBC_LOG_ERROR_STACK_TRACE(...) \
     YBCLogImpl(/* severity */ 2, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
 
+// 5 is the index of the format string, 6 is the index of the first printf argument to check.
 void YBCLogImpl(int severity,
                 const char* file_name,
                 int line_number,
                 bool stack_trace,
-                const char* format, ...);
+                const char* format,
+                ...) __attribute__((format(printf, 5, 6)));
+
+// Returns a string representation of the given block of binary data. The memory for the resulting
+// string is allocated using palloc.
+const char* YBCFormatBytesAsStr(const char* data, size_t size);
 
 #ifdef __cplusplus
 } // extern "C"

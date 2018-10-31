@@ -36,6 +36,7 @@ class PgWire {
     return sizeof(num_type);
   }
 
+  static size_t ReadNumber(Slice *cursor, bool *value);
   static size_t ReadNumber(Slice *cursor, uint8 *value);
   static size_t ReadNumber(Slice *cursor, int16 *value);
   static size_t ReadNumber(Slice *cursor, int32 *value);
@@ -55,6 +56,7 @@ class PgWire {
     buffer->append(&bytes, sizeof(num_type));
   }
 
+  static void WriteBool(bool value, faststring *buffer);
   static void WriteUint8(uint8_t value, faststring *buffer);
   static void WriteInt16(int16_t value, faststring *buffer);
   static void WriteInt32(int32_t value, faststring *buffer);

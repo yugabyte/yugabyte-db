@@ -112,11 +112,12 @@ Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
 
 Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   // Find column.
-  PgColumn *col;
+  PgColumn *col = nullptr;
   RETURN_NOT_OK(FindColumn(attr_num, &col));
 
   // Check datatype.
-  CHECK_EQ(col->internal_type(), attr_value->internal_type());
+  SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+            "Attribute value type does not match column type");
 
   // Alloc the protobuf.
   PgsqlExpressionPB *bind_pb = col->bind_pb();

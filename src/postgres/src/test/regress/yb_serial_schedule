@@ -1,0 +1,13 @@
+# src/test/regress/yb_serial_schedule
+# This includes all tests enabled for YugaByte.
+test: yb_boolean
+test: yb_char
+test: yb_bytea
+test: yb_text
+test: yb_oid
+test: yb_int2
+# TODO: re-enable these after ASAN/UBSAN is fixed.
+#test: yb_int4
+#test: yb_int8
+test: yb_int2_array
+test: yb_int4_array

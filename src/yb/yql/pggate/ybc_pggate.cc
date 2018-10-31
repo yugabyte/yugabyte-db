@@ -275,6 +275,11 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_h
   return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, expr_handle));
 }
 
+YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
 YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
                                YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));

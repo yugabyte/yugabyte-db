@@ -59,13 +59,14 @@ import com.google.protobuf.ByteString;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.yb.util.Timeouts;
 
 @RunWith(value=YBTestRunner.class)
 public class TestYBClient extends BaseYBClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBClientTest.class);
 
   private String tableName;
-  
+
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION = "testRegion";
   private static final String PLACEMENT_ZONE = "testZone";
@@ -86,7 +87,7 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   private void waitForMasterLeader() throws Exception {
-    syncClient.waitForMasterLeader(TestUtils.adjustTimeoutForBuildType(10000));
+    syncClient.waitForMasterLeader(Timeouts.adjustTimeoutSecForBuildType(10000));
   }
 
   /**
@@ -308,7 +309,7 @@ public class TestYBClient extends BaseYBClientTest {
     assertEquals(host1.getHost(), responseHost.getHost());
     assertEquals(host1.getPort(), responseHost.getPort());
   }
-  
+
   /**
    * Test for live and read only replica correct load balancing.
    * @throws Exception
@@ -317,15 +318,15 @@ public class TestYBClient extends BaseYBClientTest {
   public void testTableCreateCorrectReplicaConfiguration() throws Exception {
     // Destroy the cluster so we can create a new one.
     destroyMiniCluster();
-    
+
     List<String> livePlacement = Arrays.asList(
-        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION, 
+        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
         "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + LIVE_TS);
-    
+
     List<String> readOnlyPlacement = Arrays.asList(
-        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION, 
+        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
         "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + READ_ONLY_TS);
-    
+
     List<List<String>> tserverArgs = new ArrayList<List<String>>();
     // Create a live and read only cluster with 3 masters and 3 tservers in the same az. Although this is not
     // the most common use case, it is the most pathological and should be no different from different
@@ -334,38 +335,38 @@ public class TestYBClient extends BaseYBClientTest {
       tserverArgs.add(livePlacement);
       tserverArgs.add(readOnlyPlacement);
     }
-    
+
     // Master args, used to speed up the test.
-    List<String> masterArgs = Arrays.asList("--load_balancer_max_concurrent_adds=100", 
+    List<String> masterArgs = Arrays.asList("--load_balancer_max_concurrent_adds=100",
                                             "--load_balancer_max_concurrent_moves=100",
                                             "--load_balancer_max_concurrent_removals=100");
-    
+
     createMiniCluster(3, masterArgs, tserverArgs);
-    
+
     // Create the cluster config pb to be sent to the masters
     org.yb.Common.CloudInfoPB cloudInfo0 = org.yb.Common.CloudInfoPB.newBuilder()
         .setPlacementCloud(PLACEMENT_CLOUD)
         .setPlacementRegion(PLACEMENT_REGION)
         .setPlacementZone(PLACEMENT_ZONE)
         .build();
-    
-    Master.PlacementBlockPB placementBlock0 = 
+
+    Master.PlacementBlockPB placementBlock0 =
         Master.PlacementBlockPB.newBuilder().setCloudInfo(cloudInfo0).setMinNumReplicas(3).build();
-    
+
     List<Master.PlacementBlockPB> placementBlocksLive = new ArrayList<Master.PlacementBlockPB>();
     placementBlocksLive.add(placementBlock0);
-    
+
     List<Master.PlacementBlockPB> placementBlocksReadOnly = new ArrayList<Master.PlacementBlockPB>();
     placementBlocksReadOnly.add(placementBlock0);
-    
-    Master.PlacementInfoPB livePlacementInfo = 
+
+    Master.PlacementInfoPB livePlacementInfo =
         Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
         setPlacementUuid(ByteString.copyFromUtf8(LIVE_TS)).build();
-    
-    Master.PlacementInfoPB readOnlyPlacementInfo = 
+
+    Master.PlacementInfoPB readOnlyPlacementInfo =
         Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
         setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_TS)).build();
-    
+
     List<Master.PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);
     ModifyClusterConfigReadReplicas readOnlyOperation =
         new ModifyClusterConfigReadReplicas(syncClient, readOnlyPlacements);
@@ -375,7 +376,7 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     ModifyClusterConfigLiveReplicas liveOperation =
         new ModifyClusterConfigLiveReplicas(syncClient, livePlacementInfo);
     try {
@@ -384,28 +385,28 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     // Create a table with 8 tablets
     List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
     Schema newSchema = new Schema(columns);
     CreateTableOptions tableOptions = new CreateTableOptions().setNumTablets(8);
     YBTable table = syncClient.createTable(
         DEFAULT_KEYSPACE_NAME, "CreateTableTest", newSchema, tableOptions);
-    
+
     // Ensure that each live tserver has 8 live replicas each and each read only tserver has 8 read only replicas
     // each.
-    Map<String, List<List<Integer>>> placementUuidMap = 
+    Map<String, List<List<Integer>>> placementUuidMap =
         table.getMemberTypeCountsForEachTSType(DEFAULT_TIMEOUT_MS);
     List<List<Integer>> liveTsList = placementUuidMap.get(LIVE_TS);
     List<List<Integer>> readOnlyTsList = placementUuidMap.get(READ_ONLY_TS);
-    
+
     LOG.info(liveTsList.get(0).toString());
     assertTrue(liveTsList.get(0).equals(Arrays.asList(8, 8, 8)));
     assertTrue(liveTsList.get(1).equals(Arrays.asList(0, 0, 0)));
-    
+
     assertTrue(readOnlyTsList.get(0).equals(Arrays.asList(0, 0, 0)));
     assertTrue(readOnlyTsList.get(1).equals(Arrays.asList(8, 8, 8)));
-    
+
     // Create another live and readOnly node.
     miniCluster.startTServer(tserverArgs.get(0));
     miniCluster.startTServer(tserverArgs.get(1));
@@ -415,36 +416,36 @@ public class TestYBClient extends BaseYBClientTest {
     // Test that now each live tsever has 6 live replicas and each read only tserver has 6 read only replicas.
     placementUuidMap = table.getMemberTypeCountsForEachTSType(DEFAULT_TIMEOUT_MS);
     Map<String, List<List<Integer>>> expectedMap = new HashMap<String, List<List<Integer>>>();
-    List<List<Integer>> expectedLiveTsList = Arrays.asList(Arrays.asList(6, 6, 6, 6), 
+    List<List<Integer>> expectedLiveTsList = Arrays.asList(Arrays.asList(6, 6, 6, 6),
                                                            Arrays.asList(0, 0, 0, 0));
-    List<List<Integer>> expectedReadOnlyTsList = Arrays.asList(Arrays.asList(0, 0, 0, 0), 
+    List<List<Integer>> expectedReadOnlyTsList = Arrays.asList(Arrays.asList(0, 0, 0, 0),
                                                             Arrays.asList(6, 6, 6, 6));
     expectedMap.put(LIVE_TS, expectedLiveTsList);
     expectedMap.put(READ_ONLY_TS, expectedReadOnlyTsList);
-    
+
     assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap));
-    
+
     // Now we create a new read only cluster with 3 nodes and RF=3 with uuid readOnlyNew in the same zone.
     List<String> readOnlyPlacementNew = Arrays.asList(
-        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION, 
+        "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
         "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + READ_ONLY_NEW_TS);
-    
+
     for (int i = 0; i < 3; i++) {
       miniCluster.startTServer(readOnlyPlacementNew);
     }
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     miniCluster.waitForTabletServers(11);
-    
-    List<Master.PlacementBlockPB> placementBlocksreadOnlyNew = 
+
+    List<Master.PlacementBlockPB> placementBlocksreadOnlyNew =
         new ArrayList<Master.PlacementBlockPB>();
     placementBlocksreadOnlyNew.add(placementBlock0);
-    
-    Master.PlacementInfoPB readOnlyPlacementInfoNew = 
+
+    Master.PlacementInfoPB readOnlyPlacementInfoNew =
         Master.PlacementInfoPB.newBuilder().
         addAllPlacementBlocks(placementBlocksreadOnlyNew).
         setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_NEW_TS)).build();
-    
-    List<Master.PlacementInfoPB> readOnlyPlacementsNew = 
+
+    List<Master.PlacementInfoPB> readOnlyPlacementsNew =
         Arrays.asList(readOnlyPlacementInfoNew);
     ModifyClusterConfigReadReplicas readOnlyOperationNew =
         new ModifyClusterConfigReadReplicas(syncClient, readOnlyPlacementsNew);
@@ -454,13 +455,13 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
-    // We make sure that each tserver is this new zone has 8 read only replicas each, and 
+
+    // We make sure that each tserver is this new zone has 8 read only replicas each, and
     // that none of the other tservers have changed replica counts.
-    List<List<Integer>> expectedReadOnlyNewTsList = Arrays.asList(Arrays.asList(0, 0, 0), 
+    List<List<Integer>> expectedReadOnlyNewTsList = Arrays.asList(Arrays.asList(0, 0, 0),
                                                                Arrays.asList(8, 8, 8));
     expectedMap.put(READ_ONLY_NEW_TS, expectedReadOnlyNewTsList);
-    
+
     assertTrue(syncClient.waitForExpectedReplicaMap(60000, table, expectedMap));
   }
 
@@ -505,7 +506,7 @@ public class TestYBClient extends BaseYBClientTest {
     assertEquals(2, resp.getConfig().getVersion());
     assertEquals(3, resp.getConfig().getReplicationInfo().getLiveReplicas().getNumReplicas());
   }
-  
+
   @Test(timeout = 100000)
   public void testAffinitizedLeaders() throws Exception {
     destroyMiniCluster();
@@ -518,20 +519,20 @@ public class TestYBClient extends BaseYBClientTest {
         "--placement_cloud=testCloud", "--placement_region=testRegion", "--placement_zone=testZone2"));
     createMiniCluster(3, tserverArgs);
     LOG.info("created mini cluster");
-    
+
     List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
-    
+
     org.yb.Common.CloudInfoPB.Builder cloudInfoBuilder = org.yb.Common.CloudInfoPB.newBuilder().
     setPlacementCloud("testCloud").setPlacementRegion("testRegion");
-    
+
     org.yb.Common.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
     org.yb.Common.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
     org.yb.Common.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
-    
+
     // First, making the first two zones affinitized leaders.
     leaders.add(ci0);
     leaders.add(ci1);
-    
+
     ModifyClusterConfigAffinitizedLeaders operation =
         new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
     try {
@@ -540,18 +541,18 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
     Schema newSchema = new Schema(columns);
     CreateTableOptions tableOptions = new CreateTableOptions().setNumTablets(8);
     YBTable table = syncClient.createTable(DEFAULT_KEYSPACE_NAME, "AffinitizedLeaders", newSchema, tableOptions);
-    
+
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
-    
+
     leaders.clear();
     //Now make only the third zone an affinitized leader.
     leaders.add(ci2);
-    
+
     operation = new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
     try {
       operation.doCall();
@@ -559,9 +560,9 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
-    
+
     // Now have no affinitized leaders, should balance 2, 3, 3.
     leaders.clear();
     operation = new ModifyClusterConfigAffinitizedLeaders(syncClient, leaders);
@@ -571,9 +572,9 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
-    
+
     // Now balance all affinitized leaders, should take no balancing steps.
     leaders.add(ci0);
     leaders.add(ci1);
@@ -585,7 +586,7 @@ public class TestYBClient extends BaseYBClientTest {
       LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
-    
+
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
   }
 

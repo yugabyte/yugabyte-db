@@ -83,3 +83,11 @@ shift-base:pglz_find_match
 # We might need these too:
 shift-exponent:pglz_compress
 shift-exponent:pglz_find_match
+
+# https://gist.githubusercontent.com/mbautin/c65046247ff1e48dc03ae7ac2d711c27/raw
+shift-base:LocalExecuteInvalidationMessage
+
+# https://gist.githubusercontent.com/mbautin/aa04a0504e729db687a9520c4b13fbcc/raw
+shift-exponent:postmaster.c
+signed-integer-overflow:int.c
+signed-integer-overflow:int8.c

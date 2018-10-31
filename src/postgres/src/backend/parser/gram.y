@@ -839,12 +839,12 @@ stmt :
 			| VariableSetStmt
 			| ViewStmt
 			| VariableShowStmt
+			| AlterDatabaseStmt
+			| AlterDatabaseSetStmt
 
 			/* Not supported statements */
 			| AlterEventTrigStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterDatabaseStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterDatabaseSetStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterDefaultPrivilegesStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterDomainStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterEnumStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -3938,7 +3938,7 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_not_support(@1, "INHERITS"); 
+					parser_ybc_not_support(@1, "INHERITS");
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -4026,7 +4026,7 @@ OnCommitOption:
 					parser_ybc_not_support(@1, "ON COMMIT DROP");
 					$$ = ONCOMMIT_DROP;
 				}
-			| ON COMMIT DELETE_P ROWS	
+			| ON COMMIT DELETE_P ROWS
 				{
 					parser_ybc_not_support(@1, "ON COMMIT DELETE ROWS");
 					$$ = ONCOMMIT_DELETE_ROWS;
@@ -8605,7 +8605,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER DATABASE database_name RENAME TO database_name
 				{
-					parser_ybc_not_support(@1, "ALTER DATABASE");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_DATABASE;
 					n->subname = $3;
@@ -10336,17 +10335,14 @@ createdb_opt_items:
 createdb_opt_item:
 			createdb_opt_name opt_equal SignedIconst
 				{
-					parser_ybc_not_support(@1, "DATABASE WITH <option>");
 					$$ = makeDefElem($1, (Node *)makeInteger($3), @1);
 				}
 			| createdb_opt_name opt_equal opt_boolean_or_string
 				{
-					parser_ybc_not_support(@1, "DATABASE WITH <option>");
 					$$ = makeDefElem($1, (Node *)makeString($3), @1);
 				}
 			| createdb_opt_name opt_equal DEFAULT
 				{
-					parser_ybc_not_support(@1, "DATABASE WITH <option>");
 					$$ = makeDefElem($1, NULL, @1);
 				}
 		;
@@ -10390,7 +10386,6 @@ opt_equal:	'='										{}
 AlterDatabaseStmt:
 			ALTER DATABASE database_name WITH createdb_opt_list
 				 {
-					parser_ybc_not_support(@1, "ALTER DATABASE");
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = $5;
@@ -10398,7 +10393,6 @@ AlterDatabaseStmt:
 				 }
 			| ALTER DATABASE database_name createdb_opt_list
 				 {
-					parser_ybc_not_support(@1, "ALTER DATABASE");
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = $4;
@@ -10406,7 +10400,6 @@ AlterDatabaseStmt:
 				 }
 			| ALTER DATABASE database_name SET TABLESPACE name
 				 {
-					parser_ybc_not_support(@1, "ALTER DATABASE");
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = list_make1(makeDefElem("tablespace",
@@ -10418,7 +10411,6 @@ AlterDatabaseStmt:
 AlterDatabaseSetStmt:
 			ALTER DATABASE database_name SetResetClause
 				{
-					parser_ybc_not_support(@1, "ALTER DATABASE");
 					AlterDatabaseSetStmt *n = makeNode(AlterDatabaseSetStmt);
 					n->dbname = $3;
 					n->setstmt = $4;
@@ -12748,13 +12740,11 @@ Typename:	SimpleTypename opt_array_bounds
 				}
 			| SimpleTypename ARRAY
 				{
-					parser_ybc_not_support(@1, "Array type");
 					$$ = $1;
 					$$->arrayBounds = list_make1(makeInteger(-1));
 				}
 			| SETOF SimpleTypename ARRAY
 				{
-					parser_ybc_not_support(@1, "Array type");
 					$$ = $2;
 					$$->arrayBounds = list_make1(makeInteger(-1));
 					$$->setof = TRUE;
@@ -12764,12 +12754,10 @@ Typename:	SimpleTypename opt_array_bounds
 opt_array_bounds:
 			opt_array_bounds '[' ']'
 				{
-					parser_ybc_not_support(@1, "Array type");
 					$$ = lappend($1, makeInteger(-1));
 				}
 			| opt_array_bounds '[' Iconst ']'
 				{
-					parser_ybc_not_support(@1, "Array type");
 					$$ = lappend($1, makeInteger($3));
 				}
 			| /*EMPTY*/
@@ -12825,16 +12813,12 @@ ConstTypename:
 GenericType:
 			type_function_name opt_type_modifiers
 				{
-					if (strcmp($1, "text") != 0) {
-						parser_ybc_not_support(@1, "Generic datatype");
-					}
 					$$ = makeTypeName($1);
 					$$->typmods = $2;
 					$$->location = @1;
 				}
 			| type_function_name attrs opt_type_modifiers
 				{
-					parser_ybc_not_support(@1, "Generic datatype");
 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
 					$$->typmods = $3;
 					$$->location = @1;
@@ -12843,7 +12827,6 @@ GenericType:
 
 opt_type_modifiers: '(' expr_list ')'
 				{
-					parser_ybc_not_support(@1, "Type modifier");
 					$$ = $2;
 				}
 				| /* EMPTY */					{ $$ = NIL; }
@@ -12903,14 +12886,12 @@ Numeric:	INT_P
 				}
 			| NUMERIC opt_type_modifiers
 				{
-					parser_ybc_not_support(@1, "DECIMAL");
 					$$ = SystemTypeName("numeric");
 					$$->typmods = $2;
 					$$->location = @1;
 				}
 			| BOOLEAN_P
 				{
-					parser_ybc_not_support(@1, "BOOL");
 					$$ = SystemTypeName("bool");
 					$$->location = @1;
 				}
@@ -12918,7 +12899,6 @@ Numeric:	INT_P
 
 opt_float:	'(' Iconst ')'
 				{
-					parser_ybc_not_support(@1, "Type modifier");
 					/*
 					 * Check FLOAT() precision limits assuming IEEE floating
 					 * types - thomas 1997-09-18
@@ -13011,7 +12991,6 @@ BitWithoutLength:
  */
 Character:  CharacterWithLength
 				{
-					parser_ybc_not_support(@1, "Type modifier");
 					$$ = $1;
 				}
 			| CharacterWithoutLength
@@ -13039,7 +13018,6 @@ ConstCharacter:  CharacterWithLength
 
 CharacterWithLength:  character '(' Iconst ')'
 				{
-					parser_ybc_not_support(@3, "Type modifier");
 					$$ = SystemTypeName($1);
 					$$->typmods = list_make1(makeIntConst($3, @3));
 					$$->location = @1;

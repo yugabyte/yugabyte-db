@@ -111,6 +111,7 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
   // Numeric constant.
+  explicit PgConstant(bool value, bool is_null);
   explicit PgConstant(int16_t value, bool is_null);
   explicit PgConstant(int32_t value, bool is_null);
   explicit PgConstant(int64_t value, bool is_null);

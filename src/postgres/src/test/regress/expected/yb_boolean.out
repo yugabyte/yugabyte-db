@@ -1,0 +1,476 @@
+--
+-- BOOLEAN
+--
+--
+-- sanity check - if this fails go insane!
+--
+SELECT 1 AS one;
+ one
+-----
+   1
+(1 row)
+
+-- ******************testing built-in type bool********************
+-- check bool input syntax
+SELECT true AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT false AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 't' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool '   f           ' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'true' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'test' AS error;
+ERROR:  invalid input syntax for type boolean: "test"
+LINE 1: SELECT bool 'test' AS error;
+                    ^
+SELECT bool 'false' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'foo' AS error;
+ERROR:  invalid input syntax for type boolean: "foo"
+LINE 1: SELECT bool 'foo' AS error;
+                    ^
+SELECT bool 'y' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'yes' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'yeah' AS error;
+ERROR:  invalid input syntax for type boolean: "yeah"
+LINE 1: SELECT bool 'yeah' AS error;
+                    ^
+SELECT bool 'n' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'no' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'nay' AS error;
+ERROR:  invalid input syntax for type boolean: "nay"
+LINE 1: SELECT bool 'nay' AS error;
+                    ^
+SELECT bool 'on' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'off' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'of' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 'o' AS error;
+ERROR:  invalid input syntax for type boolean: "o"
+LINE 1: SELECT bool 'o' AS error;
+                    ^
+SELECT bool 'on_' AS error;
+ERROR:  invalid input syntax for type boolean: "on_"
+LINE 1: SELECT bool 'on_' AS error;
+                    ^
+SELECT bool 'off_' AS error;
+ERROR:  invalid input syntax for type boolean: "off_"
+LINE 1: SELECT bool 'off_' AS error;
+                    ^
+SELECT bool '1' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool '11' AS error;
+ERROR:  invalid input syntax for type boolean: "11"
+LINE 1: SELECT bool '11' AS error;
+                    ^
+SELECT bool '0' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool '000' AS error;
+ERROR:  invalid input syntax for type boolean: "000"
+LINE 1: SELECT bool '000' AS error;
+                    ^
+SELECT bool '' AS error;
+ERROR:  invalid input syntax for type boolean: ""
+LINE 1: SELECT bool '' AS error;
+                    ^
+-- and, or, not in qualifications
+SELECT bool 't' or bool 'f' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 't' and bool 'f' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT not bool 'f' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 't' = bool 'f' AS false;
+ false
+-------
+ f
+(1 row)
+
+SELECT bool 't' <> bool 'f' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 't' > bool 'f' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 't' >= bool 'f' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'f' < bool 't' AS true;
+ true
+------
+ t
+(1 row)
+
+SELECT bool 'f' <= bool 't' AS true;
+ true
+------
+ t
+(1 row)
+
+-- explicit casts to/from text
+SELECT 'TrUe'::text::boolean AS true, 'fAlse'::text::boolean AS false;
+ true | false
+------+-------
+ t    | f
+(1 row)
+
+SELECT '    true   '::text::boolean AS true,
+       '     FALSE'::text::boolean AS false;
+ true | false
+------+-------
+ t    | f
+(1 row)
+
+SELECT true::boolean::text AS true, false::boolean::text AS false;
+ true | false
+------+-------
+ true | false
+(1 row)
+
+SELECT '  tru e '::text::boolean AS invalid;    -- error
+ERROR:  invalid input syntax for type boolean: "  tru e "
+SELECT ''::text::boolean AS invalid;            -- error
+ERROR:  invalid input syntax for type boolean: ""
+CREATE TABLE BOOLTBL1 (k INT PRIMARY KEY, f1 bool);
+INSERT INTO BOOLTBL1 (k, f1) VALUES (1, bool 't');
+INSERT INTO BOOLTBL1 (k, f1) VALUES (2, bool 'True');
+INSERT INTO BOOLTBL1 (k, f1) VALUES (3, bool 'true');
+-- BOOLTBL1 should be full of true's at this point
+SELECT '' AS t_3, BOOLTBL1.* FROM BOOLTBL1 ORDER BY BOOLTBL1.k;
+ t_3 | k | f1
+-----+---+----
+     | 1 | t
+     | 2 | t
+     | 3 | t
+(3 rows)
+
+SELECT '' AS t_3, BOOLTBL1.*
+   FROM BOOLTBL1
+   WHERE f1 = bool 'true' ORDER BY BOOLTBL1.k;
+ t_3 | k | f1
+-----+---+----
+     | 1 | t
+     | 2 | t
+     | 3 | t
+(3 rows)
+
+SELECT '' AS t_3, BOOLTBL1.*
+   FROM BOOLTBL1
+   WHERE f1 <> bool 'false' ORDER BY BOOLTBL1.k;
+ t_3 | k | f1
+-----+---+----
+     | 1 | t
+     | 2 | t
+     | 3 | t
+(3 rows)
+
+SELECT '' AS zero, BOOLTBL1.*
+   FROM BOOLTBL1
+   WHERE booleq(bool 'false', f1) ORDER BY BOOLTBL1.k;
+ zero | k | f1
+------+---+----
+(0 rows)
+
+INSERT INTO BOOLTBL1 (k, f1) VALUES (4, bool 'f');
+SELECT '' AS f_1, BOOLTBL1.*
+   FROM BOOLTBL1
+   WHERE f1 = bool 'false' ORDER BY BOOLTBL1.k;
+ f_1 | k | f1
+-----+---+----
+     | 4 | f
+(1 row)
+
+CREATE TABLE BOOLTBL2 (k INT PRIMARY KEY, f1 bool);
+INSERT INTO BOOLTBL2 (k, f1) VALUES (1, bool 'f');
+INSERT INTO BOOLTBL2 (k, f1) VALUES (2, bool 'false');
+INSERT INTO BOOLTBL2 (k, f1) VALUES (3, bool 'False');
+INSERT INTO BOOLTBL2 (k, f1) VALUES (4, bool 'FALSE');
+-- This is now an invalid expression
+-- For pre-v6.3 this evaluated to false - thomas 1997-10-23
+INSERT INTO BOOLTBL2 (k, f1)
+   VALUES (5, bool 'XXX');
+ERROR:  invalid input syntax for type boolean: "XXX"
+LINE 2:    VALUES (5, bool 'XXX');
+                           ^
+-- BOOLTBL2 should be full of false's at this point
+SELECT '' AS f_4, BOOLTBL2.* FROM BOOLTBL2 ORDER BY BOOLTBL2.k;
+ f_4 | k | f1
+-----+---+----
+     | 1 | f
+     | 2 | f
+     | 3 | f
+     | 4 | f
+(4 rows)
+
+SELECT '' AS tf_12, BOOLTBL1.*, BOOLTBL2.*
+   FROM BOOLTBL1, BOOLTBL2
+   WHERE BOOLTBL2.f1 <> BOOLTBL1.f1 ORDER BY BOOLTBL1.k, BOOLTBL2.k;
+ tf_12 | k | f1 | k | f1
+-------+---+----+---+----
+       | 1 | t  | 1 | f
+       | 1 | t  | 2 | f
+       | 1 | t  | 3 | f
+       | 1 | t  | 4 | f
+       | 2 | t  | 1 | f
+       | 2 | t  | 2 | f
+       | 2 | t  | 3 | f
+       | 2 | t  | 4 | f
+       | 3 | t  | 1 | f
+       | 3 | t  | 2 | f
+       | 3 | t  | 3 | f
+       | 3 | t  | 4 | f
+(12 rows)
+
+SELECT '' AS tf_12, BOOLTBL1.*, BOOLTBL2.*
+   FROM BOOLTBL1, BOOLTBL2
+   WHERE boolne(BOOLTBL2.f1,BOOLTBL1.f1) ORDER BY BOOLTBL1.k, BOOLTBL2.k;;
+ tf_12 | k | f1 | k | f1
+-------+---+----+---+----
+       | 1 | t  | 1 | f
+       | 1 | t  | 2 | f
+       | 1 | t  | 3 | f
+       | 1 | t  | 4 | f
+       | 2 | t  | 1 | f
+       | 2 | t  | 2 | f
+       | 2 | t  | 3 | f
+       | 2 | t  | 4 | f
+       | 3 | t  | 1 | f
+       | 3 | t  | 2 | f
+       | 3 | t  | 3 | f
+       | 3 | t  | 4 | f
+(12 rows)
+
+SELECT '' AS ff_4, BOOLTBL1.*, BOOLTBL2.*
+   FROM BOOLTBL1, BOOLTBL2
+   WHERE BOOLTBL2.f1 = BOOLTBL1.f1 and BOOLTBL1.f1 = bool 'false' ORDER BY BOOLTBL1.k, BOOLTBL2.k;
+ ff_4 | k | f1 | k | f1
+------+---+----+---+----
+      | 4 | f  | 1 | f
+      | 4 | f  | 2 | f
+      | 4 | f  | 3 | f
+      | 4 | f  | 4 | f
+(4 rows)
+
+SELECT '' AS tf_12_ff_4, BOOLTBL1.*, BOOLTBL2.*
+   FROM BOOLTBL1, BOOLTBL2
+   WHERE BOOLTBL2.f1 = BOOLTBL1.f1 or BOOLTBL1.f1 = bool 'true'
+   ORDER BY BOOLTBL1.f1, BOOLTBL2.f1, BOOLTBL1.k, BOOLTBL2.k;
+ tf_12_ff_4 | k | f1 | k | f1
+------------+---+----+---+----
+            | 4 | f  | 1 | f
+            | 4 | f  | 2 | f
+            | 4 | f  | 3 | f
+            | 4 | f  | 4 | f
+            | 1 | t  | 1 | f
+            | 1 | t  | 2 | f
+            | 1 | t  | 3 | f
+            | 1 | t  | 4 | f
+            | 2 | t  | 1 | f
+            | 2 | t  | 2 | f
+            | 2 | t  | 3 | f
+            | 2 | t  | 4 | f
+            | 3 | t  | 1 | f
+            | 3 | t  | 2 | f
+            | 3 | t  | 3 | f
+            | 3 | t  | 4 | f
+(16 rows)
+
+--
+-- SQL syntax
+-- Try all combinations to ensure that we get nothing when we expect nothing
+-- - thomas 2000-01-04
+--
+SELECT '' AS "True", f1
+   FROM BOOLTBL1
+   WHERE f1 IS TRUE ORDER BY BOOLTBL1.k;
+ True | f1
+------+----
+      | t
+      | t
+      | t
+(3 rows)
+
+SELECT '' AS "Not False", f1
+   FROM BOOLTBL1
+   WHERE f1 IS NOT FALSE ORDER BY BOOLTBL1.k;
+ Not False | f1
+-----------+----
+           | t
+           | t
+           | t
+(3 rows)
+
+SELECT '' AS "False", f1
+   FROM BOOLTBL1
+   WHERE f1 IS FALSE ORDER BY BOOLTBL1.k;
+ False | f1
+-------+----
+       | f
+(1 row)
+
+SELECT '' AS "Not True", f1
+   FROM BOOLTBL1
+   WHERE f1 IS NOT TRUE ORDER BY BOOLTBL1.k;
+ Not True | f1
+----------+----
+          | f
+(1 row)
+
+SELECT '' AS "True", f1
+   FROM BOOLTBL2
+   WHERE f1 IS TRUE ORDER BY BOOLTBL2.k;
+ True | f1
+------+----
+(0 rows)
+
+SELECT '' AS "Not False", f1
+   FROM BOOLTBL2
+   WHERE f1 IS NOT FALSE ORDER BY BOOLTBL2.k;
+ Not False | f1
+-----------+----
+(0 rows)
+
+SELECT '' AS "False", f1
+   FROM BOOLTBL2
+   WHERE f1 IS FALSE ORDER BY BOOLTBL2.k;
+ False | f1
+-------+----
+       | f
+       | f
+       | f
+       | f
+(4 rows)
+
+SELECT '' AS "Not True", f1
+   FROM BOOLTBL2
+   WHERE f1 IS NOT TRUE ORDER BY BOOLTBL2.k;
+ Not True | f1
+----------+----
+          | f
+          | f
+          | f
+          | f
+(4 rows)
+
+--
+-- Tests for BooleanTest
+--
+CREATE TABLE BOOLTBL3 (d text, b bool, o int PRIMARY KEY);
+INSERT INTO BOOLTBL3 (d, b, o) VALUES ('true', true, 1);
+INSERT INTO BOOLTBL3 (d, b, o) VALUES ('false', false, 2);
+INSERT INTO BOOLTBL3 (d, b, o) VALUES ('null', null, 3);
+SELECT
+    d,
+    b IS TRUE AS istrue,
+    b IS NOT TRUE AS isnottrue,
+    b IS FALSE AS isfalse,
+    b IS NOT FALSE AS isnotfalse,
+    b IS UNKNOWN AS isunknown,
+    b IS NOT UNKNOWN AS isnotunknown
+FROM booltbl3 ORDER BY o;
+   d   | istrue | isnottrue | isfalse | isnotfalse | isunknown | isnotunknown
+-------+--------+-----------+---------+------------+-----------+--------------
+ true  | t      | f         | f       | t          | f         | t
+ false | f      | t         | t       | f          | f         | t
+ null  | f      | t         | f       | t          | t         | f
+(3 rows)
+
+--
+-- Clean up
+-- Many tables are retained by the regression test, but these do not seem
+--  particularly useful so just get rid of them for now.
+--  - thomas 1997-11-30
+--
+DROP TABLE  BOOLTBL1;
+DROP TABLE  BOOLTBL2;
+DROP TABLE  BOOLTBL3;

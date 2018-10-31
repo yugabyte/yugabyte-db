@@ -111,7 +111,7 @@
 
     <postgresql.jdbc.driver.version>42.2.5</postgresql.jdbc.driver.version>
 
-    <!-- Misc variables -->
+    <!-- Test configuration -->
     <testdata.dir>target/testdata</testdata.dir>
     <testArgLine>-enableassertions -Xmx1900m
       -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
@@ -119,6 +119,7 @@
     </testArgLine>
 
     <yb.collect.tests.only>false</yb.collect.tests.only>
+    <yb.forked.test.process.timeout.sec>1200</yb.forked.test.process.timeout.sec>
   </properties>
 
   <modules>
@@ -157,7 +158,7 @@
           <configuration>
             <failIfNoTests>false</failIfNoTests>
             <reuseForks>${testing.reuseForks}</reuseForks>
-            <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
+            <forkedProcessTimeoutInSeconds>${yb.forked.test.process.timeout.sec}</forkedProcessTimeoutInSeconds>
             <argLine>${testArgLine}</argLine>
             <reportsDirectory>${yb.surefire.reports.directory}</reportsDirectory>
             <threadCount>1</threadCount>

@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
+#include <inttypes.h>
 
 #include "funcapi.h"
 #include "libpq/pqformat.h"
@@ -634,7 +635,7 @@ int8abs(PG_FUNCTION_ARGS)
 
 	result = (arg1 < 0) ? -arg1 : arg1;
 	/* overflow check (needed for INT64_MIN) */
-	if (result < 0)
+	if (result < 0 || arg1 == INT64_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("bigint out of range")));

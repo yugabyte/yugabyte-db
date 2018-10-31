@@ -16,6 +16,8 @@
 
 #include <setjmp.h>
 
+#include "yb/util/ybc_util.h"
+
 /* Error level codes */
 #define DEBUG5		10			/* Debugging messages, in categories of
 								 * decreasing detail. */

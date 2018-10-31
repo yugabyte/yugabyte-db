@@ -33,7 +33,6 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-
 /*
  * PerformCursorOpen
  *		Execute SQL DECLARE CURSOR command.

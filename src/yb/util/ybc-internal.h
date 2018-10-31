@@ -21,6 +21,7 @@
 #endif
 
 #include <cstddef>
+#include <string>
 
 #include "yb/util/ybc_util.h"
 #include "yb/util/status.h"
@@ -40,6 +41,9 @@ void* YBCCStringToTextWithLen(const char* c, int size);
 // YBCStatus definition for Some common Status.
 YBCStatus YBCStatusOK();
 YBCStatus YBCStatusNotSupport(const string& feature_name);
+
+// Duplicate the given string in memory allocated using PostgreSQL's palloc.
+const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
 

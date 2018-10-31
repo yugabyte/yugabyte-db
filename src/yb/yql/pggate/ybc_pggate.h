@@ -179,6 +179,8 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle);
 
 YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle);
 
+YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                               YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
                                YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
@@ -193,8 +195,6 @@ YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_n
                                YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes,
                                bool is_null, YBCPgExpr *expr_handle);
-// YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const uint8_t *value, int64_t bytes,
-//                                  bool is_null, YBCPgExpr *expr_handle);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.

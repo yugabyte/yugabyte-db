@@ -29,7 +29,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static junit.framework.TestCase.fail;
-import static org.junit.Assert.assertEquals;
+import static org.yb.AssertionWrappers.assertEquals;
 
 @RunWith(value=YBTestRunner.class)
 public class TestRoles extends BaseAuthenticationCQLTest {
