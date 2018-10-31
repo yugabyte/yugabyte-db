@@ -269,8 +269,10 @@ void Messenger::BreakConnectivityWith(const IpAddress& address) {
               reactor->DropWithRemoteAddress(address);
               latch->CountDown();
             }, SOURCE_LOCATION()));
-        // Ok to use check here, because this functionality is used only in tests.
-        CHECK(scheduled);
+        if (!scheduled) {
+          LOG(INFO) << "Failed to schedule drop connection with: " << address.to_string();
+          latch->CountDown();
+        }
       }
     }
   }
@@ -372,8 +374,9 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
     auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
         std::move(call), SOURCE_LOCATION()));
-    // Ok to use check here, because this functionality is used only in tests.
-    CHECK(scheduled);
+    if (!scheduled) {
+      call->Transferred(STATUS(Aborted, "Reactor is closing"), nullptr /* conn */);
+    }
     return;
   }
 
