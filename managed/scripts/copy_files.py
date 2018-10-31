@@ -19,10 +19,11 @@ def main():
                         required=True)
     parser.add_argument('--private_key', help='The private access key to scp from the servers.',
                         required=True)
+    parser.add_argument('--out_dir', help='Directory where files get copied.', required=False)
 
     args = parser.parse_args()
 
-    out_dir = os.path.join("/home/centos/save/", timestamp)
+    out_dir = args.out_dir if args.out_dir else os.path.join("/home/centos/save/", timestamp)
     os.makedirs(out_dir)
 
     port = "22" if "onprem" in args.private_key else "54422"
