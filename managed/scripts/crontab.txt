@@ -14,3 +14,5 @@ DEVOPS_HOME=/home/centos/code/devops
 */5 * * * * source /home/centos/.bash_profile; /home/centos/code/yugaweb/api/cli query --publish >> /var/log/website-requests.log 2>&1
 00 00 * * * YUGABYTE_CLUSTER_IPS=10.150.0.45,10.150.0.46,20.150.0.50 /home/centos/code/internal-services/diagnostics/py_wrapper /home/centos/code/internal-services/diagnostics/analyze.py >> /var/log/analyze_downloads.log 2>&1
 
+### Cleanup scripts
+00 00 * * * sudo -u yugabyte python /home/centos/code/yugaware/scripts/scheduler_cleanup.py
