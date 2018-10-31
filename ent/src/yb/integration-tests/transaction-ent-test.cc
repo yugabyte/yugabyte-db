@@ -25,7 +25,6 @@
 
 using namespace std::literals;
 
-DECLARE_uint64(transaction_table_num_tablets);
 DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 
@@ -42,7 +41,6 @@ class TransactionEntTest : public client::KeyValueTableTest {
 
     CreateTable(client::Transactional::kTrue);
 
-    FLAGS_transaction_table_num_tablets = 1;
     FLAGS_intents_flush_max_delay_ms = 250;
 
     HybridTime::TEST_SetPrettyToString(true);
