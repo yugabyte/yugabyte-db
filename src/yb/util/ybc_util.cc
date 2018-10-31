@@ -20,6 +20,7 @@
 #include "yb/util/version_info.h"
 #include "yb/util/status.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/bytes_formatter.h"
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
@@ -104,6 +105,10 @@ void YBCLogImpl(
   if (with_stack_trace) {
     log_msg.stream() << "\n" << yb::GetStackTrace();
   }
+}
+
+const char* YBCFormatBytesAsStr(const char* data, size_t size) {
+  return YBCPAllocStdString(util::FormatBytesAsStr(data, size));
 }
 
 } // extern "C"

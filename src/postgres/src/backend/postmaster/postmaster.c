@@ -937,6 +937,8 @@ PostmasterMain(int argc, char *argv[])
 				(errmsg_internal("-----------------------------------------")));
 	}
 
+	YBReportIfYugaByteEnabled();
+
 	/*
 	 * Create lockfile for data directory.
 	 *
@@ -3340,6 +3342,9 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 * clutter log.
 	 */
 	take_action = !FatalError && Shutdown != ImmediateShutdown;
+	if (YBIsEnabledInPostgresEnvVar()) {
+		take_action = take_action && YBShouldRestartAllChildrenIfOneCrashes();
+	}
 
 	if (take_action)
 	{
@@ -5328,6 +5333,12 @@ StartChildProcess(AuxProcType type)
 	int			ac = 0;
 	char		typebuf[32];
 
+	if (YBIsEnabledInPostgresEnvVar() &&
+	    (type == BgWriterProcess ||
+		 type == WalWriterProcess ||
+		 type == WalReceiverProcess)) {
+		return 0;
+	}
 	/*
 	 * Set up command-line arguments for subprocess
 	 */

@@ -203,6 +203,10 @@ log "Running Python tests"
 time run_python_tests
 log "Finished running Python tests (see timing information above)"
 
+log "Running a light-weight lint script on our Java code"
+time lint_java_code
+log "Finished running a light-weight lint script on the Java code"
+
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}

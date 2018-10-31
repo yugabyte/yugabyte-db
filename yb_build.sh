@@ -122,7 +122,10 @@ Options:
     The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
     and is checked against other parameters.
   --python-tests
-    Run various Python tests (doctest, unit test)
+    Run various Python tests (doctest, unit test) and exit.
+  --java-lint
+    Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
+    methods for assertions and using the right test runners. We exit the script after this step.
   --cotire
     Enable precompiled headers using cotire.
   --cmake-args
@@ -170,6 +173,8 @@ Options:
     Extra flags to pass to mini-cluster daemons (master/tserver). Currently only used in Java
     tests. Note that bash-style quoting won't work here right now -- they are naively split on
     spaces.
+  --no-latest-symlink
+    Disable the creation/overwriting of the "latest" symlink in the build directory.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -180,11 +185,12 @@ Supported target keywords:
   ...-test           - build and run a C++ test
   [yb-]master        - master executable
   [yb-]tserver       - tablet server executable
-  daemons            - both yb-master and yb-tserver
+  daemons            - yb-master, yb-tserver, and the postgres server
   packaged[-targets] - targets that are required for a release package
 
 Setting YB environment variables on the command line (for environment variables starting with YB_):
   YB_SOME_VARIABLE1=some_value1 YB_SOME_VARIABLE2=some_value2
+The same also works for postgres_FLAGS_... variables.
 EOT
 }
 
@@ -543,6 +549,7 @@ running_any_tests=false
 clean_postgres=false
 export_compile_commands=false
 make_ninja_extra_args=""
+java_lint=false
 
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -561,7 +568,7 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
 
-  case "${1//_/-}" in
+  case ${1//_/-} in
     -h|--help)
       show_help >&2
       exit 1
@@ -732,8 +739,11 @@ while [[ $# -gt 0 ]]; do
     tserver|yb-tserver)
       make_targets+=( "yb-tserver" )
     ;;
+    postgres)
+      make_targets+=( "postgres ")
+    ;;
     daemons|yb-daemons)
-      make_targets+=( "yb-master" "yb-tserver" )
+      make_targets+=( "yb-master" "yb-tserver" "postgres" )
     ;;
     packaged|packaged-targets)
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
@@ -857,21 +867,26 @@ while [[ $# -gt 0 ]]; do
       export YB_EXTRA_DAEMON_FLAGS=$2
       shift
     ;;
-    YB*)
-      if [[ $1 =~ ^(YB_[A-Z0-9_]+)=(.*)$ ]]; then
-        env_var_name=${BASH_REMATCH[1]}
-        # Use "the ultimate fix" from http://bit.ly/setenvvar
-        env_var_value=${BASH_REMATCH[2]}
-        eval export $env_var_name=\$env_var_value  # note escaped dollar sign
-        log "Setting $env_var_name to: '$env_var_value' (as specified on cmd line)"
-        unset env_var_name
-        unset env_var_value
-      else
-        fatal "Could not parse an environment variable name/value from: $1"
-      fi
-      shift
+    --java-lint)
+      java_lint=true
+    ;;
+    --no-latest-symlink)
+      export YB_DISABLE_LATEST_SYMLINK=1
     ;;
     *)
+      if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
+        env_var_name=${BASH_REMATCH[1]}
+        # Use "the ultimate fix" from http://bit.ly/setenvvar to set a variable with the name stored
+        # in another variable to the given value.
+        env_var_value=${BASH_REMATCH[2]}
+        eval export $env_var_name=\$env_var_value  # note escaped dollar sign
+        log "Setting $env_var_name to: '$env_var_value' (as specified on the command line)"
+        unset env_var_name
+        unset env_var_value
+        shift
+        continue
+      fi
+
       echo "Invalid option: '$1'" >&2
       exit 1
   esac
@@ -976,6 +991,12 @@ fi
 echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
 
 detect_edition
+
+if "$java_lint"; then
+  log "--lint-java-code specified, only linting java code and then exiting."
+  lint_java_code
+  exit
+fi
 
 # -------------------------------------------------------------------------------------------------
 # Recursively invoke this script in order to save the log to a file.
@@ -1101,8 +1122,8 @@ set_build_env_vars
 create_build_descriptor_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
-  # Only build yb-master / yb-tserver when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver )
+  # Only build yb-master / yb-tserver / postgres when we're only trying to run a Java test.
+  make_targets+=( yb-master yb-tserver postgres )
 fi
 
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then

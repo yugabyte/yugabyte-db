@@ -446,6 +446,8 @@ CHECK_YB_COMPILER_PATH(${CMAKE_C_COMPILER})
 message("CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
 CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 
+set(BUILD_SUPPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build-support)
+
 # Provide a 'latest' symlink to this build directory if the "blessed" multi-build layout is
 # detected:
 #
@@ -469,7 +471,9 @@ if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
     set(MORE_ARGS "-h")
   endif()
   add_custom_target(latest_symlink ALL
-    ln ${MORE_ARGS} -sf "${CMAKE_CURRENT_BINARY_DIR}" "${LATEST_BUILD_SYMLINK_PATH}"
+    "${BUILD_SUPPORT_DIR}/create_latest_symlink.sh"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    "${LATEST_BUILD_SYMLINK_PATH}"
     COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
 endif()
 
@@ -479,8 +483,6 @@ add_custom_target(dummy_target ALL
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 include(CMakeParseArguments)
-
-set(BUILD_SUPPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build-support)
 
 # Allow "make install" to not depend on all targets.
 #

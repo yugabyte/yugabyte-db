@@ -62,7 +62,7 @@ public final class EnvAndSysPropertyUtil {
       return envVarValue;
     }
 
-    if (systemPropertyName != null) {
+    if (systemPropertyValue != null) {
       return systemPropertyValue;
     }
 
@@ -72,4 +72,5 @@ public final class EnvAndSysPropertyUtil {
   public static String getEnvVarOrSystemProperty(String envVarName) {
     return getEnvVarOrSystemProperty(envVarName, null);
   }
+
 }

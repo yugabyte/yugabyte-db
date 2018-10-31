@@ -35,10 +35,9 @@ import org.apache.commons.io.FileUtils;
 import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
-import org.yb.util.NetUtil;
+import org.yb.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.RandomNumberUtil;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -198,8 +197,9 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
 
-    final long memoryLimit = TestUtils.nonTsanVsTsan(DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
-                                                     DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
+    final long memoryLimit = SanitizerUtil.nonTsanVsTsan(
+        DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
+        DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
     commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
 
     // YB_TEST_INVOCATION_ID is a special environment variable that we use to force-kill all
@@ -654,7 +654,7 @@ public class MiniYBCluster implements AutoCloseable {
       // This means the process is still alive, it's like reverse psychology.
     }
 
-    LOG.info("Started " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+    LOG.info("Started " + command[0] + " as pid " + ProcessUtil.pidOfProcess(proc));
 
     return daemon;
   }
@@ -675,7 +675,7 @@ public class MiniYBCluster implements AutoCloseable {
       // This means the process is still alive, it's like reverse psychology.
     }
 
-    LOG.info("Restarted " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+    LOG.info("Restarted " + command[0] + " as pid " + ProcessUtil.pidOfProcess(proc));
 
     return daemon;
   }
@@ -704,55 +704,11 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Restarted mini cluster");
   }
 
-  public static void processCoreFile(int pid,
-                                     String executablePath,
-                                     String programDescription,
-                                     File coreFileDir,
-                                     boolean tryWithoutPid) throws Exception {
-    List<String> coreFileNames = new ArrayList<String>();
-    coreFileNames.add("core." + pid);
-    if (tryWithoutPid) {
-      coreFileNames.add("core");
-    }
-    for (String coreBasename : coreFileNames) {
-      final File coreFile =
-          coreFileDir == null ? new File(coreBasename) : new File(coreFileDir, coreBasename);
-      if (coreFile.exists()) {
-        LOG.warn("Found core file '{}' from {}", coreFile.getAbsolutePath(), programDescription);
-        String analysisScript = TestUtils.findYbRootDir() + "/build-support/analyze_core_file.sh";
-        List<String> analysisArgs = Arrays.asList(
-            analysisScript,
-            "--core",
-            coreFile.getAbsolutePath(),
-            "--executable",
-            executablePath
-        );
-        LOG.warn("Analyzing core file using the command: " + analysisArgs);
-        ProcessBuilder procBuilder = new ProcessBuilder().command(analysisArgs);
-        procBuilder.redirectErrorStream(true);
-        Process analysisProcess = procBuilder.start();
-
-        LogPrinter logPrinter = new LogPrinter(analysisProcess.getInputStream(), "    ");
-        analysisProcess.waitFor();
-        logPrinter.stop();
-
-        if (analysisProcess.exitValue() != 0) {
-          LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
-              analysisProcess.exitValue());
-        } else {
-          if (coreFile.delete()) {
-            LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
-          } else {
-            LOG.warn("Failed to delete core file at '{}'", coreFile.getAbsolutePath());
-          }
-        }
-      }
-    }
-  }
-
   private void processCoreFile(MiniYBDaemon daemon) throws Exception {
-    processCoreFile(daemon.getPid(), daemon.getCommandLine()[0], daemon.toString(),
-        /* coreFileDir */ null, /* tryWithoutPid */ false);
+    CoreFileUtil.processCoreFile(
+        daemon.getPid(), daemon.getCommandLine()[0], daemon.toString(),
+        /* coreFileDir */ null,
+        CoreFileUtil.CoreFileMatchMode.EXACT_PID);
   }
 
   private void destroyDaemon(MiniYBDaemon daemon) throws Exception {
@@ -842,6 +798,7 @@ public class MiniYBCluster implements AutoCloseable {
     for (String path : pathsToDelete) {
       try {
         File f = new File(path);
+        LOG.info("Deleting path: " + path);
         if (f.isDirectory()) {
           FileUtils.deleteDirectory(f);
         } else {

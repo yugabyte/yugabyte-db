@@ -1089,11 +1089,6 @@ RenameDatabase(const char *oldname, const char *newname)
 	 */
 	heap_close(rel, NoLock);
 
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter database is not yet supported");
-	}
-
 	return address;
 }
 
@@ -1603,11 +1598,6 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
 
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter database is not yet supported");
-	}
-
 	return dboid;
 }
 
@@ -1631,11 +1621,6 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 					   stmt->dbname);
 
 	AlterSetting(datid, InvalidOid, stmt->setstmt);
-
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter database is not yet supported");
-	}
 
 	UnlockSharedObject(DatabaseRelationId, datid, 0, AccessShareLock);
 
@@ -1755,11 +1740,6 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
-
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter database is not yet supported");
-	}
 
 	return address;
 }

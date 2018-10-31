@@ -53,6 +53,9 @@ public class LogPrinter {
     this.logPrefix = logPrefix;
     this.thread = new Thread(() -> runThread());
     this.errorListener = errorListener;
+    if (errorListener != null) {
+      errorListener.associateWithLogPrinter(this);
+    }
 
     thread.setDaemon(true);
     thread.setName("Log printer for " + logPrefix.trim());

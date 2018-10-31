@@ -71,4 +71,12 @@ YBCStatus YBCStatusNotSupport(const string& feature_name) {
   }
 }
 
+const char* YBCPAllocStdString(const std::string& s) {
+  const size_t len = s.size();
+  char* result = reinterpret_cast<char*>(YBCPAlloc(len + 1));
+  memcpy(result, s.c_str(), len);
+  result[len] = 0;
+  return result;
+}
+
 } // namespace yb

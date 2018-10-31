@@ -244,34 +244,27 @@ const char* NormalizeSourceFilePath(const char* file_path) {
   }
 
   // This could be called arbitrarily early or late in program execution as part of backtrace,
-  // so we're not using any static constants here.
+  // so we're not using any std::string static constants here.
+#define YB_HANDLE_SOURCE_SUBPATH(subpath, prefix_len_to_remove) \
+    do { \
+      const char* const subpath_ptr = strstr(file_path, (subpath)); \
+      if (subpath_ptr != nullptr) { \
+        return subpath_ptr + (prefix_len_to_remove); \
+      } \
+    } while (0);
 
-  const char* const src_yb_subpath = strstr(file_path, "/src/yb/");
-  if (src_yb_subpath != nullptr) {
-    return src_yb_subpath + 5;
-  }
+  YB_HANDLE_SOURCE_SUBPATH("/src/yb/", 5);
+  YB_HANDLE_SOURCE_SUBPATH("/src/postgres/src/", 5);
+  YB_HANDLE_SOURCE_SUBPATH("/src/rocksdb/", 5);
+  YB_HANDLE_SOURCE_SUBPATH("/thirdparty/build/", 1);
 
-  const char* const src_rocksdb_subpath = strstr(file_path, "/src/rocksdb/");
-  if (src_rocksdb_subpath != nullptr) {
-    return src_rocksdb_subpath + 5;
-  }
+  // These are Linuxbrew gcc's standard headers. Keep the path starting from "gcc/...".
+  YB_HANDLE_SOURCE_SUBPATH("/Cellar/gcc/", 8);
 
-  const char* const thirdparty_subpath = strstr(file_path, "/thirdparty/build/");
-  if (thirdparty_subpath != nullptr) {
-    return thirdparty_subpath + 1;
-  }
+  // TODO: replace postgres_build with just postgres.
+  YB_HANDLE_SOURCE_SUBPATH("/postgres_build/src/", 1);
 
-  const char* const cellar_gcc_subpath = strstr(file_path, "/Cellar/gcc/");
-  if (cellar_gcc_subpath != nullptr) {
-    // These are Linuxbrew gcc's standard headers. Keep the path starting from "gcc/...".
-    return cellar_gcc_subpath + 8;
-  }
-
-  const char* const postgres_subpath = strstr(file_path, "/postgres_build/src/");
-  if (postgres_subpath != nullptr) {
-    // TODO: replace postgres_build with just postgres.
-    return postgres_subpath + 1;
-  }
+#undef YB_HANDLE_SOURCE_SUBPATH
 
   return file_path;
 }

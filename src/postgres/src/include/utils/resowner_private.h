@@ -24,6 +24,7 @@
 #include "utils/resowner.h"
 #include "utils/snapshot.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /* support for buffer refcount management */
 extern void ResourceOwnerEnlargeBuffers(ResourceOwner owner);
@@ -87,5 +88,14 @@ extern void ResourceOwnerRememberDSM(ResourceOwner owner,
 						 dsm_segment *);
 extern void ResourceOwnerForgetDSM(ResourceOwner owner,
 					   dsm_segment *);
+
+/* support for YugaByte statement refcount management */
+extern void ResourceOwnerEnlargeYugaByteStmts(ResourceOwner owner);
+extern void ResourceOwnerRememberYugaByteStmt(
+	ResourceOwner owner,
+	YBCPgStatement yb_stmt);
+extern void ResourceOwnerForgetYugaByteStmt(
+	ResourceOwner owner,
+	YBCPgStatement yb_stmt);
 
 #endif							/* RESOWNER_PRIVATE_H */

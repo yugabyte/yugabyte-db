@@ -31,17 +31,16 @@
 //
 package org.yb.client;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableSet;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
+import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.RandomNumberUtil;
+import org.yb.util.SanitizerUtil;
 
 import java.io.*;
-import java.lang.reflect.Field;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,12 +50,6 @@ import java.util.*;
 
 public class TestUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
-
-  // Used by pidOfProcess()
-  private static String UNIX_PROCESS_CLASS_NAME =  "java.lang.UNIXProcess";
-  private static String JDK9_PROCESS_IMPL_CLASS_NAME = "java.lang.ProcessImpl";
-
-  private static Set<String> VALID_SIGNALS =  ImmutableSet.of("STOP", "CONT", "TERM", "KILL");
 
   private static final String BIN_DIR_PROP = "binDir";
 
@@ -202,6 +195,10 @@ public class TestUtils {
     return binDir;
   }
 
+  public static String getBuildRootDir() {
+    return new File(getBinDir()).getParent();
+  }
+
   /**
    * @param binName the binary to look for (eg 'yb-tserver')
    * @return the absolute path of that binary
@@ -250,77 +247,6 @@ public class TestUtils {
     File f = new File(testTmpDir);
     f.mkdirs();
     return f.getAbsolutePath();
-  }
-
-  /**
-   * Gets the pid of a specified process. Relies on reflection and only works on
-   * UNIX process, not guaranteed to work on JDKs other than Oracle and OpenJDK.
-   * @param proc The specified process.
-   * @return The process UNIX pid.
-   * @throws IllegalArgumentException If the process is not a UNIXProcess.
-   * @throws Exception If there are other getting the pid via reflection.
-   */
-  public static int pidOfProcess(Process proc) throws NoSuchFieldException, IllegalAccessException {
-    Class<?> procCls = proc.getClass();
-    final String actualClassName = procCls.getName();
-    if (!actualClassName.equals(UNIX_PROCESS_CLASS_NAME) &&
-        !actualClassName.equals(JDK9_PROCESS_IMPL_CLASS_NAME)) {
-      throw new IllegalArgumentException("pidOfProcess() expects an object of class " +
-          UNIX_PROCESS_CLASS_NAME + " or " + JDK9_PROCESS_IMPL_CLASS_NAME + ", but " +
-          procCls.getName() + " was passed in instead!");
-    }
-    Field pidField = procCls.getDeclaredField("pid");
-    pidField.setAccessible(true);
-    return (Integer) pidField.get(proc);
-  }
-
-  public static String pidStrOfProcess(Process proc) {
-    try {
-      return String.valueOf(pidOfProcess(proc));
-    } catch (NoSuchFieldException | IllegalAccessException ex) {
-      return "<error_getting_pid>";
-    }
-  }
-
-  /**
-   * Send a code specified by its string representation to the specified process.
-   * TODO: Use a JNR/JNR-Posix instead of forking the JVM to exec "kill".
-   * @param proc The specified process.
-   * @param sig The string representation of the process (e.g., STOP for SIGSTOP).
-   * @throws IllegalArgumentException If the signal type is not supported.
-   * @throws IllegalStateException If we are unable to send the specified signal.
-   */
-  static void signalProcess(Process proc, String sig) throws Exception {
-    if (!VALID_SIGNALS.contains(sig)) {
-      throw new IllegalArgumentException(sig + " is not a supported signal, only " +
-              Joiner.on(",").join(VALID_SIGNALS) + " are supported");
-    }
-    int pid = pidOfProcess(proc);
-    int rv = Runtime.getRuntime()
-            .exec(String.format("kill -%s %d", sig, pid))
-            .waitFor();
-    if (rv != 0) {
-      throw new IllegalStateException(String.format("unable to send SIG%s to process %s(pid=%d): " +
-              "expected return code from kill, but got %d instead", sig, proc, pid, rv));
-    }
-  }
-
-  /**
-   * Pause the specified process by sending a SIGSTOP using the kill command.
-   * @param proc The specified process.
-   * @throws Exception If error prevents us from pausing the process.
-   */
-  static void pauseProcess(Process proc) throws Exception {
-    signalProcess(proc, "STOP");
-  }
-
-  /**
-   * Resumes the specified process by sending a SIGCONT using the kill command.
-   * @param proc The specified process.
-   * @throws Exception If error prevents us from resuming the process.
-   */
-  static void resumeProcess(Process proc) throws Exception {
-    signalProcess(proc, "CONT");
   }
 
   /**
@@ -402,7 +328,7 @@ public class TestUtils {
   }
 
   public static void waitFor(Condition condition, long timeoutMs, int sleepTime) throws Exception {
-    timeoutMs *= getTimeoutMultiplier();
+    timeoutMs *= SanitizerUtil.getTimeoutMultiplier();
     final long startTimeMs = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(sleepTime);
@@ -454,35 +380,28 @@ public class TestUtils {
     }, timeoutMs);
   }
 
-  public static boolean isTSAN() {
-    return getBuildType().equals("tsan");
-  }
-
-  public static long nonTsanVsTsan(long nonTsanValue, long tsanValue) {
-    return isTSAN() ? tsanValue : nonTsanValue;
-  }
-
-  public static int nonTsanVsTsan(int nonTsanValue, int tsanValue) {
-    return isTSAN() ? tsanValue : nonTsanValue;
-  }
-
-  public static String nonTsanVsTsan(String nonTsanValue, String tsanValue) {
-    return isTSAN() ? tsanValue : nonTsanValue;
-  }
-
-  /** @return a timeout multiplier to apply in tests based on the build type */
-  public static double getTimeoutMultiplier() {
-    return isTSAN() ? 3.0 : 1.0;
-  }
-
   /**
-   * Adjusts a timeout based on the build type.
-   *
-   * @param timeout timeout in any time units
-   * @return adjusted timeout
+   * Adjust the given timeout (that should already have been corrected for build type using
+   * {@link org.yb.util.Timeouts#adjustTimeoutSecForBuildType} according to some user overrides such
+   * as {@code YB_MIN_TEST_TIMEOUT_SEC}.
+   * @param timeoutSec the test timeout in seconds to be adjusted
+   * @return the adjusted timeout
    */
-  public static long adjustTimeoutForBuildType(long timeout) {
-    return (long) (timeout * TestUtils.getTimeoutMultiplier());
+  public static long finalizeTestTimeoutSec(long timeoutSec) {
+    String minTimeoutStr =
+        EnvAndSysPropertyUtil.getEnvVarOrSystemProperty("YB_MIN_TEST_TIMEOUT_SEC", "0");
+    LOG.info("minTimeoutStr=" + minTimeoutStr);
+    long minTestTimeoutSec;
+    if (minTimeoutStr.toLowerCase().equals("inf")) {
+      minTestTimeoutSec = Integer.MAX_VALUE;
+    } else {
+      minTestTimeoutSec = Long.valueOf(minTimeoutStr);
+    }
+    if (minTestTimeoutSec <= 0) {
+      return timeoutSec;
+    }
+    // The lower bound on the timeout in seconds is minTestTimeoutSec, as specified by the user.
+    return Math.max(timeoutSec, minTestTimeoutSec);
   }
 
   /**

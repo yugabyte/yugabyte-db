@@ -18,6 +18,10 @@
 namespace yb {
 namespace pggate {
 
+void PgWire::WriteBool(bool value, faststring *buffer) {
+  buffer->append(&value, sizeof(bool));
+}
+
 void PgWire::WriteUint8(uint8_t value, faststring *buffer) {
   buffer->append(&value, sizeof(uint8_t));
 }
@@ -52,6 +56,14 @@ void PgWire::WriteText(const string& value, faststring *buffer) {
 
 //--------------------------------------------------------------------------------------------------
 // Read numbers.
+
+// This is not called ReadBool but ReadNumber because it is invoked from the TranslateNumber
+// template function similarly to the rest of numeric types.
+size_t PgWire::ReadNumber(Slice *cursor, bool *value) {
+  *value = !!*reinterpret_cast<const bool*>(cursor->data());
+  return sizeof(bool);
+}
+
 size_t PgWire::ReadNumber(Slice *cursor, uint8 *value) {
   *value = *reinterpret_cast<const uint8*>(cursor->data());
   return sizeof(uint8_t);

@@ -1819,6 +1819,41 @@ sed_i() {
   fi
 }
 
+lint_java_code() {
+  local java_project_dir
+  declare -i num_errors=0
+
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    local IFS=$'\n'
+    local java_test_files=( $(
+      find "$java_project_dir" -name "Test*.java" -and \
+          -not -name "TestUtils.java" -and \
+          -not -name "*Base.java"
+    ) )
+    local java_test_file
+    for java_test_file in "${java_test_files[@]}"; do
+      local log_prefix="YB JAVA LINT: $java_test_file"
+      if ! grep -Fq '@RunWith(value=YBParameterizedTestRunner.class)' "$java_test_file" &&
+         ! grep -Fq '@RunWith(YBParameterizedTestRunner.class)' "$java_test_file" &&
+         ! grep -Fq '@RunWith(value=YBTestRunner.class)' "$java_test_file" &&
+         ! grep -Fq '@RunWith(YBTestRunner.class)' "$java_test_file"; then
+        log "$log_prefix: neither YBTestRunner nor YBParameterizedTestRunner being used in test"
+        num_errors+=1
+      fi
+      if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
+         grep -Fq 'import org.junit.Assert' "$java_test_file"; then
+        log "$log_prefix: directly importing org.junit.Assert. Should use org.yb.AssertionWrappers."
+        num_errors+=1
+      fi
+    done
+  done
+  if [[ $num_errors -eq 0 ]]; then
+    log "Light-weight lint of YB Java code: SUCCESS"
+  else
+    log "Light-weight lint of YB Java code: FAILURE ($num_errors errors found)"
+    return 1
+  fi
+}
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

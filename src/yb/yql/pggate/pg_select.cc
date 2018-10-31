@@ -102,12 +102,11 @@ Status PgSelect::DeleteEmptyPrimaryBinds() {
   }
 
   if (miss_partition_columns) {
-    LOG(INFO) << "Full scan is needed";
+    VLOG(1) << "Full scan is needed";
     read_req_->clear_partition_column_values();
     read_req_->clear_range_column_values();
-
   } else if (miss_range_columns) {
-    LOG(INFO) << "Single tablet scan is needed";
+    VLOG(1) << "Single tablet scan is needed";
     read_req_->clear_range_column_values();
   }
 

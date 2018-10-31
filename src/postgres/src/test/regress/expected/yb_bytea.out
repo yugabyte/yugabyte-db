@@ -1,0 +1,133 @@
+SET bytea_output TO hex;
+SELECT E'\\xDeAdBeEf'::bytea;
+   bytea
+------------
+ \xdeadbeef
+(1 row)
+
+SELECT E'\\x De Ad Be Ef '::bytea;
+   bytea
+------------
+ \xdeadbeef
+(1 row)
+
+SELECT E'\\xDeAdBeE'::bytea;
+ERROR:  invalid hexadecimal data: odd number of digits
+LINE 1: SELECT E'\\xDeAdBeE'::bytea;
+               ^
+SELECT E'\\xDeAdBeEx'::bytea;
+ERROR:  invalid hexadecimal digit: "x"
+LINE 1: SELECT E'\\xDeAdBeEx'::bytea;
+               ^
+SELECT E'\\xDe00BeEf'::bytea;
+   bytea
+------------
+ \xde00beef
+(1 row)
+
+SELECT E'DeAdBeEf'::bytea;
+       bytea
+--------------------
+ \x4465416442654566
+(1 row)
+
+SELECT E'De\\000dBeEf'::bytea;
+       bytea
+--------------------
+ \x4465006442654566
+(1 row)
+
+SELECT E'De\123dBeEf'::bytea;
+       bytea
+--------------------
+ \x4465536442654566
+(1 row)
+
+SELECT E'De\\123dBeEf'::bytea;
+       bytea
+--------------------
+ \x4465536442654566
+(1 row)
+
+SELECT E'De\\678dBeEf'::bytea;
+ERROR:  invalid input syntax for type bytea
+LINE 1: SELECT E'De\\678dBeEf'::bytea;
+               ^
+SET bytea_output TO escape;
+SELECT E'\\xDeAdBeEf'::bytea;
+      bytea
+------------------
+ \336\255\276\357
+(1 row)
+
+SELECT E'\\x De Ad Be Ef '::bytea;
+      bytea
+------------------
+ \336\255\276\357
+(1 row)
+
+SELECT E'\\xDe00BeEf'::bytea;
+      bytea
+------------------
+ \336\000\276\357
+(1 row)
+
+SELECT E'DeAdBeEf'::bytea;
+  bytea
+----------
+ DeAdBeEf
+(1 row)
+
+SELECT E'De\\000dBeEf'::bytea;
+    bytea
+-------------
+ De\000dBeEf
+(1 row)
+
+SELECT E'De\\123dBeEf'::bytea;
+  bytea
+----------
+ DeSdBeEf
+(1 row)
+
+SET bytea_output TO hex;
+-- bytea in value
+CREATE TABLE binary_valued (k INT PRIMARY KEY, b bytea);
+INSERT INTO binary_valued (k, b) VALUES (0, decode('', 'hex'));
+INSERT INTO binary_valued (k, b) VALUES (1, decode('00', 'hex'));
+INSERT INTO binary_valued (k, b) VALUES (2, decode('001122', 'hex'));
+INSERT INTO binary_valued (k, b) VALUES (3, decode('11220033', 'hex'));
+INSERT INTO binary_valued (k, b) VALUES (4, decode('deadbeef00deadbeef', 'hex'));
+SELECT * FROM binary_valued ORDER BY k;
+ k |          b
+---+----------------------
+ 0 | \x
+ 1 | \x00
+ 2 | \x001122
+ 3 | \x11220033
+ 4 | \xdeadbeef00deadbeef
+(5 rows)
+
+DROP TABLE binary_valued;
+-- bytea in key
+CREATE TABLE binary_keyed(k bytea PRIMARY KEY, v INT);
+INSERT INTO binary_keyed (k, v) VALUES (decode('', 'hex'), 0);
+INSERT INTO binary_keyed (k, v) VALUES (decode('00', 'hex'), 1);
+INSERT INTO binary_keyed (k, v) VALUES (decode('001122', 'hex'), 2);
+INSERT INTO binary_keyed (k, v) VALUES (decode('11220033', 'hex'), 3);
+INSERT INTO binary_keyed (k, v) VALUES (decode('deadbeef00deadbeef', 'hex'), 4);
+INSERT INTO binary_keyed (k, v) VALUES (decode('0000', 'hex'), 5);
+INSERT INTO binary_keyed (k, v) VALUES (decode('01', 'hex'), 6);
+SELECT * FROM binary_keyed ORDER BY k;
+          k           | v
+----------------------+---
+ \x                   | 0
+ \x00                 | 1
+ \x0000               | 5
+ \x001122             | 2
+ \x01                 | 6
+ \x11220033           | 3
+ \xdeadbeef00deadbeef | 4
+(7 rows)
+
+DROP TABLE binary_keyed;
