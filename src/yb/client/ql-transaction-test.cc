@@ -48,7 +48,6 @@ using yb::tablet::TabletPeer;
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
-DECLARE_uint64(transaction_table_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
@@ -135,7 +134,6 @@ class QLTransactionTest : public KeyValueTableTest {
 
     CreateTable(Transactional::kTrue);
 
-    FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = log_segment_size_bytes();
     FLAGS_log_min_seconds_to_retain = 5;
     FLAGS_intents_flush_max_delay_ms = 250;
@@ -452,7 +450,6 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   const auto kClockSkew = 500ms;
 
   SetAtomicFlag(1000000ULL, &FLAGS_max_clock_skew_usec);
-  FLAGS_transaction_table_num_tablets = 3;
   DisableTransactionTimeout();
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
@@ -1106,7 +1103,6 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
 
   FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
-  FLAGS_transaction_table_num_tablets = 3;
   FLAGS_log_segment_size_bytes = 0;
   SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
 
@@ -1204,7 +1200,7 @@ struct TransactionState {
 
   void CheckStatus() {
     ASSERT_TRUE(status_future.valid());
-    ASSERT_EQ(status_future.wait_for(NonTsanVsTsan(1s, 5s)), std::future_status::ready);
+    ASSERT_EQ(status_future.wait_for(NonTsanVsTsan(3s, 10s)), std::future_status::ready);
     auto resp = status_future.get();
     ASSERT_OK(resp);
 

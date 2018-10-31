@@ -20,10 +20,6 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import org.yb.minicluster.Metrics;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.minicluster.MiniYBDaemon;
-
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
