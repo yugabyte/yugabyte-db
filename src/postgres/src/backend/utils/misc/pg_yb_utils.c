@@ -35,11 +35,15 @@
 #include "catalog/pg_database.h"
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
+#include "catalog/catalog.h"
+#include "commands/dbcommands.h"
 
 #include "pg_yb_utils.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "common/pg_yb_common.h"
+
+#include "utils/resowner_private.h"
 
 YBCPgSession ybc_pg_session = NULL;
 
@@ -53,40 +57,37 @@ bool
 IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
-	return ybc_pg_session != NULL && IsNormalProcessingMode();
+	return ybc_pg_session != NULL;
 }
 
 bool
-IsYBSupportedTable(Oid relid)
+IsYBRelation(Relation relation)
 {
-	/* Support all tables except the template database and
-	 * all system tables (i.e. from system schemas) */
-	Relation relation = RelationIdGetRelation(relid);
-	char *schema = get_namespace_name(relation->rd_rel->relnamespace);
-	bool is_supported = MyDatabaseId != TemplateDbOid &&
-						strcmp(schema, "pg_catalog") != 0 &&
-						strcmp(schema, "information_schema") != 0 &&
-						strncmp(schema, "pg_toast", 8) != 0;
+	const char relkind = relation->rd_rel->relkind;
+
+	/* Currently only support regular tables */
+	return relkind == RELKIND_RELATION;
+}
+
+bool
+IsYBRelationById(Oid relid)
+{
+	Relation relation     = RelationIdGetRelation(relid);
+	bool     is_supported = IsYBRelation(relation);
 	RelationClose(relation);
 	return is_supported;
 }
 
-bool IsYBRelation(Relation relation) {
-	char *schema = get_namespace_name(relation->rd_rel->relnamespace);
-	return (MyDatabaseId != TemplateDbOid &&
-					relation->rd_rel->relkind == RELKIND_RELATION &&
-					strcmp(schema, "pg_catalog") != 0 &&
-					strcmp(schema, "information_schema") != 0 &&
-					strncmp(schema, "pg_toast", 8) != 0);
+AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
+{
+	return IsYugaByteEnabled() && IsYBRelation(relation)
+	       ? YBFirstLowInvalidAttributeNumber
+	       : FirstLowInvalidHeapAttributeNumber;
 }
 
-AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation) {
-	return IsYugaByteEnabled() && IsYBRelation(relation) ? YBFirstLowInvalidAttributeNumber
-		                                                   : FirstLowInvalidHeapAttributeNumber;
-}
-
-AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid) {
-	Relation relation = RelationIdGetRelation(relid);
+AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
+{
+	Relation   relation = RelationIdGetRelation(relid);
 	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
 	RelationClose(relation);
 	return attr_num;
@@ -136,6 +137,25 @@ HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt)
 	if (ybc_stmt)
 	{
 		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	}
+	HandleYBStatus(status);
+}
+
+void
+HandleYBStmtStatusWithOwner(YBCStatus status,
+                            YBCPgStatement ybc_stmt,
+                            ResourceOwner owner)
+{
+	if (!status)
+		return;
+
+	if (ybc_stmt)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+		if (owner != NULL)
+		{
+			ResourceOwnerForgetYugaByteStmt(owner, ybc_stmt);
+		}
 	}
 	HandleYBStatus(status);
 }
@@ -425,4 +445,39 @@ YBPgErrorLevelToString(int elevel) {
 		case PANIC: return "PANIC";
 		default: return "UNKNOWN";
 	}
+}
+
+const char*
+YBCGetDatabaseName(Oid relid)
+{
+	/*
+	 * Hardcode the names for system db since the cache might not
+	 * be initialized during initdb (bootstrap mode).
+	 * For shared rels (e.g. pg_database) we may not have a database id yet,
+	 * so assuming template1 in that case since that's where shared tables are
+	 * stored in YB.
+	 * TODO Eventually YB should switch to using oid's everywhere so
+	 * that dbname and schemaname should not be needed at all.
+	 */
+	if (MyDatabaseId == TemplateDbOid || IsSharedRelation(relid))
+		return "template1";
+	else
+		return get_database_name(MyDatabaseId);
+}
+
+const char*
+YBCGetSchemaName(Oid schemaoid)
+{
+	/*
+	 * Hardcode the names for system namespaces since the cache might not
+	 * be initialized during initdb (bootstrap mode).
+	 * TODO Eventually YB should switch to using oid's everywhere so
+	 * that dbname and schemaname should not be needed at all.
+	 */
+	if (IsSystemNamespace(schemaoid))
+		return "pg_catalog";
+	else if (IsToastNamespace(schemaoid))
+		return "pg_toast";
+	else
+		return get_namespace_name(schemaoid);
 }

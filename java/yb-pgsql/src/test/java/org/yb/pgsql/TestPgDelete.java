@@ -38,10 +38,10 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testBasicDelete() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test_delete");
+    Set<Row> allRows = setupSimpleTable("test_basic_del");
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete WHERE h = 2";
+      String query = "SELECT h FROM test_basic_del WHERE h = 2";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;
@@ -50,11 +50,11 @@ public class TestPgDelete extends BasePgSQLTest {
     }
 
     try (Statement statement = connection.createStatement()) {
-      statement.execute("DELETE FROM test_delete WHERE h = 2");
+      statement.execute("DELETE FROM test_basic_del WHERE h = 2");
     }
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete WHERE h = 2";
+      String query = "SELECT h FROM test_basic_del WHERE h = 2";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;
@@ -65,10 +65,10 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testBasicDelete2() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test_delete");
+    Set<Row> allRows = setupSimpleTable("test_basic_del2");
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete WHERE h > 8";
+      String query = "SELECT h FROM test_basic_del2 WHERE h > 8";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;
@@ -77,11 +77,11 @@ public class TestPgDelete extends BasePgSQLTest {
     }
 
     try (Statement statement = connection.createStatement()) {
-      statement.execute("DELETE FROM test_delete WHERE h > 8");
+      statement.execute("DELETE FROM test_basic_del2 WHERE h > 8");
     }
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete WHERE h > 8";
+      String query = "SELECT h FROM test_basic_del2 WHERE h > 8";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;
@@ -135,7 +135,7 @@ public class TestPgDelete extends BasePgSQLTest {
   @Test
   public void testDeleteWithSingleColumnKey2() throws SQLException {
     Set<Row> allRows = new HashSet<>();
-    String tableName = "test_delete_single_column_key";
+    String tableName = "test_delete_single_column_key2";
     try (Statement statement = connection.createStatement()) {
       createSimpleTableWithSingleColumnKey(tableName);
       String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
@@ -152,7 +152,7 @@ public class TestPgDelete extends BasePgSQLTest {
     }
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete_single_column_key WHERE h > 2";
+      String query = "SELECT h FROM test_delete_single_column_key2 WHERE h > 2";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;
@@ -161,11 +161,11 @@ public class TestPgDelete extends BasePgSQLTest {
     }
 
     try (Statement statement = connection.createStatement()) {
-      statement.execute("DELETE FROM test_delete_single_column_key WHERE h > 2");
+      statement.execute("DELETE FROM test_delete_single_column_key2 WHERE h > 2");
     }
 
     try (Statement statement = connection.createStatement()) {
-      String query = "SELECT h FROM test_delete_single_column_key WHERE h > 2";
+      String query = "SELECT h FROM test_delete_single_column_key2 WHERE h > 2";
       try (ResultSet rs = statement.executeQuery(query)) {
         int rcount = 0;
         while (rs.next()) rcount++;

@@ -37,7 +37,6 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-
 static List *textarray_to_stringlist(ArrayType *textarray);
 
 /*

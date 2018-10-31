@@ -172,7 +172,7 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
 
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
-YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls,
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YBCPgSysColumns *syscols, bool *has_data);
 
 // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
@@ -232,6 +232,8 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_h
 
 // Constant expressions.
 YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                               YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
                                YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
                                YBCPgExpr *expr_handle);

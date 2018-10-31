@@ -418,7 +418,7 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYugaByteEnabled() && relation->rd_rel->relkind == RELKIND_RELATION) {
+		if (IsYugaByteEnabled() && IsYBRelation(relation)) {
 			/* Get the custom YB FDW directly */
 			fdwroutine = (FdwRoutine *) ybc_fdw_handler();
 		} else {

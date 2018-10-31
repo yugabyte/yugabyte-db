@@ -26,11 +26,14 @@
 #define PG_YB_UTILS_H
 
 #include "postgres.h"
+#include "utils/relcache.h"
 
 #include "common/pg_yb_common.h"
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
+
+#include "utils/resowner.h"
 
 extern YBCPgSession ybc_pg_session;
 
@@ -47,7 +50,9 @@ extern bool IsYugaByteEnabled();
  * Given a relation (table) id, returns whether this table is handled by
  * YugaByte: i.e. it is not a system table or in the template1 database.
  */
-extern bool IsYBSupportedTable(Oid relid);
+extern bool IsYBRelationById(Oid relid);
+
+extern bool IsYBRelation(Relation relation);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
@@ -74,6 +79,14 @@ extern void	HandleYBStatus(YBCStatus status);
  * not ok.
  */
 extern void	HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt);
+
+/*
+ * Same as HandleYBStmtStatus but also ask the given resource owner to forget
+ * the given YugaByte statement.
+ */
+extern void HandleYBStmtStatusWithOwner(YBCStatus status,
+                                        YBCPgStatement ybc_stmt,
+                                        ResourceOwner owner);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
@@ -182,5 +195,16 @@ bool YBShouldLogStackTraceOnError();
  * returns a static const char string.
  */
 const char* YBPgErrorLevelToString(int elevel);
+
+/**
+ * Get the database name for a relation id (accounts for system databases and
+ * shared relations)
+ */
+const char* YBCGetDatabaseName(Oid relid);
+
+/**
+ * Get the schema name for a schema oid (accounts for system namespaces)
+ */
+const char* YBCGetSchemaName(Oid schemaoid);
 
 #endif /* PG_YB_UTILS_H */

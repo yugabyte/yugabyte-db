@@ -40,17 +40,17 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testWhereClause() throws Exception {
-    Set<Row> allRows = setupSimpleTable("test");
+    Set<Row> allRows = setupSimpleTable("test_where");
     try (Statement statement = connection.createStatement()) {
       // Test no where clause -- select all rows.
-      String query = "SELECT * FROM test";
+      String query = "SELECT * FROM test_where";
       try (ResultSet rs = statement.executeQuery(query)) {
         assertEquals(allRows, getRowSet(rs));
       }
       assertFalse(needsPgFiltering(query));
 
       // Test fixed hash key.
-      query = "SELECT * FROM test WHERE h = 2";
+      query = "SELECT * FROM test_where WHERE h = 2";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L))
@@ -61,7 +61,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertFalse(needsPgFiltering(query));
 
       // Test fixed primary key.
-      query = "SELECT * FROM test WHERE h = 2 AND r = 3.5";
+      query = "SELECT * FROM test_where WHERE h = 2 AND r = 3.5";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) &&
@@ -73,7 +73,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertFalse(needsPgFiltering(query));
 
       // Test fixed range key without fixed hash key.
-      query = "SELECT * FROM test WHERE r = 6.5";
+      query = "SELECT * FROM test_where WHERE r = 6.5";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getDouble(1).equals(6.5))
@@ -84,7 +84,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue(needsPgFiltering(query));
 
       // Test range scan.
-      query = "SELECT * FROM test WHERE h = 2 AND r >= 3.5 AND r < 8.5";
+      query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) &&
@@ -97,7 +97,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue(needsPgFiltering(query));
 
       // Test conditions on regular (non-primary-key) columns.
-      query = "SELECT * FROM test WHERE vi < 14 AND vs != 'v09'";
+      query = "SELECT * FROM test_where WHERE vi < 14 AND vs != 'v09'";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getInt(2) < 14 &&
@@ -110,7 +110,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue(needsPgFiltering(query));
 
       // Test other WHERE operators (IN, OR, LIKE).
-      query = "SELECT * FROM test WHERE h IN (2,3) OR vs LIKE 'v_2'";
+      query = "SELECT * FROM test_where WHERE h IN (2,3) OR vs LIKE 'v_2'";
       try (ResultSet rs = statement.executeQuery(query)) {
         Set<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) ||
@@ -127,11 +127,11 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testSelectTargets() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test");
+    Set<Row> allRows = setupSimpleTable("test_target");
     Statement statement = connection.createStatement();
 
     // Test all columns -- different order.
-    try (ResultSet rs = statement.executeQuery("SELECT vs,vi,r,h FROM test")) {
+    try (ResultSet rs = statement.executeQuery("SELECT vs,vi,r,h FROM test_target")) {
       Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(2), row.get(1), row.get(0)))
           .collect(Collectors.toSet());
@@ -139,7 +139,7 @@ public class TestPgSelect extends BasePgSQLTest {
     }
 
     // Test partial columns -- different order.
-    try (ResultSet rs = statement.executeQuery("SELECT vs,r FROM test")) {
+    try (ResultSet rs = statement.executeQuery("SELECT vs,r FROM test_target")) {
       Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(1)))
           .collect(Collectors.toSet());
@@ -147,11 +147,11 @@ public class TestPgSelect extends BasePgSQLTest {
     }
 
     // Test aggregates.
-    assertOneRow("SELECT avg(r) FROM test", 5.0D);
-    assertOneRow("SELECT count(*) FROM test", 100L);
+    assertOneRow("SELECT avg(r) FROM test_target", 5.0D);
+    assertOneRow("SELECT count(*) FROM test_target", 100L);
 
     // Test distinct.
-    try (ResultSet rs = statement.executeQuery("SELECT distinct(h) FROM test")) {
+    try (ResultSet rs = statement.executeQuery("SELECT distinct(h) FROM test_target")) {
       Set<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(0)))
           .distinct()
@@ -160,19 +160,19 @@ public class TestPgSelect extends BasePgSQLTest {
     }
 
     // Test selecting non-existent column.
-    runInvalidQuery(statement, "SELECT v FROM test");
+    runInvalidQuery(statement, "SELECT v FROM test_target");
 
     // Test mistyped function.
-    runInvalidQuery(statement, "SELECT vs * r FROM test");
+    runInvalidQuery(statement, "SELECT vs * r FROM test_target");
   }
 
   @Test
   public void testComplexSelect() throws Exception {
-    setupSimpleTable("test");
+    setupSimpleTable("test_clauses");
     Statement statement = connection.createStatement();
 
     // Test ORDER BY, OFFSET, and LIMIT clauses
-    try (ResultSet rs = statement.executeQuery("SELECT h, r FROM test" +
+    try (ResultSet rs = statement.executeQuery("SELECT h, r FROM test_clauses" +
                                                    " ORDER BY r ASC, h DESC LIMIT 27 OFFSET 17")) {
       int count = 0;
       int start = 17; // offset.
@@ -240,18 +240,18 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testExpressions() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      createSimpleTable("test");
+      createSimpleTable("test_expr");
 
       // Insert a sample row: Row[2, 3.0, 4, 'abc'].
-      statement.execute("INSERT INTO test(h, r, vi, vs) VALUES (2, 3.0, 4, 'abc')");
-      assertOneRow("SELECT * FROM test", 2L, 3.0D, 4, "abc");
+      statement.execute("INSERT INTO test_expr(h, r, vi, vs) VALUES (2, 3.0, 4, 'abc')");
+      assertOneRow("SELECT * FROM test_expr", 2L, 3.0D, 4, "abc");
 
       // Test expressions in SELECT targets.
-      assertOneRow("SELECT h + 1.5, pow(r, 2), vi * h, 7 FROM test WHERE h = 2",
+      assertOneRow("SELECT h + 1.5, pow(r, 2), vi * h, 7 FROM test_expr WHERE h = 2",
                    new BigDecimal(3.5), 9.0D, 8L, 7);
 
       // Test expressions in SELECT WHERE clause.
-      assertOneRow("SELECT * FROM test WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
+      assertOneRow("SELECT * FROM test_expr WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
                    2L, 3.0D, 4, "abc");
     }
   }

@@ -18,22 +18,35 @@
  * IDENTIFICATION
  *        src/backend/commands/ybccmds.c
  *
- *--------------------------------------------------------------------------------------------------
+ *------------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "catalog/pg_attribute.h"
+#include "access/sysattr.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "catalog/pg_database.h"
 #include "commands/ybccmds.h"
 #include "commands/ybctype.h"
+
+#include "catalog/catalog.h"
+#include "access/htup_details.h"
+#include "utils/relcache.h"
+#include "utils/rel.h"
+#include "executor/tuptable.h"
+#include "executor/ybcExpr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-/* ---------------------------------------------------------------------------------------------- */
+#include "parser/parser.h"
+
+/* -------------------------------------------------------------------------- */
 /*  Database Functions. */
 
 void
@@ -41,26 +54,13 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
 {
 	YBCPgStatement handle;
 
-	char	   *src_dbname = get_database_name(src_dboid);
-
-	YBC_LOG_WARNING("Ignoring source database '%s' when creating database '%s'", src_dbname,
-		dbname);
-	PG_TRY();
-	{
-		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session,
-											  dbname,
-											  dboid,
-											  InvalidOid,
-											  next_oid,
-											  &handle));
-		HandleYBStatus(YBCPgExecCreateDatabase(handle));
-	}
-	PG_CATCH();
-	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session,
+										  dbname,
+										  dboid,
+										  src_dboid,
+										  next_oid,
+										  &handle));
+	HandleYBStmtStatus(YBCPgExecCreateDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
@@ -69,20 +69,11 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 {
 	YBCPgStatement handle;
 
-	PG_TRY();
-	{
-		HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
-											dbname,
-											false,	/* if_exists */
-											&handle));
-		HandleYBStatus(YBCPgExecDropDatabase(handle));
-	}
-	PG_CATCH();
-	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
+	                                    dbname,
+	                                    false,    /* if_exists */
+	                                    &handle));
+	HandleYBStmtStatus(YBCPgExecDropDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
@@ -155,6 +146,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 	if (relkind != RELKIND_RELATION)
 	{
 		return;
+	}
+
+	if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		return; /* Nothing to do. */
 	}
 
 	YBCPgStatement handle = NULL;

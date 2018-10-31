@@ -17,6 +17,8 @@
 #include "yb/util/ybc-internal.h"
 #include "yb/client/client.h"
 
+#include "postgres/src/include/pg_config_manual.h"
+
 namespace yb {
 namespace pggate {
 
@@ -32,6 +34,11 @@ void PgTuple::WriteNull(int index, const PgWireDataHeader& header) {
 void PgTuple::Write(int index, const PgWireDataHeader& header, bool value) {
   isnulls_[index] = false;
   datums_[index] = value ? 1 : 0;
+}
+
+void PgTuple::Write(int index, const PgWireDataHeader& header, int8_t value) {
+  isnulls_[index] = false;
+  datums_[index] = value;
 }
 
 void PgTuple::Write(int index, const PgWireDataHeader& header, int16_t value) {
@@ -61,13 +68,10 @@ void PgTuple::Write(int index, const PgWireDataHeader& header, double value) {
 
 void PgTuple::Write(int index, const PgWireDataHeader& header, const char *value, int64_t bytes) {
   isnulls_[index] = false;
-
-  // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
-  const int64_t kMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
-  // TODO: return a status instead of crashing.
-  CHECK_LE(bytes, kMaxPostgresTextSizeBytes);
-  CHECK_GE(bytes, 0);
-  datums_[index] = (uint64_t) YBCCStringToTextWithLen(value, static_cast<int>(bytes));
+  CHECK_LE(bytes, NAMEDATALEN);
+  char* dest = reinterpret_cast<char*>(YBCPAlloc(NAMEDATALEN));
+  datums_[index] = reinterpret_cast<uint64_t>(dest);
+  snprintf(dest, NAMEDATALEN, "%s", value);
 }
 
 void PgTuple::Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value,

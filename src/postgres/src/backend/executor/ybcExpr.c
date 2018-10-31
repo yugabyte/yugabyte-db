@@ -27,10 +27,12 @@
 #include "catalog/pg_type.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
+#include "parser/parse_type.h"
 #include "utils/lsyscache.h"
 #include "commands/dbcommands.h"
 #include "executor/tuptable.h"
 #include "miscadmin.h"
+#include "utils/syscache.h"
 #include "utils/builtins.h"
 
 #include "pg_yb_utils.h"
@@ -42,14 +44,16 @@ YBCNewBinaryConstant(
 		YBCPgStatement ybc_stmt,
 		Oid type_id,
 		Datum datum,
-		bool is_null) {
-	char* data = NULL;
+		bool is_null)
+{
+	char *data = NULL;
 	int64_t size = 0;
-	if (!is_null) {
+	if (!is_null)
+	{
 		data = VARDATA_ANY(datum);
 		size = VARSIZE_ANY_EXHDR(datum);
-		const char* data_as_str = YBCFormatBytesAsStr(data, size);
-		pfree((void*) data_as_str);
+		const char *data_as_str = YBCFormatBytesAsStr(data, size);
+		pfree((void *) data_as_str);
 
 	}
 	YBCPgExpr expr = NULL;
@@ -70,17 +74,23 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 	switch (type_id)
 	{
 		case BOOLOID:
-			HandleYBStatus(YBCPgNewConstantBool(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
+			HandleYBStatus(YBCPgNewConstantBool(ybc_stmt, DatumGetBool(datum), is_null, &expr));
 			break;
 		case INT8OID:
 			HandleYBStatus(YBCPgNewConstantInt8(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
 			break;
+		case CHAROID:
+			HandleYBStatus(YBCPgNewConstantInt1(ybc_stmt, DatumGetChar(datum), is_null, &expr));
+			break;
 		case INT2OID:
 			HandleYBStatus(YBCPgNewConstantInt2(ybc_stmt, DatumGetInt16(datum), is_null, &expr));
 			break;
+		case XIDOID: /* fallthrough  */
 		case INT4OID:
 			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
 			break;
+		case REGPROCEDUREOID:
+		case REGPROCOID:
 		case OIDOID:
 			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
 			break;
@@ -97,11 +107,16 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case INT4ARRAYOID:
 			expr = YBCNewBinaryConstant(ybc_stmt, type_id, datum, is_null);
 			break;
-		case REGPROCOID: REPORT_INVALID_TYPE_AND_BREAK();
-		case CHAROID: REPORT_INVALID_TYPE_AND_BREAK();
-		case NAMEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case NAMEOID:
+		{
+			char *data = NameStr(*DatumGetName(datum));
+			HandleYBStatus(YBCPgNewConstantText(ybc_stmt,
+			                                    data,
+			                                    is_null,
+			                                    &expr));
+			break;
+		}
 		case TIDOID: REPORT_INVALID_TYPE_AND_BREAK();
-		case XIDOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case CIDOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case POINTOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case LSEGOID: REPORT_INVALID_TYPE_AND_BREAK();
@@ -124,7 +139,6 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case VARBITOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case NUMERICOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case REFCURSOROID: REPORT_INVALID_TYPE_AND_BREAK();
-		case REGPROCEDUREOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case REGOPEROID: REPORT_INVALID_TYPE_AND_BREAK();
 		case REGOPERATOROID: REPORT_INVALID_TYPE_AND_BREAK();
 		case REGCLASSOID: REPORT_INVALID_TYPE_AND_BREAK();
@@ -139,7 +153,19 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case REGCONFIGOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case REGDICTIONARYOID: REPORT_INVALID_TYPE_AND_BREAK();
 		case INT4RANGEOID: REPORT_INVALID_TYPE_AND_BREAK();
-		default: REPORT_INVALID_TYPE_AND_BREAK();
+		default:
+		{
+			/* Lookup domain types */
+			HeapTuple type = typeidType(type_id);
+			Form_pg_type tp = (Form_pg_type) GETSTRUCT(type);
+			Oid basetp_oid = tp->typbasetype;
+			ReleaseSysCache(type);
+
+			if (basetp_oid != InvalidOid)
+			{
+				expr = YBCNewConstant(ybc_stmt, basetp_oid, datum, is_null);
+			}
+		}
 	}
 #undef REPORT_INVALID_TYPE_AND_BREAK
 

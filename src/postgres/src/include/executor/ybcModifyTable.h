@@ -27,4 +27,6 @@ extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
 
 void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot);
 
+void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
+
 #endif							/* YBCMODIFYTABLE_H */

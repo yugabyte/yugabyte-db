@@ -16,6 +16,7 @@
 
 #include "storage/itemptr.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * ItemPointerEquals
@@ -28,6 +29,12 @@
 bool
 ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2)
 {
+	if (IsYugaByteEnabled())
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_INTERNAL_ERROR), errmsg_internal(
+				        "Cannot compare ctid in YugaByte mode")));
+	}
 	/*
 	 * We really want ItemPointerData to be exactly 6 bytes.  This is rather a
 	 * random place to check, but there is no better place.

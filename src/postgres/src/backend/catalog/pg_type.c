@@ -36,6 +36,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
+
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_type_oid = InvalidOid;
 
@@ -395,9 +397,20 @@ TypeCreate(Oid newTypeOid,
 	 */
 	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy2(TYPENAMENSP,
-							  CStringGetDatum(typeName),
-							  ObjectIdGetDatum(typeNamespace));
+
+	/*
+	 * We do not support updates in YugaByte as of 12/14/2018 so we will error
+	 * out later if type already exists. No need to waste a master-lookup here.
+	 * TODO Will need to re-enable this when we support shell types.
+	 */
+	tup = NULL;
+	if (!IsYugaByteEnabled())
+	{
+		tup = SearchSysCacheCopy2(TYPENAMENSP,
+		                          CStringGetDatum(typeName),
+		                          ObjectIdGetDatum(typeNamespace));
+	}
+
 	if (HeapTupleIsValid(tup))
 	{
 		/*

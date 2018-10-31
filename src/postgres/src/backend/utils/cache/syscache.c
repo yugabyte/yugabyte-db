@@ -20,6 +20,8 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/indexing.h"
@@ -73,10 +75,12 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
 
@@ -985,6 +989,181 @@ static int	SysCacheSupportingRelOidSize;
 
 static int	oid_compare(const void *a, const void *b);
 
+/*
+ * Utility function for YugaByte mode. Is used to automatically add entries
+ * from common catalog tables to the cache immediately after they are inserted.
+ */
+void SetSysCacheTuple(Relation rel, HeapTuple tup)
+{
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	switch (RelationGetRelid(rel))
+	{
+		case RelationRelationId:
+			SetCatCacheTuple(SysCache[RELOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[RELNAMENSP], tup, tupdesc);
+			break;
+		case TypeRelationId:
+			SetCatCacheTuple(SysCache[TYPEOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[TYPENAMENSP], tup, tupdesc);
+			break;
+		case ProcedureRelationId:
+			SetCatCacheTuple(SysCache[PROCOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[PROCNAMEARGSNSP], tup, tupdesc);
+			break;
+		case AttributeRelationId:
+			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
+			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
+			break;
+
+		default:
+			return;
+	}
+}
+
+/*
+ * In YugaByte mode load up the caches with data from some essential tables
+ * that are looked up often during regular usage.
+ */
+static void
+YBCInitCatalogCache(int cacheId)
+{
+	List     *fnlists   = NIL;
+	CatCache *cache     = SysCache[cacheId];
+	CatCache *idx_cache = NULL;
+
+	switch (cacheId)
+	{
+		case RELOID:
+			idx_cache = SysCache[RELNAMENSP];
+			break;
+		case TYPEOID:
+			idx_cache = SysCache[TYPENAMENSP];
+			break;
+		case ATTNAME:
+			idx_cache = SysCache[ATTNUM];
+			break;
+		case PROCOID:
+			idx_cache = SysCache[PROCNAMEARGSNSP];
+			break;
+		case OPEROID:
+			idx_cache = SysCache[OPERNAMENSP];
+			break;
+		case CASTSOURCETARGET:
+			/* No index cache */
+			break;
+		default:
+			/* non-essential table -- nothing to do */
+			return;
+	}
+	HeapTuple ntp;
+	Relation  relation  = heap_open(cache->cc_reloid, AccessShareLock);
+	TupleDesc tupdesc   = RelationGetDescr(relation);
+
+	SysScanDesc scandesc = systable_beginscan(relation,
+	                                          cache->cc_indexoid,
+	                                          false, /* index ok */
+	                                          NULL,
+	                                          0,
+	                                          NULL);
+
+	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
+	{
+		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+		if (idx_cache)
+			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
+
+		/*
+		 * Special handling for the common case of looking up
+		 * functions (procedures) by name (i.e. partial key).
+		 * We set up the partial cache list for function by-name
+		 * lookup on initialization to avoid scanning the large
+		 * pg_proc table each time.
+		 */
+		if (cacheId == PROCOID)
+		{
+			ListCell *lc;
+			bool     found_match = false;
+			bool     is_null     = false;
+			ScanKeyData key      = idx_cache->cc_skey[0];
+
+			Datum ndt = heap_getattr(ntp, key.sk_attno, tupdesc, &is_null);
+
+			if (is_null)
+			{
+				YBC_LOG_WARNING("Ignoring unexpected null "
+				                "entry while initializing proc "
+				                "cache list");
+				continue;
+			}
+
+			char *fname          = NameStr(*DatumGetName(ndt));
+			char *internal_fname = TextDatumGetCString(heap_getattr(ntp,
+			                                                        Anum_pg_proc_prosrc,
+			                                                        tupdesc,
+			                                                        &is_null));
+
+			/*
+			 * The internal name must be unique so if this is the
+			 * same as the function name, then this must be the only
+			 * or at least first occurrence of this function name.
+			 * TODO this assumption holds for standard procs (i.e.
+			 * initdb) but we should clean this up when enabling
+			 * CREATE PROCEDURE.
+			 */
+			bool is_canonical = strcmp(fname, internal_fname) == 0;
+
+			if (!is_canonical)
+			{
+				/*
+				 * Look for an existing list for functions with
+				 * this name.
+				 */
+				foreach(lc, fnlists)
+				{
+					List      *fnlist = lfirst(lc);
+					HeapTuple otp     = (HeapTuple) linitial(fnlist);
+					Datum     odt     = heap_getattr(otp,
+					                                 key.sk_attno,
+					                                 tupdesc,
+					                                 &is_null);
+
+					Datum test = FunctionCall2Coll(&key.sk_func,
+					                               key.sk_collation,
+					                               ndt,
+					                               odt);
+					found_match = DatumGetBool(test);
+					if (found_match)
+					{
+						fnlist = lappend(fnlist, ntp);
+						lc->data.ptr_value = fnlist;
+						break;
+					}
+				}
+			}
+			if (!found_match)
+			{
+				List *new_list = lappend(NIL, ntp);
+				fnlists = lappend(fnlists, new_list);
+			}
+		}
+	}
+
+	systable_endscan(scandesc);
+
+	heap_close(relation, AccessShareLock);
+
+	if (cacheId == PROCOID)
+	{
+		/* Load up the lists computed above into the catalog cache. */
+		ListCell *lc;
+		foreach (lc, fnlists)
+		{
+			List *fnlist = (List *) lfirst(lc);
+			SetCatCacheList(idx_cache, 1, fnlist);
+		}
+		list_free_deep(fnlists);
+	}
+}
 
 /*
  * InitCatalogCache - initialize the caches
@@ -1076,6 +1255,13 @@ InitCatalogCachePhase2(void)
 
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
 		InitCatCachePhase2(SysCache[cacheId], true);
+
+	if (IsYugaByteEnabled())
+	{
+		for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+			YBCInitCatalogCache(cacheId);
+	}
+
 }
 
 

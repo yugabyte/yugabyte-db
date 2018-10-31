@@ -606,68 +606,77 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	fparms.src_dboid = src_dboid;
 	fparms.dest_dboid = dboid;
 	PG_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-							PointerGetDatum(&fparms));
+	                        PointerGetDatum(&fparms));
 	{
-		/*
-		 * Iterate through all tablespaces of the template database, and copy
-		 * each one to the new database.
-		 */
-		rel = heap_open(TableSpaceRelationId, AccessShareLock);
-		scan = heap_beginscan_catalog(rel, 0, NULL);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+		if (IsYugaByteEnabled())
 		{
-			Oid			srctablespace = HeapTupleGetOid(tuple);
-			Oid			dsttablespace;
-			char	   *srcpath;
-			char	   *dstpath;
-			struct stat st;
-
-			/* No need to copy global tablespace */
-			if (srctablespace == GLOBALTABLESPACE_OID)
-				continue;
-
-			srcpath = GetDatabasePath(src_dboid, srctablespace);
-
-			if (stat(srcpath, &st) < 0 || !S_ISDIR(st.st_mode) ||
-				directory_is_empty(srcpath))
-			{
-				/* Assume we can ignore it */
-				pfree(srcpath);
-				continue;
-			}
-
-			if (srctablespace == src_deftablespace)
-				dsttablespace = dst_deftablespace;
-			else
-				dsttablespace = srctablespace;
-
-			dstpath = GetDatabasePath(dboid, dsttablespace);
-
-			/*
-			 * Copy this subdirectory to the new location
-			 *
-			 * We don't need to copy subdirectories
-			 */
-			copydir(srcpath, dstpath, false);
-
-			/* Record the filesystem change in XLOG */
-			{
-				xl_dbase_create_rec xlrec;
-
-				xlrec.db_id = dboid;
-				xlrec.tablespace_id = dsttablespace;
-				xlrec.src_db_id = src_dboid;
-				xlrec.src_tablespace_id = srctablespace;
-
-				XLogBeginInsert();
-				XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_create_rec));
-
-				(void) XLogInsert(RM_DBASE_ID,
-								  XLOG_DBASE_CREATE | XLR_SPECIAL_REL_UPDATE);
-			}
+			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
 		}
-		heap_endscan(scan);
-		heap_close(rel, AccessShareLock);
+		else
+		{
+			/*
+			 * Iterate through all tablespaces of the template database, and copy
+			 * each one to the new database.
+			 */
+			rel = heap_open(TableSpaceRelationId, AccessShareLock);
+			scan = heap_beginscan_catalog(rel, 0, NULL);
+			while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+			{
+
+				Oid			srctablespace = HeapTupleGetOid(tuple);
+				Oid			dsttablespace;
+				char	   *srcpath;
+				char	   *dstpath;
+				struct stat st;
+
+				/* No need to copy global tablespace */
+				if (srctablespace == GLOBALTABLESPACE_OID)
+					continue;
+
+				srcpath = GetDatabasePath(src_dboid, srctablespace);
+
+				if (stat(srcpath, &st) < 0 || !S_ISDIR(st.st_mode) ||
+				    directory_is_empty(srcpath))
+				{
+					/* Assume we can ignore it */
+					pfree(srcpath);
+					continue;
+				}
+
+				if (srctablespace == src_deftablespace)
+					dsttablespace = dst_deftablespace;
+				else
+					dsttablespace = srctablespace;
+
+				dstpath = GetDatabasePath(dboid, dsttablespace);
+
+				/*
+				 * Copy this subdirectory to the new location
+				 *
+				 * We don't need to copy subdirectories
+				 */
+				copydir(srcpath, dstpath, false);
+
+				/* Record the filesystem change in XLOG */
+				{
+					xl_dbase_create_rec xlrec;
+
+					xlrec.db_id = dboid;
+					xlrec.tablespace_id = dsttablespace;
+					xlrec.src_db_id = src_dboid;
+					xlrec.src_tablespace_id = srctablespace;
+
+					XLogBeginInsert();
+					XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_create_rec));
+
+					(void) XLogInsert(RM_DBASE_ID,
+					                  XLOG_DBASE_CREATE | XLR_SPECIAL_REL_UPDATE);
+				}
+			}
+			heap_endscan(scan);
+			heap_close(rel, AccessShareLock);
+		}
 
 		/*
 		 * We force a checkpoint before committing.  This effectively means
@@ -714,14 +723,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		ForceSyncCommit();
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
-	}
-
 	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-								PointerGetDatum(&fparms));
-
+	                            PointerGetDatum(&fparms));
 	return dboid;
 }
 

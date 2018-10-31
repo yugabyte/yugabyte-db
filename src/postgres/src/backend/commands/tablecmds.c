@@ -766,8 +766,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  false,
 										  typaddress);
 
-  // TODO We don't have template1 in YB yet.
-  if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+	if (IsYugaByteEnabled())
 	{
 		YBCCreateTable(stmt, relkind, namespaceId, relationId);
 	}
@@ -1087,10 +1086,23 @@ RemoveRelations(DropStmt *drop)
 		obj.objectId = relOid;
 		obj.objectSubId = 0;
 
-		// TODO We don't have template1 in YB yet.
-		if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+		if (IsYugaByteEnabled())
 		{
-			YBCDropTable(relOid, rel->relname, rel->schemaname);
+			Relation full_rel = relation_openrv(rel, NoLock);
+			if (full_rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP)
+			{
+				YBCDropTable(relOid, rel->relname, rel->schemaname);
+				/*
+				 * Remove the associated type.
+				 * TODO: When we fully support dependencies this should be
+				 * removed.
+				 */
+				if (full_rel->rd_rel->reltype != InvalidOid)
+				{
+					RemoveTypeById(full_rel->rd_rel->reltype);
+				}
+			}
+			relation_close(full_rel, NoLock);
 		}
 
 		add_exact_object_address(&obj, objects);

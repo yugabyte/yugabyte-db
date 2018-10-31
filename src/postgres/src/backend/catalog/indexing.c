@@ -15,12 +15,16 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "executor/executor.h"
+#include "utils/syscache.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 
 /*
  * CatalogOpenIndexes - open the indexes on a system catalog.
@@ -164,6 +168,14 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 	CatalogIndexState indstate;
 	Oid			oid;
 
+	if (IsYugaByteEnabled())
+	{
+		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
+		/* Update the local cache automatically */
+		SetSysCacheTuple(heapRel, tup);
+		return oid;
+	}
+
 	indstate = CatalogOpenIndexes(heapRel);
 
 	oid = simple_heap_insert(heapRel, tup);
@@ -188,6 +200,14 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 {
 	Oid			oid;
 
+	if (IsYugaByteEnabled())
+	{
+		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
+		/* Update the local cache automatically */
+		SetSysCacheTuple(heapRel, tup);
+		return oid;
+	}
+
 	oid = simple_heap_insert(heapRel, tup);
 
 	CatalogIndexInsert(indstate, tup);
@@ -209,10 +229,18 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 void
 CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 {
+
+	if (IsYugaByteEnabled())
+	{
+		YBC_LOG_WARNING("Ignoring unsupported tuple update for rel %s tupid %d",
+		                RelationGetRelationName(heapRel),
+		                HeapTupleGetOid(tup));
+		return;
+	}
+
 	CatalogIndexState indstate;
 
 	indstate = CatalogOpenIndexes(heapRel);
-
 	simple_heap_update(heapRel, otid, tup);
 
 	CatalogIndexInsert(indstate, tup);
@@ -231,6 +259,14 @@ void
 CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 						   CatalogIndexState indstate)
 {
+	if (IsYugaByteEnabled())
+	{
+		YBC_LOG_WARNING("Ignoring unsupported tuple update for rel %s tupid %d",
+		                RelationGetRelationName(heapRel),
+		                HeapTupleGetOid(tup));
+		return;
+	}
+
 	simple_heap_update(heapRel, otid, tup);
 
 	CatalogIndexInsert(indstate, tup);
@@ -254,5 +290,12 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 void
 CatalogTupleDelete(Relation heapRel, ItemPointer tid)
 {
+	if (IsYugaByteEnabled())
+	{
+		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
+		                RelationGetRelationName(heapRel));
+		return;
+	}
+
 	simple_heap_delete(heapRel, tid);
 }

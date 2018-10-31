@@ -26,6 +26,12 @@ ifneq (,$(with_system_tzdata))
 override CPPFLAGS += '-DSYSTEMTZDIR="$(with_system_tzdata)"'
 endif
 
+ifndef YB_BUILD_ROOT
+$(error YB_BUILD_ROOT is not set)
+endif
+
+LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate
+
 OBJS=	initdb.o findtimezone.o localtime.o encnames.o $(WIN32RES)
 
 all: initdb

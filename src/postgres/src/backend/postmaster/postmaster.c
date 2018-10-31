@@ -1803,7 +1803,7 @@ ServerLoop(void)
 		 */
 		if (!IsBinaryUpgrade && AutoVacPID == 0 &&
 			(AutoVacuumingActive() || start_autovac_launcher) &&
-			pmState == PM_RUN)
+			pmState == PM_RUN && !YBIsEnabledInPostgresEnvVar())
 		{
 			AutoVacPID = StartAutoVacLauncher();
 			if (AutoVacPID != 0)
@@ -2926,8 +2926,11 @@ reaper(SIGNAL_ARGS)
 			 * Likewise, start other special children as needed.  In a restart
 			 * situation, some of them may be alive already.
 			 */
-			if (!IsBinaryUpgrade && AutoVacuumingActive() && AutoVacPID == 0)
+			if (!IsBinaryUpgrade && AutoVacuumingActive() &&
+			    AutoVacPID == 0 && !YBIsEnabledInPostgresEnvVar())
+			{
 				AutoVacPID = StartAutoVacLauncher();
+			}
 			if (PgArchStartupAllowed() && PgArchPID == 0)
 				PgArchPID = pgarch_start();
 			if (PgStatPID == 0)
@@ -5151,7 +5154,8 @@ sigusr1_handler(SIGNAL_ARGS)
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER) &&
-		Shutdown == NoShutdown)
+		Shutdown == NoShutdown &&
+		!YBIsEnabledInPostgresEnvVar())
 	{
 		/*
 		 * Start one iteration of the autovacuum daemon, even if autovacuuming
@@ -5167,14 +5171,14 @@ sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_WORKER) &&
 		Shutdown == NoShutdown &&
-		!IsYugaByteEnabled())
+		!YBIsEnabledInPostgresEnvVar())
 	{
 		/* The autovacuum launcher wants us to start a worker process. */
 		StartAutovacuumWorker();
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
-	    !IsYugaByteEnabled())
+	    !YBIsEnabledInPostgresEnvVar())
 	{
 		/* Startup Process wants us to start the walreceiver process. */
 		/* Start immediately if possible, else remember request for later. */
@@ -5888,6 +5892,12 @@ maybe_start_bgworkers(void)
 	/* Don't need to be called again unless we find a reason for it below */
 	StartWorkerNeeded = false;
 	HaveCrashedWorker = false;
+
+	/* Do not need any bgworkers in YugaByte mode at this point. */
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		return;
+	}
 
 	slist_foreach_modify(iter, &BackgroundWorkerList)
 	{

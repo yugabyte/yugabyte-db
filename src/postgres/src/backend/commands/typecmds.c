@@ -32,6 +32,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
@@ -72,6 +73,8 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 
 /* result structure for get_rels_with_domain() */
 typedef struct
@@ -697,8 +700,17 @@ RemoveTypeById(Oid typeOid)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 
-	CatalogTupleDelete(relation, &tup->t_self);
-
+	if (IsYugaByteEnabled())
+	{
+		Bitmapset *pkey = bms_make_singleton(
+				ObjectIdAttributeNumber - FirstLowInvalidHeapAttributeNumber);
+		YBCDeleteSysCatalogTuple(relation, tup, pkey);
+		bms_free(pkey);
+	}
+	else
+	{
+		CatalogTupleDelete(relation, &tup->t_self);
+	}
 	/*
 	 * If it is an enum, delete the pg_enum entries too; we don't bother with
 	 * making dependency entries for those, so it has to be done "by hand"

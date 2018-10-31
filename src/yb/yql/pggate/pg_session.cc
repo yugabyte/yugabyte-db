@@ -71,11 +71,6 @@ CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
     return Status::OK();
   }
 
-  // TODO remove this when integrating template1/initdb handling into YB.
-  if (database_name == "template1") {
-    return Status::OK();
-  }
-
   return STATUS_FORMAT(NotFound, "Database '$0' does not exist", database_name);
 }
 

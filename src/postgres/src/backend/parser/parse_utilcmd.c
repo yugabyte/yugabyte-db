@@ -332,8 +332,10 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	/*
 	 * Postprocess constraints that give rise to index definitions.
+	 * In YugaByte mode we handle ixconstraints as regular constraints below.
 	 */
-	transformIndexConstraints(&cxt);
+	if (!IsYugaByteEnabled())
+		transformIndexConstraints(&cxt);
 
 	/*
 	 * Postprocess foreign-key constraints.
@@ -363,6 +365,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (IsYugaByteEnabled())
 	{
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
+		cxt.ixconstraints = NIL;
 	}
 
 	result = lappend(cxt.blist, stmt);

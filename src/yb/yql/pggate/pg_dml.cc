@@ -168,11 +168,15 @@ Status PgDml::UpdateBindPBs() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgDml::Fetch(uint64_t *values, bool *isnulls, PgSysColumns *syscols, bool *has_data) {
+Status PgDml::Fetch(int32_t natts,
+                    uint64_t *values,
+                    bool *isnulls,
+                    PgSysColumns *syscols,
+                    bool *has_data) {
 
   // Each isnulls and values correspond (in order) to columns from the table schema.
   // Initialize to nulls for any columns not present in result.
-  memset(isnulls, true, table_desc_->num_columns() * sizeof(bool));
+  memset(isnulls, true, natts * sizeof(bool));
   if (syscols) {
     memset(syscols, 0, sizeof(PgSysColumns));
   }
