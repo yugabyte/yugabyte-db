@@ -430,6 +430,12 @@ errfinish(int dummy,...)
 	CHECK_STACK_DEPTH();
 	elevel = edata->elevel;
 
+	/* TODO Make this a YB-debug-mode feature */
+	if (IsYugaByteEnabled() && elevel >= ERROR)
+	{
+		YBC_LOG_ERROR_STACK_TRACE("Stack trace on a FATAL log");
+	}
+
 	/*
 	 * Do processing in ErrorContext, which we hope has enough reserved space
 	 * to report an error.
@@ -1360,12 +1366,6 @@ elog_finish(int elevel, const char *fmt,...)
 	MemoryContext oldcontext;
 
 	CHECK_STACK_DEPTH();
-
-	/* TODO Make this a YB-debug-mode feature */
-	if (IsYugaByteEnabled() && elevel >= FATAL)
-	{
-		YBC_LOG_ERROR_STACK_TRACE("Stack trace on a FATAL log");
-	}
 
 	/*
 	 * Do errstart() to see if we actually want to report the message.

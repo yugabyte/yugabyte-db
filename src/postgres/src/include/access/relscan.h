@@ -20,6 +20,7 @@
 #include "access/itup.h"
 #include "access/tupdesc.h"
 #include "storage/spin.h"
+#include "ybcam.h"
 
 /*
  * Shared state for parallel heap scan.
@@ -75,6 +76,7 @@ typedef struct HeapScanDescData
 	int			rs_cindex;		/* current tuple's index in vistuples */
 	int			rs_ntuples;		/* number of visible tuples on page */
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
+	YbSysScanDesc ybscan;       /* only valid in yb-scan case */
 }			HeapScanDescData;
 
 /*
@@ -152,10 +154,11 @@ typedef struct ParallelIndexScanDescData
 typedef struct SysScanDescData
 {
 	Relation	heap_rel;		/* catalog being scanned */
-	Relation	irel;			/* NULL if doing heap scan */
+	Relation	irel;			/* NULL if doing heap or yb scan */
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
 	Snapshot	snapshot;		/* snapshot to unregister at end of scan */
+	YbSysScanDesc ybscan;       /* only valid in yb-scan case */
 }			SysScanDescData;
 
 #endif							/* RELSCAN_H */

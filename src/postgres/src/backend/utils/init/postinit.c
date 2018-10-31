@@ -663,6 +663,12 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (!bootstrap)
 		pgstat_initialize();
 
+	/* Connect to YugaByte cluster. */
+	if (bootstrap)
+		YBInitPostgresBackend("postgres", "", username);
+	else
+		YBInitPostgresBackend("postgres", in_dbname, username);
+
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
 	 * at least entries for pg_database and catalogs used for authentication.
@@ -902,16 +908,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		return;
 	}
 
-	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-	{
-		YBInitPostgresBackend("postgres", "", username);
-	}
-	else
-	{
-		YBInitPostgresBackend("postgres", dbname, username);
-	}
-
 	/*
 	 * Now, take a writer's lock on the database we are trying to connect to.
 	 * If there is a concurrently running DROP DATABASE on that database, this
@@ -978,34 +974,38 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
-	/*
-	 * Now we should be able to access the database directory safely. Verify
-	 * it's there and looks reasonable.
-	 */
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-	if (!bootstrap)
+	/* No local physical path for the database in YugaByte mode */
+	if (!IsYugaByteEnabled())
 	{
-		if (access(fullpath, F_OK) == -1)
+		/*
+		 * Now we should be able to access the database directory safely. Verify
+		 * it's there and looks reasonable.
+		 */
+		fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+		if (!bootstrap)
 		{
-			if (errno == ENOENT)
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database \"%s\" does not exist",
-								dbname),
-						 errdetail("The database subdirectory \"%s\" is missing.",
-								   fullpath)));
-			else
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not access directory \"%s\": %m",
-								fullpath)));
+			if (access(fullpath, F_OK) == -1)
+			{
+				if (errno == ENOENT)
+					ereport(FATAL,
+					        (errcode(ERRCODE_UNDEFINED_DATABASE), errmsg(
+							        "database \"%s\" does not exist",
+							        dbname), errdetail(
+							        "The database subdirectory \"%s\" is missing.",
+							        fullpath)));
+				else
+					ereport(FATAL,
+					        (errcode_for_file_access(), errmsg(
+							        "could not access directory \"%s\": %m",
+							        fullpath)));
+			}
+
+			ValidatePgVersion(fullpath);
 		}
 
-		ValidatePgVersion(fullpath);
+		SetDatabasePath(fullpath);
 	}
-
-	SetDatabasePath(fullpath);
 
 	/*
 	 * It's now possible to do real access to the system catalogs.

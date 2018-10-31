@@ -171,6 +171,7 @@ extern void CreateCacheMemoryContext(void);
 extern CatCache *InitCatCache(int id, Oid reloid, Oid indexoid,
 			 int nkeys, const int *key,
 			 int nbuckets);
+
 extern void InitCatCachePhase2(CatCache *cache, bool touch_index);
 
 extern HeapTuple SearchCatCache(CatCache *cache,
@@ -181,6 +182,10 @@ extern void ReleaseCatCache(HeapTuple tuple);
 extern uint32 GetCatCacheHashValue(CatCache *cache,
 					 Datum v1, Datum v2,
 					 Datum v3, Datum v4);
+
+/* Used in IsYugaByteEnabled() mode only */
+extern void SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc tupdesc);
+extern void SetCatCacheList(CatCache *cache, int nkeys, List *fnlist);
 
 extern CatCList *SearchCatCacheList(CatCache *cache, int nkeys,
 				   Datum v1, Datum v2,

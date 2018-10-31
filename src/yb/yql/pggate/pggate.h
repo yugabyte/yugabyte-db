@@ -200,7 +200,7 @@ class PgApiImpl {
 
   // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
   // by YBCPgDmlBindColumn().
-  CHECKED_STATUS DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls,
+  CHECKED_STATUS DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
                           PgSysColumns *syscols, bool *has_data);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.

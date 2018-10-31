@@ -36,6 +36,7 @@ class PgTuple {
 
   // Write data in Postgres format.
   void Write(int index, const PgWireDataHeader& header, bool value);
+  void Write(int index, const PgWireDataHeader& header, int8_t value);
   void Write(int index, const PgWireDataHeader& header, int16_t value);
   void Write(int index, const PgWireDataHeader& header, int32_t value);
   void Write(int index, const PgWireDataHeader& header, int64_t value);

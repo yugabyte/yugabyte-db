@@ -48,7 +48,11 @@ class PgDml : public PgStatement {
   virtual CHECKED_STATUS ClearBinds();
 
   // Fetch a row and advance cursor to the next row.
-  CHECKED_STATUS Fetch(uint64_t *values, bool *isnulls, PgSysColumns *syscols, bool *has_data);
+  CHECKED_STATUS Fetch(int32_t natts,
+                       uint64_t *values,
+                       bool *isnulls,
+                       PgSysColumns *syscols,
+                       bool *has_data);
   CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
 
  protected:

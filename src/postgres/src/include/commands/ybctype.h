@@ -29,7 +29,16 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+/*
+ * Constants for OIDs of supported Postgres native types (that do not have an
+ * already declared constant in Postgres).
+ */
+#define YB_CHARARRAYOID 1002 /* char[] */
+#define YB_TEXTARRAYOID 1009 /* text[] */
+#define YB_ACLITEMARRAYOID 1034 /* aclitem[] */
+
 extern YBCPgDataType YBCDataTypeFromName(TypeName *typeName);
+extern YBCPgDataType YBCDataTypeFromOidMod(Oid type_id, int32 typmod);
 
 /**
  * Returns true if we are using PostgreSQL's own binary serialization for the given type, as given

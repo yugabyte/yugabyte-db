@@ -31,6 +31,11 @@ public class TestPgRegress extends BasePgSQLTest {
   }
 
   @Override
+  public int getTestMethodTimeoutSec() {
+    return 1800;
+  }
+
+  @Override
   protected int getReplicationFactor() {
     return 1;
   }

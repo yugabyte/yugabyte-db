@@ -26,6 +26,8 @@
 #include "storage/proc.h"
 #include "utils/syscache.h"
 
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
@@ -513,8 +515,24 @@ GetNewObjectId(void)
 	/* If we run out of logged for use oids then we must log more */
 	if (ShmemVariableCache->oidCount == 0)
 	{
-		XLogPutNextOid(ShmemVariableCache->nextOid + VAR_OID_PREFETCH);
-		ShmemVariableCache->oidCount = VAR_OID_PREFETCH;
+		if (IsYugaByteEnabled())
+		{
+			Oid begin_oid = InvalidOid;
+			Oid end_oid   = InvalidOid;
+
+			YBCReserveOids(MyDatabaseId,
+			               ShmemVariableCache->nextOid,
+			               VAR_OID_PREFETCH,
+			               &begin_oid,
+			               &end_oid);
+			ShmemVariableCache->nextOid  = begin_oid;
+			ShmemVariableCache->oidCount = end_oid - begin_oid;
+		}
+		else
+		{
+			XLogPutNextOid(ShmemVariableCache->nextOid + VAR_OID_PREFETCH);
+			ShmemVariableCache->oidCount = VAR_OID_PREFETCH;
+		}
 	}
 
 	result = ShmemVariableCache->nextOid;

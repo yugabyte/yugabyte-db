@@ -62,6 +62,9 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBoolValue:
       WriteBool(col_value.bool_value(), buffer);
       break;
+    case InternalType::kInt8Value:
+      WriteInt8(col_value.int8_value(), buffer);
+      break;
     case InternalType::kInt16Value:
       WriteInt16(col_value.int16_value(), buffer);
       break;
@@ -97,7 +100,6 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
       return STATUS_FORMAT(NotSupported,
           "Unexpected data was read from database: col_value.type()=$0", col_value.type());
 
-    case InternalType::kInt8Value:
     case InternalType::kListValue:
     case InternalType::kMapValue:
     case InternalType::kSetValue:

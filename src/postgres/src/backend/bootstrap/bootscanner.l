@@ -100,6 +100,7 @@ insert			{ return(INSERT_TUPLE); }
 
 
 "declare"		{ return(XDECLARE); }
+"yb_declare"	{ return(YBDECLARE); } /* Used for YugaByte indexes/pkeys */
 "build"			{ return(XBUILD); }
 "indices"		{ return(INDICES); }
 "unique"		{ return(UNIQUE); }

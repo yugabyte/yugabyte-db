@@ -74,6 +74,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /* GUC variable */
 bool		synchronize_seqscans = true;
@@ -1446,6 +1447,11 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 {
 	HeapScanDesc scan;
 
+	if (IsYugaByteEnabled())
+	{
+		return ybc_heap_beginscan(relation, snapshot, nkeys, key);
+	}
+
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -1559,6 +1565,11 @@ void
 heap_endscan(HeapScanDesc scan)
 {
 	/* Note: no locking manipulations needed */
+
+	if (IsYugaByteEnabled())
+	{
+		return ybc_heap_endscan(scan);
+	}
 
 	/*
 	 * unpin scan buffers
@@ -1794,6 +1805,11 @@ HeapTuple
 heap_getnext(HeapScanDesc scan, ScanDirection direction)
 {
 	/* Note: no locking manipulations needed */
+
+	if (IsYugaByteEnabled())
+	{
+		return ybc_heap_getnext(scan);
+	}
 
 	HEAPDEBUG_1;				/* heap_getnext( info ) */
 
@@ -2402,6 +2418,14 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	Buffer		vmbuffer = InvalidBuffer;
 	bool		all_visible_cleared = false;
 
+	if (IsYugaByteEnabled())
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+				        "Operation not allowed in YugaByte mode %s",
+				        __func__)));
+	}
+
 	/*
 	 * Fill in tuple header fields, assign an OID, and toast the tuple if
 	 * necessary.
@@ -2668,6 +2692,13 @@ heap_multi_insert(Relation relation, HeapTuple *tuples, int ntuples,
 	Size		saveFreeSpace;
 	bool		need_tuple_data = RelationIsLogicallyLogged(relation);
 	bool		need_cids = RelationIsAccessibleInLogicalDecoding(relation);
+
+	if (IsYugaByteEnabled())
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_INTERNAL_ERROR),
+				        errmsg("Operation not allowed in YugaByte mode")));
+	}
 
 	needwal = !(options & HEAP_INSERT_SKIP_WAL) && RelationNeedsWAL(relation);
 	saveFreeSpace = RelationGetTargetPageFreeSpace(relation,
@@ -3028,6 +3059,13 @@ heap_delete(Relation relation, ItemPointer tid,
 	bool		all_visible_cleared = false;
 	HeapTuple	old_key_tuple = NULL;	/* replica identity of the tuple */
 	bool		old_key_copied = false;
+
+	if (IsYugaByteEnabled())
+	{
+		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
+		                RelationGetRelationName(relation));
+		return HeapTupleMayBeUpdated;
+	}
 
 	Assert(ItemPointerIsValid(tid));
 
@@ -6243,6 +6281,13 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 	HeapTupleHeader htup;
 	uint32		oldlen;
 	uint32		newlen;
+
+	if (IsYugaByteEnabled())
+	{
+		YBC_LOG_WARNING("Ignoring in-place update for %s.",
+		                RelationGetRelationName(relation));
+		return;
+	}
 
 	/*
 	 * For now, parallel operations are required to be strictly read-only.

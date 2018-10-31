@@ -46,6 +46,7 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * IsSystemRelation
@@ -308,14 +309,20 @@ GetNewOid(Relation relation)
 	if (!OidIsValid(oidIndex))
 	{
 		/*
-		 * System catalogs that have OIDs should *always* have a unique OID
-		 * index; we should only take this path for user tables. Give a
-		 * warning if it looks like somebody forgot an index.
+		 * In YugaByte we convert the OID index into a primary key.
 		 */
-		if (IsSystemRelation(relation))
-			elog(WARNING, "generating possibly-non-unique OID for \"%s\"",
-				 RelationGetRelationName(relation));
-
+		if (!IsYugaByteEnabled())
+		{
+			/*
+			 * System catalogs that have OIDs should *always* have a unique OID
+			 * index; we should only take this path for user tables. Give a
+			 * warning if it looks like somebody forgot an index.
+			 */
+			if (IsSystemRelation(relation))
+				elog(WARNING,
+				     "generating possibly-non-unique OID for \"%s\"",
+				     RelationGetRelationName(relation));
+		}
 		return GetNewObjectId();
 	}
 

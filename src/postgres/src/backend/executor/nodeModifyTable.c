@@ -374,8 +374,7 @@ ExecInsert(ModifyTableState *mtstate,
 
 		newId = InvalidOid;
 	}
-	else if (IsYugaByteEnabled() &&
-	         IsYBSupportedTable(RelationGetRelid(resultRelationDesc)))
+	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
 		newId = YBCExecuteInsert(resultRelationDesc,
 		                         slot->tts_tupleDescriptor,
@@ -950,7 +949,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBSupportedTable(RelationGetRelid(resultRelationDesc)))
+	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
 		ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

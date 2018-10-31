@@ -136,7 +136,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
   bool has_data = false;
-  YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+  YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
   CHECK(has_data);
 
   // Print result
@@ -164,7 +164,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   string expected_job_name = strings::Substitute("Job_title_$0", empid);
   CHECK_EQ(selected_job_name, expected_job_name);
 
-  YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+  YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
   CHECK(!has_data);
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
@@ -196,7 +196,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result
@@ -296,7 +296,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     if (!has_data) {
       break;
     }
@@ -421,7 +421,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(2 * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, 2, values, isnulls, nullptr, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result

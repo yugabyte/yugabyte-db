@@ -175,7 +175,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   int select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     if (!has_data) {
       break;
     }

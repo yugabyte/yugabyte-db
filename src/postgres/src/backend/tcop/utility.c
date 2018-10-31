@@ -1039,8 +1039,12 @@ ProcessUtilitySlow(ParseState *pstate,
 												   toast_options,
 												   true);
 
-							NewRelationCreateToastTable(address.objectId,
-														toast_options);
+							/* No need for toasting attributes in YB mode */
+							if (!IsYugaByteEnabled())
+							{
+								NewRelationCreateToastTable(address.objectId,
+								                            toast_options);
+							}
 						}
 						else if (IsA(stmt, CreateForeignTableStmt))
 						{
