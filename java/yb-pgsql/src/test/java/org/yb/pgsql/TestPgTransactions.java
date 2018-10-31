@@ -20,7 +20,7 @@ import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
-import org.yb.client.TestUtils;
+import org.yb.util.SanitizerUtil;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -33,7 +33,7 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
-  protected void overridableCustomizePostgresEnvVars(Map<String, String> envVars) {
+  protected void customizePostgresEnvVars(Map<String, String> envVars) {
     // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
     envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
   }
@@ -101,7 +101,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     Statement statement2 = connection2.createStatement();
     int numFirstWinners = 0;
     int numSecondWinners = 0;
-    final int totalIterations = TestUtils.nonTsanVsTsan(300, 100);
+    final int totalIterations = SanitizerUtil.nonTsanVsTsan(300, 100);
     for (int i = 1; i <= totalIterations; ++i) {
       LOG.info("Starting iteration: i=" + i);
       if (RandomUtils.nextBoolean()) {

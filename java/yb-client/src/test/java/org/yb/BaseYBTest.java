@@ -29,6 +29,7 @@ import org.yb.client.TestUtils;
 import org.yb.util.FileUtil;
 import org.yb.util.GzipHelpers;
 import org.yb.util.ConfForTesting;
+import org.yb.util.Timeouts;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -107,7 +108,9 @@ public class BaseYBTest {
 
   @Rule
   public final Timeout METHOD_TIMEOUT = new Timeout(
-      TestUtils.adjustTimeoutForBuildType(getTestMethodTimeoutSec()), TimeUnit.SECONDS);
+      TestUtils.finalizeTestTimeoutSec(
+          Timeouts.adjustTimeoutSecForBuildType(getTestMethodTimeoutSec())),
+      TimeUnit.SECONDS);
 
   /** This allows to expect a particular exception to be thrown in a test. */
   @Rule

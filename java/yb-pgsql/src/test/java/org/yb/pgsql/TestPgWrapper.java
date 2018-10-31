@@ -14,8 +14,11 @@
 package org.yb.pgsql;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -23,19 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-import org.postgresql.core.TransactionState;
-import org.postgresql.util.PSQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
-
-import org.junit.runner.RunWith;
-
-import org.yb.YBTestRunner;
-import org.yb.client.TestUtils;
+import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgWrapper extends BasePgSQLTest {

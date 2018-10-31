@@ -7,7 +7,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
  *
- * http: *www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -18,6 +18,9 @@
  *        src/backend/executor/ybcExpr.c
  *--------------------------------------------------------------------------------------------------
  */
+
+#include <inttypes.h>
+
 #include "postgres.h"
 
 #include "access/htup_details.h"
@@ -28,40 +31,47 @@
 #include "commands/dbcommands.h"
 #include "executor/tuptable.h"
 #include "miscadmin.h"
+#include "utils/builtins.h"
 
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
-
-#include "utils/builtins.h"
+#include "commands/ybctype.h"
 
 static YBCPgExpr
-YBCNewTextConstant(
+YBCNewBinaryConstant(
 		YBCPgStatement ybc_stmt,
 		Oid type_id,
 		Datum datum,
 		bool is_null) {
-	/* TODO: get rid of memory allocation here (in TextDatumGetCString). */
-	char* text_str = is_null ? NULL : TextDatumGetCString(datum);
-	YBCPgExpr expr = NULL;
-	HandleYBStatus(YBCPgNewConstantText(ybc_stmt, text_str, is_null, &expr));
-	if (text_str != NULL)
-	{
-		pfree(text_str);
+	char* data = NULL;
+	int64_t size = 0;
+	if (!is_null) {
+		data = VARDATA_ANY(datum);
+		size = VARSIZE_ANY_EXHDR(datum);
+		const char* data_as_str = YBCFormatBytesAsStr(data, size);
+		pfree((void*) data_as_str);
+
 	}
+	YBCPgExpr expr = NULL;
+	HandleYBStatus(YBCPgNewConstantChar(ybc_stmt, data, size, is_null, &expr));
 	return expr;
 }
 
 YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null) {
 	YBCPgExpr expr = NULL;
+
+	if (YBCIsPgBinarySerializedType(type_id)) {
+		return YBCNewBinaryConstant(ybc_stmt, type_id, datum, is_null);
+	}
+
 	switch (type_id)
 	{
 		case BOOLOID:
-		case BYTEAOID:
+			HandleYBStatus(YBCPgNewConstantBool(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
+			break;
 		case CHAROID:
 		case NAMEOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case INT8OID:
 			HandleYBStatus(YBCPgNewConstantInt8(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
@@ -69,36 +79,27 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case INT2OID:
 			HandleYBStatus(YBCPgNewConstantInt2(ybc_stmt, DatumGetInt16(datum), is_null, &expr));
 			break;
-		case INT2VECTOROID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
-			break;
 		case INT4OID:
 			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
 			break;
 		case REGPROCOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
-			break;
-		case TEXTOID:
-			expr = YBCNewTextConstant(ybc_stmt, type_id, datum, is_null);
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case OIDOID:
+			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
+			break;
 		case TIDOID:
 		case XIDOID:
 		case CIDOID:
-		case OIDVECTOROID:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+			break;
 		case POINTOID:
 		case LSEGOID:
 		case PATHOID:
 		case BOXOID:
 		case POLYGONOID:
 		case LINEOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case FLOAT4OID:
 			HandleYBStatus(YBCPgNewConstantFloat4(ybc_stmt, DatumGetFloat4(datum), is_null, &expr));
@@ -114,13 +115,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case CASHOID:
 		case INETOID:
 		case CIDROID:
-		case BPCHAROID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("YB Insert, type not yet supported: %d", type_id)));
-			break;
-		case VARCHAROID:
-			expr = YBCNewTextConstant(ybc_stmt, type_id, datum, is_null);
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case DATEOID:
 		case TIMEOID:
@@ -138,7 +133,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case REGTYPEOID:
 		case REGROLEOID:
 		case REGNAMESPACEOID:
-		case REGTYPEARRAYOID:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 		case UUIDOID:
 		case LSNOID:
 		case TSVECTOROID:
@@ -146,15 +141,18 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case TSQUERYOID:
 		case REGCONFIGOID:
 		case REGDICTIONARYOID:
-		case JSONBOID:
 		case INT4RANGEOID:
-		default:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Type not yet supported in YugaByte: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+		case INT4ARRAYOID:
+			expr = YBCNewBinaryConstant(ybc_stmt, type_id, datum, is_null);
 			break;
+		default:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 	}
 
+	if (expr == NULL) {
+		YBC_LOG_FATAL("Trying to return NULL from %s", __PRETTY_FUNCTION__);
+	}
 	// Return the constructed expression.
 	return expr;
 }

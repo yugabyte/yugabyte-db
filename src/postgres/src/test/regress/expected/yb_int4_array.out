@@ -1,0 +1,43 @@
+create table int4_array_test (
+    k int primary key,
+    int_arr int[],
+    int4_arr int4[]
+    );
+insert into int4_array_test (k, int_arr, int4_arr) values (
+    1, '{2147483647,0,-2147483648}','{-2147483648,0,2147483647}');
+select * from int4_array_test;
+ k |          int_arr           |          int4_arr
+---+----------------------------+----------------------------
+ 1 | {2147483647,0,-2147483648} | {-2147483648,0,2147483647}
+(1 row)
+
+ -- Invalid values for int
+insert into int4_array_test (k, int_arr, int4_arr) values (2, '{-2147483649}', NULL);
+ERROR:  value "-2147483649" is out of range for type integer
+LINE 1: ...int4_array_test (k, int_arr, int4_arr) values (2, '{-2147483...
+                                                             ^
+insert into int4_array_test (k, int_arr, int4_arr) values (2, '{2147483648}', NULL);
+ERROR:  value "2147483648" is out of range for type integer
+LINE 1: ...int4_array_test (k, int_arr, int4_arr) values (2, '{21474836...
+                                                             ^
+insert into int4_array_test (k, int_arr, int4_arr) values (2, NULL, '{-2147483649}');
+ERROR:  value "-2147483649" is out of range for type integer
+LINE 1: ...rray_test (k, int_arr, int4_arr) values (2, NULL, '{-2147483...
+                                                             ^
+insert into int4_array_test (k, int_arr, int4_arr) values (2, NULL, '{2147483648}');
+ERROR:  value "2147483648" is out of range for type integer
+LINE 1: ...rray_test (k, int_arr, int4_arr) values (2, NULL, '{21474836...
+                                                             ^
+insert into int4_array_test (k, int_arr, int4_arr) values (
+    10, '{-1000000000,1,2,3,1000000000}', NULL);
+insert into int4_array_test (k, int_arr, int4_arr) values (
+    11, NULL, '{-1000000000,1,2,3,1000000000}');
+select * from int4_array_test order by k;
+ k  |            int_arr             |            int4_arr
+----+--------------------------------+--------------------------------
+  1 | {2147483647,0,-2147483648}     | {-2147483648,0,2147483647}
+ 10 | {-1000000000,1,2,3,1000000000} |
+ 11 |                                | {-1000000000,1,2,3,1000000000}
+(3 rows)
+
+drop table int4_array_test;

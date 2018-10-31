@@ -63,6 +63,8 @@ enum YQLDatabase {
 
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
 // be changed once the types are implemented and released.
+//
+// Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
 enum DataType {
   UNKNOWN_DATA = 999;
   NULL_VALUE_TYPE = 0;

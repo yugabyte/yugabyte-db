@@ -59,6 +59,9 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
   switch (col_value.type()) {
     case InternalType::VALUE_NOT_SET:
       break;
+    case InternalType::kBoolValue:
+      WriteBool(col_value.bool_value(), buffer);
+      break;
     case InternalType::kInt16Value:
       WriteInt16(col_value.int16_value(), buffer);
       break;
@@ -78,7 +81,6 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
       WriteText(col_value.string_value(), buffer);
       break;
 
-    case InternalType::kBoolValue:
     case InternalType::kBinaryValue:
     case InternalType::kTimestampValue:
     case InternalType::kDateValue:
@@ -90,7 +92,8 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kUuidValue:
     case InternalType::kTimeuuidValue:
       // PgGate has not supported these datatypes yet.
-      return STATUS(NotSupported, "Unexpected data was read from database");
+      return STATUS_FORMAT(NotSupported,
+          "Unexpected data was read from database: col_value.type()=$0", col_value.type());
 
     case InternalType::kInt8Value:
     case InternalType::kListValue:
@@ -98,7 +101,8 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kSetValue:
     case InternalType::kFrozenValue:
       // Postgres does not have these datatypes.
-      return STATUS(Corruption, "Unexpected data was read from database");
+      return STATUS_FORMAT(Corruption,
+          "Unexpected data was read from database: col_value.type()=$0", col_value.type());
   }
 
   return Status::OK();

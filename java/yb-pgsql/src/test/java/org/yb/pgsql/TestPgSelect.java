@@ -246,9 +246,9 @@ public class TestPgSelect extends BasePgSQLTest {
       for (int h = 0; h < 10; h++) {
         for (int r = 0; r < 10; r++) {
           statement.execute(String.format(insertTemplate, h, r + 0.5, h * 10 + r, "v" + h + r));
-          allRows.add(new Row(new Long(h),
-                              new Double(r + 0.5),
-                              new Integer(h * 10 + r),
+          allRows.add(new Row((long) h,
+                              r + 0.5,
+                              h * 10 + r,
                               "v" + h + r));
         }
       }

@@ -949,8 +949,10 @@ delete_successful_output_if_needed() {
     # Delete test output after a successful test run to minimize network traffic and disk usage on
     # Jenkins.
     rm -rf "$test_log_path" "$TEST_TMPDIR"
+    return
   fi
   if is_src_root_on_nfs; then
+    log "Removing temporary test data directory: $TEST_TMPDIR"
     rm -rf "$TEST_TMPDIR"
   fi
 }

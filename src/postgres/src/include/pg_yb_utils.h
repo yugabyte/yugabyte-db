@@ -32,6 +32,13 @@
 
 extern YBCPgSession ybc_pg_session;
 
+/**
+ * Checks whether YugaByte functionality is enabled within PostgreSQL.
+ * This relies on ybc_pg_session being non-NULL, so probably should not be used
+ * in postmaster (which does not need to talk to YB backend) or early
+ * in backend process initialization. In those cases the
+ * YBIsEnabledInPostgresEnvVar function might be more appropriate.
+ */
 extern bool IsYugaByteEnabled();
 
 /*
@@ -107,6 +114,54 @@ extern bool YBCIsEnvVarTrue(const char* env_var_name);
 extern bool YBIsPgLockingEnabled();
 
 /**
+ * Return a string representation of the given type id, or say it is unknown.
+ * What is returned is always a static C string constant.
+ */
+extern const char* YBPgTypeOidToStr(Oid type_id);
+
+/**
+ * Report an error saying the given type as not supported by YugaByte.
+ */
+extern void YBReportTypeNotSupported(Oid type_id);
+
+/**
+ * Log whether or not YugaByte is enabled.
+ */
+extern void YBReportIfYugaByteEnabled();
+
+/**
+ * Checks if the YB_ENABLED_IN_POSTGRES is set.
+ */
+bool YBIsEnabledInPostgresEnvVar();
+
+#define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
+		Oid computed_type_id = type_id; \
+		ereport(ERROR, \
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
+					errmsg("Type not yet supported in YugaByte: %d (%s)", \
+						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
+	} while (0)
+
+
+/**
+ * Determines if PostgreSQL should restart all child processes if one of them
+ * crashes. This behavior usually shows up in the log like so:
+ *
+ * WARNING:  terminating connection because of crash of another server process
+ * DETAIL:  The postmaster has commanded this server process to roll back the
+ *          current transaction and exit, because another server process exited
+ *          abnormally and possibly corrupted shared memory.
+ *
+ * However, we want to avoid this behavior in some cases, e.g. when our test
+ * framework is trying to intentionally cause core dumps of stuck backend
+ * processes and analyze them. Disabling this behavior is controlled by setting
+ * the YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH variable to a file path,
+ * which could be created or deleted at run time, and its existence is always
+ * checked.
+ */
+bool YBShouldRestartAllChildrenIfOneCrashes();
+
+/**
  * Define additional inline wrappers around _Status functions that return the
  * real return value and ereport the error status.
  */
@@ -119,5 +174,16 @@ extern bool YBIsPgLockingEnabled();
  */
 void YBSetPreparingTemplates();
 bool YBIsPreparingTemplates();
+
+/**
+ * Whether every ereport of the ERROR level and higher should log a stack trace.
+ */
+bool YBShouldLogStackTraceOnError();
+
+/**
+ * Converts the PostgreSQL error level as listed in elog.h to a string. Always
+ * returns a static const char string.
+ */
+const char* YBPgErrorLevelToString(int elevel);
 
 #endif /* PG_YB_UTILS_H */
