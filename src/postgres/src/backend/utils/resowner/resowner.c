@@ -623,7 +623,6 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		while (ResourceArrayGetAny(&(owner->catrefarr), &foundres))
 		{
 			HeapTuple	res = (HeapTuple) DatumGetPointer(foundres);
-
 			if (isCommit)
 				PrintCatCacheLeakWarning(res);
 			ReleaseCatCache(res);

@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
@@ -29,7 +30,10 @@ import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
+// TODO this test suite is disabled as of 14/12/2019 until we fully handle transactions for system
+// catalog tables (used during initdb).
 @RunWith(value=YBTestRunner.class)
+@Ignore
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 

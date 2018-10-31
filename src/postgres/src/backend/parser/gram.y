@@ -827,8 +827,6 @@ stmt :
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeleteStmt
-			| DropStmt
-			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
 			| GrantStmt
@@ -917,10 +915,12 @@ stmt :
 			| DoStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropCastStmt { parser_ybc_not_support(@1, "This statement"); }
+			| DropdbStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
+			| DropStmt
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTableSpaceStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -3568,6 +3568,7 @@ ColConstraintElem:
 				}
 			| DEFAULT b_expr
 				{
+					parser_ybc_not_support(@1, "DEFAULT column value");
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_DEFAULT;
 					n->location = @1;

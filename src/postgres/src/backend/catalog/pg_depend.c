@@ -29,6 +29,7 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 static bool isObjectPinned(const ObjectAddress *object, Relation rel);
 
@@ -73,6 +74,16 @@ recordMultipleDependencies(const ObjectAddress *depender,
 	 * will fill in appropriate pg_depend entries after bootstrap.
 	 */
 	if (IsBootstrapProcessingMode())
+		return;
+
+	/*
+	 * Disable dependency check here for now (14/12/2018) to avoid many
+	 * full-table scans caused by isObjectPinned below. YugaByte master
+	 * catalog maps should catch broken dependencies for now anyway.
+	 * TODO as we enable more postgres-exclusive features this needs to be
+	 * handled (re-enabled) to ensure correctness.
+	 */
+	if (IsYugaByteEnabled())
 		return;
 
 	dependDesc = heap_open(DependRelationId, RowExclusiveLock);

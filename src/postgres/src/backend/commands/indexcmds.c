@@ -56,6 +56,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -371,6 +372,14 @@ DefineIndex(Oid relationId,
 	 */
 	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	rel = heap_open(relationId, lockmode);
+
+	if (IsYugaByteEnabled())
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				        "cannot create index on %s in YugaByte mode",
+				        RelationGetRelationName(rel))));
+	}
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);

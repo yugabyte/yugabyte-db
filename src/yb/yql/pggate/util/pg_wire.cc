@@ -22,6 +22,10 @@ void PgWire::WriteBool(bool value, faststring *buffer) {
   buffer->append(&value, sizeof(bool));
 }
 
+void PgWire::WriteInt8(int8_t value, faststring *buffer) {
+  buffer->append(&value, sizeof(int8_t));
+}
+
 void PgWire::WriteUint8(uint8_t value, faststring *buffer) {
   buffer->append(&value, sizeof(uint8_t));
 }
@@ -82,7 +86,12 @@ size_t PgWire::ReadNumber(Slice *cursor, bool *value) {
   return sizeof(bool);
 }
 
-size_t PgWire::ReadNumber(Slice *cursor, uint8 *value) {
+size_t PgWire::ReadNumber(Slice *cursor, int8_t *value) {
+  *value = *reinterpret_cast<const int8_t*>(cursor->data());
+  return sizeof(int8_t);
+}
+
+size_t PgWire::ReadNumber(Slice *cursor, uint8_t *value) {
   *value = *reinterpret_cast<const uint8*>(cursor->data());
   return sizeof(uint8_t);
 }

@@ -17,6 +17,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include "access/relscan.h"
@@ -334,6 +335,16 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_beginscan(heapRelation,
+		                              indexId,
+		                              indexOK,
+		                              snapshot,
+		                              nkeys,
+		                              key);
+	}
+
 	if (indexOK &&
 		!IgnoreSystemIndexes &&
 		!ReindexIsProcessingIndex(indexId))
@@ -417,6 +428,11 @@ systable_getnext(SysScanDesc sysscan)
 {
 	HeapTuple	htup;
 
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_getnext(sysscan);
+	}
+
 	if (sysscan->irel)
 	{
 		htup = index_getnext(sysscan->iscan, ForwardScanDirection);
@@ -498,6 +514,11 @@ systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 void
 systable_endscan(SysScanDesc sysscan)
 {
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_endscan(sysscan);
+	}
+
 	if (sysscan->irel)
 	{
 		index_endscan(sysscan->iscan);

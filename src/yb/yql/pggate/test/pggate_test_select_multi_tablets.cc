@@ -78,7 +78,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   bool has_data = true;
   while (has_data) {
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     CHECK(!has_data) << "Corrupted DB. Table is expected to be empty";
   }
 
@@ -173,7 +173,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   int select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     if (!has_data) {
       break;
     }
@@ -235,7 +235,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result

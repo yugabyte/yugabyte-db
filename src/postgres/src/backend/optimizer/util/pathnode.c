@@ -29,6 +29,7 @@
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 
+#include "pg_yb_utils.h"
 
 typedef enum
 {

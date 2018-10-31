@@ -915,6 +915,18 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	BlockNumber relallvisible;
 	double		density;
 
+	/*
+	 * TODO We don't support forwarding size estimates to postgres yet.
+	 * Use whatever is in pg_class.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		*pages = rel->rd_rel->relpages;
+		*tuples = rel->rd_rel->reltuples;
+		*allvisfrac = 0;
+		return;
+	}
+
 	switch (rel->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
@@ -1275,6 +1287,10 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 	List	   *statoidlist;
 	List	   *stainfos = NIL;
 	ListCell   *l;
+
+	/* YugaByte does not support forwarding statistics to Postgres yet */
+	if (IsYugaByteEnabled())
+		return NIL;
 
 	statoidlist = RelationGetStatExtList(relation);
 

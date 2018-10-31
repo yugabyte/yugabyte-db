@@ -33,6 +33,7 @@
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_foreign_table.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"
@@ -58,7 +59,6 @@
 #include "utils/syscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "executor/ybcExpr.h"
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
 
@@ -101,9 +101,9 @@ typedef struct YbFdwPlanState
  * Otherwise, it will need to be evaluated by Postgres as it filters the rows
  * returned by YugaByte.
  */
-void ybcClassifyWhereExpr(RelOptInfo *baserel,
-		                  YbFdwPlanState *yb_state,
-		                  Expr *expr)
+static void ybcClassifyWhereExpr(RelOptInfo *baserel,
+		                        YbFdwPlanState *yb_state,
+		                        Expr *expr)
 {
 	HeapTuple        tuple;
 	Form_pg_operator form;
@@ -155,9 +155,10 @@ void ybcClassifyWhereExpr(RelOptInfo *baserel,
 					attrNum = IsA(left, Var) ? ((Var *) left)->varattno
 					                         : ((Var *) right)->varattno;
 
-					bool is_primary = bms_is_member(attrNum,
+					int bms_idx = attrNum - baserel->min_attr + 1;
+					bool is_primary = bms_is_member(bms_idx,
 					                                yb_state->primary_key);
-					bool is_hash    = bms_is_member(attrNum,
+					bool is_hash    = bms_is_member(bms_idx,
 					                                yb_state->hash_key);
 
 					/*
@@ -167,7 +168,7 @@ void ybcClassifyWhereExpr(RelOptInfo *baserel,
 					if (is_hash && is_eq)
 					{
 						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
-						                                     attrNum);
+						                                     bms_idx);
 						yb_state->yb_hconds = lappend(yb_state->yb_hconds,
 						                              expr);
 						return;
@@ -175,7 +176,7 @@ void ybcClassifyWhereExpr(RelOptInfo *baserel,
 					else if (is_primary && is_eq)
 					{
 						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
-						                                     attrNum);
+						                                     bms_idx);
 						yb_state->yb_rconds = lappend(yb_state->yb_rconds,
 						                              expr);
 						return;
@@ -194,7 +195,7 @@ void ybcClassifyWhereExpr(RelOptInfo *baserel,
  * statement. Assumes the expression can be evaluated by YugaByte
  * (i.e. ybcIsYbExpression returns true).
  */
-void ybcAddWhereCond(Expr* expr, YBCPgStatement yb_stmt)
+static void ybcAddWhereCond(Expr* expr, YBCPgStatement yb_stmt)
 {
 	OpExpr *opExpr = (OpExpr *) expr;
 
@@ -231,15 +232,19 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ListCell 			*cell = NULL;
 	YbFdwPlanState		*ybc_plan = NULL;
 	const char			*table_name = NULL;
-	const char			*db_name = get_database_name(MyDatabaseId);
-
+	const char			*db_name = NULL;
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
+
+	relid = root->simple_rte_array[baserel->relid]->relid;
+	if (IsSharedRelation(relid))
+		db_name = "template1";
+	else
+		db_name = get_database_name(MyDatabaseId);
 
 	/*
 	 * Get table info (from both Postgres and YugaByte).
 	 * YugaByte info is currently mainly primary and partition (hash) keys.
 	 */
-	relid = root->simple_rte_array[baserel->relid]->relid;
 	rel = RelationIdGetRelation(relid);
 	table_name = rel->rd_rel->relname.data;
 	YBCPgTableDesc ybc_table_desc = NULL;
@@ -248,22 +253,23 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	                                 table_name,
 	                                 &ybc_table_desc));
 
-	for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++)
+	for (AttrNumber col = baserel->min_attr; col <= baserel->max_attr; col++)
 	{
 		bool is_primary = false;
 		bool is_hash    = false;
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
-		                                           attrNum,
+		                                           col,
 		                                           &is_primary,
 		                                           &is_hash), ybc_table_desc);
+		int bms_idx = col - baserel->min_attr + 1;
 		if (is_hash)
 		{
-			ybc_plan->hash_key = bms_add_member(ybc_plan->hash_key, attrNum);
+			ybc_plan->hash_key = bms_add_member(ybc_plan->hash_key, bms_idx);
 		}
 		if (is_primary)
 		{
 			ybc_plan->primary_key = bms_add_member(ybc_plan->primary_key,
-			                                       attrNum);
+			                                       bms_idx);
 		}
 	}
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
@@ -376,8 +382,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 	}
 	else if (!bms_is_subset(yb_plan_state->primary_key, yb_plan_state->yb_cols))
 	{
-		yb_plan_state->pg_conds = list_concat(yb_plan_state->pg_conds,
-		                                      yb_plan_state->yb_rconds);
+		yb_plan_state->pg_conds  = list_concat(yb_plan_state->pg_conds,
+		                                       yb_plan_state->yb_rconds);
 		yb_plan_state->yb_rconds = NIL;
 	}
 
@@ -391,57 +397,70 @@ ybcGetForeignPlan(PlannerInfo *root,
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) expr,
-														baserel->relid,
-														&yb_plan_state->target_attrs,
-														baserel->min_attr);
+		                        baserel->relid,
+		                        &yb_plan_state->target_attrs,
+		                        baserel->min_attr);
 	}
 
 	foreach(lc, yb_plan_state->pg_conds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) expr,
-														baserel->relid,
-														&yb_plan_state->target_attrs,
-														baserel->min_attr);
-	}
-
-	for (AttrNumber i = baserel->min_attr; i <= 0; i++)
-	{
-		int col = i - baserel->min_attr + 1;
-		if (i != YBTupleIdAttributeNumber &&
-				bms_is_member(col, yb_plan_state->target_attrs))
-		{
-			/* We do not yet support system-defined columns in YugaByte */
-			ereport(ERROR,
-			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-					        "System column with id %d is not supported yet",
-					        i)));
-		}
+		                        baserel->relid,
+		                        &yb_plan_state->target_attrs,
+		                        baserel->min_attr);
 	}
 
 	/* Set scan targets. */
 	List *target_attrs = NULL;
+	for (AttrNumber i = baserel->min_attr; i <= baserel->max_attr; i++)
+	{
+		int bms_idx = i - baserel->min_attr + 1;
+		if (bms_is_member(bms_idx, yb_plan_state->target_attrs))
+		{
+			switch (i)
+			{
+				case InvalidAttrNumber:
+					ereport(ERROR,
+					        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+							        "Unexpected invalid attribute number")));
+					break;
+				case SelfItemPointerAttributeNumber:
+				case MinTransactionIdAttributeNumber:
+				case MinCommandIdAttributeNumber:
+				case MaxTransactionIdAttributeNumber:
+				case MaxCommandIdAttributeNumber:
+					ereport(ERROR,
+					        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+							        "System column with id %d is not supported yet",
+							        i)));
+					break;
+				case TableOidAttributeNumber:
+					/* Nothing to do in YugaByte: Postgres will handle this. */
+					break;
+				case ObjectIdAttributeNumber:
+				case YBTupleIdAttributeNumber:
+				default: /* Regular column: attrNum > 0*/
+				{
+					TargetEntry *target = makeNode(TargetEntry);
+					target->resno = i;
+					target_attrs = lappend(target_attrs, target);
+				}
+			}
+		}
+	}
 
 	/*
 	 * We can have no target columns for e.g. a count(*). For now we request
-	 * the hash key columns in this case.
+	 * the first primary key column in that case.
 	 * TODO look into handling this on YugaByte side.
 	 */
-	bool no_targets = false;
-	if (bms_is_empty(yb_plan_state->target_attrs))
+	if (!target_attrs)
 	{
-		no_targets = true;
-	}
-	for (AttrNumber i = baserel->min_attr; i <= baserel->max_attr; i++)
-	{
-		int col = i - baserel->min_attr + 1;
-		if (bms_is_member(col, yb_plan_state->target_attrs) ||
-		    (no_targets && i > 0 && bms_is_member(i, yb_plan_state->hash_key)))
-		{
-			TargetEntry *target = makeNode(TargetEntry);
-			target->resno = i;
-			target_attrs = lappend(target_attrs, target);
-		}
+		TargetEntry *target = makeNode(TargetEntry);
+		int bms_idx = bms_next_member(yb_plan_state->primary_key, -1);
+		target->resno = bms_idx + baserel->min_attr - 1;
+		target_attrs = lappend(target_attrs, target);
 	}
 
 	List *yb_conds = list_concat(yb_plan_state->yb_hconds,
@@ -481,10 +500,15 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	Relation    relation     = node->ss.ss_currentRelation;
-	char        *dbname      = get_database_name(MyDatabaseId);
+	char        *dbname      = NULL;
 	char        *schemaname  = get_namespace_name(relation->rd_rel
 	                                                      ->relnamespace);
 	char        *tablename   = NameStr(relation->rd_rel->relname);
+
+	if (IsSharedRelation(RelationGetRelid(relation)))
+		dbname = "template1";
+	else
+		dbname = get_database_name(MyDatabaseId);
 
 	/* Planning function above should ensure both target and conds are set */
 	Assert(foreignScan->fdw_private->length == 2);
@@ -511,7 +535,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
 
-	/* Set WHERE clause values (currently only partition key). */
+	/* Set WHERE clause values (currently only primary key). */
 	foreach(lc, yb_conds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
@@ -521,8 +545,11 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Set scan targets. */
 	foreach(lc, target_attrs)
 	{
-		TargetEntry       *target = (TargetEntry *) lfirst(lc);
-		if (target->resno > 0) {
+		TargetEntry *target = (TargetEntry *) lfirst(lc);
+
+		/* For regular (non-system) attribute check if they were deleted */
+		if (target->resno > 0)
+		{
 			Form_pg_attribute attr;
 			attr = relation->rd_att->attrs[target->resno - 1];
 			/* Ignore dropped attributes */
@@ -531,13 +558,17 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				continue;
 			}
 		}
-		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr),
-		                   ybc_state->handle);
+		YBCPgExpr   expr    = YBCNewColumnRef(ybc_state->handle, target->resno);
+		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+		                                                 expr),
+		                            ybc_state->handle,
+		                            ybc_state->stmt_owner);
 	}
 
 	/* Execute the select statement. */
-	HandleYBStmtStatus(YBCPgExecSelect(ybc_state->handle), ybc_state->handle);
+	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle),
+	                            ybc_state->handle,
+	                            ybc_state->stmt_owner);
 }
 
 /*
@@ -555,22 +586,37 @@ ybcIterateForeignScan(ForeignScanState *node)
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
 
-	/* Fetch one row. */
-	YBCPgSysColumns syscols;
-	HandleYBStmtStatus(YBCPgDmlFetch(ybc_state->handle,
-	                                 (uint64_t *) slot->tts_values,
-	                                 slot->tts_isnull,
-																	 &syscols,
-	                                 &has_data), ybc_state->handle);
+	TupleDesc tupdesc = slot->tts_tupleDescriptor;
 
+	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
+	                                          tupdesc->natts,
+	                                          (uint64_t *) values,
+	                                          nulls,
+	                                          &syscols,
+	                                          &has_data),
+	                            ybc_state->handle,
+	                            ybc_state->stmt_owner);
+
+	/* If we have result(s) update the tuple slot. */
 	if (has_data)
 	{
+		HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+		if (syscols.oid != InvalidOid)
+		{
+			HeapTupleSetOid(tuple, syscols.oid);
+		}
+
+		slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+
 		/* Setup special columns in the slot */
 		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
-
-		/* If we have result(s) update the tuple slot. */
-		ExecStoreVirtualTuple(slot);
 	}
+
 	return slot;
 }
 

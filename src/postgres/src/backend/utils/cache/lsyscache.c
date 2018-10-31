@@ -13,6 +13,8 @@
  *	  Eventually, the index information should go through here, too.
  *-------------------------------------------------------------------------
  */
+
+#include "pg_yb_utils.h"
 #include "postgres.h"
 
 #include "access/hash.h"
@@ -2829,6 +2831,10 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 {
 	HeapTuple	tp;
 	int32		stawidth;
+
+	/* Do not support avg width stats for YugaByte tables as of 14/12/2018 */
+	if (IsYugaByteEnabled())
+		return 0;
 
 	if (get_attavgwidth_hook)
 	{

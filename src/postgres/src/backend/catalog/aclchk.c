@@ -76,6 +76,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * Internal format used by ALTER DEFAULT PRIVILEGES.
@@ -5256,6 +5257,10 @@ get_user_default_acl(GrantObjectType objtype, Oid ownerId, Oid nsp_oid)
 	 * yet.
 	 */
 	if (IsBootstrapProcessingMode())
+		return NULL;
+
+	/* TODO Do not support default permissions in YugaByte yet. */
+	if (IsYugaByteEnabled())
 		return NULL;
 
 	/* Check if object type is supported in pg_default_acl */

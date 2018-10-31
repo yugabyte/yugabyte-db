@@ -149,7 +149,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YBCPgSysColumns syscols;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &syscols, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
     if (!has_data) {
       break;
     }
@@ -221,7 +221,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &syscols, &has_data);
+    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result

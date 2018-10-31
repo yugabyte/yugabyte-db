@@ -19,6 +19,8 @@
 
 #include "yb/yql/pggate/pg_dml.h"
 
+#include "postgres/src/include/pg_config_manual.h"
+
 namespace yb {
 namespace pggate {
 
@@ -187,6 +189,14 @@ PgConstant::PgConstant(bool value, bool is_null)
   TranslateData = TranslateNumber<bool>;
 }
 
+PgConstant::PgConstant(int8_t value, bool is_null)
+    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt8Value) {
+  if (!is_null) {
+    ql_value_.set_int8_value(value);
+  }
+  TranslateData = TranslateNumber<int8_t>;
+}
+
 PgConstant::PgConstant(int16_t value, bool is_null)
     : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt16Value) {
   if (!is_null) {
@@ -236,7 +246,7 @@ PgConstant::PgConstant(const char *value, bool is_null)
 }
 
 PgConstant::PgConstant(const void *value, size_t bytes, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kStringValue) {
+    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kBinaryValue) {
   if (!is_null) {
     ql_value_.set_binary_value(value, bytes);
   }
@@ -244,6 +254,14 @@ PgConstant::PgConstant(const void *value, size_t bytes, bool is_null)
 }
 
 PgConstant::~PgConstant() {
+}
+
+void PgConstant::UpdateConstant(int8_t value, bool is_null) {
+  if (is_null) {
+    ql_value_.Clear();
+  } else {
+    ql_value_.set_int8_value(value);
+  }
 }
 
 void PgConstant::UpdateConstant(int16_t value, bool is_null) {
@@ -355,6 +373,9 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
       case QLValue::InternalType::kBoolValue:
         TranslateData = TranslateNumber<bool>;
         break;
+      case QLValue::InternalType::kInt8Value:
+        TranslateData = TranslateNumber<int8_t>;
+        break;
       case QLValue::InternalType::kInt16Value:
         TranslateData = TranslateNumber<int16_t>;
         break;
@@ -389,7 +410,6 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
         return STATUS_SUBSTITUTE(NotSupported, "Datatype $0 is not yet supported",
                                  col->internal_type());
 
-      case QLValue::InternalType::kInt8Value: FALLTHROUGH_INTENDED;
       case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
       case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
       case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
@@ -399,7 +419,6 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
       case QLValue::InternalType::VALUE_NOT_SET:
         return STATUS(Corruption, "Unexpected code path");
-      break;
     }
   }
 

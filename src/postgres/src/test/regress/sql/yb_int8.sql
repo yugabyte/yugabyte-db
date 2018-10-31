@@ -121,7 +121,9 @@ SELECT '' AS to_char_9,  to_char(q2, '0999999999999999')       FROM INT8_TBL ORD
 SELECT '' AS to_char_10, to_char(q2, 'S0999999999999999')      FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_11, to_char(q2, 'FM0999999999999999')     FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_12, to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL ORDER BY q2, q1;
-SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL ORDER BY q2, q1;
+-- TODO: Disabled the test below as it relies on the current locale which is
+--  configured in pg_regress using ALTER which we do not support yet.
+-- SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_14, to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_15, to_char(q2, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9') FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_16, to_char(q2, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM INT8_TBL ORDER BY q2, q1;

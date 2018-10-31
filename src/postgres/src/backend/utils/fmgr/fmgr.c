@@ -30,6 +30,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
+
 /*
  * Hooks for function calls
  */
@@ -455,6 +457,10 @@ lookup_C_func(HeapTuple procedureTuple)
 					NULL);
 	if (entry == NULL)
 		return NULL;			/* no such entry */
+
+	if (IsYugaByteEnabled())
+		return NULL;    /* cannot rely on ctid comparison below in YB mode */
+
 	if (entry->fn_xmin == HeapTupleHeaderGetRawXmin(procedureTuple->t_data) &&
 		ItemPointerEquals(&entry->fn_tid, &procedureTuple->t_self))
 		return entry;			/* OK */

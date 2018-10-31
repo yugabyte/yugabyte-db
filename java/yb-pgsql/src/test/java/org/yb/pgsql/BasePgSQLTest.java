@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
@@ -36,6 +37,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.yb.AssertionWrappers.*;
 import static org.yb.client.TestUtils.*;
 import static org.yb.util.ProcessUtil.pidStrOfProcess;
+import static org.yb.util.SanitizerUtil.isTSAN;
+import static org.yb.util.SanitizerUtil.nonTsanVsTsan;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -50,44 +53,44 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_FLAG = "YB_ENABLED_IN_POSTGRES";
 
-  protected Connection connection;
-  private Process postgresProc;
-  int postgresPid = -1;
-  private LogPrinter logPrinter;
+  protected static Connection connection;
+  private static Process postgresProc;
+  static int postgresPid = -1;
+  private static LogPrinter logPrinter;
 
-  private File pgDataDir;
+  private static File pgDataDir;
 
   protected File pgBinDir;
-  private String postgresExecutable;
+  private static String postgresExecutable;
 
-  private List<Connection> connectionsToClose = new ArrayList<>();
-  private String pgHost = "127.0.0.1";
-  private File pgData;
-  private int pgPort;
-  private File pgNoRestartAllChildrenOnCrashFlagPath;
+  private static List<Connection> connectionsToClose = new ArrayList<>();
+  private static String pgHost = "127.0.0.1";
+  private static int pgPort;
+  private static File pgNoRestartAllChildrenOnCrashFlagPath;
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
-  protected ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap = new ConcurrentSkipListSet<>();
+  protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
+      new ConcurrentSkipListSet<>();
 
   /**
    * PIDs of special-purpose PostgreSQL processes such as checkpointer, autovacuum launcher,
    * stats collector. We do not try to cause these processes to core dump because they contain
    * very little or no YugaByte code.
    */
-  private Set<Integer> specialPgProcessPids = new HashSet<>();
+  private static Set<Integer> specialPgProcessPids = new HashSet<>();
 
   /**
    * This is used during shutdown to prevent trying to kill the same backend multiple times, so not
    * using a concurrent data structure.
    */
-  protected Set<Integer> killedStuckBackendPids = new HashSet<>();
+  protected static Set<Integer> killedStuckBackendPids = new HashSet<>();
 
   /**
    * This allows us to run the same test against the vanilla PostgreSQL code (still compiled as
    * part of the YB codebase).
    */
-  private final boolean useVanillaPostgres =
+  private static final boolean useVanillaPostgres =
       EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_USE_VANILLA_POSTGRES_IN_TEST");
 
   @Override
@@ -109,6 +112,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // For now doing this here so we can already write tests.
   @Before
   public void initPostgresBefore() throws Exception {
+    if (postgresProc != null) {
+      return;
+    }
     pgPort = findFreePort(pgHost);
     LOG.info("initPostgresBefore: will start PostgreSQL server on host " + pgHost +
         ", port " + pgPort);
@@ -201,6 +207,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     postgresEnvVars.put("FLAGS_yb_num_shards_per_tserver",
         String.valueOf(overridableNumShardsPerTServer()));
+    // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
+    // Postgres system tables). Should be removed once the long lock issue is fixed.
+    int rpc_timeout = nonTsanVsTsan(10000, 30000);
+    postgresEnvVars.put("FLAGS_retryable_rpc_single_call_timeout_ms", String.valueOf(rpc_timeout));
+    if (isTSAN()) {
+      /* Increase timeout for admin ops to account for create database with copying during initdb */
+      postgresEnvVars.put("FLAGS_yb_client_admin_operation_timeout_sec", "120");
+    }
 
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
@@ -328,15 +342,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   @After
-  public void tearDownAfter() throws Exception {
-    LOG.info(getClass().getSimpleName() + ".tearDownAfter is running");
+  public void cleanUpAfter() throws Exception {
+
+    try (Statement statement = connection.createStatement())  {
+      DatabaseMetaData dbmd = connection.getMetaData();
+      String[] types = {"TABLE"};
+      ResultSet rs = dbmd.getTables(null, null, "%", types);
+      while (rs.next()) {
+        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME"));
+      }
+    }
+  }
+
+  @AfterClass
+  public static void tearDownAfter() throws Exception {
     try {
       tearDownPostgreSQL();
     } finally {
-      if (miniClusterEnabled()) {
+      if (!useVanillaPostgres) {
         LOG.info("Destroying mini-cluster");
-        // We are destroying and re-creating the miniCluster between every test.
-        // TODO Should just drop all tables/schemas/databases like for CQL.
         if (miniCluster != null) {
           destroyMiniCluster();
           miniCluster = null;
@@ -345,7 +369,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  private void processPgCoreFile(int pid) throws Exception {
+  private static void processPgCoreFile(int pid) throws Exception {
     if (postgresExecutable != null) {
       LOG.info("Looking for a core file in directory " + pgDataDir + " for pid " + pid);
       CoreFileUtil.processCoreFile(pid, postgresExecutable, "postgres", pgDataDir,
@@ -355,7 +379,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  private void killAndCoreDumpBackends(Collection<Integer> stuckBackendPids) throws Exception {
+  private static void killAndCoreDumpBackends(Collection<Integer> stuckBackendPids)
+      throws Exception {
     // Let's try to prevent postmaster from killing all child processes if one of them crashes.
     // We want to cause them to core-dump one by one and get the stack traces.
     if (!pgNoRestartAllChildrenOnCrashFlagPath.createNewFile() &&
@@ -388,7 +413,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   }
 
-  private void tearDownPostgreSQL() throws Exception {
+  private static void tearDownPostgreSQL() throws Exception {
     Set<Integer> allBackendPids = new TreeSet<>();
     LOG.info("Examining child processes of postgres process with PID " + postgresPid);
     CommandResult psResult = CommandUtil.runShellCommand(
@@ -737,4 +762,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     return allRows;
   }
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return nonTsanVsTsan(360, 1080);
+  }
+
 }

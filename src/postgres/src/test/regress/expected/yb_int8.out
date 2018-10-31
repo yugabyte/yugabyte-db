@@ -584,16 +584,9 @@ SELECT '' AS to_char_12, to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL ORD
             | 4567890123456789.000
 (5 rows)
 
-SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL ORDER BY q2, q1;
- to_char_13 |        to_char
-------------+------------------------
-            |  -4567890123456789.000
-            |                123.000
-            |                456.000
-            |   4567890123456789.000
-            |   4567890123456789.000
-(5 rows)
-
+-- TODO: Disabled the test below as it relies on the current locale which is
+--  configured in pg_regress using ALTER which we do not support yet.
+-- SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL ORDER BY q2, q1;
 SELECT '' AS to_char_14, to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL ORDER BY q2, q1;
  to_char_14 |      to_char
 ------------+--------------------

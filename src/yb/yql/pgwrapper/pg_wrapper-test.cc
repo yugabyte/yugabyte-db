@@ -24,6 +24,9 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+DECLARE_int64(retryable_rpc_single_call_timeout_ms);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
+
 using std::string;
 using std::vector;
 using std::unique_ptr;
@@ -43,6 +46,18 @@ class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
 
     ExternalMiniClusterOptions opts;
     opts.start_pgsql_proxy = true;
+
+    // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
+    // Postgres system tables). Should be removed once the long lock issue is fixed.
+    int rpc_timeout = NonTsanVsTsan(10000, 30000);
+    string rpc_flag = "--retryable_rpc_single_call_timeout_ms=";
+    opts.extra_tserver_flags.emplace_back(rpc_flag + std::to_string(rpc_timeout));
+    FLAGS_retryable_rpc_single_call_timeout_ms = rpc_timeout; /* needed by cluster-wide inidb */
+
+    if (IsTsan()) {
+      /* Increase timeout for admin ops to account for create database with copying during initdb */
+      FLAGS_yb_client_admin_operation_timeout_sec = 120;
+    }
 
     // Test that we can start PostgreSQL servers on non-colliding ports within each tablet server.
     opts.num_tablet_servers = 3;

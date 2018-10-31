@@ -321,6 +321,11 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
+static bool IsYugaByteEnabledInInitdb()
+{
+	const char* env_var_value = getenv("YB_ENABLED_IN_POSTGRES");
+	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
+}
 static char *
 escape_quotes(const char *src)
 {
@@ -1646,7 +1651,8 @@ setup_collation(FILE *cmdfd)
 				   BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
 
 	/* Now import all collations we can find in the operating system */
-	PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
+	if (!IsYugaByteEnabledInInitdb())
+		PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 }
 
 /*
@@ -1850,6 +1856,7 @@ setup_privileges(FILE *cmdfd)
 
 	priv_lines = replace_token(privileges_setup, "$POSTGRES_SUPERUSERNAME",
 							   escape_quotes(username));
+
 	for (line = priv_lines; *line != NULL; line++)
 		PG_CMD_PUTS(*line);
 }
@@ -1948,7 +1955,6 @@ make_template0(FILE *cmdfd)
 		"UPDATE pg_database SET datlastsysoid = "
 		"    (SELECT oid FROM pg_database "
 		"    WHERE datname = 'template0');\n\n",
-
 		/*
 		 * Explicitly revoke public create-schema and create-temp-table
 		 * privileges in template1 and template0; else the latter would be on
@@ -1966,8 +1972,23 @@ make_template0(FILE *cmdfd)
 		NULL
 	};
 
-	for (line = template0_setup; *line; line++)
-		PG_CMD_PUTS(*line);
+	/*
+	 * Skip some commands in YB mode as we do not need/support them as of
+	 * 14/12/2018.
+	 * TODO revert this change when we do support it.
+	 */
+	if (IsYugaByteEnabledInInitdb())
+	{
+		PG_CMD_PUTS(template0_setup[0]);
+		PG_CMD_PUTS(template0_setup[2]);
+		PG_CMD_PUTS(template0_setup[3]);
+		PG_CMD_PUTS(template0_setup[4]);
+	}
+	else
+	{
+		for (line = template0_setup; *line; line++)
+			PG_CMD_PUTS(*line);
+	}
 }
 
 /*
@@ -2542,7 +2563,10 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-	set_input(&bki_file, "postgres.bki");
+	if (IsYugaByteEnabledInInitdb())
+		set_input(&bki_file, "yb_postgres.bki");
+	else
+		set_input(&bki_file, "postgres.bki");
 	set_input(&desc_file, "postgres.description");
 	set_input(&shdesc_file, "postgres.shdescription");
 	set_input(&hba_file, "pg_hba.conf.sample");
@@ -2550,10 +2574,15 @@ setup_data_file_paths(void)
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&dictionary_file, "snowball_create.sql");
-	set_input(&info_schema_file, "information_schema.sql");
+	if (IsYugaByteEnabledInInitdb())
+		set_input(&info_schema_file, "yb_information_schema.sql");
+	else
+		set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
-	set_input(&system_views_file, "system_views.sql");
-
+	if (IsYugaByteEnabledInInitdb())
+		set_input(&system_views_file, "yb_system_views.sql");
+	else
+		set_input(&system_views_file, "system_views.sql");
 	if (show_setting || debug)
 	{
 		fprintf(stderr,
@@ -2850,7 +2879,7 @@ void
 initialize_data_directory(void)
 {
 	PG_CMD_DECL;
-	int			i;
+	int      i;
 
 	setup_signals();
 
@@ -2866,7 +2895,7 @@ initialize_data_directory(void)
 
 	for (i = 0; i < lengthof(subdirs); i++)
 	{
-		char	   *path;
+		char     *path;
 
 		path = psprintf("%s/%s", pg_data, subdirs[i]);
 
@@ -2877,7 +2906,7 @@ initialize_data_directory(void)
 		if (mkdir(path, S_IRWXU) < 0)
 		{
 			fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
-					progname, path, strerror(errno));
+			        progname, path, strerror(errno));
 			exit_nicely();
 		}
 
@@ -2912,15 +2941,16 @@ initialize_data_directory(void)
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s template1 >%s",
-			 backend_exec, backend_options,
-			 DEVNULL);
+	         "\"%s\" %s template1 >%s",
+	         backend_exec, backend_options,
+	         DEVNULL);
 
 	PG_CMD_OPEN;
 
 	setup_auth(cmdfd);
 
-	setup_depend(cmdfd);
+	if (!IsYugaByteEnabledInInitdb())
+		setup_depend(cmdfd);
 
 	/*
 	 * Note that no objects created after setup_depend() will be "pinned".
@@ -2929,21 +2959,28 @@ initialize_data_directory(void)
 
 	setup_sysviews(cmdfd);
 
-	setup_description(cmdfd);
+	/* Do not support copy in YB yet */
+	if (!IsYugaByteEnabledInInitdb())
+		setup_description(cmdfd);
 
 	setup_collation(cmdfd);
+	
+	if (!IsYugaByteEnabledInInitdb())
+	{
+		setup_conversion(cmdfd);
 
-	setup_conversion(cmdfd);
+		setup_dictionary(cmdfd);
 
-	setup_dictionary(cmdfd);
+		setup_privileges(cmdfd);
 
-	setup_privileges(cmdfd);
+		/* Do not support copy in YB yet */
+		setup_schema(cmdfd);
 
-	setup_schema(cmdfd);
+		load_plpgsql(cmdfd);
 
-	load_plpgsql(cmdfd);
-
-	vacuum_db(cmdfd);
+		/* Do not need to vacuum in YB */
+		vacuum_db(cmdfd);
+	}
 
 	make_template0(cmdfd);
 
@@ -3237,34 +3274,38 @@ main(int argc, char *argv[])
 	if (authwarning != NULL)
 		fprintf(stderr, "%s", authwarning);
 
-	/*
-	 * Build up a shell command to tell the user how to start the server
-	 */
-	start_db_cmd = createPQExpBuffer();
+	/* In YugaByte mode we only call this indirectly and manage starting the server automatically */
+	if (!IsYugaByteEnabledInInitdb()) {
 
-	/* Get directory specification used to start initdb ... */
-	strlcpy(pg_ctl_path, argv[0], sizeof(pg_ctl_path));
-	canonicalize_path(pg_ctl_path);
-	get_parent_directory(pg_ctl_path);
-	/* ... and tag on pg_ctl instead */
-	join_path_components(pg_ctl_path, pg_ctl_path, "pg_ctl");
+		/*
+     * Build up a shell command to tell the user how to start the server
+     */
+		start_db_cmd = createPQExpBuffer();
 
-	/* path to pg_ctl, properly quoted */
-	appendShellString(start_db_cmd, pg_ctl_path);
+		/* Get directory specification used to start initdb ... */
+		strlcpy(pg_ctl_path, argv[0], sizeof(pg_ctl_path));
+		canonicalize_path(pg_ctl_path);
+		get_parent_directory(pg_ctl_path);
+		/* ... and tag on pg_ctl instead */
+		join_path_components(pg_ctl_path, pg_ctl_path, "pg_ctl");
 
-	/* add -D switch, with properly quoted data directory */
-	appendPQExpBufferStr(start_db_cmd, " -D ");
-	appendShellString(start_db_cmd, pgdata_native);
+		/* path to pg_ctl, properly quoted */
+		appendShellString(start_db_cmd, pg_ctl_path);
 
-	/* add suggested -l switch and "start" command */
-	/* translator: This is a placeholder in a shell command. */
-	appendPQExpBuffer(start_db_cmd, " -l %s start", _("logfile"));
+		/* add -D switch, with properly quoted data directory */
+		appendPQExpBufferStr(start_db_cmd, " -D ");
+		appendShellString(start_db_cmd, pgdata_native);
 
-	printf(_("\nSuccess. You can now start the database server using:\n\n"
-			 "    %s\n\n"),
-		   start_db_cmd->data);
+		/* add suggested -l switch and "start" command */
+		/* translator: This is a placeholder in a shell command. */
+		appendPQExpBuffer(start_db_cmd, " -l %s start", _("logfile"));
 
-	destroyPQExpBuffer(start_db_cmd);
+		printf(_("\nSuccess. You can now start the database server using:\n\n"
+						 "    %s\n\n"),
+				start_db_cmd->data);
+
+		destroyPQExpBuffer(start_db_cmd);
+	}
 
 	return 0;
 }

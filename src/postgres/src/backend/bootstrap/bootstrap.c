@@ -46,6 +46,12 @@
 #include "utils/relmapper.h"
 #include "utils/tqual.h"
 
+#include "bootstrap/ybcbootstrap.h"
+#include "catalog/pg_database.h"
+#include "commands/ybccmds.h"
+#include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
+
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 
 
@@ -494,6 +500,19 @@ BootstrapModeMain(void)
 		Nulls[i] = false;
 	}
 
+
+	/*
+	 * In YugaByte we only need to create the template1 database
+	 * (corresponding to creating the "base/1" subdir as its oid is hardcoded).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateDatabase(TemplateDbOid,
+		                  "template1",
+		                  InvalidOid,
+		                  FirstBootstrapObjectId);
+	}
+
 	/*
 	 * Process bootstrap input.
 	 */
@@ -501,11 +520,15 @@ BootstrapModeMain(void)
 	boot_yyparse();
 	CommitTransactionCommand();
 
-	/*
-	 * We should now know about all mapped relations, so it's okay to write
-	 * out the initial relation mapping files.
-	 */
-	RelationMapFinishBootstrap();
+	/* We do not use a relation map file in YugaByte mode yet */
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * We should now know about all mapped relations, so it's okay to write
+		 * out the initial relation mapping files.
+		 */
+		RelationMapFinishBootstrap();
+	}
 
 	/* Clean up and exit */
 	cleanup();
@@ -783,9 +806,14 @@ InsertOneTuple(Oid objectid)
 	tuple = heap_form_tuple(tupDesc, values, Nulls);
 	if (objectid != (Oid) 0)
 		HeapTupleSetOid(tuple, objectid);
+
+	if (IsYugaByteEnabled())
+		YBCExecuteInsert(boot_reldesc, tupDesc, tuple);
+	else
+		simple_heap_insert(boot_reldesc, tuple);
+
 	pfree(tupDesc);				/* just free's tupDesc, not the attrtypes */
 
-	simple_heap_insert(boot_reldesc, tuple);
 	heap_freetuple(tuple);
 	elog(DEBUG4, "row inserted");
 

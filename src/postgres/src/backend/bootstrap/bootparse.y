@@ -51,6 +51,8 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
+#include "bootstrap/ybcbootstrap.h"
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -104,20 +106,22 @@ static int num_columns_read = 0;
 {
 	List		*list;
 	IndexElem	*ielem;
+	IndexStmt	*istmt;  /* Used for YugaByte index/pkey clauses */
 	char		*str;
 	int			ival;
 	Oid			oidval;
 }
 
-%type <list>  boot_index_params
+%type <list>  boot_index_params Boot_YBIndexes
 %type <ielem> boot_index_param
+%type <istmt> Boot_YBIndex
 %type <str>   boot_ident
 %type <ival>  optbootstrap optsharedrelation optwithoutoids boot_column_nullness
 %type <oidval> oidspec optoideq optrowtypeoid
 
 %token <str> ID
 %token OPEN XCLOSE XCREATE INSERT_TUPLE
-%token XDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
+%token XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
 %token COMMA EQUALS LPAREN RPAREN
 %token OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS XROWTYPE_OID NULLVAL
 %token XFORCE XNOT XNULL
@@ -173,6 +177,44 @@ Boot_CloseStmt:
 					do_end();
 				}
 		;
+Boot_YBIndex:
+          YBDECLARE UNIQUE INDEX boot_ident oidspec ON boot_ident USING boot_ident
+           LPAREN boot_index_params RPAREN
+				{
+					IndexStmt *stmt = makeNode(IndexStmt);
+
+					do_start();
+
+					stmt->idxname = $4;
+					stmt->relation = makeRangeVar(NULL, $7, -1);
+					stmt->accessMethod = $9;
+					stmt->tableSpace = NULL;
+					stmt->indexParams = $11;
+					stmt->options = NIL;
+					stmt->whereClause = NULL;
+					stmt->excludeOpNames = NIL;
+					stmt->idxcomment = NULL;
+					stmt->indexOid = $5;
+					stmt->oldNode = InvalidOid;
+					stmt->unique = true;
+					stmt->primary = false;
+					stmt->isconstraint = false;
+					stmt->deferrable = false;
+					stmt->initdeferred = false;
+					stmt->transformed = false;
+					stmt->concurrent = false;
+					stmt->if_not_exists = false;
+
+					do_end();
+
+					$$ = stmt;
+				}
+		;
+
+Boot_YBIndexes:
+          /* EMPTY */ { $$ = NIL; }
+        | Boot_YBIndexes Boot_YBIndex { $$ = lappend($1, $2); }
+        ;
 
 Boot_CreateStmt:
 		  XCREATE boot_ident oidspec optbootstrap optsharedrelation optwithoutoids optrowtypeoid LPAREN
@@ -189,7 +231,7 @@ Boot_CreateStmt:
 				{
 					do_end();
 				}
-		  RPAREN
+		  RPAREN Boot_YBIndexes
 				{
 					TupleDesc tupdesc;
 					bool	shared_relation;
@@ -260,7 +302,17 @@ Boot_CreateStmt:
 													  NULL);
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
-					do_end();
+
+                    if (IsYugaByteEnabled()) {
+                        YBCCreateSysCatalogTable($2,
+                                                 PG_CATALOG_NAMESPACE,
+                                                 $3,
+                                                 tupdesc,
+                                                 shared_relation,
+                                                 $13);
+					}
+
+                    do_end();
 				}
 		;
 

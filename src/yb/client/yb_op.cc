@@ -546,10 +546,12 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
       if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
     }
 
-    // Set both bounds to equal partition key now, because this is a point get
-    uint16 hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
-    read_request_->set_hash_code(hash_code);
-    read_request_->set_max_hash_code(hash_code);
+    if (!partition_key->empty()) {
+      // Set both bounds to equal partition key now, because this is a point get
+      uint16 hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+      read_request_->set_hash_code(hash_code);
+      read_request_->set_max_hash_code(hash_code);
+    } // else we are using no-hash scheme (e.g. for postgres syscatalog tables) -- nothing to do.
   } else {
     // Otherwise, set the partition key to the hash_code (lower bound of the token range).
     if (read_request_->has_hash_code()) {

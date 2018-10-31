@@ -157,6 +157,7 @@ class PgConstant : public PgExpr {
 
   // Numeric constant.
   explicit PgConstant(bool value, bool is_null);
+  explicit PgConstant(int8_t value, bool is_null);
   explicit PgConstant(int16_t value, bool is_null);
   explicit PgConstant(int32_t value, bool is_null);
   explicit PgConstant(int64_t value, bool is_null);
@@ -171,6 +172,7 @@ class PgConstant : public PgExpr {
   virtual ~PgConstant();
 
   // Update numeric.
+  void UpdateConstant(int8_t value, bool is_null);
   void UpdateConstant(int16_t value, bool is_null);
   void UpdateConstant(int32_t value, bool is_null);
   void UpdateConstant(int64_t value, bool is_null);

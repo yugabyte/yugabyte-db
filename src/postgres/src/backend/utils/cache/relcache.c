@@ -87,6 +87,8 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
+#include "executor/ybcScan.h"
 
 /*
  *		name of relcache init file(s), used to speed up backend startup
@@ -350,9 +352,9 @@ ScanPgRelation(Oid targetRelId, bool indexOK, bool force_non_historic)
 		snapshot = GetCatalogSnapshot(RelationRelationId);
 
 	pg_class_scan = systable_beginscan(pg_class_desc, ClassOidIndexId,
-									   indexOK && criticalRelcachesBuilt,
-									   snapshot,
-									   1, key);
+	                                   indexOK && criticalRelcachesBuilt,
+	                                   snapshot,
+	                                   1, key);
 
 	pg_class_tuple = systable_getnext(pg_class_scan);
 
@@ -525,10 +527,10 @@ RelationBuildTupleDesc(Relation relation)
 	 */
 	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
 	pg_attribute_scan = systable_beginscan(pg_attribute_desc,
-										   AttributeRelidNumIndexId,
-										   criticalRelcachesBuilt,
-										   NULL,
-										   2, skey);
+	                                       AttributeRelidNumIndexId,
+	                                       criticalRelcachesBuilt,
+	                                       NULL,
+	                                       2, skey);
 
 	/*
 	 * add attribute data to relation->rd_att
@@ -542,13 +544,13 @@ RelationBuildTupleDesc(Relation relation)
 		attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
 
 		if (attp->attnum <= 0 ||
-			attp->attnum > relation->rd_rel->relnatts)
+		    attp->attnum > relation->rd_rel->relnatts)
 			elog(ERROR, "invalid attribute number %d for %s",
-				 attp->attnum, RelationGetRelationName(relation));
+			     attp->attnum, RelationGetRelationName(relation));
 
 		memcpy(relation->rd_att->attrs[attp->attnum - 1],
-			   attp,
-			   ATTRIBUTE_FIXED_PART_SIZE);
+		       attp,
+		       ATTRIBUTE_FIXED_PART_SIZE);
 
 		/* Update constraint/default info */
 		if (attp->attnotnull)
@@ -556,11 +558,10 @@ RelationBuildTupleDesc(Relation relation)
 
 		if (attp->atthasdef)
 		{
-			if (attrdef == NULL)
-				attrdef = (AttrDefault *)
+			attrdef = (AttrDefault *)
 					MemoryContextAllocZero(CacheMemoryContext,
-										   relation->rd_rel->relnatts *
-										   sizeof(AttrDefault));
+					                       relation->rd_rel->relnatts *
+					                       sizeof(AttrDefault));
 			attrdef[ndef].adnum = attp->attnum;
 			attrdef[ndef].adbin = NULL;
 			ndef++;
@@ -709,7 +710,6 @@ RelationBuildRuleLock(Relation relation)
 									  RewriteRelRulenameIndexId,
 									  true, NULL,
 									  1, &key);
-
 	while (HeapTupleIsValid(rewrite_tuple = systable_getnext(rewrite_scan)))
 	{
 		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
@@ -1180,6 +1180,358 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
 }
 
 /*
+ * YugaByte-mode only utility used to load up the relcache on initialization
+ * to minimize the number on YB-master queries needed.
+ * It is based on (and similar to) RelationBuildDesc but does all relations
+ * at once.
+ * It works in two steps:
+ *  1. Load up all the data pg_class using one full scan iteration. The
+ *  relations after this point will all be loaded but incomplete (e.g. no
+ *  attribute info set).
+ *  2. Load all all the data from pg_attribute using one full scan. Then update
+ *  each the corresponding relation once all attributes for it were retrieved.
+ *
+ *  Note: We assume that any error happening here will fatal so as to not end
+ *  up with partial information in the cache.
+ */
+void YBCInitializeRelCache()
+{
+	Relation      relation;
+	Oid           relid;
+	HeapTuple     pg_class_tuple;
+	Form_pg_class relp;
+
+	/*
+	 * 1. Load up the (partial) relation info from pg_class.
+	 */
+	Relation pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
+
+
+	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
+	                                          RelationRelationId,
+	                                          true,
+	                                          NULL,
+	                                          0,
+	                                          NULL);
+
+	/*
+	 * Must copy tuple before releasing buffer.
+	 */
+	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
+	{
+		pg_class_tuple = heap_copytuple(pg_class_tuple);
+
+		/*
+		 * get information from the pg_class_tuple
+		 */
+		relid = HeapTupleGetOid(pg_class_tuple);
+		relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+
+		/*
+		 * allocate storage for the relation descriptor, and copy pg_class_tuple
+		 * to relation->rd_rel.
+		 */
+		relation = AllocateRelationDesc(relp);
+
+		/*
+		 * initialize the relation's relation id (relation->rd_id)
+		 */
+		RelationGetRelid(relation) = relid;
+
+		/*
+		 * normal relations are not nailed into the cache; nor can a pre-existing
+		 * relation be new.  It could be temp though.  (Actually, it could be new
+		 * too, but it's okay to forget that fact if forced to flush the entry.)
+		 */
+		relation->rd_refcnt              = 0;
+		relation->rd_isnailed            = false;
+		relation->rd_createSubid         = InvalidSubTransactionId;
+		relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
+		switch (relation->rd_rel->relpersistence)
+		{
+			case RELPERSISTENCE_UNLOGGED:
+			case RELPERSISTENCE_PERMANENT:
+				relation->rd_backend     = InvalidBackendId;
+				relation->rd_islocaltemp = false;
+				break;
+			case RELPERSISTENCE_TEMP:
+				if (isTempOrTempToastNamespace(relation->rd_rel->relnamespace))
+				{
+					relation->rd_backend     = BackendIdForTempRelations();
+					relation->rd_islocaltemp = true;
+				}
+				else
+				{
+					/*
+					 * If it's a temp table, but not one of ours, we have to use
+					 * the slow, grotty method to figure out the owning backend.
+					 *
+					 * Note: it's possible that rd_backend gets set to MyBackendId
+					 * here, in case we are looking at a pg_class entry left over
+					 * from a crashed backend that coincidentally had the same
+					 * BackendId we're using.  We should *not* consider such a
+					 * table to be "ours"; this is why we need the separate
+					 * rd_islocaltemp flag.  The pg_class entry will get flushed
+					 * if/when we clean out the corresponding temp table namespace
+					 * in preparation for using it.
+					 */
+					relation->rd_backend = GetTempNamespaceBackendId(relation->rd_rel
+					                                                         ->relnamespace);
+					Assert(relation->rd_backend != InvalidBackendId);
+					relation->rd_islocaltemp = false;
+				}
+				break;
+			default:
+				elog(ERROR,
+				     "invalid relpersistence: %c",
+				     relation->rd_rel->relpersistence);
+				break;
+		}
+
+		/* foreign key data is not loaded till asked for */
+		relation->rd_fkeylist  = NIL;
+		relation->rd_fkeyvalid = false;
+
+		/* if a partitioned table, initialize key and partition descriptor info */
+		if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		{
+			RelationBuildPartitionKey(relation);
+			RelationBuildPartitionDesc(relation);
+		}
+		else
+		{
+			relation->rd_partkeycxt = NULL;
+			relation->rd_partkey    = NULL;
+			relation->rd_partdesc   = NULL;
+			relation->rd_pdcxt      = NULL;
+		}
+
+		/*
+		 * if it's an index, initialize index-related information
+		 */
+		if (OidIsValid(relation->rd_rel->relam))
+			RelationInitIndexAccessInfo(relation);
+
+		/* extract reloptions if any */
+		RelationParseRelOptions(relation, pg_class_tuple);
+
+		/*
+		 * initialize the relation lock manager information
+		 */
+		RelationInitLockInfo(relation); /* see lmgr.c */
+
+		/*
+		 * initialize physical addressing information for the relation
+		 */
+		RelationInitPhysicalAddr(relation);
+
+		/* make sure relation is marked as having no open file yet */
+		relation->rd_smgr = NULL;
+
+		/*
+		 * now we can free the memory allocated for pg_class_tuple
+		 */
+		heap_freetuple(pg_class_tuple);
+
+		/*
+		 * Insert newly created relation into relcache hash table, if requested.
+		 *
+		 * There is one scenario in which we might find a hashtable entry already
+		 * present, even though our caller failed to find it: if the relation is a
+		 * system catalog or index that's used during relcache load, we might have
+		 * recursively created the same relcache entry during the preceding steps.
+		 * So allow RelationCacheInsert to delete any already-present relcache
+		 * entry for the same OID.  The already-present entry should have refcount
+		 * zero (else somebody forgot to close it); in the event that it doesn't,
+		 * we'll elog a WARNING and leak the already-present entry.
+		 */
+		Relation tmp_rel;
+		RelationIdCacheLookup(relation->rd_id, tmp_rel);
+		if (!tmp_rel)
+		{
+			RelationCacheInsert(relation, true);
+		}
+
+		/* It's fully valid */
+		relation->rd_isvalid = true;
+	}
+
+	/* all done */
+	systable_endscan(scandesc);
+
+	/*
+	 * 2. Iterate over pg_attribute to update the attribute info and the other
+	 * missing metadata for the relations above.
+	 */
+
+	/* Build table descs */
+	TupleConstr *constr;
+	AttrDefault *attrdef = NULL;
+	Relation	pg_attribute_desc;
+	int			need = 0;
+	int			ndef = 0;
+	HeapTuple	pg_attribute_tuple;
+
+	relation = NULL;
+
+	/*
+	 * Open pg_attribute and begin a scan.  Force heap scan if we haven't yet
+	 * built the critical relcache entries (this includes initdb and startup
+	 * without a pg_internal.init file).
+	 */
+	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
+
+	scandesc = systable_beginscan(pg_attribute_desc,
+	                              AttributeRelationId,
+	                              criticalRelcachesBuilt,
+	                              NULL,
+	                              0,
+	                              NULL);
+
+	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(scandesc)))
+	{
+		Form_pg_attribute attp;
+
+		attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
+		if (relation && relation->rd_id != attp->attrelid)
+		{
+			if (need != 0)
+				elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
+				     need, RelationGetRelid(relation));
+			/*
+			 * initialize the tuple descriptor (relation->rd_att).
+			 */
+			/* copy some fields from pg_class row to rd_att */
+			relation->rd_att->tdtypeid = relation->rd_rel->reltype;
+			relation->rd_att->tdtypmod = -1;	/* unnecessary, but... */
+			relation->rd_att->tdhasoid = relation->rd_rel->relhasoids;
+
+			/*
+			 * However, we can easily set the attcacheoff value for the first
+			 * attribute: it must be zero.  This eliminates the need for special cases
+			 * for attnum=1 that used to exist in fastgetattr() and index_getattr().
+			 */
+			if (relation->rd_rel->relnatts > 0)
+				relation->rd_att->attrs[0]->attcacheoff = 0;
+
+			/*
+			 * Set up constraint/default info
+			 */
+			if (constr->has_not_null || ndef > 0 || relation->rd_rel->relchecks)
+			{
+				relation->rd_att->constr = constr;
+
+				if (ndef > 0)            /* DEFAULTs */
+				{
+					if (ndef < relation->rd_rel->relnatts)
+						constr->defval = (AttrDefault *) repalloc(attrdef,
+						                                          ndef *
+						                                          sizeof(AttrDefault));
+					else
+						constr->defval = attrdef;
+					constr->num_defval = ndef;
+					AttrDefaultFetch(relation);
+				}
+				else
+					constr->num_defval = 0;
+
+				if (relation->rd_rel->relchecks > 0)    /* CHECKs */
+				{
+					constr->num_check = relation->rd_rel->relchecks;
+					constr->check     = (ConstrCheck *) MemoryContextAllocZero(
+							CacheMemoryContext,
+							constr->num_check * sizeof(ConstrCheck));
+					CheckConstraintFetch(relation);
+				}
+				else
+					constr->num_check = 0;
+			}
+			else
+			{
+				pfree(constr);
+				relation->rd_att->constr = NULL;
+			}
+
+			/*
+			 * Fetch rules and triggers that affect this relation
+		     */
+			if (relation->rd_rel->relhasrules)
+				RelationBuildRuleLock(relation);
+			else
+			{
+				relation->rd_rules    = NULL;
+				relation->rd_rulescxt = NULL;
+			}
+
+			if (relation->rd_rel->relhastriggers)
+				RelationBuildTriggers(relation);
+			else
+				relation->trigdesc = NULL;
+
+			if (relation->rd_rel->relrowsecurity)
+				RelationBuildRowSecurity(relation);
+			else
+				relation->rd_rsdesc = NULL;
+
+			// Reset relation.
+			relation = NULL;
+		}
+
+		if (!relation)
+		{
+			// set up new rel and continue.
+			RelationIdCacheLookup(attp->attrelid, relation);
+			if (!relation)
+				continue;
+			need = relation->rd_rel->relnatts;
+			ndef = 0;
+			constr = (TupleConstr *) MemoryContextAlloc(CacheMemoryContext,
+			                                            sizeof(TupleConstr));
+			constr->has_not_null = false;
+		}
+
+		/* Skip system attributes */
+		if (attp->attnum <= 0)
+			continue;
+
+		if (attp->attnum > relation->rd_rel->relnatts)
+			elog(ERROR,
+			     "invalid attribute number %d for %s",
+			     attp->attnum,
+			     RelationGetRelationName(relation));
+
+		memcpy(relation->rd_att->attrs[attp->attnum - 1],
+		       attp,
+		       ATTRIBUTE_FIXED_PART_SIZE);
+
+		/* Update constraint/default info */
+		if (attp->attnotnull)
+			constr->has_not_null = true;
+
+		if (attp->atthasdef)
+		{
+			if (attrdef == NULL)
+				attrdef = (AttrDefault *) MemoryContextAllocZero(
+						CacheMemoryContext,
+						relation->rd_rel->relnatts * sizeof(AttrDefault));
+			attrdef[ndef].adnum = attp->attnum;
+			attrdef[ndef].adbin = NULL;
+			ndef++;
+		}
+		need--;
+	}
+
+	/*
+	 * end the scan and close the attribute relation
+	 */
+	systable_endscan(scandesc);
+
+	heap_close(pg_attribute_desc, AccessShareLock);
+
+	heap_close(pg_class_desc, AccessShareLock);
+}
+
+/*
  *		RelationBuildDesc
  *
  *		Build a relation descriptor.  The caller must hold at least
@@ -1387,6 +1739,9 @@ RelationInitPhysicalAddr(Relation relation)
 		relation->rd_node.dbNode = InvalidOid;
 	else
 		relation->rd_node.dbNode = MyDatabaseId;
+
+	if (IsYugaByteEnabled())
+	  return;
 
 	if (relation->rd_rel->relfilenode)
 	{
@@ -1764,7 +2119,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 				ObjectIdGetDatum(operatorClassOid));
 	rel = heap_open(OperatorClassRelationId, AccessShareLock);
 	scan = systable_beginscan(rel, OpclassOidIndexId, indexOK,
-							  NULL, 1, skey);
+	                          NULL, 1, skey);
 
 	if (HeapTupleIsValid(htup = systable_getnext(scan)))
 	{
@@ -1799,19 +2154,19 @@ LookupOpclassInfo(Oid operatorClassOid,
 					ObjectIdGetDatum(opcentry->opcintype));
 		rel = heap_open(AccessMethodProcedureRelationId, AccessShareLock);
 		scan = systable_beginscan(rel, AccessMethodProcedureIndexId, indexOK,
-								  NULL, 3, skey);
+		                          NULL, 3, skey);
 
 		while (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
 			Form_pg_amproc amprocform = (Form_pg_amproc) GETSTRUCT(htup);
 
 			if (amprocform->amprocnum <= 0 ||
-				(StrategyNumber) amprocform->amprocnum > numSupport)
+					(StrategyNumber) amprocform->amprocnum > numSupport)
 				elog(ERROR, "invalid amproc number %d for opclass %u",
-					 amprocform->amprocnum, operatorClassOid);
+				     amprocform->amprocnum, operatorClassOid);
 
 			opcentry->supportProcs[amprocform->amprocnum - 1] =
-				amprocform->amproc;
+					amprocform->amproc;
 		}
 
 		systable_endscan(scan);
@@ -2030,8 +2385,8 @@ RelationIdGetRelation(Oid relationId)
 {
 	Relation	rd;
 
-	/* Make sure we're in an xact, even if this ends up being a cache hit */
-	Assert(IsTransactionState());
+  /* Make sure we're in an xact, even if this ends up being a cache hit */
+  Assert(IsTransactionState());
 
 	/*
 	 * first try to find reldesc in the cache
@@ -3528,10 +3883,14 @@ RelationCacheInitializePhase2(void)
 {
 	MemoryContext oldcxt;
 
-	/*
-	 * relation mapper needs initialized too
-	 */
-	RelationMapInitializePhase2();
+	/* We do not use a relation map file in YugaByte mode yet */
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * relation mapper needs initialized too
+		 */
+		RelationMapInitializePhase2();
+	}
 
 	/*
 	 * In bootstrap mode, the shared catalogs aren't there yet anyway, so do
@@ -3590,10 +3949,14 @@ RelationCacheInitializePhase3(void)
 	MemoryContext oldcxt;
 	bool		needNewCacheFile = !criticalSharedRelcachesBuilt;
 
-	/*
-	 * relation mapper needs initialized too
-	 */
-	RelationMapInitializePhase3();
+	/* We do not use a relation map file in YugaByte mode yet */
+	if (!IsYugaByteEnabled())
+	{
+	  /*
+	   * relation mapper needs initialized too
+	   */
+	  RelationMapInitializePhase3();
+	}
 
 	/*
 	 * switch to cache memory context
@@ -3627,6 +3990,15 @@ RelationCacheInitializePhase3(void)
 	/* In bootstrap mode, the faked-up formrdesc info is all we'll have */
 	if (IsBootstrapProcessingMode())
 		return;
+
+	/*
+	 * In YB mode initialize the relache at the beginning so that we need
+	 * fewer cache lookups in steady state.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCInitializeRelCache();
+	}
 
 	/*
 	 * If we didn't get the critical system indexes loaded into relcache, do
@@ -3865,9 +4237,13 @@ RelationCacheInitializePhase3(void)
 		 */
 		InitCatalogCachePhase2();
 
-		/* now write the files */
-		write_relcache_init_file(true);
-		write_relcache_init_file(false);
+		/* We do not use a relation map file in YugaByte mode yet */
+		if (!IsYugaByteEnabled())
+		{
+			/* now write the files */
+			write_relcache_init_file(true);
+			write_relcache_init_file(false);
+		}
 	}
 }
 
@@ -3881,6 +4257,11 @@ static void
 load_critical_index(Oid indexoid, Oid heapoid)
 {
 	Relation	ird;
+	if (IsYugaByteEnabled())
+	{
+		/* TODO We do not support/use critical indexes in YugaByte mode yet */
+		return;
+	}
 
 	/*
 	 * We must lock the underlying catalog before locking the index to avoid
@@ -5636,14 +6017,26 @@ load_relcache_init_file(bool shared)
 	 * values of NUM_CRITICAL_SHARED_RELS/NUM_CRITICAL_SHARED_INDEXES, we put
 	 * an Assert(false) there.
 	 */
+	int num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
+	int num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
+
+	/*
+	 * TODO We do not support/use critical indexes in YugaByte mode yet so set
+	 * the expected number of indexes to 0 so we do not fail here.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		num_critical_shared_indexes = 0;
+		num_critical_local_indexes  = 0;
+	}
 	if (shared)
 	{
 		if (nailed_rels != NUM_CRITICAL_SHARED_RELS ||
-			nailed_indexes != NUM_CRITICAL_SHARED_INDEXES)
+			nailed_indexes != num_critical_shared_indexes)
 		{
 			elog(WARNING, "found %d nailed shared rels and %d nailed shared indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_SHARED_RELS, NUM_CRITICAL_SHARED_INDEXES);
+				 NUM_CRITICAL_SHARED_RELS, num_critical_shared_indexes);
 			/* Make sure we get developers' attention about this */
 			Assert(false);
 			/* In production builds, recover by bootstrapping the relcache */
@@ -5653,11 +6046,11 @@ load_relcache_init_file(bool shared)
 	else
 	{
 		if (nailed_rels != NUM_CRITICAL_LOCAL_RELS ||
-			nailed_indexes != NUM_CRITICAL_LOCAL_INDEXES)
+			nailed_indexes != num_critical_local_indexes)
 		{
 			elog(WARNING, "found %d nailed rels and %d nailed indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_LOCAL_RELS, NUM_CRITICAL_LOCAL_INDEXES);
+				 NUM_CRITICAL_LOCAL_RELS, num_critical_local_indexes);
 			/* We don't need an Assert() in this case */
 			goto read_failed;
 		}

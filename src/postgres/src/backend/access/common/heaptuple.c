@@ -62,7 +62,6 @@
 #include "executor/tuptable.h"
 #include "utils/expandeddatum.h"
 
-
 /* Does att's datatype allow packing into the 1-byte-header varlena format? */
 #define ATT_IS_PACKABLE(att) \
 	((att)->attlen == -1 && (att)->attstorage != 'p')

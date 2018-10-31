@@ -18,6 +18,8 @@
 
 #include "access/attnum.h"
 #include "access/htup.h"
+#include "relcache.h"
+
 /* we intentionally do not include utils/catcache.h here */
 
 /*
@@ -111,6 +113,9 @@ enum SysCacheIdentifier
 
 #define SysCacheSize (USERMAPPINGUSERSERVER + 1)
 };
+
+/* Used in IsYugaByteEnabled() mode only */
+extern void SetSysCacheTuple(Relation rel, HeapTuple tup);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

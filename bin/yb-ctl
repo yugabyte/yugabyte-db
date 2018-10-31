@@ -711,7 +711,8 @@ class ClusterControl:
             try:
                 num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) > 0
                                     for i in xrange(1, max_num_tservers + 1)])
-                logging.info("Waiting until we have {} Tablet Servers".format(num_alive_ts))
+                logging.info("Waiting until we have enough tablet servers (currently %d)",
+                             num_alive_ts)
                 # TODO: enhance this to tell us live vs dead.
                 # Tablet Server UUID                      RPC Host/Port
                 # 5d6cd15e0a6e48aba1c5128869f51328        127.0.0.5:9100
@@ -916,8 +917,9 @@ class ClusterControl:
             try:
                 subprocess.check_call([
                     initdb_binary_path,
-                    '-D', tmp_pg_data_dir
-                    ])
+                    '-D', tmp_pg_data_dir,
+                    '-U', 'postgres'
+                ])
             finally:
                 if os.path.exists(tmp_pg_data_dir):
                     logging.info("Deleting temporary PostgreSQL data directory: %s",
