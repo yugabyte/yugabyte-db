@@ -61,7 +61,7 @@ clustering_key_column_ordering ::= WITH CLUSTERING ORDER BY '(' column_name [ AS
 
 Where
 
-- `index_name`, `table_name`, and `column_name` are identifiers. `table_name` may be qualified with a keyspace name but `index_name` may not because an index must be created in the table's keyspace.
+- `index_name`, `table_name`, and `column_name` are identifiers. `table_name` may be qualified with a keyspace name. `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 
 ## Semantics
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed.
@@ -192,4 +192,5 @@ cqlsh:example> SELECT * FROM emp;
 ## See Also
 
 [`CREATE TABLE`](../ddl_create_table)
+[`DROP INDEX`](../ddl_drop_index)
 [Other CQL Statements](..)

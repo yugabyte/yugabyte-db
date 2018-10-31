@@ -1,6 +1,6 @@
 ---
 title: DROP KEYSPACE
-summary: Removes a keyspace and all of its database objects
+summary: Removes a keyspace
 description: DROP KEYSPACE
 menu:
   latest:
@@ -13,7 +13,7 @@ aliases:
 ---
 
 ## Synopsis
-The `DROP KEYSPACE` statement removes a keyspace and all its database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)) from the system.
+The `DROP KEYSPACE` statement removes a keyspace from the system.
 
 ## Syntax
 

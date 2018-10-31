@@ -37,7 +37,8 @@ Statement | Description |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
 [`CREATE TYPE`](ddl_create_type) | Create a user-defined datatype |
-[`DROP KEYSPACE`](ddl_drop_keyspace) | Delete a keyspace and associated objects |
+[`DROP INDEX`](ddl_drop_index) | Remove an index |
+[`DROP KEYSPACE`](ddl_drop_keyspace) | Remove a keyspace |
 [`DROP TABLE`](ddl_drop_table) | Remove a table |
 [`DROP TYPE`](ddl_drop_type) | Remove a user-defined datatype |
 [`USE`](ddl_use) | Use an existing keyspace for subsequent commands |

@@ -106,6 +106,12 @@ field_type = '<type>';
 ```
 - See [Data Types](../#data-types).
 
+### drop_index
+```
+drop_index = 'DROP' 'INDEX' [ 'IF' 'EXISTS' ] index_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="388" height="50" viewbox="0 0 388 50"><path class="connector" d="M0 22h5m53 0h10m58 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m91 0h5"/><rect class="literal" x="5" y="5" width="53" height="25" rx="7"/><text class="text" x="15" y="22">DROP</text><rect class="literal" x="68" y="5" width="58" height="25" rx="7"/><text class="text" x="78" y="22">INDEX</text><rect class="literal" x="156" y="5" width="32" height="25" rx="7"/><text class="text" x="166" y="22">IF</text><rect class="literal" x="198" y="5" width="64" height="25" rx="7"/><text class="text" x="208" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="292" y="5" width="91" height="25"/><text class="text" x="302" y="22">index_name</text></a></svg>
+
 ### drop_keyspace
 ```
 drop_keyspace = 'DROP' ( 'KEYSPACE' | 'SCHEMA' ) [ 'IF' 'EXISTS' ] keyspace_name;
@@ -265,8 +271,10 @@ table_name = [ keyspace_name '.' ] '<Text Literal>';
 
 ### index_name
 ```
-index_name = '<Text Literal>';
+index_name = [ keyspace_name '.' ] '<Text Literal>';
 ```
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="317" height="50" viewbox="0 0 317 50"><path class="connector" d="M0 22h25m116 0h10m24 0h20m-185 0q5 0 5 5v8q0 5 5 5h160q5 0 5-5v-8q0-5 5-5m5 0h10m107 0h5"/><a xlink:href="../grammar_diagrams#keyspace-name"><rect class="rule" x="25" y="5" width="116" height="25"/><text class="text" x="35" y="22">keyspace_name</text></a><rect class="literal" x="151" y="5" width="24" height="25" rx="7"/><text class="text" x="161" y="22">.</text><rect class="literal" x="205" y="5" width="107" height="25" rx="7"/><text class="text" x="215" y="22">&lt;Text Literal&gt;</text></svg>
 
 ### column_name
 ```

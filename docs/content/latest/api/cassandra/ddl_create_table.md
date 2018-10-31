@@ -89,6 +89,7 @@ Where
 ### TABLE PROPERTIES
  - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individualy (default is `ASC`).
  - The `default_time_to_live` property sets the default expiration time (TTL) in seconds for a table. The expiration time can be overridden by setting TTL for individual rows. The default value is `0` and means rows do not expire. 
+ - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
  - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
 
 ## Examples
@@ -196,7 +197,7 @@ cqlsh:example> SELECT * FROM sensor_data;
          2 | 2017-10-01 18:22:34.000000+0000 |   3.4
 ```
 Second select 3 seconds later (at time T + 9).
-```Second insert 3 seconds later (row expires at T + 8)
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data;
 ```
 ```
